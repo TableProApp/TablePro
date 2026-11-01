@@ -91,6 +91,8 @@ enum ResultEditRefusal: Equatable {
             return String(localized: "These rows come from a view whose table has no primary key, so an edit could change more than one row.")
         case .keyNotExposed:
             return String(localized: "These rows come from a view that does not show every primary key column of its table, so an edit could change more than one row.")
+        case .couldNotCheck:
+            return String(localized: "These rows come from a view TablePro could not check, so it cannot tell which row an edit would change.")
         case nil:
             return String(localized: "These rows come from a view, which cannot be edited.")
         @unknown default:

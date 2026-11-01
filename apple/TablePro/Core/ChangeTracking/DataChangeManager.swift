@@ -736,7 +736,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         rowsWithUnloadedValues: Set<RowID> = [],
         writesThroughView: Bool = false
     ) throws -> RowWriteBuild {
-        let factory = try statementFactory()
+        var factory = try statementFactory()
+        factory.holdsKeyedWritesToOneRow = writesThroughView
         let operations = RowWriteOperationBuilder.operations(
             from: pending.changes,
             insertedRowData: pending.insertedRowData,

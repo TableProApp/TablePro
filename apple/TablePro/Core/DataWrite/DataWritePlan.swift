@@ -179,7 +179,7 @@ extension DataWriteStep {
                 DataWriteStep(
                     kind: .rowWrite,
                     statement: $0.statement,
-                    expectedRowCount: $0.keylessRowCount,
+                    expectedRowCount: $0.keylessRowCount ?? $0.keyedRowCount,
                     tableName: tableName,
                     matchesRowsWithoutKey: $0.keylessRowCount != nil,
                     rowKind: $0.kind,

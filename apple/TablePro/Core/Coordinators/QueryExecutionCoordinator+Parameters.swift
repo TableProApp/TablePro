@@ -158,7 +158,7 @@ extension QueryExecutionCoordinator {
             context: tab.tableContext
         )
 
-        let readsView = tab.tableContext.resolvedObjectKind() == .view
+        let readsView = tab.tableContext.knowsView(named: tableName)
         let boundValues = BoundParameterValues(values: parameters)
         let failureOutput = ServerOutputBox()
         let grammar = parent.lexicalGrammar

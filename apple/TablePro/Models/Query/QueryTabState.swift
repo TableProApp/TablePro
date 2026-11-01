@@ -556,6 +556,11 @@ struct TabTableContext: Equatable {
         return viewRowEditing?.writeTarget(keyedOn: primaryKeyColumns)
     }
 
+    // A query tab knows a view only from an earlier answer for the same relation; that keeps a failed check read-only.
+    func knowsView(named name: String?) -> Bool {
+        resolvedObjectKind() == .view || (viewRowEditing != nil && name == tableName)
+    }
+
     // A driver answers only for a view, so a table tab opened without a kind (a deep link, a script) learns it here.
     mutating func adoptViewAnswer(_ answer: PluginViewRowEditing?, tabType: TabType) {
         viewRowEditing = answer

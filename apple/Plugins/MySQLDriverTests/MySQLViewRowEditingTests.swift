@@ -110,9 +110,16 @@ struct MySQLViewRowEditingTests {
         _ levels: [MySQLViewRowEditing.Level],
         keys: [[String?]] = Fixture.keyRows,
         tableRows: [[String?]] = Fixture.mysqlTableRows,
-        quotesDefaults: Bool = false
+        quotesDefaults: Bool = false,
+        insertNeedsPlainColumns: Bool = true
     ) -> PluginViewRowEditing {
-        MySQLViewRowEditing.answer(levels: levels, keyRows: keys, columnRows: tableRows, quotesDefaults: quotesDefaults)
+        MySQLViewRowEditing.answer(
+            levels: levels,
+            keyRows: keys,
+            columnRows: tableRows,
+            quotesDefaults: quotesDefaults,
+            insertNeedsPlainColumns: insertNeedsPlainColumns
+        )
     }
 
     @Test("A backquote followed by a combining mark still opens a quoted name")
@@ -298,6 +305,23 @@ struct MySQLViewRowEditingTests {
         #expect(target.operations == [.update, .delete])
     }
 
+    @Test("A key column a column grant hides keeps the view read-only")
+    func columnGrantHidesKeyColumn() throws {
+        let definition = "select `impb`.`t`.`id` AS `id`,`impb`.`t`.`name` AS `name` from `impb`.`t`"
+        let result = answer(
+            [try level(definition, columns: ["id", "name"])],
+            keys: [["tenant_id"], ["id"]],
+            tableRows: [["id", "NO", nil, "", "int"], ["name", "YES", nil, "", "varchar(20)"]]
+        )
+        #expect(result == .readOnly(.keyNotExposed))
+    }
+
+    @Test("MariaDB inserts through a view with a computed column when the INSERT leaves it out")
+    func mariaDBInsertsPastComputedColumns() throws {
+        let result = answer([try level(Fixture.mysqlV, columns: Fixture.vColumns)], insertNeedsPlainColumns: false)
+        #expect(result.writeTarget?.operations == [.update, .insert, .delete])
+    }
+
     @Test("Columns map by position, never by the alias MySQL stores beside a column list")
     func columnList() throws {
         let mysql = answer([try level(Fixture.mysqlColumnList, columns: ["name", "id", "qty"])])
@@ -457,7 +481,7 @@ struct MySQLViewRowEditingTests {
         #expect(view.contains("TABLE_NAME = 'o''v'"))
         let relation = MySQLViewRowEditing.Relation(database: "sh'op", name: "t")
         #expect(MySQLViewRowEditing.viewQuery(database: "sh'op", name: "t", escape: escape).contains("'sh''op'"))
-        #expect(MySQLViewRowEditing.primaryKeyQuery(relation, escape: escape).contains("CONSTRAINT_NAME = 'PRIMARY'"))
+        #expect(MySQLViewRowEditing.primaryKeyQuery(relation, escape: escape).contains("INDEX_NAME = 'PRIMARY'"))
         #expect(MySQLViewRowEditing.columnsQuery(relation, escape: escape).hasSuffix("ORDER BY ORDINAL_POSITION"))
     }
 }

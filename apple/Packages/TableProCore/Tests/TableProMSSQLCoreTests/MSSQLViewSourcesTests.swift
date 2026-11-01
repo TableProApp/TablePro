@@ -236,6 +236,21 @@ struct MSSQLViewSourcesTests {
         #expect(operations.isEmpty)
     }
 
+    @Test("A self-join reads as one table in browse mode, and DELETE's 4405 says it is two")
+    func selfJoinIsSeveralTables() {
+        let browse = MSSQLViewSources.BrowseFacts(rows: [
+            ["id", "0", nil, "rsprobe", "dbo", "emp", "id", "1"],
+            ["manager", "0", nil, "rsprobe", "dbo", "emp", "name", "1"],
+            ["name", "0", nil, "rsprobe", "dbo", "emp", "name", "1"],
+            ["email", "0", nil, "rsprobe", "dbo", "emp", "email", "1"],
+            ["id", "1", nil, "rsprobe", "dbo", "emp", "id", "1"],
+        ])
+        #expect(browse.source == .table(table("rsprobe", "emp")))
+        let probes: [[String?]] = [["delete", "4405"], ["delete", "11501"]]
+        #expect(MSSQLViewSources.refusal(probeRows: probes) == .readsSeveralTables)
+        #expect(MSSQLViewSources.refusal(probeRows: [["update", "4406"]]) == nil)
+    }
+
     @Test("No probe error allows every operation")
     func probesClean() {
         let operations = MSSQLViewSources.allowedOperations(writableColumns: ["id"], probeRows: [])

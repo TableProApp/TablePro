@@ -60,12 +60,7 @@ struct ParsedSchemaMetadata {
     var columnDeclaredTypes: [String: String] = [:]
     var viewRowEditing: PluginViewRowEditing?
 
-    /// The metadata a tab already holds, captured at the moment the cache decision is made.
-    ///
-    /// Reading it again when the result finally lands reads whichever result is active *then*, and
-    /// selecting a pinned result in between made a cached rerun adopt that other result's identity
-    /// and non-writable sets, with no schema fetch behind it to repair the mistake.
-    // The view answer travels with the keys: a pinned result selected before the rerun lands repoints the context.
+    // Captured when the cache decision is made: a pinned result selected before the rerun lands repoints the tab.
     static func cached(rows: TableRows, context: TabTableContext) -> ParsedSchemaMetadata {
         var metadata = cached(rows: rows, primaryKeyColumns: context.primaryKeyColumns)
         metadata.viewRowEditing = context.viewRowEditing
@@ -274,7 +269,7 @@ final class QueryExecutor {
             // A view has no key of its own; a tab that does not know its kind asks whenever none shows.
             let asksView = isView || !columns.contains { $0.isPrimaryKey }
             let viewRowEditing = asksView
-                ? await fetchViewRowEditing(viewName: tableName, scope: scope, on: driver)
+                ? await fetchViewRowEditing(viewName: tableName, isKnownView: isView, scope: scope, on: driver)
                 : nil
             return (columns, approximateRowCount, viewRowEditing)
         }
@@ -290,9 +285,10 @@ final class QueryExecutor {
         )
     }
 
-    // A failed check leaves the view read-only, as every view was before the check existed.
+    // A failed check keeps a known view read-only; a relation not known as one stays what it was.
     nonisolated private static func fetchViewRowEditing(
         viewName: String,
+        isKnownView: Bool,
         scope: DatabaseScope,
         on driver: DatabaseDriver
     ) async -> PluginViewRowEditing? {
@@ -302,7 +298,7 @@ final class QueryExecutor {
             queryExecutorLog.error(
                 "View row editing check failed for \(viewName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
             )
-            return nil
+            return isKnownView ? .readOnly(.couldNotCheck) : nil
         }
     }
 

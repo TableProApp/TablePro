@@ -78,6 +78,32 @@ struct TabObjectKindTests {
         #expect(matview.viewEditRefusal == nil)
     }
 
+    @Test("A query tab knows a view only from an answer for the same relation")
+    func queryTabKnowsViewFromItsAnswer() {
+        var query = TabTableContext()
+        query.tableName = "v_orders"
+        #expect(!query.knowsView(named: "v_orders"))
+        query.viewRowEditing = .readOnly(.keyNotExposed)
+        #expect(query.knowsView(named: "v_orders"))
+        #expect(!query.knowsView(named: "orders"))
+        #expect(TabTableContext(isView: true, objectType: .view).knowsView(named: "anything"))
+    }
+
+    @Test("A table tab opened without a kind becomes a view once the driver answers for it")
+    func tableTabAdoptsTheViewKind() {
+        var context = TabTableContext()
+        context.adoptViewAnswer(nil, tabType: .table)
+        #expect(context.resolvedObjectKind() == .table)
+        context.adoptViewAnswer(.readOnly(.notUpdatable), tabType: .table)
+        #expect(context.resolvedObjectKind() == .view)
+        #expect(context.isView)
+
+        var query = TabTableContext()
+        query.adoptViewAnswer(.readOnly(.notUpdatable), tabType: .query)
+        #expect(query.resolvedObjectKind() == .table)
+        #expect(query.viewRowEditing == .readOnly(.notUpdatable))
+    }
+
     @Test("A table never explains a view refusal")
     func tableOffersEveryOperation() {
         let table = TabTableContext(isView: false, objectType: .table)

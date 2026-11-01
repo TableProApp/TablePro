@@ -238,6 +238,12 @@ public enum MSSQLViewSources {
             """
     }
 
+    // Browse mode names a table once however often the view joins it, so a self-join shows only as 4405 on DELETE.
+    public static func refusal(probeRows: [[String?]]) -> Refusal? {
+        let joins = probeRows.contains { $0.cell(0) == Operation.delete.rawValue && $0.cell(1) == "4405" }
+        return joins ? .readsSeveralTables : nil
+    }
+
     public static func allowedOperations(writableColumns: [String], probeRows: [[String?]]) -> Set<Operation> {
         var allowed: Set<Operation> = writableColumns.isEmpty ? [.delete] : Set(Operation.allCases)
         for row in probeRows {

@@ -81,6 +81,8 @@ public enum PluginViewReadOnlyReason: String, Sendable, Equatable {
     case baseTableHidden
     case baseTableHasNoKey
     case keyNotExposed
+    // A read failed after the relation proved to be a view.
+    case couldNotCheck
 }
 
 public struct PluginViewWriteOperations: OptionSet, Sendable, Hashable {

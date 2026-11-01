@@ -27,7 +27,14 @@ extension PostgreSQLPluginDriver {
         var chain: [PostgreSQLViewRowEditing.Relation] = []
         var query = PostgreSQLViewRowEditing.relationQuery(name: view, schema: schema ?? core.currentSchema)
         while true {
-            let row = try await catalogRead(query).rows.first?.map(\.asText)
+            let row: [String?]?
+            do {
+                row = try await catalogRead(query).rows.first?.map(\.asText)
+            } catch {
+                // Once the relation proved to be a view, a failed read must not let it pass for a table.
+                if chain.isEmpty { throw error }
+                return .readOnly(.couldNotCheck)
+            }
             switch PostgreSQLViewRowEditing.step(&chain, row: row) {
             case .notAView:
                 return nil
@@ -36,12 +43,14 @@ extension PostgreSQLPluginDriver {
             case .readRelation(let oid):
                 query = PostgreSQLViewRowEditing.relationQuery(oid: oid)
             case .readColumns(let viewOID, let baseOID, let baseSchema):
-                let viewColumns = try await catalogRead(PostgreSQLViewRowEditing.viewColumnsQuery(viewOID: viewOID))
-                // Relative, so a default reads as it does in the base table's own tab.
-                let baseColumns = try await catalogRead(
-                    PostgreSQLViewRowEditing.baseColumnsQuery(baseOID: baseOID, capabilities: capabilities),
-                    namesRelativeTo: baseSchema
-                )
+                let viewColumnsQuery = PostgreSQLViewRowEditing.viewColumnsQuery(viewOID: viewOID)
+                guard let viewColumns = try? await catalogRead(viewColumnsQuery),
+                      // Relative, so a default reads as it does in the base table's own tab.
+                      let baseColumns = try? await catalogRead(
+                          PostgreSQLViewRowEditing.baseColumnsQuery(baseOID: baseOID, capabilities: capabilities),
+                          namesRelativeTo: baseSchema
+                      )
+                else { return .readOnly(.couldNotCheck) }
                 return PostgreSQLViewRowEditing.resolve(
                     chain: chain,
                     viewColumns: viewColumns.rows.map { $0.map(\.asText) },

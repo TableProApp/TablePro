@@ -63,7 +63,15 @@ extension MSSQLPluginDriver {
         let factRows = try await viewCatalogRows(MSSQLViewSources.viewFactsQuery(schema: schema, view: view))
         guard let facts = MSSQLViewSources.ViewFacts(rows: factRows) else { return nil }
         if let refusal = facts.refusal { return .readOnly(PluginViewReadOnlyReason(refusal)) }
+        // Once the relation proved to be a view, a failed read must not let it pass for a table.
+        do {
+            return try await rowEditing(throughView: view, schema: schema)
+        } catch {
+            return .readOnly(.couldNotCheck)
+        }
+    }
 
+    private func rowEditing(throughView view: String, schema: String) async throws -> PluginViewRowEditing {
         let browse = MSSQLViewSources.BrowseFacts(
             rows: try await viewCatalogRows(MSSQLViewSources.browseQuery(schema: schema, view: view))
         )
@@ -80,6 +88,9 @@ extension MSSQLPluginDriver {
             view: view,
             writableColumns: browse.writableColumns
         ))
+        if let refusal = MSSQLViewSources.refusal(probeRows: probeRows) {
+            return .readOnly(PluginViewReadOnlyReason(refusal))
+        }
         let operations = MSSQLViewSources.allowedOperations(
             writableColumns: browse.writableColumns,
             probeRows: probeRows

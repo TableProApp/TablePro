@@ -32,6 +32,17 @@ struct ResultEditabilityTests {
         )
     }
 
+    @Test("A query result the driver answered for as a view takes the view's gate")
+    func queryResultOverAViewTakesTheViewGate() {
+        var result = origin()
+        result.viewRowEditing = editable(keys: ["id"])
+        #expect(ResultEditability.refusal(for: result, currentDatabaseName: "app") == nil)
+        result.primaryKeyColumns = ["name"]
+        #expect(ResultEditability.refusal(for: result, currentDatabaseName: "app") == .view(nil))
+        result.viewRowEditing = .readOnly(.couldNotCheck)
+        #expect(ResultEditability.refusal(for: result, currentDatabaseName: "app") == .view(.couldNotCheck))
+    }
+
     @Test("A result that captured its table is editable")
     func capturedTableIsEditable() {
         #expect(ResultEditability.refusal(for: origin(), currentDatabaseName: "app") == nil)
@@ -124,7 +135,7 @@ struct ResultEditabilityTests {
     func everyRefusalExplainsItself() {
         let reasons: [PluginViewReadOnlyReason?] = [
             nil, .notUpdatable, .writesRunTriggers, .readsSeveralTables,
-            .baseTableHidden, .baseTableHasNoKey, .keyNotExposed,
+            .baseTableHidden, .baseTableHasNoKey, .keyNotExposed, .couldNotCheck,
         ]
         let viewRefusals = reasons.map { ResultEditRefusal.view($0) }
         for refusal in [ResultEditRefusal.unknownTable, .databaseMoved, .keysUnresolved] + viewRefusals {

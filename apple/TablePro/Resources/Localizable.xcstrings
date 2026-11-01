@@ -189438,6 +189438,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The row no longer shows through the view, so it cannot be checked before writing." : {
+
+    },
+    "The row was deleted through a view, which may not show every column of its table." : {
+
+    },
     "The row's loaded values are missing, so it cannot be found again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -193779,6 +193785,27 @@
           }
         }
       }
+    },
+    "These rows come from a view TablePro could not check, so it cannot tell which row an edit would change." : {
+
+    },
+    "These rows come from a view that does not show every primary key column of its table, so an edit could change more than one row." : {
+
+    },
+    "These rows come from a view that reads more than one table, so an edit cannot target one row." : {
+
+    },
+    "These rows come from a view the server cannot write through." : {
+
+    },
+    "These rows come from a view whose table has no primary key, so an edit could change more than one row." : {
+
+    },
+    "These rows come from a view whose table or key is hidden from this connection, so an edit cannot target one row." : {
+
+    },
+    "These rows come from a view whose writes run rules or triggers, so an edit may not change the row shown." : {
+
     },
     "These rows come from a view, which cannot be edited." : {
       "localizations" : {

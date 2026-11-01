@@ -104,11 +104,12 @@ enum MySQLViewRowEditing {
         """
     }
 
+    // STATISTICS, not KEY_COLUMN_USAGE: MySQL drops key columns the user holds no column grant on from the latter.
     static func primaryKeyQuery(_ relation: Relation, escape: (String) -> String) -> String {
         """
-        SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE \
+        SELECT COLUMN_NAME FROM information_schema.STATISTICS \
         WHERE TABLE_SCHEMA = '\(escape(relation.database))' AND TABLE_NAME = '\(escape(relation.name))' \
-        AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY ORDINAL_POSITION
+        AND INDEX_NAME = 'PRIMARY' ORDER BY SEQ_IN_INDEX
         """
     }
 
@@ -163,11 +164,15 @@ enum MySQLViewRowEditing {
         levels: [Level],
         keyRows: [[String?]],
         columnRows: [[String?]],
-        quotesDefaults: Bool
+        quotesDefaults: Bool,
+        insertNeedsPlainColumns: Bool
     ) -> PluginViewRowEditing {
         guard let top = levels.first, let base = levels.last?.base else { return .readOnly(.notUpdatable) }
         let baseColumns = columnRows.compactMap { baseColumn(row: $0, quotesDefaults: quotesDefaults) }
+        let keyColumns = keyRows.compactMap { cell($0, 0) }
         let isVisible = !baseColumns.isEmpty
+        // Column grants hide the columns they leave out, so a key column missing here means the list is partial.
+        let isComplete = keyColumns.allSatisfy { key in baseColumns.contains { sameName($0.name, key) } }
 
         var sources = top.sources
         for level in levels.dropFirst() {
@@ -180,9 +185,10 @@ enum MySQLViewRowEditing {
         }
 
         var operations: PluginViewWriteOperations = [.update, .delete]
-        // MySQL refuses an INSERT (1471) once a view column is not a base column or shows one twice.
+        // MySQL refuses an INSERT (1471) once a view column is not a base column or shows one twice;
+        // MariaDB 11.8 takes one that leaves those columns out, as the grid does.
         let shown = sources.compactMap { $0?.lowercased() }
-        if shown.count == sources.count, Set(shown).count == shown.count {
+        if !insertNeedsPlainColumns || (shown.count == sources.count && Set(shown).count == shown.count) {
             operations.insert(.insert)
         }
 
@@ -192,8 +198,8 @@ enum MySQLViewRowEditing {
             columns: zip(top.columns, sources).map {
                 PluginViewColumn(name: $0, baseColumn: $1, acceptsWrites: $1 != nil)
             },
-            baseKeyColumns: isVisible ? keyRows.compactMap { cell($0, 0) } : nil,
-            baseColumns: isVisible ? baseColumns : nil
+            baseKeyColumns: isVisible || !keyColumns.isEmpty ? keyColumns : nil,
+            baseColumns: isVisible && isComplete ? baseColumns : nil
         )
     }
 

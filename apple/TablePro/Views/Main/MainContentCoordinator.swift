@@ -1202,7 +1202,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         let isTableTab = tab.tabType == .table
-        let readsView = tab.tableContext.resolvedObjectKind() == .view
+        let readsView = tab.tableContext.knowsView(named: tableName)
         let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
 
         let failureOutput = ServerOutputBox()
