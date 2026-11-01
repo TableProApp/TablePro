@@ -87,6 +87,8 @@ struct QdrantSchemaTests {
         #expect(types["code"] == "integer")
         #expect(types["price"] == "float")
         #expect(types["fresh"] == "integer")
+        #expect(collection.indexType(ofColumn: "code") == nil)
+        #expect(collection.indexType(ofColumn: "city") == .keyword)
         #expect(collection.indexType(ofColumn: "tags") == .keyword)
         let condition = try QdrantFilterBuilder.condition(
             for: QdrantFilterSpec(column: "tags", op: "=", value: "42"), collection: collection

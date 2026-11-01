@@ -165,6 +165,6 @@ public enum QdrantOperations {
     }
 
     public static func isTagged(_ query: String) -> Bool {
-        query.hasPrefix(QdrantBrowseQuery.tag) || query.hasPrefix(exportTag)
+        query.hasPrefix(QdrantBrowseQuery.tag) || query.hasPrefix(exportTag) || query.hasPrefix(QdrantInsertCheck.tag)
     }
 }

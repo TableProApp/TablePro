@@ -23,6 +23,22 @@ extension QdrantPluginDriver {
         if let request = QdrantBrowseQuery.parse(trimmed) {
             return try await executeBrowse(request, client: client, started: started)
         }
+        if let check = QdrantInsertCheck.decode(trimmed) {
+            let response = try await client.execute(QdrantConsoleRequest(
+                method: "POST",
+                path: "/collections/\(QdrantPathEncoding.segment(check.collection))/points",
+                body: try QdrantJSON.text(["ids": [check.id], "with_payload": true, "with_vector": false])
+            ))
+            let point = QdrantPoint.list(fromResponse: response.json)?.first
+            let missed = !QdrantInsertCheck.landed(point, payload: check.payload)
+            return PluginQueryResult(
+                columns: [QdrantSchema.idColumn],
+                columnTypeNames: ["id"],
+                rows: missed ? [[QdrantJSON.displayText(check.id).map(PluginCellValue.text) ?? .null]] : [],
+                rowsAffected: 0,
+                executionTime: Date().timeIntervalSince(started)
+            )
+        }
         if let request = QdrantConsoleParser.parse(trimmed) {
             return try await executeConsole(request, client: client, started: started)
         }

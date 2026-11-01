@@ -53,6 +53,7 @@ for i in 1...250 {
     if i <= 100 { payload["when"] = String(format: "2024-01-01T%02d:%02d:00Z", i / 60, i % 60) }
     if i == 7 { payload["note"] = NSNull() }
     if i == 8 { payload["note"] = "" }
+    if i == 9 { payload["city"] = 42 }
     if i == 10 { payload["mixed"] = "42" }
     if i == 11 { payload["mixed"] = 42 }
     if i == 12 { payload["mixed"] = ["42"] }
@@ -91,6 +92,7 @@ func filtered(_ specs: [QdrantFilterSpec], _ mode: String = "AND") async throws 
     return try await client.count(collection: name, filter: filter)
 }
 check(try await filtered([QdrantFilterSpec(column: "city", op: "=", value: "even")]) == 125, "match keyword")
+check(try await filtered([QdrantFilterSpec(column: "city", op: "=", value: "42")]) == 1, "a number stored under a keyword index is found")
 check(try await filtered([QdrantFilterSpec(column: "n", op: "BETWEEN", value: "10,19", secondValue: "19")]) == 10, "between")
 check(try await filtered([QdrantFilterSpec(column: "n", op: ">", value: "190"), QdrantFilterSpec(column: "city", op: "!=", value: "even")]) == 5, "and with not")
 check(try await filtered([QdrantFilterSpec(column: "n", op: "<", value: "3"), QdrantFilterSpec(column: "n", op: ">", value: "198")], "OR") == 4, "or")
@@ -180,6 +182,16 @@ _ = try await run(taken[0].request.text)
 let untouched = QdrantPoint.list(fromResponse: try await run(#"POST \#(base)/points {"ids":[3],"with_payload":true,"with_vector":true}"#).json)
 check(untouched?.first?.cell(for: "city") == "odd" && untouched?.first?.cell(for: "vector") == "[3,1]", "insert leaves a taken id untouched")
 
+let raced = try QdrantRowWriter.writes(collection: name, changes: [
+    QdrantRowChange(kind: .insert, rowIndex: 0, id: nil, cells: [QdrantCell(column: "id", text: "777"), QdrantCell(column: "city", text: "ours")])
+], serverVersion: client.serverVersion, typeName: { types[$0] })[0]
+check(QdrantPoint.list(fromResponse: try await run(raced.mustFindNothing?.text).json)?.isEmpty == true, "raced insert passes its lookup")
+_ = try await run(#"PUT \#(base)/points?wait=true {"points":[{"id":777,"vector":[7,7],"payload":{"city":"theirs"}}]}"#)
+_ = try await run(raced.request.text)
+guard let racedCheck = raced.landedCheck.flatMap(QdrantInsertCheck.decode) else { fatalError("insert has no landed check") }
+let held = QdrantPoint.list(fromResponse: try await run(#"POST \#(base)/points {"ids":[777],"with_payload":true}"#).json)?.first
+check(!QdrantInsertCheck.landed(held, payload: racedCheck.payload), "an insert that lost a race to the same id is caught after the write")
+_ = try await run(#"POST \#(base)/points/delete?wait=true {"points":[777]}"#)
 let after = try await run(#"POST \#(base)/points {"ids":[1,2,999],"with_payload":true,"with_vector":true}"#)
 let byID = Dictionary(uniqueKeysWithValues: (QdrantPoint.list(fromResponse: after.json) ?? []).map { ($0.idText ?? "", $0) })
 check(byID["1"]?.cell(for: "city") == "edited" && byID["1"]?.cell(for: "n") == "1000", "set payload typed")

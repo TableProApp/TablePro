@@ -136,6 +136,20 @@ struct QdrantRowWriteTests {
             + #"{"points":[{"id":"00000000-0000-0000-0000-000000000001","payload":{"active":true,"city":"Hanoi"},"vector":{"":[1,2]}}],"update_filter":{"must":[{"has_id":[]}]}}"#)
         #expect(write.mustFindNothing?.text == "POST /collections/docs/points\n"
             + #"{"ids":["00000000-0000-0000-0000-000000000001"],"with_payload":false,"with_vector":false}"#)
+        let check = try #require(write.landedCheck.flatMap(QdrantInsertCheck.decode))
+        #expect(check.collection == "docs")
+        #expect(check.id as? String == "00000000-0000-0000-0000-000000000001")
+        #expect(canonical(check.payload) == #"{"active":true,"city":"Hanoi"}"#)
+    }
+
+    @Test("The landed check passes only for the point the insert wrote")
+    func landedCheck() throws {
+        let written: [String: Any] = ["city": "Hanoi", "count": 3]
+        let same = QdrantPoint(id: 1, payload: ["count": 3, "city": "Hanoi"], vector: nil, score: nil)
+        let other = QdrantPoint(id: 1, payload: ["city": "Paris"], vector: nil, score: nil)
+        #expect(QdrantInsertCheck.landed(same, payload: written))
+        #expect(!QdrantInsertCheck.landed(other, payload: written))
+        #expect(!QdrantInsertCheck.landed(nil, payload: written))
     }
 
     @Test("Typed values: text stays text, JSON columns parse, and malformed structures are refused")

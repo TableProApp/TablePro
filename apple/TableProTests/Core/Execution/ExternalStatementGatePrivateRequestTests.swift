@@ -77,6 +77,7 @@ struct ExternalStatementGatePrivateRequestTests {
         (.weaviate, "WEAVIATE_EXPORT:"),
         (.qdrant, "QDRANT_BROWSE:"),
         (.qdrant, "QDRANT_EXPORT:"),
+        (.qdrant, "QDRANT_INSERT_CHECK:"),
         (.memcached, "MEMCACHED_BROWSE:"),
         (.memcached, "MEMCACHED_REFUSAL:"),
         (.etcd, "ETCD_RANGE:"),

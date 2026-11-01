@@ -149,7 +149,7 @@ extension QdrantPluginDriver {
                     statement: write.request.text,
                     rowIndices: [write.rowIndex],
                     lookup: write.mustFindNothing.map {
-                        PluginRowLookup(query: $0.text, parameters: [], rowCount: 0, pinsRows: false)
+                        PluginRowLookup(query: $0.text, parameters: [], rowCount: 0, pinsRows: false, check: write.landedCheck)
                     }
                 )
             }
