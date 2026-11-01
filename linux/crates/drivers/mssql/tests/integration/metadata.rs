@@ -410,5 +410,27 @@ async fn index_statements_recreate_their_indexes() {
             );
         }
     }
+
+    let definition = connection
+        .fetch_table_definition(&dbo("ledger"), within(CALL))
+        .await
+        .expect("the table");
+    let dialect = connection.dialect();
+    let script = dialect
+        .ddl()
+        .expect("SQL Server plans DDL")
+        .create_table_script(&definition)
+        .expect("the script");
+    let mut statements = vec!["DROP TABLE dbo.ledger"];
+    statements.extend(script.sql());
+    setup(connection.as_ref(), &statements).await;
+    let remade = read("ledger").await;
+    for index in definition.indexes.iter().filter(|index| index.definition.is_some()) {
+        assert_eq!(
+            remade.iter().find(|remade| remade.name == index.name),
+            Some(index),
+            "{script:?}"
+        );
+    }
     connection.close().await.expect("a close");
 }

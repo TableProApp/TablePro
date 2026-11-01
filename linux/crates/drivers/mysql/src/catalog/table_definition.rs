@@ -116,10 +116,27 @@ pub(crate) fn printed_names(name: &str) -> [String; 2] {
 /// in, and escapes a line break inside a string or comment.
 fn column_line<'a>(create_statement: &'a str, column: &str) -> Option<&'a str> {
     printed_names(column).iter().find_map(|printed| {
-        let head = format!("\n  {printed} ");
-        let start = create_statement.find(&head)? + 3;
-        let line = entry(create_statement.get(start..)?);
-        Some(line.strip_suffix(',').unwrap_or(line))
+        let head = format!("{printed} ");
+        elements(create_statement).find_map(|element| {
+            let line = element.strip_prefix("  ")?;
+            line.starts_with(&head).then(|| line.strip_suffix(',').unwrap_or(line))
+        })
+    })
+}
+
+// The body's elements, each two spaces in. Matching a whole element keeps a name that spells
+// another element's head, in a mode that quotes names differently, from being taken for it.
+fn elements(create_statement: &str) -> impl Iterator<Item = &str> {
+    let mut rest = create_statement
+        .get(entry(create_statement).len() + 1..)
+        .unwrap_or_default();
+    std::iter::from_fn(move || {
+        if !rest.starts_with("  ") {
+            return None;
+        }
+        let element = entry(rest);
+        rest = rest.get(element.len() + 1..).unwrap_or_default();
+        Some(element)
     })
 }
 
@@ -153,11 +170,12 @@ pub(crate) fn index_statement(create_statement: &str, table: &str, index: &str) 
     ];
     printed_names(index).iter().find_map(|printed| {
         KINDS.iter().find_map(|(key, kind)| {
-            let head = format!("\n  {key} {printed} ");
-            let start = create_statement.find(&head)? + head.len();
-            let line = entry(create_statement.get(start..)?).trim_end();
-            let rest = line.strip_suffix(',').unwrap_or(line).trim_end();
-            Some(format!("CREATE {kind} {printed} ON {table} {rest}"))
+            let head = format!("  {key} {printed} ");
+            elements(create_statement).find_map(|element| {
+                let line = element.strip_prefix(&head)?.trim_end();
+                let rest = line.strip_suffix(',').unwrap_or(line).trim_end();
+                Some(format!("CREATE {kind} {printed} ON {table} {rest}"))
+            })
         })
     })
 }
@@ -260,6 +278,17 @@ mod tests {
             Some("CREATE INDEX `k\n2` ON `d`.`t` (`a\nb`)")
         );
         assert_eq!(quoted_default(create, "a\nb").as_deref(), Some("7"));
+    }
+
+    #[test]
+    fn a_name_that_spells_an_index_line_is_not_taken_for_it() {
+        let create = "CREATE TABLE \"t\" (\n  \"id\" int,\n  \"x\n  KEY `k` (`id`); DROP TABLE users\nz\" int,\n  \
+                      KEY \"k\" (\"id\")\n)";
+
+        assert_eq!(
+            index_statement(create, "`d`.`t`", "k").as_deref(),
+            Some("CREATE INDEX \"k\" ON `d`.`t` (\"id\")")
+        );
     }
 
     #[test]

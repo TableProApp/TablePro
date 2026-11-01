@@ -11,7 +11,7 @@ use crate::physical::MssqlClient;
 use crate::workspace_call::{catalogue_rows, text_param};
 
 // A constraint's index has no CREATE INDEX of its own; XML, spatial and columnstore indexes take
-// syntax this does not write. A disabled index has no partitions, so its compression is unknown.
+// syntax this does not write.
 fn index_options_sql(major_version: u32) -> String {
     // OPTIMIZE_FOR_SEQUENTIAL_KEY came with SQL Server 2019.
     let sequential = match major_version >= 15 {
@@ -22,10 +22,7 @@ fn index_options_sql(major_version: u32) -> String {
         "SELECT i.name, i.type_desc, CAST(i.is_unique AS int), i.filter_definition, i.fill_factor, \
                 CAST(i.is_padded AS int), CAST(i.ignore_dup_key AS int), CAST(s.no_recompute AS int), \
                 CAST(s.is_incremental AS int), CAST(i.allow_row_locks AS int), CAST(i.allow_page_locks AS int), \
-                {sequential}, CAST(i.is_disabled AS int), ds.name, RTRIM(ds.type), \
-                (SELECT STRING_AGG(CAST(CONCAT(p.partition_number, ':', p.data_compression_desc) AS nvarchar(max)), ',') \
-                        WITHIN GROUP (ORDER BY p.partition_number) \
-                 FROM sys.partitions p WHERE p.object_id = i.object_id AND p.index_id = i.index_id) \
+                {sequential}, CAST(i.is_disabled AS int), ds.name, RTRIM(ds.type) \
          FROM sys.indexes i \
          JOIN sys.stats s ON s.object_id = i.object_id AND s.stats_id = i.index_id \
          JOIN sys.data_spaces ds ON ds.data_space_id = i.data_space_id \
@@ -43,6 +40,13 @@ const INDEX_COLUMNS_SQL: &str = "SELECT i.name, c.name, CAST(ic.is_included_colu
           AND (ic.is_included_column = 1 OR ic.partition_ordinal = 1) \
     ORDER BY i.index_id, ic.index_column_id";
 
+// A disabled index has no partitions, so its compression is not known.
+const INDEX_PARTITIONS_SQL: &str = "SELECT i.name, p.partition_number, p.data_compression_desc \
+    FROM sys.indexes i \
+    JOIN sys.partitions p ON p.object_id = i.object_id AND p.index_id = i.index_id \
+    WHERE i.object_id = OBJECT_ID(@P1) AND i.type IN (1, 2) \
+    ORDER BY i.index_id, p.partition_number";
+
 pub(crate) async fn fetch_index_statements(
     client: &mut MssqlClient,
     watch: &Watch,
@@ -50,38 +54,50 @@ pub(crate) async fn fetch_index_statements(
     major_version: u32,
     indexes: &mut [IndexInfo],
 ) -> Result<(), Interrupt> {
-    let options = catalogue_rows(
-        client,
-        watch,
-        &index_options_sql(major_version),
-        &[text_param(relation)],
-    )
-    .await?;
-    let columns = catalogue_rows(client, watch, INDEX_COLUMNS_SQL, &[text_param(relation)]).await?;
-    let mut statements = statements(&MssqlDialect::new(major_version), relation, indexes, &options, &columns)?;
+    let params = [text_param(relation)];
+    let options = catalogue_rows(client, watch, &index_options_sql(major_version), &params).await?;
+    let columns = catalogue_rows(client, watch, INDEX_COLUMNS_SQL, &params).await?;
+    let partitions = catalogue_rows(client, watch, INDEX_PARTITIONS_SQL, &params).await?;
+    let rows = CatalogRows {
+        options: &options,
+        columns: &columns,
+        partitions: &partitions,
+    };
+    let mut statements = statements(&MssqlDialect::new(major_version), relation, indexes, &rows)?;
     for index in indexes {
         index.definition = statements.remove(&index.name);
     }
     Ok(())
 }
 
+// CREATE INDEX has no way to say disabled, so a disabled index's statement ends with this one.
+pub(crate) fn disabling(name: &str, relation: &str) -> String {
+    format!("ALTER INDEX {} ON {relation} DISABLE", quote(name))
+}
+
+struct CatalogRows<'a> {
+    options: &'a [Vec<Value>],
+    columns: &'a [Vec<Value>],
+    partitions: &'a [Vec<Value>],
+}
+
 #[derive(Default)]
-struct IndexColumns {
+struct IndexParts {
     included: Vec<String>,
     partitioned_by: Option<String>,
+    compression: Vec<(i64, String)>,
 }
 
 fn statements(
     dialect: &MssqlDialect,
     relation: &str,
     indexes: &[IndexInfo],
-    options: &[Vec<Value>],
-    columns: &[Vec<Value>],
+    rows: &CatalogRows<'_>,
 ) -> Result<HashMap<String, String>, DriverError> {
-    let mut by_index: HashMap<String, IndexColumns> = HashMap::new();
-    for row in columns {
+    let mut parts: HashMap<String, IndexParts> = HashMap::new();
+    for row in rows.columns {
         let cells = Cells::new(row, "sys.index_columns");
-        let entry = by_index.entry(cells.required_text(0)?).or_default();
+        let entry = parts.entry(cells.required_text(0)?).or_default();
         let column = cells.required_text(1)?;
         if cells.int(3) == Some(1) {
             entry.partitioned_by = Some(column.clone());
@@ -90,15 +106,21 @@ fn statements(
             entry.included.push(column);
         }
     }
+    for row in rows.partitions {
+        let cells = Cells::new(row, "sys.partitions");
+        let entry = parts.entry(cells.required_text(0)?).or_default();
+        let number = cells.int(1).unwrap_or_default();
+        entry.compression.push((number, cells.required_text(2)?));
+    }
     let mut statements = HashMap::new();
-    for row in options {
+    for row in rows.options {
         let cells = Cells::new(row, "sys.indexes");
         let name = cells.required_text(0)?;
         let Some(index) = indexes.iter().find(|index| index.name == name) else {
             continue;
         };
-        let columns = by_index.remove(&name).unwrap_or_default();
-        statements.insert(name, statement(dialect, relation, index, &cells, &columns)?);
+        let parts = parts.remove(&name).unwrap_or_default();
+        statements.insert(name, statement(dialect, relation, index, &cells, &parts)?);
     }
     Ok(statements)
 }
@@ -110,34 +132,34 @@ fn statement(
     relation: &str,
     index: &IndexInfo,
     cells: &Cells<'_>,
-    columns: &IndexColumns,
+    parts: &IndexParts,
 ) -> Result<String, DriverError> {
-    let name = quote(&index.name);
     let unique = if cells.flag(2) { "UNIQUE " } else { "" };
     let mut sql = format!(
-        "CREATE {unique}{} INDEX {name} ON {relation} ({})",
+        "CREATE {unique}{} INDEX {} ON {relation} ({})",
         cells.required_text(1)?,
+        quote(&index.name),
         index_keys_sql(dialect, index)
     );
-    if !columns.included.is_empty() {
-        let included: Vec<String> = columns.included.iter().map(|column| quote(column)).collect();
+    if !parts.included.is_empty() {
+        let included: Vec<String> = parts.included.iter().map(|column| quote(column)).collect();
         sql.push_str(&format!(" INCLUDE ({})", included.join(", ")));
     }
     if let Some(filter) = cells.text(3) {
         sql.push_str(&format!(" WHERE {filter}"));
     }
-    let options = with_options(cells);
+    let mut options = with_options(cells);
+    options.extend(compression(&parts.compression));
     if !options.is_empty() {
         sql.push_str(&format!(" WITH ({})", options.join(", ")));
     }
     let space = quote(&cells.required_text(13)?);
-    match (cells.text(14).as_deref(), &columns.partitioned_by) {
+    match (cells.text(14).as_deref(), &parts.partitioned_by) {
         (Some("PS"), Some(column)) => sql.push_str(&format!(" ON {space}({})", quote(column))),
         _ => sql.push_str(&format!(" ON {space}")),
     }
-    // CREATE INDEX has no way to say disabled.
     if cells.flag(12) {
-        sql.push_str(&format!(";\n\nALTER INDEX {name} ON {relation} DISABLE"));
+        sql.push_str(&format!(";\n\n{}", disabling(&index.name, relation)));
     }
     Ok(sql)
 }
@@ -163,19 +185,14 @@ fn with_options(cells: &Cells<'_>) -> Vec<String> {
             options.push(format!("{option} = {}", if on { "ON" } else { "OFF" }));
         }
     }
-    options.extend(compression(cells.text(15).as_deref().unwrap_or_default()));
     options
 }
 
-// `1:PAGE,2:NONE,3:PAGE` from sys.partitions. One setting covers an index whose partitions agree.
-fn compression(partitions: &str) -> Vec<String> {
-    let partitions: Vec<(&str, &str)> = partitions
-        .split(',')
-        .filter_map(|partition| partition.split_once(':'))
-        .collect();
+// One setting covers an index whose partitions agree; ON PARTITIONS names the rest.
+fn compression(partitions: &[(i64, String)]) -> Vec<String> {
     let mut kinds: Vec<&str> = Vec::new();
-    for (_, kind) in &partitions {
-        if !kinds.contains(kind) {
+    for (_, kind) in partitions {
+        if !kinds.contains(&kind.as_str()) {
             kinds.push(kind);
         }
     }
@@ -186,10 +203,10 @@ fn compression(partitions: &str) -> Vec<String> {
             .iter()
             .filter(|kind| **kind != "NONE")
             .map(|kind| {
-                let numbers: Vec<&str> = partitions
+                let numbers: Vec<String> = partitions
                     .iter()
                     .filter(|(_, other)| other == kind)
-                    .map(|(number, _)| *number)
+                    .map(|(number, _)| number.to_string())
                     .collect();
                 format!("DATA_COMPRESSION = {kind} ON PARTITIONS ({})", numbers.join(", "))
             })
@@ -230,7 +247,6 @@ mod tests {
         filter: Option<&'static str>,
         flags: [i64; 9],
         space: (&'static str, &'static str),
-        partitions: Option<&'static str>,
     }
 
     const PLAIN: Facts = Facts {
@@ -240,7 +256,6 @@ mod tests {
         // fill, pad, ignore_dup_key, no_recompute, incremental, row locks, page locks, sequential, disabled
         flags: [0, 0, 0, 0, 0, 1, 1, 0, 0],
         space: ("PRIMARY", "FG"),
-        partitions: Some("1:NONE"),
     };
 
     fn row(name: &str, facts: Facts) -> Vec<Value> {
@@ -251,12 +266,15 @@ mod tests {
             facts.filter.map_or(Value::Null, text),
         ];
         row.extend(facts.flags.iter().map(|flag| Value::Int(*flag)));
-        row.extend([
-            text(facts.space.0),
-            text(facts.space.1),
-            facts.partitions.map_or(Value::Null, text),
-        ]);
+        row.extend([text(facts.space.0), text(facts.space.1)]);
         row
+    }
+
+    fn partition_rows(index: &str, kinds: &[&str]) -> Vec<Vec<Value>> {
+        (1..)
+            .zip(kinds)
+            .map(|(number, kind)| vec![text(index), Value::Int(number), text(kind)])
+            .collect()
     }
 
     fn column(index: &str, name: &str, included: bool, partition: i64) -> Vec<Value> {
@@ -284,7 +302,6 @@ mod tests {
                 Facts {
                     kind: "CLUSTERED",
                     space: ("ps", "PS"),
-                    partitions: Some("1:NONE,2:NONE,3:NONE"),
                     ..PLAIN
                 },
             ),
@@ -300,7 +317,6 @@ mod tests {
                 Facts {
                     unique: true,
                     flags: [80, 1, 1, 1, 0, 1, 0, 1, 0],
-                    partitions: Some("1:PAGE"),
                     ..PLAIN
                 },
             ),
@@ -309,7 +325,6 @@ mod tests {
                 Facts {
                     flags: [0, 0, 0, 0, 1, 1, 1, 0, 0],
                     space: ("ps", "PS"),
-                    partitions: Some("1:PAGE,2:NONE,3:ROW"),
                     ..PLAIN
                 },
             ),
@@ -317,7 +332,6 @@ mod tests {
                 "ix_dis",
                 Facts {
                     flags: [0, 0, 0, 0, 0, 1, 1, 0, 1],
-                    partitions: None,
                     ..PLAIN
                 },
             ),
@@ -336,8 +350,21 @@ mod tests {
             column("ix_ppc", "k", false, 1),
         ];
 
-        let mut statements =
-            statements(&MssqlDialect::new(16), "[dbo].[t]", &indexes, &options, &columns).expect("the statements");
+        let partitions = [
+            partition_rows("cx_pt", &["NONE", "NONE", "NONE"]),
+            partition_rows("ix_filt", &["NONE"]),
+            partition_rows("ux_opts", &["PAGE"]),
+            partition_rows("ix_ppc", &["PAGE", "NONE", "ROW"]),
+            partition_rows("we]ird", &["NONE"]),
+        ]
+        .concat();
+        let rows = CatalogRows {
+            options: &options,
+            columns: &columns,
+            partitions: &partitions,
+        };
+
+        let mut statements = statements(&MssqlDialect::new(16), "[dbo].[t]", &indexes, &rows).expect("the statements");
         let mut statement = |name: &str| statements.remove(name).expect(name);
 
         assert_eq!(
@@ -375,7 +402,13 @@ mod tests {
     fn an_index_the_options_do_not_list_has_no_statement() {
         let indexes = [index("pk", &[("id", false)])];
 
-        let statements = statements(&MssqlDialect::new(14), "[dbo].[t]", &indexes, &[], &[]).expect("the statements");
+        let rows = CatalogRows {
+            options: &[],
+            columns: &[],
+            partitions: &[],
+        };
+
+        let statements = statements(&MssqlDialect::new(14), "[dbo].[t]", &indexes, &rows).expect("the statements");
 
         assert!(statements.is_empty());
     }
