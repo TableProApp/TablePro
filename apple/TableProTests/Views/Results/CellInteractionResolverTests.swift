@@ -238,6 +238,8 @@ struct CellInteractionResolverBinaryTests {
         arguments: [
             (ValueDisplayFormat.messagePack, BinaryValueFormat.messagePack),
             (.protobuf, .protobuf),
+            (.igbinary, .igbinary),
+            (.avro(schemaID: String(repeating: "c", count: 32)), .avro(schemaID: String(repeating: "c", count: 32))),
         ]
     )
     func decoderFormatOpensDecodedViewer(format: ValueDisplayFormat, expected: BinaryValueFormat) {

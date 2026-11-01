@@ -119,7 +119,8 @@ struct MenuContentModeParityTests {
         context.isQueryTab = true
         context.hasPendingChanges = true
         context.hasDataPendingChanges = true
-        context.isCurrentTabEditable = true
+        context.canInsertRows = true
+        context.canDeleteRows = true
         context.isCurrentTabSchemaResolved = true
         context.canRestorePreviousValues = true
         context.canNavigateBack = true

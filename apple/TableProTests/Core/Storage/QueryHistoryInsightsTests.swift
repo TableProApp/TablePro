@@ -581,7 +581,7 @@ struct QueryHistoryInsightsTests {
     @MainActor
     func insightsTabIsOnePerConnection() throws {
         let tabManager = QueryTabManager()
-        tabManager.addQueryInsightsTab()
+        tabManager.addSingletonTab(.insights)
         let insights = try #require(tabManager.tabs.first { $0.tabType == .insights })
         #expect(tabManager.selectedTabId == insights.id)
 
@@ -589,7 +589,7 @@ struct QueryHistoryInsightsTests {
         tabManager.selectedTabId = tabManager.tabs.last?.id
         #expect(tabManager.selectedTabId != insights.id)
 
-        tabManager.addQueryInsightsTab()
+        tabManager.addSingletonTab(.insights)
 
         #expect(tabManager.tabs.filter { $0.tabType == .insights }.map(\.id) == [insights.id])
         #expect(tabManager.selectedTabId == insights.id)

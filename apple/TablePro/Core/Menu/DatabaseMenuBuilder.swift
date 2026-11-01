@@ -140,6 +140,10 @@ enum DatabaseMenuBuilder {
                 shortcut: .showQueryInsights,
                 keyboard: keyboard
             ),
+            MenuItemFactory.item(
+                String(localized: "Table Health"),
+                action: #selector(MainSplitViewController.showTableHealth(_:))
+            ),
             MenuItemFactory.separator,
             // No ellipsis: the HIG keeps one for a command that asks for more input, and this asks for none.
             MenuItemFactory.item(

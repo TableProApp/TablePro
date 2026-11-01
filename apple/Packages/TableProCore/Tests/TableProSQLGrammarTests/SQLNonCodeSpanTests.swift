@@ -60,6 +60,16 @@ struct SQLNonCodeSpanTests {
         #expect(end("--", .dashCommentsNeedWhitespace) == 2)
     }
 
+    @Test("Cypher's -- is code under every reading of a Neo4j text, so the ; after it still splits")
+    func cypherDashesAreCode() {
+        #expect(end("-- a\nb", .withoutDashComments) == nil)
+        let text = "MATCH (a)-- (b) RETURN a; MATCH (n) RETURN n"
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "Neo4j", declared: nil, session: nil)
+        for grammar in readings.distinct(for: text) {
+            #expect(SQLStatementScanner.executableStatements(in: text, grammar: grammar).count == 2)
+        }
+    }
+
     @Test("Every control character after -- starts a MySQL comment, U+007F among them")
     func deleteAfterDashesStartsAComment() {
         #expect(end("--\u{01}a\nb", .dashCommentsNeedWhitespace) == 4)

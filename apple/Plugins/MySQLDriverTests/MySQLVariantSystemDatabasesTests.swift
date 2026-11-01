@@ -24,5 +24,6 @@ struct MySQLVariantSystemDatabasesTests {
         #expect(MySQLSystemDatabases.names(forVariant: MySQLServerFlavor.oceanbaseVariant) == [
             "information_schema", "mysql", "oceanbase", "__recyclebin", "__public", "SYS", "LBACSYS", "ORAAUDITOR"
         ])
+        #expect(MySQLSystemDatabases.names(forVariant: MySQLServerFlavor.starrocksVariant) == [])
     }
 }

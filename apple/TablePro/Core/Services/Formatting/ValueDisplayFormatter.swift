@@ -6,16 +6,16 @@
 import Foundation
 import TableProUtilities
 
-/// Renders one raw cell value under one display format.
-///
-/// Nothing here reads a setting or a store, which is the point: this is what the data grid calls
-/// per cell, and it has to stay reachable without dragging the preference layer behind it.
-/// Resolving *which* format a column carries is a separate job with separate dependencies, and it
-/// lives in `ValueDisplayFormatService`.
+// Renders one raw cell value under one display format.
+//
+// Nothing here reads a setting or a store, which is the point: this is what the data grid calls
+// per cell, and it has to stay reachable without dragging the preference layer behind it.
+// Resolving *which* format a column carries is a separate job with separate dependencies, and it
+// lives in `ValueDisplayFormatService`.
 @MainActor
 enum ValueDisplayFormatter {
-    /// nil where the format cannot render this value, so the caller falls back to how the column
-    /// would have read without it rather than showing a value the format did not actually produce.
+    // nil where the format cannot render this value, so the caller falls back to how the column
+    // would have read without it rather than showing a value the format did not actually produce.
     static func apply(
         _ rawValue: String,
         format: ValueDisplayFormat,
@@ -36,7 +36,7 @@ enum ValueDisplayFormatter {
             return formatAsTimestamp(rawValue, divideBy: 1_000)
         case .json, .phpSerialized:
             return rawValue
-        case .messagePack, .protobuf:
+        case .messagePack, .protobuf, .igbinary, .avro:
             guard let data = rawValue.data(using: .isoLatin1), let decoder = format.binaryValueFormat else { return nil }
             return BinaryValueDecoding.text(data, format: decoder)
         }
@@ -54,7 +54,7 @@ enum ValueDisplayFormatter {
             guard rawValue.count == 16 else { return nil }
             let order: UUIDByteOrder = format == .uuidSwappedTime ? .swappedTime : .stored
             return insertUuidHyphens(order.uuidBytes(fromStored: [UInt8](rawValue)).hexEncoded)
-        case .messagePack, .protobuf:
+        case .messagePack, .protobuf, .igbinary, .avro:
             guard let decoder = format.binaryValueFormat else { return nil }
             return BinaryValueDecoding.text(rawValue, format: decoder)
         case .raw, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:

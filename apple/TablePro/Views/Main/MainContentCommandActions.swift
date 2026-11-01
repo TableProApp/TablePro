@@ -396,6 +396,16 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
+    // A view can take updates while the server refuses inserts or deletes through it.
+    func currentTabAllows(_ operation: PluginViewWriteOperations) -> Bool {
+        guard let coordinator, coordinator.tabManager.selectedTab != nil else { return false }
+        switch selectionOwner {
+        case .schemaGrid: return isCurrentTabEditable
+        case .dataGrid: return coordinator.canEditActiveResult(operation)
+        case .none: return false
+        }
+    }
+
     // Add and Duplicate Row gate on this; a structure grid adds only where its section allows it.
     var isCurrentTabSchemaResolved: Bool {
         guard let coordinator, let tabId = coordinator.tabManager.selectedTabId else { return false }
@@ -449,7 +459,7 @@ final class MainContentCommandActions: ObservableObject {
         case .schemaGrid:
             return canPasteSchemaRows
         case .dataGrid:
-            return tab.tabType == .table && isCurrentTabEditable && isCurrentTabSchemaResolved
+            return tab.tabType == .table && currentTabAllows(.insert) && isCurrentTabSchemaResolved
                 && ClipboardService.shared.hasText
         case .none:
             return false
