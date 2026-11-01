@@ -1,5 +1,7 @@
 use crate::value::Value;
 
+use super::CellExpression;
+
 /// What the user put in a cell.
 ///
 /// Leaving a cell empty in a draft row is not the same as typing NULL:
@@ -7,16 +9,19 @@ use crate::value::Value;
 /// Keeping them apart is what lets an insert omit the column.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CellInput {
-    /// Omit the column so the server applies its default.
+    /// The server's default: an insert leaves the column out, and an
+    /// update sets it to `DEFAULT`.
     Default,
     Value(Value),
+    /// SQL the server evaluates as it writes the cell.
+    Expression(CellExpression),
 }
 
 impl CellInput {
     pub fn value(&self) -> Option<&Value> {
         match self {
             Self::Value(value) => Some(value),
-            Self::Default => None,
+            Self::Default | Self::Expression(_) => None,
         }
     }
 

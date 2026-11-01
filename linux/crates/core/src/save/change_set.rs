@@ -32,8 +32,8 @@ pub enum RowChange {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowUpdate {
     pub key: Vec<Value>,
-    /// Column position and its new value. Only the cells that moved.
-    pub assignments: Vec<(usize, Value)>,
+    /// Column position and its new input. Only the cells that moved.
+    pub assignments: Vec<(usize, CellInput)>,
 }
 
 impl ChangeSet {
@@ -69,7 +69,7 @@ mod tests {
                 },
                 RowChange::Update(RowUpdate {
                     key: vec![Value::Int(1)],
-                    assignments: vec![(1, Value::Text("x".to_owned()))],
+                    assignments: vec![(1, CellInput::Value(Value::Text("x".to_owned())))],
                 }),
                 RowChange::Delete {
                     key: vec![Value::Int(2)],

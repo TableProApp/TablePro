@@ -4,6 +4,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
     LikeForm, LiteralError, Placeholder, SqlDialect, TablePaging,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::filter::{Combinator, FilterOp};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
@@ -160,6 +161,17 @@ impl SqlDialect for CqlDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::Cql
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const DATE: &[MomentKind] = &[MomentKind::Date];
+        const EXPRESSIONS: &[CellExpression] = &[
+            // The spellings ScyllaDB and every Cassandra since 2.2 parse.
+            CellExpression::new("toTimestamp(now())", MOMENT, &["currentTimestamp()"]),
+            CellExpression::new("toDate(now())", DATE, &["currentDate()"]),
+        ];
+        EXPRESSIONS
     }
 
     fn quote_identifier(&self, name: &str) -> String {

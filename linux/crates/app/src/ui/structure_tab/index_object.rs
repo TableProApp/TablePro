@@ -36,6 +36,7 @@ static UNSET: IndexInfo = IndexInfo {
     unique: false,
     primary: false,
     predicate: None,
+    definition: None,
 };
 
 impl IndexObject {
@@ -47,5 +48,14 @@ impl IndexObject {
 
     pub(crate) fn info(&self) -> &IndexInfo {
         self.imp().info.get().unwrap_or(&UNSET)
+    }
+
+    /// The statement that creates the index as the server has it, ended
+    /// the way the editor runs it. An index added in this tab has none.
+    pub(crate) fn create_statement(&self) -> Option<String> {
+        self.info()
+            .definition
+            .as_deref()
+            .map(|definition| format!("{definition};"))
     }
 }

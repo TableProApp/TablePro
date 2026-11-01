@@ -240,6 +240,12 @@ final class MainContentCoordinator: ObservableObject {
     // For alerts instead of NSApp.keyWindow, which may return a sheet window and leave dialogs stuck.
     weak var contentWindow: NSWindow?
 
+    // Its own workspace's browse history: the window's answer follows the connection and mode on screen.
+    var browseUndoManager: UndoManager? {
+        let host = contentWindow?.contentViewController as? MainSplitViewController
+        return host?.workspaces.workspace(for: connectionId)?.undoManager ?? contentWindow?.undoManager
+    }
+
     // No SwiftUI `Scene` in the AppKit lifecycle, so a focused value can't resolve; this reaches AppKit and SwiftUI callers.
     weak var commandActions: MainContentCommandActions?
 
@@ -602,7 +608,7 @@ final class MainContentCoordinator: ObservableObject {
         self.persistence = TabPersistenceCoordinator.forConnection(connection.id)
 
         ConnectionDataCache.shared(for: connection.id).ensureLoaded()
-        changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
+        changeManager.undoManagerProvider = { [weak self] in self?.browseUndoManager }
         changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
         tabManager.onVisibleContainerReconciled = { [weak self] in
             self?.browseCursorCoordinator.followVisibleContainer()

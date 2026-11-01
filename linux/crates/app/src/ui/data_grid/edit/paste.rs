@@ -2,13 +2,13 @@ use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_core::edit::{CellInput, EditParseError, parse_edit_text};
+use tablepro_core::edit::{CellInput, EditParseError};
 use tablepro_core::import::{CsvRowError, ImportError, PastedRows, PastedTable};
 use tablepro_core::{ColumnInfo, Value};
 
 use super::{EditController, catalog_columns, edit_start, on_answer, ticket_after};
 use crate::i18n::{gettext, gettext_f, ngettext_f};
-use crate::services::grid::{cell_presets, edit_context};
+use crate::services::grid::{cell_presets, parse_cell_text};
 use crate::ui::data_grid::{DataGrid, PinnedRow};
 use crate::ui::error_text::{edit_parse_message, row_error_message};
 use crate::ui::format::{format_thousands, plural_count};
@@ -143,10 +143,11 @@ impl EditController {
         let Some(catalog) = grid_column.catalog.as_ref() else {
             return;
         };
+        let dialect = grid.sql_dialect();
         let input = match text {
-            None if cell_presets(&grid_column, &row.id()).null => Ok(CellInput::Value(Value::Null)),
+            None if cell_presets(&grid_column, &row.id(), dialect.as_deref()).null => Ok(CellInput::Value(Value::Null)),
             None => Err(EditParseError::Required),
-            Some(text) => parse_edit_text(text, catalog, edit_context(&row.id())),
+            Some(text) => parse_cell_text(text, catalog, &row.id(), dialect.as_deref()),
         };
         match input {
             Ok(input) => {

@@ -24,6 +24,7 @@ const APPLY_CASE: &str = "ddl_plans_apply_and_read_back";
 const FAILED_CASE: &str = "failed_ddl_batch_outcome_matches_ddl_atomicity";
 const SCRIPT_CASE: &str = "create_table_script_recreates_the_table";
 const ROWS_CASE: &str = "structure_changes_keep_rows_and_indexes";
+const INDEX_CASE: &str = "index_statement_recreates_the_index";
 
 /// Case 1: each structure change the engine offers applies and reads
 /// back as drafted, and each one it refuses is refused by the plan
@@ -181,6 +182,7 @@ pub async fn create_table_script_recreates_the_table<E: ConformanceDdlEngine>(
             unique: false,
             primary: false,
             predicate: None,
+            definition: None,
         };
         let step = Step {
             case,
@@ -249,6 +251,7 @@ pub async fn structure_changes_keep_rows_and_indexes<E: ConformanceDdlEngine>(
         unique: false,
         primary: false,
         predicate: None,
+        definition: None,
     };
     let permission = table_permission(ddl.table_capabilities(&table).create_index);
     step.apply(&mut table, "create index", permission, |draft| {
@@ -304,6 +307,76 @@ pub async fn structure_changes_keep_rows_and_indexes<E: ConformanceDdlEngine>(
     drop_table(case, connection.as_ref(), ddl, &parent).await?;
     connection.close().await?;
     Ok(())
+}
+
+/// Case 5: the statement an index reads back with, run after the index
+/// is dropped, makes the same index again.
+pub async fn index_statement_recreates_the_index<E: ConformanceDdlEngine>(engine: E) -> Result<(), ConformanceFailure> {
+    let case = INDEX_CASE;
+    let connection = connect(case, &engine, writable()).await?;
+    let dialect = connection.dialect();
+    let ddl = ddl_of(case, dialect.as_ref())?;
+    let parent = engine.scratch_table(&unique("ddl_index"));
+    create(
+        case,
+        &engine,
+        connection.as_ref(),
+        ddl,
+        &parent_draft(case, &engine, dialect.as_ref(), ddl, &parent)?,
+    )
+    .await?;
+    let mut table = definition(connection.as_ref(), &parent).await?;
+    let capabilities = *ddl.capabilities();
+    if capabilities.create_index && capabilities.drop_index {
+        let name = format!("{}_label", parent.name);
+        let step = Step {
+            case,
+            connection: connection.as_ref(),
+            ddl,
+        };
+        step.apply(&mut table, "create index", Permission::Allowed, |draft| {
+            draft.indexes.push(IndexInfo {
+                name: name.clone(),
+                keys: vec![IndexKey::Column {
+                    name: "label".to_owned(),
+                    descending: capabilities.descending_index_keys,
+                }],
+                unique: false,
+                primary: false,
+                predicate: None,
+                definition: None,
+            });
+        })
+        .await?;
+        let made = named_index(case, &table, &name)?;
+        let statement = made
+            .definition
+            .clone()
+            .ok_or_else(|| unexpected(case, format!("index {name} reads with no statement: {made:?}")))?;
+        step.apply(&mut table, "drop index", Permission::Allowed, |draft| {
+            draft.indexes.retain(|index| index.name != name);
+        })
+        .await?;
+        run(connection.as_ref(), &parent, DdlPlan::from_sql([statement.clone()]))
+            .await
+            .map_err(|error| unexpected(case, format!("{statement} failed: {error}")))?;
+        let remade = named_index(case, &definition(connection.as_ref(), &parent).await?, &name)?;
+        expect(case, remade == made, || {
+            format!("{statement} made {remade:?}, and the index was {made:?}")
+        })?;
+    }
+    drop_table(case, connection.as_ref(), ddl, &parent).await?;
+    connection.close().await?;
+    Ok(())
+}
+
+fn named_index(case: &'static str, table: &TableDefinition, name: &str) -> Result<IndexInfo, ConformanceFailure> {
+    table
+        .indexes
+        .iter()
+        .find(|index| index.name == name)
+        .cloned()
+        .ok_or_else(|| unexpected(case, format!("no index {name} in {:?}", table.indexes)))
 }
 
 fn ddl_of<'a>(case: &'static str, dialect: &'a dyn SqlDialect) -> Result<&'a dyn DdlDialect, ConformanceFailure> {
@@ -519,6 +592,7 @@ impl Step<'_> {
             unique: false,
             primary: false,
             predicate: None,
+            definition: None,
         };
         let permission = table_permission(self.ddl.table_capabilities(table).create_index);
         self.apply(table, "create index", permission, |draft| draft.indexes.push(index))

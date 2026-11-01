@@ -60,7 +60,7 @@ impl UndoOp {
                 layout.key(row_key).ok()?;
                 let mut moved = layout.position(*col)?;
                 for edit in [before, after].into_iter().flatten() {
-                    moved = layout.cell(*col, &edit.pending).ok()?;
+                    moved = layout.input_cell(*col, &edit.pending).ok()?;
                 }
                 Some(UndoOp::CellEdit {
                     row_key: row_key.clone(),

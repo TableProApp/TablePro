@@ -40,6 +40,7 @@ pub fn plan_save(
     for (index, change) in changes.changes.iter().enumerate() {
         let step = match change {
             RowChange::Insert { cells } => {
+                refuse_computed_replaced_key(dialect, columns, cells)?;
                 let statement = build_insert(dialect, table, columns, cells)?;
                 insert_step(
                     dialect,
@@ -76,6 +77,28 @@ pub fn plan_save(
         batch: WriteBatch::new(WriteKind::RowChanges, table.clone(), steps, ForeignKeyMode::Enforced),
         origins,
     })
+}
+
+/// An insert that replaces a row with its key is proved by a probe for
+/// that key first, which a key the server computes cannot name.
+fn refuse_computed_replaced_key(
+    dialect: &dyn SqlDialect,
+    columns: &[ColumnInfo],
+    cells: &[CellInput],
+) -> Result<(), BuildSqlError> {
+    if dialect.capabilities().insert_conflict != InsertConflict::Replaced {
+        return Ok(());
+    }
+    match columns
+        .iter()
+        .zip(cells)
+        .find(|(column, cell)| column.primary_key && matches!(cell, CellInput::Expression(_)))
+    {
+        Some((column, _)) => Err(BuildSqlError::ServerComputedValue {
+            name: column.name.clone(),
+        }),
+        None => Ok(()),
+    }
 }
 
 /// An insert, proved by its count where a taken key is skipped rather
@@ -210,7 +233,7 @@ mod tests {
     fn update(key: Value, name: &str) -> RowChange {
         RowChange::Update(RowUpdate {
             key: vec![key],
-            assignments: vec![(1, Value::Text(name.to_owned()))],
+            assignments: vec![(1, CellInput::Value(Value::Text(name.to_owned())))],
         })
     }
 
@@ -336,6 +359,26 @@ mod tests {
         assert_eq!(guard(InsertConflict::Refused), "none");
         assert_eq!(guard(InsertConflict::Skipped), "affected");
         assert_eq!(guard(InsertConflict::Replaced), "probe-other");
+    }
+
+    #[test]
+    fn a_replacing_insert_of_a_key_the_server_computes_is_refused() {
+        let now = crate::edit::CellExpression::new("NOW()", &[], &[]);
+        let changes = ChangeSet {
+            changes: vec![RowChange::Insert {
+                cells: vec![
+                    CellInput::Expression(now),
+                    CellInput::Value(Value::Text("a".to_owned())),
+                ],
+            }],
+        };
+        let replacing = TestDialect::exact().with_insert_conflict(InsertConflict::Replaced);
+
+        assert_eq!(
+            plan_save(&replacing, &table(), &keyed_columns(), &by_id(), &changes).map(|_| ()),
+            Err(BuildSqlError::ServerComputedValue { name: "id".to_owned() })
+        );
+        assert!(plan_save(&TestDialect::exact(), &table(), &keyed_columns(), &by_id(), &changes).is_ok());
     }
 
     #[test]

@@ -267,7 +267,7 @@ mod tests {
             row_key: RowKey::from_pk_values(&[Value::Int(2)]).expect("a key"),
             col: 1,
             original: Value::Int(1),
-            value: Value::Int(7),
+            value: tablepro_core::edit::CellInput::Value(Value::Int(7)),
         });
     }
 

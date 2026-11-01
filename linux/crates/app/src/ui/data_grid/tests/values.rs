@@ -37,7 +37,7 @@ fn rename(tracker: &TabTrackerHandle, id: i64) {
         row_key: key(id),
         col: 1,
         original: text("old"),
-        value: text("new"),
+        value: CellInput::Value(text("new")),
     });
 }
 
@@ -61,7 +61,7 @@ fn a_clean_cell_is_drawn_from_the_row_itself() {
     let pending = tracked(&tracker).with_value(&row, 1, |value, default| (value.clone(), default));
 
     assert!(borrowed, "an unedited cell was copied out of its row");
-    assert_eq!(pending, (text("new"), false));
+    assert_eq!(pending, (text("new"), None));
 }
 
 #[test]

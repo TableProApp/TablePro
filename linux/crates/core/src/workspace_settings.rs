@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use crate::QueryTimeout;
+
 /// What every workspace call on a connection runs under.
 ///
 /// The limits are the server's, set on the session or per call, so a
@@ -13,6 +15,9 @@ pub struct WorkspaceSettings {
     /// shorter than the statement timeout so a blocked edit reports the
     /// lock rather than a generic timeout.
     pub lock_timeout: Duration,
+    /// The limit on the connection's editor runs, which the server
+    /// enforces too where the engine can.
+    pub editor_timeout: QueryTimeout,
 }
 
 impl WorkspaceSettings {
@@ -24,7 +29,12 @@ impl WorkspaceSettings {
             read_only,
             statement_timeout: Self::STATEMENT_TIMEOUT,
             lock_timeout: Self::LOCK_TIMEOUT,
+            editor_timeout: QueryTimeout::Preference,
         }
+    }
+
+    pub fn with_editor_timeout(self, editor_timeout: QueryTimeout) -> Self {
+        Self { editor_timeout, ..self }
     }
 }
 
@@ -39,6 +49,7 @@ mod tests {
         assert!(settings.read_only);
         assert_eq!(settings.statement_timeout, Duration::from_secs(60));
         assert_eq!(settings.lock_timeout, Duration::from_secs(10));
+        assert_eq!(settings.editor_timeout, QueryTimeout::Preference);
         assert!(!WorkspaceSettings::workspace(false).read_only);
     }
 }
