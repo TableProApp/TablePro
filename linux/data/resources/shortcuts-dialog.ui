@@ -260,6 +260,18 @@
           </object>
         </child>
         <child>
+          <object class="AdwShortcutsItem" id="grid-move-column-left">
+            <property name="title" translatable="yes">Move Column Left</property>
+            <property name="accelerator">&lt;Alt&gt;Left</property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwShortcutsItem" id="grid-move-column-right">
+            <property name="title" translatable="yes">Move Column Right</property>
+            <property name="accelerator">&lt;Alt&gt;Right</property>
+          </object>
+        </child>
+        <child>
           <object class="AdwShortcutsItem" id="grid-insert-row">
             <property name="title" translatable="yes">Insert Row</property>
             <property name="accelerator">&lt;Primary&gt;n</property>

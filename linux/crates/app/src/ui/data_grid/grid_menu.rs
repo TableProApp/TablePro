@@ -205,6 +205,8 @@ fn column_section(sorts: bool) -> gio::Menu {
         &section([
             item(&gettext("_Hide Column"), "grid.hide-column"),
             item(&gettext("_Size to Fit"), "grid.size-to-fit"),
+            item(&gettext("Move Column _Left"), "grid.move-column-left"),
+            item(&gettext("Move Column _Right"), "grid.move-column-right"),
             item(&gettext("Col_umns…"), "grid.columns"),
         ]),
     );
@@ -238,6 +240,8 @@ pub fn header_menu(column: &GridColumn, sorting: GridSorting) -> gio::Menu {
         &section([
             at(gettext("_Hide Column"), "grid.hide-column-at"),
             at(gettext("_Size to Fit"), "grid.size-column-to-fit"),
+            at(gettext("Move Column _Left"), "grid.move-column-left-at"),
+            at(gettext("Move Column _Right"), "grid.move-column-right-at"),
             at(gettext("Copy Column _Name"), "grid.copy-column-name-at"),
         ]),
     );
