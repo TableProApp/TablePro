@@ -4,7 +4,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_core::meta::{ObjectInfo, ObjectKind};
+use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind};
 use tablepro_storage::AppSettings;
 
 use crate::ui::clipboard::{ClipboardFormat, ClipboardPayload};
@@ -15,14 +15,19 @@ use crate::ui::source_dialog::{SourceText, cut, source_dialog};
 /// Open in Editor take all of it.
 const SHOWN_CHARS: usize = 2_000_000;
 
-/// Open in Editor hands the whole text to `open_in_editor`, for when the
-/// user does want to change the object. Without one, the text cannot run
-/// as it is, and a banner says why.
+/// What Open in Editor does: hand the whole text over, for when the user
+/// does want to change the object, or nothing, with the reason in a
+/// banner.
+pub(crate) enum Editor {
+    Opens(Box<dyn Fn()>),
+    Refused(EditorRefusal),
+}
+
 pub(crate) fn definition_dialog(
     object: &ObjectInfo,
     sql: &str,
     settings: &Rc<AppSettings>,
-    open_in_editor: Option<Box<dyn Fn()>>,
+    editor: Editor,
 ) -> adw::Dialog {
     let cut_text = cut(sql, SHOWN_CHARS);
     let mut notes = Vec::new();
@@ -31,10 +36,8 @@ pub(crate) fn definition_dialog(
             "This definition is too long to show in full. Copy and Open in Editor take all of it.",
         ));
     }
-    if open_in_editor.is_none() {
-        notes.push(crate::i18n::gettext(
-            "A line in this definition would end a batch in the editor, so it cannot open there. Copy takes it as the server keeps it.",
-        ));
+    if let Editor::Refused(refusal) = &editor {
+        notes.push(refusal_note(*refusal));
     }
     let text = SourceText {
         title: title(object),
@@ -52,7 +55,7 @@ pub(crate) fn definition_dialog(
         size: (640, 520),
     };
     let shown = source_dialog(text, Some(settings));
-    let Some(open_in_editor) = open_in_editor else {
+    let Editor::Opens(open_in_editor) = editor else {
         return shown.dialog;
     };
     let editor_button = gtk::Button::with_mnemonic(&crate::i18n::gettext("_Open in Editor"));
@@ -65,6 +68,20 @@ pub(crate) fn definition_dialog(
         }
     });
     shown.dialog
+}
+
+fn refusal_note(refusal: EditorRefusal) -> String {
+    match refusal {
+        EditorRefusal::SplitsApart => crate::i18n::gettext(
+            "A line in this definition would end a batch in the editor, so it does not open there. Copy takes it as the server keeps it.",
+        ),
+        EditorRefusal::OtherSettings => crate::i18n::gettext(
+            "This object was made under session settings an editor tab does not use, which change how its body reads, so it does not open there. Copy takes it as the server keeps it.",
+        ),
+        EditorRefusal::MadeWithOther => crate::i18n::gettext(
+            "This sequence belongs to an identity column and is made with its table, so it does not open in the editor.",
+        ),
+    }
 }
 
 /// A trigger is named with its table, which two triggers of one name tell
@@ -127,7 +144,7 @@ mod tests {
             &object,
             sql,
             settings.get(),
-            Some(Box::new(move || sink.set(sink.get() + 1))),
+            Editor::Opens(Box::new(move || sink.set(sink.get() + 1))),
         );
         dialog.present(Some(&*window));
 
@@ -152,7 +169,7 @@ mod tests {
         let more = sql.len() - SHOWN_CHARS;
         let settings = MemorySettings::new();
 
-        let dialog = definition_dialog(&object, &sql, settings.get(), Some(Box::new(|| {})));
+        let dialog = definition_dialog(&object, &sql, settings.get(), Editor::Opens(Box::new(|| {})));
         dialog.present(Some(&*window));
 
         let view = first_descendant_of_type::<sourceview5::View>(&dialog).expect("the definition");
@@ -175,7 +192,12 @@ mod tests {
         let object = ObjectInfo::new(Some("dbo".to_owned()), "p", ObjectKind::Procedure);
         let settings = MemorySettings::new();
 
-        let dialog = definition_dialog(&object, "CREATE PROCEDURE p AS SELECT 1", settings.get(), None);
+        let dialog = definition_dialog(
+            &object,
+            "CREATE PROCEDURE p AS SELECT 1",
+            settings.get(),
+            Editor::Refused(EditorRefusal::OtherSettings),
+        );
         dialog.present(Some(&*window));
 
         let buttons: Vec<gtk::Button> = descendants(&dialog)
@@ -188,7 +210,7 @@ mod tests {
                 .all(|button| button.label().as_deref() != Some("_Open in Editor"))
         );
         let banner = first_descendant_of_type::<adw::Banner>(&dialog).expect("the reason");
-        assert!(banner.title().contains("end a batch"), "{}", banner.title());
+        assert!(banner.title().contains("session settings"), "{}", banner.title());
         dialog.force_close();
     }
 

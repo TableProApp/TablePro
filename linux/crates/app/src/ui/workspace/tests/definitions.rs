@@ -3,7 +3,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::DriverError;
-use tablepro_core::meta::{ObjectDefinition, ObjectInfo, ObjectKind};
+use tablepro_core::meta::{EditorRefusal, ObjectDefinition, ObjectInfo, ObjectKind};
 use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 use tokio_util::sync::CancellationToken;
 
@@ -52,7 +52,7 @@ fn open_in_editor_takes_the_text_to_the_database_it_runs_in() {
             .always(FakeReply::ok(Some(ObjectDefinition {
                 sql: SQL.to_owned(),
                 database: Some("analytics".to_owned()),
-                opens_in_editor: true,
+                refusal: None,
             })));
     });
 
@@ -84,7 +84,7 @@ fn only_the_last_definition_asked_for_is_shown_once() {
         let answer = |name: &str| ObjectDefinition {
             sql: format!("CREATE FUNCTION {name}() RETURNS int RETURN 1;"),
             database: None,
-            opens_in_editor: true,
+            refusal: None,
         };
         for name in ["total", "other"] {
             script.fetch_object_definition.when_sql_contains(
@@ -170,7 +170,7 @@ fn a_definition_asked_for_from_a_session_behind_shows_until_the_user_moves() {
                 outcome: Ok(Some(ObjectDefinition {
                     sql: SQL.to_owned(),
                     database: None,
-                    opens_in_editor: true,
+                    refusal: None,
                 })),
             },
         );
@@ -179,7 +179,7 @@ fn a_definition_asked_for_from_a_session_behind_shows_until_the_user_moves() {
             .always(FakeReply::ok(Some(ObjectDefinition {
                 sql: SQL.to_owned(),
                 database: None,
-                opens_in_editor: true,
+                refusal: None,
             })));
     });
     let (test, first, second) = (&sessions.test, &sessions.first, &sessions.second);
@@ -220,7 +220,7 @@ fn text_that_cannot_run_as_it_is_offers_no_editor() {
             .always(FakeReply::ok(Some(ObjectDefinition {
                 sql: "CREATE PROCEDURE [sales].total AS SELECT 1\nGO\nSELECT 2".to_owned(),
                 database: None,
-                opens_in_editor: false,
+                refusal: Some(EditorRefusal::SplitsApart),
             })));
     });
 

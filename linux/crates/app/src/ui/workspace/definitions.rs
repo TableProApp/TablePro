@@ -8,7 +8,7 @@ use tablepro_session::runtime::TaskFailure;
 use tablepro_session::{OperationError, OperationKind, Session};
 
 use crate::runtime::DeliverInput;
-use crate::ui::definition_dialog::{definition_dialog, no_definition_alert};
+use crate::ui::definition_dialog::{Editor, definition_dialog, no_definition_alert};
 use crate::ui::error_text;
 use crate::ui::workspace::{Workspace, WorkspaceInput, WorkspaceModel};
 
@@ -77,11 +77,7 @@ impl WorkspaceModel {
             return;
         }
         let parent = self.dialog_parent();
-        let ObjectDefinition {
-            sql,
-            database,
-            opens_in_editor,
-        } = match result {
+        let ObjectDefinition { sql, database, refusal } = match result {
             Ok(Some(definition)) => definition,
             Ok(None) => {
                 no_definition_alert(object).present(parent.as_ref());
@@ -98,17 +94,20 @@ impl WorkspaceModel {
                 return;
             }
         };
-        let open_in_editor = opens_in_editor.then(|| {
-            let input = self.input.clone();
-            let text = sql.clone();
-            Box::new(move || {
-                input.deliver(WorkspaceInput::OpenSqlInEditor {
-                    sql: text.clone(),
-                    database: database.clone(),
-                });
-            }) as Box<dyn Fn()>
-        });
-        definition_dialog(object, &sql, &self.settings, open_in_editor).present(parent.as_ref());
+        let editor = match refusal {
+            Some(refusal) => Editor::Refused(refusal),
+            None => {
+                let input = self.input.clone();
+                let text = sql.clone();
+                Editor::Opens(Box::new(move || {
+                    input.deliver(WorkspaceInput::OpenSqlInEditor {
+                        sql: text.clone(),
+                        database: database.clone(),
+                    });
+                }))
+            }
+        };
+        definition_dialog(object, &sql, &self.settings, editor).present(parent.as_ref());
     }
 }
 

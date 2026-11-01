@@ -6,7 +6,7 @@ use tablepro_core::column::{
 };
 use tablepro_core::ddl::{CollationName, GeneratedStorage, IdentityStyle};
 use tablepro_core::meta::{
-    EngineRowId, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
+    EditorRefusal, EngineRowId, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
 };
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{DriverError, Value};
@@ -101,6 +101,50 @@ async fn triggers_list_once_with_their_table() {
             .filter(|object| object.kind != ObjectKind::Trigger)
             .all(|object| object.parent_table.is_none())
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_sequence_keeps_its_persistence_and_owner() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE UNLOGGED SEQUENCE scratch",
+            "CREATE TABLE orders (id serial, n int GENERATED ALWAYS AS IDENTITY)",
+        ],
+    )
+    .await;
+    let read = |name: &str| {
+        let connection = connection.clone();
+        let sequence = ObjectInfo::new(Some("public".to_owned()), name, ObjectKind::Sequence);
+        async move {
+            connection
+                .fetch_object_definition(&sequence, within(CALL))
+                .await
+                .expect("the definition")
+                .expect("a definition")
+        }
+    };
+
+    let scratch = read("scratch").await;
+    assert!(
+        scratch.sql.starts_with("CREATE UNLOGGED SEQUENCE public.scratch"),
+        "{}",
+        scratch.sql
+    );
+    assert_eq!(scratch.refusal, None);
+    let serial = read("orders_id_seq").await;
+    assert!(serial.sql.ends_with("OWNED BY public.orders.id;"), "{}", serial.sql);
+    assert_eq!(serial.refusal, None);
+    let identity = read("orders_n_seq").await;
+    assert_eq!(identity.refusal, Some(EditorRefusal::MadeWithOther), "{}", identity.sql);
+
+    setup(connection.as_ref(), &["DROP SEQUENCE scratch"]).await;
+    setup(connection.as_ref(), &[scratch.sql.as_str()]).await;
+    let again = read("scratch").await;
+    assert_eq!(again.sql, scratch.sql, "the text makes the sequence again as it was");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

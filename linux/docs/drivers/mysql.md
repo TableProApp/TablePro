@@ -48,7 +48,7 @@ A workspace session also pins what the app's generated SQL depends on:
 - `sql_mode` without `NO_BACKSLASH_ESCAPES`, because generated DDL writes literals such as `COMMENT '...'` that have no hex form.
 - `sql_mode` with `STRICT_ALL_TABLES`. Without strict mode the server stores what it can and only warns: a too-long string is cut, an unknown `ENUM` label becomes `''`, a number out of range is clamped, and a column made `NOT NULL` turns its NULLs into `0` or `''`. Strict mode makes each of these an error, so a save, an import or a schema change stores what it was given or fails.
 
-An editor session keeps the server's own zone and `sql_mode`, as the mysql client would.
+An editor session keeps the server's own zone and `sql_mode`, as the mysql client would. sqlx's handshake asks for `IGNORE_SPACE`, which the mysql client does not, so an editor session sends `SET SESSION sql_mode = @@GLOBAL.sql_mode` after the statements above.
 
 sqlx's own session statements (`PIPES_AS_CONCAT`, `NO_ENGINE_SUBSTITUTION`, its `SET NAMES`) are turned off. Its time zone is off too, except on a workspace session, where sqlx's `time_zone` option sends the `+00:00` above. Its statement cache is 0 so no prepared statement outlives its call, and its statement logging is off.
 
@@ -151,7 +151,7 @@ The structure tab edits a table's default character set and collation, converts 
 
 The sidebar's objects, routines and triggers come from one `UNION ALL` over `information_schema`, every name converted to `utf8mb4_bin`, since the catalogue tables collate their names differently from one version to the next. TRIGGERS is narrowed by `EVENT_OBJECT_SCHEMA`: MariaDB then reads one schema's trigger files, where by `TRIGGER_SCHEMA` it reads every schema's.
 
-A definition is the server's `SHOW CREATE`, which names neither the object's database nor a trigger's table's, so Open in Editor moves the tab to the object's database before the text runs. A routine or a trigger reads its body under the `sql_mode` and `collation_connection` it was made with, so the text sets both first, ends the statement at `;;` under `DELIMITER ;;`, and sets the session's own back after, as mysqldump writes it. An object that is not there answers 1305, 1360, 1146, 1049 or, on MariaDB, 4089 (a table where the sequence was), and reads as gone.
+A definition is the server's `SHOW CREATE`, which names neither the object's database nor a trigger's table's, so Open in Editor moves the tab to the object's database before the text runs. A routine or a trigger reads its body under the `sql_mode` and `collation_connection` it was made with. One read before `SHOW CREATE` gets what a new editor tab runs with (`@@GLOBAL.sql_mode`, and the collation `SET NAMES utf8mb4` gives), and a trigger's table; when the settings differ, the text does not open in the editor, since it would read otherwise there, and a trigger now on another table reads as gone. An object that is not there answers 1305, 1360, 1146, 1049 or, on MariaDB, 4089 (a table where the sequence was), and reads as gone.
 
 ## Editor sessions
 

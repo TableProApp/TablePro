@@ -15,8 +15,8 @@ use tablepro_core::ddl::{
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
-    IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity,
-    SchemaInfo, TableEstimate, TableRef,
+    EditorRefusal, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
+    RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
 use tablepro_core::sql_syntax::terminated;
 use tablepro_core::{DriverError, ForeignKeyInfo, UnsupportedFeature, Value};
@@ -193,25 +193,57 @@ pub(crate) async fn list_objects(
 /// sequence was (4089, MariaDB).
 const NOT_THERE: [u16; 5] = [1305, 1360, 1146, 1049, 4089];
 
+/// What a new editor tab runs with: the server's own `sql_mode`, and the
+/// collation `SET NAMES utf8mb4` gives, which this session sent too.
+const EDITOR_SETTINGS_SQL: &str = "SELECT @@GLOBAL.sql_mode, @@SESSION.collation_connection";
+/// The same, and a trigger's table, which its name alone does not say.
+const TRIGGER_SETTINGS_SQL: &str = "\
+SELECT @@GLOBAL.sql_mode, @@SESSION.collation_connection,
+       (SELECT EVENT_OBJECT_TABLE FROM information_schema.TRIGGERS
+        WHERE EVENT_OBJECT_SCHEMA = COALESCE(?, DATABASE()) AND TRIGGER_NAME = ?)";
+
 /// The text names neither the object's database nor a trigger's table's,
 /// so it runs in a tab moved to the object's database. A routine or a
-/// trigger keeps the `sql_mode` and connection collation it was made
-/// under, which decide how its body reads, so the text sets them around
-/// the statement and puts the session's back after, as mysqldump does.
+/// trigger reads its body under the `sql_mode` and connection collation
+/// it was made with; when those are not what an editor tab runs with,
+/// the text does not open there.
 pub(crate) async fn fetch_object_definition(
     connection: &mut MySqlConnection,
     dialect: &MySqlDialect,
     object: &ObjectInfo,
 ) -> Result<Option<ObjectDefinition>, DriverError> {
-    let (show, column, program) = match object.kind {
-        ObjectKind::Function => ("FUNCTION", "Create Function", true),
-        ObjectKind::Procedure => ("PROCEDURE", "Create Procedure", true),
-        ObjectKind::Sequence => ("SEQUENCE", "Create Table", false),
-        ObjectKind::Trigger => ("TRIGGER", "SQL Original Statement", true),
+    let flavour = dialect.flavour();
+    let (show, column) = match object.kind {
+        ObjectKind::Function => ("FUNCTION", "Create Function"),
+        ObjectKind::Procedure => ("PROCEDURE", "Create Procedure"),
+        ObjectKind::Sequence => ("SEQUENCE", "Create Table"),
+        ObjectKind::Trigger => ("TRIGGER", "SQL Original Statement"),
         _ => {
             return Err(DriverError::Unsupported {
                 feature: UnsupportedFeature::ObjectDefinitions,
             });
+        }
+    };
+    let editor = match object.kind {
+        // SHOW CREATE SEQUENCE carries no settings.
+        ObjectKind::Sequence => None,
+        ObjectKind::Trigger => {
+            let binds = [object.schema.as_deref(), Some(object.name.as_str())];
+            let rows = catalog_rows(connection, flavour, TRIGGER_SETTINGS_SQL, "TRIGGERS", &binds).await?;
+            let Some(row) = rows.first() else {
+                return Ok(None);
+            };
+            // Dropped and made again on another table since the list was read.
+            if row.text(2)? != object.parent_table {
+                return Ok(None);
+            }
+            Some((row.text(0)?, row.text(1)?))
+        }
+        _ => {
+            let rows = catalog_rows(connection, flavour, EDITOR_SETTINGS_SQL, "SESSION", &[]).await?;
+            rows.first()
+                .map(|row| Ok::<_, DriverError>((row.text(0)?, row.text(1)?)))
+                .transpose()?
         }
     };
     let sql = format!(
@@ -221,32 +253,26 @@ pub(crate) async fn fetch_object_definition(
     let row = match connection.fetch_one(sqlx::raw_sql(AssertSqlSafe(sql))).await {
         Ok(row) => row,
         Err(error) if not_there(&error) => return Ok(None),
-        Err(error) => return Err(map_error(&error, dialect.flavour())),
+        Err(error) => return Err(map_error(&error, flavour)),
     };
     // NULL when the login may not read the routine's body.
     let Some(sql) = text_column(&row, column)? else {
         return Ok(None);
     };
-    // SHOW CREATE SEQUENCE has neither setting.
-    let context = match program {
-        true => (
-            text_column(&row, "sql_mode")?,
-            text_column(&row, "collation_connection")?,
-        ),
-        false => (None, None),
-    };
-    let (sql, opens_in_editor) = match context {
-        (Some(mode), Some(collation)) => {
-            let script = in_session_of(&sql, &mode, &collation);
-            let splits = splits_back(&script, &sql);
-            (script, splits)
+    let refusal = match editor {
+        Some(editor) => {
+            let made_under = (
+                text_column(&row, "sql_mode")?,
+                text_column(&row, "collation_connection")?,
+            );
+            (made_under != editor).then_some(EditorRefusal::OtherSettings)
         }
-        _ => (terminated(&sql), true),
+        None => None,
     };
     Ok(Some(ObjectDefinition {
-        sql,
+        sql: terminated(&sql),
         database: object.schema.clone(),
-        opens_in_editor,
+        refusal,
     }))
 }
 
@@ -261,36 +287,6 @@ fn text_column(row: &sqlx::mysql::MySqlRow, column: &str) -> Result<Option<Strin
     bytes
         .map(|bytes| String::from_utf8(bytes.to_vec()).map_err(|error| decode(error.to_string())))
         .transpose()
-}
-
-/// `create` between the settings it was made under and the session's
-/// own. A body holds `;`, so the statement ends at `;;`, as mysqldump
-/// writes it.
-fn in_session_of(create: &str, sql_mode: &str, collation: &str) -> String {
-    let create = create.trim_end().trim_end_matches(';').trim_end();
-    format!(
-        "SET @saved_sql_mode = @@sql_mode, @saved_collation_connection = @@collation_connection;\n\
-         SET sql_mode = {}, collation_connection = {};\n\
-         DELIMITER ;;\n{create};;\nDELIMITER ;\n\
-         SET sql_mode = @saved_sql_mode, collation_connection = @saved_collation_connection;",
-        string_literal(sql_mode),
-        string_literal(collation)
-    )
-}
-
-/// Whether the editor splits `script` back into its four statements, the
-/// third `create`. It reads with backslash escapes on, so a body made
-/// under `NO_BACKSLASH_ESCAPES` that ends a string in `\` would run the
-/// lines after it into the statement.
-fn splits_back(script: &str, create: &str) -> bool {
-    let create = create.trim_end().trim_end_matches(';').trim_end();
-    let split = crate::script_split::texts(script);
-    split.len() == 4 && split.get(2) == Some(&create)
-}
-
-/// Mode and collation names are letters, digits, `_` and `,`.
-fn string_literal(text: &str) -> String {
-    format!("'{}'", text.replace('\'', "''"))
 }
 
 fn not_there(error: &sqlx::Error) -> bool {
@@ -838,35 +834,6 @@ mod tests {
     use tablepro_core::column::{ColumnDefault, ColumnType};
 
     use super::*;
-
-    #[test]
-    fn a_body_the_editor_would_read_otherwise_does_not_open_there() {
-        let plain = "CREATE PROCEDURE `p`() SELECT 'a'";
-        let escaped = "CREATE PROCEDURE `p`() SELECT '\\'";
-
-        assert!(splits_back(&in_session_of(plain, "", "utf8mb4_bin"), plain));
-        assert!(!splits_back(
-            &in_session_of(escaped, "NO_BACKSLASH_ESCAPES", "utf8mb4_bin"),
-            escaped
-        ));
-    }
-
-    #[test]
-    fn a_routine_runs_between_its_own_settings_and_the_sessions() {
-        let create = "CREATE DEFINER=`root`@`%` PROCEDURE `p`()\nBEGIN SELECT 'a;b'; SELECT 2; END";
-
-        let script = in_session_of(create, "ANSI_QUOTES,NO_BACKSLASH_ESCAPES", "latin1_swedish_ci");
-
-        assert_eq!(
-            crate::script_split::texts(&script),
-            [
-                "SET @saved_sql_mode = @@sql_mode, @saved_collation_connection = @@collation_connection",
-                "SET sql_mode = 'ANSI_QUOTES,NO_BACKSLASH_ESCAPES', collation_connection = 'latin1_swedish_ci'",
-                create,
-                "SET sql_mode = @saved_sql_mode, collation_connection = @saved_collation_connection",
-            ]
-        );
-    }
 
     #[test]
     fn a_converted_default_keeps_the_digits_the_column_declares() {

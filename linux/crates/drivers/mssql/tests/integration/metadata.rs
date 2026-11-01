@@ -3,7 +3,7 @@
 use tablepro_core::column::{ColumnDefault, ColumnKind, ReadForm, TextLength};
 use tablepro_core::ddl::{DdlDialect, IdentityStyle, TableDraft, diff_table};
 use tablepro_core::dialect::{BindTarget, LikeForm};
-use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope, RowIdentity, TableRef};
+use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind, ObjectScope, RowIdentity, TableRef};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{DriverError, RowLimit, UnsupportedFeature, Value};
 use tablepro_driver_mssql::MssqlDialect;
@@ -339,7 +339,7 @@ async fn like_escape_matches_literal_underscore_and_percent() {
     );
 }
 
-const ROUTINES: [&str; 8] = [
+const ROUTINES: [&str; 10] = [
     "CREATE TABLE dbo.orders (id int PRIMARY KEY, total int)",
     "CREATE TABLE dbo.audit (id int PRIMARY KEY)",
     "CREATE FUNCTION dbo.add_tax(@amount int) RETURNS int AS BEGIN RETURN @amount * 2 END",
@@ -349,6 +349,8 @@ const ROUTINES: [&str; 8] = [
     "CREATE SEQUENCE dbo.invoice_numbers AS bigint START WITH 100 INCREMENT BY 5 CYCLE CACHE 20",
     // `GO` is a column alias to the server, and a batch's end to the editor.
     "CREATE PROCEDURE dbo.go_line AS SELECT 1\nGO\nSELECT 2",
+    "CREATE TYPE dbo.InvoiceId FROM bigint NOT NULL",
+    "CREATE SEQUENCE dbo.typed AS dbo.InvoiceId START WITH 1",
 ];
 
 async fn listed(connection: &dyn tablepro_core::Connection) -> Vec<ObjectInfo> {
@@ -365,7 +367,7 @@ async fn definition(connection: &dyn tablepro_core::Connection, object: &ObjectI
         .expect("the definition")
         .expect("a definition");
     assert_eq!(found.database, None);
-    assert!(found.opens_in_editor);
+    assert_eq!(found.refusal, None, "{}", found.sql);
     found.sql
 }
 
@@ -407,6 +409,11 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
         let sql = definition(connection.as_ref(), find(name)).await;
         assert!(sql.contains(body), "{name}: {sql}");
     }
+    let typed = definition(connection.as_ref(), find("typed")).await;
+    assert!(
+        typed.contains(" AS [dbo].[InvoiceId] "),
+        "the alias type as declared: {typed}"
+    );
     let sequence = definition(connection.as_ref(), find("invoice_numbers")).await;
     assert!(
         sequence.starts_with("CREATE SEQUENCE [dbo].[invoice_numbers] AS bigint")
@@ -418,7 +425,11 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
         .await
         .expect("the definition")
         .expect("a definition");
-    assert!(!go_line.opens_in_editor, "the editor would run SELECT 2 on its own");
+    assert_eq!(
+        go_line.refusal,
+        Some(EditorRefusal::SplitsApart),
+        "the editor would run SELECT 2 on its own"
+    );
     let hidden = connection.fetch_object_definition(find("hidden"), within(CALL)).await;
     assert!(
         matches!(
@@ -448,8 +459,8 @@ async fn a_module_written_without_its_schema_is_given_it_and_runs_again() {
 
     let procedure = definition(connection.as_ref(), named(&objects, "clear_audit")).await;
     assert!(
-        procedure.starts_with("SET ANSI_NULLS ") && procedure.contains("\nGO\nCREATE PROCEDURE [dbo].clear_audit AS"),
-        "the module's SET options, then its text with its schema: {procedure}"
+        procedure.starts_with("CREATE PROCEDURE [dbo].clear_audit AS"),
+        "a name written without its schema is given it: {procedure}"
     );
     setup(
         connection.as_ref(),
@@ -463,7 +474,7 @@ async fn a_module_written_without_its_schema_is_given_it_and_runs_again() {
     );
     let on_orders = definition(connection.as_ref(), trigger).await;
     assert!(
-        on_orders.contains("\nGO\nCREATE TRIGGER [dbo].orders_total ON [dbo].orders AFTER INSERT"),
+        on_orders.starts_with("CREATE TRIGGER [dbo].orders_total ON [dbo].orders AFTER INSERT"),
         "{on_orders}"
     );
     setup(connection.as_ref(), &["DROP TRIGGER dbo.orders_total"]).await;
@@ -480,5 +491,38 @@ async fn a_module_written_without_its_schema_is_given_it_and_runs_again() {
         .await
         .expect("an answer");
     assert_eq!(missing, None, "a trigger on another table is not this trigger");
+    connection.close().await.expect("a close");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_module_made_under_other_set_options_does_not_open_in_the_editor() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let quoted = scalar(
+        connection.as_ref(),
+        "SELECT CAST(SESSIONPROPERTY('QUOTED_IDENTIFIER') AS int)",
+    )
+    .await;
+    let other = if quoted == Value::Int(1) { "OFF" } else { "ON" };
+    let editor = session(connection.as_ref()).await;
+
+    run_ok(
+        editor.as_ref(),
+        &format!("SET QUOTED_IDENTIFIER {other}\nGO\nCREATE PROCEDURE dbo.made_elsewhere AS SELECT 1"),
+    )
+    .await;
+
+    let procedure = ObjectInfo::new(Some("dbo".to_owned()), "made_elsewhere", ObjectKind::Procedure);
+    let found = connection
+        .fetch_object_definition(&procedure, within(CALL))
+        .await
+        .expect("the definition")
+        .expect("a definition");
+    assert_eq!(
+        found.refusal,
+        Some(EditorRefusal::OtherSettings),
+        "made with QUOTED_IDENTIFIER {other}"
+    );
     connection.close().await.expect("a close");
 }

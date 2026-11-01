@@ -11,7 +11,7 @@ mod table_estimate;
 mod table_ref;
 
 pub use index_info::{IndexInfo, IndexKey};
-pub use object_definition::ObjectDefinition;
+pub use object_definition::{EditorRefusal, ObjectDefinition};
 pub use object_info::{KeyKind, ObjectInfo, ObjectKind};
 pub use page::{CtidWindow, HeapAddress, PageCost, PagePosition, PageStability, PagingState};
 pub use row_identity::{EngineRowId, EngineRowIdPart, RowIdentity};

@@ -3,7 +3,7 @@
 use tablepro_core::column::{BoolStorage, ColumnKind, IntegerKind, IntegerWidth};
 use tablepro_core::ddl::{ColumnVisibility, GeneratedStorage, IdentityStyle, TableOptions};
 use tablepro_core::dialect::{BindTarget, LikeForm, SqlDialect};
-use tablepro_core::meta::{ObjectInfo, ObjectKind, ObjectScope};
+use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind, ObjectScope};
 use tablepro_core::statement::StatementBuilder;
 use tablepro_core::{Connection, DriverError, RowLimit, Value};
 use tablepro_test_fixtures::MysqlFlavour;
@@ -597,14 +597,10 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
                 definition.sql
             );
             assert!(definition.sql.ends_with(';'), "{}", definition.sql);
-            assert!(definition.opens_in_editor);
-            if object.kind != ObjectKind::Sequence {
-                assert!(
-                    definition.sql.contains("SET sql_mode = '") && definition.sql.contains("DELIMITER ;;"),
-                    "a routine keeps the settings it was made under: {}",
-                    definition.sql
-                );
-            }
+            // The workspace session that ran the setup adds STRICT_ALL_TABLES
+            // to the server's sql_mode, which an editor tab keeps as it is.
+            let refusal = (object.kind != ObjectKind::Sequence).then_some(EditorRefusal::OtherSettings);
+            assert_eq!(definition.refusal, refusal, "{} on {flavour:?}", object.name);
             assert_eq!(
                 definition.database.as_deref(),
                 Some("tablepro"),
@@ -626,33 +622,60 @@ async fn a_routine_definition_runs_again_in_an_editor_session() {
             connection.as_ref(),
             &[
                 "CREATE TABLE plain (id int)",
-                "CREATE FUNCTION add_tax(amount int) RETURNS int DETERMINISTIC \
-                 BEGIN DECLARE doubled int; SET doubled = amount * 2; RETURN doubled; END",
+                "CREATE TABLE other (id int)",
+                "CREATE TRIGGER stamp BEFORE INSERT ON plain FOR EACH ROW SET NEW.id = NEW.id",
             ],
         )
         .await;
-        let add_tax = ObjectInfo::new(Some("tablepro".to_owned()), "add_tax", ObjectKind::Function);
-        let add_tax = connection
-            .fetch_object_definition(&add_tax, within(CALL))
-            .await
-            .expect("the definition")
-            .expect("a definition");
         let editor = session(connection.as_ref()).await;
-        let settings = "SELECT CONCAT(@@sql_mode, '/', @@collation_connection)";
-        let before = session_scalar(editor.as_ref(), settings).await;
+        run_ok(
+            editor.as_ref(),
+            "CREATE FUNCTION add_tax(amount int) RETURNS int DETERMINISTIC \
+             BEGIN DECLARE doubled int; SET doubled = amount * 2; RETURN doubled; END",
+        )
+        .await;
+        let read = |name: &str, kind| {
+            let connection = connection.clone();
+            let object = ObjectInfo::new(Some("tablepro".to_owned()), name, kind);
+            async move {
+                connection
+                    .fetch_object_definition(&object, within(CALL))
+                    .await
+                    .expect("the definition")
+                    .expect("a definition")
+            }
+        };
+        let add_tax = read("add_tax", ObjectKind::Function).await;
+        assert_eq!(
+            session_scalar(editor.as_ref(), "SELECT @@sql_mode = @@GLOBAL.sql_mode").await,
+            "1",
+            "an editor tab runs under the server's own sql_mode on {flavour:?}"
+        );
+        assert_eq!(
+            add_tax.refusal, None,
+            "made in an editor tab, it opens in one on {flavour:?}"
+        );
 
         run_ok(editor.as_ref(), "DROP FUNCTION add_tax").await;
         run_ok(editor.as_ref(), &add_tax.sql).await;
-
         assert_eq!(
             session_scalar(editor.as_ref(), "SELECT add_tax(21)").await,
             "42",
             "on {flavour:?}"
         );
+
+        run_ok(editor.as_ref(), "SET sql_mode = 'ANSI_QUOTES'").await;
+        run_ok(editor.as_ref(), "CREATE PROCEDURE quoted() SELECT \"id\" FROM plain").await;
         assert_eq!(
-            session_scalar(editor.as_ref(), settings).await,
-            before,
-            "on {flavour:?}"
+            read("quoted", ObjectKind::Procedure).await.refusal,
+            Some(EditorRefusal::OtherSettings),
+            "\"id\" names a column only under ANSI_QUOTES on {flavour:?}"
+        );
+        let moved = ObjectInfo::trigger(Some("tablepro".to_owned()), "stamp", "other");
+        let answer = connection.fetch_object_definition(&moved, within(CALL)).await;
+        assert!(
+            matches!(answer, Ok(None)),
+            "a trigger of the name on another table: {answer:?}"
         );
 
         let gone = [
