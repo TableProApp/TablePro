@@ -22,6 +22,7 @@ mod encode;
 mod endpoint;
 mod errors;
 mod in_band_request;
+mod index_statements;
 mod login;
 mod metadata;
 mod mssql_manager;

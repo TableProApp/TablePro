@@ -7,7 +7,7 @@ struct SQLLexicalReadingsTests {
     @Test("Every SQL engine TablePro ships has a curated grammar")
     func curatedTableCoversShippedEngines() {
         let shipped = [
-            "MySQL", "MariaDB", "TiDB", "Databend", "OceanBase", "PostgreSQL", "Redshift", "CockroachDB", "PGlite", "KingbaseES",
+            "MySQL", "MariaDB", "TiDB", "Databend", "OceanBase", "StarRocks", "PostgreSQL", "Redshift", "CockroachDB", "PGlite", "KingbaseES",
             "SQLite", "libSQL", "Turso", "Cloudflare D1", "DuckDB", "Oracle", "Dameng", "SQL Server", "ClickHouse",
             "Snowflake", "BigQuery", "Spanner", "Trino", "Presto", "Teradata", "SAP HANA", "Cassandra", "ScyllaDB", "DynamoDB",
             "SurrealDB", "Redis", "MongoDB", "etcd", "Elasticsearch", "Typesense", "Weaviate", "Kafka",

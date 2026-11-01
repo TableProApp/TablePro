@@ -5,6 +5,7 @@ use tablepro_core::column::{
     BoolStorage, ColumnKind, FloatWidth, IntegerKind, IntegerWidth, NetworkFamily, ReadForm, TemporalZone, TextLength,
 };
 use tablepro_core::ddl::{CollationName, GeneratedStorage, IdentityStyle};
+use tablepro_core::edit::CellInput;
 use tablepro_core::meta::{EngineRowId, IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef};
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{DriverError, Value};
@@ -128,10 +129,87 @@ async fn expression_desc_partial_index_keys() {
         ]
     );
     assert!(!partial.can_identify_rows());
+    assert!(indexes.iter().all(|index| index.definition.is_none()));
     assert!(
         indexes
             .iter()
             .any(|index| index.primary && index.key_columns() == ["id"])
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn index_statements_are_the_servers_and_skip_constraint_indexes() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE q (id int PRIMARY KEY, u int UNIQUE, r int4range, doc jsonb, \
+             EXCLUDE USING gist (r WITH &&))",
+            "CREATE INDEX q_doc ON q USING gin (doc jsonb_path_ops)",
+            "CREATE TABLE q_child (q_id int REFERENCES q (id))",
+            "CREATE TABLE p (k int) PARTITION BY RANGE (k)",
+            "CREATE TABLE p_low PARTITION OF p FOR VALUES FROM (0) TO (10)",
+            "CREATE TABLE p_high PARTITION OF p FOR VALUES FROM (10) TO (20)",
+            "CREATE INDEX p_k ON p (k)",
+        ],
+    )
+    .await;
+
+    let q = connection
+        .fetch_table_definition(&table("q"), within(CALL))
+        .await
+        .expect("q");
+    let statements: Vec<(&str, Option<&str>)> = q
+        .indexes
+        .iter()
+        .map(|index| (index.name.as_str(), index.definition.as_deref()))
+        .collect();
+    assert_eq!(
+        statements,
+        [
+            (
+                "q_doc",
+                Some("CREATE INDEX q_doc ON public.q USING gin (doc jsonb_path_ops)")
+            ),
+            ("q_pkey", None),
+            ("q_r_excl", None),
+            ("q_u_key", None),
+        ]
+    );
+
+    let read = |name: &'static str| {
+        let connection = connection.as_ref();
+        async move {
+            connection
+                .fetch_table_definition(&table(name), within(CALL))
+                .await
+                .expect("the table")
+                .indexes
+        }
+    };
+    let attached = read("p_low").await;
+    assert_eq!(attached.len(), 1);
+    assert_eq!(attached[0].definition, None, "only the parent's statement makes it");
+    let parent = read("p").await;
+    let statement = parent[0].definition.clone().expect("the parent's statement");
+    assert_eq!(statement, "CREATE INDEX p_k ON public.p USING btree (k)");
+    setup(connection.as_ref(), &["DROP INDEX p_k"]).await;
+    setup(connection.as_ref(), &[statement.as_str()]).await;
+
+    assert_eq!(read("p").await, parent);
+    assert_eq!(read("p_low").await.len(), 1);
+    assert_eq!(read("p_high").await.len(), 1);
+    assert_eq!(
+        text(
+            &scalar(
+                connection.as_ref(),
+                "SELECT bool_and(indisvalid)::text FROM pg_index WHERE indrelid = 'p'::regclass"
+            )
+            .await
+        ),
+        "true"
     );
 }
 
@@ -213,7 +291,7 @@ async fn stale_ctid_edit_after_vacuum_reuse_row_guard_failed() {
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: before[0].clone(),
-            assignments: vec![(0, Value::Text("changed".to_owned()))],
+            assignments: vec![(0, CellInput::Value(Value::Text("changed".to_owned())))],
         })],
     };
     let plan = plan_save(dialect.as_ref(), &target, &columns, &identity, &changes).expect("a plan");

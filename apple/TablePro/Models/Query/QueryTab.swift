@@ -64,6 +64,8 @@ struct QueryTab: Identifiable, Equatable {
     // On the tab, not the grid: JSON mode, the inspector and the Edit menu's row commands read the order unmounted (#2251).
     var valueFilter: GridValueFilterState
     var sessionHighlightRules: [HighlightRule] = []
+    // Set only by Reveal, after the user authenticated; never saved, so a reopened tab masks again.
+    var revealsMaskedValues = false
     var pagination: PaginationState
     var chartConfiguration: ResultChartConfiguration
     var mapConfiguration: ResultMapConfiguration

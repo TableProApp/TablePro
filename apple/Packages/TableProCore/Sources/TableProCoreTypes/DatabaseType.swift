@@ -14,6 +14,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let tidb = DatabaseType(rawValue: "TiDB")
     public static let databend = DatabaseType(rawValue: "Databend")
     public static let oceanbase = DatabaseType(rawValue: "OceanBase")
+    public static let starrocks = DatabaseType(rawValue: "StarRocks")
     public static let postgresql = DatabaseType(rawValue: "PostgreSQL")
     public static let sqlite = DatabaseType(rawValue: "SQLite")
     public static let redis = DatabaseType(rawValue: "Redis")
@@ -42,15 +43,16 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let kafka = DatabaseType(rawValue: "Kafka")
     public static let cloudflareR2SQL = DatabaseType(rawValue: "Cloudflare R2 SQL")
     public static let weaviate = DatabaseType(rawValue: "Weaviate")
+    public static let memcached = DatabaseType(rawValue: "Memcached")
     public static let firestore = DatabaseType(rawValue: "Firestore")
     public static let firebaseRealtimeDatabase = DatabaseType(rawValue: "Firebase Realtime Database")
     public static let bigtable = DatabaseType(rawValue: "Bigtable")
 
     public static let allKnownTypes: [DatabaseType] = [
-        .mysql, .mariadb, .tidb, .databend, .oceanbase, .postgresql, .sqlite, .redis, .mongodb,
+        .mysql, .mariadb, .tidb, .databend, .oceanbase, .starrocks, .postgresql, .sqlite, .redis, .mongodb,
         .clickhouse, .mssql, .oracle, .dameng, .duckdb, .cassandra, .redshift,
         .etcd, .cloudflareD1, .dynamodb, .bigquery, .spanner, .snowflake, .libsql, .beancount,
-        .surrealdb, .teradata, .trino, .kafka, .cloudflareR2SQL, .weaviate, .firestore, .firebaseRealtimeDatabase, .bigtable
+        .surrealdb, .teradata, .trino, .kafka, .cloudflareR2SQL, .weaviate, .memcached, .firestore, .firebaseRealtimeDatabase, .bigtable
     ]
 
     /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
@@ -61,6 +63,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .tidb: return "tidb-icon"
         case .databend: return "databend-icon"
         case .oceanbase: return "oceanbase-icon"
+        case .starrocks: return "starrocks-icon"
         case .postgresql: return "postgresql-icon"
         case .redshift: return "redshift-icon"
         case .sqlite: return "sqlite-icon"
@@ -87,6 +90,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .kafka: return "kafka-icon"
         case .cloudflareR2SQL: return "cloudflare-r2-sql-icon"
         case .weaviate: return "weaviate-icon"
+        case .memcached: return "memorychip"
         case .firestore, .firebaseRealtimeDatabase: return "firebase-icon"
         case .bigtable: return "bigtable-icon"
         default: return "externaldrive"

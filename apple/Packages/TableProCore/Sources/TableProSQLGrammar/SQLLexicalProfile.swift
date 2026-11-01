@@ -200,6 +200,13 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .doubleSlashLineComments, .statementsAsValues,
     ]
 
+    // Cypher, from the Neo4j manual: a backslash escapes in both quotes, backticks quote names, `//` is a comment and
+    // `--` is a pattern. Not measured.
+    static let cypher: SQLLexicalGrammar = [
+        .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .doubleSlashLineComments,
+        .withoutDashComments,
+    ]
+
     /// DynamoDB, from the driver's statement forms: a request is `<Action> {JSON}`, and a backslash escapes inside a
     /// JSON string. PartiQL, the other form, documents only a doubled quote, so plain ANSI is kept as an alternative
     /// and a gate reads both. Not measured.
@@ -259,6 +266,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "MariaDB": mySQLFamily,
             "TiDB": mySQLCompatible,
             "OceanBase": mySQLCompatible,
+            "StarRocks": mySQLCompatible,
             "Databend": SQLLexicalProfile(
                 grammar: databend,
                 undetermined: [
@@ -313,12 +321,14 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                     .backslashEscapesInBackticks, .backslashEscapesInAngleQuotes, .carriageReturnEndsLineComments,
                 ]
             ),
+            "Neo4j": SQLLexicalProfile(grammar: cypher, undetermined: [.carriageReturnEndsLineComments]),
             "Redis": commandLineFamily,
             "MongoDB": commandLineFamily,
             "etcd": commandLineFamily,
             "Elasticsearch": commandLineFamily,
             "Typesense": commandLineFamily,
             "Weaviate": commandLineFamily,
+            "Memcached": commandLineFamily,
             "Kafka": commandLineFamily,
             "Firestore": commandLineFamily,
             "Firebase Realtime Database": commandLineFamily,

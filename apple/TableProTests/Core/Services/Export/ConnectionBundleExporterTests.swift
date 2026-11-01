@@ -180,6 +180,21 @@ struct ConnectionBundleExporterTests {
         #expect(try ConnectionBundleCodec.decode(plain).connections.count == 1)
     }
 
+    @Test("A connection published to the Team Catalog carries its masking rules")
+    func connectionsOnlyBundleCarriesMaskingRules() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        var exported = makeConnection(name: "Orders")
+        exported.maskingRules = [MaskingRule(pattern: "*.email", style: .email)]
+
+        let bundle = try library.exporter.connectionsOnlyBundle(for: [exported])
+
+        let fields = try #require(bundle.connections.first?.settings.additionalFields)
+        var published = DatabaseConnection(name: "Published")
+        published.additionalFields = fields
+        #expect(published.maskingRules == exported.maskingRules)
+    }
+
     @Test("The Team Catalog bundle never carries saved queries or credentials")
     func connectionsOnlyBundleCarriesNoQueries() async throws {
         let library = try ImportLibraryFixture()

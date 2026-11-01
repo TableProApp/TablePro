@@ -14,6 +14,8 @@ pub struct IndexInfo {
     /// A partial index's WHERE clause. An index with one cannot
     /// identify a row, because it does not cover every row.
     pub predicate: Option<String>,
+    // Guaranteed only from fetch_table_definition; None for an index a constraint owns.
+    pub definition: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +71,7 @@ mod tests {
             unique,
             primary: false,
             predicate: predicate.map(str::to_owned),
+            definition: None,
         }
     }
 

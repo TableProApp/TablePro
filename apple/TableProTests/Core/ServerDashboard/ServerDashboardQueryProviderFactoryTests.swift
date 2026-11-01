@@ -34,7 +34,7 @@ struct ServerDashboardQueryProviderFactoryTests {
     func serverEnginesHaveOne() {
         let types: [DatabaseType] = [
             .postgresql, .kingbasees, .mysql, .mariadb, .redshift, .cockroachdb, .mssql, .clickhouse, .oracle, .mongodb,
-            .redis,
+            .redis, .memcached,
         ]
         for type in types {
             #expect(ServerDashboardQueryProviderFactory.supportsDashboard(for: type), "\(type.rawValue)")

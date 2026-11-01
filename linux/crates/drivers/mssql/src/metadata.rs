@@ -15,6 +15,7 @@ use crate::catalog::{
     inbound_foreign_keys, primary_key,
 };
 use crate::in_band_request::{Interrupt, Watch};
+use crate::index_statements::fetch_index_statements;
 use crate::physical::MssqlClient;
 use crate::workspace_call::{catalogue_rows, text_param};
 
@@ -194,6 +195,7 @@ fn indexes(rows: &[Vec<Value>]) -> Result<Vec<IndexInfo>, DriverError> {
                 unique: cells.flag(1),
                 primary: cells.flag(2),
                 predicate: cells.text(5),
+                definition: None,
             }),
         }
     }
@@ -299,10 +301,12 @@ pub(crate) async fn fetch_table_definition(
     watch: &Watch,
     table: &TableRef,
     relation: &str,
+    major_version: u32,
 ) -> Result<TableDefinition, Interrupt> {
     let columns = column_rows(client, watch, relation).await?;
     let primary = catalogue_rows(client, watch, PRIMARY_KEY_SQL, &[text_param(relation)]).await?;
-    let indexes = fetch_indexes(client, watch, relation).await?;
+    let mut indexes = fetch_indexes(client, watch, relation).await?;
+    fetch_index_statements(client, watch, relation, major_version, &mut indexes).await?;
     let foreign_keys = fetch_foreign_keys(client, watch, relation).await?;
     let inbound_foreign_keys = fetch_inbound_foreign_keys(client, watch, relation).await?;
     Ok(TableDefinition {

@@ -91,6 +91,18 @@ enum WindowTitleResolver {
         return ResolvedWindowTitle(title: sessionTitle, subtitle: "")
     }
 
+    static func title(for tabType: TabType) -> String {
+        resolveTitle(
+            tabType: tabType,
+            tableName: nil,
+            schemaName: nil,
+            explicitTitle: nil,
+            sourceFileURL: nil,
+            databaseType: nil,
+            queryLanguageName: nil
+        )
+    }
+
     static func resolveTitle(
         payload: EditorTabPayload?,
         databaseType: DatabaseType?,
@@ -144,6 +156,8 @@ enum WindowTitleResolver {
             return String(localized: "Users & Roles")
         case .insights:
             return String(localized: "Query Insights")
+        case .tableHealth:
+            return String(localized: "Table Health")
         case .erDiagram:
             return String(localized: "ER Diagram")
         case .createTable:
@@ -170,6 +184,11 @@ enum WindowTitleResolver {
                 return explicitTitle
             }
             return String(localized: "Debug")
+        case .liveMessages:
+            if let explicitTitle, !explicitTitle.isBlank {
+                return explicitTitle
+            }
+            return String(localized: "Live Messages")
         default:
             break
         }

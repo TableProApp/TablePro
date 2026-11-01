@@ -60,7 +60,7 @@ internal enum MySQLTableOptions {
     }
 
     static func readsCatalog(flavor: MySQLServerFlavor) -> Bool {
-        !flavor.isDatabend
+        flavor.hasMySQLObjectCatalogs
     }
 
     /// A default change leaves existing columns on their own character set; a convert rewrites every text

@@ -738,6 +738,38 @@ mod tests {
     }
 
     #[test]
+    fn the_script_states_an_index_as_the_server_printed_it() {
+        let mut table = users();
+        let keys = |name: &str| IndexKey::Column {
+            name: name.to_owned(),
+            descending: false,
+        };
+        let index = |name: &str, definition: Option<&str>| IndexInfo {
+            name: name.to_owned(),
+            keys: vec![keys("email")],
+            unique: false,
+            primary: false,
+            predicate: None,
+            definition: definition.map(str::to_owned),
+        };
+        table.indexes = vec![
+            index(
+                "by_email",
+                Some("CREATE INDEX by_email ON app.users USING gin (email gin_trgm_ops)"),
+            ),
+            index("users_email_key", None),
+        ];
+
+        assert_eq!(
+            sql(dialect().create_table_script(&table))[1..],
+            [
+                "CREATE INDEX \"users_email_key\" ON \"app\".\"users\" (\"email\")",
+                "CREATE INDEX by_email ON app.users USING gin (email gin_trgm_ops)",
+            ]
+        );
+    }
+
+    #[test]
     fn plan_create_table_composite_key_index_and_foreign_key() {
         let mut draft = TableDraft::new(TableRef::unqualified("lines"));
         let mut order = typed("order_id", "integer");
@@ -756,6 +788,7 @@ mod tests {
             unique: true,
             primary: false,
             predicate: None,
+            definition: None,
         }];
         draft.foreign_keys = vec![ForeignKeyInfo {
             name: "lines_order_fk".to_owned(),
@@ -1005,6 +1038,7 @@ mod tests {
             unique: false,
             primary: false,
             predicate: None,
+            definition: None,
         }];
 
         let plan = alter(&original, |draft| {
@@ -1020,6 +1054,7 @@ mod tests {
                 unique: false,
                 primary: false,
                 predicate: Some("nickname IS NOT NULL".to_owned()),
+                definition: None,
             });
         });
 

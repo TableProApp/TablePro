@@ -614,6 +614,7 @@ async fn indexes(
             unique: unique != 0,
             primary,
             predicate,
+            definition: stored_sql.map(|sql| in_schema(&sql, schema)),
         });
     }
     // An INTEGER PRIMARY KEY is the rowid itself and has no index of its
@@ -632,6 +633,7 @@ async fn indexes(
             unique: true,
             primary: true,
             predicate: None,
+            definition: None,
         });
     }
     Ok(indexes)
@@ -704,6 +706,17 @@ fn schema_of(table: &TableRef) -> &str {
 /// carry no schema.
 fn qualifier(schema: &str) -> Option<String> {
     (schema != MAIN_SCHEMA).then(|| schema.to_owned())
+}
+
+// SQLite stores the name bare, and a TEMP table of the same name would catch an unqualified statement.
+fn in_schema(sql: &str, schema: &str) -> String {
+    let head = ["CREATE UNIQUE INDEX ", "CREATE INDEX "]
+        .into_iter()
+        .find(|head| sql.starts_with(head));
+    match head {
+        Some(head) => format!("{head}{}.{}", quote(schema), &sql[head.len()..]),
+        None => sql.to_owned(),
+    }
 }
 
 fn quote(name: &str) -> String {

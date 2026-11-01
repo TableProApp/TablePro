@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use secrecy::SecretString;
 use tablepro_core::browse::{PageRead, PageRequest, read_page};
+use tablepro_core::edit::CellInput;
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{ObjectKind, ObjectScope, PagePosition, RowIdentity, TableRef};
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
@@ -338,7 +339,10 @@ async fn a_nested_field_edited_as_json_keeps_its_types() {
         &ChangeSet {
             changes: vec![RowChange::Update(RowUpdate {
                 key: vec![Value::Int(1)],
-                assignments: vec![(nested, Value::Json(JsonText::parse(edited.to_owned()).expect("JSON")))],
+                assignments: vec![(
+                    nested,
+                    CellInput::Value(Value::Json(JsonText::parse(edited.to_owned()).expect("JSON"))),
+                )],
             })],
         },
     )

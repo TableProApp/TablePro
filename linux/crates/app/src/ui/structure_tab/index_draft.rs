@@ -65,6 +65,7 @@ impl IndexDraft {
             unique: self.unique,
             primary: false,
             predicate: None,
+            definition: None,
         })
     }
 

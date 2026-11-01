@@ -36,6 +36,7 @@ static UNSET: IndexInfo = IndexInfo {
     unique: false,
     primary: false,
     predicate: None,
+    definition: None,
 };
 
 impl IndexObject {

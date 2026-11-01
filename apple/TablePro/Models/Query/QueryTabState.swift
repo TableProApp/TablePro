@@ -16,17 +16,19 @@ enum TabType: Equatable, Codable, Hashable {
     case serverDashboard
     case usersRoles
     case insights
+    case tableHealth
     case objectSource
     case versionHistory
     // Read-only grid of one database's or schema's tables, rebuilt from the catalog on each load, never from saved SQL.
     case tableListing
     case routineDebug
+    case liveMessages
 }
 
 extension TabType {
-    // A live debug session cannot be restored, and the debugger is a module, so its tab never reaches disk or an outside client.
+    // A live session cannot be restored, and both tools are modules, so their tabs never reach disk or an outside client.
     var isTransient: Bool {
-        self == .routineDebug
+        self == .routineDebug || self == .liveMessages
     }
 }
 
@@ -533,12 +535,40 @@ struct TabTableContext: Equatable {
     // Browse only: a staged row edit would land on whatever table the name reaches once the temporary one is dropped.
     var isTemporary = false
 
+    // Nil until the driver answers, and on an engine that never does.
+    var viewRowEditing: PluginViewRowEditing?
+
     func resolvedObjectKind() -> TableInfo.TableType {
         objectType ?? (isView ? .view : .table)
     }
 
     var allowsRowEditing: Bool {
-        !isView && !isTemporary && resolvedObjectKind().allowsRowEditing
+        guard !isTemporary else { return false }
+        if resolvedObjectKind() == .view { return viewEditRefusal == nil }
+        return !isView && resolvedObjectKind().allowsRowEditing
+    }
+
+    var viewEditRefusal: ResultEditRefusal? {
+        guard resolvedObjectKind() == .view else { return nil }
+        return ResultEditRefusal.forView(answer: viewRowEditing, keyedOn: primaryKeyColumns)
+    }
+
+    var viewWriteTarget: PluginViewWriteTarget? {
+        guard resolvedObjectKind() == .view else { return nil }
+        return viewRowEditing?.writeTarget(keyedOn: primaryKeyColumns)
+    }
+
+    // A query tab knows a view only from an earlier answer for the same relation; that keeps a failed check read-only.
+    func knowsView(named name: String?) -> Bool {
+        resolvedObjectKind() == .view || (viewRowEditing != nil && name == tableName)
+    }
+
+    // A driver answers only for a view, so a table tab opened without a kind (a deep link, a script) learns it here.
+    mutating func adoptViewAnswer(_ answer: PluginViewRowEditing?, tabType: TabType) {
+        viewRowEditing = answer
+        guard answer != nil, tabType == .table, resolvedObjectKind() == .table else { return }
+        objectType = .view
+        isView = true
     }
 
     var primaryKeyColumn: String? { primaryKeyColumns.first }

@@ -338,3 +338,99 @@ async fn like_escape_matches_literal_underscore_and_percent() {
         Value::Text("x".to_owned())
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn index_statements_recreate_their_indexes() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.ledger (id int NOT NULL CONSTRAINT ledger_pk PRIMARY KEY NONCLUSTERED, \
+             code nvarchar(20) NOT NULL CONSTRAINT ledger_code UNIQUE, [a&b] int, amount int, note nvarchar(50))",
+            "CREATE CLUSTERED INDEX ledger_amount ON dbo.ledger (amount DESC)",
+            "CREATE NONCLUSTERED INDEX ledger_open ON dbo.ledger (code, id DESC) INCLUDE ([a&b], note) \
+             WHERE amount > 0",
+            "CREATE UNIQUE INDEX ledger_note ON dbo.ledger (note) WITH (FILLFACTOR = 80, IGNORE_DUP_KEY = ON, \
+             ALLOW_PAGE_LOCKS = OFF, DATA_COMPRESSION = PAGE)",
+            "CREATE INDEX ledger_idle ON dbo.ledger ([a&b])",
+            "ALTER INDEX ledger_idle ON dbo.ledger DISABLE",
+            "CREATE PARTITION FUNCTION ledger_pf (int) AS RANGE LEFT FOR VALUES (10, 20)",
+            "CREATE PARTITION SCHEME ledger_ps AS PARTITION ledger_pf ALL TO ([PRIMARY])",
+            "CREATE TABLE dbo.parted (k int NOT NULL, v int)",
+            "CREATE CLUSTERED INDEX parted_k ON dbo.parted (k) ON ledger_ps (k)",
+            "CREATE INDEX parted_v ON dbo.parted (v) WITH (DATA_COMPRESSION = PAGE ON PARTITIONS (1))",
+        ],
+    )
+    .await;
+
+    let read = |name: &'static str| {
+        let connection = connection.as_ref();
+        async move {
+            connection
+                .fetch_table_definition(&dbo(name), within(CALL))
+                .await
+                .expect("the table")
+                .indexes
+        }
+    };
+    let ledger = read("ledger").await;
+    let statement = |indexes: &[tablepro_core::IndexInfo], name: &str| {
+        indexes
+            .iter()
+            .find(|index| index.name == name)
+            .and_then(|index| index.definition.clone())
+    };
+    assert_eq!(statement(&ledger, "ledger_pk"), None);
+    assert_eq!(statement(&ledger, "ledger_code"), None);
+    assert_eq!(
+        statement(&ledger, "ledger_open").as_deref(),
+        Some(
+            "CREATE NONCLUSTERED INDEX [ledger_open] ON [dbo].[ledger] ([code], [id] DESC) \
+             INCLUDE ([a&b], [note]) WHERE ([amount]>(0)) ON [PRIMARY]"
+        )
+    );
+    let parted = read("parted").await;
+    assert_eq!(
+        statement(&parted, "parted_k").as_deref(),
+        Some("CREATE CLUSTERED INDEX [parted_k] ON [dbo].[parted] ([k]) ON [ledger_ps]([k])")
+    );
+
+    for (table, indexes) in [("ledger", &ledger), ("parted", &parted)] {
+        for index in indexes.iter().filter(|index| index.definition.is_some()) {
+            let statement = index.definition.clone().unwrap_or_default();
+            let drop = format!("DROP INDEX [{}] ON dbo.{table}", index.name);
+            setup(connection.as_ref(), &[drop.as_str(), statement.as_str()]).await;
+            let remade = read(table).await;
+            assert_eq!(
+                remade.iter().find(|remade| remade.name == index.name),
+                Some(index),
+                "{statement}"
+            );
+        }
+    }
+
+    let definition = connection
+        .fetch_table_definition(&dbo("ledger"), within(CALL))
+        .await
+        .expect("the table");
+    let dialect = connection.dialect();
+    let script = dialect
+        .ddl()
+        .expect("SQL Server plans DDL")
+        .create_table_script(&definition)
+        .expect("the script");
+    let mut statements = vec!["DROP TABLE dbo.ledger"];
+    statements.extend(script.sql());
+    setup(connection.as_ref(), &statements).await;
+    let remade = read("ledger").await;
+    for index in definition.indexes.iter().filter(|index| index.definition.is_some()) {
+        assert_eq!(
+            remade.iter().find(|remade| remade.name == index.name),
+            Some(index),
+            "{script:?}"
+        );
+    }
+    connection.close().await.expect("a close");
+}

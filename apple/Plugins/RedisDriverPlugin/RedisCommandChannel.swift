@@ -85,9 +85,14 @@ protocol RedisCommandChannel: AnyObject, Sendable {
     /// Sentinel needs this because a demoted primary keeps answering `role:master` and keeps
     /// accepting writes for several seconds after the quorum has moved on.
     func verifyStillPrimary() async throws
+
+    /// The one node connection a dedicated driver subscribes on; nil when the channel has none.
+    func pubSubConnection() -> RedisPluginConnection?
 }
 
 extension RedisCommandChannel {
+    func pubSubConnection() -> RedisPluginConnection? { nil }
+
     var supportsDatabaseSelection: Bool { true }
     var supportsTransactions: Bool { true }
     var partitionsKeyspace: Bool { false }

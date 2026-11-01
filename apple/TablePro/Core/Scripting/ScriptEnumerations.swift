@@ -42,10 +42,11 @@ internal enum ScriptEnumerations {
         case .serverDashboard: fourCharCode("TPk5")
         case .usersRoles: fourCharCode("TPk6")
         case .insights: fourCharCode("TPk7")
+        case .tableHealth: fourCharCode("TPkx")
         case .objectSource: fourCharCode("TPk8")
         case .versionHistory: fourCharCode("TPk9")
         case .tableListing: fourCharCode("TPkl")
-        case .routineDebug: nil
+        case .routineDebug, .liveMessages: nil
         }
     }
 

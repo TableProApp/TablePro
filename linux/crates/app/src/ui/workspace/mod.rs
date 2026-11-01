@@ -604,7 +604,7 @@ pub(crate) enum WorkspaceInput {
         schema: Option<String>,
         table: String,
     },
-    ShowCreateTableLoaded(String),
+    OpenInEditor(String),
     DropTablePrompt {
         schema: Option<String>,
         table: String,
@@ -1267,7 +1267,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
-            WorkspaceInput::ShowCreateTableLoaded(sql) => self.open_editor_tab(Some(sql)),
+            WorkspaceInput::OpenInEditor(sql) => self.open_editor_tab(Some(sql)),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),

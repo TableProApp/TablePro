@@ -297,3 +297,58 @@ async fn clickhouse_ilike_is_case_insensitive() {
     );
     connection.close().await.expect("a close");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn skipping_index_statements_recreate_their_indexes() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let name = unique("skipping");
+    setup(
+        connection.as_ref(),
+        &[&format!(
+            "CREATE TABLE {} (id UInt32, s String, \
+             INDEX by_s lower(s) TYPE bloom_filter(0.01) GRANULARITY 4, INDEX by_id id TYPE minmax GRANULARITY 1, \
+             INDEX by_pair (id, s) TYPE set(100) GRANULARITY 2) \
+             ENGINE = MergeTree ORDER BY id",
+            quoted(&name)
+        )],
+    )
+    .await;
+    let table = table(&name);
+    let indexes = connection
+        .fetch_indexes(&table, within(CALL))
+        .await
+        .expect("the indexes");
+
+    assert!(
+        indexes
+            .iter()
+            .filter(|index| index.primary)
+            .all(|index| index.definition.is_none()),
+        "{indexes:#?}"
+    );
+    let by_s = indexes.iter().find(|index| index.name == "by_s").expect("by_s");
+    assert_eq!(
+        by_s.definition.as_deref(),
+        Some(
+            format!("CREATE INDEX `by_s` ON `{DATABASE}`.`{name}` (lower(s)) TYPE bloom_filter(0.01) GRANULARITY 4")
+                .as_str()
+        )
+    );
+    for index in indexes.iter().filter(|index| !index.primary) {
+        let statement = index.definition.clone().expect("a statement");
+        let drop = format!("ALTER TABLE {} DROP INDEX `{}`", quoted(&name), index.name);
+        setup(connection.as_ref(), &[drop.as_str(), statement.as_str()]).await;
+        let remade = connection
+            .fetch_indexes(&table, within(CALL))
+            .await
+            .expect("the indexes");
+        assert_eq!(
+            remade.iter().find(|remade| remade.name == index.name),
+            Some(index),
+            "{statement}"
+        );
+    }
+    connection.close().await.expect("a close");
+}
