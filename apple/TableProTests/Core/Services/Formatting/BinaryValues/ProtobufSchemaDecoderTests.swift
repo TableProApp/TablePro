@@ -676,6 +676,23 @@ struct ProtobufSchemaDecoderTests {
         #expect(ProtobufSchemaTextWriter.text(message.fields, multiLine: false) == "b: 7")
     }
 
+    @Test("Replaced oneof members parse in wire order, so a broken one fails the value whatever the hash order")
+    func discardedMembersParseInWireOrder() throws {
+        let schema = try ProtobufSchema.parse(Data("""
+            syntax = "proto3";
+            package wo;
+            message Inner { repeated int32 v = 1; }
+            message M { oneof x { Inner a = 1; int32 b = 2; } oneof y { Inner c = 3; int32 d = 4; } }
+            """.utf8))
+        // Hand-written: `c` holding a truncated varint, `a` holding a hundred `v: 1`, then `b: 1` and `d: 1`.
+        let fixture = "1a0108" + "0ac801" + String(repeating: "0801", count: 100) + "1001" + "2001"
+        for _ in 0..<20 {
+            #expect(throws: BinaryValueDecodeError.self) {
+                try ProtobufSchemaDecoder.decode(BinaryFixture.data(fixture), schema: schema, message: "wo.M", maxValues: 6)
+            }
+        }
+    }
+
     @Test("The package qualifies the definitions written before it too")
     func packageAfterMessage() throws {
         let schema = try ProtobufSchema.parse(Data("""

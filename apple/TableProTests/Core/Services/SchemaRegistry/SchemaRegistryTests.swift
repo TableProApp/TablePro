@@ -7,6 +7,7 @@ import Foundation
 import os
 import TableProTestSupport
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 // Recorded from confluentinc/cp-schema-registry 7.7.1. The values were written by confluent-kafka 2.6.1's
@@ -353,6 +354,49 @@ struct SchemaRegistryTests {
         }
         #expect(cache.cachedSchema(connectionID: connection, schemaID: 99_999) == nil)
         await gate.open()
+    }
+
+    @Test("A schema one connection loads is announced to every connection on that registry")
+    @MainActor
+    func loadReachesEveryConnectionOnTheEndpoint() async throws {
+        let cache = SchemaRegistryCache(resolveEndpoint: Resolver(Self.endpoint).resolve, transport: RecordedTransport().transport)
+        let first = UUID()
+        let second = UUID()
+        _ = await cache.schema(connectionID: second, schemaID: 99_999)
+        let (changes, observer) = Self.changes(for: second)
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        _ = await cache.schema(connectionID: first, schemaID: 1)
+        var iterator = changes.makeAsyncIterator()
+        _ = await iterator.next()
+        guard case .success? = cache.cachedSchema(connectionID: second, schemaID: 1) else {
+            Issue.record("expected the second connection to read the schema the first loaded")
+            return
+        }
+    }
+
+    private final class OlderKafkaPlugin: NSObject, TableProPlugin, DriverPlugin {
+        static let pluginName = "Kafka"
+        static let pluginVersion = "1.0.0"
+        static let pluginDescription = "A Kafka bundle from before the Schema Registry fields"
+        static let capabilities: [PluginCapability] = [.databaseDriver]
+        static let databaseTypeId = "Kafka"
+        static let databaseDisplayName = "Kafka"
+        static let iconName = "kafka-icon"
+        static let defaultPort = 9_092
+
+        func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
+            fatalError("Not used in tests")
+        }
+    }
+
+    @Test("A Kafka bundle from before the registry fields keeps them, the password among the secure fields")
+    @MainActor
+    func olderPluginKeepsRegistryFields() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: OlderKafkaPlugin.self)
+        let fields = built.connection.additionalConnectionFields
+        #expect(Set(fields.map(\.id)).isSuperset(of: SchemaRegistryConnectionField.all))
+        #expect(fields.first { $0.id == SchemaRegistryConnectionField.password }?.isSecure == true)
     }
 
     @Test("A connection with no registry URL says so instead of fetching")

@@ -13,7 +13,7 @@ internal final class SchemaRegistryCache: Sendable {
 
     static let shared = SchemaRegistryCache()
 
-    // Posted once per batch that loaded a schema, and when a connection's endpoint changed.
+    // Posted per loaded schema to every connection on that endpoint, and when a connection's endpoint changed.
     static let didChange = Notification.Name("com.TablePro.schemaRegistryCache.didChange")
     // Posted on the main actor while the old endpoint still answers, so every grid can note what its filters show.
     static let willSwitch = Notification.Name("com.TablePro.schemaRegistryCache.willSwitch")
@@ -95,30 +95,19 @@ internal final class SchemaRegistryCache: Sendable {
         if allLoaded, !retryingFailures { return false }
         let endpoint = resolveEndpoint(connectionID)
         announceSwitch(to: endpoint, for: connectionID)
-        let (changed, pending) = state.withLock { state -> (Bool, [Task<Lookup, Never>]) in
+        let changed = state.withLock { state -> Bool in
             let changed = adopt(endpoint, for: connectionID, in: &state)
-            guard let endpoint else { return (changed, []) }
+            guard let endpoint else { return changed }
             pruneFailures(in: &state)
-            var pending: [Task<Lookup, Never>] = []
             for schemaID in schemaIDs.sorted() {
                 let key = Key(endpoint: endpoint, schemaID: schemaID)
-                if let running = state.inFlight[key] {
-                    pending.append(running)
-                } else if usable(state.entries[key], retryingFailures: retryingFailures) == nil,
-                          state.inFlight.count < Self.maxPendingFetches {
-                    pending.append(start(key, in: &state))
-                }
+                guard state.inFlight[key] == nil, usable(state.entries[key], retryingFailures: retryingFailures) == nil,
+                      state.inFlight.count < Self.maxPendingFetches else { continue }
+                _ = start(key, in: &state)
             }
-            return (changed, pending)
+            return changed
         }
         if changed { Self.post(connectionID) }
-        guard !pending.isEmpty else { return changed }
-        // One notice per schema as it lands, so a slow lookup holds back no other; the grid coalesces them.
-        for task in pending {
-            Task {
-                if case .success = await task.value { Self.post(connectionID) }
-            }
-        }
         return changed
     }
 
@@ -136,9 +125,7 @@ internal final class SchemaRegistryCache: Sendable {
         }
         if changed { Self.post(connectionID) }
         guard let pending else { return cached ?? .failure(Self.noEndpoint) }
-        let result = await pending.value
-        if case .success = result { Self.post(connectionID) }
-        return result
+        return await pending.value
     }
 
     private static var noEndpoint: SchemaRegistryError {
@@ -201,14 +188,23 @@ internal final class SchemaRegistryCache: Sendable {
         return task
     }
 
+    // A load is announced as it lands, to every connection reading this endpoint; the grid coalesces the notices.
     private func finish(_ key: Key, with result: Lookup) {
-        state.withLock { state in
+        let readers = state.withLock { state -> [UUID] in
             state.inFlight[key] = nil
             switch result {
-            case .success(let schema): state.entries[key] = .loaded(schema)
-            case .failure(let error): state.entries[key] = .failed(error, at: .now)
+            case .success(let schema):
+                state.entries[key] = .loaded(schema)
+                return state.endpoints.compactMap { id, resolved in
+                    if case .configured(let endpoint) = resolved, endpoint == key.endpoint { return id }
+                    return nil
+                }
+            case .failure(let error):
+                state.entries[key] = .failed(error, at: .now)
+                return []
             }
         }
+        for connectionID in readers { Self.post(connectionID) }
     }
 
     // Garbage prefixes would otherwise leave one failure each for the session.

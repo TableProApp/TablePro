@@ -10,6 +10,7 @@ internal enum SchemaRegistryConnectionField {
     static let url = "schemaRegistryUrl"
     static let username = "schemaRegistryUsername"
     static let password = "schemaRegistryPassword"
+    static let all: Set<String> = [url, username, password]
 }
 
 internal struct SchemaRegistryEndpoint: Hashable, Sendable {

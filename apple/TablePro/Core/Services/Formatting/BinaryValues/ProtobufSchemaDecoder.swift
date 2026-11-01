@@ -276,7 +276,8 @@ internal enum ProtobufSchemaDecoder {
                 dropped += accepted[winner]?.filter { $0.position <= cutoff } ?? []
                 accepted[winner] = accepted[winner]?.filter { $0.position > cutoff }
             }
-            return dropped
+            // Wire order, so the shared budget meets the same members first on every launch.
+            return dropped.sorted { $0.position < $1.position }
         }
 
         // protoc parses a member a later one replaces, so a broken one fails the value; this spends the shared budget.
