@@ -15,7 +15,6 @@ internal struct InspectorFieldRow: View {
     internal let isPrimaryKey: Bool
     internal let isForeignKey: Bool
     internal let isExpanded: Bool
-    internal let resizedHeight: Binding<Double?>
     internal let commands: [SetValueCommand]
     internal var isPendingExpression = false
     internal let onSetValue: (SetValueCommand) -> Void
@@ -170,7 +169,6 @@ internal struct InspectorFieldRow: View {
         FieldEditorContent(
             context: context,
             kind: kind,
-            resizedHeight: resizedHeight,
             onSetNull: context.canMutate && commands.contains(.null) ? { onSetValue(.null) } : nil,
             onSetDefault: context.canMutate && commands.contains(.defaultValue) ? { onSetValue(.defaultValue) } : nil,
             onPopOut: onPopOut,

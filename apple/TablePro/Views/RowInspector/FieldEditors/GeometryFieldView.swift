@@ -7,23 +7,19 @@ import Combine
 import SwiftUI
 import TableProTheme
 
-/// A field whose value is a geometry: a map of that value, with the editor the field would
-/// otherwise get one segment away.
+// A geometry value drawn as a map, with the field's own editor one segment away.
 internal struct GeometryFieldView: View {
     @ObservedObject private var themeEngine = ThemeEngine.shared
     let context: FieldEditorContext
     let descriptor: GeometryFieldDescriptor
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
-    let resizedHeight: Binding<Double?>
-    /// Told whether Tab can stop here without Full Keyboard Access. A map takes no focus.
+    // Told whether Tab can stop here without Full Keyboard Access; a map takes no focus.
     var onTabStopChange: ((Bool) -> Void)?
 
     @Environment(\.isEnabled) private var isEnabled
     @AppStorage(PreferenceKeys.rowInspectorGeometryFieldMode.name, store: AppStorageEnvironment.shared.defaults)
     private var storedMode = Mode.map.rawValue
-    @AppStorage(PreferenceKeys.rowInspectorGeometryFieldHeight.name, store: AppStorageEnvironment.shared.defaults)
-    private var startingMapHeight = ResizableFieldMetrics.defaultGeometryHeight
 
     @StateObject private var previews = GeometryFieldPreviewStore()
     @State private var latch = ModeLatch()
@@ -45,15 +41,12 @@ internal struct GeometryFieldView: View {
                 mapPane(resolution.preview)
             }
         }
-        /// The row puts the field's text on its editor as an accessibility value. On a bare
-        /// container that lands on the picker and the caption, in place of the selected segment.
+        // On a bare container the row's accessibility value lands on the picker and the caption.
         .accessibilityElement(children: .contain)
         .onAppear { onTabStopChange?(mode == .text) }
-        /// No reset on disappear: a lazy list unmounts a row scrolled out of view while the field is
-        /// still in the list, and Tab would then stop on a map with nothing to focus.
+        // No reset on disappear: the lazy list unmounts off-screen rows, and Tab would then stop on a map.
         .onChange(of: mode) { onTabStopChange?($0 == .text) }
-        /// Runs again when a read starts or ends, so the mode is latched by whichever preview
-        /// comes first: the one read during this pass, or the large one read here.
+        // Reruns when a read starts or ends, so whichever preview comes first latches the mode.
         .task(id: resolution.pending) {
             guard let pending = resolution.pending else {
                 latch.offer(preferred: preferredMode, preview: resolution.preview)
@@ -64,7 +57,7 @@ internal struct GeometryFieldView: View {
         }
     }
 
-    /// Text mode reads nothing: the value is only parsed while a map is, or may be, on screen.
+    // Text mode reads nothing: the value is parsed only while a map is, or may be, on screen.
     private func resolvePreview() -> GeometryFieldPreviewStore.Resolution {
         guard latch.needsPreview(preferred: preferredMode) else {
             return GeometryFieldPreviewStore.Resolution(preview: nil, pending: nil)
@@ -114,8 +107,7 @@ internal struct GeometryFieldView: View {
         }
     }
 
-    /// Only the picker latches a mode and only the picker writes the preference, so a value that
-    /// becomes drawable while it is typed never moves the field off Text.
+    // Only the picker latches and stores the mode, so a value turning drawable as it is typed stays on Text.
     private func modeSelection(shown mode: Mode) -> Binding<Mode> {
         Binding(
             get: { mode },
@@ -126,7 +118,7 @@ internal struct GeometryFieldView: View {
         )
     }
 
-    /// No window edits bytes: the text window would write the bytes back as text.
+    // No window edits bytes: the text window would write them back as text.
     private func offersWindow(in mode: Mode) -> Bool {
         switch mode {
         case .map: return true
@@ -153,8 +145,7 @@ internal struct GeometryFieldView: View {
         return false
     }
 
-    /// The map window is handed the text alone, so it would call a NULL field or a selection of
-    /// several values unreadable. It opens for a value that draws and for nothing else.
+    // The map window gets the text alone and would call NULL or mixed values unreadable, so only a drawable value opens it.
     static func canOpenWindow(in mode: Mode, preview: GeometryFieldPreview?) -> Bool {
         switch mode {
         case .map: return isDrawable(preview)
@@ -164,20 +155,14 @@ internal struct GeometryFieldView: View {
 
     // MARK: - Panes
 
-    /// The embedded editors carry no pop-out button of their own: the toolbar's one button serves
-    /// both segments. This kind opts out of the row's value font, so the pane names it.
+    // The toolbar's pop-out serves both segments; this kind opts out of the row's value font, so the pane sets it.
     private var textPane: some View {
         Group {
             switch descriptor.textEditor {
             case .multiLine:
-                MultiLineEditorView(
-                    context: context,
-                    onPopOut: nil,
-                    isExpanded: isExpanded,
-                    resizedHeight: resizedHeight
-                )
+                MultiLineEditorView(context: context, onPopOut: nil, isExpanded: isExpanded)
             case .json:
-                JsonEditorView(context: context, onPopOut: nil, isExpanded: isExpanded, resizedHeight: resizedHeight)
+                JsonEditorView(context: context, onPopOut: nil, isExpanded: isExpanded)
             case .hex:
                 BlobHexEditorView(context: context)
             }
@@ -188,7 +173,8 @@ internal struct GeometryFieldView: View {
     private func mapPane(_ preview: GeometryFieldPreview?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             ResizableEditorContainer(
-                height: ResizableFieldMetrics.height(resized: resizedHeight, starting: startingMapHeight),
+                column: context.columnName,
+                defaultHeight: ResizableFieldMetrics.defaultGeometryHeight,
                 range: ResizableFieldMetrics.geometryHeightRange,
                 expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
             ) {
@@ -205,8 +191,7 @@ internal struct GeometryFieldView: View {
         }
     }
 
-    /// The canvas is dropped while the list is disabled, which is how the inspector hides it behind
-    /// its JSON rendering: a mounted map view holds about 45 MB whether or not it is on screen.
+    // Dropped while disabled, which is how the inspector hides it behind the JSON rendering: a mounted map holds about 45 MB.
     @ViewBuilder
     private func mapContent(_ preview: GeometryFieldPreview?) -> some View {
         switch preview {
@@ -241,7 +226,7 @@ internal extension GeometryFieldView {
         case text
         case map
 
-        /// Nil while the first read of a large value is still running: nothing has decided yet.
+        // Nil while the first read of a large value is still running.
         static func opening(preferred: Mode, preview: GeometryFieldPreview?) -> Mode? {
             guard preferred == .map else { return .text }
             switch preview {
@@ -252,8 +237,7 @@ internal extension GeometryFieldView {
         }
     }
 
-    /// The mode a field opens on is decided once per view. Following the text instead would swap
-    /// the editor out from under the caret the moment a typed value became drawable.
+    // Decided once per view: following the text would swap the editor from under the caret once a typed value draws.
     struct ModeLatch: Equatable {
         private(set) var mode: Mode?
 
@@ -278,8 +262,7 @@ internal extension GeometryFieldView {
 
 // MARK: - Preview store
 
-/// Reads a value once per text rather than once per body pass: the list redraws every field on
-/// each keystroke in any of them. Not published, so filling it during a pass redraws nothing.
+// Once per text, not per body pass, since every keystroke redraws every field. Unpublished, so filling it redraws nothing.
 @MainActor
 internal final class GeometryFieldPreviewStore: ObservableObject {
     internal struct Request: Equatable, Sendable {
@@ -288,8 +271,7 @@ internal final class GeometryFieldPreviewStore: ObservableObject {
     }
 
     internal struct Resolution {
-        /// The newest preview there is. While `pending` is set it is the previous value's, so the
-        /// map stays up during a re-read.
+        // While `pending` is set this is the previous value's preview, so the map stays up during a re-read.
         let preview: GeometryFieldPreview?
         let pending: Request?
     }
@@ -297,12 +279,11 @@ internal final class GeometryFieldPreviewStore: ObservableObject {
     internal typealias Reader = @Sendable (Request, GeometryFieldSource) -> GeometryFieldPreview
 
     internal private(set) var preview: GeometryFieldPreview?
-    /// Moves with the shapes, so the canvas can tell new ones from the ones it already drew.
+    // Moves with the shapes, so the canvas can tell new ones from the ones it already drew.
     internal private(set) var token = 0
     private var loaded: Request?
     private var pending: Request?
-    /// A parse runs to the end once started, so a pane re-added mid-read joins it instead of
-    /// starting a second copy of the same work.
+    // A parse runs to the end, so a pane re-added mid-read joins it instead of starting a second one.
     private var inFlight: (request: Request, task: Task<GeometryFieldPreview, Never>)?
     private let reader: Reader
 
@@ -323,8 +304,7 @@ internal final class GeometryFieldPreviewStore: ObservableObject {
         return Resolution(preview: preview, pending: nil)
     }
 
-    /// Nil when the value moved on while this one was being read. A finished read is committed even
-    /// when its caller was cancelled, so a pane that comes back finds it done.
+    // Nil when the value moved on during the read. A finished read commits even when its caller was cancelled.
     internal func load(_ request: Request, source: GeometryFieldSource) async -> GeometryFieldPreview? {
         if request == loaded { return preview }
         let task: Task<GeometryFieldPreview, Never>
@@ -353,7 +333,7 @@ internal final class GeometryFieldPreviewStore: ObservableObject {
 }
 
 internal extension View {
-    /// The map pane's well, which shows while the map builds or for a value with nothing to draw.
+    // Shows while the map builds, or for a value with nothing to draw.
     func geometryMapWell() -> some View {
         themeBackground(.editorBackground, native: Color(nsColor: .textBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 5))

@@ -7,7 +7,6 @@
 //
 
 import Foundation
-import SwiftUI
 @testable import TablePro
 import Testing
 
@@ -45,51 +44,6 @@ struct FieldExpansionPolicyTests {
     func storedNullExpands() {
         #expect(FieldEditorContent.canExpand(kind: .json, state: .null))
         #expect(FieldEditorContent.canExpand(kind: .multiLine, state: .multipleValues))
-    }
-
-    // MARK: - Across rows
-
-    private func field(column: Int) -> FieldEditState {
-        FieldEditState(
-            columnIndex: column,
-            columnName: "payload",
-            columnTypeEnum: .text(rawType: "JSON"),
-            isLongText: false,
-            isJson: true,
-            hasMultipleValues: false,
-            pendingValue: nil,
-            isPendingNull: false,
-            isPendingDefault: false
-        )
-    }
-
-    /// Selecting another row builds its fields afresh, each with a new id.
-    @Test("An expanded field stays expanded on the next row")
-    func expansionSurvivesSelectionChange() {
-        let first = field(column: 2)
-        let next = field(column: 2)
-        #expect(first.id != next.id)
-        #expect(InspectorFieldListView.isExpanded(first, expandedColumnIndex: 2))
-        #expect(InspectorFieldListView.isExpanded(next, expandedColumnIndex: 2))
-    }
-
-    @Test("Only the expanded column is expanded")
-    func otherColumnsStayCollapsed() {
-        #expect(InspectorFieldListView.isExpanded(field(column: 3), expandedColumnIndex: 2) == false)
-        #expect(InspectorFieldListView.isExpanded(field(column: 2), expandedColumnIndex: nil) == false)
-    }
-
-    /// Dragging one field once resized every field of its kind, and the size it was given went
-    /// away with the row.
-    @Test("A dragged height belongs to its column and outlives the row")
-    func resizedHeightIsPerColumn() {
-        var heights: [Int: Double] = [:]
-        let store = Binding(get: { heights }, set: { heights = $0 })
-
-        InspectorFieldListView.resizedHeight(of: field(column: 2), in: store).wrappedValue = 300
-
-        #expect(InspectorFieldListView.resizedHeight(of: field(column: 2), in: store).wrappedValue == 300)
-        #expect(InspectorFieldListView.resizedHeight(of: field(column: 3), in: store).wrappedValue == nil)
     }
 
     // MARK: - Geometry

@@ -1,4 +1,3 @@
-import SwiftUI
 import Testing
 
 @testable import TablePro
@@ -46,27 +45,17 @@ struct ResizableFieldMetricsTests {
         #expect(ResizableFieldMetrics.resolve(base: 160, delta: 5_000, range: mapRange) == 600)
     }
 
-    /// A text pane dragged to 60 and then shown as a 100pt map: the drag moves it from 100 at once.
-    @Test func testABaseBelowTheFloorMovesWithTheFirstPointOfDrag() {
+    // A text pane dragged to 60 and then shown as a 100pt map: the drag moves it from 100 at once.
+    @Test func testABaseOutsideTheRangeMovesWithTheFirstPointOfDrag() {
         let mapRange = ResizableFieldMetrics.geometryHeightRange
         #expect(ResizableFieldMetrics.resolve(base: 60, delta: 30, range: mapRange) == 130)
         #expect(ResizableFieldMetrics.resolve(base: 700, delta: -50, range: mapRange) == 550)
     }
 
-    /// Every field of a kind once shared one stored height, so dragging one resized them all.
-    @Test func testDraggingOneFieldLeavesTheOthersAtTheirStartingHeight() {
-        var resized: [Int: Double] = [:]
-        func height(for column: Int) -> Binding<Double> {
-            ResizableFieldMetrics.height(
-                resized: Binding(get: { resized[column] }, set: { resized[column] = $0 }),
-                starting: 120
-            )
-        }
-
-        height(for: 1).wrappedValue = 300
-
-        #expect(height(for: 1).wrappedValue == 300)
-        #expect(height(for: 2).wrappedValue == 120)
+    @Test func testADragThatEndsWhereItBeganStoresNothing() {
+        #expect(ResizableFieldMetrics.committedHeight(base: 120, delta: 0, range: range) == nil)
+        #expect(ResizableFieldMetrics.committedHeight(base: 120, delta: 40, range: range) == 160)
+        #expect(ResizableFieldMetrics.committedHeight(base: 600, delta: 40, range: range) == 600)
     }
 
     @Test func testTextHeightResolvesWithinItsOwnRange() {

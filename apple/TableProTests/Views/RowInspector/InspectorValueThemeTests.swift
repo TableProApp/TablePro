@@ -33,7 +33,7 @@ struct InspectorValueThemeTests {
     }
 
     private func field(_ value: String, kind: FieldEditorKind, state: FieldValueState? = nil) -> FieldEditorContent {
-        FieldEditorContent(context: context(value, state: state), kind: kind, resizedHeight: .constant(nil))
+        FieldEditorContent(context: context(value, state: state), kind: kind)
     }
 
     private func pixel(of view: some View, size: CGSize, x: Int, fromBottom: Int? = nil) throws -> NSColor {
@@ -85,7 +85,7 @@ struct InspectorValueThemeTests {
             valueState: .value(value.wrappedValue),
             isReadOnly: false
         )
-        return FieldEditorContent(context: context, kind: kind, resizedHeight: .constant(nil))
+        return FieldEditorContent(context: context, kind: kind)
     }
 
     private func editableField(_ value: String, kind: FieldEditorKind = .singleLine) -> FieldEditorContent {
