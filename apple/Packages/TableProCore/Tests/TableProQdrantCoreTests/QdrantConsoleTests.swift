@@ -35,6 +35,9 @@ struct QdrantConsoleTests {
         #expect(tier("POST", "/collections/docs/points/payload/clear") == .remove)
         #expect(tier("POST", "/collections/docs/points/batch") == .remove)
         #expect(tier("DELETE", "/collections/docs") == .remove)
+        #expect(tier("PUT", "/collections/docs/points/payload?wait=true") == .remove)
+        #expect(tier("POST", "/collections/docs/cluster") == .remove)
+        #expect(tier("POST", "/collections/aliases") == .remove)
     }
 
     @Test("A snapshot touches the server's disk, and a dot segment is never read as another route")

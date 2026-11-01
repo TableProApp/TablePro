@@ -916,6 +916,13 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("POST /collections/docs/points/payload/clear {}", databaseType: .qdrant) == .destructive)
         #expect(QueryClassifier.classifyTier("POST /collections/docs/points/batch {}", databaseType: .qdrant) == .destructive)
         #expect(QueryClassifier.classifyTier("DELETE /collections/docs", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.classifyTier(
+            "PUT /collections/docs/points/payload?wait=true\n{\"payload\":{},\"filter\":{}}", databaseType: .qdrant
+        ) == .destructive)
+        #expect(QueryClassifier.classifyTier(
+            "POST /collections/docs/cluster {\"drop_sharding_key\":{\"shard_key\":\"a\"}}", databaseType: .qdrant
+        ) == .destructive)
+        #expect(QueryClassifier.classifyTier("POST /collections/aliases {\"actions\":[]}", databaseType: .qdrant) == .destructive)
         #expect(QueryClassifier.isWriteQuery("POST /collections/docs/points/query/../delete {}", databaseType: .qdrant))
         #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/facet {\"key\": \"city\"}", databaseType: .qdrant))
         #expect(QueryClassifier.classifyTier("DELETE\t/collections/docs", databaseType: .qdrant) == .destructive)

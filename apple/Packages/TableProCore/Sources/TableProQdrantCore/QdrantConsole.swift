@@ -92,8 +92,14 @@ public struct QdrantRequestKind: Sendable, Equatable {
         if verb == "POST", readRoutes.contains(subroute) {
             return QdrantRequestKind(tier: .read, touchesServerFiles: touchesServerFiles)
         }
-        // A batch can carry deletes, and a POST ending in `delete` or `clear` removes points or payload.
-        let removes = verb == "DELETE" || route.last == "delete" || route.last == "clear" || subroute == ["points", "batch"]
+        // A batch can carry deletes, and a POST ending in `delete` or `clear` removes points or payload. Some
+        // routes delete through the body: a PUT of the payload replaces it whole, the cluster route drops
+        // shard keys and replicas, and the aliases route deletes aliases.
+        let removes = verb == "DELETE" || route.last == "delete" || route.last == "clear"
+            || subroute == ["points", "batch"]
+            || (verb == "PUT" && subroute == ["points", "payload"])
+            || subroute.first == "cluster"
+            || route == ["collections", "aliases"]
         return QdrantRequestKind(tier: removes ? .remove : .write, touchesServerFiles: touchesServerFiles)
     }
 }
