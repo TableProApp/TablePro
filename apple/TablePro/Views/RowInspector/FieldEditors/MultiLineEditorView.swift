@@ -11,13 +11,14 @@ internal struct MultiLineEditorView: View {
     let context: FieldEditorContext
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
+    let resizedHeight: Binding<Double?>
 
     @AppStorage(PreferenceKeys.rowInspectorTextFieldHeight.name, store: AppStorageEnvironment.shared.defaults)
-    private var fieldHeight = ResizableFieldMetrics.defaultTextHeight
+    private var startingHeight = ResizableFieldMetrics.defaultTextHeight
 
     var body: some View {
         ResizableEditorContainer(
-            height: $fieldHeight,
+            height: ResizableFieldMetrics.height(resized: resizedHeight, starting: startingHeight),
             range: ResizableFieldMetrics.textHeightRange,
             expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
         ) {

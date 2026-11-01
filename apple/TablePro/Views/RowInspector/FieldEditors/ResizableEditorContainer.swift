@@ -16,7 +16,7 @@ internal struct ResizableEditorContainer<Content: View>: View {
 
     @ViewBuilder let content: () -> Content
 
-    @GestureState private var liveDelta: Double = 0
+    @State private var liveDelta: Double = 0
     @State private var isHandleHovered = false
 
     private var resolvedHeight: Double {
@@ -43,34 +43,15 @@ internal struct ResizableEditorContainer<Content: View>: View {
             .frame(width: 26, height: 4)
             .opacity(isHandleHovered ? 1 : 0.5)
             .frame(maxWidth: .infinity, minHeight: 11)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                    .updating($liveDelta) { value, state, _ in
-                        state = value.translation.height
+            .overlay {
+                FieldResizeHandle(
+                    onHover: { isHandleHovered = $0 },
+                    onDrag: { liveDelta = $0 },
+                    onEnd: { delta in
+                        height = ResizableFieldMetrics.resolve(base: height, delta: delta, range: range)
+                        liveDelta = 0
                     }
-                    .onEnded { value in
-                        height = ResizableFieldMetrics.resolve(
-                            base: height,
-                            delta: value.translation.height,
-                            range: range
-                        )
-                    }
-            )
-            .onHover { hovering in
-                guard hovering != isHandleHovered else { return }
-                isHandleHovered = hovering
-                if hovering {
-                    NSCursor.resizeUpDown.push()
-                } else {
-                    NSCursor.pop()
-                }
-            }
-            .onDisappear {
-                if isHandleHovered {
-                    NSCursor.pop()
-                    isHandleHovered = false
-                }
+                )
             }
             .accessibilityHidden(true)
     }

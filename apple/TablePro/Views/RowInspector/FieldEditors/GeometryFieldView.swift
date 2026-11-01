@@ -15,6 +15,7 @@ internal struct GeometryFieldView: View {
     let descriptor: GeometryFieldDescriptor
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
+    let resizedHeight: Binding<Double?>
     /// Told whether Tab can stop here without Full Keyboard Access. A map takes no focus.
     var onTabStopChange: ((Bool) -> Void)?
 
@@ -22,7 +23,7 @@ internal struct GeometryFieldView: View {
     @AppStorage(PreferenceKeys.rowInspectorGeometryFieldMode.name, store: AppStorageEnvironment.shared.defaults)
     private var storedMode = Mode.map.rawValue
     @AppStorage(PreferenceKeys.rowInspectorGeometryFieldHeight.name, store: AppStorageEnvironment.shared.defaults)
-    private var mapHeight = ResizableFieldMetrics.defaultGeometryHeight
+    private var startingMapHeight = ResizableFieldMetrics.defaultGeometryHeight
 
     @StateObject private var previews = GeometryFieldPreviewStore()
     @State private var latch = ModeLatch()
@@ -169,9 +170,14 @@ internal struct GeometryFieldView: View {
         Group {
             switch descriptor.textEditor {
             case .multiLine:
-                MultiLineEditorView(context: context, onPopOut: nil, isExpanded: isExpanded)
+                MultiLineEditorView(
+                    context: context,
+                    onPopOut: nil,
+                    isExpanded: isExpanded,
+                    resizedHeight: resizedHeight
+                )
             case .json:
-                JsonEditorView(context: context, onPopOut: nil, isExpanded: isExpanded)
+                JsonEditorView(context: context, onPopOut: nil, isExpanded: isExpanded, resizedHeight: resizedHeight)
             case .hex:
                 BlobHexEditorView(context: context)
             }
@@ -182,7 +188,7 @@ internal struct GeometryFieldView: View {
     private func mapPane(_ preview: GeometryFieldPreview?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             ResizableEditorContainer(
-                height: $mapHeight,
+                height: ResizableFieldMetrics.height(resized: resizedHeight, starting: startingMapHeight),
                 range: ResizableFieldMetrics.geometryHeightRange,
                 expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
             ) {

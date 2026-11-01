@@ -9,15 +9,22 @@ internal struct JsonEditorView: View {
     let context: FieldEditorContext
     var onPopOut: ((String) -> Void)?
     var isExpanded = false
+    let resizedHeight: Binding<Double?>
 
     @State private var model: JsonFieldEditingModel
-    @AppStorage(PreferenceKeys.rowInspectorJsonFieldHeight.name, store: AppStorageEnvironment.shared.defaults) private var fieldHeight = ResizableFieldMetrics
+    @AppStorage(PreferenceKeys.rowInspectorJsonFieldHeight.name, store: AppStorageEnvironment.shared.defaults) private var startingHeight = ResizableFieldMetrics
         .defaultJsonHeight
 
-    init(context: FieldEditorContext, onPopOut: ((String) -> Void)? = nil, isExpanded: Bool = false) {
+    init(
+        context: FieldEditorContext,
+        onPopOut: ((String) -> Void)? = nil,
+        isExpanded: Bool = false,
+        resizedHeight: Binding<Double?>
+    ) {
         self.context = context
         self.onPopOut = onPopOut
         self.isExpanded = isExpanded
+        self.resizedHeight = resizedHeight
         self._model = State(wrappedValue: JsonFieldEditingModel(storedValue: context.value.wrappedValue))
     }
 
@@ -36,7 +43,7 @@ internal struct JsonEditorView: View {
 
     var body: some View {
         ResizableEditorContainer(
-            height: $fieldHeight,
+            height: ResizableFieldMetrics.height(resized: resizedHeight, starting: startingHeight),
             range: ResizableFieldMetrics.jsonHeightRange,
             expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
         ) {

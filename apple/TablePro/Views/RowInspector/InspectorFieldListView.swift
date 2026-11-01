@@ -26,7 +26,9 @@ internal struct InspectorFieldListView: View {
 
     @State private var searchText = ""
     @State private var showsModifiedOnly = false
-    @State private var expandedFieldID: UUID?
+    @State private var expandedColumnIndex: Int?
+    /// By column for the same reason as the expansion: a dragged size holds while rows change.
+    @State private var resizedHeights: [Int: Double] = [:]
     @StateObject private var tabStops = InspectorTabStopRegistry()
     @FocusState private var focusedField: UUID?
 
@@ -45,7 +47,8 @@ internal struct InspectorFieldListView: View {
             }
         }
         .onChange(of: editState.fields.map(\.columnName)) { _ in
-            expandedFieldID = nil
+            expandedColumnIndex = nil
+            resizedHeights = [:]
             focusedField = nil
         }
     }
@@ -157,18 +160,37 @@ internal struct InspectorFieldListView: View {
             isModified: field.hasEdit || field.hasCommittedEdit,
             isPrimaryKey: field.isPrimaryKey,
             isForeignKey: field.isForeignKey,
-            isExpanded: expandedFieldID == field.id,
+            isExpanded: Self.isExpanded(field, expandedColumnIndex: expandedColumnIndex),
+            resizedHeight: Self.resizedHeight(of: field, in: $resizedHeights),
             commands: commands,
             isPendingExpression: field.isPendingExpression,
             onSetValue: { editState.setValue($0, at: field.columnIndex) },
             onRemoveField: offersFieldRemoval ? { editState.removeField(at: field.columnIndex) } : nil,
             onToggleExpand: FieldEditorContent.canExpand(kind: kind, state: FieldValueState.resolve(field))
-                ? { expandedFieldID = expandedFieldID == field.id ? nil : field.id }
+                ? {
+                    expandedColumnIndex = Self.isExpanded(field, expandedColumnIndex: expandedColumnIndex)
+                        ? nil
+                        : field.columnIndex
+                }
                 : nil,
             onPopOut: { onPopOut?(field, $0, kind) },
             onTabStopChange: { [tabStops] in tabStops.record($0, for: field.id) },
             focusedField: $focusedField,
             fieldID: field.id
+        )
+    }
+
+    /// Keyed by column, not by field id: ids are reissued on every selection change, so a field
+    /// expanded on one row collapsed the moment the next row was selected.
+    internal static func isExpanded(_ field: FieldEditState, expandedColumnIndex: Int?) -> Bool {
+        field.columnIndex == expandedColumnIndex
+    }
+
+    internal static func resizedHeight(of field: FieldEditState, in heights: Binding<[Int: Double]>) -> Binding<Double?> {
+        let column = field.columnIndex
+        return Binding(
+            get: { heights.wrappedValue[column] },
+            set: { heights.wrappedValue[column] = $0 }
         )
     }
 

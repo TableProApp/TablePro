@@ -10,6 +10,9 @@ import SwiftUI
 internal struct FieldEditorContent: View {
     internal let context: FieldEditorContext
     internal let kind: FieldEditorKind
+    /// The height this field was dragged to, nil until it is. Required so no caller drops it: a
+    /// constant here takes the drag and throws it away on release.
+    internal let resizedHeight: Binding<Double?>
     internal var onSetNull: (() -> Void)?
     internal var onSetDefault: (() -> Void)?
     internal var onPopOut: ((String) -> Void)?
@@ -64,7 +67,7 @@ internal struct FieldEditorContent: View {
     private var editor: some View {
         switch kind {
         case .json:
-            JsonEditorView(context: context, onPopOut: onPopOut, isExpanded: isExpanded)
+            JsonEditorView(context: context, onPopOut: onPopOut, isExpanded: isExpanded, resizedHeight: resizedHeight)
         case .phpSerialized:
             PhpSerializedFieldView(context: context, onPopOut: onPopOut, isExpanded: isExpanded)
         case .binaryValue(let format):
@@ -77,6 +80,7 @@ internal struct FieldEditorContent: View {
                 descriptor: descriptor,
                 onPopOut: onPopOut,
                 isExpanded: isExpanded,
+                resizedHeight: resizedHeight,
                 onTabStopChange: onTabStopChange
             )
         case .blobHex:
@@ -98,7 +102,12 @@ internal struct FieldEditorContent: View {
         case .vector:
             VectorFieldEditorView(context: context, onSetNull: onSetNull, onSetDefault: onSetDefault)
         case .multiLine:
-            MultiLineEditorView(context: context, onPopOut: onPopOut, isExpanded: isExpanded)
+            MultiLineEditorView(
+                context: context,
+                onPopOut: onPopOut,
+                isExpanded: isExpanded,
+                resizedHeight: resizedHeight
+            )
         case .singleLine:
             SingleLineEditorView(context: context)
         }

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 internal enum ResizableFieldMetrics {
     static let jsonHeightRange: ClosedRange<Double> = 80...600
@@ -21,7 +22,24 @@ internal enum ResizableFieldMetrics {
     /// between this and the full-pane takeover it replaces.
     static let expandedHeight: Double = 320
 
+    /// The base is clamped before the drag is added. A field's height is shared by editors with
+    /// different floors (a geometry map and its text pane, or a column whose values switch between
+    /// JSON and text), and an unclamped base below the floor left the handle dead until the drag
+    /// had covered the difference.
     static func resolve(base: Double, delta: Double, range: ClosedRange<Double>) -> Double {
-        min(max(base + delta, range.lowerBound), range.upperBound)
+        clamp(clamp(base, to: range) + delta, to: range)
+    }
+
+    private static func clamp(_ value: Double, to range: ClosedRange<Double>) -> Double {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
+
+    /// A drag sizes its own field only. Writing the per-kind default instead resized every field of
+    /// that kind at once; the default is where a field starts until it is dragged.
+    static func height(resized: Binding<Double?>, starting: Double) -> Binding<Double> {
+        Binding(
+            get: { resized.wrappedValue ?? starting },
+            set: { resized.wrappedValue = $0 }
+        )
     }
 }
