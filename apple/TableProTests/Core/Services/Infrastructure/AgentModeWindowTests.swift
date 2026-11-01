@@ -217,31 +217,40 @@ struct AgentModeWindowTests {
         #expect(harness.detailItem.minimumThickness == UsersRolesLayoutMetrics.tabMinimumWidth)
     }
 
-    // The browse tab stays selected behind the conversation, so Close and Undo must not reach it.
-    @Test("In Agent mode Close names the connection and Undo is the window's, not the hidden tab's")
+    // The browse tab and grid stay behind the conversation, so Close and Undo must not reach them.
+    @Test("In Agent mode Close names the connection and Undo runs the mode's own history")
     func agentModeCloseAndUndoSkipTheHiddenTab() throws {
         let harness = try Harness()
         defer { harness.tearDown() }
         try harness.requireContent()
         let tabManager = try #require(harness.selected.sessionState?.tabManager)
         tabManager.adoptTab(QueryTab(id: UUID(), title: "Users & Roles", query: "", tabType: .usersRoles))
-        let undoManager = try #require(harness.window.undoManager)
-        undoManager.groupsByEvent = false
-        var undone = false
-        undoManager.beginUndoGrouping()
-        undoManager.registerUndo(withTarget: harness.window) { _ in undone = true }
-        undoManager.endUndoGrouping()
+        var undoneBrowse = false
+        var undoneAgent = false
+        Self.register(on: harness.selected.undoManager) { undoneBrowse = true }
 
         #expect(harness.controller.closeCommandTitle == String(localized: "Close Tab"))
-        #expect(!harness.controller.menuValidationContext.canUndo, "Browsing asks the Users & Roles tab")
+        #expect(harness.selected.activeUndoManager === harness.selected.undoManager)
 
         harness.controller.setContentMode(.agent)
         let title = try #require(harness.controller.closeCommandTitle)
         #expect(title != String(localized: "Close Tab"))
+        #expect(harness.selected.activeUndoManager === harness.selected.agentUndoManager)
+        #expect(!harness.controller.menuValidationContext.canUndo, "A hidden browse edit lit Undo")
+
+        Self.register(on: harness.selected.agentUndoManager) { undoneAgent = true }
         #expect(harness.controller.menuValidationContext.canUndo)
-        #expect(harness.controller.undoTitle == undoManager.undoMenuItemTitle)
+        #expect(harness.controller.undoTitle == harness.selected.agentUndoManager.undoMenuItemTitle)
         harness.controller.undo(nil)
-        #expect(undone)
+        #expect(undoneAgent)
+        #expect(!undoneBrowse)
+    }
+
+    private static func register(on manager: UndoManager, _ action: @escaping @MainActor () -> Void) {
+        manager.groupsByEvent = false
+        manager.beginUndoGrouping()
+        manager.registerUndo(withTarget: manager) { _ in action() }
+        manager.endUndoGrouping()
     }
 
     // The strip asks this of a row's connection before offering a command, so it has to read what the window reads.
