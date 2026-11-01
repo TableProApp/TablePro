@@ -65,11 +65,57 @@ internal enum ProtobufWireDecoder {
         return ProtobufFraming(schemaID: schemaID, messageIndexes: indexes)
     }
 
-    // A length-delimited value no schema names, read the way decode() reads one.
-    static func lengthDelimited(_ data: Data, maxValues: Int = .max) -> ProtobufFieldValue {
-        var parser = Parser(budget: maxValues)
-        var window = BinaryValueReader(data)
-        return parser.lengthDelimited(&window, depth: 0)
+    // Spends the caller's budget, so a cell stops inside a large field the schema does not name.
+    static func lengthDelimited(_ window: BinaryValueReader, depth: Int, budget: inout Int) -> ProtobufFieldValue {
+        var parser = Parser(budget: budget)
+        var window = window
+        let value = parser.lengthDelimited(&window, depth: depth)
+        budget = parser.budget
+        return value
+    }
+
+    static func fields(in window: BinaryValueReader, depth: Int, budget: inout Int) throws -> [ProtobufField] {
+        var parser = Parser(budget: budget)
+        var window = window
+        let fields = try parser.fields(&window, depth: depth, group: nil)
+        budget = parser.budget
+        return fields
+    }
+
+    // The bytes between a group's start tag, already read, and its end tag, which the reader is left past.
+    static func groupContents(_ reader: inout BinaryValueReader, number: Int, depth: Int) throws -> BinaryValueReader {
+        let contents = reader
+        var openGroups = [number]
+        while true {
+            let start = reader.offset
+            guard !reader.isAtEnd else { throw reader.error(.unexpectedEnd) }
+            let tag = try reader.readVarint()
+            let fieldNumber = tag >> 3
+            guard tag <= UInt64(UInt32.max), fieldNumber > 0, fieldNumber <= UInt64(maxFieldNumber) else {
+                throw BinaryValueDecodeError(kind: .invalidField, offset: start)
+            }
+            switch tag & 7 {
+            case 0:
+                _ = try reader.readVarint()
+            case 1:
+                try reader.skip(8)
+            case 2:
+                let length = try reader.readVarint()
+                guard length <= UInt64(reader.remaining) else { throw reader.error(.unexpectedEnd) }
+                try reader.skip(Int(length))
+            case 3:
+                guard depth + openGroups.count < maxDepth else { throw BinaryValueDecodeError(kind: .nestingTooDeep, offset: start) }
+                openGroups.append(Int(fieldNumber))
+            case 4:
+                guard openGroups.last == Int(fieldNumber) else { throw BinaryValueDecodeError(kind: .unmatchedGroupEnd, offset: start) }
+                openGroups.removeLast()
+                if openGroups.isEmpty { return try contents.window(start - contents.offset) }
+            case 5:
+                try reader.skip(4)
+            default:
+                throw BinaryValueDecodeError(kind: .invalidField, offset: start)
+            }
+        }
     }
 
     static func zigzag(_ value: UInt64) -> Int64 {

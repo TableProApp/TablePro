@@ -94,6 +94,20 @@ final class RowDisplayCache {
         storage[id] = Entry(box: existing.box, cost: 0)
     }
 
+    // For a display format change: every other column's text is still right.
+    func clearValues(forDataIndexes dataIndexes: Set<Int>) {
+        guard !dataIndexes.isEmpty else { return }
+        highlights.removeAll(keepingCapacity: true)
+        storage = storage.mapValues { entry in
+            for index in dataIndexes where index < entry.box.values.count {
+                entry.box.values[index] = nil
+            }
+            let cost = Self.rowCost(entry.box.values)
+            totalCost += cost - entry.cost
+            return Entry(box: entry.box, cost: cost)
+        }
+    }
+
     private func evictIfNeeded() {
         while storage.count > countLimit || totalCost > costLimit {
             guard insertionHead < insertionOrder.count else { break }

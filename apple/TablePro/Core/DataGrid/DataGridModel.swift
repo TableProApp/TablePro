@@ -57,16 +57,23 @@ final class DataGridModel: ObservableObject {
     private(set) weak var mountedView: (any DataGridMountedView)?
     private var orderRevision = 0
 
+    private let schemaRegistry: SchemaRegistryCache
+    private var schemaObservers: Set<AnyCancellable> = []
+    private var staleSchemaColumns: Set<Int> = []
+
     init(
         store: any DataGridStateStore = InMemoryDataGridStateStore(),
         configuration: DataGridConfiguration = DataGridConfiguration(),
         themeScope: ThemeScope = .live,
-        selectionSummary: SelectionSummaryState? = nil
+        selectionSummary: SelectionSummaryState? = nil,
+        schemaRegistry: SchemaRegistryCache = .shared
     ) {
         self.store = store
         self.configuration = configuration
         self.themeScope = themeScope
         self.selectionSummary = selectionSummary
+        self.schemaRegistry = schemaRegistry
+        observeSchemas()
     }
 
     // MARK: - Rows
@@ -101,6 +108,7 @@ final class DataGridModel: ObservableObject {
         displayRevision &+= 1
         mountedView?.apply(.reload)
         refreshFind()
+        prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
     }
 
     func apply(_ delta: Delta) {
@@ -123,7 +131,20 @@ final class DataGridModel: ObservableObject {
             displayRevision &+= 1
             mountedView?.apply(change)
             refreshFind()
+            if case .rowsInserted(let inserted) = delta {
+                prefetchSchemas(in: current, storageRows: inserted, retryingFailures: false)
+            } else if delta == .columnsReplaced {
+                prefetchSchemas(in: current, storageRows: nil, retryingFailures: false)
+            }
             return
+        }
+        switch delta {
+        case .cellChanged(let row, _):
+            prefetchSchemas(in: current, storageRows: IndexSet(integer: row), retryingFailures: false)
+        case .cellsChanged(let positions):
+            prefetchSchemas(in: current, storageRows: IndexSet(positions.map(\.row)), retryingFailures: false)
+        default:
+            break
         }
         let change = DataGridChange.from(delta, order: order, rows: current, columns: columns)
         guard !change.isNone else { return }
@@ -271,14 +292,80 @@ final class DataGridModel: ObservableObject {
         }
         store.displayFormats = formats
         redrawFormatted([column], in: current)
+        prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
     }
 
-    // A Schema Registry column shows stored bytes until its schemas arrive. The format is unchanged, so a value
-    // filter picked from those bytes follows the decoded text the way a format change carries it.
-    func schemaRegistryDidLoad(connectionID: UUID) {
-        let current = rows
-        let changed = columns.columns.filter { displayFormat(for: $0) == .schemaRegistry(connectionID: connectionID) }
+    private func redrawFormatted(_ changed: [DataGridColumn], in current: TableRows) {
+        display.cache.clearValues(forDataIndexes: Set(changed.map(\.dataIndex)))
+        if changed.contains(where: { store.valueFilter.filter(forColumn: $0.dataIndex) != nil }) {
+            order = resolveOrder(in: current)
+            restoreSelection(in: current)
+            displayRevision &+= 1
+            mountedView?.apply(.reload)
+        } else {
+            let positions = IndexSet(changed.compactMap { columns.displayPosition(of: $0.id) })
+            if !positions.isEmpty {
+                mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: positions))
+            }
+        }
+        refreshFind()
+    }
+
+    // MARK: - Schemas
+
+    private func observeSchemas() {
+        let center = NotificationCenter.default
+        center.publisher(for: SchemaRegistryCache.didChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let connectionID = notification.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID else { return }
+                MainActor.assumeIsolated {
+                    self?.schemasDidChange { $0 == .schemaRegistry(connectionID: connectionID) }
+                }
+            }
+            .store(in: &schemaObservers)
+        center.publisher(for: AvroSchemaStore.didRestoreSchema)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let schemaID = notification.userInfo?[AvroSchemaStore.schemaIDKey] as? String else { return }
+                MainActor.assumeIsolated {
+                    self?.schemasDidChange { $0 == .avro(schemaID: schemaID) }
+                }
+            }
+            .store(in: &schemaObservers)
+        center.publisher(for: ProtobufSchemaStore.didRestoreSchema)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let schemaID = notification.userInfo?[ProtobufSchemaStore.schemaIDKey] as? String else { return }
+                MainActor.assumeIsolated {
+                    self?.schemasDidChange {
+                        if case .protobufSchema(schemaID, _) = $0 { return true }
+                        return false
+                    }
+                }
+            }
+            .store(in: &schemaObservers)
+    }
+
+    // Coalesced to one redraw per run loop turn, since a page of values can name many schemas.
+    func schemasDidChange(matching matches: (ValueDisplayFormat) -> Bool) {
+        let wasEmpty = staleSchemaColumns.isEmpty
+        for (dataIndex, format) in store.displayFormats.enumerated() {
+            if let format, matches(format) { staleSchemaColumns.insert(dataIndex) }
+        }
+        guard wasEmpty, !staleSchemaColumns.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.redrawStaleSchemaColumns() }
+        }
+    }
+
+    private func redrawStaleSchemaColumns() {
+        let stale = staleSchemaColumns
+        staleSchemaColumns = []
+        let changed = columns.columns.filter { stale.contains($0.dataIndex) }
         guard !changed.isEmpty else { return }
+        let current = rows
+        // The format is the same, but the values move from the stored bytes to decoded text, and a filter has to follow.
         for column in changed {
             if let remapped = remappedValueFilter(column: column, from: nil, to: displayFormat(for: column), in: current) {
                 store.valueFilter = remapped
@@ -287,18 +374,42 @@ final class DataGridModel: ObservableObject {
         redrawFormatted(changed, in: current)
     }
 
-    private func redrawFormatted(_ changed: [DataGridColumn], in current: TableRows) {
-        display.cache.removeAll()
-        if store.valueFilter.isActive {
-            order = resolveOrder(in: current)
-            restoreSelection(in: current)
-            displayRevision &+= 1
-            mountedView?.apply(.reload)
-        } else {
-            let positions = IndexSet(changed.compactMap { columns.displayPosition(of: $0.id) })
-            mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: positions.isEmpty ? nil : positions))
+    private func prefetchSchemas(in current: TableRows, storageRows: IndexSet?, retryingFailures: Bool) {
+        let databaseType = configuration.traits.databaseType
+        var wanted: [UUID: Set<UInt32>] = [:]
+        for (dataIndex, format) in store.displayFormats.enumerated() {
+            guard case .schemaRegistry(let connectionID)? = format else { continue }
+            let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
+            guard format?.isApplicable(to: type, databaseType: databaseType) == true else { continue }
+            let holdsBytes = BinaryValueBytes.holdsBytes(columnType: type)
+            var ids = wanted[connectionID, default: []]
+            func collect(_ row: Row) {
+                guard dataIndex < row.values.count,
+                      let id = Self.schemaID(of: row.values[dataIndex], holdsBytes: holdsBytes) else { return }
+                ids.insert(id)
+            }
+            if let storageRows {
+                for index in storageRows where index < current.rows.count { collect(current.rows[index]) }
+            } else {
+                for row in current.rows { collect(row) }
+            }
+            wanted[connectionID] = ids
         }
-        refreshFind()
+        for (connectionID, ids) in wanted {
+            schemaRegistry.prefetch(connectionID: connectionID, schemaIDs: ids, retryingFailures: retryingFailures)
+        }
+    }
+
+    private static func schemaID(of value: PluginCellValue, holdsBytes: Bool) -> UInt32? {
+        switch value {
+        case .null:
+            return nil
+        case .bytes(let data):
+            return SchemaRegistryFrame.schemaID(prefix: data)
+        case .text(let text):
+            let head = String(String.UnicodeScalarView(text.unicodeScalars.prefix(SchemaRegistryFrame.headerLength)))
+            return BinaryValueBytes.data(of: head, holdsBytes: holdsBytes).flatMap { SchemaRegistryFrame.schemaID(prefix: $0) }
+        }
     }
 
     private func remappedValueFilter(

@@ -17,14 +17,11 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
     case messagePack
     case protobuf
     case igbinary
-    // The schema is kept by AvroSchemaStore under this ID, so every per-column path can decode with it.
     case avro(schemaID: String)
-    // Kept by ProtobufSchemaStore, with the message type the values are read as.
     case protobufSchema(schemaID: String, message: String)
-    // Each value names its schema by ID; the connection says which Schema Registry to fetch it from.
     case schemaRegistry(connectionID: UUID)
 
-    // Every format but Avro, which needs a schema chosen first.
+    // The schema formats are left out: each needs a file or a registry chosen first.
     static let presetFormats: [ValueDisplayFormat] = [
         .raw, .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized,
         .messagePack, .protobuf, .igbinary,
@@ -140,7 +137,7 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
             return []
         case .text, .uuidSwappedTime, .messagePack, .protobuf, .igbinary, .avro, .protobufSchema:
             return ["blob"]
-        // A framed value whose payload happens to be UTF-8 lands in a text column.
+        // An older Kafka plugin puts a framed value whose bytes are valid UTF-8 in a text column.
         case .schemaRegistry:
             return ["blob", "text"]
         case .uuid:

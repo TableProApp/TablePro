@@ -179,7 +179,8 @@ internal struct InspectorFieldListView: View {
                 ? { editState.setFieldToBytes(at: field.columnIndex, data: $0) }
                 : nil,
             editor: kind,
-            allowsNullAndDefault: offersDatabaseValues
+            allowsNullAndDefault: offersDatabaseValues,
+            isBinaryValue: field.isBinaryValue
         )
     }
 

@@ -5,8 +5,7 @@
 
 import Foundation
 
-// https://protobuf.dev/reference/protobuf/proto3-spec/ and the proto2 and editions grammars: what a value needs is
-// read, and options, services, extensions and reserved ranges are skipped.
+// https://protobuf.dev/reference/protobuf/proto3-spec/; only options that change how a value reads are kept.
 internal enum ProtoFileParser {
     static let maxTokens = 2_000_000
     static let maxDepth = 100
@@ -96,32 +95,38 @@ internal enum ProtoFileParser {
         let tokens: [Token]
         var position = 0
         var messages: [ProtobufMessageDefinition] = []
-        var enums: [ProtobufEnumDescriptor] = []
+        var enums: [ProtobufEnumDefinition] = []
 
         init(tokens: [Token]) {
             self.tokens = tokens
         }
 
         mutating func file() throws -> ProtobufFileDefinition {
+            var file = ProtobufFileDefinition()
             var package = ""
-            var topMessages: [ProtobufMessageDefinition] = []
-            var topEnums: [ProtobufEnumDescriptor] = []
             while let token = peek() {
                 switch token {
-                case .identifier("syntax"), .identifier("edition"):
+                case .identifier("syntax"):
+                    if peek(1) == .symbol("="), peek(2) == .string("proto3") { file.syntax = .proto3 }
+                    try skipStatement()
+                case .identifier("edition"):
+                    file.syntax = .editions
                     try skipStatement()
                 case .identifier("package"):
                     advance()
                     package = try identifier()
                     try expect(";")
-                case .identifier("import"), .identifier("option"):
+                case .identifier("import"):
+                    try skipStatement()
+                case .identifier("option"):
+                    feature(at: position + 1, into: &file.features)
                     try skipStatement()
                 case .identifier("message"):
                     advance()
-                    topMessages.append(try message(scope: package, depth: 0))
+                    file.messages.append(try message(scope: package, depth: 0))
                 case .identifier("enum"):
                     advance()
-                    topEnums.append(try enumeration(scope: package))
+                    file.enums.append(try enumeration(scope: package))
                 case .identifier("service"), .identifier("extend"):
                     try skipStatement()
                 case .symbol(";"):
@@ -130,22 +135,28 @@ internal enum ProtoFileParser {
                     throw unexpected()
                 }
             }
-            return ProtobufFileDefinition(messages: topMessages, enums: topEnums, allMessages: messages, allEnums: enums)
+            file.allMessages = messages
+            file.allEnums = enums
+            return file
         }
 
-        private mutating func message(scope: String, depth: Int) throws -> ProtobufMessageDefinition {
+        private mutating func message(scope: String, depth: Int) throws -> String {
             let name = try identifier()
             let fullName = scope.isEmpty ? name : "\(scope).\(name)"
             try expect("{")
-            let slot = messages.count
-            messages.append(ProtobufMessageDefinition(fullName: fullName, fields: [], nestedMessages: [], isMapEntry: false))
-            var definition = messages[slot]
-            try body(of: &definition, depth: depth)
-            messages[slot] = definition
-            return definition
+            try messageBody(fullName: fullName, depth: depth)
+            return fullName
         }
 
-        private mutating func body(of definition: inout ProtobufMessageDefinition, depth: Int) throws {
+        private mutating func messageBody(fullName: String, depth: Int) throws {
+            let slot = messages.count
+            messages.append(ProtobufMessageDefinition(fullName: fullName))
+            var definition = messages[slot]
+            try body(of: &definition, depth: depth, oneof: nil)
+            messages[slot] = definition
+        }
+
+        private mutating func body(of definition: inout ProtobufMessageDefinition, depth: Int, oneof: Int?) throws {
             guard depth < ProtoFileParser.maxDepth else { throw ProtoFileParser.error(String(localized: "Messages are nested too deeply.")) }
             while true {
                 guard let token = peek() else { throw ProtoFileParser.error(String(localized: "A message is never closed.")) }
@@ -157,64 +168,68 @@ internal enum ProtoFileParser {
                     advance()
                 case .identifier("message"):
                     advance()
-                    definition.nestedMessages.append(try message(scope: definition.fullName, depth: depth + 1).fullName)
+                    definition.nestedMessages.append(try message(scope: definition.fullName, depth: depth + 1))
                 case .identifier("enum"):
                     advance()
-                    _ = try enumeration(scope: definition.fullName)
+                    definition.nestedEnums.append(try enumeration(scope: definition.fullName))
                 case .identifier("oneof"):
                     advance()
                     _ = try identifier()
                     try expect("{")
-                    try body(of: &definition, depth: depth + 1)
+                    let index = (definition.fields.compactMap(\.oneofIndex).max() ?? -1) + 1
+                    try body(of: &definition, depth: depth + 1, oneof: index)
                 // A Schema Registry stores a map field as the entry message protoc synthesizes for it.
                 case .identifier("option") where peek(1) == .identifier("map_entry") && peek(3) == .identifier("true"):
                     definition.isMapEntry = true
                     try skipStatement()
-                case .identifier("option"), .identifier("reserved"), .identifier("extensions"), .identifier("extend"):
+                case .identifier("option"):
+                    if oneof == nil { feature(at: position + 1, into: &definition.features) }
+                    try skipStatement()
+                case .identifier("reserved"), .identifier("extensions"), .identifier("extend"):
                     try skipStatement()
                 case .identifier("map") where peek(1) == .symbol("<"):
                     advance()
                     try mapField(into: &definition)
                 default:
-                    try field(into: &definition, depth: depth)
+                    try field(into: &definition, depth: depth, oneof: oneof)
                 }
             }
         }
 
-        private mutating func field(into definition: inout ProtobufMessageDefinition, depth: Int) throws {
-            var isRepeated = false
-            if case .identifier(let label)? = peek(), ["optional", "required", "repeated"].contains(label),
-               peek(1).map(Self.isTypeToken) == true, peek(2).map(Self.isTypeToken) == true || peek(2) == .symbol("=") {
-                isRepeated = label == "repeated"
+        private mutating func field(into definition: inout ProtobufMessageDefinition, depth: Int, oneof: Int?) throws {
+            var label: String?
+            // `optional foo = 1;` is a field of a message named `optional`: a label needs a type and a name after it.
+            if case .identifier(let word)? = peek(), ["optional", "required", "repeated"].contains(word),
+               peek(1).map(Self.isIdentifier) == true, peek(2).map(Self.isIdentifier) == true, peek(3) == .symbol("=") {
+                label = word
                 advance()
             }
             let typeName = try identifier()
-            if typeName == "group" {
-                let groupName = try identifier()
-                try expect("=")
-                let number = try fieldNumber()
-                try skipOptions()
-                try expect("{")
-                let fullName = "\(definition.fullName).\(groupName)"
-                let slot = messages.count
-                messages.append(ProtobufMessageDefinition(fullName: fullName, fields: [], nestedMessages: [], isMapEntry: false))
-                var group = messages[slot]
-                try body(of: &group, depth: depth + 1)
-                messages[slot] = group
-                definition.nestedMessages.append(fullName)
-                definition.fields.append(ProtobufFieldDefinition(
-                    name: groupName.lowercased(), number: number, type: .group(fullName), isRepeated: isRepeated
-                ))
-                return
-            }
             let name = try identifier()
             try expect("=")
             let number = try fieldNumber()
-            try skipOptions()
-            try expect(";")
-            let type: ProtobufFieldDefinition.TypeReference = ProtobufScalarType(rawValue: typeName).map { .scalar($0) }
-                ?? .named(typeName)
-            definition.fields.append(ProtobufFieldDefinition(name: name, number: number, type: type, isRepeated: isRepeated))
+            let features = try fieldOptions()
+            let type: ProtobufFieldDefinition.TypeReference
+            if typeName == "group" {
+                try expect("{")
+                let fullName = "\(definition.fullName).\(name)"
+                try messageBody(fullName: fullName, depth: depth + 1)
+                definition.nestedMessages.append(fullName)
+                type = .group(fullName)
+            } else {
+                try expect(";")
+                type = ProtobufScalarType(rawValue: typeName).map { .scalar($0) } ?? .named(typeName)
+            }
+            var field = ProtobufFieldDefinition(
+                name: typeName == "group" ? name.lowercased() : name,
+                number: number,
+                type: type,
+                isRepeated: label == "repeated"
+            )
+            field.isOptional = label == "optional"
+            field.oneofIndex = oneof
+            field.features = features
+            definition.fields.append(field)
         }
 
         // protoc's synthesized entry: `<Field>Entry { key = 1; value = 2; }`, nested where the field is declared.
@@ -227,41 +242,42 @@ internal enum ProtoFileParser {
             let name = try identifier()
             try expect("=")
             let number = try fieldNumber()
-            try skipOptions()
+            _ = try fieldOptions()
             try expect(";")
             let entryName = "\(definition.fullName).\(Self.camelCased(name))Entry"
             func reference(_ type: String) -> ProtobufFieldDefinition.TypeReference {
                 ProtobufScalarType(rawValue: type).map { .scalar($0) } ?? .named(type)
             }
-            messages.append(ProtobufMessageDefinition(
-                fullName: entryName,
-                fields: [
-                    ProtobufFieldDefinition(name: "key", number: 1, type: reference(keyType), isRepeated: false),
-                    ProtobufFieldDefinition(name: "value", number: 2, type: reference(valueType), isRepeated: false),
-                ],
-                nestedMessages: [],
-                isMapEntry: true
-            ))
+            var entry = ProtobufMessageDefinition(fullName: entryName)
+            entry.fields = [
+                ProtobufFieldDefinition(name: "key", number: 1, type: reference(keyType), isRepeated: false),
+                ProtobufFieldDefinition(name: "value", number: 2, type: reference(valueType), isRepeated: false),
+            ]
+            entry.isMapEntry = true
+            messages.append(entry)
             definition.nestedMessages.append(entryName)
             // The entry sits in the message's scope, so its value type resolves from there.
             definition.fields.append(ProtobufFieldDefinition(name: name, number: number, type: .named(".\(entryName)"), isRepeated: true))
         }
 
-        private mutating func enumeration(scope: String) throws -> ProtobufEnumDescriptor {
+        private mutating func enumeration(scope: String) throws -> String {
             let name = try identifier()
+            let fullName = scope.isEmpty ? name : "\(scope).\(name)"
             try expect("{")
-            var values: [Int32: String] = [:]
+            var enumeration = ProtobufEnumDefinition(fullName: fullName)
             while true {
                 guard let token = peek() else { throw ProtoFileParser.error(String(localized: "An enum is never closed.")) }
                 switch token {
                 case .symbol("}"):
                     advance()
-                    let enumeration = ProtobufEnumDescriptor(fullName: scope.isEmpty ? name : "\(scope).\(name)", values: values)
                     enums.append(enumeration)
-                    return enumeration
+                    return fullName
                 case .symbol(";"):
                     advance()
-                case .identifier("option"), .identifier("reserved"):
+                case .identifier("option"):
+                    feature(at: position + 1, into: &enumeration.features)
+                    try skipStatement()
+                case .identifier("reserved"):
                     try skipStatement()
                 default:
                     let valueName = try identifier()
@@ -276,14 +292,45 @@ internal enum ProtoFileParser {
                     advance()
                     try skipOptions()
                     try expect(";")
-                    if values[number] == nil { values[number] = valueName }
+                    if enumeration.values[number] == nil { enumeration.values[number] = valueName }
                 }
             }
         }
 
-        private static func isTypeToken(_ token: Token) -> Bool {
+        private static func isIdentifier(_ token: Token) -> Bool {
             if case .identifier = token { return true }
             return false
+        }
+
+        // `features.field_presence = IMPLICIT` and `features.enum_type = CLOSED`, as a statement or a field option.
+        private func feature(at index: Int, into overrides: inout ProtobufFeatureOverrides) {
+            guard index + 2 < tokens.count, case .identifier(let name) = tokens[index], tokens[index + 1] == .symbol("="),
+                  case .identifier(let value) = tokens[index + 2] else { return }
+            switch (name, value) {
+            case ("features.field_presence", "IMPLICIT"): overrides.implicitPresence = true
+            case ("features.field_presence", "EXPLICIT"), ("features.field_presence", "LEGACY_REQUIRED"):
+                overrides.implicitPresence = false
+            case ("features.enum_type", "CLOSED"): overrides.closedEnum = true
+            case ("features.enum_type", "OPEN"): overrides.closedEnum = false
+            default: break
+            }
+        }
+
+        private mutating func fieldOptions() throws -> ProtobufFeatureOverrides {
+            var overrides = ProtobufFeatureOverrides()
+            let start = position
+            try skipOptions()
+            var nesting = 0
+            for index in start..<position {
+                switch tokens[index] {
+                case .symbol("{"): nesting += 1
+                case .symbol("}"): nesting -= 1
+                case .symbol("["), .symbol(","):
+                    if nesting == 0 { feature(at: index + 1, into: &overrides) }
+                default: break
+                }
+            }
+            return overrides
         }
 
         private static func camelCased(_ name: String) -> String {
@@ -314,13 +361,11 @@ internal enum ProtoFileParser {
             return Int(value)
         }
 
-        // `[packed = true, (custom).option = { ... }]`
         private mutating func skipOptions() throws {
             guard peek() == .symbol("[") else { return }
             try skipBalanced(open: "[", close: "]")
         }
 
-        // To the `;` that ends it, or past the `{ ... }` block that does.
         private mutating func skipStatement() throws {
             while let token = peek() {
                 switch token {

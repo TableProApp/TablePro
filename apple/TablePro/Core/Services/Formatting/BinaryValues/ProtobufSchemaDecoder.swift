@@ -29,8 +29,7 @@ internal struct ProtobufTypedMessage: Equatable, Sendable {
     let framing: ProtobufFraming?
 }
 
-// Reads a value as `protoc --decode=<message>` does: known fields in number order, then the ones the schema does not
-// name, by number, as `--decode_raw` shows them. A field whose wire type does not match its declaration is one of those.
+// Matches `protoc --decode=<message>`: known fields by number, then the rest in wire order as `--decode_raw` prints them.
 internal enum ProtobufSchemaDecoder {
     // A nil message takes the one a Schema Registry frame's message indexes name.
     static func decode(
@@ -57,129 +56,392 @@ internal enum ProtobufSchemaDecoder {
         }
         guard let message else { throw BinaryValueDecodeError(kind: .invalidField, offset: 0) }
         var walker = Walker(schema: schema, budget: maxValues)
-        let fields = try walker.fields(&reader, message: message, depth: 0, group: nil)
+        let payload = try reader.window(reader.remaining)
+        let fields = try walker.members(of: [payload], message: message, depth: 0, asMapEntry: false)
         return ProtobufTypedMessage(typeName: message.fullName, fields: fields, framing: framing)
     }
 
+    private struct Occurrence {
+        enum Payload {
+            case varint(UInt64)
+            case fixed64(UInt64)
+            case fixed32(UInt32)
+            case lengthDelimited(BinaryValueReader)
+            case group(BinaryValueReader)
+        }
+
+        let number: Int
+        let payload: Payload
+        let position: Int
+    }
+
+    private enum Match {
+        case accepted
+        case mismatched
+        case undeclaredEnumValue
+    }
+
+    // protoc moves a map entry whose closed enum value is undeclared to the unknown fields whole.
+    private struct MapEntryRejected: Error {}
+
+    private struct Level {
+        var fields: [ProtobufTypedField] = []
+        var unknown: [Occurrence] = []
+        var isCut = false
+    }
+
+    private enum MapKey: Comparable {
+        case signed(Int64)
+        case unsigned(UInt64)
+        case bytes([UInt8])
+
+        static func < (lhs: MapKey, rhs: MapKey) -> Bool {
+            switch (lhs, rhs) {
+            case (.signed(let left), .signed(let right)): return left < right
+            case (.unsigned(let left), .unsigned(let right)): return left < right
+            case (.bytes(let left), .bytes(let right)): return left.lexicographicallyPrecedes(right)
+            default: return false
+            }
+        }
+    }
+
+    // An occurrence and each packed value cost one, so a cell reads no more of a large value than it can show.
     private struct Walker {
         let schema: ProtobufSchema
         var budget: Int
-        var isTruncated = false
 
-        mutating func fields(
-            _ reader: inout BinaryValueReader,
-            message: ProtobufMessageDescriptor?,
+        mutating func members(
+            of windows: [BinaryValueReader],
+            message: ProtobufMessageDescriptor,
             depth: Int,
-            group: Int?
+            asMapEntry: Bool
         ) throws -> [ProtobufTypedField] {
-            guard depth < ProtobufWireDecoder.maxDepth else { throw reader.error(.nestingTooDeep) }
-            var known: [Int: [ProtobufTypedField]] = [:]
-            var unknown: [ProtobufTypedField] = []
-            // A singular message seen twice is merged, which is what parsing its occurrences' bytes back to back does.
-            var singularMessages: [Int: Data] = [:]
-            func add(_ field: ProtobufTypedField, descriptor: ProtobufFieldDescriptor?) {
-                guard let descriptor else {
-                    unknown.append(field)
+            guard depth < ProtobufWireDecoder.maxDepth else {
+                throw BinaryValueDecodeError(kind: .nestingTooDeep, offset: windows.first?.offset ?? 0)
+            }
+            var level = Level()
+            var occurrences: [Occurrence] = []
+            scan: for window in windows {
+                var reader = window
+                while !reader.isAtEnd {
+                    guard budget > 0 else {
+                        level.isCut = true
+                        break scan
+                    }
+                    occurrences.append(try Self.occurrence(&reader, depth: depth))
+                    budget -= 1
+                }
+            }
+            var accepted: [Int: [Occurrence]] = [:]
+            for occurrence in occurrences {
+                let field = message.field(number: occurrence.number)
+                switch field.map({ match(occurrence.payload, field: $0) }) ?? .mismatched {
+                case .accepted:
+                    accepted[occurrence.number, default: []].append(occurrence)
+                case .undeclaredEnumValue where asMapEntry:
+                    throw MapEntryRejected()
+                case .mismatched, .undeclaredEnumValue:
+                    // A map entry drops what it does not declare.
+                    if !asMapEntry { level.unknown.append(occurrence) }
+                }
+            }
+            keepLastOneofMember(&accepted, message: message)
+            var numbers = Set(accepted.keys)
+            // protoc prints an entry's key and value even when the bytes leave them out.
+            if asMapEntry, !level.isCut { numbers.formUnion(message.fields.map(\.number)) }
+            for number in numbers.sorted() {
+                guard let field = message.field(number: number) else { continue }
+                if let found = accepted[number] {
+                    try append(field, found, to: &level, depth: depth, asMapEntry: asMapEntry)
+                } else if let value = defaultValue(field.type) {
+                    level.fields.append(typed(field, value))
+                }
+            }
+            // An entry that cannot hold a value goes to the unknown fields whole, as protoc's parse would fail.
+            if asMapEntry, !level.unknown.isEmpty { throw MapEntryRejected() }
+            var fields = level.fields
+            let unknown = level.unknown.enumerated().sorted {
+                ($0.element.position, $0.offset) < ($1.element.position, $1.offset)
+            }
+            for (_, occurrence) in unknown {
+                fields.append(try raw(occurrence, depth: depth))
+            }
+            if level.isCut { fields.append(ProtobufTypedField(name: "", typeName: nil, value: .truncated)) }
+            return fields
+        }
+
+        private static func occurrence(_ reader: inout BinaryValueReader, depth: Int) throws -> Occurrence {
+            let start = reader.offset
+            let tag = try reader.readVarint()
+            let number = tag >> 3
+            guard tag <= UInt64(UInt32.max), number > 0, number <= UInt64(ProtobufWireDecoder.maxFieldNumber) else {
+                throw BinaryValueDecodeError(kind: .invalidField, offset: start)
+            }
+            let payload: Occurrence.Payload
+            switch tag & 7 {
+            case 0:
+                payload = .varint(try reader.readVarint())
+            case 1:
+                payload = .fixed64(try reader.readUInt64LittleEndian())
+            case 2:
+                let length = try reader.readVarint()
+                guard length <= UInt64(reader.remaining) else { throw reader.error(.unexpectedEnd) }
+                payload = .lengthDelimited(try reader.window(Int(length)))
+                try reader.skip(Int(length))
+            case 3:
+                payload = .group(try ProtobufWireDecoder.groupContents(&reader, number: Int(number), depth: depth))
+            case 4:
+                throw BinaryValueDecodeError(kind: .unmatchedGroupEnd, offset: start)
+            case 5:
+                payload = .fixed32(try reader.readUInt32LittleEndian())
+            default:
+                throw BinaryValueDecodeError(kind: .invalidField, offset: start)
+            }
+            return Occurrence(number: Int(number), payload: payload, position: start)
+        }
+
+        private func match(_ payload: Occurrence.Payload, field: ProtobufFieldDescriptor) -> Match {
+            switch (field.type, payload) {
+            case (.scalar(.string), .lengthDelimited), (.scalar(.bytes), .lengthDelimited),
+                 (.message, .lengthDelimited), (.group, .group):
+                return .accepted
+            case (.scalar(.string), _), (.scalar(.bytes), _):
+                return .mismatched
+            case (.scalar, .lengthDelimited), (.enumeration, .lengthDelimited):
+                return field.isRepeated ? .accepted : .mismatched
+            case (.scalar(let scalar), .varint):
+                return scalar.wireType == 0 ? .accepted : .mismatched
+            case (.scalar(let scalar), .fixed64):
+                return scalar.wireType == 1 ? .accepted : .mismatched
+            case (.scalar(let scalar), .fixed32):
+                return scalar.wireType == 5 ? .accepted : .mismatched
+            case (.enumeration(let name), .varint(let raw)):
+                return isDeclared(raw, enumeration: name) ? .accepted : .undeclaredEnumValue
+            default:
+                return .mismatched
+            }
+        }
+
+        private func isDeclared(_ raw: UInt64, enumeration name: String) -> Bool {
+            guard let enumeration = schema.enums[name], enumeration.isClosed else { return true }
+            return enumeration.values[Int32(truncatingIfNeeded: raw)] != nil
+        }
+
+        // The member set last wins, and only what follows the last switch to it counts.
+        private func keepLastOneofMember(_ accepted: inout [Int: [Occurrence]], message: ProtobufMessageDescriptor) {
+            var oneofs: [Int: [Int]] = [:]
+            for field in message.fields where accepted[field.number] != nil {
+                if let index = field.oneofIndex { oneofs[index, default: []].append(field.number) }
+            }
+            for members in oneofs.values where members.count > 1 {
+                let lastPositions = members.map { (number: $0, position: accepted[$0]?.last?.position ?? -1) }
+                guard let winner = lastPositions.max(by: { $0.position < $1.position })?.number else { continue }
+                let cutoff = lastPositions.filter { $0.number != winner }.map { $0.position }.max() ?? -1
+                for number in members where number != winner { accepted[number] = nil }
+                accepted[winner] = accepted[winner]?.filter { $0.position > cutoff }
+            }
+        }
+
+        private mutating func append(
+            _ field: ProtobufFieldDescriptor,
+            _ found: [Occurrence],
+            to level: inout Level,
+            depth: Int,
+            asMapEntry: Bool
+        ) throws {
+            switch field.type {
+            case .message(let name), .group(let name):
+                guard let nested = schema.messages[name] else {
+                    level.unknown += found
                     return
                 }
-                // A repeated field keeps every value; any other keeps the last, as a parser does.
-                if descriptor.isRepeated {
-                    known[descriptor.number, default: []].append(field)
+                if !field.isRepeated {
+                    appendMessage(field, nested, found, to: &level, depth: depth)
+                } else if nested.isMapEntry {
+                    appendMapEntries(field, nested, found, to: &level, depth: depth)
                 } else {
-                    known[descriptor.number] = [field]
+                    for occurrence in found { appendMessage(field, nested, [occurrence], to: &level, depth: depth) }
+                }
+            case .scalar, .enumeration:
+                if field.isRepeated {
+                    for occurrence in found { appendRepeated(field, occurrence, to: &level) }
+                } else if let last = found.last {
+                    // Last wins first: `count: 5` then `count: 0` leaves an implicit field at its default.
+                    if !asMapEntry, !field.hasPresence, holdsDefault(last.payload, type: field.type) { return }
+                    level.fields.append(typed(field, value(last.payload, type: field.type)))
+                }
+            case .unresolved:
+                level.unknown += found
+            }
+        }
+
+        // A singular message seen again merges, which reads the same as its occurrences back to back.
+        private mutating func appendMessage(
+            _ field: ProtobufFieldDescriptor,
+            _ nested: ProtobufMessageDescriptor,
+            _ found: [Occurrence],
+            to level: inout Level,
+            depth: Int
+        ) {
+            let windows = found.compactMap { occurrence -> BinaryValueReader? in
+                switch occurrence.payload {
+                case .lengthDelimited(let window), .group(let window): return window
+                case .varint, .fixed64, .fixed32: return nil
                 }
             }
-            var ended = group == nil
+            let start = budget
+            do {
+                let members = try self.members(of: windows, message: nested, depth: depth + 1, asMapEntry: false)
+                if case .group = field.type {
+                    level.fields.append(ProtobufTypedField(name: nested.shortName, typeName: "group", value: .message(members)))
+                } else {
+                    level.fields.append(typed(field, .message(members)))
+                }
+            } catch {
+                budget = start
+                level.unknown += found
+            }
+        }
+
+        // protoc sorts a map by key and keeps every entry, a repeated key included.
+        private mutating func appendMapEntries(
+            _ field: ProtobufFieldDescriptor,
+            _ entry: ProtobufMessageDescriptor,
+            _ found: [Occurrence],
+            to level: inout Level,
+            depth: Int
+        ) {
+            var entries: [(key: MapKey, field: ProtobufTypedField)] = []
+            for occurrence in found {
+                guard case .lengthDelimited(let window) = occurrence.payload else { continue }
+                let start = budget
+                do {
+                    let members = try self.members(of: [window], message: entry, depth: depth + 1, asMapEntry: true)
+                    entries.append((mapKey(members, entry: entry), typed(field, .message(members))))
+                } catch {
+                    budget = start
+                    level.unknown.append(occurrence)
+                }
+            }
+            let sorted = entries.enumerated().sorted { lhs, rhs in
+                lhs.element.key == rhs.element.key ? lhs.offset < rhs.offset : lhs.element.key < rhs.element.key
+            }
+            level.fields += sorted.map { $0.element.field }
+        }
+
+        private mutating func appendRepeated(_ field: ProtobufFieldDescriptor, _ occurrence: Occurrence, to level: inout Level) {
+            guard case .lengthDelimited(let window) = occurrence.payload,
+                  field.type != .scalar(.string), field.type != .scalar(.bytes) else {
+                level.fields.append(typed(field, value(occurrence.payload, type: field.type)))
+                return
+            }
+            var reader = window
+            var values: [ProtobufTypedField] = []
+            var undeclared: [Occurrence] = []
+            var remaining = budget
+            var isCut = false
             while !reader.isAtEnd {
-                guard budget > 0 else {
-                    isTruncated = true
+                guard remaining > 0 else {
+                    isCut = true
                     break
                 }
-                let start = reader.offset
-                let tag = try reader.readVarint()
-                let number = tag >> 3
-                guard tag <= UInt64(UInt32.max), number > 0, number <= UInt64(ProtobufWireDecoder.maxFieldNumber) else {
-                    throw BinaryValueDecodeError(kind: .invalidField, offset: start)
+                guard let item = try? Self.packedItem(&reader, type: field.type) else {
+                    level.unknown.append(occurrence)
+                    return
                 }
-                let fieldNumber = Int(number)
-                let wireType = tag & 7
-                if wireType == 4 {
-                    guard group == fieldNumber else { throw BinaryValueDecodeError(kind: .unmatchedGroupEnd, offset: start) }
-                    ended = true
-                    break
-                }
-                budget -= 1
-                let descriptor = message?.field(number: fieldNumber)
-                switch wireType {
-                case 0:
-                    let bits = try reader.readVarint()
-                    if let descriptor, let text = varintText(bits, type: descriptor.type) {
-                        add(typed(descriptor, .scalar(text)), descriptor: descriptor)
-                    } else {
-                        add(raw(fieldNumber, .varint(bits)), descriptor: nil)
-                    }
-                case 1:
-                    let bits = try reader.readUInt64LittleEndian()
-                    if let descriptor, let text = fixed64Text(bits, type: descriptor.type) {
-                        add(typed(descriptor, .scalar(text)), descriptor: descriptor)
-                    } else {
-                        add(raw(fieldNumber, .fixed64(bits)), descriptor: nil)
-                    }
-                case 5:
-                    let bits = try reader.readUInt32LittleEndian()
-                    if let descriptor, let text = fixed32Text(bits, type: descriptor.type) {
-                        add(typed(descriptor, .scalar(text)), descriptor: descriptor)
-                    } else {
-                        add(raw(fieldNumber, .fixed32(bits)), descriptor: nil)
-                    }
-                case 2:
-                    let length = try reader.readVarint()
-                    guard length <= UInt64(reader.remaining) else { throw reader.error(.unexpectedEnd) }
-                    let bytes = try reader.readBytes(Int(length))
-                    if let descriptor, case .message = descriptor.type, !descriptor.isRepeated {
-                        singularMessages[fieldNumber, default: Data()].append(bytes)
-                    } else if let descriptor, let values = lengthDelimited(bytes, descriptor: descriptor, depth: depth) {
-                        for value in values { add(typed(descriptor, value), descriptor: descriptor) }
-                    } else {
-                        add(raw(fieldNumber, ProtobufWireDecoder.lengthDelimited(bytes)), descriptor: nil)
-                    }
-                case 3:
-                    if let descriptor, case .group(let name) = descriptor.type {
-                        let members = try fields(&reader, message: schema.messages[name], depth: depth + 1, group: fieldNumber)
-                        let groupName = schema.messages[name]?.shortName ?? descriptor.name
-                        add(
-                            ProtobufTypedField(name: groupName, typeName: "group", value: .message(members)),
-                            descriptor: descriptor
-                        )
-                    } else {
-                        let members = try fields(&reader, message: nil, depth: depth + 1, group: fieldNumber)
-                        add(ProtobufTypedField(name: String(fieldNumber), typeName: nil, value: .message(members)), descriptor: nil)
-                    }
-                default:
-                    throw BinaryValueDecodeError(kind: .invalidField, offset: start)
-                }
-                if isTruncated { break }
-            }
-            if !ended, !isTruncated { throw reader.error(.unexpectedEnd) }
-            for (number, bytes) in singularMessages {
-                guard let descriptor = message?.field(number: number) else { continue }
-                if let values = lengthDelimited(bytes, descriptor: descriptor, depth: depth) {
-                    known[number] = values.map { typed(descriptor, $0) }
+                remaining -= 1
+                if case .varint(let raw) = item, case .enumeration(let name) = field.type, !isDeclared(raw, enumeration: name) {
+                    undeclared.append(Occurrence(number: field.number, payload: item, position: occurrence.position))
                 } else {
-                    unknown.append(raw(number, ProtobufWireDecoder.lengthDelimited(bytes)))
+                    values.append(typed(field, .scalar(scalarText(item, type: field.type))))
                 }
             }
-            var result = known.keys.sorted().flatMap { known[$0] ?? [] } + unknown
-            if isTruncated, depth == 0 { result.append(ProtobufTypedField(name: "", typeName: nil, value: .truncated)) }
-            return result
+            budget = remaining
+            level.fields += values
+            level.unknown += undeclared
+            if isCut { level.isCut = true }
+        }
+
+        private static func packedItem(_ reader: inout BinaryValueReader, type: ProtobufFieldType) throws -> Occurrence.Payload {
+            guard case .scalar(let scalar) = type else { return .varint(try reader.readVarint()) }
+            switch scalar.wireType {
+            case 1: return .fixed64(try reader.readUInt64LittleEndian())
+            case 5: return .fixed32(try reader.readUInt32LittleEndian())
+            default: return .varint(try reader.readVarint())
+            }
+        }
+
+        private mutating func raw(_ occurrence: Occurrence, depth: Int) throws -> ProtobufTypedField {
+            let value: ProtobufFieldValue
+            switch occurrence.payload {
+            case .varint(let raw): value = .varint(raw)
+            case .fixed64(let raw): value = .fixed64(raw)
+            case .fixed32(let raw): value = .fixed32(raw)
+            case .lengthDelimited(let window):
+                value = ProtobufWireDecoder.lengthDelimited(window, depth: depth, budget: &budget)
+            case .group(let window):
+                value = .group(try ProtobufWireDecoder.fields(in: window, depth: depth + 1, budget: &budget))
+            }
+            return ProtobufTypedField(name: String(occurrence.number), typeName: nil, value: .unknown(value))
+        }
+
+        private func mapKey(_ members: [ProtobufTypedField], entry: ProtobufMessageDescriptor) -> MapKey {
+            guard let key = entry.field(number: 1) else { return .signed(0) }
+            let value = members.first { $0.name == key.name }?.value
+            switch key.type {
+            case .scalar(.string):
+                if case .string(let text)? = value { return .bytes(Array(text.utf8)) }
+                if case .bytes(let data)? = value { return .bytes(Array(data)) }
+                return .bytes([])
+            case .scalar(.bool):
+                return .unsigned(value == .scalar("true") ? 1 : 0)
+            case .scalar(.uint32), .scalar(.uint64), .scalar(.fixed32), .scalar(.fixed64):
+                guard case .scalar(let text)? = value else { return .unsigned(0) }
+                return .unsigned(UInt64(text) ?? 0)
+            default:
+                guard case .scalar(let text)? = value else { return .signed(0) }
+                return .signed(Int64(text) ?? 0)
+            }
+        }
+
+        // Floats compare by bit pattern, so -0 is not the default.
+        private func holdsDefault(_ payload: Occurrence.Payload, type: ProtobufFieldType) -> Bool {
+            switch payload {
+            case .varint(let raw):
+                switch type {
+                case .scalar(.int64), .scalar(.uint64), .scalar(.sint64), .scalar(.bool): return raw == 0
+                default: return UInt32(truncatingIfNeeded: raw) == 0
+                }
+            case .fixed64(let raw): return raw == 0
+            case .fixed32(let raw): return raw == 0
+            case .lengthDelimited(let window): return window.remaining == 0
+            case .group: return false
+            }
+        }
+
+        private func defaultValue(_ type: ProtobufFieldType) -> ProtobufTypedValue? {
+            switch type {
+            case .scalar(.string): return .string("")
+            case .scalar(.bytes): return .bytes(Data())
+            case .scalar(.bool): return .scalar("false")
+            case .scalar: return .scalar("0")
+            case .enumeration(let name): return .scalar(schema.enums[name]?.values[0] ?? "0")
+            case .message, .group: return .message([])
+            case .unresolved: return nil
+            }
+        }
+
+        // A string that is not UTF-8 prints escaped, as protoc prints a proto2 string.
+        private func value(_ payload: Occurrence.Payload, type: ProtobufFieldType) -> ProtobufTypedValue {
+            guard case .lengthDelimited(let window) = payload else { return .scalar(scalarText(payload, type: type)) }
+            var reader = window
+            let data = (try? reader.readBytes(reader.remaining)) ?? Data()
+            if type == .scalar(.string), let text = String(data: data, encoding: .utf8) { return .string(text) }
+            return .bytes(data)
         }
 
         private func typed(_ descriptor: ProtobufFieldDescriptor, _ value: ProtobufTypedValue) -> ProtobufTypedField {
             ProtobufTypedField(name: descriptor.name, typeName: typeName(descriptor.type), value: value)
-        }
-
-        private func raw(_ number: Int, _ value: ProtobufFieldValue) -> ProtobufTypedField {
-            ProtobufTypedField(name: String(number), typeName: nil, value: .unknown(value))
         }
 
         private func typeName(_ type: ProtobufFieldType) -> String {
@@ -192,56 +454,13 @@ internal enum ProtobufSchemaDecoder {
             }
         }
 
-        // nil leaves the value to the fields the schema does not name.
-        private mutating func lengthDelimited(
-            _ bytes: Data,
-            descriptor: ProtobufFieldDescriptor,
-            depth: Int
-        ) -> [ProtobufTypedValue]? {
-            switch descriptor.type {
-            case .scalar(.string):
-                guard let text = String(data: bytes, encoding: .utf8) else { return nil }
-                return [.string(text)]
-            case .scalar(.bytes):
-                return [.bytes(bytes)]
-            case .message(let name):
-                var nested = BinaryValueReader(bytes)
-                var attempt = self
-                guard let members = try? attempt.fields(&nested, message: schema.messages[name], depth: depth + 1, group: nil) else {
-                    return nil
-                }
-                self = attempt
-                return [.message(members)]
-            case .scalar, .enumeration:
-                guard descriptor.isRepeated else { return nil }
-                return packed(bytes, type: descriptor.type)
-            case .group, .unresolved:
-                return nil
+        private func scalarText(_ payload: Occurrence.Payload, type: ProtobufFieldType) -> String {
+            switch payload {
+            case .varint(let raw): return varintText(raw, type: type) ?? String(raw)
+            case .fixed64(let raw): return fixed64Text(raw, type: type) ?? String(raw)
+            case .fixed32(let raw): return fixed32Text(raw, type: type) ?? String(raw)
+            case .lengthDelimited, .group: return ""
             }
-        }
-
-        private mutating func packed(_ bytes: Data, type: ProtobufFieldType) -> [ProtobufTypedValue]? {
-            var reader = BinaryValueReader(bytes)
-            var values: [ProtobufTypedValue] = []
-            while !reader.isAtEnd {
-                guard budget > 0 else {
-                    isTruncated = true
-                    break
-                }
-                let text: String?
-                switch type {
-                case .scalar(.double), .scalar(.fixed64), .scalar(.sfixed64):
-                    text = (try? reader.readUInt64LittleEndian()).flatMap { fixed64Text($0, type: type) }
-                case .scalar(.float), .scalar(.fixed32), .scalar(.sfixed32):
-                    text = (try? reader.readUInt32LittleEndian()).flatMap { fixed32Text($0, type: type) }
-                default:
-                    text = (try? reader.readVarint()).flatMap { varintText($0, type: type) }
-                }
-                guard let text else { return nil }
-                values.append(.scalar(text))
-                budget -= 1
-            }
-            return values
         }
 
         private func varintText(_ raw: UInt64, type: ProtobufFieldType) -> String? {
@@ -276,6 +495,17 @@ internal enum ProtobufSchemaDecoder {
             case .scalar(.sfixed32): return String(Int32(bitPattern: raw))
             default: return nil
             }
+        }
+    }
+}
+
+private extension ProtobufScalarType {
+    var wireType: UInt64 {
+        switch self {
+        case .double, .fixed64, .sfixed64: return 1
+        case .float, .fixed32, .sfixed32: return 5
+        case .string, .bytes: return 2
+        case .int32, .int64, .uint32, .uint64, .sint32, .sint64, .bool: return 0
         }
     }
 }

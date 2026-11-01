@@ -5,7 +5,6 @@
 
 import Foundation
 
-// A `.proto` file or a descriptor set, kept as chosen; ProtobufSchema.parse tells the two apart.
 internal final class ProtobufSchemaStore: Sendable {
     static let shared = ProtobufSchemaStore(
         directory: AppStorageEnvironment.shared.supportDirectory.appendingPathComponent("ProtobufSchemas", isDirectory: true)
@@ -14,6 +13,7 @@ internal final class ProtobufSchemaStore: Sendable {
     static let maxFileBytes = 4_000_000
 
     static let didRestoreSchema = Notification.Name("com.TablePro.protobufSchemaStore.didRestoreSchema")
+    static let schemaIDKey = "schemaID"
 
     private let files: SchemaFileCache<ProtobufSchema>
 
@@ -25,7 +25,7 @@ internal final class ProtobufSchemaStore: Sendable {
         let (id, wasMissing) = try files.add(contents)
         if wasMissing {
             NotificationCenter.default.post(
-                name: Self.didRestoreSchema, object: self, userInfo: [AvroSchemaStore.schemaIDKey: id]
+                name: Self.didRestoreSchema, object: self, userInfo: [Self.schemaIDKey: id]
             )
         }
         return id

@@ -5,20 +5,18 @@
 
 import Foundation
 
-// The connection fields a driver declares to name its Schema Registry. Engine neutral: any plugin that declares
-// them gets the Schema Registry display format.
+// Engine neutral: any driver that declares these connection fields gets the Schema Registry display format.
 internal enum SchemaRegistryConnectionField {
     static let url = "schemaRegistryUrl"
     static let username = "schemaRegistryUsername"
     static let password = "schemaRegistryPassword"
 }
 
-internal struct SchemaRegistryEndpoint: Equatable, Sendable {
+internal struct SchemaRegistryEndpoint: Hashable, Sendable {
     let baseURL: URL
     let username: String?
     let password: String?
 
-    // Only http and https: the URL is fetched from, so a file or custom scheme is refused here.
     init?(fields: [String: String]) {
         let text = (fields[SchemaRegistryConnectionField.url] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
@@ -28,12 +26,31 @@ internal struct SchemaRegistryEndpoint: Equatable, Sendable {
         self.username = username.isEmpty ? nil : username
         password = fields[SchemaRegistryConnectionField.password]
     }
+
+    // The session's record, so the endpoint changes when the connection does: on the next connect, like every other field.
+    @MainActor
+    static func connection(for connectionID: UUID) -> DatabaseConnection? {
+        DatabaseManager.shared.session(for: connectionID)?.connection
+            ?? ConnectionStorage.shared.loadConnection(id: connectionID)
+    }
+
+    @MainActor
+    static func isConfigured(for connectionID: UUID) -> Bool {
+        guard let connection = connection(for: connectionID) else { return false }
+        return SchemaRegistryEndpoint(fields: connection.additionalFields) != nil
+    }
+
+    @MainActor
+    static func resolve(for connectionID: UUID) -> SchemaRegistryEndpoint? {
+        guard let connection = connection(for: connectionID) else { return nil }
+        let fields = DatabaseDriverFactory.resolvedAdditionalFields(for: connection) ?? connection.additionalFields
+        return SchemaRegistryEndpoint(fields: fields)
+    }
 }
 
 internal enum RegistrySchema: Sendable {
     case avro(AvroSchema)
     case protobuf(ProtobufSchema)
-    // A JSON Schema value is JSON text behind the prefix; the schema adds nothing to reading it.
     case json
 }
 
@@ -60,15 +77,17 @@ internal struct SchemaRegistryClient: Sendable {
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForResource = 60
+        configuration.httpShouldSetCookies = false
         return URLSession(configuration: configuration)
     }()
 
-    // Read up to the cap, so a registry that never stops sending cannot fill memory.
     static let urlSessionTransport: Transport = { request in
-        let (bytes, response) = try await session.bytes(for: request, delegate: SameOriginRedirects())
+        guard let url = request.url else { throw URLError(.badURL) }
+        let (bytes, response) = try await session.bytes(for: request, delegate: SameOriginRedirectGuard(origin: url))
         var data = Data()
         for try await byte in bytes {
             data.append(byte)
+            // Stops a registry that never ends its answer from filling memory.
             if data.count > maxResponseBytes { break }
         }
         return (data, response)
@@ -78,18 +97,14 @@ internal struct SchemaRegistryClient: Sendable {
         let root: SchemaResponse = try await get(["schemas", "ids", String(id)])
         switch root.schemaType?.uppercased() ?? "AVRO" {
         case "AVRO":
-            var references: [String] = []
-            var seen: Set<String> = []
-            try await collectReferences(root.references ?? [], into: &references, seen: &seen)
+            let references = try await referencedSchemas(root.references ?? [])
             do {
                 return .avro(try AvroSchema.parse(root.schema, references: references))
             } catch let error as AvroSchemaError {
                 throw SchemaRegistryError(reason: error.reason)
             }
         case "PROTOBUF":
-            var references: [String] = []
-            var seen: Set<String> = []
-            try await collectReferences(root.references ?? [], into: &references, seen: &seen)
+            let references = try await referencedSchemas(root.references ?? [])
             do {
                 return .protobuf(try ProtobufSchema.parse(protoFiles: [root.schema] + references))
             } catch let error as ProtobufSchemaError {
@@ -104,30 +119,31 @@ internal struct SchemaRegistryClient: Sendable {
         }
     }
 
-    // Depth first, each subject version once and after the ones it references, so a type is defined before its users.
-    private func collectReferences(
-        _ references: [SchemaReference],
-        into texts: inout [String],
-        seen: inout Set<String>
-    ) async throws {
+    // Each subject version once, after the ones it references, so a type is defined before its users.
+    private func referencedSchemas(_ references: [SchemaReference]) async throws -> [String] {
+        var texts: [String] = []
+        var seen: Set<String> = []
+        try await collect(references, into: &texts, seen: &seen)
+        return texts
+    }
+
+    private func collect(_ references: [SchemaReference], into texts: inout [String], seen: inout Set<String>) async throws {
         for reference in references {
-            let key = "\(reference.subject)@\(reference.version)"
-            guard seen.insert(key).inserted else { continue }
+            guard seen.insert("\(reference.subject)@\(reference.version)").inserted else { continue }
             guard seen.count <= Self.maxReferences else {
                 throw SchemaRegistryError(reason: String(localized: "The schema imports more files than TablePro reads."))
             }
             let version: SchemaResponse = try await get(["subjects", reference.subject, "versions", String(reference.version)])
-            try await collectReferences(version.references ?? [], into: &texts, seen: &seen)
+            try await collect(version.references ?? [], into: &texts, seen: &seen)
             texts.append(version.schema)
         }
     }
 
     private func get<Response: Decodable>(_ components: [String]) async throws -> Response {
-        let request = request(components)
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await transport(request)
+            (data, response) = try await transport(request(components))
         } catch {
             throw SchemaRegistryError(reason: String(
                 format: String(localized: "TablePro could not reach the Schema Registry: %@"), error.localizedDescription
@@ -151,7 +167,7 @@ internal struct SchemaRegistryClient: Sendable {
         }
     }
 
-    // Each component is encoded on its own: a subject such as `demo/common.proto` holds a slash.
+    // Each component is encoded alone: a subject such as `demo/common.proto` holds a slash.
     func request(_ components: [String]) -> URLRequest {
         var allowed = CharacterSet.urlPathAllowed
         allowed.remove("/")
@@ -183,25 +199,5 @@ internal struct SchemaRegistryClient: Sendable {
 
     private struct ErrorResponse: Decodable {
         let message: String
-    }
-}
-
-// The credentials go to the registry the connection names, so a redirect elsewhere, or down to http, is not followed.
-private final class SameOriginRedirects: NSObject, URLSessionTaskDelegate {
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping @Sendable (URLRequest?) -> Void
-    ) {
-        guard let from = task.originalRequest?.url, let to = request.url,
-              from.scheme?.lowercased() == to.scheme?.lowercased(),
-              from.host?.lowercased() == to.host?.lowercased(),
-              from.port == to.port else {
-            completionHandler(nil)
-            return
-        }
-        completionHandler(request)
     }
 }

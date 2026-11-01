@@ -7,15 +7,13 @@ import CryptoKit
 import Foundation
 import os
 
-// The schema files chosen for columns, one file each, named by a hash of the contents, so a column still decodes
-// after the original file moves and the same file chosen twice is kept once. Read from the grid on the main actor
-// and from the viewer off it.
+// Named by a hash of the contents, so a column still decodes after the original file moves.
 internal final class SchemaFileCache<Schema: Sendable>: Sendable {
     private struct State {
         var parsed: [String: Schema] = [:]
         // Kept from a sweep: a schema can be added before the column's format is saved.
         var addedThisLaunch: Set<String> = []
-        // Asked for and not found, so adding one later is a restore that grids and viewers have to hear about.
+        // Also answers later reads without the disk, since the grid asks once per cell.
         var missing: Set<String> = []
     }
 
@@ -38,7 +36,6 @@ internal final class SchemaFileCache<Schema: Sendable>: Sendable {
         SHA256.hash(data: contents).prefix(16).map { String(format: "%02x", $0) }.joined()
     }
 
-    // Parses first, so nothing is kept for a file that is not a schema. `wasMissing` says a reader asked for it before.
     func add(_ contents: Data) throws -> (id: String, wasMissing: Bool) {
         let schema = try parse(contents)
         let id = Self.schemaID(of: contents)
@@ -57,7 +54,11 @@ internal final class SchemaFileCache<Schema: Sendable>: Sendable {
     }
 
     func schema(id: String) -> Schema? {
-        if let cached = state.withLock({ $0.parsed[id] }) { return cached }
+        let known = state.withLock { state -> (schema: Schema?, isMissing: Bool) in
+            (state.parsed[id], state.missing.contains(id))
+        }
+        if let cached = known.schema { return cached }
+        if known.isMissing { return nil }
         guard Self.isSchemaID(id),
               let data = try? Data(contentsOf: fileURL(id)),
               let schema = try? parse(data) else {

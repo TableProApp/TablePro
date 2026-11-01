@@ -38,17 +38,23 @@ internal enum BinaryValueDocument: Sendable {
     case registryUnavailable(schemaID: UInt32, reason: String)
 }
 
-// The Confluent wire format: magic byte 0, then the schema ID, big-endian.
 internal enum SchemaRegistryFrame {
     static let headerLength = 5
 
     static func schemaID(_ data: Data) throws -> UInt32 {
-        guard data.count >= headerLength, data.first == 0 else {
-            throw BinaryValueDecodeError(kind: .notFramed, offset: 0)
+        guard let id = schemaID(prefix: data) else { throw BinaryValueDecodeError(kind: .notFramed, offset: 0) }
+        return id
+    }
+
+    static func schemaID<Bytes: Collection<UInt8>>(prefix bytes: Bytes) -> UInt32? {
+        var iterator = bytes.makeIterator()
+        guard iterator.next() == 0 else { return nil }
+        var id: UInt32 = 0
+        for _ in 0..<4 {
+            guard let byte = iterator.next() else { return nil }
+            id = id << 8 | UInt32(byte)
         }
-        var reader = BinaryValueReader(data)
-        try reader.skip(1)
-        return try reader.readUInt32()
+        return id
     }
 
     static func jsonText(_ data: Data) throws -> String {
@@ -59,7 +65,7 @@ internal enum SchemaRegistryFrame {
     }
 }
 
-// Pure but for the schema caches: the grid calls it per cell on the main actor, the viewer off it.
+// Pure: the grid calls it per cell on the main actor, the viewer off it.
 internal enum BinaryValueDecoding {
     static let maxTextLength = BinaryTextDecoder.maxDisplayBytes
     // The grid stops here too, so a cell never shows a value the viewer then refuses.

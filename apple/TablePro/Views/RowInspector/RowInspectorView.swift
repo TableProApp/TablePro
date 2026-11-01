@@ -158,7 +158,12 @@ internal struct RowInspectorView: View {
         case .php:
             PhpViewerWindowController.open(text: text, columnName: field.columnName)
         case .binary(let format):
-            BinaryValueViewerWindowController.open(data: text.storedBytes, format: format, columnName: field.columnName)
+            let holdsBytes = BinaryValueBytes.holdsBytes(columnType: field.columnTypeEnum, isBinaryValue: field.isBinaryValue)
+            BinaryValueViewerWindowController.open(
+                data: BinaryValueBytes.data(of: text, holdsBytes: holdsBytes) ?? text.storedBytes,
+                format: format,
+                columnName: field.columnName
+            )
         case .text:
             TextViewerWindowController.open(
                 text: text,

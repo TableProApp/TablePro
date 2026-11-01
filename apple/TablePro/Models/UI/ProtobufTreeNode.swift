@@ -5,8 +5,7 @@
 
 import Foundation
 
-// Without a schema the bytes give only a field number, the key, and a wire type, the badge. A schema gives the
-// field's name and declared type instead.
+// Without a schema the key is the field number and the badge the wire type; a schema gives name and declared type.
 internal struct ProtobufTreeNode: Identifiable {
     internal enum Kind: Equatable {
         case message

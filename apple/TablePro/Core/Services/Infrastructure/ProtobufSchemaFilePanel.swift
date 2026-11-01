@@ -10,8 +10,7 @@ internal struct ProtobufSchemaChoice {
     let message: String
 }
 
-// A `.proto` file or a descriptor set, any extension. The panel's validate hook refuses anything else with the reason,
-// and a file with several messages then asks which one the column's values are.
+// Any extension: a descriptor set has none of its own, so the validate hook refuses a file that is not a schema.
 @MainActor
 internal enum ProtobufSchemaFilePanel {
     static func chooseSchema(in window: NSWindow) async -> ProtobufSchemaChoice? {
@@ -60,8 +59,8 @@ private final class ProtobufSchemaFileGate: NSObject, NSOpenSavePanelDelegate {
         }
         do {
             schema = try ProtobufSchema.parse(data)
-        } catch let error as ProtobufSchemaError {
-            throw ProtobufSchemaFileError(fileName: name, reason: error.reason)
+        } catch {
+            throw ProtobufSchemaFileError(fileName: name, reason: ((error as? ProtobufSchemaError) ?? .notASchema).reason)
         }
         contents = data
     }

@@ -95,6 +95,23 @@ struct FieldEditorResolverTests {
             displayFormatOverride: .messagePack
         )
         #expect(onText == .singleLine)
+        let connectionID = UUID()
+        let registryOnText = FieldEditorResolver.resolve(
+            for: .text(rawType: "TEXT"),
+            isLongText: false,
+            originalValue: "\u{0}\u{0}\u{0}\u{0}\u{1}{}",
+            displayFormatOverride: .schemaRegistry(connectionID: connectionID)
+        )
+        #expect(registryOnText == .binaryValue(.schemaRegistry(connectionID: connectionID)))
+    }
+
+    @Test("A text column's value reaches a decoder as its UTF-8 bytes, a binary one's as one byte per character")
+    func binaryValueBytes() {
+        #expect(BinaryValueBytes.data(of: "é", holdsBytes: false) == Data([0xC3, 0xA9]))
+        #expect(BinaryValueBytes.data(of: "\u{E9}", holdsBytes: true) == Data([0xE9]))
+        #expect(BinaryValueBytes.holdsBytes(columnType: .text(rawType: "TEXT")) == false)
+        #expect(BinaryValueBytes.holdsBytes(columnType: .text(rawType: "TEXT"), isBinaryValue: true))
+        #expect(BinaryValueBytes.holdsBytes(columnType: nil))
     }
 
     @Test("override .phpSerialized forces .phpSerialized")

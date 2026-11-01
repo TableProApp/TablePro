@@ -24,12 +24,16 @@ internal struct ProtobufFieldDescriptor: Equatable, Sendable {
     let number: Int
     let type: ProtobufFieldType
     let isRepeated: Bool
+    // A real oneof only: proto3 `optional` puts a field in a oneof of its own.
+    let oneofIndex: Int?
+    // Without presence, a field holding its default is not printed.
+    let hasPresence: Bool
 }
 
 internal struct ProtobufMessageDescriptor: Equatable, Sendable {
     let fullName: String
     let fields: [ProtobufFieldDescriptor]
-    // In declaration order, map entries included: a Schema Registry message index counts them.
+    // Map entries included: a Schema Registry message index counts them.
     let nestedMessages: [String]
     let isMapEntry: Bool
     private let fieldIndexes: [Int: Int]
@@ -54,6 +58,8 @@ internal struct ProtobufMessageDescriptor: Equatable, Sendable {
 internal struct ProtobufEnumDescriptor: Equatable, Sendable {
     let fullName: String
     let values: [Int32: String]
+    // A closed enum keeps a number it does not declare out of the field, with the unknown fields.
+    let isClosed: Bool
 
     var shortName: String {
         fullName.split(separator: ".").last.map(String.init) ?? fullName
@@ -62,39 +68,45 @@ internal struct ProtobufEnumDescriptor: Equatable, Sendable {
 
 internal struct ProtobufSchemaError: Error, Equatable, Sendable {
     let reason: String
+
+    static var notASchema: ProtobufSchemaError {
+        ProtobufSchemaError(reason: String(localized: "The file is neither a .proto file nor a descriptor set."))
+    }
 }
 
-// Messages and enums by full name, without the leading dot. The first file is the one chosen or fetched;
-// a Schema Registry message index walks its top-level messages.
+// The first file is the one chosen, the primary file of a descriptor set, or the subject a registry returned.
 internal struct ProtobufSchema: Equatable, Sendable {
     let messages: [String: ProtobufMessageDescriptor]
     let enums: [String: ProtobufEnumDescriptor]
+    // A Schema Registry message index walks these.
     let rootMessages: [String]
-    // Every message a value can be read as, in file order, map entries left out.
+    // The first file's messages first, map entries left out.
     let messageNames: [String]
 
     static let maxMessages = 20_000
 
-    // Both forms protoc reads: `.proto` text, and the FileDescriptorSet `--descriptor_set_out` writes.
     static func parse(_ data: Data) throws -> ProtobufSchema {
-        if let text = String(data: data, encoding: .utf8), let files = try? ProtoFileParser.parse(text), !files.isEmpty {
-            return try build([files])
+        var textError: ProtobufSchemaError?
+        if let text = String(data: data, encoding: .utf8) {
+            let files: [ProtobufFileDefinition]?
+            do {
+                files = try ProtoFileParser.parse(text)
+            } catch {
+                files = nil
+                textError = error as? ProtobufSchemaError
+            }
+            if let files { return try build(files) }
         }
         do {
-            return try build([ProtobufDescriptorSetParser.parse(data)])
-        } catch let error as ProtobufSchemaError {
-            if let text = String(data: data, encoding: .utf8) {
-                // Text that is not a descriptor set: the parser's own reason says what is wrong with it.
-                _ = try ProtoFileParser.parse(text)
-                throw ProtobufSchemaError(reason: String(localized: "The file defines no message."))
-            }
-            throw error
+            return try build(ProtobufDescriptorSetParser.parse(data))
+        } catch {
+            if let textError, looksLikeText(data) { throw textError }
+            throw (error as? ProtobufSchemaError) ?? .notASchema
         }
     }
 
-    // A fetched schema and the files it imports, each `.proto` text, the root first.
     static func parse(protoFiles texts: [String]) throws -> ProtobufSchema {
-        try build(texts.map { try ProtoFileParser.parse($0) })
+        try build(texts.flatMap { try ProtoFileParser.parse($0) })
     }
 
     func messageIndexed(by indexes: [Int]) -> ProtobufMessageDescriptor? {
@@ -108,59 +120,91 @@ internal struct ProtobufSchema: Equatable, Sendable {
         return message
     }
 
-    private static func build(_ fileGroups: [[ProtobufFileDefinition]]) throws -> ProtobufSchema {
-        let files = fileGroups.flatMap { $0 }
-        var messages: [String: ProtobufMessageDefinition] = [:]
-        var enums: [String: ProtobufEnumDescriptor] = [:]
+    // A descriptor set always holds control bytes; a .proto file holds none but whitespace.
+    private static func looksLikeText(_ data: Data) -> Bool {
+        !data.contains { $0 < 0x20 && !(0x09...0x0D).contains($0) }
+    }
+
+    private static func build(_ files: [ProtobufFileDefinition]) throws -> ProtobufSchema {
+        var definitions: [String: ProtobufMessageDefinition] = [:]
+        var enumDefinitions: [String: ProtobufEnumDefinition] = [:]
         var order: [String] = []
         for file in files {
             for message in file.allMessages {
-                if messages[message.fullName] == nil { order.append(message.fullName) }
-                messages[message.fullName] = message
+                if definitions[message.fullName] == nil { order.append(message.fullName) }
+                definitions[message.fullName] = message
             }
             for enumeration in file.allEnums {
-                enums[enumeration.fullName] = enumeration
+                enumDefinitions[enumeration.fullName] = enumeration
             }
         }
-        guard messages.count <= maxMessages else {
+        guard definitions.count <= maxMessages else {
             throw ProtobufSchemaError(reason: String(localized: "The schema defines more messages than TablePro reads."))
         }
-        guard !messages.isEmpty else {
+        guard !definitions.isEmpty else {
             throw ProtobufSchemaError(reason: String(localized: "The file defines no message."))
         }
-        let resolver = ProtobufTypeResolver(messageNames: Set(messages.keys), enumNames: Set(enums.keys))
+        let scopes = ProtobufFeatureScopes(files: files, messages: definitions, enums: enumDefinitions)
+        let resolver = ProtobufTypeResolver(messageNames: Set(definitions.keys), enumNames: Set(enumDefinitions.keys))
         var resolved: [String: ProtobufMessageDescriptor] = [:]
-        for (name, message) in messages {
+        for (name, message) in definitions {
+            let features = scopes.messages[name] ?? ProtobufFeatures(syntax: .proto2)
             resolved[name] = ProtobufMessageDescriptor(
                 fullName: name,
-                fields: message.fields.map { resolver.resolve($0, scope: name) },
+                fields: message.fields.map { resolver.resolve($0, scope: name, features: features) },
                 nestedMessages: message.nestedMessages,
                 isMapEntry: message.isMapEntry
+            )
+        }
+        var enums: [String: ProtobufEnumDescriptor] = [:]
+        for (name, enumeration) in enumDefinitions {
+            enums[name] = ProtobufEnumDescriptor(
+                fullName: name, values: enumeration.values, isClosed: scopes.closedEnums[name] ?? false
             )
         }
         return ProtobufSchema(
             messages: resolved,
             enums: enums,
-            rootMessages: files.first?.messages.map(\.fullName) ?? [],
+            rootMessages: files.first?.messages ?? [],
             messageNames: order.filter { resolved[$0]?.isMapEntry == false }
         )
     }
 }
 
-// What a parser read, before type names are resolved against every file.
+internal enum ProtobufSyntax: Sendable {
+    case proto2, proto3, editions
+}
+
+// The `features` a scope sets; only an editions file can set them.
+internal struct ProtobufFeatureOverrides: Equatable, Sendable {
+    var implicitPresence: Bool?
+    var closedEnum: Bool?
+}
+
 internal struct ProtobufFileDefinition: Sendable {
-    let messages: [ProtobufMessageDefinition]
-    let enums: [ProtobufEnumDescriptor]
-    // Nested types too, so build() sees every name the file declares.
-    let allMessages: [ProtobufMessageDefinition]
-    let allEnums: [ProtobufEnumDescriptor]
+    var name = ""
+    var dependencies: [String] = []
+    var syntax = ProtobufSyntax.proto2
+    var features = ProtobufFeatureOverrides()
+    var messages: [String] = []
+    var enums: [String] = []
+    var allMessages: [ProtobufMessageDefinition] = []
+    var allEnums: [ProtobufEnumDefinition] = []
 }
 
 internal struct ProtobufMessageDefinition: Sendable {
     let fullName: String
-    var fields: [ProtobufFieldDefinition]
-    var nestedMessages: [String]
-    var isMapEntry: Bool
+    var fields: [ProtobufFieldDefinition] = []
+    var nestedMessages: [String] = []
+    var nestedEnums: [String] = []
+    var isMapEntry = false
+    var features = ProtobufFeatureOverrides()
+}
+
+internal struct ProtobufEnumDefinition: Sendable {
+    let fullName: String
+    var values: [Int32: String] = [:]
+    var features = ProtobufFeatureOverrides()
 }
 
 internal struct ProtobufFieldDefinition: Sendable {
@@ -175,6 +219,64 @@ internal struct ProtobufFieldDefinition: Sendable {
     let number: Int
     let type: TypeReference
     let isRepeated: Bool
+    var isOptional = false
+    var oneofIndex: Int?
+    var features = ProtobufFeatureOverrides()
+}
+
+private struct ProtobufFeatures {
+    let syntax: ProtobufSyntax
+    var implicitPresence: Bool
+    var closedEnum: Bool
+
+    init(syntax: ProtobufSyntax) {
+        self.syntax = syntax
+        implicitPresence = syntax == .proto3
+        closedEnum = syntax == .proto2
+    }
+
+    func applying(_ overrides: ProtobufFeatureOverrides?) -> ProtobufFeatures {
+        guard syntax == .editions, let overrides else { return self }
+        var result = self
+        if let implicitPresence = overrides.implicitPresence { result.implicitPresence = implicitPresence }
+        if let closedEnum = overrides.closedEnum { result.closedEnum = closedEnum }
+        return result
+    }
+}
+
+// Features inherit from the file through each enclosing message, wherever in the scope the option is written.
+private struct ProtobufFeatureScopes {
+    private(set) var messages: [String: ProtobufFeatures] = [:]
+    private(set) var closedEnums: [String: Bool] = [:]
+
+    init(
+        files: [ProtobufFileDefinition],
+        messages definitions: [String: ProtobufMessageDefinition],
+        enums enumDefinitions: [String: ProtobufEnumDefinition]
+    ) {
+        for file in files {
+            let base = ProtobufFeatures(syntax: file.syntax).applying(file.features)
+            var pending = file.messages.map { ($0, base) }
+            for name in file.enums {
+                closedEnums[name] = base.applying(enumDefinitions[name]?.features).closedEnum
+            }
+            while let (name, inherited) = pending.popLast() {
+                guard messages[name] == nil, let definition = definitions[name] else { continue }
+                let features = inherited.applying(definition.features)
+                messages[name] = features
+                pending += definition.nestedMessages.map { ($0, features) }
+                for nested in definition.nestedEnums {
+                    closedEnums[nested] = features.applying(enumDefinitions[nested]?.features).closedEnum
+                }
+            }
+            for message in file.allMessages where messages[message.fullName] == nil {
+                messages[message.fullName] = base.applying(message.features)
+            }
+            for enumeration in file.allEnums where closedEnums[enumeration.fullName] == nil {
+                closedEnums[enumeration.fullName] = base.applying(enumeration.features).closedEnum
+            }
+        }
+    }
 }
 
 // C++ scoping: a name is looked up from the innermost scope outward, by its first component.
@@ -182,7 +284,7 @@ private struct ProtobufTypeResolver {
     let messageNames: Set<String>
     let enumNames: Set<String>
 
-    func resolve(_ field: ProtobufFieldDefinition, scope: String) -> ProtobufFieldDescriptor {
+    func resolve(_ field: ProtobufFieldDefinition, scope: String, features: ProtobufFeatures) -> ProtobufFieldDescriptor {
         let type: ProtobufFieldType
         switch field.type {
         case .scalar(let scalar):
@@ -192,7 +294,20 @@ private struct ProtobufTypeResolver {
         case .named(let reference):
             type = resolve(reference, scope: scope)
         }
-        return ProtobufFieldDescriptor(name: field.name, number: field.number, type: type, isRepeated: field.isRepeated)
+        let isImplicit = features.applying(field.features).implicitPresence && !field.isOptional
+        let isMessage: Bool
+        switch type {
+        case .message, .group: isMessage = true
+        case .scalar, .enumeration, .unresolved: isMessage = false
+        }
+        return ProtobufFieldDescriptor(
+            name: field.name,
+            number: field.number,
+            type: type,
+            isRepeated: field.isRepeated,
+            oneofIndex: field.oneofIndex,
+            hasPresence: !field.isRepeated && (field.oneofIndex != nil || isMessage || !isImplicit)
+        )
     }
 
     private func resolve(_ reference: String, scope: String) -> ProtobufFieldType {
@@ -215,18 +330,31 @@ private struct ProtobufTypeResolver {
     }
 }
 
-// descriptor.proto, read with the wire reader: FileDescriptorSet.file = 1.
+// descriptor.proto read with the wire reader. Field numbers are descriptor.proto's.
 internal enum ProtobufDescriptorSetParser {
     static func parse(_ data: Data) throws -> [ProtobufFileDefinition] {
-        let invalid = ProtobufSchemaError(reason: String(localized: "The file is neither a .proto file nor a descriptor set."))
-        guard let set = try? fields(data) else { throw invalid }
         var files: [ProtobufFileDefinition] = []
-        for (number, value) in set {
-            guard number == 1, case .bytes(let bytes) = value else { throw invalid }
-            files.append(try file(bytes))
+        do {
+            for (number, value) in try fields(data) {
+                guard number == 1, case .bytes(let bytes) = value else { throw ProtobufSchemaError.notASchema }
+                files.append(try file(bytes))
+            }
+        } catch let error as ProtobufSchemaError {
+            throw error
+        } catch {
+            throw ProtobufSchemaError.notASchema
         }
-        guard files.contains(where: { !$0.allMessages.isEmpty }) else { throw invalid }
-        return files
+        guard files.contains(where: { !$0.allMessages.isEmpty }) else { throw ProtobufSchemaError.notASchema }
+        return primaryFirst(files)
+    }
+
+    // `--include_imports` writes each dependency before the files that import it.
+    private static func primaryFirst(_ files: [ProtobufFileDefinition]) -> [ProtobufFileDefinition] {
+        let imported = Set(files.flatMap(\.dependencies))
+        guard let primary = files.lastIndex(where: { !imported.contains($0.name) }) else { return files }
+        var ordered = files
+        let file = ordered.remove(at: primary)
+        return [file] + ordered
     }
 
     private enum Value {
@@ -263,31 +391,67 @@ internal enum ProtobufDescriptorSetParser {
         return String(data: data, encoding: .utf8)
     }
 
+    private static func varint(_ entries: [(Int, Value)], _ number: Int) -> UInt64? {
+        for (member, value) in entries.reversed() where member == number {
+            if case .varint(let raw) = value { return raw }
+        }
+        return nil
+    }
+
+    private static func bytes(_ entries: [(Int, Value)], _ number: Int) -> Data? {
+        for (member, value) in entries.reversed() where member == number {
+            if case .bytes(let data) = value { return data }
+        }
+        return nil
+    }
+
+    // options.features: FeatureSet.field_presence = 1 (2 is IMPLICIT), enum_type = 2 (2 is CLOSED).
+    private static func features(_ entries: [(Int, Value)], options: Int, features: Int) throws -> ProtobufFeatureOverrides {
+        guard let optionBytes = bytes(entries, options),
+              let featureBytes = bytes(try fields(optionBytes), features) else { return ProtobufFeatureOverrides() }
+        let set = try fields(featureBytes)
+        var overrides = ProtobufFeatureOverrides()
+        if let presence = varint(set, 1), (1...3).contains(presence) { overrides.implicitPresence = presence == 2 }
+        if let enumType = varint(set, 2), (1...2).contains(enumType) { overrides.closedEnum = enumType == 2 }
+        return overrides
+    }
+
     private static func file(_ data: Data) throws -> ProtobufFileDefinition {
+        let entries = try fields(data)
+        var file = ProtobufFileDefinition()
         var package = ""
         var messageData: [Data] = []
         var enumData: [Data] = []
-        for (number, value) in try fields(data) {
+        for (number, value) in entries {
             switch (number, value) {
+            case (1, _): file.name = string(value) ?? ""
             case (2, _): package = string(value) ?? ""
+            case (3, _): file.dependencies.append(string(value) ?? "")
             case (4, .bytes(let bytes)): messageData.append(bytes)
             case (5, .bytes(let bytes)): enumData.append(bytes)
             default: break
             }
         }
+        let syntax = bytes(entries, 12).flatMap { String(data: $0, encoding: .utf8) }
+        switch syntax {
+        case "proto3": file.syntax = .proto3
+        case "editions": file.syntax = .editions
+        default: file.syntax = (varint(entries, 14) ?? 0) >= 1_000 ? .editions : .proto2
+        }
+        file.features = try features(entries, options: 8, features: 50)
         var collector = Collector()
-        let messages = try messageData.map { try collector.message($0, scope: package, depth: 0) }
-        let enums = try enumData.map { try collector.enumeration($0, scope: package) }
-        return ProtobufFileDefinition(
-            messages: messages, enums: enums, allMessages: collector.messages, allEnums: collector.enums
-        )
+        file.messages = try messageData.map { try collector.message($0, scope: package, depth: 0) }
+        file.enums = try enumData.map { try collector.enumeration($0, scope: package) }
+        file.allMessages = collector.messages
+        file.allEnums = collector.enums
+        return file
     }
 
     private struct Collector {
         var messages: [ProtobufMessageDefinition] = []
-        var enums: [ProtobufEnumDescriptor] = []
+        var enums: [ProtobufEnumDefinition] = []
 
-        mutating func message(_ data: Data, scope: String, depth: Int) throws -> ProtobufMessageDefinition {
+        mutating func message(_ data: Data, scope: String, depth: Int) throws -> String {
             guard depth < ProtoFileParser.maxDepth else {
                 throw ProtobufSchemaError(reason: String(localized: "Messages are nested too deeply."))
             }
@@ -295,29 +459,28 @@ internal enum ProtobufDescriptorSetParser {
             let name = entries.first { $0.0 == 1 }.flatMap { string($0.1) } ?? ""
             let fullName = scope.isEmpty ? name : "\(scope).\(name)"
             let slot = messages.count
-            messages.append(ProtobufMessageDefinition(fullName: fullName, fields: [], nestedMessages: [], isMapEntry: false))
+            messages.append(ProtobufMessageDefinition(fullName: fullName))
             var definition = messages[slot]
+            definition.features = try features(entries, options: 7, features: 12)
             for (number, value) in entries {
                 guard case .bytes(let bytes) = value else { continue }
                 switch number {
                 case 2: definition.fields.append(try field(bytes))
-                case 3: definition.nestedMessages.append(try message(bytes, scope: fullName, depth: depth + 1).fullName)
-                case 4: enums.append(try enumeration(bytes, scope: fullName))
-                case 7: definition.isMapEntry = try ProtobufDescriptorSetParser.fields(bytes).contains {
-                    if $0.0 == 7, case .varint(let flag) = $0.1 { return flag != 0 }
-                    return false
-                }
+                case 3: definition.nestedMessages.append(try message(bytes, scope: fullName, depth: depth + 1))
+                case 4: definition.nestedEnums.append(try enumeration(bytes, scope: fullName))
+                case 7: definition.isMapEntry = varint(try fields(bytes), 7).map { $0 != 0 } ?? false
                 default: break
                 }
             }
             messages[slot] = definition
-            return definition
+            return fullName
         }
 
-        mutating func enumeration(_ data: Data, scope: String) throws -> ProtobufEnumDescriptor {
+        mutating func enumeration(_ data: Data, scope: String) throws -> String {
+            let entries = try ProtobufDescriptorSetParser.fields(data)
             var name = ""
             var values: [Int32: String] = [:]
-            for (number, value) in try ProtobufDescriptorSetParser.fields(data) {
+            for (number, value) in entries {
                 if number == 1 { name = string(value) ?? "" }
                 guard number == 2, case .bytes(let bytes) = value else { continue }
                 var valueName = ""
@@ -326,30 +489,20 @@ internal enum ProtobufDescriptorSetParser {
                     if member == 1 { valueName = string(memberValue) ?? "" }
                     if member == 2, case .varint(let raw) = memberValue { valueNumber = Int32(truncatingIfNeeded: raw) }
                 }
-                // The first name wins for an aliased number, as protoc prints it.
+                // protoc prints an aliased number by its first name.
                 if values[valueNumber] == nil { values[valueNumber] = valueName }
             }
-            let enumeration = ProtobufEnumDescriptor(fullName: scope.isEmpty ? name : "\(scope).\(name)", values: values)
-            enums.append(enumeration)
-            return enumeration
+            let fullName = scope.isEmpty ? name : "\(scope).\(name)"
+            enums.append(ProtobufEnumDefinition(
+                fullName: fullName, values: values, features: try features(entries, options: 3, features: 7)
+            ))
+            return fullName
         }
 
         private func field(_ data: Data) throws -> ProtobufFieldDefinition {
-            var name = ""
-            var number = 0
-            var label: UInt64 = 1
-            var typeCode: UInt64 = 0
-            var typeName = ""
-            for (member, value) in try ProtobufDescriptorSetParser.fields(data) {
-                switch (member, value) {
-                case (1, _): name = string(value) ?? ""
-                case (3, .varint(let raw)): number = Int(truncatingIfNeeded: raw)
-                case (4, .varint(let raw)): label = raw
-                case (5, .varint(let raw)): typeCode = raw
-                case (6, _): typeName = string(value) ?? ""
-                default: break
-                }
-            }
+            let entries = try ProtobufDescriptorSetParser.fields(data)
+            let typeCode = varint(entries, 5) ?? 0
+            let typeName = bytes(entries, 6).flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let type: ProtobufFieldDefinition.TypeReference
             switch typeCode {
             case 10: type = .group(String(typeName.drop { $0 == "." }))
@@ -362,7 +515,17 @@ internal enum ProtobufDescriptorSetParser {
                 }
                 type = .scalar(scalar)
             }
-            return ProtobufFieldDefinition(name: name, number: number, type: type, isRepeated: label == 3)
+            let isProto3Optional = (varint(entries, 17) ?? 0) != 0
+            var definition = ProtobufFieldDefinition(
+                name: bytes(entries, 1).flatMap { String(data: $0, encoding: .utf8) } ?? "",
+                number: Int(truncatingIfNeeded: varint(entries, 3) ?? 0),
+                type: type,
+                isRepeated: varint(entries, 4) == 3
+            )
+            definition.isOptional = isProto3Optional
+            if !isProto3Optional, let index = varint(entries, 9) { definition.oneofIndex = Int(truncatingIfNeeded: index) }
+            definition.features = try features(entries, options: 8, features: 21)
+            return definition
         }
 
         private static let scalarTypes: [UInt64: ProtobufScalarType] = [

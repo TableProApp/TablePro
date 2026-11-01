@@ -50,7 +50,12 @@ internal struct BinaryValueViewerView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: ProtobufSchemaStore.didRestoreSchema).receive(on: RunLoop.main)) { notification in
             guard case .protobufSchema(let schemaID, _) = format,
-                  notification.userInfo?[AvroSchemaStore.schemaIDKey] as? String == schemaID else { return }
+                  notification.userInfo?[ProtobufSchemaStore.schemaIDKey] as? String == schemaID else { return }
+            schemaRevision += 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SchemaRegistryCache.didChange).receive(on: RunLoop.main)) { notification in
+            guard case .schemaRegistry(let connectionID) = format,
+                  notification.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID == connectionID else { return }
             schemaRevision += 1
         }
     }
@@ -224,7 +229,11 @@ internal struct BinaryValueViewerView: View {
         guard decodedKey != key else { return }
         let data = data
         let format = format
-        // The grid fetches a schema without waiting for it; the viewer waits, so it never shows a fetch in progress.
+        // A new value never shows the last one's document while its schema is fetched.
+        if decodedKey?.data != data || decodedKey?.format != format {
+            document = nil
+            hexDump = ""
+        }
         if case .schemaRegistry(let connectionID) = format, let schemaID = try? SchemaRegistryFrame.schemaID(data) {
             _ = await SchemaRegistryCache.shared.schema(connectionID: connectionID, schemaID: schemaID)
             guard !Task.isCancelled else { return }

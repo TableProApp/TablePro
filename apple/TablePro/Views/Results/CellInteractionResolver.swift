@@ -75,8 +75,9 @@ internal struct CellInteractionResolver {
         let holdsBytes = context.columnType?.isBlobType == true || context.isBinaryValue
 
         // Read-only: nothing writes a decoded tree back. A NULL keeps the hex editor, the way bytes get into it.
-        if holdsBytes, context.isBinaryValue || context.value != nil,
-           let format = context.displayFormatOverride?.binaryValueFormat {
+        if let override = context.displayFormatOverride, let format = override.binaryValueFormat,
+           context.isBinaryValue || context.value != nil,
+           holdsBytes || override.isApplicable(to: context.columnType) {
             return .viewBinaryValue(format)
         }
 

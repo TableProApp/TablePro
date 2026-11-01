@@ -23,7 +23,7 @@ internal struct BinaryValueFieldView: View {
                     .padding(.vertical, 3)
             } else {
                 BinaryValueViewerView(
-                    data: context.value.wrappedValue.storedBytes,
+                    data: bytes,
                     format: format,
                     onPopOut: onPopOut.map { popOut in { popOut(context.value.wrappedValue) } }
                 )
@@ -32,5 +32,11 @@ internal struct BinaryValueFieldView: View {
             }
         }
         .valueWell(clipsContent: true)
+    }
+
+    private var bytes: Data {
+        let text = context.value.wrappedValue
+        let holdsBytes = BinaryValueBytes.holdsBytes(columnType: context.columnType, isBinaryValue: context.isBinaryValue)
+        return BinaryValueBytes.data(of: text, holdsBytes: holdsBytes) ?? text.storedBytes
     }
 }

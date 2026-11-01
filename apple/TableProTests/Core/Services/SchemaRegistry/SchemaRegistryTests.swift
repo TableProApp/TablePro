@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProTestSupport
 @testable import TablePro
 import Testing
 
@@ -127,27 +128,74 @@ struct SchemaRegistryTests {
         }
     }
 
-    @Test("The cache asks once for many cells, tells the grid when the schema lands, and keeps a failure only briefly")
-    func cache() async throws {
+    private final class Resolver: Sendable {
+        let calls = OSAllocatedUnfairLock(initialState: 0)
+        let current: OSAllocatedUnfairLock<SchemaRegistryEndpoint?>
+
+        init(_ endpoint: SchemaRegistryEndpoint?) {
+            current = OSAllocatedUnfairLock(initialState: endpoint)
+        }
+
+        var resolve: SchemaRegistryCache.EndpointResolver {
+            { [self] _ in
+                calls.withLock { $0 += 1 }
+                return current.withLock { $0 }
+            }
+        }
+    }
+
+    private static func changes(for connection: UUID) -> (AsyncStream<Void>, NSObjectProtocol) {
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        let observer = NotificationCenter.default.addObserver(forName: SchemaRegistryCache.didChange, object: nil, queue: nil) {
+            if $0.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID == connection { continuation.yield() }
+        }
+        return (stream, observer)
+    }
+
+    @Test("Reading the cache never fetches; a prefetch asks once per schema and announces the batch")
+    @MainActor
+    func prefetch() async throws {
         let transport = RecordedTransport()
         let connection = UUID()
-        let cache = SchemaRegistryCache(endpoint: { _ in Self.endpoint }, transport: transport.transport)
-        let (landed, continuation) = AsyncStream<UUID>.makeStream()
-        let observer = NotificationCenter.default.addObserver(forName: SchemaRegistryCache.didLoadSchema, object: cache, queue: nil) {
-            if let id = $0.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID { continuation.yield(id) }
-        }
+        let cache = SchemaRegistryCache(resolveEndpoint: Resolver(Self.endpoint).resolve, transport: transport.transport)
+        let (changes, observer) = Self.changes(for: connection)
         defer { NotificationCenter.default.removeObserver(observer) }
 
         #expect(cache.cachedSchema(connectionID: connection, schemaID: 1) == nil)
-        #expect(cache.cachedSchema(connectionID: connection, schemaID: 1) == nil)
-        var iterator = landed.makeAsyncIterator()
-        #expect(await iterator.next() == connection)
+        #expect(transport.requests.withLock { $0.isEmpty })
+
+        cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: false)
+        cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: false)
+        var iterator = changes.makeAsyncIterator()
+        _ = await iterator.next()
         guard case .success(.avro)? = cache.cachedSchema(connectionID: connection, schemaID: 1) else {
             Issue.record("expected the fetched Avro schema")
             return
         }
         #expect(transport.requests.withLock { $0.count } == 1)
+    }
 
+    @Test("A loaded batch skips the endpoint lookup, which reads the Keychain")
+    @MainActor
+    func loadedBatchSkipsResolve() async throws {
+        let resolver = Resolver(Self.endpoint)
+        let connection = UUID()
+        let cache = SchemaRegistryCache(resolveEndpoint: resolver.resolve, transport: RecordedTransport().transport)
+        _ = await cache.schema(connectionID: connection, schemaID: 1)
+        let calls = resolver.calls.withLock { $0 }
+
+        cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: false)
+        #expect(resolver.calls.withLock { $0 } == calls)
+        cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: true)
+        #expect(resolver.calls.withLock { $0 } == calls + 1)
+    }
+
+    @Test("A failure is kept for its lifetime, and a full reload asks again at once")
+    @MainActor
+    func failureRetry() async throws {
+        let transport = RecordedTransport()
+        let connection = UUID()
+        let cache = SchemaRegistryCache(resolveEndpoint: Resolver(Self.endpoint).resolve, transport: transport.transport)
         guard case .failure = await cache.schema(connectionID: connection, schemaID: 99_999) else {
             Issue.record("expected a failure")
             return
@@ -156,16 +204,72 @@ struct SchemaRegistryTests {
             Issue.record("expected the failure to be kept")
             return
         }
-        #expect(transport.requests.withLock { $0.count } == 2)
+        cache.prefetch(connectionID: connection, schemaIDs: [99_999], retryingFailures: false)
+        #expect(transport.requests.withLock { $0.count } == 1)
+
+        cache.prefetch(connectionID: connection, schemaIDs: [99_999], retryingFailures: true)
+        try await waitUntil { transport.requests.withLock { $0.count } == 2 }
+    }
+
+    @Test("A failure past its lifetime is fetched again by the next prefetch")
+    @MainActor
+    func failureExpires() async throws {
+        let transport = RecordedTransport()
+        let connection = UUID()
+        let cache = SchemaRegistryCache(
+            failureLifetime: .zero, resolveEndpoint: Resolver(Self.endpoint).resolve, transport: transport.transport
+        )
+        _ = await cache.schema(connectionID: connection, schemaID: 99_999)
+        cache.prefetch(connectionID: connection, schemaIDs: [99_999], retryingFailures: false)
+        try await waitUntil { transport.requests.withLock { $0.count } == 2 }
+    }
+
+    @Test("A connection whose registry changed reads schemas from the new one, and the change is announced")
+    @MainActor
+    func endpointChange() async throws {
+        let transport = RecordedTransport()
+        let resolver = Resolver(Self.endpoint)
+        let connection = UUID()
+        let cache = SchemaRegistryCache(resolveEndpoint: resolver.resolve, transport: transport.transport)
+        guard case .success = await cache.schema(connectionID: connection, schemaID: 1) else {
+            Issue.record("expected the schema from the first registry")
+            return
+        }
+        let (changes, observer) = Self.changes(for: connection)
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let other = SchemaRegistryEndpoint(fields: [SchemaRegistryConnectionField.url: "https://other.example.com"])
+        resolver.current.withLock { $0 = other }
+        cache.prefetch(connectionID: connection, schemaIDs: [1], retryingFailures: true)
+        var iterator = changes.makeAsyncIterator()
+        _ = await iterator.next()
+
+        try await waitUntil { transport.requests.withLock { $0.count } == 2 }
+        let host = transport.requests.withLock { $0.last?.url?.host }
+        #expect(host == "other.example.com")
     }
 
     @Test("A connection with no registry URL says so instead of fetching")
+    @MainActor
     func noEndpoint() async {
-        let cache = SchemaRegistryCache(endpoint: { _ in nil }, transport: { _ in throw URLError(.badURL) })
-        guard case .failure(let error) = await cache.schema(connectionID: UUID(), schemaID: 1) else {
+        let cache = SchemaRegistryCache(resolveEndpoint: { _ in nil }, transport: { _ in throw URLError(.badURL) })
+        let connection = UUID()
+        guard case .failure(let error) = await cache.schema(connectionID: connection, schemaID: 1) else {
             Issue.record("expected a failure")
             return
         }
         #expect(error.reason.contains("Schema Registry URL"))
+        guard case .failure? = cache.cachedSchema(connectionID: connection, schemaID: 1) else {
+            Issue.record("expected the grid to read the same failure")
+            return
+        }
+    }
+
+    @Test("The frame's schema ID reads from any byte sequence, and anything shorter or unframed has none")
+    func framePrefix() {
+        #expect(SchemaRegistryFrame.schemaID(prefix: Data([0, 0, 0, 1, 2, 9])) == 258)
+        #expect(SchemaRegistryFrame.schemaID(prefix: Data([0, 0, 0, 1])) == nil)
+        #expect(SchemaRegistryFrame.schemaID(prefix: Data([1, 0, 0, 1, 2])) == nil)
+        #expect(SchemaRegistryFrame.schemaID(prefix: "\u{0}\u{0}\u{0}\u{0}\u{7}{}".utf8) == 7)
     }
 }

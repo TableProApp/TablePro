@@ -88,7 +88,7 @@ enum KafkaConnectionField {
     static let saslMechanism = "kafkaSaslMechanism"
     static let brokerRouting = "kafkaBrokerRouting"
     static let connectTimeout = "kafkaConnectTimeout"
-    // Read by the app, which fetches the schemas a value names; the driver never uses them.
+    // The app reads these to fetch schemas; the driver never does.
     static let schemaRegistryUrl = "schemaRegistryUrl"
     static let schemaRegistryUsername = "schemaRegistryUsername"
     static let schemaRegistryPassword = "schemaRegistryPassword"

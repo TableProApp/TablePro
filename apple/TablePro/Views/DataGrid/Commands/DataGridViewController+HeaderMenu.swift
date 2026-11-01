@@ -141,11 +141,9 @@ extension DataGridViewController {
         return item
     }
 
-    // Offered only where the connection names a Schema Registry to fetch the schemas from.
     private var schemaRegistryFormat: ValueDisplayFormat? {
         guard let connectionID = model.configuration.traits.connectionScope?.connectionId,
-              let fields = DatabaseManager.shared.session(for: connectionID)?.connection.additionalFields,
-              SchemaRegistryEndpoint(fields: fields) != nil else { return nil }
+              SchemaRegistryEndpoint.isConfigured(for: connectionID) else { return nil }
         return .schemaRegistry(connectionID: connectionID)
     }
 
@@ -300,7 +298,6 @@ extension DataGridViewController {
         }
     }
 
-    // A file with several messages asks which one the values are; the schema is copied in like Avro's.
     @objc func chooseProtobufSchemaFromMenu(_ sender: Any?) {
         guard let columnID = menuColumn(sender)?.id, let window = view.window else { return }
         Task { @MainActor [weak self] in

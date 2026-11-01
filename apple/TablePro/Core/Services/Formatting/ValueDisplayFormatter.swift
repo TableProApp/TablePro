@@ -37,9 +37,8 @@ enum ValueDisplayFormatter {
         case .json, .phpSerialized:
             return rawValue
         case .messagePack, .protobuf, .igbinary, .avro, .protobufSchema, .schemaRegistry:
-            // A text column holds the bytes as UTF-8; a binary one as one Latin-1 character per byte.
-            let encoding: String.Encoding = columnType?.isBlobType == false ? .utf8 : .isoLatin1
-            guard let data = rawValue.data(using: encoding), let decoder = format.binaryValueFormat else { return nil }
+            guard let data = BinaryValueBytes.data(of: rawValue, holdsBytes: BinaryValueBytes.holdsBytes(columnType: columnType)),
+                  let decoder = format.binaryValueFormat else { return nil }
             return BinaryValueDecoding.text(data, format: decoder)
         }
     }
