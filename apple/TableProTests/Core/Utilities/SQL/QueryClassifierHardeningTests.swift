@@ -899,6 +899,33 @@ struct QueryClassifierNonSqlTests {
         #expect(!QueryClassifier.isWriteQuery(search, databaseType: .weaviate))
     }
 
+    @Test("Qdrant reads are safe, POST searches read, and point deletes are destructive")
+    func qdrantTiers() {
+        #expect(!QueryClassifier.isWriteQuery("QDRANT_BROWSE:e30=", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("GET /collections", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/points/query\n{\"limit\": 3}", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/points/scroll {}", databaseType: .qdrant))
+        #expect(!QueryClassifier.isWriteQuery("POST /collections/docs/points {\"ids\": [1]}", databaseType: .qdrant))
+        #expect(QueryClassifier.classifyTier("PUT /collections/docs/points?wait=true\n{}", databaseType: .qdrant) == .write)
+        #expect(QueryClassifier.classifyTier("POST /collections/docs/points/payload?wait=true {}", databaseType: .qdrant) == .write)
+        #expect(QueryClassifier.classifyTier("POST /collections/docs/points/delete?wait=true {}", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.classifyTier("POST /collections/docs/points/payload/clear {}", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.classifyTier("POST /collections/docs/points/batch {}", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.classifyTier("DELETE /collections/docs", databaseType: .qdrant) == .destructive)
+        #expect(QueryClassifier.isWriteQuery("POST /collections/docs/points/query/../delete {}", databaseType: .qdrant))
+    }
+
+    @Test("A Qdrant snapshot reaches the server's disk")
+    func qdrantSnapshots() {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(
+            "POST /collections/docs/snapshots", databaseType: .qdrant
+        ))
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(
+            "PUT /collections/docs/snapshots/recover {\"location\": \"file:///etc\"}", databaseType: .qdrant
+        ))
+        #expect(!QueryClassifier.reachesFilesystemOrExecutesCode("GET /collections", databaseType: .qdrant))
+    }
+
     @Test("Bigtable request lines are tiered by their verb, and a PUT that nulls a cell is destructive")
     func bigtableTiers() {
         #expect(!QueryClassifier.isWriteQuery("BIGTABLE_BROWSE:e30=", databaseType: .bigtable))

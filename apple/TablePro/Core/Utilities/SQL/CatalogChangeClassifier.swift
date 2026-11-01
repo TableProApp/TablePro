@@ -52,6 +52,6 @@ enum CatalogChangeClassifier {
     }
 
     private static let documentStoreTypes: Set<DatabaseType> = [
-        .mongodb, .elasticsearch, .typesense, .weaviate, .etcd, .firestore, .firebaseRealtimeDatabase, .bigtable
+        .mongodb, .elasticsearch, .typesense, .weaviate, .qdrant, .etcd, .firestore, .firebaseRealtimeDatabase, .bigtable
     ]
 }

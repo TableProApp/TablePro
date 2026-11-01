@@ -1013,6 +1013,8 @@ private extension QueryClassifier {
             return worstRequest(typesenseClassification)
         case .weaviate:
             return worstRequest(weaviateClassification)
+        case .qdrant:
+            return worstRequest(qdrantClassification)
         case .firestore, .firebaseRealtimeDatabase:
             return worstRequest { firebaseClassification($0, databaseType: databaseType) }
         case .bigtable:
@@ -1200,6 +1202,44 @@ private extension QueryClassifier {
             return .safe
         }
         return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+    }
+
+    /// POSTs under `/collections/<name>/` that only read. Retrieving points by id is a POST to `points`.
+    static let qdrantReadRoutes: Set<[String]> = [
+        ["POINTS"], ["POINTS", "SCROLL"], ["POINTS", "SEARCH"], ["POINTS", "QUERY"], ["POINTS", "COUNT"],
+        ["POINTS", "RECOMMEND"], ["POINTS", "DISCOVER"], ["POINTS", "FACET"],
+        ["POINTS", "SEARCH", "BATCH"], ["POINTS", "QUERY", "BATCH"], ["POINTS", "RECOMMEND", "BATCH"],
+        ["POINTS", "DISCOVER", "BATCH"], ["POINTS", "SEARCH", "GROUPS"], ["POINTS", "QUERY", "GROUPS"],
+        ["POINTS", "RECOMMEND", "GROUPS"], ["POINTS", "SEARCH", "MATRIX", "PAIRS"],
+        ["POINTS", "SEARCH", "MATRIX", "OFFSETS"],
+    ]
+
+    /// A snapshot is written to the server's disk, and recovering one fetches a URL from the server.
+    /// A batch can carry deletes, and a POST ending in `delete` or `clear` removes points or payload.
+    static func qdrantClassification(_ trimmed: String) -> QueryClassification {
+        if trimmed.hasPrefix("QDRANT_BROWSE:") || trimmed.hasPrefix("QDRANT_EXPORT:") {
+            return .safe
+        }
+        let (verb, path) = typesenseRequestLine(trimmed)
+        guard !verb.isEmpty else { return .safe }
+        guard let route = typesenseRoute(of: path) else {
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: true)
+        }
+        let reachesFilesystem = route.contains("SNAPSHOTS")
+        if verb == "GET" || verb == "HEAD" {
+            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: reachesFilesystem)
+        }
+        let isCollectionRoute = route.count >= 3 && route[0] == "COLLECTIONS"
+        let subroute = isCollectionRoute ? Array(route.dropFirst(2)) : []
+        if verb == "POST", isCollectionRoute, qdrantReadRoutes.contains(subroute) {
+            return QueryClassification(tier: .safe, reachesFilesystemOrExecutesCode: reachesFilesystem)
+        }
+        let removes = verb == "DELETE"
+            || route.last == "DELETE" || route.last == "CLEAR" || subroute == ["POINTS", "BATCH"]
+        return QueryClassification(
+            tier: removes ? .destructive : .write,
+            reachesFilesystemOrExecutesCode: reachesFilesystem
+        )
     }
 
     /// A grid page is a tagged spec and anything else a request line read the way the driver reads

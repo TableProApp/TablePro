@@ -1253,6 +1253,15 @@ targets:
       - package: TableProCore
         product: TableProLogRedaction
 
+  QdrantDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: QdrantDriverPlugin
+      principalClass: QdrantPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProQdrantCore
+
   WeaviateDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1306,6 +1315,7 @@ aggregateTargets:
       - MongoDBDriver
       - OracleDriver
       - ParquetExport
+      - QdrantDriverPlugin
       - SnowflakeDriverPlugin
       - SpannerDriverPlugin
       - SurrealDBDriverPlugin

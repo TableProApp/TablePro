@@ -51,7 +51,7 @@ struct QueryTabBaseQueryTests {
     /// Their plugins build the browse query. Without one the tab must not be handed another engine's
     /// command: either the plugin builds it or the build throws.
     @Test("An engine that highlights like MongoDB or Redis is not browsed with their commands", arguments: [
-        DatabaseType.elasticsearch, .typesense, .weaviate, .etcd
+        DatabaseType.elasticsearch, .typesense, .weaviate, .qdrant, .etcd
     ])
     func otherEnginesNeverGetShellBrowseQueries(databaseType: DatabaseType) {
         let query = try? QueryTab.buildBaseTableQuery(tableName: "products", databaseType: databaseType)

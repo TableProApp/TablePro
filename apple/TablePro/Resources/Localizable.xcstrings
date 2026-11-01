@@ -3571,6 +3571,14 @@
         }
       }
     },
+    "%@ holds booleans, so it matches only true or false, not %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ holds numbers, and %@ is not a number." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ holds text in some rows and documents or arrays in others, so this value could be either. Change it with a query." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3968,6 +3976,10 @@
           }
         }
       }
+    },
+    "%@ is not a point id. Qdrant ids are unsigned integers or UUIDs." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ is not a Redis database index." : {
       "extractionState" : "manual",
@@ -4623,6 +4635,10 @@
           }
         }
       }
+    },
+    "%@ on %@ needs a full-text payload index on that field. Without one Qdrant matches nothing." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ on branch %@" : {
       "localizations" : {
@@ -16268,6 +16284,10 @@
       }
     },
     "A raw Bigtable filter is a JSON RowFilter, such as {\"rowKeyRegexFilter\": \"<base64>\"}." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A raw filter for Qdrant is a JSON condition, such as {\"key\": \"city\", \"match\": {\"value\": \"Berlin\"}}." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -71712,6 +71732,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Enter a request like GET /collections or POST /collections/docs/points/query." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Enter a request like: GET /collections" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -121465,6 +121489,10 @@
         }
       }
     },
+    "Not connected to Qdrant." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Not connected to Redis" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -138924,6 +138952,34 @@
           }
         }
       }
+    },
+    "Qdrant answered a count without a number." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant answered with something other than HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant cannot filter on %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant cannot filter with %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant compares only numbers and dates with %@, and %@ holds neither." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant does not support views." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Qdrant returned HTTP %d." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Queries" : {
       "comment" : "A section header for the list of queries in the favorites tab.",

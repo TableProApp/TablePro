@@ -75,6 +75,8 @@ struct ExternalStatementGatePrivateRequestTests {
         (.weaviate, "WEAVIATE_SEARCH:"),
         (.weaviate, "WEAVIATE_WRITE:"),
         (.weaviate, "WEAVIATE_EXPORT:"),
+        (.qdrant, "QDRANT_BROWSE:"),
+        (.qdrant, "QDRANT_EXPORT:"),
         (.etcd, "ETCD_RANGE:"),
         (.etcd, "ETCD_COUNT:"),
         (.etcd, "ETCD_REFUSAL:"),
