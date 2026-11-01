@@ -56,10 +56,14 @@ internal final class ConnectionWorkspace {
     /// left the mode with the second window's layout.
     internal var browseCollapseState: (sidebar: Bool, inspector: Bool)?
 
-    /// Each workspace owns its undo stack. Routing through `NSWindow.undoManager` was correct
-    /// while a window meant one connection; sharing one window between several would let an
-    /// undo in one connection roll back an edit made in another.
+    // Per workspace: one window hosts several connections, and a shared stack undid one connection's edit from another.
     internal let undoManager: UndoManager
+    // Agent mode's own history: the browse one holds edits to a grid the mode hides.
+    internal let agentUndoManager = UndoManager()
+
+    internal var activeUndoManager: UndoManager {
+        resolvedContentMode == .agent ? agentUndoManager : undoManager
+    }
 
     /// This connection's own view tree, built once and kept. The window shows one workspace's panes
     /// at a time by swapping which of these is the split items' child.
@@ -401,6 +405,7 @@ internal final class ConnectionWorkspace {
         sessionState = nil
         session = nil
         undoManager.removeAllActions()
+        agentUndoManager.removeAllActions()
         /// Once nothing hosts this connection any more, its agent sessions stop: a stream, a tool
         /// loop or a card waiting for an answer would otherwise keep running with nothing on screen.
         /// Deferred so this workspace has already left the window's registry when the check runs.

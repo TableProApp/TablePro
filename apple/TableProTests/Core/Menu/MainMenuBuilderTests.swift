@@ -786,7 +786,6 @@ struct MainMenuValidationTests {
         context.canInsertRows = true
         context.canDeleteRows = true
         context.supportsTableHealth = true
-        context.isCurrentTabEditable = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
         context.hasRowSelection = true
@@ -907,6 +906,26 @@ struct MainMenuValidationTests {
         }
         context.isAgentMode = true
         for selector in documentCommands {
+            #expect(!enabled(selector, context), "\(selector) stayed lit in Agent mode")
+        }
+    }
+
+    // Each opens a tab, and Agent mode does not mount the tab strip, so the tab would wait unseen behind the conversation.
+    @Test("Agent mode dims the commands that open a database tool's tab")
+    func databaseToolsDimInAgentMode() {
+        var context = capableContext()
+        context.isConnected = true
+        let toolCommands = [
+            #selector(MainSplitViewController.showServerDashboard(_:)),
+            #selector(MainSplitViewController.showQueryInsights(_:)),
+            #selector(MainSplitViewController.showUsersAndRoles(_:)),
+            #selector(MainSplitViewController.showERDiagram(_:))
+        ]
+        for selector in toolCommands {
+            #expect(enabled(selector, context), "\(selector) is dim while browsing")
+        }
+        context.isAgentMode = true
+        for selector in toolCommands {
             #expect(!enabled(selector, context), "\(selector) stayed lit in Agent mode")
         }
     }
