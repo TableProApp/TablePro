@@ -448,14 +448,12 @@ impl DataGrid {
         self.imp().columns.borrow_mut().handlers.extend(handlers);
     }
 
-    /// A column moved, went or came back: the layout keeps it, a search
-    /// counts only the columns on screen, in their order, and the focused
-    /// column may have gained or lost a neighbour to move past.
+    /// A column moved, went or came back: the layout keeps it, and a
+    /// search counts only the columns on screen, in their order.
     fn columns_moved(&self) {
         self.keep_filler_last();
         self.record_layout();
         self.find_rows_changed();
-        self.refresh_actions();
     }
 
     // GTK drops a header dragged onto the filler after it, and lets the
@@ -564,66 +562,92 @@ impl DataGrid {
             // Narrow stops at one step, so the column the focus is in stays
             // on screen to widen again.
             false if width > step => (width - step).max(step),
-            false => return,
+            false => {
+                view.error_bell();
+                return;
+            }
         };
         self.set_column_width(index, Some(width));
     }
 
-    /// Move the column past the next column on screen, as a header drag
-    /// would, so the table keeps the order. Left and right are on screen,
-    /// which in a right-to-left locale is the reverse of the view's order.
     pub(super) fn move_column(&self, index: usize, left: bool) {
-        let Some((column, destination)) = self.move_destination(index, left) else {
-            self.column_view().error_bell();
+        let view = self.column_view();
+        // GtkColumnView mirrors its columns by its own direction, not the grid's.
+        let toward_start = left != (view.direction() == gtk::TextDirection::Rtl);
+        let shown = self.shown_slots();
+        let neighbour = shown
+            .iter()
+            .position(|(_, slot)| *slot == index)
+            .and_then(|at| match toward_start {
+                true => at.checked_sub(1),
+                false => at.checked_add(1),
+            })
+            .and_then(|neighbour| shown.get(neighbour).copied());
+        let (Some((destination, passed)), Some(column)) = (neighbour, self.data_view_column(index)) else {
+            // As GtkTreeView does at the edge, so the key never passes on unheard.
+            view.error_bell();
             return;
         };
-        let focused = self
-            .focused_cell()
-            .and_then(|cell| Some((cell.position()?, cell.column())));
-        self.column_view().insert_column(destination, &column);
-        if let Some((position, column)) = focused {
-            self.focus_cell(position, column);
-        }
+        // `insert_column` takes the column out first, so either way it lands past the neighbour.
+        view.insert_column(destination, &column);
+        self.keep_focus_in_view(index);
+        self.announce_move(index, passed, toward_start);
     }
 
-    pub(super) fn can_move_column(&self, index: usize, left: bool) -> bool {
-        self.move_destination(index, left).is_some()
-    }
-
-    /// The column and the position that puts it past its neighbour, which
-    /// skips hidden columns and is never the filler.
-    fn move_destination(&self, index: usize, left: bool) -> Option<(gtk::ColumnViewColumn, u32)> {
-        let (column, filler) = {
-            let set = self.imp().columns.borrow();
-            (set.view_column(index)?.clone(), set.filler.clone())
+    // `scroll_to` reads the headers' last layout, and GtkNative's layout handler runs before this one.
+    fn keep_focus_in_view(&self, index: usize) {
+        let Some(surface) = self.native().and_then(|native| native.surface()) else {
+            return;
         };
-        let columns = self.column_view().columns();
-        let at =
-            (0..columns.n_items()).find(|position| columns.item(*position).as_ref() == Some(column.upcast_ref()))?;
-        let shown = |position: &u32| {
-            columns
-                .item(*position)
-                .and_downcast::<gtk::ColumnViewColumn>()
-                .is_some_and(|other| other.is_visible() && Some(&other) != filler.as_ref())
-        };
-        let toward_start = left != (self.direction() == gtk::TextDirection::Rtl);
-        // `insert_column` takes the column out first, so the neighbour's
-        // own position puts it on the far side either way.
-        let destination = match toward_start {
-            true => (0..at).rev().find(shown),
-            false => (at + 1..columns.n_items()).find(shown),
-        }?;
-        Some((column, destination))
+        let grid = self.downgrade();
+        let handler = Rc::new(Cell::new(None::<glib::SignalHandlerId>));
+        let slot = handler.clone();
+        let id = surface.connect_layout(move |surface, _, _| {
+            if let Some(id) = slot.take() {
+                surface.disconnect(id);
+            }
+            if let Some(grid) = grid.upgrade()
+                && let Some(position) = grid
+                    .focused_cell()
+                    .filter(|cell| cell.column() == index)
+                    .and_then(|cell| cell.position())
+                && let Some(column) = grid.data_view_column(index)
+            {
+                grid.column_view()
+                    .scroll_to(position, Some(&column), gtk::ListScrollFlags::NONE, None);
+            }
+        });
+        handler.set(Some(id));
+        surface.request_layout();
     }
 
-    /// The data columns on screen, in the order the user arranged them.
+    fn announce_move(&self, index: usize, passed: usize, toward_start: bool) {
+        let columns = self.grid_columns();
+        let (Some(moved), Some(passed)) = (columns.get(index), columns.get(passed)) else {
+            return;
+        };
+        let names = [("column", moved.name.as_str()), ("neighbour", passed.name.as_str())];
+        let text = match toward_start {
+            true => crate::i18n::gettext_f("Moved {column} before {neighbour}", &names),
+            false => crate::i18n::gettext_f("Moved {column} after {neighbour}", &names),
+        };
+        crate::ui::a11y::announce(&self.column_view(), &text, gtk::AccessibleAnnouncementPriority::Medium);
+    }
+
     pub(crate) fn shown_columns(&self) -> Vec<usize> {
+        self.shown_slots().into_iter().map(|(_, index)| index).collect()
+    }
+
+    // View positions count the row numbers, the filler and hidden columns too.
+    fn shown_slots(&self) -> Vec<(u32, usize)> {
         let set = self.imp().columns.borrow();
-        let view = self.column_view();
-        (0..view.columns().n_items())
-            .filter_map(|position| view.columns().item(position).and_downcast::<gtk::ColumnViewColumn>())
-            .filter(|column| column.is_visible())
-            .filter_map(|column| set.index_of(&column))
+        let columns = self.column_view().columns();
+        (0..columns.n_items())
+            .filter_map(|position| {
+                let column = columns.item(position).and_downcast::<gtk::ColumnViewColumn>()?;
+                let index = set.index_of(&column).filter(|_| column.is_visible())?;
+                Some((position, index))
+            })
             .collect()
     }
 
