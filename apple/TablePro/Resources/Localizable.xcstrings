@@ -139366,15 +139366,7 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
-    "Qdrant cannot match a whole %@ value in %@. Use a raw filter on one of its fields." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
     "Qdrant cannot sort by %@." : {
-      "extractionState" : "manual",
-      "generatesSymbol" : false
-    },
-    "Qdrant compares only numbers and dates with %@, and %@ holds neither." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

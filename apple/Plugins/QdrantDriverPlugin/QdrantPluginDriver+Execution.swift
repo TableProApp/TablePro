@@ -27,10 +27,10 @@ extension QdrantPluginDriver {
             let response = try await client.execute(QdrantConsoleRequest(
                 method: "POST",
                 path: "/collections/\(QdrantPathEncoding.segment(check.collection))/points",
-                body: try QdrantJSON.text(["ids": [check.id], "with_payload": true, "with_vector": false])
+                body: try QdrantJSON.text(["ids": [check.id], "with_payload": true, "with_vector": true])
             ))
             let point = QdrantPoint.list(fromResponse: response.json)?.first
-            let missed = !QdrantInsertCheck.landed(point, payload: check.payload)
+            let missed = !QdrantInsertCheck.landed(point, payload: check.payload, vectors: check.vectors)
             return PluginQueryResult(
                 columns: [QdrantSchema.idColumn],
                 columnTypeNames: ["id"],
@@ -53,7 +53,7 @@ extension QdrantPluginDriver {
         started: Date
     ) async throws -> PluginQueryResult {
         let collection = try await collection(request.collection)
-        let filter = try QdrantFilterBuilder.filter(request.filters, logicMode: request.logicMode, collection: collection)
+        let filter = try QdrantFilterBuilder.filter(request.filters, logicMode: request.logicMode)
         let points: [QdrantPoint]
         switch try QdrantSortPlan.resolve(request.sorts) {
         case .byID:

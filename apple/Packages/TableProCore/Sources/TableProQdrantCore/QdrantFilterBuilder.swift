@@ -19,8 +19,6 @@ public enum QdrantFilterError: Error, LocalizedError, Equatable, Sendable {
     case missingUpperBound(column: String)
     case notAPointID(value: String)
     case emptyList(column: String)
-    case comparisonNeedsNumberOrDate(column: String, op: String)
-    case wholeValueNotMatchable(column: String, type: String)
     case vectorNotFilterable(column: String)
     case keyNotAddressable(column: String)
     case rawFilterNotAnObject
@@ -38,16 +36,6 @@ public enum QdrantFilterError: Error, LocalizedError, Equatable, Sendable {
             )
         case .emptyList(let column):
             return String(format: String(localized: "IN on %@ needs at least one value."), column)
-        case .comparisonNeedsNumberOrDate(let column, let op):
-            return String(
-                format: String(localized: "Qdrant compares only numbers and dates with %@, and %@ holds neither."),
-                op, column
-            )
-        case .wholeValueNotMatchable(let column, let type):
-            return String(
-                format: String(localized: "Qdrant cannot match a whole %@ value in %@. Use a raw filter on one of its fields."),
-                type, column
-            )
         case .vectorNotFilterable(let column):
             return String(format: String(localized: "Qdrant cannot filter on %@."), column)
         case .keyNotAddressable(let column):
@@ -63,20 +51,20 @@ public enum QdrantFilterError: Error, LocalizedError, Equatable, Sendable {
 
 // AND rows go under `must` and OR rows under `should`. A negated row is a nested filter with `must_not`,
 // which, like `$ne` in a document store, also matches a point the key is missing from.
+//
+// A payload index does not constrain what points store, and a sample cannot prove it does, so a value
+// matches every type its text can spell: `42` finds "42", 42, 42.0 and a list holding either. The
+// index still serves the branch of its own type.
 public enum QdrantFilterBuilder {
     public static let rawFilterColumn = "__RAW__"
 
-    public static func filter(
-        _ filters: [QdrantFilterSpec],
-        logicMode: String,
-        collection: QdrantCollection
-    ) throws -> [String: Any]? {
+    public static func filter(_ filters: [QdrantFilterSpec], logicMode: String) throws -> [String: Any]? {
         guard !filters.isEmpty else { return nil }
-        let conditions = try filters.map { try condition(for: $0, collection: collection) }
+        let conditions = try filters.map(condition(for:))
         return [logicMode.uppercased() == "OR" ? "should" : "must": conditions]
     }
 
-    public static func condition(for filter: QdrantFilterSpec, collection: QdrantCollection) throws -> [String: Any] {
+    public static func condition(for filter: QdrantFilterSpec) throws -> [String: Any] {
         if filter.column == rawFilterColumn {
             return try raw(filter.value)
         }
@@ -96,24 +84,24 @@ public enum QdrantFilterBuilder {
         guard let key = QdrantKeyPath.quoted(QdrantSchema.payloadKey(forColumn: filter.column)) else {
             throw QdrantFilterError.keyNotAddressable(column: filter.column)
         }
-        let field = Field(column: filter.column, key: key, type: collection.indexType(ofColumn: filter.column))
+        let field = Field(key: key)
 
         switch op {
         case "=":
-            return try field.equality(filter.value)
+            return field.equality(filter.value)
         case "!=", "<>":
-            return negated([try field.equality(filter.value)])
+            return negated([field.equality(filter.value)])
         case ">", ">=", "<", "<=":
-            return try field.range(op: op, bounds: [rangeKey(op): filter.value])
+            return field.range([rangeKey(op): filter.value])
         case "BETWEEN":
             guard let upper = filter.secondValue, !upper.trimmingCharacters(in: .whitespaces).isEmpty else {
                 throw QdrantFilterError.missingUpperBound(column: filter.column)
             }
-            return try field.range(op: op, bounds: ["gte": lowerBound(of: filter.value, upperBound: upper), "lte": upper])
+            return field.range(["gte": lowerBound(of: filter.value, upperBound: upper), "lte": upper])
         case "IN":
-            return try field.anyOf(list(filter.value, column: filter.column))
+            return field.anyOf(try list(filter.value, column: filter.column))
         case "NOT IN":
-            return negated(try field.anyOfConditions(list(filter.value, column: filter.column)))
+            return negated(try list(filter.value, column: filter.column).map(field.equality))
         case "CONTAINS":
             return field.textMatch(filter.value)
         case "NOT CONTAINS":
@@ -132,37 +120,9 @@ public enum QdrantFilterBuilder {
     }
 
     private struct Field {
-        let column: String
         let key: String
-        // The payload index's type. Nil for a field nobody indexed, whose points may hold `"42"`, `42`
-        // or a list of either, so a value there matches every type its text can spell.
-        let type: QdrantFieldType?
 
-        func equality(_ value: String) throws -> [String: Any] {
-            guard let type else { return anyType(equalTo: value) }
-            switch type {
-            case .keyword, .text, .string, .uuid:
-                return match(value)
-            case .integer:
-                guard let number = QdrantValue.integer(value) else {
-                    throw QdrantValueError.notAnInteger(column: column, value: value)
-                }
-                return match(NSNumber(value: number))
-            case .bool:
-                guard let flag = QdrantValue.bool(value) else {
-                    throw QdrantValueError.notABoolean(column: column, value: value)
-                }
-                return match(flag)
-            case .float, .datetime:
-                return try range(op: "=", bounds: ["gte": value, "lte": value])
-            case .array, .json:
-                return anyType(equalTo: value)
-            case .geo, .object:
-                throw QdrantFilterError.wholeValueNotMatchable(column: column, type: type.rawValue)
-            }
-        }
-
-        private func anyType(equalTo value: String) -> [String: Any] {
+        func equality(_ value: String) -> [String: Any] {
             let trimmed = value.trimmingCharacters(in: .whitespaces)
             var options = [match(value)]
             // A range also finds 42.0, but a double rounds an integer past 2^53, so a larger one matches exactly.
@@ -177,38 +137,22 @@ public enum QdrantFilterBuilder {
             return options.count == 1 ? options[0] : ["should": options]
         }
 
-        // Qdrant's `match.any` takes strings alone or integers alone; anything else is one `should`.
-        func anyOf(_ values: [String]) throws -> [String: Any] {
-            let conditions = try anyOfConditions(values)
-            let matched = conditions.compactMap { ($0["match"] as? [String: Any])?["value"] }
-            if matched.count == conditions.count {
-                if matched.allSatisfy({ $0 is String }) || matched.allSatisfy(isInteger) {
-                    return ["key": key, "match": ["any": matched]]
-                }
+        // Qdrant's `match.any` takes strings alone, so it collapses only a list of plain text.
+        func anyOf(_ values: [String]) -> [String: Any] {
+            let conditions = values.map(equality)
+            let texts = conditions.compactMap { ($0["match"] as? [String: Any])?["value"] as? String }
+            if texts.count == conditions.count {
+                return ["key": key, "match": ["any": texts]]
             }
             return ["should": conditions]
         }
 
-        func anyOfConditions(_ values: [String]) throws -> [[String: Any]] {
-            try values.map(equality)
-        }
-
-        func range(op: String, bounds: [String: String]) throws -> [String: Any] {
-            if let type, !type.isOrdered, type != .json, type != .array {
-                throw QdrantFilterError.comparisonNeedsNumberOrDate(column: column, op: op)
-            }
+        // A number bounds numbers; any other text is a date, which Qdrant parses.
+        func range(_ bounds: [String: String]) -> [String: Any] {
             var range: [String: Any] = [:]
             for (bound, text) in bounds {
                 let trimmed = text.trimmingCharacters(in: .whitespaces)
-                if type == .datetime {
-                    range[bound] = trimmed
-                } else if let number = QdrantValue.number(trimmed) {
-                    range[bound] = NSNumber(value: number)
-                } else if type?.isOrdered == true {
-                    throw QdrantValueError.notANumber(column: column, value: text)
-                } else {
-                    range[bound] = trimmed
-                }
+                range[bound] = QdrantValue.number(trimmed).map { NSNumber(value: $0) as Any } ?? trimmed
             }
             return ["key": key, "range": range]
         }
@@ -225,17 +169,11 @@ public enum QdrantFilterBuilder {
         }
 
         var isBlank: [String: Any] {
-            if let type, !type.holdsText { return isEmpty }
-            return ["should": [isEmpty, match("")]]
+            ["should": [isEmpty, match("")]]
         }
 
         private func match(_ value: Any) -> [String: Any] {
             ["key": key, "match": ["value": value]]
-        }
-
-        private func isInteger(_ value: Any) -> Bool {
-            guard let number = value as? NSNumber else { return false }
-            return !QdrantJSON.isBoolean(number) && !CFNumberIsFloatType(number)
         }
     }
 

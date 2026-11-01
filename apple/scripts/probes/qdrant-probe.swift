@@ -88,7 +88,7 @@ check(shifted.map { $0.idText ?? "" } == ["102", "103"], "a page after another c
 _ = try await run(#"PUT \#(base)/points?wait=true {"points":[{"id":50,"vector":[50,1],"payload":{"city":"even","body":"Hello World 50","f":50.5,"n":50,"meta":{"source":"doc50.pdf"},"a.b":"dotted","when":"2024-01-01T00:50:00Z"}}]}"#)
 
 func filtered(_ specs: [QdrantFilterSpec], _ mode: String = "AND") async throws -> Int {
-    let filter = try QdrantFilterBuilder.filter(specs, logicMode: mode, collection: collection)
+    let filter = try QdrantFilterBuilder.filter(specs, logicMode: mode)
     return try await client.count(collection: name, filter: filter)
 }
 check(try await filtered([QdrantFilterSpec(column: "city", op: "=", value: "even")]) == 125, "match keyword")
@@ -109,7 +109,7 @@ let searchNumbers = [
     QdrantFilterSpec(column: "city", op: "CONTAINS", value: "even")
 ]
 check(try await filtered(searchNumbers, "OR") == 125, "search all rows runs on number and vector columns")
-let evenFilter = try QdrantFilterBuilder.filter([QdrantFilterSpec(column: "city", op: "=", value: "even")], logicMode: "AND", collection: collection)
+let evenFilter = try QdrantFilterBuilder.filter([QdrantFilterSpec(column: "city", op: "=", value: "even")], logicMode: "AND")
 let evenBefore = try await client.pointPage(collection: name, filter: evenFilter, offset: 10, limit: 2)
 _ = try await run(#"POST \#(base)/points/payload?wait=true {"payload":{"city":"odd"},"points":[2]}"#)
 let evenAfter = try await client.pointPage(collection: name, filter: evenFilter, offset: 10, limit: 2)
@@ -189,8 +189,8 @@ check(QdrantPoint.list(fromResponse: try await run(raced.mustFindNothing?.text).
 _ = try await run(#"PUT \#(base)/points?wait=true {"points":[{"id":777,"vector":[7,7],"payload":{"city":"theirs"}}]}"#)
 _ = try await run(raced.request.text)
 guard let racedCheck = raced.landedCheck.flatMap(QdrantInsertCheck.decode) else { fatalError("insert has no landed check") }
-let held = QdrantPoint.list(fromResponse: try await run(#"POST \#(base)/points {"ids":[777],"with_payload":true}"#).json)?.first
-check(!QdrantInsertCheck.landed(held, payload: racedCheck.payload), "an insert that lost a race to the same id is caught after the write")
+let held = QdrantPoint.list(fromResponse: try await run(#"POST \#(base)/points {"ids":[777],"with_payload":true,"with_vector":true}"#).json)?.first
+check(!QdrantInsertCheck.landed(held, payload: racedCheck.payload, vectors: racedCheck.vectors), "an insert that lost a race to the same id is caught after the write")
 _ = try await run(#"POST \#(base)/points/delete?wait=true {"points":[777]}"#)
 let after = try await run(#"POST \#(base)/points {"ids":[1,2,999],"with_payload":true,"with_vector":true}"#)
 let byID = Dictionary(uniqueKeysWithValues: (QdrantPoint.list(fromResponse: after.json) ?? []).map { ($0.idText ?? "", $0) })

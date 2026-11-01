@@ -65,8 +65,7 @@ extension QdrantPluginDriver {
     }
 
     func fetchFilteredRowCount(table: String, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int? {
-        let collection = try await collection(table)
-        let filter = try QdrantFilterBuilder.filter(specs(queryFilters), logicMode: logicMode, collection: collection)
+        let filter = try QdrantFilterBuilder.filter(specs(queryFilters), logicMode: logicMode)
         return try await requireClient().count(collection: table, filter: filter)
     }
 

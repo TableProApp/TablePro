@@ -87,13 +87,6 @@ struct QdrantSchemaTests {
         #expect(types["code"] == "integer")
         #expect(types["price"] == "float")
         #expect(types["fresh"] == "integer")
-        #expect(collection.indexType(ofColumn: "code") == nil)
-        #expect(collection.indexType(ofColumn: "city") == .keyword)
-        #expect(collection.indexType(ofColumn: "tags") == .keyword)
-        let condition = try QdrantFilterBuilder.condition(
-            for: QdrantFilterSpec(column: "tags", op: "=", value: "42"), collection: collection
-        )
-        #expect(canonical(condition) == #"{"key":"\"tags\"","match":{"value":"42"}}"#)
     }
 
     @Test("A page's points widen a sampled type without adding columns the table did not open with")
@@ -109,19 +102,6 @@ struct QdrantSchemaTests {
         #expect(types["tags"] == "json")
         #expect(types["note"] == "json")
         #expect(types["late"] == nil)
-    }
-
-    @Test("Only an index types a filter; a sampled field's type never decides what a value matches")
-    func filtersIgnoreSampledTypes() throws {
-        let collection = QdrantCollection.parse(
-            name: "docs", info: info(vectors: ["size": 2], payloadSchema: ["rank": ["data_type": "integer"]]),
-            sample: [try point(#"{"id":1,"payload":{"tags":["42","a"],"mixed":"42","rank":1}}"#),
-                     try point(#"{"id":2,"payload":{"mixed":["42"]}}"#)]
-        )
-        #expect(collection.indexType(ofColumn: "rank") == .integer)
-        #expect(collection.indexType(ofColumn: "tags") == nil)
-        #expect(collection.indexType(ofColumn: "mixed") == nil)
-        #expect(QdrantSchema.columns(for: collection).first { $0.name == "tags" }?.type == "array")
     }
 
     @Test("A payload key named score never stands in for the similarity score column")

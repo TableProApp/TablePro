@@ -4,27 +4,22 @@ import Testing
 
 struct QdrantFilterBuilderTests {
     private func condition(_ column: String, _ op: String, _ value: String = "", _ second: String? = nil) throws -> String {
-        canonical(try QdrantFilterBuilder.condition(
-            for: QdrantFilterSpec(column: column, op: op, value: value, secondValue: second),
-            collection: sampleCollection
-        ))
+        canonical(try QdrantFilterBuilder.condition(for: QdrantFilterSpec(column: column, op: op, value: value, secondValue: second)))
     }
 
-    @Test("An indexed field matches as its index's type")
-    func indexedEquality() throws {
+    @Test("Text matches as text alone")
+    func textEquality() throws {
         #expect(try condition("city", "=", "Berlin") == #"{"key":"\"city\"","match":{"value":"Berlin"}}"#)
-        #expect(try condition("rank", "=", "7") == #"{"key":"\"rank\"","match":{"value":7}}"#)
-        #expect(try condition("flag", "=", "1") == #"{"key":"\"flag\"","match":{"value":true}}"#)
-        #expect(throws: QdrantValueError.notAnInteger(column: "rank", value: "x")) { try condition("rank", "=", "x") }
     }
 
-    @Test("A field nobody indexed matches every type its text can spell, whatever the sample guessed")
-    func unindexedEquality() throws {
+    @Test("A value matches every type its text spells, whatever an index or a sample says the field holds")
+    func everySpelling() throws {
         #expect(try condition("count", "=", "42")
             == #"{"should":[{"key":"\"count\"","match":{"value":"42"}},{"key":"\"count\"","range":{"gte":42,"lte":42}}]}"#)
-        #expect(try condition("note", "=", "1")
-            == #"{"should":[{"key":"\"note\"","match":{"value":"1"}},{"key":"\"note\"","range":{"gte":1,"lte":1}},{"key":"\"note\"","match":{"value":true}}]}"#)
-        #expect(try condition("note", "=", "Berlin") == #"{"key":"\"note\"","match":{"value":"Berlin"}}"#)
+        #expect(try condition("flag", "=", "1")
+            == #"{"should":[{"key":"\"flag\"","match":{"value":"1"}},{"key":"\"flag\"","range":{"gte":1,"lte":1}},{"key":"\"flag\"","match":{"value":true}}]}"#)
+        #expect(try condition("pop", "=", "3.5")
+            == #"{"should":[{"key":"\"pop\"","match":{"value":"3.5"}},{"key":"\"pop\"","range":{"gte":3.5,"lte":3.5}}]}"#)
         #expect(try condition("count", "=", "9007199254740993")
             == #"{"should":[{"key":"\"count\"","match":{"value":"9007199254740993"}},{"key":"\"count\"","match":{"value":9007199254740993}}]}"#)
     }
@@ -32,19 +27,7 @@ struct QdrantFilterBuilderTests {
     @Test("A key holding a dot stays one top-level key, and one holding a quote is refused")
     func keyQuoting() throws {
         #expect(try condition("a.b", "=", "x") == #"{"key":"\"a.b\"","match":{"value":"x"}}"#)
-        let collection = QdrantCollection(name: "docs", vectors: [], payloadFields: [
-            QdrantPayloadField(name: "q\"x", type: .string, isIndexed: false)
-        ])
-        #expect(throws: QdrantFilterError.keyNotAddressable(column: "q\"x")) {
-            try QdrantFilterBuilder.condition(for: QdrantFilterSpec(column: "q\"x", op: "=", value: "1"), collection: collection)
-        }
-    }
-
-    @Test("A float and a datetime have no exact match, so equality is the closed range around the value")
-    func rangeEquality() throws {
-        #expect(try condition("pop", "=", "3.5") == #"{"key":"\"pop\"","range":{"gte":3.5,"lte":3.5}}"#)
-        #expect(try condition("seen", "=", "2024-01-02T00:00:00Z")
-            == #"{"key":"\"seen\"","range":{"gte":"2024-01-02T00:00:00Z","lte":"2024-01-02T00:00:00Z"}}"#)
+        #expect(throws: QdrantFilterError.keyNotAddressable(column: "q\"x")) { try condition("q\"x", "=", "1") }
     }
 
     @Test("Not equal nests the match under must_not")
@@ -52,46 +35,31 @@ struct QdrantFilterBuilderTests {
         #expect(try condition("city", "!=", "Berlin") == #"{"must_not":[{"key":"\"city\"","match":{"value":"Berlin"}}]}"#)
     }
 
-    @Test("Comparisons and BETWEEN become a range, and text is refused")
+    @Test("Comparisons and BETWEEN become a range on numbers, or on dates for other text")
     func ranges() throws {
         #expect(try condition("pop", ">", "2") == #"{"key":"\"pop\"","range":{"gt":2}}"#)
         #expect(try condition("count", "BETWEEN", "1,5", "5") == #"{"key":"\"count\"","range":{"gte":1,"lte":5}}"#)
-        #expect(throws: QdrantFilterError.comparisonNeedsNumberOrDate(column: "city", op: ">")) {
-            try condition("city", ">", "a")
-        }
+        #expect(try condition("seen", ">=", "2024-01-02T00:00:00Z") == #"{"key":"\"seen\"","range":{"gte":"2024-01-02T00:00:00Z"}}"#)
+        #expect(throws: QdrantFilterError.missingUpperBound(column: "count")) { try condition("count", "BETWEEN", "1", "") }
     }
 
-    @Test("IN is the equality of each value: match any for strings or integers, ranges for floats")
+    @Test("IN collapses plain text to match any, and keeps every spelling of a number")
     func inLists() throws {
         #expect(try condition("city", "IN", "Berlin, Paris") == #"{"key":"\"city\"","match":{"any":["Berlin","Paris"]}}"#)
-        #expect(try condition("rank", "IN", "1,2") == #"{"key":"\"rank\"","match":{"any":[1,2]}}"#)
-        #expect(try condition("note", "IN", "a, b") == #"{"key":"\"note\"","match":{"any":["a","b"]}}"#)
-        #expect(try condition("pop", "IN", "1.5, 2.5")
-            == #"{"should":[{"key":"\"pop\"","range":{"gte":1.5,"lte":1.5}},{"key":"\"pop\"","range":{"gte":2.5,"lte":2.5}}]}"#)
-        #expect(try condition("flag", "IN", "true")
-            == #"{"should":[{"key":"\"flag\"","match":{"value":true}}]}"#)
+        #expect(try condition("rank", "IN", "1")
+            == #"{"should":[{"should":[{"key":"\"rank\"","match":{"value":"1"}},{"key":"\"rank\"","range":{"gte":1,"lte":1}},{"key":"\"rank\"","match":{"value":true}}]}]}"#)
     }
 
     @Test("NOT IN excludes every value the way != excludes one")
     func notInLists() throws {
-        #expect(try condition("rank", "NOT IN", "1,2")
-            == #"{"must_not":[{"key":"\"rank\"","match":{"value":1}},{"key":"\"rank\"","match":{"value":2}}]}"#)
-        #expect(try condition("pop", "NOT IN", "1.5") == #"{"must_not":[{"key":"\"pop\"","range":{"gte":1.5,"lte":1.5}}]}"#)
-    }
-
-    @Test("A geo point cannot be matched whole")
-    func geoEquality() {
-        #expect(throws: QdrantFilterError.wholeValueNotMatchable(column: "home", type: "geo")) {
-            try condition("home", "IN", "1")
-        }
+        #expect(try condition("city", "NOT IN", "a, b")
+            == #"{"must_not":[{"key":"\"city\"","match":{"value":"a"}},{"key":"\"city\"","match":{"value":"b"}}]}"#)
     }
 
     @Test("CONTAINS matches words in any field, indexed or not, and a value that is not text matches nothing")
     func contains() throws {
         #expect(try condition("body", "CONTAINS", "vector") == #"{"key":"\"body\"","match":{"text":"vector"}}"#)
-        #expect(try condition("note", "CONTAINS", "Ber") == #"{"key":"\"note\"","match":{"text":"Ber"}}"#)
         #expect(try condition("rank", "CONTAINS", "1") == #"{"key":"\"rank\"","match":{"text":"1"}}"#)
-        #expect(try condition("count", "CONTAINS", "1") == #"{"key":"\"count\"","match":{"text":"1"}}"#)
     }
 
     @Test("IS NULL matches a missing key as well as null, and IS EMPTY adds the empty string")
@@ -100,7 +68,6 @@ struct QdrantFilterBuilderTests {
         #expect(try condition("note", "IS NOT NULL") == #"{"must_not":[{"is_empty":{"key":"\"note\""}}]}"#)
         #expect(try condition("note", "IS EMPTY")
             == #"{"should":[{"is_empty":{"key":"\"note\""}},{"key":"\"note\"","match":{"value":""}}]}"#)
-        #expect(try condition("rank", "IS EMPTY") == #"{"is_empty":{"key":"\"rank\""}}"#)
     }
 
     @Test("The id column filters with has_id, keeping integer and UUID ids apart")
@@ -113,7 +80,7 @@ struct QdrantFilterBuilderTests {
         #expect(try condition("id", "CONTAINS", "Berlin") == #"{"has_id":[]}"#)
     }
 
-    @Test("Vectors cannot be filtered and unsupported operators say so")
+    @Test("Vectors cannot be filtered, contains on one finds nothing, and unsupported operators say so")
     func refusals() throws {
         #expect(throws: QdrantFilterError.vectorNotFilterable(column: "vector")) { try condition("vector", "=", "1") }
         #expect(try condition("vector.sp", "CONTAINS", "a") == #"{"has_id":[]}"#)
@@ -132,10 +99,10 @@ struct QdrantFilterBuilderTests {
             QdrantFilterSpec(column: "city", op: "=", value: "Berlin"),
             QdrantFilterSpec(column: "count", op: "<", value: "3")
         ]
-        let and = try #require(try QdrantFilterBuilder.filter(specs, logicMode: "AND", collection: sampleCollection))
-        let or = try #require(try QdrantFilterBuilder.filter(specs, logicMode: "OR", collection: sampleCollection))
+        let and = try #require(try QdrantFilterBuilder.filter(specs, logicMode: "AND"))
+        let or = try #require(try QdrantFilterBuilder.filter(specs, logicMode: "OR"))
         #expect((and["must"] as? [Any])?.count == 2)
         #expect((or["should"] as? [Any])?.count == 2)
-        #expect(try QdrantFilterBuilder.filter([], logicMode: "AND", collection: sampleCollection) == nil)
+        #expect(try QdrantFilterBuilder.filter([], logicMode: "AND") == nil)
     }
 }

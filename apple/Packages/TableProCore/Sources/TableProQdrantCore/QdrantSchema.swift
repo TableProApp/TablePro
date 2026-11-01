@@ -55,11 +55,6 @@ public enum QdrantFieldType: String, Sendable, Equatable, CaseIterable {
         }
     }
 
-    static func elementType(of value: Any?) -> QdrantFieldType? {
-        guard let items = value as? [Any] else { return nil }
-        return items.compactMap(observed).reduce(nil) { merged, type in merged.map { $0.merged(with: type) } ?? type }
-    }
-
     func stores(_ stored: QdrantFieldType) -> Bool {
         switch self {
         case .keyword, .text, .uuid, .datetime, .string: return stored == .string
@@ -135,9 +130,8 @@ public struct QdrantPayloadField: Sendable, Equatable {
     // False while every sampled value was null, so the first real value sets the type outright.
     public let hasTypedValue: Bool
     // What an indexed field's points actually store, which the index does not constrain: a keyword
-    // index still lets a point hold 42 or a list. Lists are indexed element by element.
+    // index still lets a point hold 42 or a list.
     public let scalarType: QdrantFieldType?
-    public let elementType: QdrantFieldType?
     public let holdsLists: Bool
 
     public init(
@@ -146,7 +140,6 @@ public struct QdrantPayloadField: Sendable, Equatable {
         isIndexed: Bool,
         hasTypedValue: Bool = true,
         scalarType: QdrantFieldType? = nil,
-        elementType: QdrantFieldType? = nil,
         holdsLists: Bool = false
     ) {
         self.name = name
@@ -154,19 +147,12 @@ public struct QdrantPayloadField: Sendable, Equatable {
         self.isIndexed = isIndexed
         self.hasTypedValue = hasTypedValue
         self.scalarType = scalarType
-        self.elementType = elementType
         self.holdsLists = holdsLists
     }
 
     public var storedType: QdrantFieldType? {
         guard holdsLists else { return scalarType }
         return scalarType == nil ? .array : .json
-    }
-
-    // Whether the index covers every value seen, so a filter typed by it finds them all.
-    public var fitsIndex: Bool {
-        guard isIndexed else { return false }
-        return (scalarType.map(type.stores) ?? true) && (elementType.map(type.stores) ?? true)
     }
 
     // What a cell holds and is written back as, so a value saves as the type it was stored with.
@@ -212,13 +198,6 @@ public struct QdrantCollection: Sendable, Equatable {
     }
 
     // Only an index states a field's type; a sample guesses it from 100 points.
-    // An index does not constrain what points store, so it types a filter only while every value seen
-    // fits it; a keyword index holding 42 in some point filters like a field nobody indexed.
-    public func indexType(ofColumn column: String) -> QdrantFieldType? {
-        guard let field = field(ofColumn: column), field.fitsIndex else { return nil }
-        return field.type
-    }
-
     public func cellTypeName(ofColumn column: String) -> String? {
         field(ofColumn: column)?.cellTypeName
     }
@@ -250,13 +229,9 @@ public struct QdrantCollection: Sendable, Equatable {
                 guard let observed else { continue }
                 if field.isIndexed {
                     let isList = observed == .array
-                    let elements = isList ? QdrantFieldType.elementType(of: point.payload[key]) : nil
                     fields[index] = QdrantPayloadField(
                         name: key, type: field.type, isIndexed: true,
                         scalarType: isList ? field.scalarType : field.scalarType.map { $0.merged(with: observed) } ?? observed,
-                        elementType: [field.elementType, elements].compactMap { $0 }.reduce(nil) { merged, next in
-                            merged.map { $0.merged(with: next) } ?? next
-                        },
                         holdsLists: field.holdsLists || isList
                     )
                     continue

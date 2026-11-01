@@ -147,9 +147,17 @@ struct QdrantRowWriteTests {
         let written: [String: Any] = ["city": "Hanoi", "count": 3]
         let same = QdrantPoint(id: 1, payload: ["count": 3, "city": "Hanoi"], vector: nil, score: nil)
         let other = QdrantPoint(id: 1, payload: ["city": "Paris"], vector: nil, score: nil)
-        #expect(QdrantInsertCheck.landed(same, payload: written))
-        #expect(!QdrantInsertCheck.landed(other, payload: written))
-        #expect(!QdrantInsertCheck.landed(nil, payload: written))
+        #expect(QdrantInsertCheck.landed(same, payload: written, vectors: [:]))
+        #expect(!QdrantInsertCheck.landed(other, payload: written, vectors: [:]))
+        #expect(!QdrantInsertCheck.landed(nil, payload: written, vectors: [:]))
+
+        let sent: [String: Any] = ["": [3, 4], "sp": ["indices": [1], "values": [0.5]]]
+        let normalized = QdrantPoint(id: 1, payload: [:], vector: ["": [0.6, 0.8], "sp": ["indices": [1], "values": [0.5]]], score: nil)
+        let theirs = QdrantPoint(id: 1, payload: [:], vector: ["": [4, 3], "sp": ["indices": [1], "values": [0.5]]], score: nil)
+        let missing = QdrantPoint(id: 1, payload: [:], vector: ["": [3, 4]], score: nil)
+        #expect(QdrantInsertCheck.landed(normalized, payload: [:], vectors: sent))
+        #expect(!QdrantInsertCheck.landed(theirs, payload: [:], vectors: sent))
+        #expect(!QdrantInsertCheck.landed(missing, payload: [:], vectors: sent))
     }
 
     @Test("Typed values: text stays text, JSON columns parse, and malformed structures are refused")

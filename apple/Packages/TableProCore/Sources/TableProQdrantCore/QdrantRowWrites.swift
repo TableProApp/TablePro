@@ -45,24 +45,60 @@ public struct QdrantRowWrite: Sendable, Equatable {
 public enum QdrantInsertCheck {
     public static let tag = "QDRANT_INSERT_CHECK:"
 
-    public static func encode(collection: String, id: Any, payload: [String: Any]) -> String? {
-        guard let data = try? QdrantJSON.data(["collection": collection, "id": id, "payload": payload]) else { return nil }
+    public static func encode(collection: String, id: Any, payload: [String: Any], vectors: [String: Any]) -> String? {
+        let spec: [String: Any] = ["collection": collection, "id": id, "payload": payload, "vectors": vectors]
+        guard let data = try? QdrantJSON.data(spec) else { return nil }
         return tag + data.base64EncodedString()
     }
 
-    public static func decode(_ text: String) -> (collection: String, id: Any, payload: [String: Any])? {
+    public static func decode(_ text: String) -> (collection: String, id: Any, payload: [String: Any], vectors: [String: Any])? {
         guard text.hasPrefix(tag),
               let data = Data(base64Encoded: String(text.dropFirst(tag.count))),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let collection = object["collection"] as? String, let id = object["id"],
               let payload = object["payload"] as? [String: Any]
         else { return nil }
-        return (collection, id, payload)
+        return (collection, id, payload, object["vectors"] as? [String: Any] ?? [:])
     }
 
-    public static func landed(_ point: QdrantPoint?, payload: [String: Any]) -> Bool {
-        guard let point else { return false }
-        return (try? QdrantJSON.text(point.payload)) == (try? QdrantJSON.text(payload))
+    // A vector-only point has an empty payload either way, so the vectors are compared too.
+    public static func landed(_ point: QdrantPoint?, payload: [String: Any], vectors: [String: Any]) -> Bool {
+        guard let point, (try? QdrantJSON.text(point.payload)) == (try? QdrantJSON.text(payload)) else { return false }
+        let stored: [String: Any]
+        switch point.vector {
+        case let unnamed as [Any]: stored = ["": unnamed]
+        case let named as [String: Any]: stored = named
+        default: stored = [:]
+        }
+        guard Set(stored.keys) == Set(vectors.keys) else { return false }
+        return vectors.allSatisfy { name, sent in stored[name].map { sameVector(sent, $0) } ?? false }
+    }
+
+    // Qdrant stores a cosine collection's dense vectors normalized, so one equal to what was sent after
+    // normalizing is the same vector.
+    static func sameVector(_ sent: Any, _ stored: Any) -> Bool {
+        if let sentRows = sent as? [[Any]], let storedRows = stored as? [[Any]] {
+            return sentRows.count == storedRows.count && zip(sentRows, storedRows).allSatisfy { sameVector($0, $1) }
+        }
+        if let sentSparse = sent as? [String: Any], let storedSparse = stored as? [String: Any] {
+            return numbers(sentSparse["indices"]) == numbers(storedSparse["indices"])
+                && close(numbers(sentSparse["values"]), numbers(storedSparse["values"]))
+        }
+        guard let sentValues = numbers(sent), let storedValues = numbers(stored) else { return false }
+        if close(sentValues, storedValues) { return true }
+        let norm = sentValues.reduce(0) { $0 + $1 * $1 }.squareRoot()
+        return norm > 0 && close(sentValues.map { $0 / norm }, storedValues)
+    }
+
+    private static func numbers(_ value: Any?) -> [Double]? {
+        guard let array = value as? [Any] else { return nil }
+        let numbers = array.compactMap { ($0 as? NSNumber)?.doubleValue }
+        return numbers.count == array.count ? numbers : nil
+    }
+
+    private static func close(_ lhs: [Double]?, _ rhs: [Double]?) -> Bool {
+        guard let lhs, let rhs, lhs.count == rhs.count else { return false }
+        return zip(lhs, rhs).allSatisfy { abs($0 - $1) <= 1e-4 * max(1, abs($0)) }
     }
 }
 
@@ -147,7 +183,7 @@ public enum QdrantRowWriter {
                 request: try request("PUT", "\(points)?wait=true", ["points": [point], "update_filter": Self.matchesNoPoint]),
                 rowIndex: change.rowIndex,
                 mustFindNothing: lookup,
-                landedCheck: QdrantInsertCheck.encode(collection: collection, id: id, payload: values.payload)
+                landedCheck: QdrantInsertCheck.encode(collection: collection, id: id, payload: values.payload, vectors: values.vectors)
             )]
         case .update:
             let id = try pointID(change.id)
