@@ -40,6 +40,7 @@ struct ConnectionFormEdits: Equatable {
     var localOnly: Bool
     var additionalFields: [String: String]
     var ownedAdditionalFieldIDs: Set<String>
+    var maskingRules: [MaskingRule] = []
 
     static let appManagedAdditionalFieldIDs: Set<String> = [
         "preConnectScript",
@@ -50,6 +51,7 @@ struct ConnectionFormEdits: Equatable {
         DatabaseConnection.queryTimeoutSecondsKey,
         DatabaseConnection.binaryInlineLimitKilobytesKey,
         DatabaseConnection.completionIdentifierCaseKey,
+        DatabaseConnection.maskingRulesKey,
         DatabaseConnection.sshForwardUnixSocketPathKey,
         MySQLLocalSocket.fieldKey
     ]
@@ -87,6 +89,7 @@ struct ConnectionFormEdits: Equatable {
         result.queryTimeoutSeconds = queryTimeoutSeconds
         result.binaryInlineLimitKilobytes = binaryInlineLimitKilobytes
         result.completionIdentifierCase = completionIdentifierCase
+        result.maskingRules = maskingRules
         return result
     }
 

@@ -63,6 +63,7 @@ enum ResultEditRefusal: Equatable {
     case view(PluginViewReadOnlyReason?)
     case databaseMoved
     case keysUnresolved
+    case masked
 
     var message: String {
         switch self {
@@ -74,6 +75,8 @@ enum ResultEditRefusal: Equatable {
             return String(localized: "These rows came from another database than the one this tab is now using.")
         case .keysUnresolved:
             return String(localized: "TablePro has not looked up this table's key columns, so it cannot tell which row an edit would change.")
+        case .masked:
+            return String(localized: "These rows show masked values, which cannot be written back. Reveal them to edit.")
         }
     }
 

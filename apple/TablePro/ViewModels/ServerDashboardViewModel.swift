@@ -185,10 +185,13 @@ final class ServerDashboardViewModel: ObservableObject {
     private static func tileExecutor(connectionId: UUID, services: AppServices) -> DashboardTileBoard.Execute {
         { [connectionId, services] query in
             let driver = try liveDriver(connectionId: connectionId, services: services)
-            if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: DashboardTileTable.rowCap) {
-                return bounded
+            let policy = await MainActor.run {
+                services.databaseManager.session(for: connectionId)?.connection.maskingPolicy ?? .none
             }
-            return try await driver.executeRead(query: query)
+            if let bounded = try await driver.executeBoundedQuery(query: query, rowCap: DashboardTileTable.rowCap) {
+                return bounded.masked(by: policy)
+            }
+            return try await driver.executeRead(query: query).masked(by: policy)
         }
     }
 

@@ -722,7 +722,8 @@ internal final class RoutineDebugController: ObservableObject {
             break
         }
         if case .finished(let result) = final {
-            resultGrid = result.flatMap { Self.makeResultGrid($0, databaseType: databaseType) }
+            let policy = DatabaseManager.shared.session(for: connectionId)?.connection.maskingPolicy ?? .none
+            resultGrid = result.flatMap { Self.makeResultGrid($0.masked(by: policy), databaseType: databaseType) }
         }
         hasEnded = true
         setState(final)
