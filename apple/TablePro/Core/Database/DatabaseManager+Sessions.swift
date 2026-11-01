@@ -751,6 +751,7 @@ extension DatabaseManager {
         // Before the tunnel goes: a debug target whose client vanishes keeps its locks until someone aborts it.
         await RoutineDebugSessions.shared.stopAll(connectionId: sessionId, tabsCloseAfter: true)
         defer { RoutineDebugSessions.shared.reopenAdmission(for: sessionId) }
+        LiveMessageSessions.shared.end(connectionId: sessionId)
 
         tabStatePersister?.persistTabState(for: sessionId)
         if origin == .userRequested {
@@ -912,6 +913,8 @@ extension DatabaseManager {
         adopted.color = source.color
         adopted.iconName = source.iconName
         adopted.tagIds = source.tagIds
+        // Masking changes no route, and a rule saved while the window is open must hide values at once.
+        adopted.maskingRules = source.maskingRules
         return adopted
     }
 

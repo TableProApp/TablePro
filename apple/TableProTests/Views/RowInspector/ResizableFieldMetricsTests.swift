@@ -45,6 +45,19 @@ struct ResizableFieldMetricsTests {
         #expect(ResizableFieldMetrics.resolve(base: 160, delta: 5_000, range: mapRange) == 600)
     }
 
+    // A text pane dragged to 60 and then shown as a 100pt map: the drag moves it from 100 at once.
+    @Test func testABaseOutsideTheRangeMovesWithTheFirstPointOfDrag() {
+        let mapRange = ResizableFieldMetrics.geometryHeightRange
+        #expect(ResizableFieldMetrics.resolve(base: 60, delta: 30, range: mapRange) == 130)
+        #expect(ResizableFieldMetrics.resolve(base: 700, delta: -50, range: mapRange) == 550)
+    }
+
+    @Test func testADragThatEndsWhereItBeganStoresNothing() {
+        #expect(ResizableFieldMetrics.committedHeight(base: 120, delta: 0, range: range) == nil)
+        #expect(ResizableFieldMetrics.committedHeight(base: 120, delta: 40, range: range) == 160)
+        #expect(ResizableFieldMetrics.committedHeight(base: 600, delta: 40, range: range) == 600)
+    }
+
     @Test func testTextHeightResolvesWithinItsOwnRange() {
         let textRange = ResizableFieldMetrics.textHeightRange
         #expect(ResizableFieldMetrics.resolve(base: 110, delta: -500, range: textRange) == textRange.lowerBound)

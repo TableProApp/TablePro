@@ -37,6 +37,7 @@ public enum SQLDDLFallbackPolicy {
         "Typesense",
         "Weaviate",
         "Qdrant",
+        "Memcached",
         "Kafka",
         "etcd",
         "Redis",

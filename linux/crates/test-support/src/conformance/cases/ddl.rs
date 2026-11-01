@@ -309,8 +309,7 @@ pub async fn structure_changes_keep_rows_and_indexes<E: ConformanceDdlEngine>(
     Ok(())
 }
 
-/// Case 5: the statement an index reads back with, run after the index
-/// is dropped, makes the same index again.
+// Case 5: an index's statement, run after the index is dropped, makes the same index again.
 pub async fn index_statement_recreates_the_index<E: ConformanceDdlEngine>(engine: E) -> Result<(), ConformanceFailure> {
     let case = INDEX_CASE;
     let connection = connect(case, &engine, writable()).await?;

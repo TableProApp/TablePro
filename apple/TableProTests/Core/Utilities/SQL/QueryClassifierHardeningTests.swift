@@ -926,6 +926,28 @@ struct QueryClassifierNonSqlTests {
         #expect(!QueryClassifier.reachesFilesystemOrExecutesCode("GET /collections", databaseType: .qdrant))
     }
 
+    @Test("Memcached reads are safe, stores write, and delete and flush_all are destructive")
+    func memcachedTiers() {
+        #expect(!QueryClassifier.isWriteQuery("MEMCACHED_BROWSE:e30=", databaseType: .memcached))
+        #expect(!QueryClassifier.isWriteQuery("get user:1 user:2", databaseType: .memcached))
+        #expect(!QueryClassifier.isWriteQuery("stats items", databaseType: .memcached))
+        #expect(!QueryClassifier.isWriteQuery("lru_crawler metadump all", databaseType: .memcached))
+        #expect(QueryClassifier.classifyTier("stats reset", databaseType: .memcached) == .write)
+        #expect(QueryClassifier.classifyTier("stats \"reset\"", databaseType: .memcached) == .write)
+        #expect(QueryClassifier.classifyTier("stats 'detail' on", databaseType: .memcached) == .write)
+        #expect(QueryClassifier.classifyTier("stats sizes_enable", databaseType: .memcached) == .write)
+        #expect(!QueryClassifier.isWriteQuery("stats detail dump", databaseType: .memcached))
+        #expect(!QueryClassifier.isWriteQuery("stats cachedump 1 0", databaseType: .memcached))
+        #expect(!QueryClassifier.isWriteQuery("stats", databaseType: .memcached))
+        #expect(QueryClassifier.classifyTier("lru_crawler disable", databaseType: .memcached) == .write)
+        #expect(QueryClassifier.classifyTier("set k 0 0 \"v\"", databaseType: .memcached) == .write)
+        #expect(QueryClassifier.classifyTier("gat 60 k", databaseType: .memcached) == .write)
+        #expect(QueryClassifier.classifyTier("touch k 0", databaseType: .memcached) == .write)
+        #expect(QueryClassifier.classifyTier("delete k", databaseType: .memcached) == .destructive)
+        #expect(QueryClassifier.classifyTier("FLUSH_ALL", databaseType: .memcached) == .destructive)
+        #expect(QueryClassifier.classifyTier("get k; flush_all", databaseType: .memcached) == .destructive)
+    }
+
     @Test("Bigtable request lines are tiered by their verb, and a PUT that nulls a cell is destructive")
     func bigtableTiers() {
         #expect(!QueryClassifier.isWriteQuery("BIGTABLE_BROWSE:e30=", databaseType: .bigtable))

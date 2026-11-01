@@ -70,7 +70,7 @@ internal enum ToolbarContextResolver {
         case .usersRoles:
             String(localized: "Apply Changes")
         case .query, .table, .erDiagram, .serverDashboard, .insights, .tableHealth, .objectSource, .versionHistory,
-             .tableListing, .routineDebug, nil:
+             .tableListing, .routineDebug, .liveMessages, nil:
             String(localized: "Save Changes")
         }
     }
@@ -113,8 +113,8 @@ internal enum ToolbarContextResolver {
         case .serverDashboard, .insights, .tableHealth, .objectSource, .versionHistory, .tableListing:
             /// None of these can stage a change, so the commit control could only ever be dim.
             return [MainWindowToolbar.saveChanges]
-        case .routineDebug:
-            // A debug run has nothing to reload or commit; its own controls take that place.
+        case .routineDebug, .liveMessages:
+            // A debug run or a live subscription has nothing to reload or commit; its own controls take that place.
             return [MainWindowToolbar.refresh, MainWindowToolbar.saveChanges]
         case .query, .table, .usersRoles, .erDiagram:
             return []

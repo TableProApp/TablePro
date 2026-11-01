@@ -256,6 +256,7 @@ struct NativeDumpDescriptor: Sendable {
     internal enum RestoreSemantics: Sendable, Equatable {
         case replacesObjects
         case addsToExistingObjects
+        case stopsAtFirstError
         case stopsAtExistingObjects
         case requiresEmptyDatabase
     }
