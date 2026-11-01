@@ -197119,6 +197119,10 @@
         }
       }
     },
+    "This item expired while the grid was open. Refresh to see whether it still exists." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This item no longer exists." : {
       "localizations" : {
         "fr" : {
@@ -199445,6 +199449,10 @@
           }
         }
       }
+    },
+    "This TTL is too large for Memcached." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This user can grant this privilege to others." : {
       "localizations" : {

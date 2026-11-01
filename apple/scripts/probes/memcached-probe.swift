@@ -81,6 +81,22 @@ let ttlRow = try await driver.execute(query: MemcachedBrowseSpec(limit: 10, offs
 let ttl = texts(ttlRow).first?[2].flatMap { Int($0) } ?? 0
 check(ttl > 590 && ttl <= 600, "TTL counts down from 600 (\(ttl))")
 
+let keepExpiry = try driver.generateRowWrites(
+    table: "keys", schema: nil, columns: ["Key", "Value", "TTL", "Flags"], primaryKeyColumns: ["Key"],
+    changes: [PluginRowChange(rowIndex: 0, type: .update, cellChanges: [(1, "Value", .text("expires"), .text("changed"))],
+                              originalRow: [.text("\(prefix)ttl"), .text("expires"), .text("600"), .text("0")])],
+    insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+) ?? []
+let keepStatement = keepExpiry.first?.statement ?? ""
+let keepExptime = Int64(keepStatement.split(separator: " ").dropFirst(3).first ?? "") ?? 0
+check(keepExptime > MemcachedStatements.relativeExptimeLimit, "a value edit sends the absolute expiry it read (\(keepStatement))")
+for write in keepExpiry { _ = try await driver.execute(query: write.statement) }
+let keptRow = try await driver.execute(query: MemcachedBrowseSpec(limit: 10, offset: 0, ascending: true, conditions: [
+    try MemcachedBrowseSpec.condition(column: "Key", op: "=", value: "\(prefix)ttl", isCaseSensitive: true),
+]).statement)
+let keptTTL = texts(keptRow).first?[2].flatMap { Int($0) } ?? 0
+check(texts(keptRow).first?[1] == "changed" && keptTTL > 0 && keptTTL <= ttl, "the value changed and the TTL kept counting down (\(keptTTL))")
+
 let multi = try await driver.execute(query: "get \(prefix)multi")
 check(texts(multi).first?[1] == "line one\nline two \"quoted\"", "escaped value round-trips")
 

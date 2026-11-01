@@ -59,6 +59,13 @@ struct MemcachedBrowseSpecTests {
         #expect(MemcachedBrowseSpec.parse("get a") == nil)
     }
 
+    @Test("A spec with a negative bound is not a page, and a huge limit stops at the last key")
+    func bounds() throws {
+        #expect(MemcachedBrowseSpec.parse(MemcachedBrowseSpec(limit: -1, offset: 0, ascending: true).statement) == nil)
+        #expect(MemcachedBrowseSpec.parse(MemcachedBrowseSpec(limit: 10, offset: -5, ascending: true).statement) == nil)
+        #expect(try MemcachedBrowseSpec(limit: .max, offset: 1, ascending: true).page(of: keys).count == 3)
+    }
+
     @Test("A page is filtered, sorted by key, then cut")
     func page() throws {
         let condition = try MemcachedBrowseSpec.condition(column: "Key", op: "STARTS WITH", value: "user:", isCaseSensitive: false)

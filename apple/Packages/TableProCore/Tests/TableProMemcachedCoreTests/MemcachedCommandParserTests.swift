@@ -91,6 +91,13 @@ struct MemcachedStatementsTests {
             == 1_000 + MemcachedStatements.relativeExptimeLimit + 1)
     }
 
+    @Test("A TTL whose end the protocol cannot carry is refused rather than overflowing", arguments: [
+        Int64.max, Int64(Int32.max), Int64.min,
+    ])
+    func hugeTTL(ttl: Int64) {
+        #expect(MemcachedStatements.exptime(forTTL: ttl, now: 1_793_500_000) == nil)
+    }
+
     @Test("Each write statement parses back into its command")
     func statementsParse() throws {
         #expect(try MemcachedCommandParser.parse(MemcachedStatements.set(key: "k", flags: 3, exptime: 60, value: "a \"b\"\n"))

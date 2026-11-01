@@ -75,7 +75,9 @@ public struct MemcachedBrowseSpec: Codable, Equatable, Sendable {
         guard statement.hasPrefix(tag), let data = Data(base64Encoded: String(statement.dropFirst(tag.count))) else {
             return nil
         }
-        return try? JSONDecoder().decode(MemcachedBrowseSpec.self, from: data)
+        guard let spec = try? JSONDecoder().decode(MemcachedBrowseSpec.self, from: data),
+              spec.limit >= 0, spec.offset >= 0 else { return nil }
+        return spec
     }
 
     public static func refusalStatement(_ message: String) -> String {
@@ -104,7 +106,7 @@ public struct MemcachedBrowseSpec: Codable, Equatable, Sendable {
         let matching = try filter(keys)
         let sorted = matching.sorted { ascending ? $0.key < $1.key : $0.key > $1.key }
         guard offset < sorted.count else { return [] }
-        return Array(sorted[offset ..< min(sorted.count, offset + limit)])
+        return Array(sorted[offset ..< offset + min(limit, sorted.count - offset)])
     }
 
     public func filter(_ keys: [MemcachedKeyEntry]) throws(MemcachedFilterRefusal) -> [MemcachedKeyEntry] {
