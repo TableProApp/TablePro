@@ -34,6 +34,7 @@ fn sales(script: &mut ConnectionScript) {
         schema: Some("sales".to_owned()),
         name: name.to_owned(),
         kind: ObjectKind::Table,
+        parent_table: None,
     };
     script
         .list_objects
@@ -118,7 +119,7 @@ fn the_sidebar_shows_a_tables_schema_as_a_diagram() {
         .read(|model| model.sidebar.clone())
         .expect("the sidebar");
     wait_until(WAIT, || crate::ui::workspace::sidebar::tests::listed(&sidebar) == 2).expect("the sidebar's tables");
-    let key = (Some("sales".to_owned()), "orders".to_owned()).to_variant();
+    let key = crate::ui::workspace::sidebar::tests::rows_target("sales", "orders");
 
     sidebar.actions().activate_action("show-diagram", Some(&key));
 

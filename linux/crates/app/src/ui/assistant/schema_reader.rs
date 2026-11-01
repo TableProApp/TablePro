@@ -155,6 +155,7 @@ mod tests {
             schema: Some("public".to_owned()),
             name: name.to_owned(),
             kind,
+            parent_table: None,
         };
         let objects = [
             object("orders", tablepro_core::meta::ObjectKind::Table),

@@ -119,6 +119,7 @@ mod tests {
             schema: Some("sales".to_owned()),
             name: name.to_owned(),
             kind,
+            parent_table: None,
         }
     }
 

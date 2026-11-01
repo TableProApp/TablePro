@@ -6,7 +6,9 @@ use deadpool_postgres::{Pool, PoolError, TimeoutType, Timeouts};
 use tablepro_core::column::ColumnInfo;
 use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
-use tablepro_core::meta::{IndexInfo, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef};
+use tablepro_core::meta::{
+    IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
+};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
     CallOptions, CommitResolution, CommitToken, Connection, DriverError, EditorSession, EditorSessionOptions,
@@ -269,6 +271,19 @@ impl Connection for PgConnection {
         self.read(
             options,
             read_op(move |client| Box::pin(async move { metadata::list_objects(client, &scope).await })),
+        )
+        .await
+    }
+
+    async fn fetch_object_definition(
+        &self,
+        object: &ObjectInfo,
+        options: CallOptions,
+    ) -> Result<Option<ObjectDefinition>, DriverError> {
+        let object = object.clone();
+        self.read(
+            options,
+            read_op(move |client| Box::pin(async move { metadata::fetch_object_definition(client, &object).await })),
         )
         .await
     }

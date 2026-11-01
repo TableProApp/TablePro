@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use tablepro_core::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::keyspace::{KeyListing, KeyPage, KeyScan, KeyWindow};
-use tablepro_core::meta::{ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate};
+use tablepro_core::meta::{ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate};
 use tablepro_core::statement::Statement;
 use tablepro_core::{
     CallOptions, ColumnInfo, CommitResolution, CommitToken, Connection, DriverError, EditorSession,
@@ -341,6 +341,23 @@ impl Connection for FakeConnection {
         .await
     }
 
+    async fn fetch_object_definition(
+        &self,
+        object: &ObjectInfo,
+        options: CallOptions,
+    ) -> Result<Option<ObjectDefinition>, DriverError> {
+        let counter = &self.counters.fetch_object_definition;
+        self.answer(
+            "fetch_object_definition",
+            counter,
+            |s| &mut s.fetch_object_definition,
+            Some(object.name.as_str()),
+            &options,
+            TimeoutPhase::Statement,
+        )
+        .await
+    }
+
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
         let counter = &self.counters.row_identity;
         let name = Some(table.name.as_str());
@@ -588,6 +605,7 @@ mod tests {
                 schema: None,
                 name: "items".to_owned(),
                 kind: ObjectKind::Table,
+                parent_table: None,
             }]))
             .once(FakeReply::err(DriverError::Busy(BusyReason::NoFreeConnection)));
         script.probe.always(FakeReply::ok(()));

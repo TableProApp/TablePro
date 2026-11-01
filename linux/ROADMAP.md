@@ -57,6 +57,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Column layout | Order, hidden columns and widths kept per table; a column added since goes last and a dropped one keeps its place. A header drag, or Move Column Left and Move Column Right in the cell menu (Alt+Left and Alt+Right), reorders them; Widen Column and Narrow Column (Shift+Alt+Right and Shift+Alt+Left) resize them; Reset Columns in the Columns dialog goes back to the table's own order |
 | CSV import | Into an existing table, with a column mapping, in one write batch (one transaction where the engine has them), up to 64 MiB |
 | Sidebar | Tables (partitioned ones included), views, materialized views and foreign tables by schema, with search and Refresh, read again after the editor runs DDL, Open in New Tab and Show CREATE TABLE; Edit Structure, Import CSV and Drop Table for tables |
+| Routines and triggers | Functions, procedures and sequences in the sidebar after each schema's tables, and triggers with the table each fires on, on every engine that has them. Opening one shows its definition read-only, with Copy and Open in Editor; every overload of a PostgreSQL function name is shown |
 | ER diagram | Show ER Diagram in a table's menu or on a schema's heading opens the schema's tables as cards and their foreign keys as lines in crow's foot notation, read two tables at a time with Stop. Pan, zoom, Best Fit, drag tables, Reset Layout, and PNG and SVG export. Each table is a list item the keyboard and a screen reader reach: Tab and the arrow keys move between tables, Enter opens one, Alt+arrows move it, and its description names its columns and the tables it joins |
 
 ### Structure
@@ -171,7 +172,6 @@ Not built yet, in no order.
 
 - Edit binary columns from and to a file. They are read-only today, as are array, spatial, composite and variant columns.
 - Time and timestamp pickers. Dates have a calendar; times and timestamps are typed.
-- Functions, procedures, sequences and triggers in the sidebar. The drivers already list the first three.
 - Reorder columns in the structure tab by dragging, with the ALTER previewed.
 
 ### Release and project
