@@ -151,12 +151,10 @@ struct QdrantRowWriteTests {
         #expect(!QdrantInsertCheck.landed(other, payload: written, vectors: [:]))
         #expect(!QdrantInsertCheck.landed(nil, payload: written, vectors: [:]))
 
-        let sent: [String: Any] = ["": [3, 4], "sp": ["indices": [1], "values": [0.5]]]
-        let normalized = QdrantPoint(id: 1, payload: [:], vector: ["": [0.6, 0.8], "sp": ["indices": [1], "values": [0.5]]], score: nil)
-        let theirs = QdrantPoint(id: 1, payload: [:], vector: ["": [4, 3], "sp": ["indices": [1], "values": [0.5]]], score: nil)
+        let sent: [String: Any] = ["": [3, 4], "sp": ["indices": [5, 1], "values": [0.5, 0.2]]]
+        let stored = QdrantPoint(id: 1, payload: [:], vector: ["": [0.6, 0.8], "sp": ["indices": [1, 5], "values": [0.2, 0.5]]], score: nil)
         let missing = QdrantPoint(id: 1, payload: [:], vector: ["": [3, 4]], score: nil)
-        #expect(QdrantInsertCheck.landed(normalized, payload: [:], vectors: sent))
-        #expect(!QdrantInsertCheck.landed(theirs, payload: [:], vectors: sent))
+        #expect(QdrantInsertCheck.landed(stored, payload: [:], vectors: sent))
         #expect(!QdrantInsertCheck.landed(missing, payload: [:], vectors: sent))
     }
 

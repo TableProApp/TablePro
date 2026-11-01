@@ -61,44 +61,18 @@ public enum QdrantInsertCheck {
         return (collection, id, payload, object["vectors"] as? [String: Any] ?? [:])
     }
 
-    // A vector-only point has an empty payload either way, so the vectors are compared too.
+    // The payload and which vectors the point holds. Vector values are not compared: Qdrant sorts a
+    // sparse vector's indices, stores float16 and uint8 vectors rounded and cosine vectors normalized, so
+    // a vector written exactly reads back different.
     public static func landed(_ point: QdrantPoint?, payload: [String: Any], vectors: [String: Any]) -> Bool {
         guard let point, (try? QdrantJSON.text(point.payload)) == (try? QdrantJSON.text(payload)) else { return false }
-        let stored: [String: Any]
+        let names: Set<String>
         switch point.vector {
-        case let unnamed as [Any]: stored = ["": unnamed]
-        case let named as [String: Any]: stored = named
-        default: stored = [:]
+        case is [Any]: names = [""]
+        case let named as [String: Any]: names = Set(named.keys)
+        default: names = []
         }
-        guard Set(stored.keys) == Set(vectors.keys) else { return false }
-        return vectors.allSatisfy { name, sent in stored[name].map { sameVector(sent, $0) } ?? false }
-    }
-
-    // Qdrant stores a cosine collection's dense vectors normalized, so one equal to what was sent after
-    // normalizing is the same vector.
-    static func sameVector(_ sent: Any, _ stored: Any) -> Bool {
-        if let sentRows = sent as? [[Any]], let storedRows = stored as? [[Any]] {
-            return sentRows.count == storedRows.count && zip(sentRows, storedRows).allSatisfy { sameVector($0, $1) }
-        }
-        if let sentSparse = sent as? [String: Any], let storedSparse = stored as? [String: Any] {
-            return numbers(sentSparse["indices"]) == numbers(storedSparse["indices"])
-                && close(numbers(sentSparse["values"]), numbers(storedSparse["values"]))
-        }
-        guard let sentValues = numbers(sent), let storedValues = numbers(stored) else { return false }
-        if close(sentValues, storedValues) { return true }
-        let norm = sentValues.reduce(0) { $0 + $1 * $1 }.squareRoot()
-        return norm > 0 && close(sentValues.map { $0 / norm }, storedValues)
-    }
-
-    private static func numbers(_ value: Any?) -> [Double]? {
-        guard let array = value as? [Any] else { return nil }
-        let numbers = array.compactMap { ($0 as? NSNumber)?.doubleValue }
-        return numbers.count == array.count ? numbers : nil
-    }
-
-    private static func close(_ lhs: [Double]?, _ rhs: [Double]?) -> Bool {
-        guard let lhs, let rhs, lhs.count == rhs.count else { return false }
-        return zip(lhs, rhs).allSatisfy { abs($0 - $1) <= 1e-4 * max(1, abs($0)) }
+        return names == Set(vectors.keys)
     }
 }
 
