@@ -320,11 +320,12 @@ public enum QdrantSchema {
         return String(column.dropFirst(vectorColumn.count + 1))
     }
 
-    // A payload key named `id`, `score` or `vector...` would take a point column's name, so it shows as
-    // `payload.<key>`. A key already starting with `payload.` is prefixed too, so every column maps back
-    // to exactly one key.
+    // A payload key named `id`, `score`, `vector...` or the raw filter's `__RAW__` would take a name the
+    // grid gives another meaning, so it shows as `payload.<key>`. A key already starting with `payload.`
+    // is prefixed too, so every column maps back to exactly one key.
     public static func isReserved(_ key: String) -> Bool {
         key == idColumn || key == scoreColumn || isVectorColumn(key) || key.hasPrefix(payloadPrefix)
+            || key == QdrantFilterBuilder.rawFilterColumn
     }
 
     public static func column(forPayloadKey key: String) -> String {

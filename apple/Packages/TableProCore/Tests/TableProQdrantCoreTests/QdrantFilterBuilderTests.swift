@@ -41,6 +41,9 @@ struct QdrantFilterBuilderTests {
         #expect(try condition("count", "BETWEEN", "1,5", "5") == #"{"key":"\"count\"","range":{"gte":1,"lte":5}}"#)
         #expect(try condition("seen", ">=", "2024-01-02T00:00:00Z") == #"{"key":"\"seen\"","range":{"gte":"2024-01-02T00:00:00Z"}}"#)
         #expect(throws: QdrantFilterError.missingUpperBound(column: "count")) { try condition("count", "BETWEEN", "1", "") }
+        #expect(throws: QdrantFilterError.boundNotExact(column: "count", value: "9007199254740993")) {
+            try condition("count", ">=", "9007199254740993")
+        }
     }
 
     @Test("IN collapses plain text to match any, and keeps every spelling of a number")

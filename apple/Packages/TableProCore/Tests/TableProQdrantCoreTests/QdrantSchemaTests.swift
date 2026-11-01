@@ -60,7 +60,7 @@ struct QdrantSchemaTests {
 
     @Test("Every payload key maps to one column and back, including one that starts with payload.")
     func payloadKeysRoundTrip() {
-        let keys = ["city", "id", "score", "vector", "vector.image", "payload.id", "payload.city", "payload."]
+        let keys = ["city", "id", "score", "vector", "vector.image", "payload.id", "payload.city", "payload.", "__RAW__"]
         let columns = keys.map(QdrantSchema.column(forPayloadKey:))
         #expect(Set(columns).count == keys.count)
         #expect(columns.map(QdrantSchema.payloadKey(forColumn:)) == keys)

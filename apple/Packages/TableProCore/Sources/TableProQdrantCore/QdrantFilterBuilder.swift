@@ -21,6 +21,7 @@ public enum QdrantFilterError: Error, LocalizedError, Equatable, Sendable {
     case emptyList(column: String)
     case vectorNotFilterable(column: String)
     case keyNotAddressable(column: String)
+    case boundNotExact(column: String, value: String)
     case rawFilterNotAnObject
 
     public var errorDescription: String? {
@@ -42,6 +43,11 @@ public enum QdrantFilterError: Error, LocalizedError, Equatable, Sendable {
             return String(
                 format: String(localized: "Qdrant cannot filter on %@, because a key holding a double quote has no path it accepts."),
                 column
+            )
+        case .boundNotExact(let column, let value):
+            return String(
+                format: String(localized: "Qdrant compares %@ as a 64-bit float, which cannot hold %@ exactly."),
+                column, value
             )
         case .rawFilterNotAnObject:
             return String(localized: "A raw filter for Qdrant is a JSON condition, such as {\"key\": \"city\", \"match\": {\"value\": \"Berlin\"}}.")
@@ -84,7 +90,7 @@ public enum QdrantFilterBuilder {
         guard let key = QdrantKeyPath.quoted(QdrantSchema.payloadKey(forColumn: filter.column)) else {
             throw QdrantFilterError.keyNotAddressable(column: filter.column)
         }
-        let field = Field(key: key)
+        let field = Field(column: filter.column, key: key)
 
         switch op {
         case "=":
@@ -92,12 +98,12 @@ public enum QdrantFilterBuilder {
         case "!=", "<>":
             return negated([field.equality(filter.value)])
         case ">", ">=", "<", "<=":
-            return field.range([rangeKey(op): filter.value])
+            return try field.range([rangeKey(op): filter.value])
         case "BETWEEN":
             guard let upper = filter.secondValue, !upper.trimmingCharacters(in: .whitespaces).isEmpty else {
                 throw QdrantFilterError.missingUpperBound(column: filter.column)
             }
-            return field.range(["gte": lowerBound(of: filter.value, upperBound: upper), "lte": upper])
+            return try field.range(["gte": lowerBound(of: filter.value, upperBound: upper), "lte": upper])
         case "IN":
             return field.anyOf(try list(filter.value, column: filter.column))
         case "NOT IN":
@@ -120,6 +126,7 @@ public enum QdrantFilterBuilder {
     }
 
     private struct Field {
+        let column: String
         let key: String
 
         func equality(_ value: String) -> [String: Any] {
@@ -147,11 +154,15 @@ public enum QdrantFilterBuilder {
             return ["should": conditions]
         }
 
-        // A number bounds numbers; any other text is a date, which Qdrant parses.
-        func range(_ bounds: [String: String]) -> [String: Any] {
+        // A number bounds numbers; any other text is a date, which Qdrant parses. Qdrant reads a bound as
+        // a 64-bit float, so an integer past 2^53 would be rounded to a different cutoff.
+        func range(_ bounds: [String: String]) throws -> [String: Any] {
             var range: [String: Any] = [:]
             for (bound, text) in bounds {
                 let trimmed = text.trimmingCharacters(in: .whitespaces)
+                if let integer = QdrantValue.integer(trimmed), integer.magnitude > 1 << 53 {
+                    throw QdrantFilterError.boundNotExact(column: column, value: trimmed)
+                }
                 range[bound] = QdrantValue.number(trimmed).map { NSNumber(value: $0) as Any } ?? trimmed
             }
             return ["key": key, "range": range]

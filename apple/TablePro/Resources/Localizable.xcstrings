@@ -139370,6 +139370,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Qdrant compares %@ as a 64-bit float, which cannot hold %@ exactly." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Qdrant does not support views." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
