@@ -111,6 +111,8 @@ internal extension MySQLServerFlavor {
         case .oceanbase(let version):
             guard let version, version >= Self.oceanbaseBareAnalyzeFloor else { return [] }
             return [MySQLMaintenance.analyzeOperation]
+        case .starrocks:
+            return []
         }
     }
 }

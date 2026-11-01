@@ -19,6 +19,7 @@ extension DatabaseType {
     static let tidb = DatabaseType(rawValue: "TiDB")
     static let databend = DatabaseType(rawValue: "Databend")
     static let oceanbase = DatabaseType(rawValue: "OceanBase")
+    static let starrocks = DatabaseType(rawValue: "StarRocks")
     static let postgresql = DatabaseType(rawValue: "PostgreSQL")
     static let sqlite = DatabaseType(rawValue: "SQLite")
     static let redshift = DatabaseType(rawValue: "Redshift")

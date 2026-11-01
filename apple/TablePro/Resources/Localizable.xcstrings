@@ -99296,6 +99296,9 @@
         }
       }
     },
+    "Lakehouse analytics, MySQL protocol" : {
+
+    },
     "Language %@" : {
       "localizations" : {
         "fr" : {
@@ -198841,6 +198844,10 @@
           }
         }
       }
+    },
+    "This server did not identify as StarRocks. Check the host and the MySQL port of its frontend." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This server has no credential. Add its token in Settings > Integrations." : {
       "extractionState" : "stale",
