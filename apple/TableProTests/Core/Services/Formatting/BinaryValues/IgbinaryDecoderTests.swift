@@ -166,6 +166,16 @@ struct IgbinaryDecoderTests {
         #expect(PhpSerializeWriter.text(value) == #"C:3:"Old":1:{"# + "\u{FF}}")
     }
 
+    @Test("Text past the limit is cut before it is copied, and its length stays the full one")
+    func writerCutsLargePayloads() {
+        let text = PhpSerializeWriter.text(.string(String(repeating: "a", count: 1_000_000)), limit: 100)
+        #expect(text.hasPrefix(#"s:1000000:"aaa"#))
+        #expect(text.utf8.count < 200)
+        let bytes = PhpSerializeWriter.text(.binarySerializable(className: "Old", payload: Data(count: 1_000_000)), limit: 100)
+        #expect(bytes.hasPrefix(#"C:3:"Old":1000000:{"#))
+        #expect(bytes.utf8.count < 200)
+    }
+
     @Test("A string of 300 bytes uses the 16-bit length")
     func longString() throws {
         let hex = "0000000212012c" + String(repeating: "61", count: 300)

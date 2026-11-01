@@ -24,19 +24,26 @@ internal enum AvroDecoder {
     // Items that take no bytes (null, an empty record) are bounded by this, not by the bytes left.
     static let maxZeroByteItems: Int64 = 1_000_000
     // Records of records that take no bytes describe exponentially many values in a short schema, so every value
-    // read counts, built or not.
+    // read counts, built or not. A grid cell reads synchronously and stops far sooner, showing hex past that.
     static let maxValuesRead = 10_000_000
+    static let maxValuesReadInCell = 1_000_000
 
     // A single-object header that names this schema's fingerprint is certain, so it goes first. A Confluent
     // prefix proves nothing (a plain datum can start with zero), so it is only tried once the plain read fails.
-    static func decode(_ data: Data, schema: AvroSchema, maxValues: Int = .max) throws -> AvroMessage {
+    static func decode(
+        _ data: Data,
+        schema: AvroSchema,
+        maxValues: Int = .max,
+        maxValuesRead: Int = AvroDecoder.maxValuesRead
+    ) throws -> AvroMessage {
+        let limits = (build: maxValues, read: maxValuesRead)
         let singleObject = singleObjectFingerprint(data)
         if let singleObject, singleObject == schema.fingerprint {
-            let value = try datum(data.dropFirst(10), schema: schema, maxValues: maxValues)
+            let value = try datum(data.dropFirst(10), schema: schema, limits: limits)
             return AvroMessage(value: value, framing: .singleObject(fingerprint: singleObject))
         }
         do {
-            return AvroMessage(value: try datum(data, schema: schema, maxValues: maxValues), framing: nil)
+            return AvroMessage(value: try datum(data, schema: schema, limits: limits), framing: nil)
         } catch let plainError as BinaryValueDecodeError {
             // Avro's own reader refuses a value written with a schema it does not have.
             if let singleObject { throw BinaryValueDecodeError(kind: .otherSchema(fingerprint: singleObject), offset: 2) }
@@ -49,7 +56,7 @@ internal enum AvroDecoder {
             if let raw = rawBytes(Data(body), schema: schema) {
                 return AvroMessage(value: raw, framing: framing)
             }
-            guard let value = try? datum(body, schema: schema, maxValues: maxValues) else { throw plainError }
+            guard let value = try? datum(body, schema: schema, limits: limits) else { throw plainError }
             return AvroMessage(value: value, framing: framing)
         }
     }
@@ -73,8 +80,8 @@ internal enum AvroDecoder {
         return try? header.readUInt64LittleEndian()
     }
 
-    private static func datum(_ data: Data, schema: AvroSchema, maxValues: Int) throws -> MessagePackValue {
-        var parser = Parser(reader: BinaryValueReader(Data(data)), schema: schema, budget: maxValues)
+    private static func datum(_ data: Data, schema: AvroSchema, limits: (build: Int, read: Int)) throws -> MessagePackValue {
+        var parser = Parser(reader: BinaryValueReader(Data(data)), schema: schema, budget: limits.build, readLimit: limits.read)
         let value = try parser.value(schema.root, depth: 0)
         if !parser.reader.isAtEnd {
             throw parser.reader.error(.trailingBytes(parser.reader.remaining))
@@ -91,18 +98,20 @@ internal enum AvroDecoder {
         private var isTruncated = false
         private var zeroByteItems: Int64 = 0
         private var valuesRead = 0
+        private let readLimit: Int
 
-        init(reader: BinaryValueReader, schema: AvroSchema, budget: Int) {
+        init(reader: BinaryValueReader, schema: AvroSchema, budget: Int, readLimit: Int) {
             self.reader = reader
             self.schema = schema
             self.budget = budget
+            self.readLimit = readLimit
         }
 
         // Only a dispatch: every kind of type is its own function, so the frames a deep value stacks up stay small.
         mutating func value(_ type: AvroType, depth: Int) throws -> MessagePackValue {
             guard depth <= AvroDecoder.maxDepth else { throw reader.error(.nestingTooDeep) }
             valuesRead += 1
-            guard valuesRead <= AvroDecoder.maxValuesRead else { throw reader.error(.tooLarge) }
+            guard valuesRead <= readLimit else { throw reader.error(.tooLarge) }
             if !isTruncated {
                 budget -= 1
                 isTruncated = budget < 0

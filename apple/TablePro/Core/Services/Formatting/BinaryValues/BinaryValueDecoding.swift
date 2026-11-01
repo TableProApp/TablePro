@@ -59,7 +59,9 @@ internal enum BinaryValueDecoding {
                 text = PhpSerializeWriter.text(try IgbinaryDecoder.decode(data, maxValues: budget), limit: limit)
             case .avro(let schemaID):
                 guard let schema = AvroSchemaStore.shared.schema(id: schemaID) else { return nil }
-                let value = try AvroDecoder.decode(data, schema: schema, maxValues: budget).value
+                let value = try AvroDecoder.decode(
+                    data, schema: schema, maxValues: budget, maxValuesRead: AvroDecoder.maxValuesReadInCell
+                ).value
                 text = MessagePackTextWriter.json(value, pretty: false, limit: limit)
             }
         } catch {

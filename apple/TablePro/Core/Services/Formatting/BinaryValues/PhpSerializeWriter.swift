@@ -13,8 +13,11 @@ internal enum PhpSerializeWriter {
         return output
     }
 
+    // Text past `limit` is cut before it is copied, so a large string costs what the preview shows of it. The lengths
+    // stay the full ones, and the caller marks the cut.
     private static func write(_ value: PhpValue, into output: inout String, limit: Int) {
-        guard output.utf8.count < limit else { return }
+        let room = limit - output.utf8.count
+        guard room > 0 else { return }
         switch value {
         case .null:
             output += "N;"
@@ -25,10 +28,10 @@ internal enum PhpSerializeWriter {
         case .float(let number):
             output += "d:\(floatText(number));"
         case .string(let text):
-            output += quoted("s", text) + ";"
+            output += quoted("s", text, room: room) + ";"
         case .binaryString(let bytes):
             // The length is the byte count serialize() writes; the bytes show one character each.
-            output += "s:\(bytes.count):\"\(String(data: bytes, encoding: .isoLatin1) ?? "")\";"
+            output += "s:\(bytes.count):\"\(latin1(bytes.prefix(room)))\";"
         case .array(let entries):
             output += "a:\(entries.count):{"
             for entry in entries {
@@ -38,23 +41,23 @@ internal enum PhpSerializeWriter {
             }
             output += "}"
         case .object(let className, let properties):
-            output += quoted("O", className) + ":\(properties.count):{"
+            output += quoted("O", className, room: room) + ":\(properties.count):{"
             for property in properties {
                 guard output.utf8.count < limit else { return }
                 if let index = property.index {
                     output += "i:\(index);"
                 } else {
-                    output += quoted("s", mangled(property)) + ";"
+                    output += quoted("s", mangled(property), room: limit - output.utf8.count) + ";"
                 }
                 write(property.value, into: &output, limit: limit)
             }
             output += "}"
         case .serializable(let className, let rawPayload):
-            output += quoted("C", className) + ":\(rawPayload.utf8.count):{\(rawPayload)}"
+            output += quoted("C", className, room: room) + ":\(rawPayload.utf8.count):{\(rawPayload.scalarPrefix(room))}"
         case .binarySerializable(let className, let payload):
-            output += quoted("C", className) + ":\(payload.count):{\(String(data: payload, encoding: .isoLatin1) ?? "")}"
+            output += quoted("C", className, room: room) + ":\(payload.count):{\(latin1(payload.prefix(room)))}"
         case .enumCase(let className, let caseName):
-            output += quoted("E", "\(className):\(caseName)") + ";"
+            output += quoted("E", "\(className):\(caseName)", room: room) + ";"
         case .reference(let id):
             output += "R:\(id);"
         case .objectReference(let id):
@@ -66,8 +69,12 @@ internal enum PhpSerializeWriter {
         }
     }
 
-    private static func quoted(_ token: String, _ text: String) -> String {
-        "\(token):\(text.utf8.count):\"\(text)\""
+    private static func quoted(_ token: String, _ text: String, room: Int) -> String {
+        "\(token):\(text.utf8.count):\"\(text.scalarPrefix(room))\""
+    }
+
+    private static func latin1(_ bytes: Data) -> String {
+        String(data: bytes, encoding: .isoLatin1) ?? ""
     }
 
     private static func mangled(_ property: PhpProperty) -> String {

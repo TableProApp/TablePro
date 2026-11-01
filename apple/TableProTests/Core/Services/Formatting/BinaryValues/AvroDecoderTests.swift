@@ -198,6 +198,17 @@ struct AvroDecoderTests {
         #expect(error?.kind == .tooLarge)
     }
 
+    @Test("A grid cell reads a value only so far, then leaves it to the viewer")
+    func cellReadLimit() throws {
+        let booleans = try AvroSchema.parse(#"{"type":"array","items":"boolean"}"#)
+        let data = Data([0x90, 0x03]) + Data(repeating: 0x01, count: 200) + Data([0x00])
+        #expect(throws: Never.self) { try AvroDecoder.decode(data, schema: booleans, maxValues: 10) }
+        let error = #expect(throws: BinaryValueDecodeError.self) {
+            try AvroDecoder.decode(data, schema: booleans, maxValues: 10, maxValuesRead: 100)
+        }
+        #expect(error?.kind == .tooLarge)
+    }
+
     @Test("A huge zero-byte block after a small one is refused, not added up until it overflows")
     func zeroByteCountOverflow() throws {
         let nulls = try AvroSchema.parse(#"{"type":"array","items":"null"}"#)
