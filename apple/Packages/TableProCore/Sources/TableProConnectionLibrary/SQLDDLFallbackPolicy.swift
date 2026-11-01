@@ -36,6 +36,7 @@ public enum SQLDDLFallbackPolicy {
         "Elasticsearch",
         "Typesense",
         "Weaviate",
+        "Memcached",
         "Kafka",
         "etcd",
         "Redis",

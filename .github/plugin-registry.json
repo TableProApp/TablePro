@@ -49,6 +49,9 @@
     "LibSQLDriverPlugin": {
       "name": "libSQL / Turso Driver"
     },
+    "MemcachedDriverPlugin": {
+      "name": "Memcached Driver"
+    },
     "MSSQLDriver": {
       "name": "MSSQL Driver"
     },

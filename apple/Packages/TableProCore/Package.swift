@@ -56,6 +56,7 @@ let package = Package(
         .library(name: "TableProMySQLCore", targets: ["TableProMySQLCore"]),
         .library(name: "TableProPostgreSQLCore", targets: ["TableProPostgreSQLCore"]),
         .library(name: "TableProRedisCore", targets: ["TableProRedisCore"]),
+        .library(name: "TableProMemcachedCore", targets: ["TableProMemcachedCore"]),
         .library(name: "TableProTestSupport", targets: ["TableProTestSupport"])
     ],
     targets: [
@@ -270,6 +271,12 @@ let package = Package(
             swiftSettings: pluginCoreSettings
         ),
         .target(
+            name: "TableProMemcachedCore",
+            dependencies: [],
+            path: "Sources/TableProMemcachedCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
             name: "TableProRedisCore",
             dependencies: [],
             path: "Sources/TableProRedisCore",
@@ -438,6 +445,12 @@ let package = Package(
             name: "TableProPostgreSQLCoreTests",
             dependencies: ["TableProPostgreSQLCore"],
             path: "Tests/TableProPostgreSQLCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProMemcachedCoreTests",
+            dependencies: ["TableProMemcachedCore"],
+            path: "Tests/TableProMemcachedCoreTests",
             swiftSettings: pluginCoreSettings
         ),
         .testTarget(

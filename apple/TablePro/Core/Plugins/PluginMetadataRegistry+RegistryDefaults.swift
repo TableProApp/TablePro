@@ -1046,7 +1046,7 @@ extension PluginMetadataRegistry {
             + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
             + kafkaPluginDefaults() + typesensePluginDefaults() + r2SQLPluginDefaults()
             + weaviatePluginDefaults() + hanaPluginDefaults() + firebasePluginDefaults() + bigtablePluginDefaults()
-            + trinoPluginDefaults()
+            + trinoPluginDefaults() + memcachedPluginDefaults()
     }
     // swiftlint:enable function_body_length
 }
