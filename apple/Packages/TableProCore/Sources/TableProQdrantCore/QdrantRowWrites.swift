@@ -40,13 +40,21 @@ public struct QdrantRowWrite: Sendable, Equatable {
 }
 
 public enum QdrantServerVersion {
+    public static func hasQueryAPI(_ version: String?) -> Bool {
+        isAtLeast(version, major: 1, minor: 10)
+    }
+
     // Measured: 1.15.5 and later honor `update_filter`; 1.13.6 and 1.14.1 ignore it and overwrite the
     // point. `update_mode: insert_only` is ignored the same way on 1.16.3.
     public static func insertsWithoutOverwrite(_ version: String?) -> Bool {
+        isAtLeast(version, major: 1, minor: 15)
+    }
+
+    static func isAtLeast(_ version: String?, major: Int, minor: Int) -> Bool {
         guard let version else { return false }
         let parts = version.split(separator: ".").prefix(2).map { Int($0.prefix { $0.isNumber }) ?? 0 }
         guard parts.count == 2 else { return false }
-        return parts[0] > 1 || (parts[0] == 1 && parts[1] >= 15)
+        return parts[0] > major || (parts[0] == major && parts[1] >= minor)
     }
 }
 

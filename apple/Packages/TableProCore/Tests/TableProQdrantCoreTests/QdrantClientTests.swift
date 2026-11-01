@@ -3,70 +3,42 @@ import Foundation
 import Testing
 
 struct QdrantClientTests {
-    @Test("Paging forward reuses the cursor the previous page returned")
-    func pagingForward() async throws {
-        let transport = scrollingTransport(count: 25)
+    @Test("On Qdrant 1.10 or later a page is one query with the offset applied on the server")
+    func pageByServerOffset() async throws {
+        let transport = RecordingTransport { request in
+            switch request.url.path {
+            case "/": return jsonResponse(["version": "1.20.0"])
+            case "/collections": return jsonResponse(["result": ["collections": [Any]()]])
+            default: return jsonResponse(["result": ["points": [["id": 101, "payload": [String: Any]()]]]])
+            }
+        }
         let client = makeClient(transport: transport)
-        let cache = QdrantPagingCache()
-
-        let first = try await client.scrollPage(collection: "docs", filter: nil, offset: 0, limit: 10, cache: cache)
-        let second = try await client.scrollPage(collection: "docs", filter: nil, offset: 10, limit: 10, cache: cache)
-
-        #expect(first.compactMap(\.idText) == (1...10).map(String.init))
-        #expect(second.compactMap(\.idText) == (11...20).map(String.init))
-        #expect(transport.scrolls.count == 2)
-        #expect(bodyObject(transport.scrolls[1])["offset"] as? Int == 11)
+        try await client.connect(requestTimeout: { 5 })
+        let filter: [String: Any] = ["must": [["has_id": [101]]]]
+        let page = try await client.pointPage(collection: "docs", filter: filter, offset: 100, limit: 10)
+        #expect(page.compactMap(\.idText) == ["101"])
+        let request = try #require(transport.recorded.last)
+        #expect(request.url.path == "/collections/docs/points/query")
+        #expect(canonical(bodyObject(request)) == #"{"filter":{"must":[{"has_id":[101]}]},"limit":10,"offset":100,"with_payload":true,"with_vector":true}"#)
     }
 
-    @Test("A jump walks ids only and keeps every cursor it passes, so a nearby jump starts from one")
-    func jump() async throws {
+    @Test("An older node walks ids from the start every time, so no cached position can go stale")
+    func olderNodeWalksIDs() async throws {
         let transport = scrollingTransport(count: 25_000)
         let client = makeClient(transport: transport)
-        let cache = QdrantPagingCache()
-
-        let page = try await client.scrollPage(collection: "docs", filter: nil, offset: 20_000, limit: 10, cache: cache)
+        let page = try await client.pointPage(collection: "docs", filter: nil, offset: 20_000, limit: 10)
         #expect(page.compactMap(\.idText) == (20_001...20_010).map(String.init))
         let walks = transport.scrolls.dropLast().map(bodyObject)
         #expect(walks.map { $0["limit"] as? Int } == [10_000, 10_000])
         #expect(walks.allSatisfy { $0["with_payload"] as? Bool == false && $0["with_vector"] as? Bool == false })
-
-        let before = transport.scrolls.count
-        let nearby = try await client.scrollPage(collection: "docs", filter: nil, offset: 15_000, limit: 10, cache: cache)
-        #expect(nearby.first?.idText == "15001")
-        #expect(bodyObject(transport.scrolls[before])["offset"] as? Int == 10_001)
-        #expect(transport.scrolls.count == before + 2)
-    }
-
-    @Test("When a re-read boundary moves, the cursors past it are dropped instead of starting pages at the wrong row")
-    func movedBoundaryDropsLaterCursors() {
-        let cache = QdrantPagingCache()
-        cache.storeCursor(NSNumber(value: 101), at: 100, key: "k")
-        cache.storeCursor(NSNumber(value: 201), at: 200, key: "k")
-        cache.storeCursor(NSNumber(value: 101), at: 100, key: "k")
-        #expect(cache.nearestCursor(at: 200, key: "k").offset == 200)
-        cache.storeCursor(NSNumber(value: 102), at: 100, key: "k")
-        let nearest = cache.nearestCursor(at: 200, key: "k")
-        #expect(nearest.offset == 100)
-        #expect((nearest.cursor as? NSNumber)?.intValue == 102)
-    }
-
-    @Test("A changed count of the filtered list drops its cursors, so a page after another client's change starts at the right row")
-    func countDropsCursors() {
-        let cache = QdrantPagingCache()
-        cache.revalidate(key: "docs\u{0}f", count: 400)
-        cache.storeCursor(NSNumber(value: 101), at: 100, key: "docs\u{0}f")
-        cache.storeCursor(NSNumber(value: 7), at: 100, key: "docs\u{0}g")
-        cache.revalidate(key: "docs\u{0}f", count: 400)
-        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}f").offset == 100)
-        cache.revalidate(key: "docs\u{0}f", count: 399)
-        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}f").offset == 0)
-        #expect(cache.nearestCursor(at: 100, key: "docs\u{0}g").offset == 100)
+        _ = try await client.pointPage(collection: "docs", filter: nil, offset: 20_000, limit: 10)
+        #expect(transport.scrolls.count == 6)
     }
 
     @Test("An offset past the end answers an empty page")
     func pastEnd() async throws {
         let client = makeClient(transport: scrollingTransport(count: 5))
-        let page = try await client.scrollPage(collection: "docs", filter: nil, offset: 10, limit: 10, cache: QdrantPagingCache())
+        let page = try await client.pointPage(collection: "docs", filter: nil, offset: 10, limit: 10)
         #expect(page.isEmpty)
     }
 

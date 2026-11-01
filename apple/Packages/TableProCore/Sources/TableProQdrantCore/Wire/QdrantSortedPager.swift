@@ -59,12 +59,11 @@ public extension QdrantClient {
         }
         guard points.count < limit else { return points }
         let withoutValue = QdrantFilterBuilder.allOf(filter, QdrantFilterBuilder.negated([hasValue]))
-        return points + (try await scrollPage(
+        return points + (try await pointPage(
             collection: collection,
             filter: withoutValue,
             offset: max(offset - orderedCount, 0),
-            limit: limit - points.count,
-            cache: cache
+            limit: limit - points.count
         ))
     }
 }

@@ -1,54 +1,11 @@
 import Foundation
 
-// `scroll` pages by point id, so a row offset is reached by walking ids from the nearest cursor
-// already known. Every cursor a walk passes is kept, so paging on or jumping nearby costs one request.
+// The sort checks a sorted browse has already passed, so only its first page pays for them.
 public final class QdrantPagingCache: @unchecked Sendable {
-    private static let maxQueries = 32
-
     private let lock = NSLock()
-    private var cursors: [String: [Int: Any]] = [:]
-    private var order: [String] = []
     private var checkedSorts: Set<String> = []
-    private var counts: [String: Int] = [:]
 
     public init() {}
-
-    public func nearestCursor(at offset: Int, key: String) -> (offset: Int, cursor: Any?) {
-        lock.withLock {
-            guard let known = cursors[key],
-                  let best = known.keys.filter({ $0 <= offset }).max()
-            else { return (0, nil) }
-            return (best, known[best])
-        }
-    }
-
-    // A boundary that moved means points were added or removed before it, so every cursor past it
-    // now starts its page at the wrong row.
-    public func storeCursor(_ cursor: Any, at offset: Int, key: String) {
-        lock.withLock {
-            if cursors[key] == nil {
-                order.append(key)
-                if order.count > Self.maxQueries {
-                    cursors[order.removeFirst()] = nil
-                }
-            }
-            if let known = cursors[key]?[offset], QdrantJSON.displayText(known) != QdrantJSON.displayText(cursor) {
-                cursors[key] = cursors[key]?.filter { $0.key < offset }
-            }
-            cursors[key, default: [:]][offset] = cursor
-        }
-    }
-
-    // Another client's insert, delete or payload change shifts every later row of a filtered list, so
-    // cursors cached before it start pages at the wrong row. The list's count is the cheap signal of it.
-    public func revalidate(key: String, count: Int) {
-        lock.withLock {
-            defer { counts[key] = count }
-            guard let known = counts[key], known != count else { return }
-            cursors[key] = nil
-            order.removeAll { $0 == key }
-        }
-    }
 
     public func isSortChecked(_ key: String) -> Bool {
         lock.withLock { checkedSorts.contains(key) }
@@ -59,28 +16,27 @@ public final class QdrantPagingCache: @unchecked Sendable {
     }
 
     public func removeAll() {
-        lock.withLock {
-            cursors.removeAll()
-            order.removeAll()
-            checkedSorts.removeAll()
-            counts.removeAll()
-        }
+        lock.withLock { checkedSorts.removeAll() }
     }
 }
 
 public extension QdrantClient {
     static let walkBatchSize = 10_000
 
-    func scrollPage(
-        collection: String,
-        filter: [String: Any]?,
-        offset: Int,
-        limit: Int,
-        cache: QdrantPagingCache
-    ) async throws -> [QdrantPoint] {
-        let key = "\(collection)\u{0}\(filter.flatMap { try? QdrantJSON.text($0) } ?? "")"
-        cache.revalidate(key: key, count: try await count(collection: collection, filter: filter))
-        var (position, cursor) = cache.nearestCursor(at: offset, key: key)
+    // A page in id order. The Query API with no query pages by id and applies the offset on the server,
+    // so a page is always the rows at that offset now; a cursor cached from an earlier read would start
+    // at the wrong row once another client added or removed a point before it. A node older than 1.10
+    // has no Query API, so its pages walk the ids from the start.
+    func pointPage(collection: String, filter: [String: Any]?, offset: Int, limit: Int) async throws -> [QdrantPoint] {
+        if QdrantServerVersion.hasQueryAPI(serverVersion) {
+            var body: [String: Any] = ["limit": limit, "offset": offset, "with_payload": true, "with_vector": true]
+            if let filter {
+                body["filter"] = filter
+            }
+            return try await query(collection: collection, body: body)
+        }
+        var position = 0
+        var cursor: Any?
         while position < offset {
             try Task.checkCancellation()
             let page = try await scroll(
@@ -90,16 +46,11 @@ public extension QdrantClient {
             guard let next = page.nextCursor else { return [] }
             position += page.points.count
             cursor = next
-            cache.storeCursor(next, at: position, key: key)
         }
-        let page = try await scroll(
+        return try await scroll(
             collection: collection,
             body: Self.scrollBody(filter: filter, limit: limit, cursor: cursor, withData: true)
-        )
-        if let next = page.nextCursor {
-            cache.storeCursor(next, at: offset + page.points.count, key: key)
-        }
-        return page.points
+        ).points
     }
 
     // Without vectors this reads payloads only, which is how an export learns every key before its header.

@@ -2,7 +2,7 @@ import Foundation
 import TableProPluginKit
 import TableProQdrantCore
 
-final class QdrantPlugin: NSObject, TableProPlugin, DriverPlugin {
+final class QdrantPlugin: NSObject, TableProPlugin, DriverPlugin, PluginDefaultSortProvider {
     static let pluginName = "Qdrant Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Qdrant support over the REST API"
@@ -49,6 +49,11 @@ final class QdrantPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let additionalConnectionFields: [ConnectionField] = qdrantConnectionFields()
 
     static var statementCompletions: [CompletionEntry] { qdrantCompletions }
+
+    // Points already come in id order, and Qdrant cannot list them by id descending.
+    func defaultSortHint(forTable table: String) -> DefaultSortHint {
+        .suppress
+    }
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         QdrantPluginDriver(config: config)

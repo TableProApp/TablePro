@@ -41,8 +41,8 @@ extension QdrantPluginDriver {
         let points: [QdrantPoint]
         switch try QdrantSortPlan.resolve(request.sorts) {
         case .byID:
-            points = try await client.scrollPage(
-                collection: request.collection, filter: filter, offset: request.offset, limit: request.limit, cache: paging
+            points = try await client.pointPage(
+                collection: request.collection, filter: filter, offset: request.offset, limit: request.limit
             )
         case .byPayload(let column, let key, let ascending):
             points = try await client.sortedPage(
