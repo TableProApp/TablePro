@@ -150,6 +150,22 @@ struct ConnectionURLParserTLSPortTests {
         #expect(connection.sslConfig.mode == .disabled)
     }
 
+    @Test("A Neo4j URL's +s verifies the certificate, +ssc accepts a self-signed one, and plain stays plain")
+    func neo4jSchemeSetsTLS() throws {
+        let cases: [(url: String, mode: SSLMode?)] = [
+            ("neo4j+s://abc.databases.neo4j.io", .verifyIdentity),
+            ("bolt+s://db.example.com:7687", .verifyIdentity),
+            ("neo4j+ssc://db.example.com", .required),
+            ("bolt://localhost:7687", nil),
+            ("neo4j://localhost", nil)
+        ]
+        for (url, mode) in cases {
+            let parsed = try parse(url)
+            #expect(parsed.type == .neo4j, "\(url)")
+            #expect(parsed.sslMode == mode, "\(url)")
+        }
+    }
+
     @Test("An etcd URL sets the TLS Mode its driver reads, never the generic SSL Mode it ignores")
     func etcdURLSetsTheDriverTLSMode() throws {
         let cases: [(url: String, tlsMode: String)] = [

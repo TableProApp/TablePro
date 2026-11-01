@@ -9,6 +9,79 @@ Unreleased changes are files in `changelog.d/`.
 
 <!-- towncrier release notes start -->
 
+## [0.83.1](https://github.com/TableProApp/TablePro/releases/tag/v0.83.1) - 2026-11-01 [CRITICAL]
+
+### Changed
+
+- With CanonicalizeHostname, a DNS alias is followed only where CanonicalizePermittedCNAMEs allows it.
+
+### Removed
+
+- DuckDB Restore no longer accepts a folder of Parquet files, only a .duckdb file.
+
+### Fixed
+
+- A table tab could reload under an open cell and drop what you were typing after a save in another window. ([#3848](https://github.com/TableProApp/TablePro/pull/3848))
+- Edits made to rows while a query or refresh was still loading new ones were discarded when it finished. ([#3848](https://github.com/TableProApp/TablePro/pull/3848))
+- Table tabs ran their query again when you switched back to them or returned to TablePro from another app. ([#3848](https://github.com/TableProApp/TablePro/pull/3848))
+- A table tab waiting for its connection could run the statement under the cursor in a query tab instead. ([#3848](https://github.com/TableProApp/TablePro/pull/3848))
+- On iOS, a search or filter with a backslash on MySQL or ClickHouse, or with `[` on SQL Server, matched the wrong rows. ([#3906](https://github.com/TableProApp/TablePro/pull/3906))
+- A DELETE with no WHERE running unconfirmed behind EXPLAIN ANALYZE, an unusual CTE, or a WHERE glued to a name. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- CREATE OR REPLACE TABLE, SCHEMA or DATABASE replacing data without the confirmation DROP gets. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- HTTP drivers such as Typesense following a server's redirect to another address with the connection's key. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- Spanner, BigQuery and Teradata saving a grid change they could not key to the default schema's table. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- Teradata showing each result one statement late after a statement hit the 20-second receive timeout. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- DuckDB's Open the File Read-Only being ignored for a database not named .duckdb or .ddb. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- T-SQL BULK INSERT and OPENROWSET, and MongoDB $_internalJs operators, passing the external file and code refusals. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- Bigtable saving a grid change to another row when the key starts with a combining mark. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- DuckDB Back Up to a .duckdb file, and DuckDB Restore, failed with "Cannot prepare multiple statements at once".
+- Pull in a linked folder failing when the repository is a partial clone.
+
+### Security
+
+- A backslash in a Snowflake filter value could end its string literal and run the rest as SQL. ([#3906](https://github.com/TableProApp/TablePro/pull/3906))
+- A Firebase Database URL with an encoded slash sending your Google access token to another host.
+- A PostgreSQL or SQL Server database name could send Back Up or Restore, with its password, to another server.
+- A PostgreSQL type named geometry or geography that PostGIS did not create could run its owner's code as you.
+- A SQL export carrying a statement of its own in a cell value, a type name or a table comment when restored.
+- A Typesense path with dot segments, or a Firebase or Bigtable request behind a comment, passing the read-only check.
+- A credential profile in a shared connection file reading ~/.pgpass and sending the password to a host the file named.
+- A name with a quote before an accent mark could run its own SQL when you browsed, searched or exported the table.
+- A remote SQLite file path with a quote and a combining accent could run commands on the SSH server.
+- A write after a CTE list, a Snowflake ->> chain, or inside a SurrealDB or CockroachDB SELECT passing as a read.
+- ANALYZE TABLE, EXPLAIN PRAGMA and SQLite pragma_optimize passing as reads for read-only external clients.
+- An imported SSH host or user could run commands through a Match exec line in ~/.ssh/config.
+- An imported SSH host with a line break could make TablePro trust a host key for another server.
+- Browsing a PostgreSQL schema could run a function or operator its owner planted there, with your privileges.
+- CanonicalizeFallbackLocal no was ignored, and an SSH tunnel dialed the short host name anyway.
+- CanonicalizeHostname followed any DNS alias, so DNS chose the host key an SSH tunnel was checked against.
+- Cassandra and ScyllaDB connections through a tunnel signing in to other cluster nodes outside the tunnel.
+- Dameng connections set to Required or a Verify mode connecting without TLS.
+- EXPLAIN or DESCRIBE with a parenthesised query or a quoted option passing as a read for read-only MCP clients.
+- File and URL reads through DuckDB, ClickHouse, quoted function names or VACUUM INTO passing the external check.
+- Git status for a linked folder running filter and fetch commands set up in that folder's own Git configuration.
+- Import Commands showing the first 300 characters of Startup SQL while keeping all of it.
+- MCP clients and the assistant running statements past Read Only on Dameng behind a comment the driver read differently.
+- MCP clients running DROP or server API calls unasked through grid requests on BigQuery, Elasticsearch and Typesense.
+- MCP clients running DROP unasked on Trino and Presto behind a statement the driver split differently from the gate.
+- MCP clients running statements or changing consistency past Read Only on Cassandra and ScyllaDB with a forged comment.
+- MCP clients with read access running writes through browse_table or get_table_statistics with a crafted table name.
+- MCP clients, the AI assistant and AppleScript running a second statement the Read Only and destructive checks missed.
+- Open Project Folder filling a project's ${VAR} references from TablePro's own environment.
+- Opening a crafted table on iPhone or iPad running a second statement on PostgreSQL, Redshift or SQL Server.
+- Oracle Explain reading a PLAN_TABLE or V$ views planted in the tab's schema instead of Oracle's own.
+- Restoring a DuckDB folder of Parquet files ran its schema.sql with file access, so the folder could write any file.
+- Restoring a MySQL or MariaDB dump could run shell commands written in the .sql file.
+- Restoring a SQLite dump could run shell commands written in the .sql file.
+- SQL Server EXEC of a string, sp_executesql, OPENQUERY and OPENROWSET passing as reads or without the code check.
+- SQL Server Verify CA and Verify Identity on iPhone and iPad connecting without checking the certificate.
+- Secrets in a pasted MongoDB connection string saved outside the Keychain and carried by exports, links and sync.
+- Shared connections reusing your Entra ID token, Snowflake CLI profile, MongoDB AWS credentials or Run Ledger Plugins.
+- Teradata with SSL through a tunnel sending the password to port 443 on this Mac.
+- Trino and Presto sending the password or token to another host the server named in its reply.
+- iPhone and iPad Safe Mode letting DESC ANALYZE of a write, OPENQUERY and state-changing calls run as reads.
+
+
 ## [0.83.0](https://github.com/TableProApp/TablePro/releases/tag/v0.83.0) - 2026-10-26
 
 Search Database finds a value in every table, Compare Results matches two results row by row, and Generate Rows fills a table with test data.

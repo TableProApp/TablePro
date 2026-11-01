@@ -59,6 +59,7 @@ fn saved(id: &str, name: &str, driver_id: &str, host: &str, port: u16) -> Result
         safe_mode: SafeModeLevel::Off,
         external_access: ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
+        query_timeout_secs: None,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
@@ -364,6 +365,54 @@ fn an_ai_policy_writes_back_as_it_was_set() -> TestResult {
             .map(|connection| connection.ai_policy),
         Some(AiPolicy::Never)
     );
+    Ok(())
+}
+
+#[test]
+fn a_list_written_before_the_query_timeout_follows_preferences_and_writes_back_without_it() -> TestResult {
+    let root = tempfile::tempdir()?;
+    let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+    let store = ConnectionStore::new(&paths);
+    store.import_blocking(Path::new("/tmp/connections-v2.json"), CONNECTIONS_V2)?;
+
+    let exported = store.export_blocking()?;
+
+    assert!(!String::from_utf8_lossy(CONNECTIONS_V2).contains("query_timeout_secs"));
+    assert!(
+        store
+            .load_blocking()?
+            .iter()
+            .all(|connection| connection.query_timeout_secs.is_none())
+    );
+    assert!(!String::from_utf8_lossy(&exported).contains("query_timeout_secs"));
+    Ok(())
+}
+
+#[test]
+fn a_query_timeout_writes_back_as_it_was_set() -> TestResult {
+    let root = tempfile::tempdir()?;
+    let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
+    let store = ConnectionStore::new(&paths);
+    store.import_blocking(Path::new("/tmp/connections-v2.json"), CONNECTIONS_V2)?;
+    let ids: Vec<_> = store.load_blocking()?.iter().map(|connection| connection.id).collect();
+    let [first, second, ..] = ids.as_slice() else {
+        return Err("the fixture has fewer than two connections".into());
+    };
+    store.update_blocking(*first, |connection| connection.query_timeout_secs = Some(300))?;
+    store.update_blocking(*second, |connection| connection.query_timeout_secs = Some(0))?;
+
+    let exported = store.export_blocking()?;
+    let again = tempfile::tempdir()?;
+    let read = connections_from(again.path(), &exported)?;
+    let seconds = |id| {
+        read.iter()
+            .find(|connection| connection.id == id)
+            .and_then(|connection| connection.query_timeout_secs)
+    };
+
+    assert!(String::from_utf8_lossy(&exported).contains("\"query_timeout_secs\": 300"));
+    assert_eq!(seconds(*first), Some(300));
+    assert_eq!(seconds(*second), Some(0));
     Ok(())
 }
 

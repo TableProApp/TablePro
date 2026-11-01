@@ -57,6 +57,52 @@ async fn expression_desc_partial_index_keys() {
     connection.close().await.unwrap();
 }
 
+/// An attached database's index keeps its SQL without the schema, so
+/// its statement names the schema, or it would index `main`'s table of
+/// the same name.
+#[tokio::test]
+async fn an_attached_index_statement_names_its_schema() {
+    let file = TestFile::new().await;
+    let other = file.directory().join("other.sqlite3");
+    create_database(&other).await.unwrap();
+    let connection = file.open().await;
+    let attach = format!("ATTACH DATABASE '{}' AS archive", other.display());
+    query(connection.as_ref(), &attach).await;
+    query(
+        connection.as_ref(),
+        "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT)",
+    )
+    .await;
+    query(
+        connection.as_ref(),
+        "CREATE TABLE archive.people (id INTEGER PRIMARY KEY, name TEXT)",
+    )
+    .await;
+    query(connection.as_ref(), "CREATE INDEX archive.by_name ON people (name)").await;
+    let archived = TableRef::new(Some("archive".to_owned()), "people");
+
+    let read = connection.fetch_indexes(&archived, call()).await.unwrap();
+    let statement = read
+        .iter()
+        .find(|index| index.name == "by_name")
+        .and_then(|index| index.definition.clone())
+        .expect("a statement");
+    query(connection.as_ref(), "DROP INDEX archive.by_name").await;
+    query(connection.as_ref(), &statement).await;
+
+    assert_eq!(statement, "CREATE INDEX \"archive\".by_name ON people (name)");
+    assert_eq!(connection.fetch_indexes(&archived, call()).await.unwrap(), read);
+    assert!(
+        connection
+            .fetch_indexes(&table("people"), call())
+            .await
+            .unwrap()
+            .iter()
+            .all(|index| index.name != "by_name")
+    );
+    connection.close().await.unwrap();
+}
+
 #[tokio::test]
 async fn views_listed_and_attached_schema_listed() {
     let file = TestFile::new().await;

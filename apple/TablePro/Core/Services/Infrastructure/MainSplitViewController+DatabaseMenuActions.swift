@@ -252,4 +252,8 @@ extension MainSplitViewController {
     @objc func showQueryInsights(_ sender: Any?) {
         commandActions?.showQueryInsights()
     }
+
+    @objc func showTableHealth(_ sender: Any?) {
+        commandActions?.showTableHealth()
+    }
 }

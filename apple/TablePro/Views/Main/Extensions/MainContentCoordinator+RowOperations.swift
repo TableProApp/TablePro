@@ -9,7 +9,7 @@ import TableProPluginKit
 extension MainContentCoordinator {
     // One definition for both the toolbar item and the data grid's empty-space Add Row item.
     var canAddRow: Bool {
-        guard canEditActiveResult, let tab = tabManager.selectedTab else { return false }
+        guard canEditActiveResult(.insert), let tab = tabManager.selectedTab else { return false }
         guard tab.tableContext.tableName != nil else { return false }
         // `GridSelectionOwner` answers `.none` in Chart and `.schemaGrid` in Structure, so elsewhere Add Row is inert or adds a column.
         guard tab.display.resultsViewMode == .data else { return false }

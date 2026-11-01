@@ -560,6 +560,7 @@ mod tests {
             unique: false,
             primary: false,
             predicate: None,
+            definition: None,
         }];
         draft.foreign_keys = vec![ForeignKeyInfo {
             ref_schema: None,
@@ -1128,6 +1129,7 @@ mod tests {
             unique: false,
             primary: false,
             predicate: None,
+            definition: None,
         }];
 
         let plan = alter(&table, |draft| {

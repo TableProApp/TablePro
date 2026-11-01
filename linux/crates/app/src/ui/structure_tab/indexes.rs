@@ -1,6 +1,7 @@
 //! The index rows of the Structure tab's Indexes page.
 
 use gtk4 as gtk;
+use gtk4::gio;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
@@ -63,7 +64,50 @@ pub(super) fn build_index_row(
     });
     row.add_suffix(&remove_button);
 
+    if idx.definition.is_some() {
+        row.add_suffix(&statement_menu(object, sender));
+    }
+
     row
+}
+
+/// Show and copy the statement that creates the index, which only an
+/// index the table already has carries.
+fn statement_menu(object: &IndexObject, sender: &StructureTabSender) -> gtk::MenuButton {
+    let menu = gio::Menu::new();
+    menu.append(
+        Some(&crate::i18n::gettext("Show _CREATE INDEX")),
+        Some("index.show-create"),
+    );
+    menu.append(
+        Some(&crate::i18n::gettext("_Copy CREATE INDEX")),
+        Some("index.copy-create"),
+    );
+    let actions = gio::SimpleActionGroup::new();
+    let entry = |name: &str, message: fn(IndexObject) -> IndexesInput| {
+        let (index, sender) = (object.downgrade(), sender.clone());
+        gio::ActionEntry::<gio::SimpleActionGroup>::builder(name)
+            .activate(move |_, _, _| {
+                if let Some(index) = index.upgrade() {
+                    sender.input(message(index));
+                }
+            })
+            .build()
+    };
+    actions.add_action_entries([
+        entry("show-create", IndexesInput::ShowStatement),
+        entry("copy-create", IndexesInput::CopyStatement),
+    ]);
+    let button = gtk::MenuButton::builder()
+        .icon_name(crate::ui::icons::VIEW_MORE)
+        .valign(gtk::Align::Center)
+        .menu_model(&menu)
+        .build();
+    button.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&button, &crate::i18n::gettext("Index Options"), None);
+    button.set_widget_name("index-statement");
+    button.insert_action_group("index", Some(&actions));
+    button
 }
 
 /// The keys an index covers, as the subtitle reads them: each column or
@@ -108,6 +152,7 @@ mod tests {
             unique: false,
             primary: false,
             predicate: predicate.map(str::to_owned),
+            definition: None,
         }
     }
 

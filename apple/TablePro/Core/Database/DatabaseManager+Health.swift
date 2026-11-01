@@ -346,19 +346,20 @@ extension DatabaseManager {
         savedSchema: String?,
         savedDatabase: String?
     ) async {
-        if let savedSchema, let schemaDriver = driver as? SchemaSwitchable {
-            do {
-                try await schemaDriver.switchSchema(to: savedSchema)
-            } catch {
-                Self.logger.warning("Failed to restore schema '\(savedSchema)' on reconnect: \(error.localizedDescription)")
-            }
-        }
-
+        // The schema lives inside the database, and a database switch can leave the driver on none.
         if let savedDatabase, let adapter = driver as? PluginDriverAdapter {
             do {
                 try await adapter.switchDatabase(to: savedDatabase)
             } catch {
                 Self.logger.warning("Failed to restore database '\(savedDatabase)' on reconnect: \(error.localizedDescription)")
+            }
+        }
+
+        if let savedSchema, let schemaDriver = driver as? SchemaSwitchable {
+            do {
+                try await schemaDriver.switchSchema(to: savedSchema)
+            } catch {
+                Self.logger.warning("Failed to restore schema '\(savedSchema)' on reconnect: \(error.localizedDescription)")
             }
         }
     }

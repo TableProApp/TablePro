@@ -7,6 +7,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
     LikeCase, LikeForm, LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart};
 use tablepro_core::sql_syntax::{
     CredentialRules, ExpressionSyntaxError, HistoryRecording, MAX_EXPRESSION_LEN, MAX_TYPE_LEN, SqlGrammar,
@@ -61,6 +62,24 @@ impl SqlDialect for MssqlDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::MsSql
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const ANY: &[MomentKind] = &[MomentKind::Timestamp, MomentKind::Date, MomentKind::Time];
+        const EXPRESSIONS: &[CellExpression] = &[
+            // Each type converts from datetime2, so these fill a date or a time too.
+            CellExpression::new("SYSDATETIME()", ANY, &[]),
+            CellExpression::new("GETDATE()", ANY, &[]),
+            CellExpression::new("GETUTCDATE()", MOMENT, &[]),
+            CellExpression::new("SYSUTCDATETIME()", MOMENT, &[]),
+            CellExpression::new("CURRENT_TIMESTAMP", MOMENT, &[]),
+        ];
+        EXPRESSIONS
+    }
+
+    fn update_sets_default(&self) -> bool {
+        true
     }
 
     fn quote_identifier(&self, name: &str) -> String {

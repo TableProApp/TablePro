@@ -1,5 +1,6 @@
 use crate::column::ColumnInfo;
 use crate::dialect::{BindTarget, SqlDialect};
+use crate::edit::CellInput;
 use crate::meta::{RowIdentity, TableRef};
 use crate::statement::{Statement, StatementBuilder};
 use crate::value::Value;
@@ -10,14 +11,16 @@ use super::{BuildSqlError, KeyComponent, key_components};
 /// The UPDATE for one row's changed cells.
 ///
 /// Only the cells that moved are assigned, so a save does not rewrite
-/// columns the user never touched and trigger their side effects.
+/// columns the user never touched and trigger their side effects. An
+/// expression is written as its engine spells it, and a default as
+/// `DEFAULT` where the engine parses that.
 pub fn build_update(
     dialect: &dyn SqlDialect,
     table: &TableRef,
     columns: &[ColumnInfo],
     identity: &RowIdentity,
     key: &[Value],
-    assignments: &[(usize, Value)],
+    assignments: &[(usize, CellInput)],
 ) -> Result<Statement, BuildSqlError> {
     if crate::document::speaks_shell(dialect) {
         return crate::document::update(table, columns, identity, key, assignments);
@@ -29,11 +32,20 @@ pub fn build_update(
 
     let mut builder = StatementBuilder::new();
     let mut set = Vec::with_capacity(assignments.len());
-    for (index, value) in assignments {
+    for (index, input) in assignments {
         let column = columns.get(*index).ok_or(BuildSqlError::UnknownKeyColumn {
             name: index.to_string(),
         })?;
-        let marker = builder.bind(dialect, value.clone(), BindTarget::Column(column))?;
+        let marker = match input {
+            CellInput::Value(value) => builder.bind(dialect, value.clone(), BindTarget::Column(column))?,
+            CellInput::Expression(expression) => expression.sql.to_owned(),
+            CellInput::Default if dialect.update_sets_default() => "DEFAULT".to_owned(),
+            CellInput::Default => {
+                return Err(BuildSqlError::ServerComputedValue {
+                    name: column.name.clone(),
+                });
+            }
+        };
         set.push(format!("{} = {marker}", dialect.quote_identifier(&column.name)));
     }
     let predicate = key_predicate(&mut builder, dialect, &components, &key)?;
@@ -49,7 +61,7 @@ pub fn build_update(
 
 /// Whether every column the update sets holds one value per partition,
 /// so the update changes the partition rather than the row.
-pub(crate) fn sets_partition_only(columns: &[ColumnInfo], assignments: &[(usize, Value)]) -> bool {
+pub(crate) fn sets_partition_only(columns: &[ColumnInfo], assignments: &[(usize, CellInput)]) -> bool {
     !assignments.is_empty()
         && assignments
             .iter()
@@ -61,7 +73,7 @@ pub(crate) fn sets_partition_only(columns: &[ColumnInfo], assignments: &[(usize,
 /// key only, the one restriction CQL takes for it.
 fn update_scope<'a>(
     columns: &[ColumnInfo],
-    assignments: &[(usize, Value)],
+    assignments: &[(usize, CellInput)],
     components: Vec<KeyComponent<'a>>,
     key: &[Value],
 ) -> (Vec<KeyComponent<'a>>, Vec<Value>) {
