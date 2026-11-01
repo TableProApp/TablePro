@@ -85,7 +85,13 @@ mod tests {
     use super::*;
 
     fn target(code: &str, parent: Option<&str>) -> glib::Variant {
-        (None::<String>, "audit".to_owned(), code.to_owned(), parent.map(str::to_owned)).to_variant()
+        (
+            None::<String>,
+            "audit".to_owned(),
+            code.to_owned(),
+            parent.map(str::to_owned),
+        )
+            .to_variant()
     }
 
     #[test]
@@ -98,7 +104,11 @@ mod tests {
                 "audit",
                 "orders",
             ))),
-            ObjectKey(ObjectTarget::Definition(ObjectInfo::new(None, "total", ObjectKind::Function))),
+            ObjectKey(ObjectTarget::Definition(ObjectInfo::new(
+                None,
+                "total",
+                ObjectKind::Function,
+            ))),
         ];
 
         assert_eq!(ObjectKey::variant_type().as_str(), "(msssms)");
@@ -120,7 +130,13 @@ mod tests {
         assert!(ObjectKey::from_variant(&target("sequence", None)).is_some());
         let empty_name = (None::<String>, String::new(), ROWS.to_owned(), None::<String>).to_variant();
         assert_eq!(ObjectKey::from_variant(&empty_name), None);
-        let empty_schema = (Some(String::new()), "orders".to_owned(), ROWS.to_owned(), None::<String>).to_variant();
+        let empty_schema = (
+            Some(String::new()),
+            "orders".to_owned(),
+            ROWS.to_owned(),
+            None::<String>,
+        )
+            .to_variant();
         assert_eq!(ObjectKey::from_variant(&empty_schema), None);
     }
 }

@@ -16,21 +16,31 @@ use crate::ui::source_dialog::{SourceText, cut, source_dialog};
 const SHOWN_CHARS: usize = 2_000_000;
 
 /// Open in Editor hands the whole text to `open_in_editor`, for when the
-/// user does want to change the object.
+/// user does want to change the object. Without one, the text cannot run
+/// as it is, and a banner says why.
 pub(crate) fn definition_dialog(
     object: &ObjectInfo,
     sql: &str,
     settings: &Rc<AppSettings>,
-    open_in_editor: impl Fn() + 'static,
+    open_in_editor: Option<Box<dyn Fn()>>,
 ) -> adw::Dialog {
     let cut_text = cut(sql, SHOWN_CHARS);
+    let mut notes = Vec::new();
+    if cut_text.is_some() {
+        notes.push(crate::i18n::gettext(
+            "This definition is too long to show in full. Copy and Open in Editor take all of it.",
+        ));
+    }
+    if open_in_editor.is_none() {
+        notes.push(crate::i18n::gettext(
+            "A line in this definition would end a batch in the editor, so it cannot open there. Copy takes it as the server keeps it.",
+        ));
+    }
     let text = SourceText {
         title: title(object),
         language: "sql",
         label: crate::i18n::gettext("Definition"),
-        cut_note: cut_text.is_some().then(|| {
-            crate::i18n::gettext("This definition is too long to show in full. Copy and Open in Editor take all of it.")
-        }),
+        notes,
         shown: cut_text.unwrap_or_else(|| sql.to_owned()),
         copied: ClipboardPayload {
             text: sql.to_owned(),
@@ -42,6 +52,9 @@ pub(crate) fn definition_dialog(
         size: (640, 520),
     };
     let shown = source_dialog(text, Some(settings));
+    let Some(open_in_editor) = open_in_editor else {
+        return shown.dialog;
+    };
     let editor_button = gtk::Button::with_mnemonic(&crate::i18n::gettext("_Open in Editor"));
     shown.header.pack_start(&editor_button);
     let closing = shown.dialog.downgrade();
@@ -110,7 +123,12 @@ mod tests {
         let sql = "CREATE TRIGGER audit AFTER INSERT ON public.orders FOR EACH ROW EXECUTE FUNCTION log();";
 
         let settings = MemorySettings::new();
-        let dialog = definition_dialog(&object, sql, settings.get(), move || sink.set(sink.get() + 1));
+        let dialog = definition_dialog(
+            &object,
+            sql,
+            settings.get(),
+            Some(Box::new(move || sink.set(sink.get() + 1))),
+        );
         dialog.present(Some(&*window));
 
         assert_eq!(dialog.title(), "Trigger “audit” on “orders”");
@@ -134,16 +152,43 @@ mod tests {
         let more = sql.len() - SHOWN_CHARS;
         let settings = MemorySettings::new();
 
-        let dialog = definition_dialog(&object, &sql, settings.get(), || {});
+        let dialog = definition_dialog(&object, &sql, settings.get(), Some(Box::new(|| {})));
         dialog.present(Some(&*window));
 
         let view = first_descendant_of_type::<sourceview5::View>(&dialog).expect("the definition");
         let buffer = view.buffer();
         let shown = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
-        assert_eq!(shown.chars().count() - format!("… ({more} more bytes)").chars().count(), SHOWN_CHARS);
+        assert_eq!(
+            shown.chars().count() - format!("… ({more} more bytes)").chars().count(),
+            SHOWN_CHARS
+        );
         assert!(sql.starts_with(&shown[..SHOWN_CHARS]));
         let banner = first_descendant_of_type::<adw::Banner>(&dialog).expect("the banner");
         assert!(banner.is_revealed());
+        dialog.force_close();
+    }
+
+    #[gtk4::test]
+    fn text_that_cannot_run_as_it_is_offers_no_editor() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = OwnedWindow::presented(adw::Window::new());
+        let object = ObjectInfo::new(Some("dbo".to_owned()), "p", ObjectKind::Procedure);
+        let settings = MemorySettings::new();
+
+        let dialog = definition_dialog(&object, "CREATE PROCEDURE p AS SELECT 1", settings.get(), None);
+        dialog.present(Some(&*window));
+
+        let buttons: Vec<gtk::Button> = descendants(&dialog)
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+            .collect();
+        assert!(
+            buttons
+                .iter()
+                .all(|button| button.label().as_deref() != Some("_Open in Editor"))
+        );
+        let banner = first_descendant_of_type::<adw::Banner>(&dialog).expect("the reason");
+        assert!(banner.title().contains("end a batch"), "{}", banner.title());
         dialog.force_close();
     }
 

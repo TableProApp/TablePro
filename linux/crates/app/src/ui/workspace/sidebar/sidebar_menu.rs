@@ -195,7 +195,14 @@ mod tests {
         assert_eq!(action, "sidebar.show-definition");
         assert_eq!(target.as_ref().and_then(ObjectKey::from_variant).as_ref(), Some(&key));
         assert_access_keys(&menu);
-        for action in [OPEN_IN_NEW_TAB, SHOW_CREATE_TABLE, SHOW_DIAGRAM, EDIT_STRUCTURE, IMPORT_CSV, DROP_TABLE] {
+        for action in [
+            OPEN_IN_NEW_TAB,
+            SHOW_CREATE_TABLE,
+            SHOW_DIAGRAM,
+            EDIT_STRUCTURE,
+            IMPORT_CSV,
+            DROP_TABLE,
+        ] {
             assert!(!offers(action, ObjectKind::Trigger, all()), "{action}");
         }
         assert!(offers(SHOW_DEFINITION, ObjectKind::Function, all()));

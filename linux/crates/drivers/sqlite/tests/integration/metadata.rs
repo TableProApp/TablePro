@@ -461,7 +461,9 @@ async fn triggers_listed_per_schema_with_their_stored_text() {
         .expect("the trigger's text");
     assert_eq!(main_text.database, None);
     assert!(
-        main_text.sql.starts_with("CREATE TRIGGER audit AFTER INSERT ON people"),
+        main_text
+            .sql
+            .starts_with("CREATE TRIGGER \"main\".audit AFTER INSERT ON people"),
         "{}",
         main_text.sql
     );
@@ -490,7 +492,10 @@ async fn triggers_listed_per_schema_with_their_stored_text() {
     assert!(again.contains(archived_trigger), "{again:?}");
 
     let missing = ObjectInfo::trigger(None, "audit", "log");
-    assert_eq!(connection.fetch_object_definition(&missing, call()).await.unwrap(), None);
+    assert_eq!(
+        connection.fetch_object_definition(&missing, call()).await.unwrap(),
+        None
+    );
     let table = ObjectInfo::new(None, "people", ObjectKind::Table);
     assert!(matches!(
         connection.fetch_object_definition(&table, call()).await,

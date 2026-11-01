@@ -601,11 +601,7 @@ pub(crate) enum WorkspaceInput {
         schema: Option<String>,
     },
     ShowDefinition(tablepro_core::meta::ObjectInfo),
-    DefinitionLoaded {
-        read: u64,
-        object: tablepro_core::meta::ObjectInfo,
-        result: Result<Option<tablepro_core::meta::ObjectDefinition>, tablepro_session::OperationError>,
-    },
+    DefinitionLoaded(definitions::DefinitionLoaded),
     EditStructureTab {
         schema: Option<String>,
         table: String,
@@ -1091,8 +1087,13 @@ impl WorkspaceModel {
 
     /// Whether the shell has this session in front.
     pub(super) fn is_front(&self) -> bool {
-        let front = self.shell.upgrade().and_then(|shell| shell.front());
+        let front = self.front();
         front.is_some_and(|front| Some(front) == self.this.upgrade())
+    }
+
+    /// The session the shell has in front, this one or another.
+    pub(super) fn front(&self) -> Option<Workspace> {
+        self.shell.upgrade().and_then(|shell| shell.front())
     }
 
     /// Show the session it was built for: the sidebar, the empty tab
@@ -1283,7 +1284,7 @@ impl WorkspaceModel {
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
             WorkspaceInput::ShowDefinition(object) => self.on_show_definition(object),
-            WorkspaceInput::DefinitionLoaded { read, object, result } => self.on_definition_loaded(read, &object, result),
+            WorkspaceInput::DefinitionLoaded(loaded) => self.on_definition_loaded(loaded),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
             WorkspaceInput::OpenSqlInEditor { sql, database } => self.open_sql_in_editor(sql, database),

@@ -8,6 +8,7 @@ use tablepro_test_support::{CallCounters, ConnectionScript, FakeReply};
 use tokio_util::sync::CancellationToken;
 
 use super::super::WorkspaceInput;
+use super::{open_editor, two_sessions_with};
 use crate::runtime::DeliverInput;
 use crate::test_support::{descendants, drain_main_context, wait_until};
 use crate::ui::session_window::tests::{TestWindow, WAIT, editors};
@@ -46,10 +47,12 @@ fn alert_heading(test: &TestWindow) -> Option<String> {
 fn open_in_editor_takes_the_text_to_the_database_it_runs_in() {
     let test = TestWindow::connected_with("DefinitionOpens", |script| {
         listed(script);
-        script.fetch_object_definition.always(FakeReply::ok(Some(ObjectDefinition {
-            sql: SQL.to_owned(),
-            database: Some("analytics".to_owned()),
-        })));
+        script
+            .fetch_object_definition
+            .always(FakeReply::ok(Some(ObjectDefinition {
+                sql: SQL.to_owned(),
+                database: Some("analytics".to_owned()),
+            })));
     });
 
     ask(&test, function("total"));
@@ -103,7 +106,11 @@ fn only_the_last_definition_asked_for_is_shown_once() {
     wait_until(WAIT, || shown(&test).is_some()).expect("a definition");
     drain_main_context();
     let dialog = shown(&test).expect("a definition");
-    assert_eq!(dialog.title(), "Function “other”", "the read it superseded landed later");
+    assert_eq!(
+        dialog.title(),
+        "Function “other”",
+        "the read it superseded landed later"
+    );
     dialog.force_close();
     drain_main_context();
     assert!(shown(&test).is_none(), "a second dialog stacked under the first");
@@ -146,4 +153,80 @@ fn a_failed_read_says_why() {
         .map(|alert| alert.body().to_string())
         .unwrap_or_default();
     assert!(body.contains(".NET assembly"), "{body}");
+}
+
+#[gtk4::test]
+fn a_definition_asked_for_from_a_session_behind_shows_until_the_user_moves() {
+    let release = CancellationToken::new();
+    let held = release.clone();
+    let sessions = two_sessions_with("DefinitionBehind", "Other", move |script| {
+        listed(script);
+        script.fetch_object_definition.when_sql_contains(
+            "other",
+            FakeReply::UntilReleased {
+                release: held.clone(),
+                outcome: Ok(Some(ObjectDefinition {
+                    sql: SQL.to_owned(),
+                    database: None,
+                })),
+            },
+        );
+        script
+            .fetch_object_definition
+            .always(FakeReply::ok(Some(ObjectDefinition {
+                sql: SQL.to_owned(),
+                database: None,
+            })));
+    });
+    let (test, first, second) = (&sessions.test, &sessions.first, &sessions.second);
+    open_editor(first);
+    let ask = |workspace: &crate::ui::workspace::Workspace, name: &str| {
+        workspace
+            .sender()
+            .expect("the workspace's input")
+            .deliver(WorkspaceInput::ShowDefinition(function(name)));
+    };
+
+    ask(second, "total");
+    wait_until(WAIT, || shown(test).is_some()).expect("the session behind's definition");
+    shown(test).expect("a definition").force_close();
+    wait_until(WAIT, || shown(test).is_none()).expect("the dialog to close");
+
+    ask(second, "other");
+    drain_main_context();
+    open_editor(second);
+    release.cancel();
+    wait_until(WAIT, || {
+        second.read(|model| model.definition_read.is_none()).unwrap_or_default()
+    })
+    .expect("the read to land");
+    drain_main_context();
+    assert!(
+        shown(test).is_none(),
+        "a read that landed after the user moved still showed"
+    );
+}
+
+#[gtk4::test]
+fn text_the_editor_would_split_offers_no_editor() {
+    let test = TestWindow::connected_with("DefinitionSplit", |script| {
+        listed(script);
+        script.dialect = std::sync::Arc::new(tablepro_driver_mssql::MssqlDialect::new(16));
+        script
+            .fetch_object_definition
+            .always(FakeReply::ok(Some(ObjectDefinition {
+                sql: "CREATE PROCEDURE [sales].total AS SELECT 1\nGO\nSELECT 2".to_owned(),
+                database: None,
+            })));
+    });
+
+    ask(&test, function("total"));
+
+    wait_until(WAIT, || shown(&test).is_some()).expect("the definition");
+    let dialog = shown(&test).expect("the definition");
+    let offers_editor = descendants(&dialog)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .any(|button| button.label().as_deref() == Some("_Open in Editor"));
+    assert!(!offers_editor);
 }

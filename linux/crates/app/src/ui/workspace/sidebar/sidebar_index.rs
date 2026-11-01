@@ -104,12 +104,14 @@ impl SidebarIndex {
             ));
         }
         let order = section_order(&sections);
-        keyed.sort_by(|(left, left_name, _, left_entry), (right, right_name, _, right_entry)| {
-            order[*left as usize]
-                .cmp(&order[*right as usize])
-                .then_with(|| kind_rank(left_entry.object.kind).cmp(&kind_rank(right_entry.object.kind)))
-                .then_with(|| left_name.cmp(right_name))
-        });
+        keyed.sort_by(
+            |(left, left_name, _, left_entry), (right, right_name, _, right_entry)| {
+                order[*left as usize]
+                    .cmp(&order[*right as usize])
+                    .then_with(|| kind_rank(left_entry.object.kind).cmp(&kind_rank(right_entry.object.kind)))
+                    .then_with(|| left_name.cmp(right_name))
+            },
+        );
         let mut index = Self {
             sections,
             ..Self::default()
@@ -404,7 +406,13 @@ mod tests {
 
         let kinds: Vec<(String, ObjectKind, Option<String>)> = (0..len(&index))
             .filter_map(|at| index.entry(at))
-            .map(|entry| (entry.object.name.clone(), entry.object.kind, entry.object.parent_table.clone()))
+            .map(|entry| {
+                (
+                    entry.object.name.clone(),
+                    entry.object.kind,
+                    entry.object.parent_table.clone(),
+                )
+            })
             .collect();
         let row = |name: &str, kind, owner: Option<&str>| (name.to_owned(), kind, owner.map(str::to_owned));
         assert_eq!(
@@ -486,9 +494,17 @@ mod tests {
                 .collect()
         };
         assert_eq!(names("orders"), ["audit"]);
-        assert_eq!(names("public.audit"), ["audit"], "schema.name finds a trigger as it finds a table");
+        assert_eq!(
+            names("public.audit"),
+            ["audit"],
+            "schema.name finds a trigger as it finds a table"
+        );
         assert_eq!(names("public.orders"), ["audit"]);
-        assert_eq!(names("orders.aud"), Vec::<String>::new(), "no table.trigger form to search");
+        assert_eq!(
+            names("orders.aud"),
+            Vec::<String>::new(),
+            "no table.trigger form to search"
+        );
         assert_eq!(names("public.users"), ["users"]);
     }
 

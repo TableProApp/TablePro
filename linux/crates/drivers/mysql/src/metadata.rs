@@ -225,7 +225,9 @@ pub(crate) async fn fetch_object_definition(
         detail,
     };
     // NULL when the login may not read the routine's body.
-    let text: Option<&[u8]> = row.try_get_unchecked(column).map_err(|error| decode(error.to_string()))?;
+    let text: Option<&[u8]> = row
+        .try_get_unchecked(column)
+        .map_err(|error| decode(error.to_string()))?;
     let Some(bytes) = text else {
         return Ok(None);
     };

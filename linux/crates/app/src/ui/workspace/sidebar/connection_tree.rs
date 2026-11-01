@@ -1094,7 +1094,11 @@ impl TreeInner {
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
             let view = view?;
             self.popover.insert_action_group(GROUP, Some(view.actions()));
-            return Some(object_menu(&ObjectKey(object.target()), object.kind(), view.affordances()));
+            return Some(object_menu(
+                &ObjectKey(object.target()),
+                object.kind(),
+                view.affordances(),
+            ));
         }
         let node = item.downcast_ref::<TreeNode>()?;
         match node.kind() {

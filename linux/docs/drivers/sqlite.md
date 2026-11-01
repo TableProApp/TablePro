@@ -111,7 +111,7 @@ SQLite's pragmas do not report a foreign key's constraint name, so the definitio
 
 ## Definitions
 
-The sidebar lists every schema's triggers, each with the table it fires on. A trigger's definition is its text from `sqlite_schema`, which SQLite stores without the schema before the trigger's name. For a trigger in an attached or temporary schema the driver puts it back (`CREATE TRIGGER "archive".audit ...`), so the text run from any tab makes the trigger where it was: the table after `ON` takes the trigger's schema.
+The sidebar lists every schema's triggers, each with the table it fires on. A trigger's definition is its text from `sqlite_schema`, which SQLite stores without the schema before the trigger's name. The driver puts it back (`CREATE TRIGGER "archive".audit ...`), so the text run from any tab makes the trigger where it was: the table after `ON` takes the trigger's schema. A main trigger gets `"main"` too, since an unqualified table name finds a session's temporary table of that name first.
 
 ## Editor sessions
 

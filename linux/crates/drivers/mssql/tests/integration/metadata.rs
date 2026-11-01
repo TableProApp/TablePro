@@ -339,99 +339,77 @@ async fn like_escape_matches_literal_underscore_and_percent() {
     );
 }
 
+const ROUTINES: [&str; 7] = [
+    "CREATE TABLE dbo.orders (id int PRIMARY KEY, total int)",
+    "CREATE TABLE dbo.audit (id int PRIMARY KEY)",
+    "CREATE FUNCTION dbo.add_tax(@amount int) RETURNS int AS BEGIN RETURN @amount * 2 END",
+    "CREATE PROCEDURE clear_audit AS DELETE FROM dbo.audit",
+    "CREATE PROCEDURE dbo.hidden WITH ENCRYPTION AS SELECT 1",
+    "CREATE TRIGGER orders_total ON orders AFTER INSERT AS UPDATE dbo.orders SET total = total + 1000",
+    "CREATE SEQUENCE dbo.invoice_numbers AS bigint START WITH 100 INCREMENT BY 5 CYCLE CACHE 20",
+];
+
+async fn listed(connection: &dyn tablepro_core::Connection) -> Vec<ObjectInfo> {
+    connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects")
+}
+
+async fn definition(connection: &dyn tablepro_core::Connection, object: &ObjectInfo) -> String {
+    let found = connection
+        .fetch_object_definition(object, within(CALL))
+        .await
+        .expect("the definition")
+        .expect("a definition");
+    assert_eq!(found.database, None);
+    found.sql
+}
+
+fn named<'a>(objects: &'a [ObjectInfo], name: &str) -> &'a ObjectInfo {
+    objects
+        .iter()
+        .find(|object| object.name == name)
+        .expect("the object listed")
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
 async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;
-    setup(
-        connection.as_ref(),
-        &[
-            "CREATE TABLE dbo.orders (id int PRIMARY KEY, total int)",
-            "CREATE TABLE dbo.audit (id int PRIMARY KEY)",
-            "CREATE FUNCTION dbo.add_tax(@amount int) RETURNS int AS BEGIN RETURN @amount * 2 END",
-            "CREATE PROCEDURE clear_audit AS DELETE FROM dbo.audit",
-            "CREATE PROCEDURE dbo.hidden WITH ENCRYPTION AS SELECT 1",
-            "CREATE TRIGGER orders_total ON orders AFTER INSERT AS UPDATE dbo.orders SET total = total + 1000",
-            "CREATE SEQUENCE dbo.invoice_numbers AS bigint START WITH 100 INCREMENT BY 5 CYCLE CACHE 20",
-        ],
-    )
-    .await;
+    setup(connection.as_ref(), &ROUTINES).await;
 
-    let objects = connection
-        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
-        .await
-        .expect("the objects");
-    let find = |name: &str| {
-        objects
-            .iter()
-            .find(|object| object.name == name)
-            .unwrap_or_else(|| panic!("{name} listed"))
-    };
+    let objects = listed(connection.as_ref()).await;
+    let find = |name: &str| named(&objects, name);
     assert_eq!(find("add_tax").kind, ObjectKind::Function);
     assert_eq!(find("clear_audit").kind, ObjectKind::Procedure);
     assert_eq!(find("invoice_numbers").kind, ObjectKind::Sequence);
-    let trigger = find("orders_total");
-    assert_eq!(trigger, &ObjectInfo::trigger(Some("dbo".to_owned()), "orders_total", "orders"));
+    assert_eq!(
+        find("orders_total"),
+        &ObjectInfo::trigger(Some("dbo".to_owned()), "orders_total", "orders")
+    );
     assert!(
         objects
             .iter()
             .filter(|object| object.kind != ObjectKind::Trigger)
             .all(|object| object.parent_table.is_none())
     );
-    let definition = |object: &ObjectInfo| {
-        let connection = &connection;
-        let object = object.clone();
-        async move {
-            connection
-                .fetch_object_definition(&object, within(CALL))
-                .await
-                .expect("the definition")
-                .unwrap_or_else(|| panic!("{} has a definition", object.name))
-        }
-    };
-
-    for (object, body) in [
-        (find("add_tax"), "@amount * 2"),
-        (find("clear_audit"), "DELETE FROM dbo.audit"),
-        (trigger, "total + 1000"),
-        (find("invoice_numbers"), "START WITH 100 INCREMENT BY 5"),
+    for (name, body) in [
+        ("add_tax", "@amount * 2"),
+        ("clear_audit", "DELETE FROM dbo.audit"),
+        ("orders_total", "total + 1000"),
+        ("invoice_numbers", "START WITH 100 INCREMENT BY 5"),
     ] {
-        let found = definition(object).await;
-        assert!(found.sql.contains(body), "{}: {}", object.name, found.sql);
-        assert_eq!(found.database, None);
+        let sql = definition(connection.as_ref(), find(name)).await;
+        assert!(sql.contains(body), "{name}: {sql}");
     }
-    let sequence = definition(find("invoice_numbers")).await.sql;
+    let sequence = definition(connection.as_ref(), find("invoice_numbers")).await;
     assert!(
         sequence.starts_with("CREATE SEQUENCE [dbo].[invoice_numbers] AS bigint")
             && sequence.contains(" CYCLE CACHE 20;"),
         "{sequence}"
     );
-    let procedure = definition(find("clear_audit")).await.sql;
-    assert!(
-        procedure.starts_with("CREATE PROCEDURE [dbo].clear_audit AS"),
-        "a name written without its schema is given it: {procedure}"
-    );
-    let on_orders = definition(trigger).await.sql;
-    assert!(
-        on_orders.starts_with("CREATE TRIGGER [dbo].orders_total ON [dbo].orders AFTER INSERT"),
-        "{on_orders}"
-    );
-    setup(connection.as_ref(), &["DROP TRIGGER dbo.orders_total"]).await;
-    setup(connection.as_ref(), &[on_orders.as_str()]).await;
-    let again = connection
-        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
-        .await
-        .expect("the objects");
-    assert!(again.contains(trigger), "the text made the trigger again where it was");
-
-    let mut elsewhere = trigger.clone();
-    elsewhere.parent_table = Some("audit".to_owned());
-    let missing = connection
-        .fetch_object_definition(&elsewhere, within(CALL))
-        .await
-        .expect("an answer");
-    assert_eq!(missing, None, "a trigger on another table is not this trigger");
     let hidden = connection.fetch_object_definition(find("hidden"), within(CALL)).await;
     assert!(
         matches!(
@@ -442,10 +420,56 @@ async fn routines_sequences_and_triggers_are_listed_with_their_definitions() {
         ),
         "{hidden:?}"
     );
-    let table_object = ObjectInfo::new(trigger.schema.clone(), "orders", ObjectKind::Table);
+    let table_object = ObjectInfo::new(Some("dbo".to_owned()), "orders", ObjectKind::Table);
     assert!(matches!(
         connection.fetch_object_definition(&table_object, within(CALL)).await,
         Err(DriverError::Unsupported { .. })
     ));
+    connection.close().await.expect("a close");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_module_written_without_its_schema_is_given_it_and_runs_again() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(connection.as_ref(), &ROUTINES).await;
+    let objects = listed(connection.as_ref()).await;
+    let trigger = named(&objects, "orders_total");
+
+    let procedure = definition(connection.as_ref(), named(&objects, "clear_audit")).await;
+    assert!(
+        procedure.starts_with("CREATE PROCEDURE [dbo].clear_audit AS"),
+        "{procedure}"
+    );
+    setup(
+        connection.as_ref(),
+        &["ALTER PROCEDURE clear_audit AS DELETE FROM dbo.audit WHERE id > 0"],
+    )
+    .await;
+    let altered = definition(connection.as_ref(), named(&objects, "clear_audit")).await;
+    assert!(
+        altered.contains("PROCEDURE [dbo].clear_audit AS DELETE FROM dbo.audit WHERE id > 0"),
+        "the stored text after an ALTER is qualified too: {altered}"
+    );
+    let on_orders = definition(connection.as_ref(), trigger).await;
+    assert!(
+        on_orders.starts_with("CREATE TRIGGER [dbo].orders_total ON [dbo].orders AFTER INSERT"),
+        "{on_orders}"
+    );
+    setup(connection.as_ref(), &["DROP TRIGGER dbo.orders_total"]).await;
+    setup(connection.as_ref(), &[on_orders.as_str()]).await;
+    assert!(
+        listed(connection.as_ref()).await.contains(trigger),
+        "the text made the trigger again where it was"
+    );
+
+    let mut elsewhere = trigger.clone();
+    elsewhere.parent_table = Some("audit".to_owned());
+    let missing = connection
+        .fetch_object_definition(&elsewhere, within(CALL))
+        .await
+        .expect("an answer");
+    assert_eq!(missing, None, "a trigger on another table is not this trigger");
     connection.close().await.expect("a close");
 }

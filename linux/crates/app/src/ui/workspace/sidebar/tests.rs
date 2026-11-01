@@ -602,7 +602,7 @@ fn the_search_list_opens_and_offers_the_menus_of_what_it_finds() {
 #[gtk4::test]
 fn a_routine_shows_its_sql_and_never_acts_as_the_table_of_its_name() {
     let alpha = connection("Alpha", None);
-    let shown = Shown::new(&[alpha.clone()]);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
     let routine = ObjectInfo::new(Some("public".to_owned()), "orders", ObjectKind::Function);
     let trigger = ObjectInfo::trigger(Some("public".to_owned()), "audit", "orders");
     let (view, events) = session(
@@ -1225,7 +1225,9 @@ fn secondary_press_selects_the_row_and_opens_its_menu() {
         .map(|(_, target)| target.as_ref().and_then(ObjectKey::from_variant))
         .collect();
     assert!(
-        targets.iter().all(|key| key.as_ref() == Some(&ObjectKey::rows(table("f")))),
+        targets
+            .iter()
+            .all(|key| key.as_ref() == Some(&ObjectKey::rows(table("f")))),
         "{targets:?}"
     );
     WidgetExt::activate_action(

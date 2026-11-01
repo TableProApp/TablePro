@@ -146,7 +146,11 @@ pub(crate) async fn list_objects(
     scope: &ObjectScope,
 ) -> Result<Vec<ObjectInfo>, Interrupt> {
     let (objects, triggers, params) = match scope {
-        ObjectScope::DefaultSchema => (" AND o.schema_id = SCHEMA_ID()", " AND p.schema_id = SCHEMA_ID()", Vec::new()),
+        ObjectScope::DefaultSchema => (
+            " AND o.schema_id = SCHEMA_ID()",
+            " AND p.schema_id = SCHEMA_ID()",
+            Vec::new(),
+        ),
         ObjectScope::Schema(schema) => (
             " AND o.schema_id = SCHEMA_ID(@P1)",
             " AND p.schema_id = SCHEMA_ID(@P1)",
@@ -154,7 +158,9 @@ pub(crate) async fn list_objects(
         ),
         ObjectScope::AllSchemas => ("", "", Vec::new()),
     };
-    let sql = OBJECTS_SQL.replace("{objects}", objects).replace("{triggers}", triggers);
+    let sql = OBJECTS_SQL
+        .replace("{objects}", objects)
+        .replace("{triggers}", triggers);
     let rows = catalogue_rows(client, watch, &sql, &params).await?;
     let mut listed = Vec::with_capacity(rows.len());
     for row in &rows {
@@ -193,7 +199,9 @@ pub(crate) async fn fetch_object_definition(
             ROUTINE_DEFINITION_SQL.replace("{types}", "'P', 'PC'"),
             vec![schema, name],
         ),
-        (ObjectKind::Trigger, Some(table)) => (TRIGGER_DEFINITION_SQL.to_owned(), vec![schema, name, text_param(table)]),
+        (ObjectKind::Trigger, Some(table)) => {
+            (TRIGGER_DEFINITION_SQL.to_owned(), vec![schema, name, text_param(table)])
+        }
         (ObjectKind::Sequence, _) => return sequence_definition(client, watch, dialect, object).await,
         _ => {
             return Err(Interrupt::Failed(DriverError::Unsupported {

@@ -88,8 +88,9 @@ pub(crate) async fn list_objects(
 }
 
 /// SQLite keeps a trigger's text as it was written, less the schema
-/// before its name, which an attached or temporary trigger needs back to
-/// be made where it is.
+/// before its name. The text gets it back: an attached or temporary
+/// trigger needs it to be made where it is, and a main one so a session's
+/// temporary table of its table's name cannot take it.
 pub(crate) async fn fetch_object_definition(
     connection: &mut SqlxConnection,
     object: &ObjectInfo,
@@ -100,22 +101,18 @@ pub(crate) async fn fetch_object_definition(
         });
     };
     let schema = object.schema.as_deref().filter(|schema| !schema.is_empty());
-    let sql: Option<Option<String>> =
-        sqlx::query_scalar(AssertSqlSafe(catalog::trigger_sql(&quote(schema.unwrap_or(MAIN_SCHEMA)))))
-            .bind(object.name.as_str())
-            .bind(table)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(map_error)?;
-    Ok(sql.flatten().map(|sql| {
-        let sql = match schema.filter(|schema| *schema != MAIN_SCHEMA) {
-            Some(schema) => qualify_created_name(&sql, SqlGrammar::Sqlite, &quote(schema)),
-            None => sql,
-        };
-        ObjectDefinition {
-            sql: terminated(&sql),
-            database: None,
-        }
+    let sql: Option<Option<String>> = sqlx::query_scalar(AssertSqlSafe(catalog::trigger_sql(&quote(
+        schema.unwrap_or(MAIN_SCHEMA),
+    ))))
+    .bind(object.name.as_str())
+    .bind(table)
+    .fetch_optional(&mut *connection)
+    .await
+    .map_err(map_error)?;
+    let schema = quote(schema.unwrap_or(MAIN_SCHEMA));
+    Ok(sql.flatten().map(|sql| ObjectDefinition {
+        sql: terminated(&qualify_created_name(&sql, SqlGrammar::Sqlite, &schema)),
+        database: None,
     }))
 }
 

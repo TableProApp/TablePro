@@ -19,7 +19,7 @@ mod statement_tokens;
 
 pub use builtin_snippet::{BuiltinSnippet, builtin_snippets};
 pub use catalog_change::{changes_catalog, may_change_database, used_database};
-pub use created_object::{qualify_created_name, terminated};
+pub use created_object::{holds_client_directive, qualify_created_name, terminated};
 pub use credential_rules::CredentialRules;
 pub use errors::{ExpressionSyntaxError, TypeSyntaxError};
 pub use grammar::SqlGrammar;

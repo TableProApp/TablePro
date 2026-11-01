@@ -15,17 +15,20 @@ pub fn terminated(sql: &str) -> String {
 /// `sql`, the CREATE of a routine, a sequence or a trigger as the server
 /// keeps it, with `quoted_schema.` put before the object's name when the
 /// text names no schema, and before a SQL Server trigger's table too:
-/// SQL Server keeps a module's text as it was written, and SQLite drops
-/// the schema from what it stores. Run elsewhere, an unqualified name
-/// lands in the session's default schema. Text of any other shape comes
-/// back unchanged. This is the header rewrite SQL Server's own scripting
-/// does on stored module text.
+/// SQL Server keeps a module's last CREATE or ALTER as it was written,
+/// and SQLite drops the schema from what it stores. Run elsewhere, an
+/// unqualified name lands in the session's default schema. Text of any
+/// other shape comes back unchanged. This is the header rewrite SQL
+/// Server's own scripting does on stored module text.
 pub fn qualify_created_name(sql: &str, grammar: SqlGrammar, quoted_schema: &str) -> String {
     let plan = ScriptPlan::build(sql, grammar, LexicalSettings::default_for(grammar));
     let mut header = Header {
         sql,
         grammar,
-        tokens: plan.tokens(0..sql.len()).filter(|token| !token.kind.is_trivia()).peekable(),
+        tokens: plan
+            .tokens(0..sql.len())
+            .filter(|token| !token.kind.is_trivia())
+            .peekable(),
     };
     let mut at = header.unqualified_names().unwrap_or_default();
     at.sort_unstable();
@@ -34,6 +37,20 @@ pub fn qualify_created_name(sql: &str, grammar: SqlGrammar, quoted_schema: &str)
         qualified.insert_str(start, &format!("{quoted_schema}."));
     }
     qualified
+}
+
+/// Whether any way the editor may read `sql` finds a client directive in
+/// it: a SQL Server module can hold a line that is only `GO`, and the
+/// server keeps it as part of the body, but the editor would end a batch
+/// there and run what follows on its own. `true` when the text names too
+/// many versions to try every reading.
+pub fn holds_client_directive(sql: &str, grammar: SqlGrammar) -> bool {
+    ScriptPlan::server_readings(sql, grammar).is_none_or(|mut plans| {
+        plans.any(|plan| {
+            plan.tokens(0..sql.len())
+                .any(|token| token.kind == ScriptTokenKind::Directive)
+        })
+    })
 }
 
 struct Header<'a, I: Iterator<Item = ScriptToken>> {
@@ -46,8 +63,8 @@ impl<'a, I: Iterator<Item = ScriptToken>> Header<'a, I> {
     /// Where an unqualified name starts: the object's, then a SQL Server
     /// trigger's table. `None` when the text does not open as expected.
     fn unqualified_names(&mut self) -> Option<Vec<usize>> {
-        self.word(&["CREATE"])?;
-        if self.word(&["OR"]).is_some() {
+        let verb = self.word(&["CREATE", "ALTER"])?;
+        if verb.eq_ignore_ascii_case("CREATE") && self.word(&["OR"]).is_some() {
             self.word(&["ALTER", "REPLACE"])?;
         }
         let _ = self.word(&["TEMP", "TEMPORARY"]);
@@ -142,14 +159,20 @@ mod tests {
 
     #[test]
     fn one_semicolon_ends_the_text() {
-        assert_eq!(terminated("CREATE FUNCTION f()\n$function$\n"), "CREATE FUNCTION f()\n$function$;");
+        assert_eq!(
+            terminated("CREATE FUNCTION f()\n$function$\n"),
+            "CREATE FUNCTION f()\n$function$;"
+        );
         assert_eq!(terminated("CREATE TRIGGER t ON x ;\n"), "CREATE TRIGGER t ON x;");
         assert_eq!(terminated("SELECT 1"), "SELECT 1;");
     }
 
     #[test]
     fn an_unqualified_routine_gets_the_schema() {
-        assert_eq!(mssql("CREATE PROCEDURE p AS SELECT 1"), "CREATE PROCEDURE [sales].p AS SELECT 1");
+        assert_eq!(
+            mssql("CREATE PROCEDURE p AS SELECT 1"),
+            "CREATE PROCEDURE [sales].p AS SELECT 1"
+        );
         assert_eq!(
             mssql("/* note */\r\ncreate   proc [p]\nAS SELECT 1"),
             "/* note */\r\ncreate   proc [sales].[p]\nAS SELECT 1"
@@ -157,6 +180,15 @@ mod tests {
         assert_eq!(
             mssql("CREATE OR ALTER FUNCTION f() RETURNS int AS BEGIN RETURN 1 END"),
             "CREATE OR ALTER FUNCTION [sales].f() RETURNS int AS BEGIN RETURN 1 END"
+        );
+        assert_eq!(
+            mssql("ALTER PROCEDURE p AS SELECT 2"),
+            "ALTER PROCEDURE [sales].p AS SELECT 2",
+            "the server keeps the last ALTER as written"
+        );
+        assert_eq!(
+            mssql("alter trigger tr ON orders AFTER INSERT AS SELECT 1"),
+            "alter trigger [sales].tr ON [sales].orders AFTER INSERT AS SELECT 1"
         );
     }
 
@@ -199,6 +231,20 @@ mod tests {
             sqlite("CREATE TRIGGER 'x' AFTER INSERT ON t BEGIN SELECT 1; END"),
             "CREATE TRIGGER \"archive\".'x' AFTER INSERT ON t BEGIN SELECT 1; END"
         );
+    }
+
+    #[test]
+    fn a_go_line_in_a_module_is_a_client_directive() {
+        let split = "CREATE PROCEDURE p AS SELECT 1\nGO\nALTER ROLE db_owner ADD MEMBER someone";
+        assert!(holds_client_directive(split, SqlGrammar::MsSql));
+        assert!(!holds_client_directive(
+            "CREATE PROCEDURE p AS SELECT 'GO'\n-- GO\n",
+            SqlGrammar::MsSql
+        ));
+        let overloads = "CREATE FUNCTION f(int) RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;\n\n\
+                         CREATE FUNCTION f(text) RETURNS text AS $$ SELECT 'x' $$ LANGUAGE sql;";
+        assert!(!holds_client_directive(overloads, SqlGrammar::PostgreSql));
+        assert!(holds_client_directive("DELIMITER ;;\nSELECT 1;;", SqlGrammar::MySql));
     }
 
     #[test]

@@ -151,7 +151,10 @@ fn row_json_dialog(json: RowJson, settings: Option<&Rc<AppSettings>>) -> adw::Di
             skipped: 0,
             cells: None,
         },
-        cut_note: shortened.then(|| crate::i18n::gettext("Long values are shortened here. Copy includes them in full.")),
+        notes: shortened
+            .then(|| crate::i18n::gettext("Long values are shortened here. Copy includes them in full."))
+            .into_iter()
+            .collect(),
         size: (560, 480),
     };
     source_dialog(text, settings).dialog

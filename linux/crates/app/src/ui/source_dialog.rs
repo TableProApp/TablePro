@@ -25,8 +25,9 @@ pub(crate) struct SourceText {
     pub(crate) label: String,
     pub(crate) shown: String,
     pub(crate) copied: ClipboardPayload,
-    /// Said over the text when `shown` is cut short.
-    pub(crate) cut_note: Option<String>,
+    /// Each said in a banner over the text, such as that `shown` is cut
+    /// short.
+    pub(crate) notes: Vec<String>,
     pub(crate) size: (i32, i32),
 }
 
@@ -73,7 +74,7 @@ pub(crate) fn source_dialog(text: SourceText, settings: Option<&Rc<AppSettings>>
     header.pack_end(&copy_button);
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&header);
-    if let Some(note) = &text.cut_note {
+    for note in &text.notes {
         let banner = adw::Banner::new(note);
         banner.set_revealed(true);
         toolbar.add_top_bar(&banner);
@@ -167,7 +168,7 @@ mod tests {
                 skipped: 0,
                 cells: None,
             },
-            cut_note: None,
+            notes: Vec::new(),
             size: (640, 520),
         }
     }
