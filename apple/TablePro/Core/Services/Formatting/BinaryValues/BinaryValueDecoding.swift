@@ -10,13 +10,16 @@ internal enum BinaryValueFormat: Hashable, Sendable {
     case protobuf
     case igbinary
     case avro(schemaID: String)
+    case protobufSchema(schemaID: String, message: String)
+    case schemaRegistry(connectionID: UUID)
 
     var displayName: String {
         switch self {
         case .messagePack: return "MessagePack"
-        case .protobuf: return "Protobuf"
+        case .protobuf, .protobufSchema: return "Protobuf"
         case .igbinary: return "igbinary"
         case .avro: return "Avro"
+        case .schemaRegistry: return "Schema Registry"
         }
     }
 }
@@ -32,9 +35,31 @@ internal enum BinaryValueDocument: Sendable {
     case failed(BinaryValueDecodeError)
     // Nothing to judge the bytes by: the format names a schema this Mac no longer has.
     case missingSchema
+    case registryUnavailable(schemaID: UInt32, reason: String)
 }
 
-// Pure: the grid calls it per cell on the main actor, the viewer off it.
+// The Confluent wire format: magic byte 0, then the schema ID, big-endian.
+internal enum SchemaRegistryFrame {
+    static let headerLength = 5
+
+    static func schemaID(_ data: Data) throws -> UInt32 {
+        guard data.count >= headerLength, data.first == 0 else {
+            throw BinaryValueDecodeError(kind: .notFramed, offset: 0)
+        }
+        var reader = BinaryValueReader(data)
+        try reader.skip(1)
+        return try reader.readUInt32()
+    }
+
+    static func jsonText(_ data: Data) throws -> String {
+        guard let text = String(data: data.dropFirst(headerLength), encoding: .utf8) else {
+            throw BinaryValueDecodeError(kind: .invalidField, offset: headerLength)
+        }
+        return text
+    }
+}
+
+// Pure but for the schema caches: the grid calls it per cell on the main actor, the viewer off it.
 internal enum BinaryValueDecoding {
     static let maxTextLength = BinaryTextDecoder.maxDisplayBytes
     // The grid stops here too, so a cell never shows a value the viewer then refuses.
@@ -63,6 +88,16 @@ internal enum BinaryValueDecoding {
                     data, schema: schema, maxValues: budget, maxValuesRead: AvroDecoder.maxValuesReadInCell
                 ).value
                 text = MessagePackTextWriter.json(value, pretty: false, limit: limit)
+            case .protobufSchema(let schemaID, let message):
+                guard let schema = ProtobufSchemaStore.shared.schema(id: schemaID) else { return nil }
+                let decoded = try ProtobufSchemaDecoder.decode(data, schema: schema, message: message, maxValues: budget)
+                text = ProtobufSchemaTextWriter.text(decoded.fields, multiLine: false, limit: limit)
+            case .schemaRegistry(let connectionID):
+                let schemaID = try SchemaRegistryFrame.schemaID(data)
+                guard case .success(let schema)? = SchemaRegistryCache.shared.cachedSchema(
+                    connectionID: connectionID, schemaID: schemaID
+                ) else { return nil }
+                text = try registryText(data, schema: schema, maxValues: budget, limit: limit)
             }
         } catch {
             return nil
@@ -128,12 +163,82 @@ internal enum BinaryValueDecoding {
                     ),
                     note: message.framing.map(framingNote)
                 )
+            case .protobufSchema(let schemaID, let message):
+                guard let schema = ProtobufSchemaStore.shared.schema(id: schemaID) else { return .missingSchema }
+                return protobufDocument(try ProtobufSchemaDecoder.decode(data, schema: schema, message: message))
+            case .schemaRegistry(let connectionID):
+                let schemaID = try SchemaRegistryFrame.schemaID(data)
+                switch SchemaRegistryCache.shared.cachedSchema(connectionID: connectionID, schemaID: schemaID) {
+                case .success(let schema)?:
+                    return try registryDocument(data, schema: schema)
+                case .failure(let error)?:
+                    return .registryUnavailable(schemaID: schemaID, reason: error.reason)
+                case nil:
+                    return .registryUnavailable(
+                        schemaID: schemaID, reason: String(localized: "The schema is still being fetched.")
+                    )
+                }
             }
         } catch let error as BinaryValueDecodeError {
             return .failed(error)
         } catch {
             return .failed(BinaryValueDecodeError(kind: .unexpectedEnd, offset: 0))
         }
+    }
+
+    static func registryText(_ data: Data, schema: RegistrySchema, maxValues: Int, limit: Int) throws -> String {
+        switch schema {
+        case .avro(let avro):
+            let value = try AvroDecoder.decodeRegistryPayload(
+                data.dropFirst(SchemaRegistryFrame.headerLength), schema: avro,
+                maxValues: maxValues, maxValuesRead: AvroDecoder.maxValuesReadInCell
+            )
+            return MessagePackTextWriter.json(value, pretty: false, limit: limit)
+        case .protobuf(let protobuf):
+            let message = try ProtobufSchemaDecoder.decode(data, schema: protobuf, message: nil, maxValues: maxValues)
+            return ProtobufSchemaTextWriter.text(message.fields, multiLine: false, limit: limit)
+        case .json:
+            return try SchemaRegistryFrame.jsonText(data)
+        }
+    }
+
+    static func registryDocument(_ data: Data, schema: RegistrySchema) throws -> BinaryValueDocument {
+        switch schema {
+        case .avro(let avro):
+            let schemaID = try SchemaRegistryFrame.schemaID(data)
+            let value = try AvroDecoder.decodeRegistryPayload(data.dropFirst(SchemaRegistryFrame.headerLength), schema: avro)
+            return .decoded(
+                tree: .json(MessagePackTreeBuilder.build(from: value)),
+                text: capped(
+                    MessagePackTextWriter.json(value, pretty: true, limit: writerLimit(forCap: maxViewerTextLength)),
+                    at: maxViewerTextLength
+                ),
+                note: framingNote(.confluent(schemaID: schemaID))
+            )
+        case .protobuf(let protobuf):
+            return protobufDocument(try ProtobufSchemaDecoder.decode(data, schema: protobuf, message: nil))
+        case .json:
+            let text = try SchemaRegistryFrame.jsonText(data)
+            guard case .success(let tree) = JSONTreeParser.parse(text) else {
+                throw BinaryValueDecodeError(kind: .invalidField, offset: SchemaRegistryFrame.headerLength)
+            }
+            return .decoded(
+                tree: .json(tree),
+                text: capped(text, at: maxViewerTextLength),
+                note: framingNote(.confluent(schemaID: try SchemaRegistryFrame.schemaID(data)))
+            )
+        }
+    }
+
+    private static func protobufDocument(_ message: ProtobufTypedMessage) -> BinaryValueDocument {
+        .decoded(
+            tree: .protobuf(ProtobufSchemaTreeBuilder.build(from: message)),
+            text: capped(
+                ProtobufSchemaTextWriter.text(message.fields, multiLine: true, limit: writerLimit(forCap: maxViewerTextLength)),
+                at: maxViewerTextLength
+            ),
+            note: message.framing.map(framingNote)
+        )
     }
 
     private static func framingNote(_ framing: AvroFraming) -> String {

@@ -49,7 +49,7 @@ internal enum ProtobufWireDecoder {
         return ProtobufMessage(fields: fields, framing: framing)
     }
 
-    private static func readFraming(_ reader: inout BinaryValueReader) throws -> ProtobufFraming {
+    static func readFraming(_ reader: inout BinaryValueReader) throws -> ProtobufFraming {
         _ = try reader.readByte()
         let schemaID = try reader.readUInt32()
         let start = reader.offset
@@ -65,7 +65,14 @@ internal enum ProtobufWireDecoder {
         return ProtobufFraming(schemaID: schemaID, messageIndexes: indexes)
     }
 
-    private static func zigzag(_ value: UInt64) -> Int64 {
+    // A length-delimited value no schema names, read the way decode() reads one.
+    static func lengthDelimited(_ data: Data, maxValues: Int = .max) -> ProtobufFieldValue {
+        var parser = Parser(budget: maxValues)
+        var window = BinaryValueReader(data)
+        return parser.lengthDelimited(&window, depth: 0)
+    }
+
+    static func zigzag(_ value: UInt64) -> Int64 {
         Int64(bitPattern: value >> 1) ^ -Int64(bitPattern: value & 1)
     }
 
@@ -128,7 +135,7 @@ internal enum ProtobufWireDecoder {
             return result
         }
 
-        private mutating func lengthDelimited(_ window: inout BinaryValueReader, depth: Int) -> ProtobufFieldValue {
+        mutating func lengthDelimited(_ window: inout BinaryValueReader, depth: Int) -> ProtobufFieldValue {
             if window.remaining > 0, depth < ProtobufWireDecoder.maxDepth, budget > 0 {
                 var attempt = self
                 var nested = window

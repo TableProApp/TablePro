@@ -5,7 +5,8 @@
 
 import Foundation
 
-// Without a schema the bytes give only a field number, the key, and a wire type, the badge.
+// Without a schema the bytes give only a field number, the key, and a wire type, the badge. A schema gives the
+// field's name and declared type instead.
 internal struct ProtobufTreeNode: Identifiable {
     internal enum Kind: Equatable {
         case message
@@ -61,6 +62,8 @@ internal struct ProtobufTreeNode: Identifiable {
     let isDisplayCut: Bool
     let rawValue: String?
     let members: [ProtobufField]
+    let typeBadge: String?
+    let typedMembers: [ProtobufTypedField]
     let children: [ProtobufTreeNode]
 
     init(
@@ -73,6 +76,8 @@ internal struct ProtobufTreeNode: Identifiable {
         isDisplayCut: Bool = false,
         rawValue: String? = nil,
         members: [ProtobufField] = [],
+        typeBadge: String? = nil,
+        typedMembers: [ProtobufTypedField] = [],
         children: [ProtobufTreeNode] = []
     ) {
         self.id = id
@@ -84,6 +89,8 @@ internal struct ProtobufTreeNode: Identifiable {
         self.isDisplayCut = isDisplayCut
         self.rawValue = rawValue
         self.members = members
+        self.typeBadge = typeBadge
+        self.typedMembers = typedMembers
         self.children = children
     }
 }
@@ -101,7 +108,7 @@ extension ProtobufTreeNode: FilterableTreeNode {
     }
 
     internal var badgeLabel: String {
-        kind.badgeLabel
+        typeBadge ?? kind.badgeLabel
     }
 
     internal var isTruncationMarker: Bool {
@@ -111,6 +118,7 @@ extension ProtobufTreeNode: FilterableTreeNode {
     internal var copyableValue: String {
         switch kind {
         case .message, .group:
+            guard typedMembers.isEmpty else { return ProtobufSchemaTextWriter.text(typedMembers, multiLine: false) }
             return ProtobufTextWriter.text(members, multiLine: false)
         case .varint, .fixed64, .fixed32, .string, .bytes, .truncated:
             return rawValue ?? displayValue
@@ -131,7 +139,7 @@ extension ProtobufTreeNode: FilterableTreeNode {
             string: kind == .string ? rawValue : nil,
             isCut: isDisplayCut,
             tone: kind.tone,
-            typeBadge: kind.badgeLabel,
+            typeBadge: badgeLabel,
             visibilityBadge: nil
         )
     }
@@ -140,7 +148,7 @@ extension ProtobufTreeNode: FilterableTreeNode {
         ProtobufTreeNode(
             id: id, key: key, keyPath: keyPath, path: path, kind: kind,
             displayValue: displayValue, isDisplayCut: isDisplayCut, rawValue: rawValue, members: members,
-            children: children
+            typeBadge: typeBadge, typedMembers: typedMembers, children: children
         )
     }
 }

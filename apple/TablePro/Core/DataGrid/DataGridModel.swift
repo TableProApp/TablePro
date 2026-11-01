@@ -270,6 +270,24 @@ final class DataGridModel: ObservableObject {
             store.valueFilter = remapped
         }
         store.displayFormats = formats
+        redrawFormatted([column], in: current)
+    }
+
+    // A Schema Registry column shows stored bytes until its schemas arrive. The format is unchanged, so a value
+    // filter picked from those bytes follows the decoded text the way a format change carries it.
+    func schemaRegistryDidLoad(connectionID: UUID) {
+        let current = rows
+        let changed = columns.columns.filter { displayFormat(for: $0) == .schemaRegistry(connectionID: connectionID) }
+        guard !changed.isEmpty else { return }
+        for column in changed {
+            if let remapped = remappedValueFilter(column: column, from: nil, to: displayFormat(for: column), in: current) {
+                store.valueFilter = remapped
+            }
+        }
+        redrawFormatted(changed, in: current)
+    }
+
+    private func redrawFormatted(_ changed: [DataGridColumn], in current: TableRows) {
         display.cache.removeAll()
         if store.valueFilter.isActive {
             order = resolveOrder(in: current)
@@ -277,7 +295,8 @@ final class DataGridModel: ObservableObject {
             displayRevision &+= 1
             mountedView?.apply(.reload)
         } else {
-            mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: columns.displayPosition(of: column.id).map { IndexSet(integer: $0) }))
+            let positions = IndexSet(changed.compactMap { columns.displayPosition(of: $0.id) })
+            mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: positions.isEmpty ? nil : positions))
         }
         refreshFind()
     }

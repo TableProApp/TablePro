@@ -24,7 +24,7 @@ internal enum ProtobufTextWriter {
         }
     }
 
-    private static func write(
+    static func write(
         _ fields: [ProtobufField],
         into output: inout String,
         multiLine: Bool,
@@ -126,7 +126,7 @@ internal enum ProtobufTreeBuilder {
         return children
     }
 
-    private static func node(
+    static func node(
         key: String,
         keyPath: String,
         path: TreeNodePath,

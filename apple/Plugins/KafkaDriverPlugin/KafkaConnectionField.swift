@@ -88,6 +88,10 @@ enum KafkaConnectionField {
     static let saslMechanism = "kafkaSaslMechanism"
     static let brokerRouting = "kafkaBrokerRouting"
     static let connectTimeout = "kafkaConnectTimeout"
+    // Read by the app, which fetches the schemas a value names; the driver never uses them.
+    static let schemaRegistryUrl = "schemaRegistryUrl"
+    static let schemaRegistryUsername = "schemaRegistryUsername"
+    static let schemaRegistryPassword = "schemaRegistryPassword"
 
     enum SecurityProtocol: String, CaseIterable {
         case plaintext = "PLAINTEXT"
@@ -201,6 +205,26 @@ enum KafkaConnectionField {
                         label: String(localized: "Only use the bootstrap address")
                     )
                 ]),
+                section: .advanced
+            ),
+            ConnectionField(
+                id: schemaRegistryUrl,
+                label: String(localized: "Schema Registry URL"),
+                placeholder: "http://localhost:8081",
+                required: false,
+                section: .advanced
+            ),
+            ConnectionField(
+                id: schemaRegistryUsername,
+                label: String(localized: "Schema Registry User"),
+                required: false,
+                section: .advanced
+            ),
+            ConnectionField(
+                id: schemaRegistryPassword,
+                label: String(localized: "Schema Registry Password"),
+                required: false,
+                fieldType: .secure,
                 section: .advanced
             )
         ]

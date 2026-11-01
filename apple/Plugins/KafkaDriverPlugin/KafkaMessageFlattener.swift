@@ -99,7 +99,8 @@ enum KafkaMessageFlattener {
     /// binary value is enough to make the whole column binary, because rendering a binary
     /// payload through a text column is the lossier of the two mistakes.
     private static func allDecodeAsText<S: Sequence>(_ payloads: S) -> Bool where S.Element == Data? {
-        for case let payload? in payloads where String(data: payload, encoding: .utf8) == nil {
+        // A Schema Registry value starts with a zero byte, and its payload can still be valid UTF-8.
+        for case let payload? in payloads where payload.first == 0 || String(data: payload, encoding: .utf8) == nil {
             return false
         }
         return true

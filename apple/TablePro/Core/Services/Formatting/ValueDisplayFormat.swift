@@ -19,6 +19,10 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
     case igbinary
     // The schema is kept by AvroSchemaStore under this ID, so every per-column path can decode with it.
     case avro(schemaID: String)
+    // Kept by ProtobufSchemaStore, with the message type the values are read as.
+    case protobufSchema(schemaID: String, message: String)
+    // Each value names its schema by ID; the connection says which Schema Registry to fetch it from.
+    case schemaRegistry(connectionID: UUID)
 
     // Every format but Avro, which needs a schema chosen first.
     static let presetFormats: [ValueDisplayFormat] = [
@@ -27,6 +31,8 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
     ]
 
     private static let avroPrefix = "avro:"
+    private static let protobufSchemaPrefix = "protobuf:"
+    private static let schemaRegistryPrefix = "schemaRegistry:"
 
     init?(rawValue: String) {
         switch rawValue {
@@ -42,10 +48,20 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
         case "protobuf": self = .protobuf
         case "igbinary": self = .igbinary
         default:
-            guard rawValue.hasPrefix(Self.avroPrefix) else { return nil }
-            let schemaID = String(rawValue.dropFirst(Self.avroPrefix.count))
-            guard AvroSchemaStore.isSchemaID(schemaID) else { return nil }
-            self = .avro(schemaID: schemaID)
+            if rawValue.hasPrefix(Self.avroPrefix) {
+                let schemaID = String(rawValue.dropFirst(Self.avroPrefix.count))
+                guard AvroSchemaStore.isSchemaID(schemaID) else { return nil }
+                self = .avro(schemaID: schemaID)
+            } else if rawValue.hasPrefix(Self.protobufSchemaPrefix) {
+                let parts = rawValue.dropFirst(Self.protobufSchemaPrefix.count).split(separator: ":", maxSplits: 1)
+                guard parts.count == 2, AvroSchemaStore.isSchemaID(String(parts[0])), !parts[1].isEmpty else { return nil }
+                self = .protobufSchema(schemaID: String(parts[0]), message: String(parts[1]))
+            } else if rawValue.hasPrefix(Self.schemaRegistryPrefix),
+                      let connectionID = UUID(uuidString: String(rawValue.dropFirst(Self.schemaRegistryPrefix.count))) {
+                self = .schemaRegistry(connectionID: connectionID)
+            } else {
+                return nil
+            }
         }
     }
 
@@ -63,6 +79,8 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
         case .protobuf: return "protobuf"
         case .igbinary: return "igbinary"
         case .avro(let schemaID): return Self.avroPrefix + schemaID
+        case .protobufSchema(let schemaID, let message): return Self.protobufSchemaPrefix + schemaID + ":" + message
+        case .schemaRegistry(let connectionID): return Self.schemaRegistryPrefix + connectionID.uuidString
         }
     }
 
@@ -96,6 +114,10 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
         case .avro(let schemaID):
             guard let name = AvroSchemaStore.shared.schema(id: schemaID)?.displayName else { return "Avro" }
             return String(format: String(localized: "Avro (%@)"), name)
+        case .protobufSchema(_, let message):
+            return String(format: String(localized: "Protobuf (%@)"), message.split(separator: ".").last.map(String.init) ?? message)
+        case .schemaRegistry:
+            return String(localized: "Schema Registry")
         }
     }
 
@@ -105,6 +127,8 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
         case .protobuf: return .protobuf
         case .igbinary: return .igbinary
         case .avro(let schemaID): return .avro(schemaID: schemaID)
+        case .protobufSchema(let schemaID, let message): return .protobufSchema(schemaID: schemaID, message: message)
+        case .schemaRegistry(let connectionID): return .schemaRegistry(connectionID: connectionID)
         case .raw, .text, .uuid, .uuidSwappedTime, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
             return nil
         }
@@ -114,8 +138,11 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
         switch self {
         case .raw:
             return []
-        case .text, .uuidSwappedTime, .messagePack, .protobuf, .igbinary, .avro:
+        case .text, .uuidSwappedTime, .messagePack, .protobuf, .igbinary, .avro, .protobufSchema:
             return ["blob"]
+        // A framed value whose payload happens to be UTF-8 lands in a text column.
+        case .schemaRegistry:
+            return ["blob", "text"]
         case .uuid:
             return ["blob", "text"]
         case .unixTimestamp, .unixTimestampMillis:
@@ -146,7 +173,7 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
     // A binary column is worth searching exactly when one of these is on it; hex is not what anyone types into Find.
     var rendersBinaryAsText: Bool {
         switch self {
-        case .text, .uuid, .uuidSwappedTime, .messagePack, .protobuf, .igbinary, .avro:
+        case .text, .uuid, .uuidSwappedTime, .messagePack, .protobuf, .igbinary, .avro, .protobufSchema, .schemaRegistry:
             return true
         case .raw, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:
             return false
@@ -162,6 +189,10 @@ enum ValueDisplayFormat: Hashable, Codable, Identifiable, RawRepresentable {
 
     static func offersAvro(for columnType: ColumnType?, databaseType: DatabaseType? = nil) -> Bool {
         avro(schemaID: "").isApplicable(to: columnType, databaseType: databaseType)
+    }
+
+    static func offersProtobufSchema(for columnType: ColumnType?, databaseType: DatabaseType? = nil) -> Bool {
+        protobufSchema(schemaID: "", message: "").isApplicable(to: columnType, databaseType: databaseType)
     }
 }
 

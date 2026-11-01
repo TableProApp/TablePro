@@ -175,4 +175,15 @@ struct BinaryDisplayFormatTests {
         }
         #expect(BinaryValueDecoding.text(Data([0x02]), format: format) == nil)
     }
+
+    @Test("A Protobuf schema column renders field names in the cell and falls back to hex on a broken value")
+    func protobufSchemaRenders() throws {
+        let blob = ColumnType.blob(rawType: "BLOB")
+        let schemaID = try ProtobufSchemaStore.shared.add(Data("syntax = \"proto3\"; message Point { sint32 x = 1; string label = 2; }".utf8))
+        let format = ValueDisplayFormat.protobufSchema(schemaID: schemaID, message: "Point")
+        #expect(format.displayName.contains("Point"))
+        #expect(CellDisplayFormatter.format(.bytes(BinaryFixture.data("08051202686b")), columnType: blob, displayFormat: format)
+            == #"x: -3 label: "hk""#)
+        #expect(CellDisplayFormatter.format(.bytes(BinaryFixture.data("0f")), columnType: blob, displayFormat: format) == "0x0F")
+    }
 }

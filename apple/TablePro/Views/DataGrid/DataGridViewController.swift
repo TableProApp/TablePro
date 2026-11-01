@@ -219,6 +219,10 @@ final class DataGridViewController: NSViewController, DataGridMountedView {
         observers.append(center.addObserver(forName: DataGridAccessibility.didActivateNotification, object: nil, queue: nil) { [weak self] _ in
             Task { @MainActor [weak self] in self?.remountAccessibilityCells() }
         })
+        observers.append(center.addObserver(forName: SchemaRegistryCache.didLoadSchema, object: nil, queue: .main) { [weak self] note in
+            guard let connectionID = note.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID else { return }
+            MainActor.assumeIsolated { self?.model.schemaRegistryDidLoad(connectionID: connectionID) }
+        })
         let scrollView = main.scrollView
         observers.append(center.addObserver(forName: NSScrollView.willStartLiveScrollNotification, object: scrollView, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.pausePrewarm() }
