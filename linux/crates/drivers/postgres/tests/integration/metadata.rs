@@ -108,10 +108,17 @@ async fn triggers_list_once_with_their_table() {
 async fn a_sequence_keeps_its_persistence_and_owner() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;
+    // Unlogged sequences came in PostgreSQL 15.
+    let unlogged = connection.server_info().major >= 15;
+    let scratch_sql = if unlogged {
+        "CREATE UNLOGGED SEQUENCE scratch"
+    } else {
+        "CREATE SEQUENCE scratch"
+    };
     setup(
         connection.as_ref(),
         &[
-            "CREATE UNLOGGED SEQUENCE scratch",
+            scratch_sql,
             "CREATE TABLE orders (id serial, n int GENERATED ALWAYS AS IDENTITY)",
         ],
     )
@@ -129,8 +136,13 @@ async fn a_sequence_keeps_its_persistence_and_owner() {
     };
 
     let scratch = read("scratch").await;
+    let kind = if unlogged {
+        "CREATE UNLOGGED SEQUENCE"
+    } else {
+        "CREATE SEQUENCE"
+    };
     assert!(
-        scratch.sql.starts_with("CREATE UNLOGGED SEQUENCE public.scratch"),
+        scratch.sql.starts_with(&format!("{kind} public.scratch")),
         "{}",
         scratch.sql
     );

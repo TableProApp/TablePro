@@ -18,7 +18,7 @@ use tablepro_core::meta::{
     EditorRefusal, IndexInfo, IndexKey, ObjectDefinition, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate,
     RowIdentity, SchemaInfo, TableEstimate, TableRef,
 };
-use tablepro_core::sql_syntax::terminated;
+use tablepro_core::sql_syntax::{mysql_program_script, terminated};
 use tablepro_core::{DriverError, ForeignKeyInfo, UnsupportedFeature, Value};
 
 use crate::catalog::{
@@ -259,18 +259,24 @@ pub(crate) async fn fetch_object_definition(
     let Some(sql) = text_column(&row, column)? else {
         return Ok(None);
     };
-    let refusal = match editor {
-        Some(editor) => {
-            let made_under = (
-                text_column(&row, "sql_mode")?,
-                text_column(&row, "collation_connection")?,
-            );
-            (made_under != editor).then_some(EditorRefusal::OtherSettings)
-        }
-        None => None,
+    let Some(editor) = editor else {
+        return Ok(Some(ObjectDefinition {
+            sql: terminated(&sql),
+            database: object.schema.clone(),
+            refusal: None,
+        }));
+    };
+    let made_under = (
+        text_column(&row, "sql_mode")?,
+        text_column(&row, "collation_connection")?,
+    );
+    let (sql, refusal) = match mysql_program_script(&sql) {
+        _ if made_under != editor => (terminated(&sql), Some(EditorRefusal::OtherSettings)),
+        Some(script) => (script, None),
+        None => (terminated(&sql), Some(EditorRefusal::SplitsApart)),
     };
     Ok(Some(ObjectDefinition {
-        sql: terminated(&sql),
+        sql,
         database: object.schema.clone(),
         refusal,
     }))

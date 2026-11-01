@@ -53,6 +53,29 @@ pub fn holds_client_directive(sql: &str, grammar: SqlGrammar) -> bool {
     })
 }
 
+/// `create`, a MySQL routine or trigger as `SHOW CREATE` gives it, framed
+/// in `DELIMITER ;;` as mysqldump writes it: the editor, as the mysql
+/// client, ends a statement at each `;`, which a body holds. `None` when
+/// the editor would still not read it back as the one statement, as a
+/// body that ends a string in `\` under `NO_BACKSLASH_ESCAPES` would not.
+pub fn mysql_program_script(create: &str) -> Option<String> {
+    let create = create.trim_end().trim_end_matches(';').trim_end();
+    let script = format!("DELIMITER ;;\n{create};;\nDELIMITER ;\n");
+    let plan = ScriptPlan::build(
+        &script,
+        SqlGrammar::MySql,
+        LexicalSettings::default_for(SqlGrammar::MySql),
+    );
+    let batches: Vec<&str> = plan
+        .batches()
+        .iter()
+        .filter_map(|batch| script.get(batch.range.clone()))
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .collect();
+    (plan.diagnostics().is_empty() && batches == [create]).then_some(script)
+}
+
 struct Header<'a, I: Iterator<Item = ScriptToken>> {
     sql: &'a str,
     grammar: SqlGrammar,
@@ -245,6 +268,16 @@ mod tests {
                          CREATE FUNCTION f(text) RETURNS text AS $$ SELECT 'x' $$ LANGUAGE sql;";
         assert!(!holds_client_directive(overloads, SqlGrammar::PostgreSql));
         assert!(holds_client_directive("DELIMITER ;;\nSELECT 1;;", SqlGrammar::MySql));
+    }
+
+    #[test]
+    fn a_mysql_program_is_one_statement_to_the_editor() {
+        let body = "CREATE DEFINER=`root`@`%` PROCEDURE `p`()\nBEGIN\n  SELECT 'a;b';\n  SELECT 2;\nEND";
+
+        let script = mysql_program_script(&format!("{body};")).expect("a script");
+
+        assert_eq!(script, format!("DELIMITER ;;\n{body};;\nDELIMITER ;\n"));
+        assert_eq!(mysql_program_script("CREATE PROCEDURE `p`() SELECT '\\'"), None);
     }
 
     #[test]

@@ -655,6 +655,7 @@ async fn a_routine_definition_runs_again_in_an_editor_session() {
             add_tax.refusal, None,
             "made in an editor tab, it opens in one on {flavour:?}"
         );
+        assert!(add_tax.sql.starts_with("DELIMITER ;;\n"), "{}", add_tax.sql);
 
         run_ok(editor.as_ref(), "DROP FUNCTION add_tax").await;
         run_ok(editor.as_ref(), &add_tax.sql).await;
