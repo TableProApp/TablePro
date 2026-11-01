@@ -95,7 +95,8 @@ final class KafkaLiveSubscription: PluginLiveSubscription, @unchecked Sendable {
                             }
                         }
                     }
-                    try await group.waitForAll()
+                    // The first partition that fails ends the follow, and leaving the group cancels the others.
+                    while try await group.next() != nil {}
                 }
                 continuation.finish()
             } catch {

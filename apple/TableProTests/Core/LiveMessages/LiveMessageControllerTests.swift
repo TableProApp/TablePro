@@ -141,7 +141,7 @@ struct LiveMessageControllerTests {
         let controller = harness.controller!
         let sessions = LiveMessageSessions()
         let tabId = UUID()
-        sessions.register(controller, tabId: tabId)
+        sessions.register(controller, tabId: tabId, connectionId: UUID())
         controller.start()
         try await waitUntil { controller.phase == .live }
 
@@ -149,5 +149,26 @@ struct LiveMessageControllerTests {
         #expect(controller.hasEnded)
         #expect(sessions.controller(forTab: tabId) == nil)
         try await waitUntil { harness.subscriptions[0].isClosed }
+    }
+}
+
+@MainActor
+struct LiveMessageSessionsTests {
+    @Test("Disconnecting a connection stops only that connection's live tabs")
+    func endByConnection() async throws {
+        let first = Harness()
+        let second = Harness()
+        let sessions = LiveMessageSessions()
+        let connection = UUID()
+        sessions.register(first.controller, tabId: UUID(), connectionId: connection)
+        sessions.register(second.controller, tabId: UUID(), connectionId: UUID())
+        first.controller.start()
+        second.controller.start()
+        try await waitUntil { first.controller.phase == .live && second.controller.phase == .live }
+
+        sessions.end(connectionId: connection)
+        #expect(first.controller.hasEnded)
+        #expect(!second.controller.hasEnded)
+        second.controller.stop()
     }
 }

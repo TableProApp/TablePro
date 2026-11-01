@@ -55,7 +55,7 @@ extension MainContentCoordinator {
             subscribe: { source in try await messaging.subscribe(request, sessions: source) }
         )
         let tabId = UUID()
-        LiveMessageSessions.shared.register(controller, tabId: tabId)
+        LiveMessageSessions.shared.register(controller, tabId: tabId, connectionId: connectionId)
         tabManager.addLiveMessagesTab(id: tabId, title: LiveMessageController.title(for: request))
         controller.start()
     }

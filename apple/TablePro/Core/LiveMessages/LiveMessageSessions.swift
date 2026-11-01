@@ -10,22 +10,29 @@ import Foundation
 internal final class LiveMessageSessions {
     static let shared = LiveMessageSessions()
 
-    private var controllers: [UUID: LiveMessageController] = [:]
-
-    var hasActiveSessions: Bool {
-        controllers.values.contains { !$0.hasEnded }
+    private struct Entry {
+        let controller: LiveMessageController
+        let connectionId: UUID
     }
 
-    func register(_ controller: LiveMessageController, tabId: UUID) {
-        controllers[tabId] = controller
+    private var entries: [UUID: Entry] = [:]
+
+    func register(_ controller: LiveMessageController, tabId: UUID, connectionId: UUID) {
+        entries[tabId] = Entry(controller: controller, connectionId: connectionId)
     }
 
     func controller(forTab tabId: UUID) -> LiveMessageController? {
-        controllers[tabId]
+        entries[tabId]?.controller
     }
 
     func end(tabId: UUID) {
-        controllers.removeValue(forKey: tabId)?.stop()
+        entries.removeValue(forKey: tabId)?.controller.stop()
+    }
+
+    // Before the connection's transport goes, so no subscription keeps redialing through a closed tunnel.
+    func end(connectionId: UUID) {
+        let tabIds = entries.filter { $0.value.connectionId == connectionId }.map(\.key)
+        end(tabIds: tabIds)
     }
 
     func end(tabIds: [UUID]) {
@@ -41,8 +48,8 @@ internal final class LiveMessageSessions {
                 coordinator.closeLiveMessageTabs()
             }
         }
-        let ending = controllers.values
-        controllers.removeAll()
+        let ending = entries.values.map(\.controller)
+        entries.removeAll()
         for controller in ending {
             controller.stop()
         }
