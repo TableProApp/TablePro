@@ -5,38 +5,24 @@ import TableProPluginKit
 extension InfluxDBPluginDriver {
     func fetchDatabases() async throws -> [String] {
         let (connection, server) = try requireConnection()
-        let organization = currentOrganization
         switch server.generation {
         case .v3:
-            let response = try await connection.send(InfluxRequests.listDatabases(
-                generation: .v3, organization: organization, credentials: connection.credentials
-            ))
-            guard response.isSuccess else { throw InfluxDBConnection.error(for: response) }
+            let response = try await connection.send(InfluxRequests.v3Databases(credentials: connection.credentials))
+            guard response.isSuccess else { throw response.error }
             return try InfluxCatalogDecoder.v3Databases(response.data)
         case .v2:
-            var buckets: [(id: String, name: String)] = []
+            let organization = currentOrganization
+            var names: [String] = []
             while true {
-                let response = try await connection.send(InfluxRequests.listDatabases(
-                    generation: .v2, organization: organization, credentials: connection.credentials,
-                    offset: buckets.count
+                let response = try await connection.send(InfluxRequests.v2Buckets(
+                    organization: organization, credentials: connection.credentials, offset: names.count
                 ))
-                guard response.isSuccess else { throw InfluxDBConnection.error(for: response) }
-                let page = try InfluxCatalogDecoder.v2Buckets(response.data)
-                buckets += page
+                guard response.isSuccess else { throw response.error }
+                let page = try InfluxCatalogDecoder.v2BucketNames(response.data)
+                names += page
                 if page.count < InfluxRequests.bucketPageSize { break }
             }
-            let mappings = try await connection.send(
-                InfluxRequests.listDBRPs(organization: organization, credentials: connection.credentials)
-            )
-            guard mappings.isSuccess else { throw InfluxDBConnection.error(for: mappings) }
-            let databaseByBucketID = try InfluxCatalogDecoder.v2InfluxQLDatabases(mappings.data)
-            remember(influxQLDatabases: Dictionary(
-                buckets.compactMap { bucket in databaseByBucketID[bucket.id].map { (bucket.name, $0) } },
-                uniquingKeysWith: { first, _ in first }
-            ))
-            return buckets.map(\.name).sorted()
-        case .v1:
-            return try await run("SHOW DATABASES", language: .influxQL).column(named: "name").compactMap { $0 }
+            return names.sorted()
         }
     }
 
@@ -44,42 +30,21 @@ extension InfluxDBPluginDriver {
         PluginDatabaseMetadata(name: database)
     }
 
+    // An external table is how the host learns a measurement takes no row edit, drop or truncate: InfluxDB has no
+    // UPDATE, and a point is keyed by its series and time, which the grid's SQL DELETE cannot name.
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         guard currentDatabase != nil else { return [] }
         let (_, server) = try requireConnection()
-        let (statement, language) = InfluxSchema.measurementsStatement(generation: server.generation)
-        let table = try await run(statement, language: language)
+        let target = try await influxQLTarget()
+        let table = try await run(InfluxSchema.measurementsStatement(generation: server.generation, target: target))
         return InfluxSchema.measurements(from: table, generation: server.generation)
-            .map { PluginTableInfo(name: $0, type: "TABLE") }
+            .map { PluginTableInfo(name: $0, type: "EXTERNAL TABLE") }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
-        try await columns(of: table).map { column in
-            PluginColumnInfo(
-                name: column.name,
-                dataType: column.typeName,
-                isNullable: column.role != .time,
-                isPrimaryKey: column.role == .time,
-                comment: column.role == .tag ? "tag" : nil
-            )
+        try await loadColumns(of: table).map { column in
+            Self.columnInfo(name: column.name, typeName: column.typeName, role: column.role)
         }
-    }
-
-    func columns(of measurement: String) async throws -> [InfluxColumn] {
-        if let cached = cachedColumns(measurement) { return cached }
-        let (_, server) = try requireConnection()
-        let columns: [InfluxColumn]
-        switch server.generation {
-        case .v3:
-            let table = try await run(InfluxSchema.v3ColumnsStatement(measurement: measurement), language: .sql)
-            columns = InfluxSchema.v3Columns(from: table)
-        case .v1, .v2:
-            async let tags = run(InfluxSchema.v1TagKeysStatement(measurement: measurement), language: .influxQL)
-            async let fields = run(InfluxSchema.v1FieldKeysStatement(measurement: measurement), language: .influxQL)
-            columns = InfluxSchema.v1Columns(tagKeys: try await tags, fieldKeys: try await fields)
-        }
-        cache(columns, for: measurement)
-        return columns
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
@@ -90,10 +55,9 @@ extension InfluxDBPluginDriver {
         []
     }
 
-    /// InfluxDB has no DDL: a measurement exists once a point is written to it. The definition
-    /// tab shows its columns and their roles instead.
+    // InfluxDB has no DDL: a measurement exists once a point is written to it.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let columns = try await columns(of: table)
+        let columns = try await loadColumns(of: table)
         let width = columns.map(\.name.count).max() ?? 0
         let lines = columns.map { column -> String in
             let role: String
@@ -125,13 +89,14 @@ extension InfluxDBPluginDriver {
         limit: Int,
         offset: Int
     ) -> String? {
-        InfluxSelectBuilder.select(
-            measurement: table,
-            columns: columns,
-            sorts: sorts(sortColumns, columns: columns),
-            limit: limit,
-            offset: offset,
-            language: gridLanguage
+        gridStatement(
+            InfluxGridQuery(
+                measurement: table,
+                projection: columns,
+                sorts: Self.sorts(sortColumns, columns: columns),
+                shape: .page(limit: limit, offset: offset)
+            ),
+            hostKinds: [:]
         )
     }
 
@@ -146,68 +111,80 @@ extension InfluxDBPluginDriver {
         offset: Int,
         columnKinds: [String: PluginColumnKind]
     ) -> String? {
-        InfluxSelectBuilder.select(
-            measurement: table,
-            columns: columns,
-            filters: filters(queryFilters, table: table, columnKinds: columnKinds),
-            logicMode: logicMode,
-            sorts: sorts(sortColumns, columns: columns),
-            limit: limit,
-            offset: offset,
-            language: gridLanguage
+        gridStatement(
+            InfluxGridQuery(
+                measurement: table,
+                projection: columns,
+                filters: Self.filters(queryFilters),
+                matchesAll: logicMode.lowercased() != "or",
+                sorts: Self.sorts(sortColumns, columns: columns),
+                shape: .page(limit: limit, offset: offset)
+            ),
+            hostKinds: columnKinds
         )
     }
 
+    // InfluxQL counts per field, and a point may hold any subset of them, so only a one-field measurement's count is
+    // the number of points.
     func fetchExactRowCount(
         table: String,
         schema: String?,
         queryFilters: [PluginQueryFilter],
         logicMode: String
     ) async throws -> Int? {
-        let language = gridLanguage
-        // InfluxQL counts per field, and a point may hold any subset of them, so only a measurement
-        // with one field has a count that is the number of points.
-        if language == .influxQL {
-            let fields = try await columns(of: table).filter { $0.role == .field }
-            guard fields.count == 1 else { return nil }
+        let schema = try await columns(of: table)
+        let (_, server) = try requireConnection()
+        let language = server.generation.gridLanguage
+        if language == .influxQL, schema.filter({ $0.role == .field }).count != 1 {
+            return nil
         }
-        let statement = InfluxSelectBuilder.count(
+        let grid = InfluxGridQuery(
             measurement: table,
-            filters: filters(queryFilters, table: table, columnKinds: [:]),
-            logicMode: logicMode,
-            language: language
+            filters: Self.filters(queryFilters),
+            matchesAll: logicMode.lowercased() != "or",
+            shape: .count
         )
-        return InfluxSelectBuilder.rowCount(from: try await run(statement, language: language))
+        guard let text = grid.statement(language: language, kinds: Self.kinds(of: schema)) else { return nil }
+        let result = try await run(InfluxStatement.route(text, generation: server.generation))
+        return InfluxGridQuery.rowCount(from: result)
     }
 
     func defaultExportQuery(table: String) -> String? {
-        let language = gridLanguage
-        return "SELECT * FROM \(InfluxSelectBuilder.quoteIdentifier(table, language: language))"
+        gridStatement(InfluxGridQuery(measurement: table, shape: .all), hostKinds: [:])
     }
 
-    private func sorts(_ sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String]) -> [InfluxSort] {
+    // Declining every change is what makes the host refuse a save instead of writing its own SQL DML.
+    func generateRowWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        primaryKeyColumns: [String],
+        changes: [PluginRowChange],
+        insertedRowData: [Int: [PluginCellValue]],
+        deletedRowIndices: Set<Int>,
+        insertedRowIndices: Set<Int>
+    ) throws -> [PluginRowWrite]? {
+        throw PluginRowWriteRefusal(
+            rowIndex: changes.first?.rowIndex ?? 0,
+            reason: String(localized: "InfluxDB points cannot be edited in TablePro.")
+        )
+    }
+
+    private static func sorts(_ sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String]) -> [InfluxSort] {
         sortColumns.compactMap { sort in
             guard columns.indices.contains(sort.columnIndex) else { return nil }
             return InfluxSort(column: columns[sort.columnIndex], ascending: sort.ascending)
         }
     }
 
-    private func filters(
-        _ queryFilters: [PluginQueryFilter],
-        table: String,
-        columnKinds: [String: PluginColumnKind]
-    ) -> [InfluxFilter] {
-        let known = cachedColumns(table) ?? []
-        return queryFilters.map { filter in
-            let isText = known.first { $0.name == filter.column }?.isText
-                ?? (columnKinds[filter.column] == .text)
-            return InfluxFilter(
+    private static func filters(_ queryFilters: [PluginQueryFilter]) -> [InfluxFilter] {
+        queryFilters.map { filter in
+            InfluxFilter(
                 column: filter.column,
                 op: filter.op,
                 value: filter.value,
                 secondValue: filter.secondValue,
-                isCaseSensitive: filter.isCaseSensitive,
-                isText: isText
+                isCaseSensitive: filter.isCaseSensitive
             )
         }
     }

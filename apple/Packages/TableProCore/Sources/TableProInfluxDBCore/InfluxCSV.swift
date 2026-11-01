@@ -1,79 +1,77 @@
 import Foundation
 
-/// RFC 4180 records. A blank line comes back as an empty record because the Flux annotated CSV
-/// uses it to separate one table from the next.
+// RFC 4180 over the raw bytes. An empty line is one record with one empty field: the null of a one-column result, and
+// the separator between Flux tables. Every delimiter is ASCII, so a field is decoded on its own and bad UTF-8 in one
+// value does not empty the whole grid.
 enum InfluxCSV {
-    static func records(_ text: String) -> [[String]] {
+    static func records(_ data: Data) -> [[String]] {
+        var reader = Reader()
+        data.withUnsafeBytes { reader.read($0) }
+        return reader.finish()
+    }
+
+    private struct Reader {
         var records: [[String]] = []
         var record: [String] = []
-        var field = ""
+        var field: [UInt8] = []
         var inQuotes = false
-        var fieldStarted = false
-        var iterator = Array(text.unicodeScalars).makeIterator()
-        var pending: Unicode.Scalar?
+        var lineHasContent = false
 
-        func next() -> Unicode.Scalar? {
-            if let scalar = pending {
-                pending = nil
-                return scalar
-            }
-            return iterator.next()
-        }
-
-        func endRecord() {
-            if fieldStarted || !record.isEmpty {
-                record.append(field)
-                records.append(record)
-            } else {
-                records.append([])
-            }
-            record = []
-            field = ""
-            fieldStarted = false
-        }
-
-        while let scalar = next() {
-            if inQuotes {
-                if scalar == "\"" {
-                    if let following = next() {
-                        if following == "\"" {
-                            field.unicodeScalars.append("\"")
-                        } else {
-                            inQuotes = false
-                            pending = following
-                        }
-                    } else {
+        mutating func read(_ bytes: UnsafeRawBufferPointer) {
+            var index = 0
+            while index < bytes.count {
+                let byte = bytes[index]
+                index += 1
+                if inQuotes {
+                    if byte == Self.quote, index < bytes.count, bytes[index] == Self.quote {
+                        field.append(Self.quote)
+                        index += 1
+                    } else if byte == Self.quote {
                         inQuotes = false
+                    } else {
+                        field.append(byte)
                     }
-                } else {
-                    field.unicodeScalars.append(scalar)
+                    continue
                 }
-                continue
-            }
-            switch scalar {
-            case "\"":
-                inQuotes = true
-                fieldStarted = true
-            case ",":
-                record.append(field)
-                field = ""
-                fieldStarted = true
-            case "\r":
-                if let following = next(), following != "\n" {
-                    pending = following
+                switch byte {
+                case Self.quote:
+                    inQuotes = true
+                    lineHasContent = true
+                case Self.comma:
+                    endField()
+                    lineHasContent = true
+                case Self.carriageReturn:
+                    if index < bytes.count, bytes[index] == Self.lineFeed { index += 1 }
+                    endRecord()
+                case Self.lineFeed:
+                    endRecord()
+                default:
+                    field.append(byte)
+                    lineHasContent = true
                 }
-                endRecord()
-            case "\n":
-                endRecord()
-            default:
-                field.unicodeScalars.append(scalar)
-                fieldStarted = true
             }
         }
-        if fieldStarted || !record.isEmpty {
-            record.append(field)
+
+        mutating func finish() -> [[String]] {
+            if lineHasContent || !record.isEmpty { endRecord() }
+            return records
+        }
+
+        private mutating func endField() {
+            record.append(String(decoding: field, as: UTF8.self)) // swiftlint:disable:this optional_data_string_conversion
+            field.removeAll(keepingCapacity: true)
+        }
+
+        private mutating func endRecord() {
+            endField()
             records.append(record)
+            record = []
+            lineHasContent = false
         }
-        return records
+
+        static let quote = UInt8(ascii: "\"")
+        static let comma = UInt8(ascii: ",")
+        static let carriageReturn = UInt8(ascii: "\r")
+        static let lineFeed = UInt8(ascii: "\n")
     }
 }

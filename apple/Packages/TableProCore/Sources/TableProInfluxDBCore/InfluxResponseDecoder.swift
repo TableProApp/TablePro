@@ -1,114 +1,113 @@
 import Foundation
 
 public enum InfluxResponseDecoder {
-    // MARK: - 3.x CSV
-
-    /// `/api/v3/query_sql` and `/api/v3/query_influxql` with `format=csv`. CSV is the one 3.x format
-    /// that keeps the column order of the statement; JSON returns objects and drops null columns.
-    /// An empty cell reads as null, since the format has no other way to write one.
-    public static func decodeV3CSV(_ text: String) -> InfluxResultTable {
-        var records = InfluxCSV.records(text).filter { !$0.isEmpty }
-        guard !records.isEmpty else { return .empty }
-        let columns = records.removeFirst()
+    // 3.x CSV keeps the statement's column order; its JSON drops null columns. CSV has no null, so an empty cell is one.
+    public static func decodeV3CSV(_ data: Data) -> InfluxResultTable {
+        var records = InfluxCSV.records(data)[...]
+        guard let columns = records.popFirst() else { return .empty }
         let rows: [[String?]] = records.map { record in
             columns.indices.map { index in
                 guard index < record.count, !record[index].isEmpty else { return nil }
                 return record[index]
             }
         }
-        let typeNames = columns.enumerated().map { index, column in
-            InfluxTypeName.inferred(column: column, values: rows.map { $0[index] })
+        let typeNames = columns.indices.map { index in
+            InfluxTypeName.inferred(column: columns[index], values: rows.map { $0[index] })
         }
-        let normalized = rows.map { row in
-            row.enumerated().map { index, value in
-                typeNames[index] == InfluxTypeName.timestamp
-                    ? value.map(InfluxTypeName.normalizedTimestamp)
-                    : value
+        let timestampColumns = typeNames.indices.filter { typeNames[$0] == InfluxTypeName.timestamp }
+        let normalized = timestampColumns.isEmpty ? rows : rows.map { row in
+            var row = row
+            for index in timestampColumns {
+                row[index] = row[index].map(InfluxTypeName.normalizedTimestamp)
             }
+            return row
         }
         return InfluxResultTable(columns: columns, typeNames: typeNames, rows: normalized)
     }
 
-    // MARK: - InfluxQL over /query (1.x and the 2.x compatibility API)
-
-    /// Flattens every series of every statement into one grid. A statement that groups by tag
-    /// returns one series per tag set; the tags become leading columns, and when the series name
-    /// varies (`SHOW FIELD KEYS` over several measurements) a `name` column comes first.
+    // InfluxQL over `/query` (1.x and the 2.x compatibility API). Every series of every statement lands in one grid: a
+    // GROUP BY tag set becomes leading tag columns, and a `name` column comes first when the series name varies.
     public static func decodeV1JSON(_ data: Data) throws -> InfluxResultTable {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw InfluxError.malformedResponse(String(bytes: data.prefix(200), encoding: .utf8) ?? "")
+            throw InfluxError.malformedResponse(preview(of: data))
         }
         if let error = root["error"] as? String {
             throw InfluxError.query(error)
         }
         let results = root["results"] as? [[String: Any]] ?? []
-        if let error = results.compactMap({ $0["error"] as? String }).first {
+        if let error = results.lazy.compactMap({ $0["error"] as? String }).first {
             throw InfluxError.query(error)
         }
         let series = results.flatMap { $0["series"] as? [[String: Any]] ?? [] }
         guard !series.isEmpty else { return .empty }
 
-        let names = Set(series.compactMap { $0["name"] as? String })
-        let includesName = names.count > 1
+        let includesName = Set(series.compactMap { $0["name"] as? String }).count > 1
         var tagKeys: [String] = []
         var valueColumns: [String] = []
+        var seen: Set<String> = []
         for item in series {
-            for key in (item["tags"] as? [String: Any] ?? [:]).keys.sorted() where !tagKeys.contains(key) {
+            for key in (item["tags"] as? [String: Any] ?? [:]).keys.sorted() where seen.insert("t:" + key).inserted {
                 tagKeys.append(key)
             }
-            for column in item["columns"] as? [String] ?? [] where !valueColumns.contains(column) {
-                valueColumns.append(column)
+        }
+        let tagSet = Set(tagKeys)
+        for item in series {
+            for column in item["columns"] as? [String] ?? [] where !tagSet.contains(column) {
+                if seen.insert("v:" + column).inserted { valueColumns.append(column) }
             }
         }
-        valueColumns.removeAll { tagKeys.contains($0) }
-        let columns = (includesName ? ["name"] : []) + tagKeys + valueColumns
+        // `SHOW MEASUREMENTS; SHOW DATABASES` names both series and both value columns `name`.
+        let taken = tagSet.union(valueColumns)
+        let seriesColumn = ["name", "series"].first { !taken.contains($0) } ?? "series name"
+        let columns = (includesName ? [seriesColumn] : []) + tagKeys + valueColumns
+        let offset = includesName ? 1 : 0
+        let position = Dictionary(
+            (tagKeys + valueColumns).enumerated().map { ($1, $0 + offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let tagRange = offset ..< offset + tagKeys.count
 
         var rows: [[String?]] = []
         var jsonTypes = [String?](repeating: nil, count: columns.count)
         for item in series {
-            let seriesColumns = item["columns"] as? [String] ?? []
+            let targets = (item["columns"] as? [String] ?? []).map { position[$0] }
             let tags = item["tags"] as? [String: Any] ?? [:]
+            let tagValues = tagKeys.map { text(tags[$0]) }
             for values in item["values"] as? [[Any]] ?? [] {
                 var row = [String?](repeating: nil, count: columns.count)
-                var offset = 0
-                if includesName {
-                    row[0] = item["name"] as? String
-                    offset = 1
+                if includesName { row[0] = item["name"] as? String }
+                for (index, value) in tagValues.enumerated() {
+                    row[offset + index] = value
                 }
-                for (index, key) in tagKeys.enumerated() {
-                    row[offset + index] = text(tags[key])
-                }
-                for (index, column) in seriesColumns.enumerated() where index < values.count {
-                    guard let target = columns.firstIndex(of: column) else { continue }
+                for (index, target) in targets.enumerated() where index < values.count {
+                    guard let target else { continue }
                     row[target] = text(values[index])
-                    if jsonTypes[target] == nil {
-                        jsonTypes[target] = typeName(of: values[index])
-                    }
+                    if jsonTypes[target] == nil { jsonTypes[target] = typeName(of: values[index]) }
                 }
                 rows.append(row)
             }
         }
-        let typeNames = columns.enumerated().map { index, column -> String in
-            if column == InfluxTypeName.timeColumn { return InfluxTypeName.timestamp }
-            if tagKeys.contains(column) { return InfluxTypeName.tag }
+        let typeNames = columns.indices.map { index -> String in
+            if columns[index] == InfluxTypeName.timeColumn { return InfluxTypeName.timestamp }
+            if tagRange.contains(index) { return InfluxTypeName.tag }
             return jsonTypes[index] ?? InfluxTypeName.string
         }
         return InfluxResultTable(columns: columns, typeNames: typeNames, rows: rows)
     }
 
-    // MARK: - Flux annotated CSV (2.x)
-
-    /// Each Flux table arrives as its own block with its own header. The grid gets the union of
-    /// the headers in first-seen order, without the empty annotation column and `result`.
-    public static func decodeFluxCSV(_ text: String) throws -> InfluxResultTable {
+    // Flux annotated CSV: each table brings its own header. The grid gets the union of headers in first-seen order,
+    // without the empty annotation column and `result`.
+    public static func decodeFluxCSV(_ data: Data) throws -> InfluxResultTable {
         var columns: [String] = []
         var typeNames: [String] = []
+        var position: [String: Int] = [:]
         var rows: [[String?]] = []
 
         var datatypes: [String] = []
         var header: [String]?
-        for record in InfluxCSV.records(text) {
-            if record.isEmpty || record == [""] {
+        var targets: [Int?] = []
+        for record in InfluxCSV.records(data) {
+            if record == [""] {
                 datatypes = []
                 header = nil
                 continue
@@ -119,12 +118,18 @@ public enum InfluxResponseDecoder {
             }
             guard let currentHeader = header else {
                 header = record
-                if isFluxErrorHeader(record) { continue }
-                for (index, column) in record.enumerated() where keepsFluxColumn(column, index: index) {
-                    if !columns.contains(column) {
-                        columns.append(column)
-                        typeNames.append(fluxTypeName(index < datatypes.count ? datatypes[index] : ""))
-                    }
+                if isFluxErrorHeader(record) {
+                    targets = []
+                    continue
+                }
+                targets = record.indices.map { index -> Int? in
+                    let column = record[index]
+                    guard keepsFluxColumn(column, index: index) else { return nil }
+                    if let existing = position[column] { return existing }
+                    position[column] = columns.count
+                    columns.append(column)
+                    typeNames.append(fluxTypeName(index < datatypes.count ? datatypes[index] : ""))
+                    return columns.count - 1
                 }
                 continue
             }
@@ -132,8 +137,8 @@ public enum InfluxResponseDecoder {
                 throw InfluxError.query(record.count > 1 ? record[1] : "Flux error")
             }
             var row = [String?](repeating: nil, count: columns.count)
-            for (index, column) in currentHeader.enumerated() where keepsFluxColumn(column, index: index) {
-                guard index < record.count, let target = columns.firstIndex(of: column) else { continue }
+            for (index, target) in targets.enumerated() where index < record.count {
+                guard let target else { continue }
                 row[target] = record[index].isEmpty ? nil : record[index]
             }
             rows.append(row)
@@ -159,27 +164,26 @@ public enum InfluxResponseDecoder {
         case "unsignedLong": return InfluxTypeName.unsigned
         case "double": return InfluxTypeName.float
         case "boolean": return InfluxTypeName.boolean
-        case "duration": return "duration"
-        case "base64Binary": return "binary"
+        case "duration": return InfluxTypeName.duration
+        case "base64Binary": return InfluxTypeName.binary
         default: return InfluxTypeName.string
         }
     }
 
-    // MARK: - Errors
-
-    /// The message out of an error body: `{"message": ...}` on 2.x, `{"error": ...}` on 1.x and some
-    /// 3.x paths, plain text on others.
+    // `{"message": ...}` on 2.x, `{"error": ...}` on 1.x and some 3.x paths, plain text on others.
     public static func errorMessage(from data: Data) -> String {
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             for key in ["message", "error", "data"] {
                 if let message = object[key] as? String, !message.isEmpty { return message }
             }
         }
-        return (String(bytes: data.prefix(2_000), encoding: .utf8) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = String(decoding: data.prefix(2_000), as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // MARK: - Values
+    static func preview(of data: Data) -> String {
+        String(decoding: data.prefix(200), as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
+    }
 
     static func text(_ value: Any?) -> String? {
         switch value {
@@ -195,7 +199,7 @@ public enum InfluxResponseDecoder {
         case let other?:
             if JSONSerialization.isValidJSONObject(other),
                let data = try? JSONSerialization.data(withJSONObject: other, options: [.sortedKeys]) {
-                return String(bytes: data, encoding: .utf8) ?? ""
+                return String(bytes: data, encoding: .utf8)
             }
             return "\(other)"
         }

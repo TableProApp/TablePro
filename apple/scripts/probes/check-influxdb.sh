@@ -20,9 +20,11 @@
 # and on each, in database or bucket `metrics`:
 #   cpu,host=a,region=eu usage=12.5,idle=80i 1730000000
 #   cpu,host=b,region=us usage=50.1,idle=40i,note="hot, \"quoted\"" 1730000060
+#   cpu,host=c,region=eu,zone=1 usage=7.0,idle=10i,note="a;b" 1730000120
 #   mem,host=a used=1024i 1730000000
 # On 2.x also a bucket `renamed` holding `evt,k=x v=1i 1730000000`, mapped for InfluxQL as database `legacy_db`:
 #   influx bucket create -n renamed -o tp; influx v1 dbrp create --db legacy_db --rp autogen --bucket-id <id> --default
+# and a bucket `telegraf/weekly` holding `disk,host=a used=1i 1730000000`, which InfluxQL reads as db telegraf, rp weekly.
 # Exits 0 when every check passes, 1 when one fails, and 3 when the check could not run.
 
 set -uo pipefail
@@ -88,29 +90,45 @@ func loadLines() -> String {
 func grid(_ driver: InfluxDBPluginDriver, _ table: String, filters: [PluginQueryFilter] = [],
           sort: [(columnIndex: Int, ascending: Bool)] = [], columns: [String] = [],
           limit: Int = 100, offset: Int = 0) async throws -> PluginQueryResult {
-    let query = driver.buildFilteredQuery(
+    guard let query = driver.buildFilteredQuery(
         table: table, schema: nil, queryFilters: filters, logicMode: "and", sortColumns: sort,
         columns: columns, limit: limit, offset: offset, columnKinds: [:]
-    )!
+    ) else { throw InfluxError.query("filter refused") }
     return try await driver.execute(query: query)
 }
 
-func shared(_ tally: Tally, _ driver: InfluxDBPluginDriver, label: String) async throws {
+func shared(_ tally: Tally, _ driver: InfluxDBPluginDriver, label: String, url: String, token: String) async throws {
+    let isV2 = label.hasPrefix("2.")
     let databases = try await driver.fetchDatabases()
     tally.check(databases.contains("metrics"), "\(label): databases list metrics", "\(databases)")
-    let tables = try await driver.fetchTables(schema: nil).map(\.name)
-    tally.check(tables.contains("cpu") && tables.contains("mem"), "\(label): measurements", "\(tables)")
+
+    let cold = InfluxDBPluginDriver(config: DriverConnectionConfig(
+        host: URLComponents(string: url)!.host!, port: URLComponents(string: url)!.port!,
+        username: "", password: "", database: "metrics", additionalFields: [InfluxDBFieldID.token: token]
+    ))
+    try await cold.connect()
+    let coldZone = try await grid(cold, "cpu", filters: [PluginQueryFilter(column: "zone", op: "=", value: "1")])
+    tally.check(texts(coldZone, "host") == ["c"], "\(label): numeric tag value filtered before any column fetch",
+                "\(texts(coldZone, "host"))")
+    tally.check(coldZone.columnTypeNames[coldZone.columns.firstIndex(of: "zone")!] == "tag",
+                "\(label): grid result typed from the schema", "\(coldZone.columnTypeNames)")
+    cold.disconnect()
+
+    let tables = try await driver.fetchTables(schema: nil)
+    tally.check(tables.contains { $0.name == "cpu" } && tables.allSatisfy { $0.type == "EXTERNAL TABLE" },
+                "\(label): measurements are external tables", "\(tables.map { "\($0.name):\($0.type)" })")
     let columns = try await driver.fetchColumns(table: "cpu", schema: nil)
-    tally.check(columns.map(\.name) == ["time", "host", "idle", "note", "region", "usage"],
+    tally.check(columns.map(\.name) == ["time", "host", "idle", "note", "region", "usage", "zone"],
                 "\(label): columns time first", "\(columns.map(\.name))")
-    tally.check(columns.map(\.dataType) == ["timestamp", "tag", "integer", "string", "tag", "float"],
+    tally.check(columns.map(\.dataType) == ["timestamp", "tag", "integer", "string", "tag", "float", "tag"],
                 "\(label): column types", "\(columns.map(\.dataType))")
+    tally.check(!columns.contains { $0.isPrimaryKey }, "\(label): no column claims to be a key")
 
     let browse = try await driver.execute(query: driver.buildBrowseQuery(
         table: "cpu", sortColumns: [], columns: columns.map(\.name), limit: 100, offset: 0
     )!)
-    tally.check(browse.rows.count == 2, "\(label): browse returns both points", "\(browse.rows.count)")
-    tally.check(texts(browse, "time").first == "2024-10-27T03:34:20Z", "\(label): newest first, RFC 3339 time",
+    tally.check(browse.rows.count == 3, "\(label): browse returns every point", "\(browse.rows.count)")
+    tally.check(texts(browse, "time").first == "2024-10-27T03:35:20Z", "\(label): newest first, RFC 3339 time",
                 "\(texts(browse, "time"))")
     tally.check(texts(browse, "note").contains("hot, \"quoted\""), "\(label): quoted string field round-trips",
                 "\(texts(browse, "note"))")
@@ -118,6 +136,16 @@ func shared(_ tally: Tally, _ driver: InfluxDBPluginDriver, label: String) async
 
     let byHost = try await grid(driver, "cpu", filters: [PluginQueryFilter(column: "host", op: "=", value: "a")])
     tally.check(texts(byHost, "host") == ["a"], "\(label): tag equality filter", "\(texts(byHost, "host"))")
+    let fresh = "fresh_\(Int(Date().timeIntervalSince1970))"
+    let writePath = isV2 ? "/api/v2/write?org=tp&bucket=metrics&precision=s" : "/api/v3/write_lp?db=metrics&precision=second"
+    try await write(url, path: writePath, token: token, lines: "\(fresh),host=a v=1i 1730000000")
+    _ = try await grid(driver, fresh)
+    try await write(url, path: writePath, token: token, lines: "\(fresh),host=b,rack=7 v=2i 1730000060")
+    let gained = try await grid(driver, fresh, filters: [PluginQueryFilter(column: "rack", op: "=", value: "7")])
+    tally.check(texts(gained, "host") == ["b"], "\(label): a tag added after the schema was read filters as text",
+                "\(texts(gained, "host"))")
+    let semicolon = try await grid(driver, "cpu", filters: [PluginQueryFilter(column: "note", op: "=", value: "a;b")])
+    tally.check(texts(semicolon, "host") == ["c"], "\(label): a value holding ; filters", "\(texts(semicolon, "host"))")
     let numeric = try await grid(driver, "cpu", filters: [PluginQueryFilter(column: "usage", op: ">", value: "20")])
     tally.check(texts(numeric, "host") == ["b"], "\(label): numeric field filter", "\(texts(numeric, "host"))")
     let contains = try await grid(driver, "cpu", filters: [
@@ -125,9 +153,26 @@ func shared(_ tally: Tally, _ driver: InfluxDBPluginDriver, label: String) async
     ])
     tally.check(contains.rows.count == 1, "\(label): case-insensitive contains", "\(contains.rows.count)")
     let inList = try await grid(driver, "cpu", filters: [PluginQueryFilter(column: "region", op: "IN", value: "eu, us")])
-    tally.check(inList.rows.count == 2, "\(label): IN list", "\(inList.rows.count)")
+    tally.check(inList.rows.count == 3, "\(label): IN list", "\(inList.rows.count)")
+    let noZone = try await grid(driver, "cpu", filters: [PluginQueryFilter(column: "zone", op: "IS NULL", value: "")])
+    tally.check(Set(texts(noZone, "host").compactMap { $0 }) == ["a", "b"], "\(label): IS NULL on a tag",
+                "\(texts(noZone, "host"))")
+    let fieldNull = driver.buildFilteredQuery(
+        table: "cpu", schema: nil, queryFilters: [PluginQueryFilter(column: "note", op: "IS NULL", value: "")],
+        logicMode: "and", sortColumns: [], columns: [], limit: 100, offset: 0, columnKinds: [:]
+    )
+    if isV2 {
+        tally.check(fieldNull == nil, "\(label): IS NULL on a field is refused, InfluxQL has no such test")
+    } else {
+        let rows = try await driver.execute(query: fieldNull ?? "")
+        tally.check(texts(rows, "host") == ["a"], "\(label): IS NULL on a field", "\(texts(rows, "host"))")
+    }
+    let nothing = try await grid(driver, "cpu", filters: [PluginQueryFilter(column: "host", op: "=", value: "none")])
+    tally.check(nothing.rows.isEmpty && nothing.columns.contains("host"), "\(label): an empty page keeps its columns",
+                "\(nothing.columns)")
     let ascending = try await grid(driver, "cpu", sort: [(columnIndex: 0, ascending: true)], columns: ["time", "host"])
-    tally.check(texts(ascending, "host") == ["a", "b"], "\(label): sort by time ascending", "\(texts(ascending, "host"))")
+    tally.check(texts(ascending, "host") == ["a", "b", "c"], "\(label): sort by time ascending",
+                "\(texts(ascending, "host"))")
 
     let page = try await grid(driver, load, limit: 1_000, offset: 2_000)
     tally.check(page.rows.count == 500, "\(label): third page of 2,500 holds 500", "\(page.rows.count)")
@@ -139,15 +184,29 @@ func shared(_ tally: Tally, _ driver: InfluxDBPluginDriver, label: String) async
     )
     tally.check(filteredCount == 834, "\(label): filtered count", "\(String(describing: filteredCount))")
     let sparse = try await driver.fetchExactRowCount(table: "cpu", schema: nil, queryFilters: [], logicMode: "and")
-    let expected: Int? = label.hasPrefix("2.") ? nil : 2
-    tally.check(sparse == expected, "\(label): a sparse measurement counts points or reports none",
+    tally.check(sparse == (isV2 ? nil : 3), "\(label): a sparse measurement counts points or reports none",
                 "\(String(describing: sparse))")
 
     let show = try await driver.execute(query: "SHOW TAG KEYS FROM \"cpu\"")
-    tally.check(texts(show, "tagKey") == ["host", "region"], "\(label): SHOW TAG KEYS runs as InfluxQL",
+    tally.check(texts(show, "tagKey") == ["host", "region", "zone"], "\(label): SHOW TAG KEYS runs as InfluxQL",
                 "\(show.columns) \(show.rows)")
-    let health = try await driver.execute(query: "SELECT 1")
-    tally.check(texts(health, "ok") == ["1"], "\(label): SELECT 1 health check")
+    let marked = try await driver.execute(query: "// influxql\nSHOW MEASUREMENTS")
+    tally.check(!marked.rows.isEmpty, "\(label): a // influxql marker is not sent", "\(marked.rows.count)")
+    let typed = try await driver.execute(query: "-- influxql\nSELECT * FROM cpu WHERE note = 'a;b'")
+    tally.check(typed.rows.count == 1, "\(label): typed InfluxQL holding ; runs", "\(typed.rows.count)")
+    try await driver.ping()
+    tally.check(true, "\(label): health ping")
+
+    do {
+        _ = try driver.generateRowWrites(
+            table: "cpu", schema: nil, columns: ["time"], primaryKeyColumns: [],
+            changes: [PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: nil)],
+            insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
+        )
+        tally.check(false, "\(label): a row delete is refused", "no refusal")
+    } catch {
+        tally.check(error is PluginRowWriteRefusal, "\(label): a row delete is refused", "\(error)")
+    }
 }
 
 func expectFailure(_ tally: Tally, _ what: String, contains needle: String,
@@ -179,20 +238,29 @@ struct Probe {
             let v3 = driver(v3URL, token: "")
             try await v3.connect()
             tally.check(v3.serverVersion?.hasPrefix("3.") == true, "3.x: version", v3.serverVersion ?? "nil")
-            try await shared(tally, v3, label: "3.x")
+            try await shared(tally, v3, label: "3.x", url: v3URL, token: "")
             let averages = try await v3.execute(query: """
             SELECT date_bin(INTERVAL '1 minute', time) AS bucket, avg(usage) AS mean FROM cpu GROUP BY bucket ORDER BY bucket
             """)
-            tally.check(averages.columns == ["bucket", "mean"] && averages.rows.count == 2, "3.x: SQL aggregate",
+            tally.check(averages.columns == ["bucket", "mean"] && averages.rows.count == 3, "3.x: SQL aggregate",
                         "\(averages.columns) \(averages.rows.count)")
             let influxQL = try await v3.execute(query: "SELECT MEAN(usage) FROM cpu WHERE time > now() - 10000d GROUP BY time(1h)")
             tally.check(influxQL.columns.contains("mean"), "3.x: InfluxQL GROUP BY time() routes to InfluxQL",
                         "\(influxQL.columns)")
+            let sqlMarker = try await v3.execute(query: "// sql\nSELECT 1 AS one")
+            tally.check(texts(sqlMarker, "one") == ["1"], "3.x: a // sql marker is not sent", "\(sqlMarker.rows)")
             await expectFailure(tally, "3.x: Flux refused with the languages it takes", contains: "SQL, InfluxQL") {
                 _ = try await v3.execute(query: "from(bucket: \"metrics\") |> range(start: -1h)")
             }
             await expectFailure(tally, "3.x: SQL error text reaches the user", contains: "SELEC") {
                 _ = try await v3.execute(query: "SELEC nope")
+            }
+            try await v3.switchDatabase(to: "")
+            let allDatabases = try await v3.execute(query: "SHOW DATABASES")
+            tally.check(texts(allDatabases, "iox::database").contains("metrics"),
+                        "3.x: SHOW DATABASES runs with no database chosen", "\(allDatabases.columns)")
+            await expectFailure(tally, "3.x: SQL with no database asks for one", contains: "database") {
+                _ = try await v3.execute(query: "SELECT 1")
             }
             v3.disconnect()
 
@@ -201,7 +269,7 @@ struct Probe {
             }
             let v3Auth = driver(v3AuthURL, token: v3Token)
             try await v3Auth.connect()
-            try await shared(tally, v3Auth, label: "3.x auth")
+            try await shared(tally, v3Auth, label: "3.x auth", url: v3AuthURL, token: v3Token)
             v3Auth.disconnect()
 
             await expectFailure(tally, "2.x: a wrong token fails the connect", contains: "token") {
@@ -210,17 +278,19 @@ struct Probe {
             let v2 = driver(v2URL, token: v2Token)
             try await v2.connect()
             tally.check(v2.serverVersion?.hasPrefix("v2.") == true, "2.x: version", v2.serverVersion ?? "nil")
-            try await shared(tally, v2, label: "2.x")
+            try await shared(tally, v2, label: "2.x", url: v2URL, token: v2Token)
             let databases = try await v2.fetchDatabases()
             tally.check(databases.contains("_monitoring"), "2.x: system buckets listed", "\(databases)")
             let flux = try await v2.execute(query: """
+            -- flux
             from(bucket: "metrics")
               |> range(start: 0)
               |> filter(fn: (r) => r._measurement == "cpu")
               |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
             """)
-            tally.check(flux.rows.count == 2 && flux.columns.contains("usage") && !flux.columns.contains("result"),
-                        "2.x: Flux pivot reads as one grid", "\(flux.columns) \(flux.rows.count)")
+            tally.check(flux.rows.count == 3 && flux.columns.contains("usage") && !flux.columns.contains("result"),
+                        "2.x: a -- flux marker is not sent, pivot reads as one grid",
+                        "\(flux.columns) \(flux.rows.count)")
             tally.check(flux.columnTypeNames[flux.columns.firstIndex(of: "_time")!] == "timestamp",
                         "2.x: Flux time typed", "\(flux.columnTypeNames)")
             await expectFailure(tally, "2.x: Flux error text reaches the user", contains: "undefined identifier") {
@@ -230,11 +300,16 @@ struct Probe {
                 _ = try await v2.execute(query: "-- sql\nSELECT 1 FROM cpu")
             }
             let grouped = try await v2.execute(query: "SELECT MEAN(usage) FROM cpu GROUP BY host")
-            tally.check(grouped.columns == ["host", "time", "mean"] && grouped.rows.count == 2,
+            tally.check(grouped.columns == ["host", "time", "mean"] && grouped.rows.count == 3,
                         "2.x: GROUP BY tag series flatten", "\(grouped.columns) \(grouped.rows)")
             try await v2.switchDatabase(to: "renamed")
             let renamed = try await v2.fetchTables(schema: nil).map(\.name)
             tally.check(renamed == ["evt"], "2.x: a bucket with its own DBRP mapping lists its measurements", "\(renamed)")
+            try await v2.switchDatabase(to: "telegraf/weekly")
+            let slashed = try await v2.fetchTables(schema: nil).map(\.name)
+            tally.check(slashed == ["disk"], "2.x: a db/rp bucket reads through its mapping", "\(slashed)")
+            let disk = try await grid(v2, "disk")
+            tally.check(disk.rows.count == 1, "2.x: a db/rp bucket's grid", "\(disk.rows.count)")
             v2.disconnect()
         } catch {
             tally.check(false, "probe ran to the end", "\(error)")

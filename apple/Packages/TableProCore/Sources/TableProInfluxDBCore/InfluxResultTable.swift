@@ -17,6 +17,14 @@ public struct InfluxResultTable: Sendable, Equatable {
         guard let index = columns.firstIndex(of: name) else { return [] }
         return rows.map { index < $0.count ? $0[index] : nil }
     }
+
+    // A grid query's columns typed from the measurement's schema rather than from the values on one page.
+    public func typed(by schema: [InfluxColumn]) -> InfluxResultTable {
+        let byName = Dictionary(schema.map { ($0.name, $0.typeName) }, uniquingKeysWith: { first, _ in first })
+        var table = self
+        table.typeNames = zip(columns, typeNames).map { column, inferred in byName[column] ?? inferred }
+        return table
+    }
 }
 
 public enum InfluxTypeName {
@@ -27,11 +35,25 @@ public enum InfluxTypeName {
     public static let unsigned = "unsigned"
     public static let string = "string"
     public static let boolean = "boolean"
+    public static let duration = "duration"
+    public static let binary = "binary"
 
     public static let timeColumn = "time"
 
-    /// Names the text a column holds when the response carries no types (the 3.x CSV format):
-    /// integer, float or boolean when every value reads as one, else string.
+    // The SQL spelling the app classifies a column by, so a tag reads as text and a field as its number kind.
+    public static func classificationName(for typeName: String) -> String {
+        switch typeName {
+        case timestamp: return "TIMESTAMP"
+        case float: return "DOUBLE"
+        case integer: return "BIGINT"
+        case unsigned: return "UBIGINT"
+        case boolean: return "BOOLEAN"
+        case binary: return "BLOB"
+        default: return "TEXT"
+        }
+    }
+
+    // The 3.x CSV carries no types, so a user query's columns are named by what every value parses as.
     static func inferred(column: String, values: [String?]) -> String {
         if column == timeColumn { return timestamp }
         let present = values.compactMap { $0 }
@@ -43,8 +65,7 @@ public enum InfluxTypeName {
         return string
     }
 
-    /// 3.x returns `2024-10-27T03:33:20` for a UTC timestamp. Adding the zone makes it read the
-    /// same as the 2.x value and parse as RFC 3339 when pasted back into a filter.
+    // 3.x writes a UTC timestamp without a zone; the `Z` makes it match 2.x and parse back as RFC 3339 in a filter.
     static func normalizedTimestamp(_ value: String) -> String {
         guard value.count >= 19, value.dropFirst(10).first == "T" else { return value }
         let time = value.dropFirst(11)

@@ -175,6 +175,9 @@ enum QueryClassifier {
         if let request = dynamoDBClassification(statement, grammar: grammar, databaseType: databaseType) {
             return request
         }
+        if databaseType == .influxdb, let flux = fluxClassification(statement) {
+            return flux
+        }
         if let batch = CQLBatch.statements(in: statement, grammar: grammar) {
             return batch.reduce(cqlBatchWrites) { worst, inner in
                 worst.escalated(with: statementClassification(inner, grammar: grammar, databaseType: databaseType))
@@ -1020,8 +1023,6 @@ private extension QueryClassifier {
             return worstRequest { firebaseClassification($0, databaseType: databaseType) }
         case .bigtable:
             return worstRequest(bigtableClassification)
-        case .influxdb:
-            return influxDBClassification(sql)
         case .neo4j:
             return cypherClassification(sql)
         default:

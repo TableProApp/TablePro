@@ -1,4 +1,5 @@
 import Foundation
+import TableProInfluxDBCore
 import TableProPluginKit
 
 extension PluginMetadataRegistry {
@@ -40,8 +41,8 @@ extension PluginMetadataRegistry {
                     tableEntityName: "Measurements",
                     containerEntityName: "Database",
                     defaultPrimaryKeyColumn: nil,
-                    immutableColumns: ["time"],
-                    systemDatabaseNames: ["_internal", "_monitoring", "_tasks"],
+                    immutableColumns: [],
+                    systemDatabaseNames: InfluxCatalogDecoder.systemDatabaseNames,
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .flat,
@@ -49,12 +50,10 @@ extension PluginMetadataRegistry {
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: nil,
-                    statementCompletions: [],
-                    columnTypesByCategory: [
-                        "Time": ["timestamp"],
-                        "Tag": ["tag"],
-                        "Field": ["float", "integer", "unsigned", "string", "boolean"]
-                    ]
+                    statementCompletions: InfluxCompletions.entries.map {
+                        CompletionEntry(label: $0.label, insertText: $0.insertText)
+                    },
+                    columnTypesByCategory: InfluxCompletions.columnTypesByCategory
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: influxDBConnectionFields(),
@@ -68,10 +67,11 @@ extension PluginMetadataRegistry {
     }
 }
 
-func influxDBConnectionFields() -> [ConnectionField] {
+// Kept identical to `influxDBConnectionFields()` in the plugin.
+private func influxDBConnectionFields() -> [ConnectionField] {
     [
         ConnectionField(
-            id: "influxToken",
+            id: InfluxConnectionFieldID.token,
             label: String(localized: "Token"),
             placeholder: "API token",
             fieldType: .secure,
@@ -79,13 +79,13 @@ func influxDBConnectionFields() -> [ConnectionField] {
             hidesPassword: true
         ).withHidesUsername(true),
         ConnectionField(
-            id: "influxOrg",
+            id: InfluxConnectionFieldID.organization,
             label: String(localized: "Organization"),
             placeholder: "InfluxDB 2 only, optional with one organization",
             section: .connection
         ),
         ConnectionField(
-            id: "influxSkipTLSVerify",
+            id: InfluxConnectionFieldID.skipTLSVerify,
             label: String(localized: "Skip TLS Verification"),
             defaultValue: "false",
             fieldType: .toggle,

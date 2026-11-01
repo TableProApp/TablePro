@@ -9,6 +9,10 @@ public enum InfluxError: Error, Equatable, LocalizedError {
     case malformedResponse(String)
     case missingDatabase
     case missingOrganization
+    case filterNotExpressible(InfluxQueryLanguage)
+    case multipleStatements
+    case unknownVersion
+    case unsupportedVersion(String)
     case unsupportedLanguage(InfluxQueryLanguage, generation: InfluxGeneration)
 
     public var errorDescription: String? {
@@ -31,12 +35,22 @@ public enum InfluxError: Error, Equatable, LocalizedError {
             return String(localized: "Choose a database or bucket first.")
         case .missingOrganization:
             return String(localized: "InfluxDB 2 needs an organization. Set it in the connection settings.")
+        case .filterNotExpressible(let language):
+            return String(
+                format: String(localized: "%@ cannot run this filter on that column."),
+                language.displayName
+            )
+        case .multipleStatements:
+            return String(localized: "Run one InfluxQL statement at a time.")
+        case .unknownVersion:
+            return String(localized: "The server did not say which InfluxDB version it runs.")
+        case .unsupportedVersion(let version):
+            return String(format: String(localized: "InfluxDB %@ is not supported. Connect to InfluxDB 2 or 3."), version)
         case .unsupportedLanguage(let language, let generation):
-            let available = generation.languages.map(\.displayName).joined(separator: ", ")
             return String(
                 format: String(localized: "%@ is not available on this server. It accepts %@."),
                 language.displayName,
-                available
+                generation.languages.map(\.displayName).joined(separator: ", ")
             )
         }
     }

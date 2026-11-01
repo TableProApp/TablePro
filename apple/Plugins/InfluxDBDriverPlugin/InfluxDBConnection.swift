@@ -1,5 +1,4 @@
 import Foundation
-import os
 import TableProInfluxDBCore
 import TableProPluginKit
 
@@ -13,33 +12,38 @@ internal struct InfluxDBResponse {
     func header(_ name: String) -> String? {
         headers.first { ($0.key as? String)?.caseInsensitiveCompare(name) == .orderedSame }?.value as? String
     }
+
+    var error: InfluxError {
+        let message = InfluxResponseDecoder.errorMessage(from: data)
+        if statusCode == 401 || statusCode == 403 { return .unauthorized(message) }
+        return .server(status: statusCode, message: message)
+    }
 }
 
-internal final class InfluxDBConnection: NSObject, @unchecked Sendable {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "InfluxDBConnection")
+internal final class InfluxDBConnection: @unchecked Sendable {
+    let baseURL: URL
+    let credentials: InfluxCredentials
 
     private let lock = NSLock()
     private var session: URLSession?
     private var inFlight: [ObjectIdentifier: PluginURLSessionTaskBox] = [:]
-
-    let baseURL: URL
-    let credentials: InfluxCredentials
-    private let skipTLSVerify: Bool
     private let queryTimeout: HttpQueryTimeoutBox
 
-    init(baseURL: URL, credentials: InfluxCredentials, skipTLSVerify: Bool, queryTimeout: HttpQueryTimeoutBox) {
+    init(
+        baseURL: URL,
+        credentials: InfluxCredentials,
+        skipTLSVerify: Bool,
+        connectTimeout: TimeInterval,
+        queryTimeout: HttpQueryTimeoutBox
+    ) {
         self.baseURL = baseURL
         self.credentials = credentials
-        self.skipTLSVerify = skipTLSVerify
         self.queryTimeout = queryTimeout
-    }
-
-    func open(connectTimeout: TimeInterval) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = connectTimeout
         configuration.timeoutIntervalForResource = HttpQueryTimeout.sessionResourceTimeout
-        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-        lock.withLock { self.session = session }
+        let delegate = skipTLSVerify ? InfluxDBTrustingDelegate() : PluginRedirectRefusingDelegate()
+        session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }
 
     func close() {
@@ -52,15 +56,13 @@ internal final class InfluxDBConnection: NSObject, @unchecked Sendable {
 
     func cancelAll() {
         let boxes = lock.withLock {
-            let boxes = Array(inFlight.values)
-            inFlight.removeAll()
-            return boxes
+            defer { inFlight.removeAll() }
+            return Array(inFlight.values)
         }
         boxes.forEach { $0.cancel() }
     }
 
     func send(_ request: InfluxRequest, timeout: TimeInterval? = nil) async throws -> InfluxDBResponse {
-        guard let session = lock.withLock({ session }) else { throw InfluxError.notConnected }
         guard let url = request.url(base: baseURL) else {
             throw InfluxError.invalidURL(baseURL.absoluteString + request.path)
         }
@@ -77,76 +79,56 @@ internal final class InfluxDBConnection: NSObject, @unchecked Sendable {
         lock.withLock { inFlight[key] = taskBox }
         defer { lock.withLock { _ = inFlight.removeValue(forKey: key) } }
         return try await withTaskCancellationHandler {
-            try await perform(urlRequest, session: session, taskBox: taskBox)
+            try await perform(urlRequest, taskBox: taskBox)
         } onCancel: {
             taskBox.cancel()
         }
     }
 
-    private func perform(
-        _ request: URLRequest,
-        session: URLSession,
-        taskBox: PluginURLSessionTaskBox
-    ) async throws -> InfluxDBResponse {
+    private func perform(_ request: URLRequest, taskBox: PluginURLSessionTaskBox) async throws -> InfluxDBResponse {
         try await withCheckedThrowingContinuation { continuation in
-            let task = session.dataTask(with: request) { data, response, error in
-                taskBox.finish()
-                if let error {
-                    if (error as? URLError)?.code == .cancelled {
-                        continuation.resume(throwing: CancellationError())
-                    } else {
-                        continuation.resume(throwing: error)
+            // Made under the lock `close()` invalidates with: a task asked of an invalidated session raises.
+            let task: URLSessionDataTask? = lock.withLock {
+                session?.dataTask(with: request) { data, response, error in
+                    taskBox.finish()
+                    if let error {
+                        let cancelled = (error as? URLError)?.code == .cancelled
+                        continuation.resume(throwing: cancelled ? CancellationError() : error)
+                        return
                     }
-                    return
+                    guard let http = response as? HTTPURLResponse else {
+                        continuation.resume(throwing: InfluxError.malformedResponse("Not an HTTP response"))
+                        return
+                    }
+                    continuation.resume(returning: InfluxDBResponse(
+                        statusCode: http.statusCode,
+                        headers: http.allHeaderFields,
+                        data: data ?? Data()
+                    ))
                 }
-                guard let http = response as? HTTPURLResponse else {
-                    continuation.resume(throwing: InfluxError.malformedResponse("Not an HTTP response"))
-                    return
-                }
-                continuation.resume(returning: InfluxDBResponse(
-                    statusCode: http.statusCode,
-                    headers: http.allHeaderFields,
-                    data: data ?? Data()
-                ))
+            }
+            guard let task else {
+                continuation.resume(throwing: InfluxError.notConnected)
+                return
             }
             taskBox.set(task)
             task.resume()
         }
     }
-
-    static func error(for response: InfluxDBResponse) -> InfluxError {
-        let message = InfluxResponseDecoder.errorMessage(from: response.data)
-        if response.statusCode == 401 || response.statusCode == 403 {
-            return .unauthorized(message)
-        }
-        return .server(status: response.statusCode, message: message)
-    }
 }
 
-extension InfluxDBConnection: URLSessionTaskDelegate {
+private final class InfluxDBTrustingDelegate: PluginRedirectRefusingDelegate, @unchecked Sendable {
     func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        guard skipTLSVerify,
-              challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust
         else {
             completionHandler(.performDefaultHandling, nil)
             return
         }
         completionHandler(.useCredential, URLCredential(trust: trust))
-    }
-
-    // A redirect would carry the token to wherever it points.
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-        completionHandler(nil)
     }
 }

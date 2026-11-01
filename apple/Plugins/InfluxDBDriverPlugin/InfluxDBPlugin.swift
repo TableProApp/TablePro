@@ -2,11 +2,7 @@ import Foundation
 import TableProInfluxDBCore
 import TableProPluginKit
 
-enum InfluxDBFieldID {
-    static let token = "influxToken"
-    static let organization = "influxOrg"
-    static let skipTLSVerify = "influxSkipTLSVerify"
-}
+typealias InfluxDBFieldID = InfluxConnectionFieldID
 
 final class InfluxDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "InfluxDB Driver"
@@ -48,19 +44,22 @@ final class InfluxDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let tableEntityName = "Measurements"
     static let containerEntityName = "Database"
     static let systemDatabaseNames: [String] = InfluxCatalogDecoder.systemDatabaseNames
-    static let immutableColumns: [String] = [InfluxTypeName.timeColumn]
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .comment]
     static let sqlDialect: SQLDialectDescriptor? = nil
 
-    static let columnTypesByCategory: [String: [String]] = influxDBColumnTypes
+    static let columnTypesByCategory: [String: [String]] = InfluxCompletions.columnTypesByCategory
     static let additionalConnectionFields: [ConnectionField] = influxDBConnectionFields()
-    static var statementCompletions: [CompletionEntry] { influxDBCompletions }
+    static var statementCompletions: [CompletionEntry] {
+        InfluxCompletions.entries.map { CompletionEntry(label: $0.label, insertText: $0.insertText) }
+    }
 
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         InfluxDBPluginDriver(config: config)
     }
 }
 
+// Kept identical to `influxDBConnectionFields()` in the app's built-in metadata, which the form shows before the
+// plugin loads.
 func influxDBConnectionFields() -> [ConnectionField] {
     [
         ConnectionField(
@@ -86,45 +85,3 @@ func influxDBConnectionFields() -> [ConnectionField] {
         ),
     ]
 }
-
-let influxDBCompletions: [CompletionEntry] = [
-    CompletionEntry(label: "SHOW MEASUREMENTS", insertText: "SHOW MEASUREMENTS"),
-    CompletionEntry(label: "SHOW TAG KEYS", insertText: "SHOW TAG KEYS FROM \"measurement\""),
-    CompletionEntry(label: "SHOW FIELD KEYS", insertText: "SHOW FIELD KEYS FROM \"measurement\""),
-    CompletionEntry(
-        label: "SQL: last hour",
-        insertText: "SELECT * FROM \"measurement\" WHERE time >= now() - INTERVAL '1 hour' ORDER BY time DESC"
-    ),
-    CompletionEntry(
-        label: "SQL: 5 minute averages",
-        insertText: """
-        SELECT date_bin(INTERVAL '5 minutes', time) AS bucket, avg("field")
-        FROM "measurement"
-        WHERE time >= now() - INTERVAL '1 hour'
-        GROUP BY bucket
-        ORDER BY bucket
-        """
-    ),
-    CompletionEntry(
-        label: "InfluxQL: 5 minute averages",
-        insertText: "SELECT MEAN(\"field\") FROM \"measurement\" WHERE time > now() - 1h GROUP BY time(5m)"
-    ),
-    CompletionEntry(
-        label: "Flux: last hour",
-        insertText: """
-        from(bucket: "bucket")
-          |> range(start: -1h)
-          |> filter(fn: (r) => r._measurement == "measurement")
-          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
-        """
-    ),
-]
-
-let influxDBColumnTypes: [String: [String]] = [
-    "Time": [InfluxTypeName.timestamp],
-    "Tag": [InfluxTypeName.tag],
-    "Field": [
-        InfluxTypeName.float, InfluxTypeName.integer, InfluxTypeName.unsigned,
-        InfluxTypeName.string, InfluxTypeName.boolean,
-    ],
-]
