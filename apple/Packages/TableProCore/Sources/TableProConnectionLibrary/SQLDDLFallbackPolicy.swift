@@ -48,6 +48,7 @@ public enum SQLDDLFallbackPolicy {
         "Firebase Realtime Database",
         "Bigtable",
         "Neo4j",
+        "InfluxDB",
     ]
 
     /// True when `DROP`/`TRUNCATE` built by the app is something this engine could run.

@@ -40,6 +40,9 @@
     "HanaDriver": {
       "name": "SAP HANA Driver"
     },
+    "InfluxDBDriverPlugin": {
+      "name": "InfluxDB Driver"
+    },
     "KafkaDriverPlugin": {
       "name": "Kafka Driver"
     },

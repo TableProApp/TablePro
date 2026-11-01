@@ -173,6 +173,15 @@ struct CatalogChangeClassifierTests {
         #expect(kinds("PUT events/k {\"cf:new\": \"1\"}", .bigtable) == .everything)
     }
 
+    @Test("An InfluxDB write refreshes the sidebar, since writing a point is what creates a measurement")
+    func influxDBWritesRefresh() {
+        #expect(kinds("-- sql\nSELECT * FROM \"cpu\" ORDER BY time DESC LIMIT 100 OFFSET 0", .influxdb).isEmpty)
+        #expect(kinds("// flux\nfrom(bucket: \"m\") |> range(start: -1h)", .influxdb).isEmpty)
+        #expect(kinds("from(bucket: \"m\") |> range(start: -1h) |> to(bucket: \"copy\")", .influxdb) == .everything)
+        #expect(kinds("SELECT * INTO \"copy\" FROM \"cpu\"", .influxdb) == .everything)
+        #expect(kinds("DROP MEASUREMENT \"cpu\"", .influxdb) == .everything)
+    }
+
     @Test("A Firebase write refreshes the sidebar, since it can create a collection or a node")
     func firebaseWritesRefresh() {
         for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
