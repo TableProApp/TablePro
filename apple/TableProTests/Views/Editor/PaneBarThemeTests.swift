@@ -84,6 +84,7 @@ struct PaneBarThemeTests {
     @Test("The object source bar keeps its material until the theme colors the window")
     func objectSourceBar() throws {
         let view = ObjectSourceTabView(
+            tabId: UUID(),
             connectionId: UUID(),
             databaseType: .mysql,
             objectRef: DatabaseObjectRef(kind: .view, name: "active_orders", database: "shop"),

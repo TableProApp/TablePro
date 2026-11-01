@@ -16,7 +16,7 @@ extension MySQLPluginDriver {
     var tableDDLIncludesForeignKeys: Bool { true }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
-        guard !flavor.isDatabend else { return [] }
+        guard flavor.hasMySQLObjectCatalogs else { return [] }
         let database = effectiveSchema(schema)
         let identity = serverIdentity
         let omittedAction = MySQLServerVersion.omittedForeignKeyAction(
@@ -41,7 +41,7 @@ extension MySQLPluginDriver {
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        guard !flavor.isDatabend else { return [:] }
+        guard flavor.hasMySQLObjectCatalogs else { return [:] }
         let database = effectiveSchema(schema)
         return try await catalogOrShow(
             database: database,

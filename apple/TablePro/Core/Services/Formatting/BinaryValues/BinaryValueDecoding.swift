@@ -5,14 +5,18 @@
 
 import Foundation
 
-internal enum BinaryValueFormat: String, Equatable, Sendable {
+internal enum BinaryValueFormat: Hashable, Sendable {
     case messagePack
     case protobuf
+    case igbinary
+    case avro(schemaID: String)
 
     var displayName: String {
         switch self {
         case .messagePack: return "MessagePack"
         case .protobuf: return "Protobuf"
+        case .igbinary: return "igbinary"
+        case .avro: return "Avro"
         }
     }
 }
@@ -20,11 +24,14 @@ internal enum BinaryValueFormat: String, Equatable, Sendable {
 internal enum BinaryValueTree: Sendable {
     case json(JSONTreeNode)
     case protobuf(ProtobufTreeNode)
+    case php(PhpTreeNode)
 }
 
 internal enum BinaryValueDocument: Sendable {
     case decoded(tree: BinaryValueTree, text: String, note: String?)
     case failed(BinaryValueDecodeError)
+    // Nothing to judge the bytes by: the format names a schema this Mac no longer has.
+    case missingSchema
 }
 
 // Pure: the grid calls it per cell on the main actor, the viewer off it.
@@ -48,6 +55,14 @@ internal enum BinaryValueDecoding {
             case .protobuf:
                 let fields = try ProtobufWireDecoder.decode(data, maxValues: budget).fields
                 text = ProtobufTextWriter.text(fields, multiLine: false, limit: limit)
+            case .igbinary:
+                text = PhpSerializeWriter.text(try IgbinaryDecoder.decode(data, maxValues: budget), limit: limit)
+            case .avro(let schemaID):
+                guard let schema = AvroSchemaStore.shared.schema(id: schemaID) else { return nil }
+                let value = try AvroDecoder.decode(
+                    data, schema: schema, maxValues: budget, maxValuesRead: AvroDecoder.maxValuesReadInCell
+                ).value
+                text = MessagePackTextWriter.json(value, pretty: false, limit: limit)
             }
         } catch {
             return nil
@@ -92,11 +107,44 @@ internal enum BinaryValueDecoding {
                     ),
                     note: message.framing.map(framingNote)
                 )
+            case .igbinary:
+                let value = try IgbinaryDecoder.decode(data)
+                return .decoded(
+                    tree: .php(PhpTreeBuilder.build(from: value)),
+                    text: capped(
+                        PhpSerializeWriter.text(value, limit: writerLimit(forCap: maxViewerTextLength)),
+                        at: maxViewerTextLength
+                    ),
+                    note: nil
+                )
+            case .avro(let schemaID):
+                guard let schema = AvroSchemaStore.shared.schema(id: schemaID) else { return .missingSchema }
+                let message = try AvroDecoder.decode(data, schema: schema)
+                return .decoded(
+                    tree: .json(MessagePackTreeBuilder.build(from: message.value)),
+                    text: capped(
+                        MessagePackTextWriter.json(message.value, pretty: true, limit: writerLimit(forCap: maxViewerTextLength)),
+                        at: maxViewerTextLength
+                    ),
+                    note: message.framing.map(framingNote)
+                )
             }
         } catch let error as BinaryValueDecodeError {
             return .failed(error)
         } catch {
             return .failed(BinaryValueDecodeError(kind: .unexpectedEnd, offset: 0))
+        }
+    }
+
+    private static func framingNote(_ framing: AvroFraming) -> String {
+        switch framing {
+        case .confluent(let schemaID):
+            return String(format: String(localized: "Schema Registry framing: schema ID %lld"), Int(schemaID))
+        case .singleObject(let fingerprint):
+            return String(
+                format: String(localized: "Avro single-object encoding: schema fingerprint %@"),
+                String(format: "%016llX", fingerprint)
+            )
         }
     }
 

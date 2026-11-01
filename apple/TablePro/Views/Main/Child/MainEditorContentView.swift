@@ -55,6 +55,7 @@ struct MainEditorContentView: View {
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var usersRolesViewModels: [UUID: UsersRolesViewModel] = [:]
     @State private var queryInsightsViewModels: [UUID: QueryInsightsViewModel] = [:]
+    @State private var tableHealthViewModels: [UUID: TableHealthViewModel] = [:]
     @State private var tableListingModels = TableListingModelStore()
 
     @ObservedObject private var treeService = DatabaseTreeMetadataService.shared
@@ -154,6 +155,7 @@ struct MainEditorContentView: View {
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
             usersRolesViewModels = usersRolesViewModels.filter { openTabIds.contains($0.key) }
             queryInsightsViewModels = queryInsightsViewModels.filter { openTabIds.contains($0.key) }
+            tableHealthViewModels = tableHealthViewModels.filter { openTabIds.contains($0.key) }
             tableListingModels.retainTabs(openTabIds)
             SchemaProviderRegistry.shared.reclaimUnheldProviders(for: connectionId)
         }
@@ -204,6 +206,8 @@ struct MainEditorContentView: View {
             usersRolesContent(tab: tab)
         case .insights:
             queryInsightsContent(tab: tab)
+        case .tableHealth:
+            tableHealthContent(tab: tab)
         case .objectSource:
             objectSourceContent(tab: tab)
         case .versionHistory:
@@ -277,6 +281,7 @@ struct MainEditorContentView: View {
             userTypeContent(tab: tab, objectRef: objectRef)
         } else if let objectRef = tab.display.objectRef {
             ObjectSourceTabView(
+                tabId: tab.id,
                 connectionId: connection.id,
                 databaseType: connection.type,
                 objectRef: objectRef,
@@ -299,6 +304,11 @@ struct MainEditorContentView: View {
         Group {
             if let vm = queryInsightsViewModels[tab.id] {
                 QueryInsightsView(viewModel: vm, coordinator: coordinator)
+                    .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
+                        guard requestedTabId == tab.id,
+                              LicenseManager.shared.isFeatureAvailable(.queryInsights) else { return }
+                        Task { await vm.reload() }
+                    }
             } else {
                 ProgressView(String(localized: "Loading insights…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -312,6 +322,47 @@ struct MainEditorContentView: View {
             }
         }
         .id(tab.id)
+    }
+
+    // MARK: - Table Health Tab Content
+
+    private func tableHealthContent(tab: QueryTab) -> some View {
+        Group {
+            if let vm = tableHealthViewModels[tab.id] {
+                TableHealthView(viewModel: vm, databaseType: connection.type, actions: tableHealthActions)
+                    .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
+                        guard requestedTabId == tab.id else { return }
+                        Task { await vm.refresh() }
+                    }
+            } else {
+                ProgressView(String(localized: "Loading table health…"))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        guard tableHealthViewModels[tab.id] == nil else { return }
+                        tableHealthViewModels[tab.id] = TableHealthViewModel(
+                            connectionId: connection.id,
+                            provider: TableHealthProviderFactory.provider(for: connection.type)
+                        )
+                    }
+            }
+        }
+        .id(tab.id)
+    }
+
+    private var tableHealthActions: TableHealthActions {
+        TableHealthActions(
+            openTable: { finding, database in
+                coordinator.openTableTab(finding.table, schema: finding.schema, database: database)
+            },
+            openFix: { finding, database in
+                coordinator.openQuery(
+                    finding.fixSQL,
+                    on: connection.id,
+                    databaseName: database,
+                    intent: .loadIntoFrontTab
+                )
+            }
+        )
     }
 
     // MARK: - Users & Roles Tab Content
@@ -344,6 +395,10 @@ struct MainEditorContentView: View {
         Group {
             if let vm = serverDashboardViewModels[tab.id] {
                 ServerDashboardView(viewModel: vm)
+                    .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
+                        guard requestedTabId == tab.id else { return }
+                        Task { await vm.refreshNow() }
+                    }
             } else {
                 ProgressView(String(localized: "Loading dashboard…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

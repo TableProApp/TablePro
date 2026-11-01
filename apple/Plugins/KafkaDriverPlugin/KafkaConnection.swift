@@ -94,50 +94,6 @@ private final class KafkaResponseHandler: ChannelInboundHandler, @unchecked Send
     }
 }
 
-/// Resumes a connect's caller exactly once, whichever of the connect and the cancellation
-/// gets there first.
-private final class ConnectGate: @unchecked Sendable {
-    private var continuation: CheckedContinuation<Channel, Error>?
-    private var settled = false
-    private let lock = NIOLock()
-
-    func arm(_ continuation: CheckedContinuation<Channel, Error>) {
-        let alreadySettled: Bool = lock.withLock {
-            if settled { return true }
-            self.continuation = continuation
-            return false
-        }
-        // Cancellation can land before the continuation is armed, so the check is not
-        // redundant: without it the caller would wait forever for a gate already closed.
-        if alreadySettled { continuation.resume(throwing: CancellationError()) }
-    }
-
-    /// Returns false when the caller has already been resumed, meaning the channel is unowned.
-    func deliver(_ channel: Channel) -> Bool {
-        let waiting = take()
-        guard let waiting else { return false }
-        waiting.resume(returning: channel)
-        return true
-    }
-
-    func fail(_ error: Error) {
-        take()?.resume(throwing: error)
-    }
-
-    func cancel() {
-        take()?.resume(throwing: CancellationError())
-    }
-
-    private func take() -> CheckedContinuation<Channel, Error>? {
-        lock.withLock {
-            guard !settled else { return nil }
-            settled = true
-            defer { continuation = nil }
-            return continuation
-        }
-    }
-}
-
 /// One TCP connection to one broker.
 ///
 /// Requests are strictly one at a time. Kafka allows pipelining, but a browsing client gains
@@ -204,15 +160,11 @@ actor KafkaConnection {
 
         let connected: Channel
         do {
-            connected = try await Self.connect(bootstrap, host: endpoint.host, port: endpoint.port)
+            connected = try await PluginNIOChannel.connect(bootstrap, host: endpoint.host, port: endpoint.port)
         } catch is CancellationError {
             throw CancellationError()
-        } catch let error as NIOSSLError {
-            throw KafkaError.connectionFailed(Self.describeTLS(error))
-        } catch let error as NIOSSLExtraError {
-            throw KafkaError.connectionFailed(Self.describeTLSExtra(error))
         } catch {
-            throw KafkaError.connectionFailed(Self.describeConnect(error))
+            throw KafkaError.connectionFailed(PluginNIOChannel.describe(error))
         }
 
         channel = connected
@@ -231,34 +183,6 @@ actor KafkaConnection {
         } catch {
             await close()
             throw error
-        }
-    }
-
-    /// Dials, and returns as soon as the caller is cancelled rather than waiting out the
-    /// connect timeout.
-    ///
-    /// Cancelling a `Task` cannot interrupt a connect already in flight, so the two have to be
-    /// raced: whichever arrives first resumes the caller, and the loser cleans up after
-    /// itself. Without this a cancelled connect sat for the full timeout, which is the shape
-    /// CLAUDE.md's cancellation invariant exists to prevent, and it was measured at 60s.
-    private static func connect(_ bootstrap: ClientBootstrap, host: String, port: Int) async throws -> Channel {
-        let gate = ConnectGate()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                gate.arm(continuation)
-                bootstrap.connect(host: host, port: port).whenComplete { result in
-                    switch result {
-                    case .success(let channel):
-                        // A channel that arrives after the caller gave up belongs to nobody,
-                        // so it is closed here rather than leaked.
-                        if !gate.deliver(channel) { channel.close(promise: nil) }
-                    case .failure(let error):
-                        gate.fail(error)
-                    }
-                }
-            }
-        } onCancel: {
-            gate.cancel()
         }
     }
 
@@ -388,65 +312,7 @@ actor KafkaConnection {
 
     private static func makeSSLContext(_ ssl: SSLConfiguration) throws -> NIOSSLContext? {
         if let error = tlsConfigurationError(for: ssl) { throw error }
-        guard ssl.isEnabled else { return nil }
-        var configuration = TLSConfiguration.makeClientConfiguration()
-        configuration.certificateVerification = verification(for: ssl.mode)
-
-        if ssl.verifiesCertificate, !ssl.caCertificatePath.isEmpty {
-            configuration.trustRoots = .certificates(try NIOSSLCertificate.fromPEMFile(ssl.caCertificatePath))
-        }
-        if !ssl.clientCertificatePath.isEmpty {
-            let chain = try NIOSSLCertificate.fromPEMFile(ssl.clientCertificatePath)
-            configuration.certificateChain = chain.map { .certificate($0) }
-        }
-        if !ssl.clientKeyPath.isEmpty {
-            configuration.privateKey = .privateKey(try NIOSSLPrivateKey(file: ssl.clientKeyPath, format: .pem))
-        }
-        return try NIOSSLContext(configuration: configuration)
-    }
-
-    private static func verification(for mode: SSLMode) -> CertificateVerification {
-        switch mode {
-        case .verifyIdentity: return .fullVerification
-        case .verifyCa: return .noHostnameVerification
-        default: return .none
-        }
-    }
-
-    private static func describeTLS(_ error: NIOSSLError) -> String {
-        switch error {
-        case .handshakeFailed:
-            return String(localized: "the TLS handshake failed")
-        case .failedToLoadCertificate:
-            return String(localized: "the certificate file could not be read")
-        case .failedToLoadPrivateKey:
-            return String(localized: "the private key file could not be read")
-        default:
-            return String(describing: error)
-        }
-    }
-
-    private static func describeTLSExtra(_ error: NIOSSLExtraError) -> String {
-        switch error {
-        case .failedToValidateHostname:
-            return String(localized: "the broker's certificate does not cover the hostname you connected to")
-        default:
-            return String(describing: error)
-        }
-    }
-
-    /// A Kafka listener that is not actually a Kafka listener is a common misconfiguration, so
-    /// the two failures worth naming are the ones a user can act on. Each names only what went
-    /// wrong: what to do about it belongs in the docs, and a second sentence here would make
-    /// the error unusable as a heading anyone could search for.
-    private static func describeConnect(_ error: Error) -> String {
-        if let channelError = error as? ChannelError, case .connectTimeout = channelError {
-            return String(localized: "the connection timed out")
-        }
-        if let ioError = error as? IOError, ioError.errnoCode == ECONNREFUSED {
-            return String(localized: "the connection was refused")
-        }
-        return error.localizedDescription
+        return try PluginNIOChannel.tlsContext(for: ssl)
     }
 }
 

@@ -603,7 +603,8 @@ struct MainMenuValidationTests {
     func readOnlyBlocksMutations() {
         var context = MenuValidationContext()
         context.isConnected = true
-        context.isCurrentTabEditable = true
+        context.canInsertRows = true
+        context.canDeleteRows = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
         context.canTruncateSelectedTables = true
@@ -727,12 +728,35 @@ struct MainMenuValidationTests {
         #expect(!enabled(#selector(MainSplitViewController.showServerDashboard(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.showUsersAndRoles(_:)), context))
         #expect(!enabled(#selector(MainSplitViewController.openContainerSwitcher(_:)), context))
+        #expect(!enabled(#selector(MainSplitViewController.showTableHealth(_:)), context))
         context.supportsServerDashboard = true
         context.supportsUserManagement = true
         context.supportsContainerSwitching = true
+        context.supportsTableHealth = true
         #expect(enabled(#selector(MainSplitViewController.showServerDashboard(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.showUsersAndRoles(_:)), context))
         #expect(enabled(#selector(MainSplitViewController.openContainerSwitcher(_:)), context))
+        #expect(enabled(#selector(MainSplitViewController.showTableHealth(_:)), context))
+    }
+
+    // Each opens a tab in browse content, which Agent mode does not mount.
+    @Test("Agent mode dims the commands that open a connection's tool tabs")
+    func toolTabsDimInAgentMode() {
+        var context = capableContext()
+        context.isConnected = true
+        let toolTabs = [
+            #selector(MainSplitViewController.showServerDashboard(_:)),
+            #selector(MainSplitViewController.showUsersAndRoles(_:)),
+            #selector(MainSplitViewController.showQueryInsights(_:)),
+            #selector(MainSplitViewController.showTableHealth(_:))
+        ]
+        for selector in toolTabs {
+            #expect(enabled(selector, context), "\(selector) is dim while browsing")
+        }
+        context.isAgentMode = true
+        for selector in toolTabs {
+            #expect(!enabled(selector, context), "\(selector) stayed lit in Agent mode")
+        }
     }
 
     // Everything else is switched on, so isConnected is the only thing left that can disable them.
@@ -759,6 +783,9 @@ struct MainMenuValidationTests {
         context.supportsContainerSwitching = true
         context.supportsServerDashboard = true
         context.supportsUserManagement = true
+        context.canInsertRows = true
+        context.canDeleteRows = true
+        context.supportsTableHealth = true
         context.isCurrentTabEditable = true
         context.isCurrentTabSchemaResolved = true
         context.hasTableSelection = true
@@ -803,6 +830,7 @@ struct MainMenuValidationTests {
             #selector(MainSplitViewController.openContainerSwitcher(_:)),
             #selector(MainSplitViewController.showServerDashboard(_:)),
             #selector(MainSplitViewController.showUsersAndRoles(_:)),
+            #selector(MainSplitViewController.showTableHealth(_:)),
             #selector(MainSplitViewController.toggleFilterBar(_:)),
             #selector(MainSplitViewController.showHighlightRules(_:))
         ]

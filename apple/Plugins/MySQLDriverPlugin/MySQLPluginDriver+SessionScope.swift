@@ -13,7 +13,7 @@ internal extension MySQLPluginDriver {
     /// `WHERE`.
     func openSessionScope(for purpose: PluginSessionPurpose) async throws -> PluginSessionScope? {
         let names = MySQLSessionScopePlan.savedNames(for: purpose)
-        guard !flavor.isDatabend,
+        guard flavor.hasMySQLObjectCatalogs,
               holdsForServer(MySQLServerVersion.showAcceptsWhere(banner:flavor:)),
               !names.isEmpty
         else { return nil }
@@ -44,7 +44,7 @@ internal extension MySQLPluginDriver {
     }
 
     func closeSessionScope(_ scope: PluginSessionScope) async throws {
-        guard !flavor.isDatabend else { return }
+        guard flavor.hasMySQLObjectCatalogs else { return }
         let heldSession = !scope.applied.isEmpty
         let isRestored: Bool
         do {
