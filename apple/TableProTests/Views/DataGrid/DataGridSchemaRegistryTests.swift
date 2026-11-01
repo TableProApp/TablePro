@@ -132,6 +132,30 @@ struct DataGridSchemaRegistryTests {
         #expect(Self.cachedText(grid, row: 0, column: 1) == "kept")
     }
 
+    @Test("A registry change reaches a hidden column's cached text and value filter, so showing it again is current")
+    func changeReachesHiddenColumns() async throws {
+        let grid = Self.grid(TableRows(
+            rows: [Row(id: .existing(0), values: [Self.framed(1), .text("kept")])],
+            columns: ["value", "key"],
+            columnTypes: [.blob(rawType: "BLOB"), .text(rawType: nil)]
+        ))
+        let column = try #require(grid.model.columns.column(at: 0))
+        grid.model.setDisplayFormat(.schemaRegistry(connectionID: Self.connection), for: column)
+        let row = try #require(grid.model.row(at: 0))
+        let pass = (formats: grid.model.store.displayFormats, columnCount: grid.model.rows.columns.count)
+        _ = grid.presenter.displayText(
+            of: row, dataIndex: 0, type: .blob(rawType: "BLOB"), formats: pass.formats, databaseType: nil, columnCount: pass.columnCount
+        )
+        #expect(grid.model.display.cache.box(forID: row.id)?.values[0] != nil)
+        grid.model.updateColumnLayout { $0.hiddenColumns.insert("value") }
+        #expect(grid.model.columns.columns.allSatisfy { $0.dataIndex != 0 })
+
+        NotificationCenter.default.post(
+            name: SchemaRegistryCache.didChange, object: nil, userInfo: [SchemaRegistryCache.connectionIDKey: Self.connection]
+        )
+        try await waitUntil { grid.model.display.cache.box(forID: row.id)?.values[0] == nil }
+    }
+
     @Test("Adding back a schema file this Mac had lost redraws the columns that name it")
     func restoredSchemaRedraws() async throws {
         let grid = Self.grid(TableRows(

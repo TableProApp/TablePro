@@ -82,14 +82,25 @@ internal enum ProtobufWireDecoder {
         return fields
     }
 
-    // The bytes between a group's start tag, already read, and its end tag, which the reader is left past.
-    static func groupContents(_ reader: inout BinaryValueReader, number: Int, depth: Int) throws -> BinaryValueReader {
+    // The bytes between a group's start tag, already read, and its end tag. Past `limit` tags it stops at the last whole
+    // field and reports the cut, so a cell never reads more of a group than its budget.
+    static func groupContents(
+        _ reader: inout BinaryValueReader,
+        number: Int,
+        depth: Int,
+        limit: Int
+    ) throws -> (contents: BinaryValueReader, isCut: Bool) {
         let contents = reader
         var openGroups = [number]
+        var boundary = reader.offset
+        var scanned = 0
         while true {
             let start = reader.offset
+            if openGroups.count == 1 { boundary = start }
+            guard scanned < limit else { return (try contents.window(boundary - contents.offset), true) }
             guard !reader.isAtEnd else { throw reader.error(.unexpectedEnd) }
             let tag = try reader.readVarint()
+            scanned += 1
             let fieldNumber = tag >> 3
             guard tag <= UInt64(UInt32.max), fieldNumber > 0, fieldNumber <= UInt64(maxFieldNumber) else {
                 throw BinaryValueDecodeError(kind: .invalidField, offset: start)
@@ -109,7 +120,7 @@ internal enum ProtobufWireDecoder {
             case 4:
                 guard openGroups.last == Int(fieldNumber) else { throw BinaryValueDecodeError(kind: .unmatchedGroupEnd, offset: start) }
                 openGroups.removeLast()
-                if openGroups.isEmpty { return try contents.window(start - contents.offset) }
+                if openGroups.isEmpty { return (try contents.window(start - contents.offset), false) }
             case 5:
                 try reader.skip(4)
             default:

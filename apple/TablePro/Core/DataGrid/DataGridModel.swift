@@ -288,21 +288,26 @@ final class DataGridModel: ObservableObject {
         // Before the remap reads it: another connection may have loaded the schemas already.
         prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
         // A filter stores the shown text, so the values the user picked follow the new format.
-        if let remapped = remappedValueFilter(column: column, from: previous, to: format, in: current) {
+        if let remapped = remappedValueFilter(
+            dataIndex: column.dataIndex, name: column.name, type: column.type, from: previous, to: format, in: current
+        ) {
             store.valueFilter = remapped
         }
-        redrawFormatted([column], in: current)
+        redrawFormatted([column.dataIndex], in: current)
     }
 
-    private func redrawFormatted(_ changed: [DataGridColumn], in current: TableRows) {
-        display.cache.clearValues(forDataIndexes: Set(changed.map(\.dataIndex)))
-        if changed.contains(where: { store.valueFilter.filter(forColumn: $0.dataIndex) != nil }) {
+    // Hidden columns too: their cached text and filters outlive the hiding.
+    private func redrawFormatted(_ dataIndexes: Set<Int>, in current: TableRows) {
+        display.cache.clearValues(forDataIndexes: dataIndexes)
+        if dataIndexes.contains(where: { store.valueFilter.filter(forColumn: $0) != nil }) {
             order = resolveOrder(in: current)
             restoreSelection(in: current)
             displayRevision &+= 1
             mountedView?.apply(.reload)
         } else {
-            let positions = IndexSet(changed.compactMap { columns.displayPosition(of: $0.id) })
+            let positions = IndexSet(columns.columns.filter { dataIndexes.contains($0.dataIndex) }.compactMap {
+                columns.displayPosition(of: $0.id)
+            })
             if !positions.isEmpty {
                 mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: positions))
             }
@@ -359,18 +364,22 @@ final class DataGridModel: ObservableObject {
     }
 
     private func redrawStaleSchemaColumns() {
-        let stale = staleSchemaColumns
-        staleSchemaColumns = []
-        let changed = columns.columns.filter { stale.contains($0.dataIndex) }
-        guard !changed.isEmpty else { return }
         let current = rows
+        let stale = staleSchemaColumns.filter { $0 < current.columns.count }
+        staleSchemaColumns = []
+        guard !stale.isEmpty else { return }
+        let formats = store.displayFormats
         // The format is the same, but the values move from the stored bytes to decoded text, and a filter has to follow.
-        for column in changed {
-            if let remapped = remappedValueFilter(column: column, from: nil, to: displayFormat(for: column), in: current) {
+        for dataIndex in stale.sorted() {
+            let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
+            let format = dataIndex < formats.count ? formats[dataIndex] : nil
+            if let remapped = remappedValueFilter(
+                dataIndex: dataIndex, name: current.columns[dataIndex], type: type, from: nil, to: format, in: current
+            ) {
                 store.valueFilter = remapped
             }
         }
-        redrawFormatted(changed, in: current)
+        redrawFormatted(stale, in: current)
     }
 
     private func prefetchSchemas(in current: TableRows, storageRows: IndexSet?, retryingFailures: Bool) {
@@ -412,12 +421,13 @@ final class DataGridModel: ObservableObject {
     }
 
     private func remappedValueFilter(
-        column: DataGridColumn,
+        dataIndex: Int,
+        name: String,
+        type: ColumnType?,
         from oldFormat: ValueDisplayFormat?,
         to newFormat: ValueDisplayFormat?,
         in rows: TableRows
     ) -> GridValueFilterState? {
-        let dataIndex = column.dataIndex
         guard let existing = store.valueFilter.filter(forColumn: dataIndex) else { return nil }
         let databaseType = configuration.traits.databaseType
         var removed = Set<String>()
@@ -426,11 +436,11 @@ final class DataGridModel: ObservableObject {
             let raw = row.values[dataIndex]
             guard raw != .null else { continue }
             let old = GridDisplayOrderResolver.displayValue(
-                raw, columnType: column.type, displayFormat: oldFormat, databaseType: databaseType
+                raw, columnType: type, displayFormat: oldFormat, databaseType: databaseType
             )
             guard existing.selectedValues.contains(old) else { continue }
             let new = GridDisplayOrderResolver.displayValue(
-                raw, columnType: column.type, displayFormat: newFormat, databaseType: databaseType
+                raw, columnType: type, displayFormat: newFormat, databaseType: databaseType
             )
             if old != new {
                 removed.insert(old)
@@ -444,7 +454,7 @@ final class DataGridModel: ObservableObject {
         var filter = store.valueFilter
         filter.set(
             ColumnValueFilter(selectedValues: selected, includesNull: existing.includesNull),
-            columnName: column.name,
+            columnName: name,
             forColumn: dataIndex
         )
         return filter

@@ -128,8 +128,13 @@ internal enum ProtobufSchemaDecoder {
                         level.isCut = true
                         break scan
                     }
-                    occurrences.append(try Self.occurrence(&reader, depth: depth))
+                    let (occurrence, isCut) = try Self.occurrence(&reader, depth: depth, limit: budget)
+                    occurrences.append(occurrence)
                     budget -= 1
+                    if isCut {
+                        level.isCut = true
+                        break scan
+                    }
                 }
             }
             var accepted: [Int: [Occurrence]] = [:]
@@ -171,13 +176,18 @@ internal enum ProtobufSchemaDecoder {
             return fields
         }
 
-        private static func occurrence(_ reader: inout BinaryValueReader, depth: Int) throws -> Occurrence {
+        private static func occurrence(
+            _ reader: inout BinaryValueReader,
+            depth: Int,
+            limit: Int
+        ) throws -> (Occurrence, isCut: Bool) {
             let start = reader.offset
             let tag = try reader.readVarint()
             let number = tag >> 3
             guard tag <= UInt64(UInt32.max), number > 0, number <= UInt64(ProtobufWireDecoder.maxFieldNumber) else {
                 throw BinaryValueDecodeError(kind: .invalidField, offset: start)
             }
+            var isCut = false
             let payload: Occurrence.Payload
             switch tag & 7 {
             case 0:
@@ -190,7 +200,9 @@ internal enum ProtobufSchemaDecoder {
                 payload = .lengthDelimited(try reader.window(Int(length)))
                 try reader.skip(Int(length))
             case 3:
-                payload = .group(try ProtobufWireDecoder.groupContents(&reader, number: Int(number), depth: depth))
+                let group = try ProtobufWireDecoder.groupContents(&reader, number: Int(number), depth: depth, limit: limit)
+                payload = .group(group.contents)
+                isCut = group.isCut
             case 4:
                 throw BinaryValueDecodeError(kind: .unmatchedGroupEnd, offset: start)
             case 5:
@@ -198,7 +210,7 @@ internal enum ProtobufSchemaDecoder {
             default:
                 throw BinaryValueDecodeError(kind: .invalidField, offset: start)
             }
-            return Occurrence(number: Int(number), payload: payload, position: start)
+            return (Occurrence(number: Int(number), payload: payload, position: start), isCut)
         }
 
         private func match(_ payload: Occurrence.Payload, field: ProtobufFieldDescriptor) -> Match {

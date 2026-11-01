@@ -591,6 +591,24 @@ struct ProtobufSchemaDecoderTests {
             == "inner {\n  n: 7\n}\nmany {\n  n: 1\n}\nmany {\n  n: 2\n}\n")
     }
 
+    @Test("A cell reads no further into a group than its budget, so bytes past it, even broken ones, are never read")
+    func groupScanIsBudgeted() throws {
+        let schema = try ProtobufSchema.parse(Data("""
+            syntax = "proto2";
+            package gb;
+            message M { optional group Item = 1 { repeated int32 v = 2; } }
+            """.utf8))
+        // Hand-written: a group of fifty `v: 1`, then a byte that starts no field and no end tag.
+        let fixture = "0b" + String(repeating: "1001", count: 50) + "ff"
+        let message = try ProtobufSchemaDecoder.decode(BinaryFixture.data(fixture), schema: schema, message: "gb.M", maxValues: 5)
+        let text = ProtobufSchemaTextWriter.text(message.fields, multiLine: false)
+        #expect(text.hasPrefix("Item { v: 1"))
+        #expect(text.hasSuffix("…"))
+        #expect(throws: BinaryValueDecodeError.self) {
+            try ProtobufSchemaDecoder.decode(BinaryFixture.data(fixture), schema: schema, message: "gb.M")
+        }
+    }
+
     @Test("The package qualifies the definitions written before it too")
     func packageAfterMessage() throws {
         let schema = try ProtobufSchema.parse(Data("""
