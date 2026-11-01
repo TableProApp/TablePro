@@ -212,20 +212,20 @@ enum KafkaConnectionField {
                 label: String(localized: "Schema Registry URL"),
                 placeholder: "http://localhost:8081",
                 required: false,
-                section: .advanced
+                section: .authentication
             ),
             ConnectionField(
                 id: schemaRegistryUsername,
                 label: String(localized: "Schema Registry User"),
                 required: false,
-                section: .advanced
+                section: .authentication
             ),
             ConnectionField(
                 id: schemaRegistryPassword,
                 label: String(localized: "Schema Registry Password"),
                 required: false,
                 fieldType: .secure,
-                section: .advanced
+                section: .authentication
             )
         ]
     }

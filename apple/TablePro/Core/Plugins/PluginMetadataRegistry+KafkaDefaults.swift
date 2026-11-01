@@ -147,20 +147,20 @@ private func kafkaConnectionFields() -> [ConnectionField] {
             label: String(localized: "Schema Registry URL"),
             placeholder: "http://localhost:8081",
             required: false,
-            section: .advanced
+            section: .authentication
         ),
         ConnectionField(
             id: SchemaRegistryConnectionField.username,
             label: String(localized: "Schema Registry User"),
             required: false,
-            section: .advanced
+            section: .authentication
         ),
         ConnectionField(
             id: SchemaRegistryConnectionField.password,
             label: String(localized: "Schema Registry Password"),
             required: false,
             fieldType: .secure,
-            section: .advanced
+            section: .authentication
         )
     ]
 }
