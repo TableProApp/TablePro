@@ -183,15 +183,15 @@ impl DataGrid {
         enable(self, "sort-ascending", sorts);
         enable(self, "sort-descending", sorts);
         enable(self, "clear-sort", sorting != GridSorting::None && self.is_sorted());
-        for name in ["hide-column", "size-to-fit", "widen-column", "narrow-column"] {
+        for name in [
+            "hide-column",
+            "size-to-fit",
+            "widen-column",
+            "narrow-column",
+            "move-column-left",
+            "move-column-right",
+        ] {
             enable(self, name, !editing && column.is_some());
-        }
-        for (name, left) in [("move-column-left", true), ("move-column-right", false)] {
-            enable(
-                self,
-                name,
-                !editing && column.is_some_and(|index| self.can_move_column(index, left)),
-            );
         }
         enable(self, "clear-selection", !editing && self.selected_count() > 1);
         self.edit().refresh_actions(self, target.as_ref());
