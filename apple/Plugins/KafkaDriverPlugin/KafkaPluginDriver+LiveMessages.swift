@@ -63,6 +63,7 @@ struct KafkaFollowCursor: Sendable, Equatable {
 
 final class KafkaLiveSubscription: PluginLiveSubscription, @unchecked Sendable {
     private static let recordsPerFetch = 500
+    private static let idleWait: Duration = .milliseconds(500)
     private static let logger = Logger(subsystem: "com.TablePro.KafkaDriver", category: "LiveMessages")
 
     let messages: AsyncThrowingStream<PluginLiveMessage, Error>
@@ -81,6 +82,7 @@ final class KafkaLiveSubscription: PluginLiveSubscription, @unchecked Sendable {
                         group.addTask {
                             var offset = cursor.nextOffset
                             while !Task.isCancelled {
+                                let started = ContinuousClock.now
                                 let page = try await KafkaFetchRequest.fetch(
                                     topic: cursor.topic,
                                     partition: cursor.partition,
@@ -91,7 +93,13 @@ final class KafkaLiveSubscription: PluginLiveSubscription, @unchecked Sendable {
                                 for record in page.records {
                                     continuation.yield(KafkaFollowCursor.message(from: record, topic: cursor.topic))
                                 }
-                                if let last = page.records.last { offset = last.offset + 1 }
+                                if let last = page.records.last {
+                                    offset = last.offset + 1
+                                } else if ContinuousClock.now - started < Self.idleWait / 2 {
+                                    // A trailing transaction marker answers at once and reads as no record,
+                                    // where an idle partition makes the broker wait out the long poll.
+                                    try await Task.sleep(for: Self.idleWait)
+                                }
                             }
                         }
                     }
