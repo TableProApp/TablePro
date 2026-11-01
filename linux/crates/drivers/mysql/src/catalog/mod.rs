@@ -44,7 +44,7 @@ use tablepro_core::value::Value;
 
 use crate::flavour::MySqlFlavour;
 use crate::mysql_timestamp_mode::MySqlTimestampMode;
-use escaped_expression::unescape_expression;
+pub(crate) use escaped_expression::unescape_expression;
 use mysql_column_type::scan;
 
 /// The catalogue's facts that decide a kind, apart from the rest of the

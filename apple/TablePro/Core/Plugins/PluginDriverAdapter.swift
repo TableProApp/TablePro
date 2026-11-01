@@ -1239,6 +1239,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.concurrentRefreshAvailability(materializedView: materializedView, schema: schema)
     }
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
+        try await pluginDriver.fetchViewRowEditing(view: view, schema: schema ?? pluginDriver.currentSchema)
+    }
+
     // MARK: - Table Options
 
     func fetchTableOptions(tableName: String) async throws -> TableOptions? {

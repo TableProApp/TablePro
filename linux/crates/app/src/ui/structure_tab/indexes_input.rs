@@ -7,4 +7,6 @@ use super::index_object::IndexObject;
 pub(crate) enum IndexesInput {
     AddIndex(IndexInfo),
     RemoveIndex(IndexObject),
+    CopyStatement(IndexObject),
+    ShowStatement(IndexObject),
 }

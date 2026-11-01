@@ -8,11 +8,11 @@
 import Foundation
 import os
 
-/// Owns which format a column is shown in, and where a user's choice is persisted.
-///
-/// Rendering a value under a format is a separate job that must not reach the preference layer;
-/// it lives in `ValueDisplayFormatter`. Keeping the two apart is what lets the data grid's per
-/// cell path stay free of storage, and it is why this type no longer exposes `applyFormat`.
+// Owns which format a column is shown in, and where a user's choice is persisted.
+//
+// Rendering a value under a format is a separate job that must not reach the preference layer;
+// it lives in `ValueDisplayFormatter`. Keeping the two apart is what lets the data grid's per
+// cell path stay free of storage, and it is why this type no longer exposes `applyFormat`.
 @MainActor
 final class ValueDisplayFormatService {
     static let shared = ValueDisplayFormatService()
@@ -83,11 +83,7 @@ final class ValueDisplayFormatService {
             overrides.removeValue(forKey: columnKey)
         }
 
-        if overrides.isEmpty {
-            storage.clear(for: scope)
-        } else {
-            storage.save(overrides, for: scope)
-        }
+        storage.save(overrides, for: scope)
 
         overridesVersion &+= 1
     }

@@ -269,7 +269,7 @@ fn rename_first(grid: &Grid, to: &str) {
         row_key: key(1),
         col: 1,
         original: text("A"),
-        value: text(to),
+        value: tablepro_core::edit::CellInput::Value(text(to)),
     }));
 }
 

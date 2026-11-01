@@ -1,4 +1,5 @@
 mod choices;
+mod expressions;
 mod paste;
 mod rows;
 
@@ -742,7 +743,7 @@ fn undo_under_open_editor(from: Value, to: Value) -> (Grid, GridCell) {
         row_key: key(1),
         col: 1,
         original: from,
-        value: to,
+        value: CellInput::Value(to),
     }));
     assert!(grid.grid.edit().edit_cell(&cell));
     assert!(editor(&grid).is_some(), "the cell did not open for editing");

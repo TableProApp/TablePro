@@ -175,7 +175,7 @@ enum SQLLexicalRelevance {
                     facts.insert(.executableComments)
                 }
             case SqlLexer.dash where next == SqlLexer.dash:
-                facts.insert(.dashCommentsNeedWhitespace)
+                facts.formUnion([.dashCommentsNeedWhitespace, .withoutDashComments])
                 if index > 0, [capitalE, smallE].contains(text.character(at: index - 1)) {
                     facts.insert(.exponentSignsNeedNoDigits)
                 }

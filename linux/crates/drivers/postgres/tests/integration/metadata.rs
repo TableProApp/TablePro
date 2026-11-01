@@ -5,6 +5,7 @@ use tablepro_core::column::{
     BoolStorage, ColumnKind, FloatWidth, IntegerKind, IntegerWidth, NetworkFamily, ReadForm, TemporalZone, TextLength,
 };
 use tablepro_core::ddl::{CollationName, GeneratedStorage, IdentityStyle};
+use tablepro_core::edit::CellInput;
 use tablepro_core::meta::{EngineRowId, IndexKey, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef};
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
 use tablepro_core::{DriverError, Value};
@@ -128,6 +129,10 @@ async fn expression_desc_partial_index_keys() {
         ]
     );
     assert!(!partial.can_identify_rows());
+    assert_eq!(
+        partial.definition.as_deref(),
+        Some("CREATE UNIQUE INDEX t_label ON public.t USING btree (lower(label) DESC, id) WHERE (id > 0)")
+    );
     assert!(
         indexes
             .iter()
@@ -213,7 +218,7 @@ async fn stale_ctid_edit_after_vacuum_reuse_row_guard_failed() {
     let changes = ChangeSet {
         changes: vec![RowChange::Update(RowUpdate {
             key: before[0].clone(),
-            assignments: vec![(0, Value::Text("changed".to_owned()))],
+            assignments: vec![(0, CellInput::Value(Value::Text("changed".to_owned())))],
         })],
     };
     let plan = plan_save(dialect.as_ref(), &target, &columns, &identity, &changes).expect("a plan");

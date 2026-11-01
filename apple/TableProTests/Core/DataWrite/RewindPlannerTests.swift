@@ -38,7 +38,7 @@ struct RewindPlannerTests {
         )
     }
 
-    private func planner(operations: [RowWriteOperation]) -> RewindPlanner {
+    private func planner(operations: [RowWriteOperation], writtenThroughView: Bool? = nil) -> RewindPlanner {
         let record = RewindRecord(
             id: UUID(),
             historyId: nil,
@@ -48,7 +48,8 @@ struct RewindPlannerTests {
             capturedAt: Date(timeIntervalSince1970: 0),
             generatedColumns: [],
             identityColumns: [],
-            operations: operations
+            operations: operations,
+            writtenThroughView: writtenThroughView
         )
         return RewindPlanner(
             record: record,
@@ -62,6 +63,64 @@ struct RewindPlannerTests {
             ),
             queryBuilder: sqliteQueryBuilder
         )
+    }
+
+    @Test("A row deleted through a view is not restored, while an edit through it still is")
+    func viewDeleteIsRefused() throws {
+        let delete = operation(kind: .delete, preImage: ["7", "Ada"], postImage: nil, writtenColumns: columns)
+        let update = operation(
+            kind: .update, preImage: ["8", "Ada"], postImage: ["8", "Grace"], writtenColumns: ["name"]
+        )
+        let plan = try planner(operations: [delete, update], writtenThroughView: true)
+            .plan(currentRows: [RewindCurrentRow(values: ["8", "Grace"])])
+
+        #expect(plan.rows.map { $0.outcome } == [.notReversible(.deletedThroughView), .willRestore])
+        #expect(plan.record.reversibleOperations.map { $0.kind } == [.update])
+    }
+
+    @Test("A record written through a view stores no refusal an older build cannot read")
+    func viewRecordStaysReadable() throws {
+        let delete = operation(
+            kind: .delete,
+            preImage: ["7", "Ada"],
+            postImage: nil,
+            writtenColumns: columns,
+            refusal: .identityNotPreservable
+        )
+        let record = planner(operations: [delete], writtenThroughView: true).record
+        let encoded = try JSONEncoder().encode(record)
+
+        let text = try #require(String(bytes: encoded, encoding: .utf8))
+        #expect(!text.contains("deletedThroughView"))
+        #expect(!text.contains("rowLeftView"))
+        let decoded = try JSONDecoder().decode(RewindRecord.self, from: encoded)
+        #expect(decoded.refusal(of: delete) == .deletedThroughView)
+        #expect(decoded.blanketRefusal == .deletedThroughView)
+    }
+
+    @Test("Undoing an insert through a view records a delete older builds refuse to restore")
+    func inverseOfAViewInsertRefusesItsDelete() throws {
+        let insert = operation(kind: .insert, preImage: nil, postImage: ["9", "Lin"], writtenColumns: columns)
+        let plan = try planner(operations: [insert], writtenThroughView: true)
+            .plan(currentRows: [RewindCurrentRow(values: ["9", "Lin"])])
+
+        let inverse = RewindExecutor.inverseOperations(of: plan)
+
+        #expect(inverse.map { $0.kind } == [.delete])
+        #expect(inverse.first?.refusal == .identityNotPreservable)
+    }
+
+    @Test("A row a view no longer shows is refused, not reported as restored or gone")
+    func rowThatLeftTheViewIsRefused() throws {
+        let insert = operation(kind: .insert, preImage: nil, postImage: ["9", "Lin"], writtenColumns: columns)
+        let update = operation(
+            kind: .update, preImage: ["8", "Ada"], postImage: ["8", "Grace"], writtenColumns: ["name"]
+        )
+        let throughView = try planner(operations: [insert, update], writtenThroughView: true).plan(currentRows: [])
+        #expect(throughView.rows.map { $0.outcome } == [.notReversible(.rowLeftView), .notReversible(.rowLeftView)])
+
+        let throughTable = try planner(operations: [insert, update]).plan(currentRows: [])
+        #expect(throughTable.rows.map { $0.outcome } == [.alreadyRestored, .rowMissing])
     }
 
     @Test("A row still holding what the save wrote is restored")

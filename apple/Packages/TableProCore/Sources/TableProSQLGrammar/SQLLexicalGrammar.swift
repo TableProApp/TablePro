@@ -142,6 +142,9 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// it, so the kit has no feature for it.
     public static let pipeOperatorChains = SQLLexicalGrammar(rawValue: 1 << 37)
 
+    // `--` is code, as in Cypher's `(a)--(b)`. Only the curated Cypher grammar carries it, so the kit has no feature.
+    public static let withoutDashComments = SQLLexicalGrammar(rawValue: 1 << 38)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

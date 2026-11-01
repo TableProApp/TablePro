@@ -940,6 +940,88 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery("SELECT * FROM events", databaseType: .bigtable))
     }
 
+    @Test("Cypher reads unless a clause writes, wherever the clause sits")
+    func cypherTiers() {
+        let reads = [
+            "// TablePro browse: node\nMATCH (n:`Person`)\nRETURN n\nSKIP 0 LIMIT 200",
+            "MATCH (n) WHERE n.set = 1 AND n.name STARTS WITH 'CREATE' RETURN n {delete: n.x}",
+            "MATCH (a)--(b) RETURN count(*)",
+            "CALL db.labels() YIELD label RETURN label",
+            "CALL db.schema.nodeTypeProperties()",
+            "SHOW DATABASES",
+            "MATCH (n:Create:`DELETE`) RETURN n // SET n.x = 1"
+        ]
+        for query in reads {
+            #expect(!QueryClassifier.isWriteQuery(query, databaseType: .neo4j), "\(query)")
+        }
+        #expect(QueryClassifier.classifyTier("MATCH (n) SET n.seen = true", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("MATCH (n) DETACH DELETE n", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("MERGE (n:Person {id: 1})", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("INSERT (:Person {id: 1})", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("MATCH (n) CALL (n) { INSERT (n)-[:R]->(:M) } RETURN n", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("DEALLOCATE DATABASES FROM SERVER 's1'", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("START DATABASE sales", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("USE system STOP DATABASE sales", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("ENABLE SERVER 'abc'", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("ALTER USER bob SET PASSWORD 'x'", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("TERMINATE TRANSACTIONS 'neo4j-transaction-1'", databaseType: .neo4j) == .write)
+        #expect(!QueryClassifier.isWriteQuery("MATCH (start:Station)-[:NEXT]->(stop) RETURN start.name, stop", databaseType: .neo4j))
+        #expect(!QueryClassifier.isWriteQuery("MATCH (n) RETURN n.x AS rename, n.y AS enable", databaseType: .neo4j))
+        #expect(!QueryClassifier.isWriteQuery("MATCH (n:`INSERT`) WHERE n.insert = 'INSERT' RETURN n", databaseType: .neo4j))
+        #expect(QueryClassifier.classifyTier("CALL apoc.periodic.iterate('a', 'b', {})", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("MATCH (n) CALL { WITH n CREATE (m) } RETURN n", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("DROP INDEX person_name", databaseType: .neo4j) == .destructive)
+        #expect(QueryClassifier.classifyTier("MATCH (a)<-- (b) DETACH DELETE a", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("CALL `apoc.periodic.iterate`('a', 'b', {})", databaseType: .neo4j) == .write)
+        #expect(QueryClassifier.classifyTier("MATCH (n) CALL (n) { SET n.x = 1 } RETURN n", databaseType: .neo4j) == .write)
+        #expect(!QueryClassifier.isWriteQuery("MATCH (n) CALL (n) { RETURN n.x AS x } RETURN x", databaseType: .neo4j))
+        #expect(QueryClassifier.classifyTier("RETURN 'it\\'s' /* x */ ; CREATE (n)", databaseType: .neo4j) == .write)
+        let load = QueryClassifier.classify("LOAD CSV FROM 'file:///x.csv' AS row RETURN row", databaseType: .neo4j)
+        #expect(load.reachesFilesystemOrExecutesCode)
+    }
+
+    @Test("A Cypher keyword or backtick written as a unicode escape is tiered as the server decodes it")
+    func cypherUnicodeEscapes() {
+        let escapedDelete = "MATCH (n) \\u0044ETACH \\u0044ELETE n"
+        #expect(QueryClassifier.classifyTier(escapedDelete, databaseType: .neo4j) == .write)
+        let closedBacktick = "MATCH (n:`x\\u0060) DETACH DELETE n //`) RETURN n"
+        #expect(QueryClassifier.classifyTier(closedBacktick, databaseType: .neo4j) == .write)
+        let repeatedU = "MATCH (n) \\uuu0053ET n.x = 1"
+        #expect(QueryClassifier.classifyTier(repeatedU, databaseType: .neo4j) == .write)
+        let escapedBackslash = "RETURN '\\\\u0044ELETE' AS x"
+        #expect(!QueryClassifier.isWriteQuery(escapedBackslash, databaseType: .neo4j))
+        #expect(QueryClassifier.cypherDecodingUnicodeEscapes("a\\u0041\\\\u0041\\u00") == "aA\\\\u0041\\u00")
+    }
+
+    @Test("A Cypher DELETE that nothing narrows gets the dangerous-query confirmation")
+    func cypherUnfilteredDelete() {
+        let dangerous = [
+            "MATCH (n) DETACH DELETE n",
+            "MATCH (n:Temp) DELETE n",
+            "MATCH (n) WHERE n.x = 1 SET n.y = 2; MATCH (m) DELETE m",
+            "DROP INDEX person_name"
+        ]
+        for query in dangerous {
+            #expect(QueryClassifier.isDangerousQuery(query, databaseType: .neo4j), "\(query)")
+        }
+        let narrowed = [
+            "MATCH (n:Temp) WHERE n.age > 3 DELETE n",
+            "MATCH (n {id: 1}) DETACH DELETE n",
+            "MATCH (n) WITH n LIMIT 10 DELETE n",
+            "MATCH (n) RETURN n {delete: n.x}",
+            "MATCH (n) SET n.seen = true"
+        ]
+        for query in narrowed {
+            #expect(!QueryClassifier.isDangerousQuery(query, databaseType: .neo4j), "\(query)")
+        }
+    }
+
+    @Test("Cypher's -- is a pattern, so a ; after it still ends the statement")
+    func cypherDashesAreCode() {
+        #expect(QueryClassifier.isMultiStatement("MATCH (a)-- (b) RETURN a; MATCH (n) RETURN n", databaseType: .neo4j))
+        #expect(!QueryClassifier.isMultiStatement("MATCH (a)-- (b) RETURN a", databaseType: .neo4j))
+    }
+
     @Test("Firebase request lines are tiered by their verb, and a grid page is a read")
     func firebaseTiers() {
         for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {

@@ -235,4 +235,83 @@ struct ValueDisplayFormatStorageTests {
         #expect(defaults.data(forKey: legacyKey) == nil)
         #expect(storage.load(for: scope("public", connectionId: other)) == ["id": .json])
     }
+
+    @Test("A format 0.83 does not have goes in a second key, so the key 0.83 decodes whole still decodes")
+    func newFormatsStayOutOfThe083Key() throws {
+        let (storage, defaults) = try makeStorage()
+        let target = scope("public", connectionId: UUID())
+        let avro = ValueDisplayFormat.avro(schemaID: String(repeating: "a", count: 32))
+        storage.save(["a": .json, "b": .igbinary, "c": avro], for: target)
+
+        let data = try #require(defaults.data(forKey: PreferenceKeys.columnDisplayFormats(target).name))
+        #expect(try JSONDecoder().decode([String: FormatsIn083].self, from: data) == ["a": .json])
+        #expect(storage.load(for: target) == ["a": .json, "b": .igbinary, "c": avro])
+    }
+
+    @Test("A format 0.83 sets later wins over the one it could not read")
+    func formatSetBy083Wins() throws {
+        let (storage, defaults) = try makeStorage()
+        let target = scope("public", connectionId: UUID())
+        storage.save(["b": .igbinary], for: target)
+
+        defaults.set(try JSONEncoder().encode(["b": FormatsIn083.json]), forKey: PreferenceKeys.columnDisplayFormats(target).name)
+
+        #expect(storage.load(for: target) == ["b": .json])
+    }
+
+    @Test("A format name this build does not know is kept through other columns' changes")
+    func unknownFormatsAreKept() throws {
+        let (storage, defaults) = try makeStorage()
+        let service = ValueDisplayFormatService(storage: storage)
+        let target = scope("public", connectionId: UUID())
+        let addedKey = PreferenceKeys.columnDisplayFormats(target).name + ".added"
+        defaults.set(try JSONEncoder().encode(["x": "formatFromALaterBuild"]), forKey: addedKey)
+
+        service.setOverride(.igbinary, columnKey: "a", scope: target)
+        service.setOverride(nil, columnKey: "a", scope: target)
+
+        #expect(storage.load(for: target) == [:])
+        let kept = try #require(defaults.data(forKey: addedKey))
+        #expect(try JSONDecoder().decode([String: String].self, from: kept) == ["x": "formatFromALaterBuild"])
+    }
+
+    @Test("A table rename moves the formats in both keys")
+    func renameTableMovesBothKeys() throws {
+        let (storage, _) = try makeStorage()
+        let conn = UUID()
+        storage.save(["id": .uuid, "payload": .igbinary], for: scope("public", connectionId: conn))
+
+        storage.renameTable(
+            from: scope("public", connectionId: conn),
+            to: scope("public", connectionId: conn, table: "purchases")
+        )
+
+        #expect(storage.load(for: scope("public", connectionId: conn)) == nil)
+        #expect(storage.load(for: scope("public", connectionId: conn, table: "purchases")) == ["id": .uuid, "payload": .igbinary])
+    }
+
+    @Test("A schema file goes once no saved format names it")
+    func schemaFilesFollowTheFormatsThatNameThem() throws {
+        let defaults = try pool.make().defaults
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let earlier = AvroSchemaStore(directory: directory)
+        let kept = try earlier.add(#"{"type":"array","items":"int"}"#)
+        let orphan = try earlier.add(#"{"type":"array","items":"long"}"#)
+        let schemas = AvroSchemaStore(directory: directory)
+        let storage = ValueDisplayFormatStorage(defaults: defaults, schemas: schemas)
+        let target = scope("public", connectionId: UUID())
+
+        storage.save(["payload": .avro(schemaID: kept)], for: target)
+        #expect(schemas.storedIDs == [kept])
+
+        storage.dropTable(target)
+        #expect(schemas.storedIDs.isEmpty)
+        #expect(orphan != kept)
+    }
+}
+
+// What 0.83.1 decodes a table's formats as: a String enum of the names it shipped.
+private enum FormatsIn083: String, Codable {
+    case raw, text, uuid, uuidSwappedTime, unixTimestamp, unixTimestampMillis, json, phpSerialized, messagePack, protobuf
 }
