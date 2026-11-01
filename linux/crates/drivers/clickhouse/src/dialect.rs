@@ -7,6 +7,7 @@ use tablepro_core::dialect::{
     BindError, BindTarget, DatabaseLayout, DialectCapabilities, InsertBatchLimits, InsertConflict, KeysetDirection,
     LikeCase, LikeForm, LiteralError, Placeholder, SqlDialect,
 };
+use tablepro_core::edit::{CellExpression, MomentKind};
 use tablepro_core::export::value_to_text;
 use tablepro_core::meta::{EngineRowId, EngineRowIdPart, TableRef};
 use tablepro_core::sql_syntax::{
@@ -68,6 +69,16 @@ impl SqlDialect for ClickHouseDialect {
 
     fn grammar(&self) -> SqlGrammar {
         SqlGrammar::ClickHouse
+    }
+
+    fn cell_expressions(&self) -> &'static [CellExpression] {
+        const MOMENT: &[MomentKind] = &[MomentKind::Timestamp];
+        const DATE: &[MomentKind] = &[MomentKind::Date];
+        const EXPRESSIONS: &[CellExpression] = &[
+            CellExpression::new("now()", MOMENT, &["CURRENT_TIMESTAMP()", "UTC_TIMESTAMP()"]),
+            CellExpression::new("today()", DATE, &["CURDATE()", "CURRENT_DATE()"]),
+        ];
+        EXPRESSIONS
     }
 
     fn quote_identifier(&self, name: &str) -> String {

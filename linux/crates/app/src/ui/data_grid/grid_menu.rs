@@ -16,6 +16,8 @@ pub struct GridMenus {
     pub empty: Option<gtk::PopoverMenu>,
     /// Filled from the table's foreign keys as a menu opens.
     pub references: gio::Menu,
+    /// Filled with the expressions the cell takes as a menu opens.
+    pub expressions: gio::Menu,
     /// The keys a column is in, for Ctrl+J to choose from.
     pub reference_chooser: gtk::PopoverMenu,
     /// An enum or set cell's labels, for a grid that edits.
@@ -55,7 +57,8 @@ impl GridMenus {
     pub fn new(grid: &DataGrid) -> Self {
         let editable = grid.config().is_some_and(|config| config.tracker.is_some());
         let references = gio::Menu::new();
-        let cell = popover(grid, &cell_menu(grid, &references));
+        let expressions = gio::Menu::new();
+        let cell = popover(grid, &cell_menu(grid, &references, &expressions));
         let empty = editable.then(|| {
             popover(
                 grid,
@@ -71,6 +74,7 @@ impl GridMenus {
             cell,
             empty,
             references,
+            expressions,
             reference_chooser,
             choices,
         }
@@ -105,7 +109,7 @@ fn popover(grid: &DataGrid, model: &gio::Menu) -> gtk::PopoverMenu {
     popover
 }
 
-fn cell_menu(grid: &DataGrid, references: &gio::Menu) -> gio::Menu {
+fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -> gio::Menu {
     let config = grid.config();
     let editable = config.is_some_and(|config| config.tracker.is_some());
     let sorts = config.is_some_and(|config| config.sorting != GridSorting::None);
@@ -114,6 +118,7 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu) -> gio::Menu {
         let edits = presets_section();
         edits.prepend_item(&hidden_while_disabled(&gettext("_Edit Cell"), "grid.edit"));
         menu.append_section(None, &edits);
+        menu.append_section(None, expressions);
     }
     let copy_as = section([
         item(&gettext("_Rows"), "grid.copy-rows"),
@@ -309,6 +314,7 @@ impl DataGrid {
         self.hold_menu_target(target);
         self.refresh_actions();
         self.arm_references(cell);
+        self.edit().arm_expressions(self, cell);
     }
 
     /// A popover parented to the grid points in the grid's coordinates.

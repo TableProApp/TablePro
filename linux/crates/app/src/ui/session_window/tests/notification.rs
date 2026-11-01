@@ -334,7 +334,7 @@ fn a_background_tab_saved_by_its_close_prompt_is_not_notified() {
         row_key: RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"),
         col: 1,
         original: Value::Int(1),
-        value: Value::Int(2),
+        value: tablepro_core::edit::CellInput::Value(Value::Int(2)),
     });
     notified.open_editor_tab();
 

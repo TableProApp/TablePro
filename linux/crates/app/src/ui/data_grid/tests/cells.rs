@@ -368,7 +368,7 @@ fn a_revision_bump_draws_the_pending_value_in_the_same_cell() {
         row_key: key(1),
         col: 1,
         original: text("A"),
-        value: text("new"),
+        value: tablepro_core::edit::CellInput::Value(text("new")),
     });
 
     grid.grid.store().row(0).expect("a row").bump_revision();
