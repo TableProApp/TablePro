@@ -58,6 +58,9 @@
     "MongoDBDriver": {
       "name": "MongoDB Driver"
     },
+    "Neo4jDriverPlugin": {
+      "name": "Neo4j Driver"
+    },
     "OracleDriver": {
       "name": "Oracle Driver"
     },
@@ -69,6 +72,9 @@
     },
     "SpannerDriverPlugin": {
       "name": "Spanner Driver"
+    },
+    "StarRocksDriverPlugin": {
+      "name": "StarRocks Driver"
     },
     "SurrealDBDriverPlugin": {
       "name": "SurrealDB Driver"

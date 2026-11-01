@@ -14,6 +14,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let tidb = DatabaseType(rawValue: "TiDB")
     public static let databend = DatabaseType(rawValue: "Databend")
     public static let oceanbase = DatabaseType(rawValue: "OceanBase")
+    public static let starrocks = DatabaseType(rawValue: "StarRocks")
     public static let postgresql = DatabaseType(rawValue: "PostgreSQL")
     public static let sqlite = DatabaseType(rawValue: "SQLite")
     public static let redis = DatabaseType(rawValue: "Redis")
@@ -48,7 +49,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let bigtable = DatabaseType(rawValue: "Bigtable")
 
     public static let allKnownTypes: [DatabaseType] = [
-        .mysql, .mariadb, .tidb, .databend, .oceanbase, .postgresql, .sqlite, .redis, .mongodb,
+        .mysql, .mariadb, .tidb, .databend, .oceanbase, .starrocks, .postgresql, .sqlite, .redis, .mongodb,
         .clickhouse, .mssql, .oracle, .dameng, .duckdb, .cassandra, .redshift,
         .etcd, .cloudflareD1, .dynamodb, .bigquery, .spanner, .snowflake, .libsql, .beancount,
         .surrealdb, .teradata, .trino, .kafka, .cloudflareR2SQL, .weaviate, .memcached, .firestore, .firebaseRealtimeDatabase, .bigtable
@@ -62,6 +63,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .tidb: return "tidb-icon"
         case .databend: return "databend-icon"
         case .oceanbase: return "oceanbase-icon"
+        case .starrocks: return "starrocks-icon"
         case .postgresql: return "postgresql-icon"
         case .redshift: return "redshift-icon"
         case .sqlite: return "sqlite-icon"

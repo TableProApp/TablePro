@@ -143,6 +143,10 @@ enum DatabaseMenuBuilder {
                 String(localized: "Query Insights"),
                 action: #selector(MainSplitViewController.showQueryInsights(_:))
             ),
+            MenuItemFactory.item(
+                String(localized: "Table Health"),
+                action: #selector(MainSplitViewController.showTableHealth(_:))
+            ),
             MenuItemFactory.separator,
             /// No ellipsis: the HIG reserves one for an action that needs more information before
             /// it can complete, and this needs none. It validates to disabled for every connection

@@ -6,6 +6,8 @@ import TableProPluginKit
 extension MySQLPluginDriver {
     func createDatabaseFormSpec() async throws -> PluginCreateDatabaseFormSpec? {
         guard !flavor.isDatabend else { return PluginCreateDatabaseFormSpec(fields: [], footnote: nil) }
+        // The StarRocks database level is its catalogs, which a charset form cannot describe.
+        guard !flavor.isStarRocks else { return nil }
         let charsetDefaults = try await fetchCharsetDefaults()
         let collations = try await fetchCollationCatalog()
         let serverDefaults = await fetchServerCharsetDefaults()

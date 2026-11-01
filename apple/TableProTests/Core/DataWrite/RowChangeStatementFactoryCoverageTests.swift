@@ -322,6 +322,27 @@ struct RowChangeStatementFactoryCoverageTests {
         #expect(build.steps.allSatisfy { $0.expectedRowCount == nil })
     }
 
+    @Test("A driver's keyed statement through a view is held to its one row")
+    func buildRowWritesHoldsAKeyedDriverStatementThroughAView() throws {
+        let manager = DataChangeManager()
+        manager.configureForTable(
+            tableName: "v_items", columns: columns, primaryKeyColumns: ["_id"],
+            databaseType: .mssql, generatedColumns: []
+        )
+        manager.pluginDriver = writesOnlyUpdates()
+        manager.recordCellChange(
+            rowID: .existing(0), columnIndex: 1, columnName: "name",
+            oldValue: "a", newValue: "z", originalRow: ["0", "a"]
+        )
+
+        let build = try manager.buildRowWrites(
+            database: "d", schema: nil, containsTableOperation: false, writesThroughView: true
+        )
+
+        #expect(build.steps.map(\.expectedRowCount) == [1])
+        #expect(build.steps.allSatisfy { !$0.matchesRowsWithoutKey })
+    }
+
     @Test("A keyless driver statement is not held where the engine reports no real count")
     func keylessDriverStatementOnAnEngineWithoutCountsIsNotHeld() throws {
         let written = try factory(

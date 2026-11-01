@@ -1186,7 +1186,7 @@ final class MainContentCoordinator: ObservableObject {
         // Captured now, while the result this decision was made against is still the active one.
         let cachedMetadata: ParsedSchemaMetadata? = needsMetadataFetch ? nil : ParsedSchemaMetadata.cached(
             rows: tabSessionRegistry.tableRows(for: tabId),
-            primaryKeyColumns: tabManager.tabs[index].tableContext.primaryKeyColumns
+            context: tabManager.tabs[index].tableContext
         )
         if let tableName {
             Self.logger.info(
@@ -1202,6 +1202,7 @@ final class MainContentCoordinator: ObservableObject {
             return
         }
         let isTableTab = tab.tabType == .table
+        let readsView = tab.tableContext.knowsView(named: tableName)
         let (grammar, lengthColumns) = (lexicalGrammar, unloadedValueLengthColumns(for: tab))
 
         let failureOutput = ServerOutputBox()
@@ -1212,8 +1213,7 @@ final class MainContentCoordinator: ObservableObject {
                 return
             }
 
-            if let tableName, !tableName.isEmpty { prefetchForeignKeys(scope: scope) }
-            let schemaTask = QueryExecutor.schemaFetch(tableName: needsMetadataFetch ? tableName : nil, scope: scope)
+            let schemaTask = startSchemaFetch(tableName, uncached: needsMetadataFetch, isView: readsView, scope: scope)
 
             let fetchBeganAt = ContinuousClock.now
             do {
