@@ -14,10 +14,12 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct MaskingBridgeTests {
-    private static let customers = ScriptAnsweringDriver.resultSet(
-        columns: ["id", "email"],
-        rows: [["1", "jane@example.com"], ["2", "john@example.com"]]
-    )
+    nonisolated private static func customers() -> QueryResult {
+        ScriptAnsweringDriver.resultSet(
+            columns: ["id", "email"],
+            rows: [["1", "jane@example.com"], ["2", "john@example.com"]]
+        )
+    }
 
     private func install(type: DatabaseType = .mysql, sendsBatchesWhole: Bool = true) -> (ScriptAnsweringDriver, DatabaseScope) {
         var connection = TestFixtures.makeConnection(database: "shop", type: type)
@@ -25,8 +27,8 @@ struct MaskingBridgeTests {
         let driver = ScriptAnsweringDriver(
             connection: connection,
             sendsBatchesWhole: sendsBatchesWhole,
-            answer: { _ in ScriptAnsweringDriver.batch([Self.customers, Self.customers]) },
-            statementAnswer: { _ in Self.customers }
+            answer: { _ in ScriptAnsweringDriver.batch([Self.customers(), Self.customers()]) },
+            statementAnswer: { _ in Self.customers() }
         )
         var session = ConnectionSession(connection: connection)
         session.driver = driver
@@ -87,7 +89,7 @@ struct MaskingBridgeTests {
     func maskingTableNarrowsTheMatch() async throws {
         var connection = TestFixtures.makeConnection(database: "shop")
         connection.maskingRules = [MaskingRule(pattern: "users.email")]
-        let driver = ScriptAnsweringDriver(connection: connection, statementAnswer: { _ in Self.customers })
+        let driver = ScriptAnsweringDriver(connection: connection, statementAnswer: { _ in Self.customers() })
         var session = ConnectionSession(connection: connection)
         session.driver = driver
         DatabaseManager.shared.injectSession(session, for: connection.id)
