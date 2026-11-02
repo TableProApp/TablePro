@@ -138,6 +138,31 @@ public sealed class ShellTests
 
     [Theory]
     [MemberData(nameof(Themes))]
+    public void CancellingAConnectTakesItsItemAway(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+
+        app.Find("NewConnectionCard").AsButton().Invoke();
+        var form = app.WaitForWindow("New connection");
+        app.Find("Engine_postgres", form).Click();
+        // A documentation address that drops packets, so the connect waits until cancelled.
+        app.Find("HostBox", form).AsTextBox().Text = "192.0.2.1";
+        app.Find("NameBox", form).AsTextBox().Text = "Unreachable";
+        app.Find("ConnectButton", form).AsButton().Invoke();
+        Assert.True(app.WindowClosed("New connection"));
+
+        var cancel = app.Find("CancelConnectButton");
+        Assert.StartsWith("Connecting to Unreachable", app.Find("ConnectingText").Name, StringComparison.Ordinal);
+        app.Screenshot("12-connecting");
+        cancel.AsButton().Invoke();
+
+        var gone = Retry.WhileFalse(() => app.TryFind("Rail_Unreachable") is null, AppSession.Wait, throwOnTimeout: false).Result;
+        Assert.True(gone);
+        app.Find("ConnectionTree");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
     public void TheFormMarksAMissingHostAtTheField(string theme)
     {
         using var app = AppSession.Launch(theme);
