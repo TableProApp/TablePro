@@ -90,6 +90,7 @@ public sealed partial class HomeView : UserControl
         }
 
         _rebuilding = false;
+        ApplyExpansion(Items);
 
         NoResultsText.Visibility = searching && Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -154,6 +155,27 @@ public sealed partial class HomeView : UserControl
     }
 
     // A bound TreeViewItem.IsExpanded is overwritten when the row joins the tree, so a row opens once it has loaded.
+    // The rows that are already in the tree open here, a level at a time, since a row's children get containers only
+    // once it is open and laid out; rows that load later open in OnLibraryRowLoaded.
+    private void ApplyExpansion(IEnumerable<LibraryItem> items)
+    {
+        ConnectionTree.UpdateLayout();
+        var opened = new List<LibraryItem>();
+        foreach (var item in items.Where(item => item.StartsExpanded && item.Children.Count > 0))
+        {
+            if (ConnectionTree.ContainerFromItem(item) is TreeViewItem row)
+            {
+                row.IsExpanded = true;
+                opened.Add(item);
+            }
+        }
+
+        if (opened.Count > 0)
+        {
+            ApplyExpansion(opened.SelectMany(item => item.Children));
+        }
+    }
+
     private void OnLibraryRowLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is TreeViewItem row
