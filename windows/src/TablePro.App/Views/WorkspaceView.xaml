@@ -79,7 +79,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Button x:Uid="BackToTreeButton" x:Name="BackToTreeButton" Click="OnBackToTree" Style="{StaticResource SubtleButtonStyle}">
+                    <Button x:Uid="BackToTreeButton" x:Name="BackToTreeButton" Click="OnBackToTree">
                         <SymbolIcon Symbol="Back" />
                     </Button>
                     <TextBlock
