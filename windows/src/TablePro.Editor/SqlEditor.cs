@@ -39,7 +39,6 @@ public sealed partial class SqlEditor : UserControl, IDisposable
     private readonly ScrollBar _horizontalBar = new() { Orientation = Orientation.Horizontal, IndicatorMode = ScrollingIndicatorMode.MouseIndicator };
     private readonly List<SyntaxSpan> _spans = [];
     private readonly UISettings _uiSettings = new();
-    private readonly AccessibilitySettings _accessibility = new();
     private readonly EditorModel _model;
     private SyntaxHighlighter? _highlighter;
     private ISyntaxLexer? _lexer;
@@ -84,7 +83,9 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         _verticalBar.ValueChanged += (_, e) => ScrollFromBar(vertical: true, e.NewValue);
         _horizontalBar.ValueChanged += (_, e) => ScrollFromBar(vertical: false, e.NewValue);
         ActualThemeChanged += (_, _) => RebuildBrushes();
-        _accessibility.HighContrastChanged += (_, _) => DispatcherQueue.TryEnqueue(RebuildBrushes);
+        // AccessibilitySettings.HighContrastChanged needs a CoreWindow (0x80070490 in a desktop app);
+        // UISettings raises this one for contrast themes too, off the UI thread.
+        _uiSettings.ColorValuesChanged += (_, _) => DispatcherQueue.TryEnqueue(RebuildBrushes);
         GotFocus += (_, _) => OnFocusChanged(true);
         LostFocus += (_, _) => OnFocusChanged(false);
         CharacterReceived += OnCharacterReceived;
