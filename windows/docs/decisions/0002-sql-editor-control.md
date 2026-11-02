@@ -1,4 +1,4 @@
-# 0001: TablePro's own SQL editor control
+# 0002: TablePro's own SQL editor control
 
 - **Status**: Accepted
 - **Date**: 2026-11-02

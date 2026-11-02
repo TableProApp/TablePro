@@ -36,6 +36,16 @@ struct LicenseTierTests {
         #expect(LicenseTier(rawValue: "").unlocks(.team) == false)
     }
 
+    // MARK: - Display name
+
+    /// The plan is sold as Pro, while its code stays `starter` in license payloads and on the server.
+    @Test("The starter tier is shown as Pro, the name the pricing page sells")
+    func starterTierIsShownAsPro() {
+        #expect(LicenseTier.starter.displayName == "Pro")
+        #expect(LicenseTier(rawValue: "starter").displayName == "Pro")
+        #expect(LicenseTier.team.displayName == "Team")
+    }
+
     // MARK: - unlocks
 
     @Test("starter unlocks only starter features")

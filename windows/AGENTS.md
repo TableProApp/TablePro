@@ -7,7 +7,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 ## Principles
 
 1. **Tests define behavior**, as in the root `AGENTS.md`.
-2. **Native only.** WinUI 3 controls, used as the Fluent guidance describes. No custom control where WinUI has one, no web view, no cross-platform toolkit. The SQL editor is our own control because RichEditBox failed its gate (`docs/decisions/0001-sql-editor-control.md`).
+2. **Native only.** WinUI 3 controls, used as the Fluent guidance describes. No custom control where WinUI has one, no web view, no cross-platform toolkit. The SQL editor is our own control because RichEditBox failed its gate (`docs/decisions/0002-sql-editor-control.md`).
 3. **The core does the work.** Drivers, sessions, the catalog, result sets and error codes live in `core/`. This folder words, lays out and styles. What the core lacks is added there, with its Rust tests.
 4. **Nothing generated is edited.** `src/TablePro.Interop/Generated/` changes only through the generator (Bindings, below).
 

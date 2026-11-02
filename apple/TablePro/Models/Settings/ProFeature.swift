@@ -106,7 +106,7 @@ internal enum ProFeature: String, CaseIterable {
         }
     }
 
-    /// Names the plan, because the pricing page a gate links to sells Starter and Team by name.
+    /// Names the plan, because the pricing page a gate links to sells Pro and Team by name.
     var planRequirement: String {
         String(format: String(localized: "%@ requires the %@ plan"), displayName, requiredTier.displayName)
     }

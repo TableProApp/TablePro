@@ -11,7 +11,7 @@ public sealed partial class SqlEditor
 {
     private char _pendingHighSurrogate;
 
-    // Keys as Windows text boxes and VS Code on Windows have them; windows/docs/decisions/0001-sql-editor-control.md
+    // Keys as Windows text boxes and VS Code on Windows have them; windows/docs/decisions/0002-sql-editor-control.md
     // lists the full map.
     protected override void OnKeyDown(KeyRoutedEventArgs e)
     {

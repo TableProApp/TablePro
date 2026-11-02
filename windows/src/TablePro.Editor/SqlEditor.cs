@@ -27,7 +27,7 @@ public readonly record struct EditorFrame(
     bool Software);
 
 // The SQL editor: TablePro's own text control over the EditorModel, drawn with Direct2D and DirectWrite into a
-// SwapChainPanel, with TSF for input methods and a UIA text provider. windows/docs/decisions/0001-sql-editor-control.md
+// SwapChainPanel, with TSF for input methods and a UIA text provider. windows/docs/decisions/0002-sql-editor-control.md
 // has the design.
 public sealed partial class SqlEditor : UserControl, IDisposable
 {

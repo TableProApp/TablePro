@@ -42,7 +42,7 @@ internal interface ITsfHost
 // The editor's TSF client, done as Windows Terminal does it: one context whose text store TSF owns
 // (ITfContextOwner), holding only the text being composed. Finished text moves into the document as typing and
 // leaves the context, so the IME never reads the 5 MB document and composition never reaches the undo history.
-// CoreTextEditContext is not used: its context is not transitory (windows/docs/decisions/0001-sql-editor-control.md,
+// CoreTextEditContext is not used: its context is not transitory (windows/docs/decisions/0002-sql-editor-control.md,
 // Input).
 internal sealed unsafe partial class TsfInput : IDisposable
 {
