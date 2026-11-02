@@ -60,6 +60,8 @@ internal actor DatabaseAccessBridge {
                 try await manager.ensureConnected(connection)
             } catch let refusal as PreConnectScriptConsentError {
                 throw Self.accessError(for: refusal)
+            } catch let refusal as EnvVarReferenceConsentError {
+                throw Self.accessError(for: refusal)
             }
         }
 
@@ -147,6 +149,8 @@ internal actor DatabaseAccessBridge {
                 try await manager.ensureConnected(pending)
             } catch let refusal as PreConnectScriptConsentError {
                 throw Self.accessError(for: refusal)
+            } catch let refusal as EnvVarReferenceConsentError {
+                throw Self.accessError(for: refusal)
             }
         }
         /// An automation client is the likeliest thing to reach a connection nobody has touched
@@ -169,8 +173,18 @@ internal actor DatabaseAccessBridge {
         return databaseType
     }
 
-    /// A refused pre-connect script reaches a client as a refusal or a timeout, not a failure.
+    // A refused consent prompt reaches a client as a refusal or a timeout, not a failure.
     private static func accessError(for refusal: PreConnectScriptConsentError) -> DatabaseAccessError {
+        let detail = refusal.errorDescription ?? ""
+        switch refusal {
+        case .unanswered:
+            return .timeout(detail)
+        case .declined, .needsPerson:
+            return .forbidden(detail)
+        }
+    }
+
+    private static func accessError(for refusal: EnvVarReferenceConsentError) -> DatabaseAccessError {
         let detail = refusal.errorDescription ?? ""
         switch refusal {
         case .unanswered:

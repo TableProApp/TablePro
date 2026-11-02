@@ -82,7 +82,7 @@ struct AgentCLIProcess: Sendable {
             let label = self.label
             let stderrDrain = Task {
                 for try await line in stderr.fileHandleForReading.bytes.lines where !line.isEmpty {
-                    Self.logger.error("\(label, privacy: .public) stderr: \(line, privacy: .public)")
+                    Self.logger.error("\(label, privacy: .public) stderr: \(line, privacy: .private)")
                 }
             }
 

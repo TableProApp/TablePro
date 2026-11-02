@@ -96,7 +96,7 @@ public enum SSHConfigResolver {
         var failure = SSHDestinationName.problem(host: originalHost, user: formUser)
             .map(SSHTokenExpansionError.invalidDestination)
         if let failure {
-            logger.warning("\(failure.explanation, privacy: .public)")
+            logger.warning("\(failure.explanation, privacy: .private)")
         }
         let blocks = failure == nil ? document.blocks : []
 
@@ -145,7 +145,7 @@ public enum SSHConfigResolver {
         } else {
             // Dialing the short name would leave the server to the network's search list.
             let error = SSHTokenExpansionError.hostNotInCanonicalDomains(host: substitutedHost)
-            logger.warning("\(error.explanation, privacy: .public)")
+            logger.warning("\(error.explanation, privacy: .private)")
             if failure == nil { failure = error }
             canonicalizedHost = substitutedHost
         }
@@ -280,7 +280,7 @@ public enum SSHConfigResolver {
         do {
             return try context.expand(value, scope: scope, keyword: keyword)
         } catch let error as SSHTokenExpansionError {
-            logger.warning("\(error.explanation, privacy: .public)")
+            logger.warning("\(error.explanation, privacy: .private)")
             if failure == nil { failure = error }
             return nil
         } catch {
@@ -526,7 +526,7 @@ public enum SSHConfigResolver {
             )
             // A HostName substitution or a canonical name from DNS never passed the entry check.
             if let problem = destinationProblem(in: context, substituting: tokens(in: command)) {
-                logger.warning("\(problem.explanation, privacy: .public)")
+                logger.warning("\(problem.explanation, privacy: .private)")
                 if failure == nil { failure = problem }
                 return nil
             }

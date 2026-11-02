@@ -209,7 +209,7 @@ internal final class MCPServerManager: ObservableObject {
         }
 
         let failure = MCPPortAllocatorError.everyCandidateRejected(lastFailure: lastFailure)
-        Self.logger.error("MCP server failed to start: \(lastFailure, privacy: .public)")
+        Self.logger.error("MCP server failed to start: \(lastFailure, privacy: .private)")
         state = .failed(failure.localizedDescription)
         tokenStore = nil
         return nil

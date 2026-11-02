@@ -436,7 +436,7 @@ public final class MCPHandshakeFile {
         } catch CocoaError.fileNoSuchFile {
             return
         } catch {
-            Self.logger.error("Failed to delete \(file.lastPathComponent, privacy: .public): \(LogRedaction.publicDescription(of: error), privacy: .public)")
+            Self.logger.error("Failed to delete \(file.lastPathComponent, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public)")
         }
     }
 

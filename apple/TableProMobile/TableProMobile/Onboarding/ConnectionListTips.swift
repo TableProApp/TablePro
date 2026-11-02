@@ -1,6 +1,7 @@
 import Foundation
 import os
 import SwiftUI
+import TableProLogRedaction
 import TipKit
 
 nonisolated struct FavoriteSwipeTip: Tip {
@@ -104,7 +105,7 @@ enum ConnectionListTips {
             try Tips.configure([.displayFrequency(.daily)])
             isConfigured = true
         } catch {
-            logger.error("Could not configure tips: \(error.localizedDescription, privacy: .public)")
+            logger.error("Could not configure tips: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 

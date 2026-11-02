@@ -420,7 +420,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
            !serverSchema.isEmpty {
             currentSchemaName = serverSchema
         } else {
-            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self.currentSchemaName, privacy: .public)")
+            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self.currentSchemaName, privacy: .private(mask: .hash))")
         }
 
         let formSchema = config.additionalFields["mssqlSchema"]

@@ -254,7 +254,7 @@ final class CatalogChangeService {
     private func run(_ change: CatalogChange) async {
         guard isSessionLive(change.connectionId) else { return }
         Self.logger.debug(
-            "[catalog] refresh connId=\(change.connectionId, privacy: .public) database=\(change.database ?? "*", privacy: .public) kinds=\(change.kinds.rawValue)"
+            "[catalog] refresh connId=\(change.connectionId, privacy: .public) database=\(change.database ?? "*", privacy: .private(mask: .hash)) kinds=\(change.kinds.rawValue)"
         )
         SchemaForeignKeyStore.shared.invalidate(connectionId: change.connectionId)
         let leading = targets.filter { $0.refreshesBeforeOtherTargets(for: change) }

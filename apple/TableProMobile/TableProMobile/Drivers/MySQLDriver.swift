@@ -123,7 +123,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                 _ = try await actor.execute(statement)
             } catch {
                 Self.logger.warning(
-                    "Session setup failed with \(statement, privacy: .public): \(error.localizedDescription, privacy: .private)"
+                    "Session setup failed with \(statement, privacy: .private): \(error.localizedDescription, privacy: .private)"
                 )
                 break
             }

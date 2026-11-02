@@ -26,7 +26,7 @@ enum SSHMatchExecutor {
         let trimmed = command.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return false }
 
-        logger.notice("Match exec: \(trimmed, privacy: .public)")
+        logger.notice("Match exec: \(trimmed, privacy: .private)")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")

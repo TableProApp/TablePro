@@ -1076,6 +1076,9 @@ enum DatabaseDriverFactory {
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             throw PluginManager.shared.driverUnavailableError(for: connection.type)
         }
+        if let refusal = SSLModeNotSupportedError.refusal(for: connection, pluginType: type(of: plugin)) {
+            throw refusal
+        }
 
         var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
         if let sslClientKeyPassphrase = ConnectionStorage.shared.loadSSLClientKeyPassphrase(for: connection.id),

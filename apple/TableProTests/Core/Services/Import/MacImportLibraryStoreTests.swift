@@ -42,7 +42,7 @@ struct MacImportLibraryStoreTests {
 
     // MARK: - Snapshot
 
-    @Test("The snapshot lists every saved connection by match key, and the saved queries")
+    @Test("The snapshot lists every saved connection by match key and as its export reads, and the saved queries")
     func snapshotListsConnectionsAndQueries() async throws {
         let library = try ImportLibraryFixture()
         defer { library.cleanUp() }
@@ -57,7 +57,35 @@ struct MacImportLibraryStoreTests {
 
         #expect(snapshot.connections.map(\.id) == [existing.id])
         #expect(snapshot.connections.first?.matchKey == ConnectionMatchKey(settings()))
+        #expect(snapshot.connections.first?.settings == library.exporter.portableSettings(for: existing))
         #expect(snapshot.savedQueries.map(\.name) == ["Locks"])
+    }
+
+    @Test("A file carrying the saved connection's own export is offered Replace, one naming other hosts is not")
+    func replaceIsOfferedOnlyForTheSameDestination() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        let existing = DatabaseConnection(
+            name: "Production", host: "es.prod.internal", port: 9_200,
+            username: "elastic", type: .elasticsearch
+        )
+        #expect(library.connections.addConnection(existing))
+        let own = library.exporter.portableSettings(for: existing)
+        var moved = own
+        moved.additionalFields = ["esHosts": "es.attacker.example:9200"]
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [
+            BundleConnection(ref: "c1", settings: own),
+            BundleConnection(ref: "c2", settings: moved),
+        ])
+
+        let preview = ConnectionImportAnalyzer.analyze(
+            CollectedImport(bundle: bundle, source: .file(name: "Tests.tablepro")),
+            library: try await library.store.snapshot(),
+            environment: ImportLibraryFixture.environment(registeredTypeIds: ["Elasticsearch"])
+        )
+
+        let resolutions = preview.connections.map { $0.resolutions }
+        #expect(resolutions == [[.addCopy, .replace(existing.id)], [.addCopy]])
     }
 
     @Test("A saved socket connection matches its exported settings, not a TCP connection to the same database")

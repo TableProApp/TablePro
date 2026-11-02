@@ -42,7 +42,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         Logger(subsystem: "com.TablePro", category: "DataFiles")
-            .debug("AppDelegate.application(_:open:) urls=\(urls.map(\.lastPathComponent).joined(separator: ","), privacy: .public)")
+            .debug("AppDelegate.application(_:open:) urls=\(urls.map(\.lastPathComponent).joined(separator: ","), privacy: .private(mask: .hash))")
         AppLaunchCoordinator.shared.handleOpenURLs(urls)
     }
 
@@ -139,6 +139,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !AppStorageEnvironment.shared.isIsolated else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
+        // Before sync starts, so a pulled change is never approved as part of the first use.
+        EnvVarReferenceApprovalStore.shared.migrateIfNeeded()
         ConnectionStorage.shared.moveMongoURISecretsToKeychain()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()

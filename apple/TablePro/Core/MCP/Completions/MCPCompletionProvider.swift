@@ -62,7 +62,7 @@ public actor MCPCompletionProvider {
         }
         Self.logger.debug(
             """
-            completion ref=\(reference.describedReference, privacy: .public) \
+            completion ref=\(reference.describedReference, privacy: .private) \
             argument=\(argumentName, privacy: .public) \
             values=\(result.values.count, privacy: .public) total=\(result.total, privacy: .public)
             """

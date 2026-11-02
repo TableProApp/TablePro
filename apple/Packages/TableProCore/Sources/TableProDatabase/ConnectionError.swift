@@ -6,6 +6,7 @@ public enum ConnectionError: Error, LocalizedError, Equatable {
     case sshNotSupported
     case localSocketNotSupported
     case kerberosNotSupported
+    case sslModeNotSupported(mode: String, typeName: String)
     case previousSessionStillClosing
 
     public var errorDescription: String? {
@@ -20,6 +21,12 @@ public enum ConnectionError: Error, LocalizedError, Equatable {
             return String(localized: "This connection uses a socket on a Mac and cannot be opened on iPhone or iPad.")
         case .kerberosNotSupported:
             return String(localized: "This connection signs in with Kerberos, which TablePro on iPhone and iPad can't do.")
+        case .sslModeNotSupported(let mode, let typeName):
+            return String(
+                format: String(localized: "TablePro on iPhone and iPad can't connect to %1$@ with the SSL mode %2$@."),
+                typeName,
+                mode
+            )
         case .previousSessionStillClosing:
             return String(localized: "The previous session is still closing")
         }

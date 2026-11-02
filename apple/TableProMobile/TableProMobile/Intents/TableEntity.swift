@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import TableProDatabase
 import TableProModels
 
 struct TableEntity: AppEntity {
@@ -30,9 +31,7 @@ nonisolated struct TableListingScope: Equatable, Sendable {
     }
 }
 
-/// A dependency hands back every parameter it lists unwrapped, so one that lists the optional
-/// database stays nil until a database is picked. SQLite never offers one, hence the separate
-/// connection-only dependencies.
+// A dependency that lists the optional database stays nil until one is picked, and SQLite never offers one.
 struct TableEntityQuery: EntityQuery {
     @IntentParameterDependency<AddRowToTableIntent>(\.$connection)
     var addRow
@@ -46,23 +45,28 @@ struct TableEntityQuery: EntityQuery {
     @IntentParameterDependency<AddRowsToTableIntent>(\.$connection, \.$database)
     var addRowsInDatabase
 
+    @Dependency private var lockState: AppLockState
+
     func entities(for identifiers: [String]) async throws -> [TableEntity] {
         identifiers.map { TableEntity(id: $0, name: $0) }
     }
 
     func suggestedEntities() async throws -> [TableEntity] {
-        try await Self.tables(in: selectedScope)
+        try await Self.tables(in: selectedScope, lock: lockState)
     }
 
-    /// Throws instead of listing nothing: the Shortcuts editor shows the error in the picker, so a
-    /// connection that cannot open does not look like a database with no tables.
+    // Throws instead of listing nothing: the picker shows the error, so a failed open never reads as no tables.
     static func tables(
         in scope: TableListingScope?,
+        lock: AppLockState,
+        keychain: any SecureStore = KeychainSecureStore(),
         savedConnection: @Sendable (UUID) -> DatabaseConnection? = IntentConnectionLoader.connection(id:)
     ) async throws -> [TableEntity] {
         guard let scope else { return [] }
         return try await IntentDatabaseSession.with(
             connectionId: scope.connectionId,
+            lock: lock,
+            keychain: keychain,
             savedConnection: savedConnection
         ) {
             try await $0.tables(namespace: scope.namespace)

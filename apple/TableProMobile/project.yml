@@ -139,6 +139,7 @@ targets:
           - TableProDatabase
           - TableProGeometry
           - TableProGoogleCloud
+          - TableProHTTP
           - TableProImport
           - TableProLogRedaction
           - TableProModels

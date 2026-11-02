@@ -405,7 +405,7 @@ struct ImportDialog: View {
             let attrs = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
             fileSize = attrs[.size] as? Int64 ?? 0
         } catch {
-            Self.logger.warning("Failed to get file attributes for \(url.path(percentEncoded: false), privacy: .public): \(error.publicLogShape, privacy: .public)")
+            Self.logger.warning("Failed to get file attributes for \(url.path(percentEncoded: false), privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)")
             fileSize = 0
         }
 
@@ -566,7 +566,7 @@ struct ImportDialog: View {
                 try FileManager.default.removeItem(at: tempURL)
             } catch {
                 Self.logger.error(
-                    "cleanupTempFiles: Failed to remove tempPreviewURL at \(tempURL.path(percentEncoded: false), privacy: .public): \(error.publicLogShape, privacy: .public)"
+                    "cleanupTempFiles: Failed to remove tempPreviewURL at \(tempURL.path(percentEncoded: false), privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
                 )
             }
             tempPreviewURL = nil

@@ -54,7 +54,7 @@ enum SSHHostnameCanonicalizer {
                 let canonical = followsCNAME(from: candidate, to: resolved, rules: options.permittedCNAMEs)
                     ? resolved
                     : candidate
-                logger.debug("Canonicalized \(host, privacy: .public) -> \(canonical, privacy: .public)")
+                logger.debug("Canonicalized \(host, privacy: .private(mask: .hash)) -> \(canonical, privacy: .private(mask: .hash))")
                 return canonical
             }
         }

@@ -936,6 +936,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "\"%@\" is not a Snowflake account. Enter an identifier such as myorg-myaccount or xy12345.us-east-2.aws." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "\"%@\" is not a TextMate theme." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -4092,6 +4096,10 @@
 
     },
     "%@ is not available on this server. It accepts %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ is not on the server this connection uses, so TablePro did not send the credentials there." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -7412,6 +7420,9 @@
 
     },
     "%1$@ takes %2$lld dimensions, and the value has %3$lld." : {
+
+    },
+    "%1$@ through the SSH server %2$@" : {
 
     },
     "%1$@ to %2$@: %3$@" : {
@@ -46911,6 +46922,9 @@
     "Connect again to review the script and run it." : {
 
     },
+    "Connect again to review the variables and send them." : {
+
+    },
     "Connect Anyway" : {
       "localizations" : {
         "fr" : {
@@ -47774,6 +47788,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La connexion « %@ » charge des extensions SQLite qui n’ont pas été ajoutées sur ce Mac :"
+          }
+        }
+      }
+    },
+    "Connection “%@” reads %@ from TablePro's environment and sends the values to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Connection “%1$@” reads %2$@ from TablePro's environment and sends the values to %3$@."
           }
         }
       }
@@ -121038,6 +121062,9 @@
         }
       }
     },
+    "Nobody answered the environment variable prompt in time." : {
+
+    },
     "Nobody answered the pre-connect script prompt in time." : {
 
     },
@@ -161437,6 +161464,9 @@
     "Send" : {
 
     },
+    "Send Environment Variables?" : {
+
+    },
     "Send Message" : {
       "localizations" : {
         "fr" : {
@@ -161560,6 +161590,12 @@
       }
     },
     "Send to %@" : {
+
+    },
+    "Send Values" : {
+
+    },
+    "Sending this Mac's environment variables to the server was not approved." : {
 
     },
     "Sends the code to %@" : {
@@ -168846,6 +168882,14 @@
       }
     },
     "Snowflake" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Snowflake returned a result chunk address that is not https." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Snowflake returned a sign-in page that is not an https address, so TablePro did not open it." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -180044,6 +180088,9 @@
     "TablePro does not run a pre-connect script on its own." : {
 
     },
+    "TablePro does not send environment variables to a new server on its own." : {
+
+    },
     "TablePro does not use these theme keys: %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -180464,6 +180511,10 @@
           }
         }
       }
+    },
+    "TablePro on iPhone and iPad can't connect to %1$@ with the SSL mode %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro on iPhone and iPad can't open %@ connections." : {
       "extractionState" : "manual",
@@ -183913,6 +183964,12 @@
     "The Apple Intelligence model is still downloading." : {
 
     },
+    "The archive holds build %1$ld, not build %2$ld." : {
+
+    },
+    "The archive holds the plugin %1$@, not %2$@." : {
+
+    },
     "The assistant answers once the connection is up" : {
       "localizations" : {
         "fr" : {
@@ -185734,6 +185791,9 @@
         }
       }
     },
+    "The connection's environment variables, pre-connect script or SQLite extensions were not approved." : {
+
+    },
     "The connection's pre-connect script was not approved." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -186596,6 +186656,9 @@
         }
       }
     },
+    "The downloaded plugin is not newer than the installed one." : {
+
+    },
     "The Downloads folder is not available." : {
       "localizations" : {
         "fr" : {
@@ -187088,6 +187151,9 @@
           }
         }
       }
+    },
+    "The file holds build %1$ld of this plugin, older than build %2$ld on this Mac. To install an older build, uninstall or remove the installed plugin first, then open the file." : {
+
     },
     "The file holds one object, not a list of rows. Open a JSON array of objects or a JSON Lines file." : {
       "localizations" : {
@@ -190987,6 +191053,10 @@
           }
         }
       }
+    },
+    "The server answered HTTP %lld with a redirect to %@, which is not the server this connection uses. TablePro did not follow it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server answered with HTTP %d." : {
       "localizations" : {
@@ -195224,6 +195294,9 @@
         }
       }
     },
+    "This connection arrived through iCloud from another device." : {
+
+    },
     "This connection asks for TLS, which the Dameng driver does not support. Add the connection again without an SSL mode, and use an SSH, SOCKS or Cloudflare tunnel on a network you do not trust." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -195249,6 +195322,12 @@
     "This connection can't run the PL/pgSQL debugger." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This connection comes from a file in a linked folder, so its author chose the server and the variables." : {
+
+    },
+    "This connection comes from your team library, so a teammate chose the server and the variables." : {
+
     },
     "This connection does not support user and role management." : {
       "localizations" : {
@@ -195625,6 +195704,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection uses SSL Mode %2$@, which the %1$@ driver does not support. It supports %3$@." : {
+
+    },
     "This connection was deleted on another device or window. Your changes were not saved." : {
       "localizations" : {
         "fr" : {
@@ -195664,6 +195746,12 @@
           }
         }
       }
+    },
+    "This connection was imported, so someone else may have chosen the server and the variables." : {
+
+    },
+    "This connection was opened from a link, so its sender chose the server and the variables." : {
+
     },
     "This connection won't sync to other devices via iCloud." : {
       "localizations" : {
@@ -211243,6 +211331,9 @@
       }
     },
     "Vault returned a response TablePro could not read." : {
+
+    },
+    "Vault returned a sign-in page that is not an https address, so TablePro did not open it." : {
 
     },
     "Vault returned no sign-in page. The OIDC role must allow the redirect URI http://localhost:8250/oidc/callback." : {

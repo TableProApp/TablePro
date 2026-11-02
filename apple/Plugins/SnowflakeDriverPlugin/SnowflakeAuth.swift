@@ -2,8 +2,7 @@
 //  SnowflakeAuth.swift
 //  SnowflakeDriverPlugin
 //
-//  Account identifier parsing, key-pair JWT generation, and
-//  ~/.snowflake/connections.toml parsing.
+//  Key-pair JWT generation and ~/.snowflake/connections.toml parsing.
 //
 
 import CryptoKit
@@ -11,43 +10,17 @@ import Foundation
 import os
 import Security
 
-enum SnowflakeAccount {
-    static func host(forAccount account: String) -> String {
-        let trimmed = account.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.lowercased().hasSuffix(".snowflakecomputing.com") {
-            return trimmed
-        }
-        if trimmed.contains("://") {
-            return URL(string: trimmed)?.host ?? trimmed
-        }
-        return "\(trimmed).snowflakecomputing.com"
-    }
-
-    /// The account name used as the JWT issuer/subject prefix. Snowflake expects the
-    /// account locator without any region/cloud segment, uppercased.
-    static func issuerAccountName(forAccount account: String) -> String {
-        var name = account.trimmingCharacters(in: .whitespacesAndNewlines)
-        if name.lowercased().hasSuffix(".snowflakecomputing.com") {
-            name = String(name.dropLast(".snowflakecomputing.com".count))
-        }
-        if let dotIndex = name.firstIndex(of: ".") {
-            name = String(name[..<dotIndex])
-        }
-        return name.uppercased()
-    }
-}
-
 struct SnowflakeKeyPairAuth {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakeKeyPairAuth")
 
-    let account: String
+    let accountName: String
     let user: String
     let privateKeyPEM: String
     let passphrase: String?
 
     func makeJWT(lifetime: TimeInterval = 3_540) throws -> String {
         let privateKey = try loadPrivateKey()
-        let qualifiedUser = "\(SnowflakeAccount.issuerAccountName(forAccount: account)).\(user.uppercased())"
+        let qualifiedUser = "\(accountName).\(user.uppercased())"
         let fingerprint = try publicKeyFingerprint(for: privateKey)
         let issuer = "\(qualifiedUser).\(fingerprint)"
 

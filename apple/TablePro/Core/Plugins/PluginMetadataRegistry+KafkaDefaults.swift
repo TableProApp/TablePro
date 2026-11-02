@@ -40,7 +40,7 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsDropSchema: false,
-                    defaultSSLMode: .verifyIdentity,
+                    defaultSSLMode: .disabled,
                     supportsOpportunisticTLS: false,
                     verifiesServerWithSystemTrust: true,
                     supportsColumnSort: false,

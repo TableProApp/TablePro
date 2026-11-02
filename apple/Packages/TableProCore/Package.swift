@@ -61,6 +61,8 @@ let package = Package(
         .library(name: "TableProPostgreSQLCore", targets: ["TableProPostgreSQLCore"]),
         .library(name: "TableProRedisCore", targets: ["TableProRedisCore"]),
         .library(name: "TableProMemcachedCore", targets: ["TableProMemcachedCore"]),
+        .library(name: "TableProHTTP", targets: ["TableProHTTP"]),
+        .library(name: "TableProSnowflakeCore", targets: ["TableProSnowflakeCore"]),
         .library(name: "TableProTestSupport", targets: ["TableProTestSupport"]),
         .library(name: "TableProWireIO", targets: ["TableProWireIO"]),
         .library(name: "TableProGzip", targets: ["TableProGzip"]),
@@ -317,6 +319,20 @@ let package = Package(
             path: "Sources/TableProRedisCore",
             swiftSettings: pluginCoreSettings
         ),
+        // Linked by the macOS app, a plugin bundle and the iOS app, so never TableProPluginKit.
+        .target(
+            name: "TableProHTTP",
+            dependencies: [],
+            path: "Sources/TableProHTTP",
+            swiftSettings: pluginCoreSettings
+        ),
+        // Linked by a plugin bundle, so never TableProPluginKit.
+        .target(
+            name: "TableProSnowflakeCore",
+            dependencies: ["TableProHTTP"],
+            path: "Sources/TableProSnowflakeCore",
+            swiftSettings: pluginCoreSettings
+        ),
         .target(
             name: "TableProWireIO",
             dependencies: [],
@@ -543,6 +559,18 @@ let package = Package(
             name: "TableProRedisCoreTests",
             dependencies: ["TableProRedisCore"],
             path: "Tests/TableProRedisCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProHTTPTests",
+            dependencies: ["TableProHTTP", "TableProTestSupport"],
+            path: "Tests/TableProHTTPTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProSnowflakeCoreTests",
+            dependencies: ["TableProSnowflakeCore", "TableProHTTP"],
+            path: "Tests/TableProSnowflakeCoreTests",
             swiftSettings: pluginCoreSettings
         ),
         .testTarget(

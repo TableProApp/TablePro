@@ -5,13 +5,7 @@
 
 import Foundation
 
-/// The question a script's connect asks before it reaches `DatabaseManager`: SQLite extensions this
-/// Mac has not approved for the connection. The pre-connect script is asked about at the connect
-/// itself, by `PreConnectScriptConsent`, the same as for every other caller.
-///
-/// Skipped only when the session is genuinely live. An installed driver is not the test: a session
-/// the health monitor has marked unreachable or recovering keeps its driver by design, and
-/// `connectionState` reports it as stored, so `ensureConnected` reconnects.
+// Only `.live` skips the questions: a session marked unreachable keeps its driver and reconnects.
 @MainActor
 internal enum ScriptConnectGate {
     internal static func authorizeConnect(connectionId: UUID) async throws {
@@ -22,9 +16,9 @@ internal enum ScriptConnectGate {
         else {
             throw ScriptingError.noSuchObject(String(localized: "No saved connection has that id."))
         }
-        guard await LoadableExtensionPrompt.confirmIfNeeded(for: connection) else {
+        guard await ConnectConsent.confirmIfNeeded(for: connection) else {
             throw ScriptingError.refused(
-                String(localized: "The connection's SQLite extensions were not approved.")
+                String(localized: "The connection's environment variables, pre-connect script or SQLite extensions were not approved.")
             )
         }
     }

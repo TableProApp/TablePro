@@ -981,7 +981,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard flavor.hasMySQLObjectCatalogs, await !resolvesToTemporaryTable(table, schema: schema) else { return [] }
         let dbName = effectiveSchema(schema)
         let triggers = try await triggerList(schema: dbName, table: table)
-        Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) parsed=\(triggers.count)")
+        Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .private(mask: .hash)) table=\(table, privacy: .private(mask: .hash)) parsed=\(triggers.count)")
         return triggers
     }
 
@@ -1261,7 +1261,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 step = installation.refusedAsUnknownVariable()
             } catch {
                 Self.logger.warning(
-                    "Failed to set query timeout with \(statement, privacy: .public): \(error.localizedDescription)"
+                    "Failed to set query timeout with \(statement, privacy: .private): \(error.localizedDescription)"
                 )
                 step = installation.failed()
             }

@@ -39,8 +39,7 @@ extension PluginMetadataRegistry {
                     supportsDropColumn: false,
                     supportsAddIndex: false,
                     supportsDropIndex: false,
-                    supportsModifyPrimaryKey: false,
-                    supportsOpportunisticTLS: false
+                    supportsModifyPrimaryKey: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "Labels",

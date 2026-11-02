@@ -618,6 +618,10 @@
         }
       }
     },
+    "%@ is not on the server this connection uses, so TablePro did not send the credentials there." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ is read-only, so rows cannot be added." : {
       "localizations" : {
         "ko" : {
@@ -4931,6 +4935,7 @@
         }
       }
     },
+    "Choose another SSL mode in the connection's settings, or open it on the Mac." : {},
     "Choose File" : {
       "localizations" : {
         "ko" : {
@@ -21730,6 +21735,7 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "SSL Mode Unavailable" : {},
     "SSO portal returned HTTP %lld for profile \"%@\"." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -23210,6 +23216,11 @@
           }
         }
       }
+    },
+    "TablePro is locked. Open TablePro and unlock it, then try again." : {},
+    "TablePro on iPhone and iPad can't connect to %1$@ with the SSL mode %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro on iPhone and iPad can't open %@ connections." : {
       "extractionState" : "manual",
@@ -25713,6 +25724,10 @@
           }
         }
       }
+    },
+    "The server answered HTTP %lld with a redirect to %@, which is not the server this connection uses. TablePro did not follow it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server does not accept encrypted connections but TablePro is configured to require TLS." : {
       "extractionState" : "manual",
@@ -28438,6 +28453,7 @@
         }
       }
     },
+    "Unlock TablePro to add rows to %@." : {},
     "Unlocked" : {
       "extractionState" : "manual",
       "generatesSymbol" : false

@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import os
 import TableProConnectionLibrary
+import TableProLogRedaction
 
 @MainActor @Observable
 final class ConnectionLibraryPreferences {
@@ -85,7 +86,7 @@ final class ConnectionLibraryPreferences {
         do {
             defaults.set(try JSONEncoder().encode(updated), forKey: Self.recentConnectionsKey)
         } catch {
-            Self.logger.error("Failed to save recent connections: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save recent connections: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -104,7 +105,7 @@ final class ConnectionLibraryPreferences {
         do {
             return try JSONDecoder().decode(RecentConnectionsLedger.self, from: data)
         } catch {
-            logger.error("Discarding unreadable recent connections: \(error.localizedDescription, privacy: .public)")
+            logger.error("Discarding unreadable recent connections: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return RecentConnectionsLedger()
         }
     }

@@ -282,7 +282,7 @@ enum RemoteDatabaseFileTransfer {
 
             Self.logger.info(
                 """
-                Fetched \(identity.displayOrigin, privacy: .public) \
+                Fetched \(identity.displayOrigin, privacy: .private(mask: .hash)) \
                 via \(plan.method.rawValue, privacy: .public), \(downloaded.bytes) bytes
                 """
             )

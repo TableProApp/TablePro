@@ -358,7 +358,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         )
         let result = try await catalogRead(query)
         let foreignKeys = result.rows.compactMap { PostgreSQLForeignKeyRow($0)?.foreignKey }
-        Self.logger.info("[fk] postgres fetchForeignKeys schema=\(resolvedSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
+        Self.logger.info("[fk] postgres fetchForeignKeys schema=\(resolvedSchema, privacy: .private(mask: .hash)) table=\(table, privacy: .private(mask: .hash)) rows=\(result.rows.count) parsed=\(foreignKeys.count)")
         return foreignKeys
     }
 
@@ -371,7 +371,7 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
         let triggers = result.rows.compactMap {
             Self.trigger(from: $0, fallbackSchema: resolvedSchema)
         }
-        Self.logger.info("[trigger] postgres fetchTriggers schema=\(resolvedSchema, privacy: .public) table=\(table, privacy: .public) rows=\(result.rows.count) parsed=\(triggers.count)")
+        Self.logger.info("[trigger] postgres fetchTriggers schema=\(resolvedSchema, privacy: .private(mask: .hash)) table=\(table, privacy: .private(mask: .hash)) rows=\(result.rows.count) parsed=\(triggers.count)")
         return triggers
     }
 

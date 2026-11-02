@@ -104,7 +104,7 @@ enum LibSSH2ExecChannel {
         let signal = exitSignal(channel: channel, session: session)
 
         Self.logger.debug(
-            "remote command exited \(status, privacy: .public) signal \(signal ?? "none", privacy: .public): \(command, privacy: .public)"
+            "remote command exited \(status, privacy: .public) signal \(signal ?? "none", privacy: .public): \(command, privacy: .private(mask: .hash))"
         )
         return RemoteCommandResult(
             exitStatus: status, standardOutput: out, standardError: err, exitSignal: signal

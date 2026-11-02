@@ -132,7 +132,7 @@ enum DataWriteExecutor {
                     sideStatements.append(statement)
                 } catch {
                     logger.warning(
-                        "Epilogue statement failed '\(statement, privacy: .public)': \(error.publicLogShape, privacy: .public)"
+                        "Epilogue statement failed '\(statement, privacy: .private)': \(error.publicLogShape, privacy: .public)"
                     )
                 }
             }
@@ -145,7 +145,7 @@ enum DataWriteExecutor {
                 sideStatements.append(statement)
             } catch {
                 logger.warning(
-                    "Prologue statement failed '\(statement, privacy: .public)': \(error.publicLogShape, privacy: .public)"
+                    "Prologue statement failed '\(statement, privacy: .private)': \(error.publicLogShape, privacy: .public)"
                 )
                 guard !plan.prologueIsRequired else {
                     await drainEpilogue()

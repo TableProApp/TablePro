@@ -3,6 +3,7 @@ import Observation
 import os
 import TableProConnectionLibrary
 import TableProDatabase
+import TableProLogRedaction
 import TableProModels
 
 @MainActor @Observable
@@ -241,21 +242,21 @@ final class AppState {
             moveMongoURISecretsToKeychain(from: stored.connections)
         } catch {
             connectionsState = .failed(error)
-            Self.logger.error("Connections load failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Connections load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
 
         do {
             groupsState = .loaded(try groupStorage.load())
         } catch {
             groupsState = .failed(error)
-            Self.logger.error("Groups load failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Groups load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
 
         do {
             tagsState = .loaded(try tagStorage.load())
         } catch {
             tagsState = .failed(error)
-            Self.logger.error("Tags load failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Tags load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -266,7 +267,7 @@ final class AppState {
         do {
             try storage.save(cleaned, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain)
         } catch {
-            Self.logger.error("Rewriting connections without MongoDB secrets failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Rewriting connections without MongoDB secrets failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -283,7 +284,7 @@ final class AppState {
         do {
             try storage.save(stored.connections, keepingPastedSSHKeys: unstored)
         } catch {
-            Self.logger.error("Rewriting connections without SSH keys failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Rewriting connections without SSH keys failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -299,7 +300,7 @@ final class AppState {
             try storage.save(connections, keepingPastedSSHKeys: heldKeys)
         } catch {
             saved = false
-            Self.logger.error("Failed to save connections: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save connections: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
         guard saved || !onlyIfSaved else { return false }
         markLibraryPart(.connections, saved: saved)
@@ -316,7 +317,7 @@ final class AppState {
             try groupStorage.save(groups)
         } catch {
             saved = false
-            Self.logger.error("Failed to save groups: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save groups: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
         guard saved || !onlyIfSaved else { return false }
         markLibraryPart(.groups, saved: saved)
@@ -332,7 +333,7 @@ final class AppState {
             try tagStorage.save(tags)
         } catch {
             saved = false
-            Self.logger.error("Failed to save tags: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save tags: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
         guard saved || !onlyIfSaved else { return false }
         markLibraryPart(.tags, saved: saved)

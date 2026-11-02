@@ -672,7 +672,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     /// plaintext fallback and every kill after it repeats the attempt that already failed.
     private func deliverKill(_ killQuery: String) -> Bool {
         guard let killConn = openKillConnection() else {
-            logger.warning("\(killQuery, privacy: .public) could not open a connection")
+            logger.warning("\(killQuery, privacy: .private) could not open a connection")
             return false
         }
         defer { mysql_close(killConn) }
@@ -761,7 +761,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_real_query(killConn, queryPtr, UInt(killQuery.utf8.count))
         }
         guard killStatus == 0 else {
-            logger.warning("\(killQuery, privacy: .public) rejected: \(self.errorMessage(from: killConn))")
+            logger.warning("\(killQuery, privacy: .private) rejected: \(self.errorMessage(from: killConn))")
             return false
         }
         return true

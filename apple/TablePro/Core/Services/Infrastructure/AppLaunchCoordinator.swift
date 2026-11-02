@@ -51,10 +51,10 @@ internal final class AppLaunchCoordinator: ObservableObject {
         let intents: [LaunchIntent] = urls.compactMap { url in
             switch URLClassifier.classify(url) {
             case .none:
-                Self.logger.warning("Unrecognized URL: \(url.queryValuesRedactedForLogging, privacy: .public)")
+                Self.logger.warning("Unrecognized URL: \(url.queryValuesRedactedForLogging, privacy: .private(mask: .hash))")
                 return nil
             case .some(.failure(let error)):
-                Self.logger.error("URL parse failed: \(error.publicLogShape, privacy: .public) for \(url.queryValuesRedactedForLogging, privacy: .public)")
+                Self.logger.error("URL parse failed: \(error.publicLogShape, privacy: .public) for \(url.queryValuesRedactedForLogging, privacy: .private(mask: .hash))")
                 return nil
             case .some(.success(let intent)):
                 return intent

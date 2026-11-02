@@ -64,7 +64,7 @@ internal extension MySQLPluginDriver {
                 return value
             }
             Self.logger.warning(
-                "OceanBase default of \(column, privacy: .public) is not in SHOW CREATE TABLE as reported"
+                "OceanBase default of \(column, privacy: .private(mask: .hash)) is not in SHOW CREATE TABLE as reported"
             )
         }
         return OceanBaseColumnDefaults.columnDefault(

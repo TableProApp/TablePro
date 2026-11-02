@@ -413,7 +413,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         guard PQresultStatus(result) != PGRES_COMMAND_OK else { return }
         let message = PQresultErrorMessage(result).map { String(cString: $0) } ?? ""
         Self.logger.warning(
-            "Session setup statement failed: \(statement, privacy: .public) \(message, privacy: .private)"
+            "Session setup statement failed: \(statement, privacy: .private) \(message, privacy: .private)"
         )
     }
 

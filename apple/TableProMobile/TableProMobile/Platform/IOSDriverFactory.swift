@@ -233,13 +233,40 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         )
     }
 
+    // SQL Server here checks no certificate and Oracle reads no CA file, so those verify modes would skip the check.
+    static func supportedSSLModes(for type: DatabaseType) -> [SSLModeChoice] {
+        switch type {
+        case .mssql: [.disable, .preferred, .require]
+        case .oracle: [.disable, .preferred, .require, .verifyFull]
+        default: [.disable, .preferred, .require, .verifyCa, .verifyFull]
+        }
+    }
+
     static func refusal(for connection: DatabaseConnection) -> ConnectionError? {
         guard supportedTypeList.contains(connection.type) else {
             return .driverNotFound(connection.type.mobileDisplayName)
         }
         guard connection.macSocketPath == nil else { return .localSocketNotSupported }
         guard !KerberosAuthFields.isSelected(in: connection.additionalFields) else { return .kerberosNotSupported }
+        let sslMode = storedSSLMode(of: connection)
+        guard connection.type.isLocalFile || supportedSSLModes(for: connection.type).contains(sslMode) else {
+            return .sslModeNotSupported(mode: displayName(of: sslMode), typeName: connection.type.mobileDisplayName)
+        }
         return nil
+    }
+
+    private static func storedSSLMode(of connection: DatabaseConnection) -> SSLModeChoice {
+        connection.sslConfiguration.map { SSLModeChoice($0) } ?? (connection.sslEnabled ? .require : .disable)
+    }
+
+    private static func displayName(of mode: SSLModeChoice) -> String {
+        switch mode {
+        case .disable: String(localized: "Disabled")
+        case .preferred: String(localized: "Preferred")
+        case .require: String(localized: "Required")
+        case .verifyCa: String(localized: "Verify CA")
+        case .verifyFull: String(localized: "Verify Identity")
+        }
     }
 
     func refusal(for connection: DatabaseConnection) -> ConnectionError? {

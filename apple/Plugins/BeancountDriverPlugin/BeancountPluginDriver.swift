@@ -1032,7 +1032,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return try rows()
         } catch {
             try connectAttempt?.check()
-            logger.warning("Beancount projection left \(table, privacy: .public) empty: \(error)")
+            logger.warning("Beancount projection left \(table, privacy: .private(mask: .hash)) empty: \(error)")
             return []
         }
     }

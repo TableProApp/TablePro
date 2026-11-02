@@ -119,7 +119,7 @@ public actor HttpConnectionContext {
             let outcome = await receiveChunk()
             switch outcome {
             case .failure(let reason):
-                Self.logger.debug("Receive failed: \(reason, privacy: .public)")
+                Self.logger.debug("Receive failed: \(reason, privacy: .private)")
                 await handlePeerClosed()
                 return
             case .chunk(let content, let isComplete):
@@ -232,7 +232,7 @@ public actor HttpConnectionContext {
     }
 
     private func handleTransportFailure(_ reason: String) async {
-        Self.logger.debug("Connection failed: \(reason, privacy: .public)")
+        Self.logger.debug("Connection failed: \(reason, privacy: .private)")
         await handlePeerClosed()
     }
 

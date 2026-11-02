@@ -173,7 +173,7 @@ final class NativeDumpBatch: ObservableObject {
         producesDirectory: Bool
     ) async {
         if let blockedReason = item.blockedReason {
-            Self.logger.error("batch item blocked db=\(item.database, privacy: .public)")
+            Self.logger.error("batch item blocked db=\(item.database, privacy: .private(mask: .hash))")
             record(item, .failed(message: blockedReason))
             return
         }
@@ -219,7 +219,7 @@ final class NativeDumpBatch: ObservableObject {
                 record(item, .succeeded(bytes: bytes))
                 return
             case .failed(let message, _):
-                Self.logger.error("batch item failed db=\(item.database, privacy: .public)")
+                Self.logger.error("batch item failed db=\(item.database, privacy: .private(mask: .hash))")
                 record(item, .failed(message: message))
                 return
             case .cancelled:

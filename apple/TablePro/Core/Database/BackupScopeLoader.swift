@@ -150,7 +150,7 @@ enum BackupScopeLoader {
                 }
             } catch {
                 logger.warning(
-                    "partition read failed for \(table, privacy: .public): \(error.localizedDescription)"
+                    "partition read failed for \(table, privacy: .private(mask: .hash)): \(error.localizedDescription)"
                 )
                 return nil
             }

@@ -124,8 +124,9 @@ internal struct SourceObjectSyncBuilder {
         let definition = result.sourceDefinition.joined(separator: "\n")
         guard let defect = SourceDefinitionDefect.of(definition: definition, sentAs: scriptText) else { return }
         let isSeveral = defect == .severalStatements
+        let reason = isSeveral ? "several statements" : "no CREATE statement"
         Self.logger.fault(
-            "Refused to script \(result.identity.kind.rawValue, privacy: .public) \(result.identity.name, privacy: .private(mask: .hash)): \(isSeveral ? "several statements" : "no CREATE statement", privacy: .public)"
+            "Refused to script \(result.identity.kind.rawValue, privacy: .public) \(result.identity.name, privacy: .private(mask: .hash)): \(reason, privacy: .public)"
         )
         guard !isSeveral else { throw CompareSyncError.severalStatements(in: result.identity.displayName) }
         throw CompareSyncError.unsupportedOperation(

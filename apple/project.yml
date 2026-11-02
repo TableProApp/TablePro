@@ -407,7 +407,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
+        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
         products: [TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
@@ -1233,9 +1233,7 @@ targets:
       principalClass: SnowflakePlugin
     dependencies:
       - package: TableProCore
-        product: TableProGzip
-      - package: TableProCore
-        product: TableProNumberFormatting
+        products: [TableProGzip, TableProHTTP, TableProNumberFormatting, TableProSnowflakeCore]
 
   StarRocksDriverPlugin:
     templates: [DriverPlugin, MySQLLinkage]

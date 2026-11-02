@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProTestSupport
 import Testing
 
 struct VaultClientTests {
@@ -126,5 +127,35 @@ struct VaultClientTests {
         )) {
             try await client.readCredentials(path: "database/creds/readonly", token: "t0")
         }
+    }
+
+    @Test("A redirect to another Vault address is refused, names it, and the token stays here")
+    func transportRefusesCrossOriginRedirect() async throws {
+        let active = try LoopbackHTTPResponder { _ in
+            LoopbackResponse(
+                status: 200,
+                headers: ["Content-Type": "application/json"],
+                body: VaultFixtures.lookupReply(ttl: 600)
+            )
+        }
+        try await active.start()
+        let location = active.url("/v1/auth/token/lookup-self").absoluteString
+        let standby = try LoopbackHTTPResponder { _ in LoopbackResponse(status: 307, headers: ["Location": location]) }
+        try await standby.start()
+        let endpoint = try VaultEndpoint.resolve(address: "http://127.0.0.1:\(standby.port)", environment: [:])
+        let client = VaultClient(endpoint: endpoint, transport: URLSessionVaultTransport())
+
+        var message = ""
+        do {
+            _ = try await client.lookupSelf(token: "vault-token")
+        } catch {
+            message = error.localizedDescription
+        }
+
+        #expect(message.contains(location))
+        #expect(standby.requests.first?.header("X-Vault-Token") == "vault-token")
+        #expect(active.requests.isEmpty)
+        standby.stop()
+        active.stop()
     }
 }

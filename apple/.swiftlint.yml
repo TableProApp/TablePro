@@ -201,7 +201,13 @@ custom_rules:
   public_error_text_in_log:
     name: "Error Text In The System Log"
     regex: '(\.(localizedDescription|errorDescription|failureReason)(\.prefix\(\d+\))?(\s*\?\?\s*"[^"]*")?|String\(describing:\s*\w*[eE]rr(or)?\)|\\\((?!(has|is|did|was|should)[A-Z])(\w*[eE]rr(or)?|e)(\.(message|description|debugDescription))?)\s*,\s*privacy:\s*\.public'
-    message: "A driver or Foundation error's text carries row values, paths and server messages. Publish `error.publicLogShape`, or `LogRedaction.publicDescription(of: error)` in a plugin, and log the description at .private."
+    message: "A driver or Foundation error's text carries row values, paths and server messages. Publish `error.publicLogShape`, or `LogRedaction.publicDescription(of: error)` in a plugin or the iOS app, and log the description at .private."
+    severity: error
+  public_name_in_log:
+    name: "Name In The System Log"
+    regex: '\\\((?![^,\n]*(?:\.(?:count|rawValue|uuidString|isEmpty|id|pid|type)|Id|ID|Count|Digest|State)(?:\s*\?\?\s*"[^"\n]*")?\s*,)(?=[^,\n]*?(?:\b|(?<=[a-z0-9])(?=[A-Z]))(?i:database|db|schema|table|column|collection|container|keyspace|constraint|qualified|sql|statement|query|ddl|payload|preview|raw|content|body|filter|sort|uri|url|path|host|hostname|ip|address|endpoint|describe|described|display|username|clientname|servername|tokenname|auditlabel)s?(?![a-z])|[^,\n]*?connection\.name)(?:(?!\\\(|privacy:)[^\n])*,\s*privacy:\s*\.public\b'
+    excluded_match_kinds: [comment, doccomment]
+    message: "Schema, table and column names, SQL, payloads, hosts and paths are the user's. Log them at .private(mask: .hash), or .private next to a byte count."
     severity: error
 
   # Storage and preferences
@@ -468,6 +474,20 @@ custom_rules:
     regex: '\A(?![\s\S]*\bScriptConnectGate\.authorizeConnect\b)[\s\S]*?\b(bridge\.\w+\()'
     capture_group: 1
     message: "A script path that can connect asks ScriptConnectGate.authorizeConnect about unapproved extensions first."
+    severity: error
+
+  # Opening URLs (listed in Plugins/.swiftlint.yml and TableProMobile/.swiftlint.yml)
+  # Excluded files open a fixed first-party link, a system settings pane or a URL their own allowlist checked.
+  web_page_opener:
+    name: "Web Page Opener"
+    regex: '\b(?:NSWorkspace|UIApplication)\.shared\s*\.open\('
+    excluded:
+      - '.*/[^/]*Tests/'
+      - '.*Tests\.swift$'
+      - '.*/(WebPageOpener|DataLinkPolicy|MCPPairingService|NotificationsSettingsView|SyncSettingsView|ConnectionRecoveryPerformer|OpenConnectionIntent)\.swift$'
+      - '.*/(AppDelegate\+MainMenuActions|WhatsNewWindowController|SupportAskCoordinator|MainContentCoordinator\+Rewind|GoogleSignInService|ChatGPTCodexService)\.swift$'
+    excluded_match_kinds: [comment, doccomment]
+    message: "Open a URL from a server, a plugin or a file through WebPageOpener. NSWorkspace opens a file: path, an smb: share or any app's scheme as readily as a web page."
     severity: error
 
   # Plugin loading
