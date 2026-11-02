@@ -1,5 +1,6 @@
 import Foundation
 @testable import TablePro
+import TableProMCP
 import TableProPluginKit
 import TableProSSHConfig
 import TableProTestSupport
@@ -28,10 +29,13 @@ struct SessionRecoveryLoopTests {
         serverMessage: "self-signed certificate in certificate chain"
     )
 
-    private func makeFixture(configure: (inout DatabaseConnection) -> Void = { _ in }) -> Fixture {
+    private func makeFixture(
+        storage: ConnectionStorage = .shared,
+        configure: (inout DatabaseConnection) -> Void = { _ in }
+    ) -> Fixture {
         FakeMSSQLPluginRegistration.registerIfNeeded()
         let clock = ManualClock()
-        let manager = DatabaseManager(recoveryClock: clock)
+        let manager = DatabaseManager(connectionStorage: storage, recoveryClock: clock)
         var connection = TestFixtures.makeConnection(name: "Prod")
         connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
         configure(&connection)
@@ -541,6 +545,78 @@ struct SessionRecoveryLoopTests {
         #expect(!manager.sessionLanes.hasTransactionLoss(database: "logs", for: id))
         #expect(fixture.session?.driver !== fixture.driver)
         #expect(fixture.session?.liveness == .live)
+        await cleanUp(fixture)
+    }
+
+    @Test("An MCP or AppleScript status read reports connecting while the loop redials, then the failure")
+    func externalStatusFollowsTheLoop() async throws {
+        let fixture = makeFixture()
+        FakeMSSQLPlugin.failConnect(for: fixture.id, with: Self.refused)
+        let bridge = DatabaseAccessBridge(manager: fixture.manager)
+
+        fixture.manager.beginRecovery(for: fixture.id, cause: .stoppedResponding)
+        let loop = try loopTask(fixture)
+        #expect(try await bridge.connectionStatus(connectionId: fixture.id).status == .connecting)
+        #expect(fixture.session?.reportedStatus == .connected)
+
+        await runEveryAttempt(fixture)
+        await loop.value
+
+        #expect(try await bridge.connectionStatus(connectionId: fixture.id).status == .error(Self.stoppedResponding))
+        await cleanUp(fixture)
+    }
+
+    @Test("The MCP status tool says connecting for a session the loop is redialing")
+    func mcpStatusToolSaysConnecting() async throws {
+        let connection = TestFixtures.makeConnection(name: "Prod")
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        DatabaseManager.shared.markSessionRecovering(
+            connection.id,
+            progress: ConnectionRecoveryProgress(attempt: 2, cause: nil)
+        )
+
+        let json = try await MCPConnectionBridge().getConnectionStatus(connectionId: connection.id)
+
+        guard case .object(let fields) = json else {
+            Issue.record("the status tool should answer with an object")
+            return
+        }
+        #expect(fields["status"] == .string("connecting"))
+    }
+
+    @Test("An external connect after the loop gave up redials the session through the normal path")
+    func externalConnectAfterExhaustionRedials() async throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-recovery-\(UUID().uuidString).json")
+        let suite = try EphemeralDefaults()
+        let storage = ConnectionStorage(fileURL: fileURL, userDefaults: suite.defaults, keychain: InMemoryKeychain())
+        defer {
+            suite.defaults.removePersistentDomain(forName: suite.suiteName)
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+        let fixture = makeFixture(storage: storage)
+        storage.addConnection(fixture.connection)
+        FakeMSSQLPlugin.failConnect(for: fixture.id, with: Self.refused)
+
+        fixture.manager.beginRecovery(for: fixture.id, cause: .stoppedResponding)
+        let loop = try loopTask(fixture)
+        await runEveryAttempt(fixture)
+        await loop.value
+        guard case .unreachable = fixture.session?.liveness else {
+            Issue.record("the loop should have given up")
+            await cleanUp(fixture)
+            return
+        }
+        FakeMSSQLPlugin.clearConnectFailure(for: fixture.id)
+
+        _ = try await DatabaseAccessBridge(manager: fixture.manager).connect(connectionId: fixture.id)
+
+        #expect(fixture.session?.driver !== fixture.driver)
+        #expect(fixture.session?.liveness == .live)
+        #expect(FakeMSSQLPlugin.configurations(for: fixture.id).count == ConnectionRecoveryProgress.maxAttempts + 1)
         await cleanUp(fixture)
     }
 

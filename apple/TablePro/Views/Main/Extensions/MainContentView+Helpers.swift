@@ -30,7 +30,7 @@ extension MainContentView {
         if session.reportedStatus.isConnected {
             coordinator.loadSelectedTableTabAfterConnect()
         }
-        toolbarState.updateConnectionState(from: session.reportedStatus)
+        toolbarState.updateConnectionState(from: session.effectiveStatus)
         toolbarState.syncFromSession(for: connection)
     }
 

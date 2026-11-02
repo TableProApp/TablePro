@@ -7,43 +7,31 @@
 
 import Foundation
 
-/// Represents an active database connection session with all associated state
 struct ConnectionSession: Identifiable {
     let id: UUID  // Same as connection.id
     var connection: DatabaseConnection  // Made var to allow database switching
-    /// The connection used to create the driver (may differ from `connection` for SSH tunneled connections)
+    // What the driver dialed: a tunnel's local endpoint rather than `connection`.
     var effectiveConnection: DatabaseConnection?
     var driver: DatabaseDriver?
     var status: ConnectionStatus = .disconnected
     var effectiveQueryTimeoutSeconds: Int
-    /// Answers whether `driver` can be believed. `status` cannot: it is `.connecting` throughout an
-    /// ordinary database switch on the engines that reconnect to perform one, and `.disconnected` is
-    /// this struct's own default value.
+    // Whether `driver` can be believed; `status` reads `.connecting` through an ordinary reconnect-to-switch.
     var liveness: ConnectionLiveness = .live
-    /// The reconnect loop's progress while it redials a dropped session; nil when nothing is redialing.
     var recovery: ConnectionRecoveryProgress?
     var lastError: String?
-    /// The warning the server sent with the login that opened this session, such as an Oracle password in its
-    /// grace period. The user dismissing it clears it; the next connect brings it back, because the server sends
-    /// it on every login. A reconnect the app makes on its own leaves it as it is.
+    // The server repeats a login warning on every connect, so a dismissal lasts until the next one.
     var connectionWarning: String?
 
-    /// Live write-protection level. Seeded from the saved default; the toolbar
-    /// updates this, so reading `connection.safeModeLevel` is wrong afterwards.
+    // The level in force; the toolbar changes it, so `connection.safeModeLevel` goes stale.
     var safeModeLevel: SafeModeLevel
 
     // Per-connection state
     var selectedTables: Set<DatabaseTreeTableRef> = []
-    /// Queued Truncate and Drop, keyed by the object each one is aimed at rather than by its name.
-    /// The queue outlives a database switch, so a name-keyed entry was resolved at Save time
-    /// against whatever the selected tab pointed at by then.
+    // Keyed by object, not name: the queue outlives a database switch.
     var pendingTruncates: Set<DatabaseTreeTableRef> = []
     var pendingDeletes: Set<DatabaseTreeTableRef> = []
     var tableOperationOptions: [DatabaseTreeTableRef: TableOperationOptions] = [:]
-    /// Where the user is browsing: what the sidebar lists and where a new tab opens.
-    /// It is not where an open tab queries. A tab carries its own database and schema,
-    /// and resolving an operation through these instead is how a tab ends up running
-    /// against another database.
+    // What the sidebar lists and where a new tab opens, never where an open tab queries: a tab carries its own.
     var browseSchema: String?
     var browseDatabase: String?
 
@@ -52,7 +40,7 @@ struct ConnectionSession: Identifiable {
         SchemaService.shared.tables(for: id)
     }
 
-    /// In-memory password for prompt-for-password connections. Never persisted to disk.
+    // Never persisted.
     var cachedPassword: String?
 
     var resolvedBrowseDatabase: String {
@@ -80,22 +68,22 @@ struct ConnectionSession: Identifiable {
         self.lastActiveAt = Date()
     }
 
-    /// Update last active timestamp
     mutating func markActive() {
         lastActiveAt = Date()
     }
 
-    /// What a switcher, a toolbar or anything else that reports connection health should show.
-    ///
-    /// `status` alone says "connecting" for the whole of a reconnect the app has already stopped
-    /// believing in, which is how the connections strip came to paint a failure while the window
-    /// beside it went on showing rows.
+    // `status` alone says connecting through a reconnect the app already stopped believing in.
     var reportedStatus: ConnectionStatus {
         guard case .unreachable(let info) = liveness else { return status }
         return .error(info?.message ?? String(localized: "The connection stopped responding."))
     }
 
-    /// Check if session is currently connected
+    // For a reader that cannot show a redial in progress, such as an MCP or AppleScript client. The UI keeps
+    // reading `reportedStatus`, which stays `.connected` through a redial so loaded content stays on screen.
+    var effectiveStatus: ConnectionStatus {
+        recovery == nil ? reportedStatus : .connecting
+    }
+
     var isConnected: Bool {
         if case .connected = status {
             return true
@@ -103,10 +91,7 @@ struct ConnectionSession: Identifiable {
         return false
     }
 
-    /// Clear cached data that can be re-fetched on reconnect.
-    /// Called when the connection enters a disconnected or error state
-    /// to release memory held by stale table metadata.
-    /// Note: `cachedPassword` is intentionally NOT cleared — auto-reconnect needs it after disconnect.
+    // Keeps `cachedPassword`: the unattended reconnect needs it.
     mutating func clearCachedData() {
         selectedTables = []
         pendingTruncates = []
@@ -114,18 +99,13 @@ struct ConnectionSession: Identifiable {
         tableOperationOptions = [:]
     }
 
-    /// Full state reset for explicit disconnect. Clears everything including
-    /// database/schema desired state that `clearCachedData()` preserves for reconnect.
     mutating func clearAllState() {
         clearCachedData()
         browseDatabase = nil
         browseSchema = nil
     }
 
-    /// Compares fields used by ContentView's body to avoid unnecessary SwiftUI re-renders.
-    /// Excludes: driver (protocol, non-comparable),
-    /// lastActiveAt (volatile), lastError, effectiveConnection,
-    /// tables (owned by SchemaService and observed independently).
+    // The fields a content view is built from; the driver, timestamps and tables change without a repaint.
     func isContentViewEquivalent(to other: ConnectionSession) -> Bool {
         id == other.id
             && status == other.status
@@ -140,11 +120,7 @@ struct ConnectionSession: Identifiable {
             && connectionWarning == other.connectionWarning
     }
 
-    /// Puts back the Truncate and Drop a save took off the queue and did not complete.
-    ///
-    /// Added back rather than assigned over: the user can stage more while the save waits on its
-    /// confirmation and its round trip, and an assignment erased those. An object staged again in the
-    /// meantime keeps its newer choice, and its options with it.
+    // Added back, not assigned: the user may stage more while the save waits, and a newer choice wins.
     mutating func restoreStagedTableOperations(
         truncates: Set<DatabaseTreeTableRef>,
         deletes: Set<DatabaseTreeTableRef>,

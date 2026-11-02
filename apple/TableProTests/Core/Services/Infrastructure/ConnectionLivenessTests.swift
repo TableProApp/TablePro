@@ -122,6 +122,23 @@ struct ConnectionLivenessReportingTests {
         #expect(!live.isContentViewEquivalent(to: lost))
     }
 
+    @Test("An outside client reads a redial as connecting while the UI keeps reading connected")
+    func redialReadsAsConnectingOutside() {
+        var redialing = session(liveness: .recovering, status: .connected)
+        redialing.recovery = ConnectionRecoveryProgress(attempt: 3, cause: nil)
+
+        #expect(redialing.effectiveStatus == .connecting)
+        #expect(redialing.reportedStatus == .connected)
+    }
+
+    @Test("Without a redial the outside status is the reported one")
+    func noRedialKeepsTheReportedStatus() {
+        #expect(session(liveness: .recovering, status: .connected).effectiveStatus == .connected)
+        #expect(session(liveness: .live, status: .connected).effectiveStatus == .connected)
+        let lost = session(liveness: .unreachable(ConnectionFailureInfo(message: "gone")), status: .connected)
+        #expect(lost.effectiveStatus == .error("gone"))
+    }
+
     @Test("Each reconnect attempt is a change the content view sees")
     func recoveryProgressBreaksContentEquivalence() {
         var first = ConnectionSession(connection: TestFixtures.makeConnection())

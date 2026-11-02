@@ -52,8 +52,10 @@ internal actor DatabaseAccessBridge {
         let manager = await databaseManager
         let connection = try await resolveConnection(connectionId)
 
+        // A session the reconnect loop is redialing, or gave up on, keeps its driver; only a live one skips the redial.
         let alreadyLive = await MainActor.run {
-            manager.activeSessions[connectionId]?.driver != nil
+            if case .live = manager.connectionState(connectionId) { return true }
+            return false
         }
         if !alreadyLive {
             do {
@@ -96,7 +98,7 @@ internal actor DatabaseAccessBridge {
         let snapshot = await MainActor.run { () -> ConnectionStatusSnapshot? in
             guard let session = manager.activeSessions[connectionId] else { return nil }
             return ConnectionStatusSnapshot(
-                status: session.reportedStatus,
+                status: session.effectiveStatus,
                 database: session.resolvedBrowseDatabase,
                 schema: session.browseSchema,
                 serverVersion: session.driver?.serverVersion,
