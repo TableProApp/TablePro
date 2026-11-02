@@ -1,6 +1,7 @@
 import CommonCrypto
 import CryptoKit
 import Foundation
+import TableProKafkaCore
 
 /// SCRAM's cryptography and the rules that decide whether a broker's half of the exchange
 /// is acceptable. Split from the exchange itself because none of it needs a connection, so

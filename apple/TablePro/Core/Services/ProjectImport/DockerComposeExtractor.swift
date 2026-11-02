@@ -26,10 +26,11 @@ enum DockerComposeExtractor {
     static func extract(
         contents: String,
         relativePath: String,
-        environment: DotenvDocument?
+        environment: DotenvDocument?,
+        budget: ProjectScanExpansionBudget = ProjectScanExpansionBudget()
     ) -> [ScannedConnectionCandidate] {
-        guard let parsed = YamlMappingSupport.loadMapping(contents),
-              let root = ComposeInterpolator.interpolate(parsed, environment: environment) as? [String: Any],
+        guard let parsed = YamlMappingSupport.loadMapping(contents, budget: budget),
+              let root = ComposeInterpolator.interpolate(parsed, environment: environment, budget: budget) as? [String: Any],
               let services = YamlMappingSupport.mapping(root["services"]) else {
             return []
         }
@@ -296,20 +297,30 @@ enum DockerComposeExtractor {
 }
 
 enum ComposeInterpolator {
-    static func interpolate(_ value: Any, environment: DotenvDocument?) -> Any {
+    private enum Substitution {
+        case value(String)
+        case missing
+        case overBudget
+    }
+
+    static func interpolate(_ value: Any, environment: DotenvDocument?, budget: ProjectScanExpansionBudget) -> Any {
         if let text = value as? String {
-            return interpolate(text: text, environment: environment)
+            return interpolate(text: text, environment: environment, budget: budget)
         }
         if let mapping = value as? [String: Any] {
-            return mapping.mapValues { interpolate($0, environment: environment) }
+            return mapping.mapValues { interpolate($0, environment: environment, budget: budget) }
         }
         if let list = value as? [Any] {
-            return list.map { interpolate($0, environment: environment) }
+            return list.map { interpolate($0, environment: environment, budget: budget) }
         }
         return value
     }
 
-    static func interpolate(text contents: String, environment: DotenvDocument?) -> String {
+    static func interpolate(
+        text contents: String,
+        environment: DotenvDocument?,
+        budget: ProjectScanExpansionBudget
+    ) -> String {
         guard contents.contains("$") else {
             return contents
         }
@@ -323,14 +334,18 @@ enum ComposeInterpolator {
                 return result
             }
             let reference = String(afterOpen[afterOpen.startIndex..<close])
-            result += resolve(reference, environment: environment)
+            result += resolve(reference, environment: environment, budget: budget)
             remainder = afterOpen[afterOpen.index(after: close)...]
         }
         result += remainder
         return result
     }
 
-    private static func resolve(_ reference: String, environment: DotenvDocument?) -> String {
+    private static func resolve(
+        _ reference: String,
+        environment: DotenvDocument?,
+        budget: ProjectScanExpansionBudget
+    ) -> String {
         let separators = [":-", ":?", "-", "?"]
         for separator in separators {
             guard let range = reference.range(of: separator) else {
@@ -341,12 +356,34 @@ enum ComposeInterpolator {
             guard !name.isEmpty else {
                 continue
             }
-            if let value = environment?[name] {
+            switch substitution(for: name, environment: environment, budget: budget) {
+            case .value(let value):
                 return value
+            case .overBudget:
+                return unresolvedMarker(reference)
+            case .missing:
+                return separator.hasSuffix("?") ? unresolvedMarker(reference) : fallback
             }
-            return separator.hasSuffix("?") ? unresolvedMarker(reference) : fallback
         }
-        return environment?[reference] ?? unresolvedMarker(reference)
+        guard case .value(let value) = substitution(for: reference, environment: environment, budget: budget) else {
+            return unresolvedMarker(reference)
+        }
+        return value
+    }
+
+    // Charged at the stored length before the subscript trims it, so each trim of a long value is paid for too.
+    private static func substitution(
+        for name: String,
+        environment: DotenvDocument?,
+        budget: ProjectScanExpansionBudget
+    ) -> Substitution {
+        guard let environment, let entry = environment.entry(for: name), !entry.hasUnresolvedReference else {
+            return .missing
+        }
+        guard budget.spend(entry.value.utf8.count) else {
+            return .overBudget
+        }
+        return environment[name].map(Substitution.value) ?? .missing
     }
 
     static func isUnresolved(_ value: String) -> Bool {

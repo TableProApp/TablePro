@@ -62,7 +62,8 @@ enum DotenvParser {
 
     static func parse(
         _ contents: String,
-        processEnvironment: [String: String]
+        processEnvironment: [String: String],
+        budget: ProjectScanExpansionBudget = ProjectScanExpansionBudget()
     ) -> DotenvDocument {
         var document = DotenvDocument()
         let characters = Array(normalize(contents))
@@ -75,7 +76,12 @@ enum DotenvParser {
             guard let assignment = readAssignment(characters, &index) else {
                 continue
             }
-            document.upsert(resolve(assignment, document: document, processEnvironment: processEnvironment))
+            document.upsert(resolve(
+                assignment,
+                document: document,
+                processEnvironment: processEnvironment,
+                budget: budget
+            ))
         }
         return document
     }

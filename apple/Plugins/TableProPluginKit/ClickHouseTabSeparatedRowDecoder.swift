@@ -22,6 +22,8 @@ public struct ClickHouseTabSeparatedRowDecoder: Sendable {
     public private(set) var header: Header?
 
     private var pendingBytes: [UInt8] = []
+    // The pending bytes already searched for a separator, so a line split over many chunks is scanned once.
+    private var searchedCount = 0
     private var columnNames: [String]?
 
     public init() {}
@@ -29,29 +31,41 @@ public struct ClickHouseTabSeparatedRowDecoder: Sendable {
     public mutating func consume(_ data: Data) -> [[PluginCellValue]] {
         guard !data.isEmpty else { return [] }
 
-        var buffer = pendingBytes
-        pendingBytes = []
-        buffer.append(contentsOf: data)
+        pendingBytes.append(contentsOf: data)
 
         var rows: [[PluginCellValue]] = []
         var lineStart = 0
-        for index in buffer.indices where buffer[index] == ClickHouseTabSeparatedBytes.lineSeparator {
-            if let row = ingest(buffer[lineStart..<index]) {
+        var searchFrom = searchedCount
+        while let lineEnd = Self.lineSeparatorIndex(in: pendingBytes, from: searchFrom) {
+            if let row = ingest(pendingBytes[lineStart..<lineEnd]) {
                 rows.append(row)
             }
-            lineStart = index + 1
+            lineStart = lineEnd + 1
+            searchFrom = lineStart
         }
-        buffer.removeFirst(lineStart)
-        pendingBytes = buffer
+        if lineStart > 0 {
+            pendingBytes.removeFirst(lineStart)
+        }
+        searchedCount = pendingBytes.count
         return rows
     }
 
-    /// A body that ended without its closing newline still holds one whole row.
+    // A body that ended without its closing newline still holds one whole row.
     public mutating func finish() -> [[PluginCellValue]] {
         let buffer = pendingBytes
         pendingBytes = []
+        searchedCount = 0
         guard !buffer.isEmpty, let row = ingest(buffer[...]) else { return [] }
         return [row]
+    }
+
+    private static func lineSeparatorIndex(in bytes: [UInt8], from start: Int) -> Int? {
+        bytes.withUnsafeBufferPointer { buffer -> Int? in
+            guard start < buffer.count, let base = buffer.baseAddress,
+                  let found = memchr(base + start, Int32(ClickHouseTabSeparatedBytes.lineSeparator), buffer.count - start)
+            else { return nil }
+            return UnsafeRawPointer(found) - UnsafeRawPointer(base)
+        }
     }
 
     private mutating func ingest(_ line: ArraySlice<UInt8>) -> [PluginCellValue]? {

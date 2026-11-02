@@ -1,4 +1,5 @@
 import Foundation
+import TableProWireIO
 
 /// Snappy block-format decompression. macOS ships no snappy at any layer, and Kafka's Java
 /// producer still writes it, so a topic produced by a Java service is unreadable without this.
@@ -7,15 +8,21 @@ import Foundation
 /// either a literal or a back-reference copy. Only decompression is implemented, because this
 /// client never produces a compressed batch.
 enum SnappyDecoder {
-    static func decode(_ input: [UInt8]) throws -> [UInt8] {
+    // A 3-byte copy element writes at most 64 bytes, so no block holds more than this per input byte.
+    private static let maximumExpansion = 22
+
+    // The declared length is charged before anything is allocated, and decoding stops the moment
+    // the output passes it, so the charge always covers what the block really writes.
+    static func decode(_ input: [UInt8], budget: inout DecompressionBudget) throws -> [UInt8] {
         var cursor = 0
         let expectedLength = try varint(input, &cursor)
-        guard expectedLength <= 512 * 1024 * 1024 else {
+        guard expectedLength <= 512 * 1_024 * 1_024 else {
             throw KafkaError.decompressionFailed(codec: "snappy", reason: "declared length is implausible")
         }
+        try KafkaCompression.charge(&budget, produced: expectedLength, consumed: input.count, codec: .snappy)
 
         var output = [UInt8]()
-        output.reserveCapacity(expectedLength)
+        output.reserveCapacity(min(expectedLength, input.count * maximumExpansion))
 
         while cursor < input.count {
             let tag = input[cursor]
@@ -36,6 +43,12 @@ enum SnappyDecoder {
                 try copyWithOffset(width: 2, tag: tag, input: input, cursor: &cursor, output: &output)
             default:
                 try copyWithOffset(width: 4, tag: tag, input: input, cursor: &cursor, output: &output)
+            }
+            guard output.count <= expectedLength else {
+                throw KafkaError.decompressionFailed(
+                    codec: "snappy",
+                    reason: "decoded more than the \(expectedLength) bytes the block declared"
+                )
             }
         }
 

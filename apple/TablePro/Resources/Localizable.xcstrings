@@ -14953,6 +14953,10 @@
         }
       }
     },
+    "A %@ batch decompresses to far more data than the broker sent, so it was not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A %@ index has no equivalent on this engine." : {
       "localizations" : {
         "fr" : {
@@ -17315,6 +17319,9 @@
           }
         }
       }
+    },
+    "A type name is too long." : {
+
     },
     "A user or role with this name already exists." : {
       "localizations" : {
@@ -148223,6 +148230,10 @@
         }
       }
     },
+    "Reply nested too deeply to show" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Report" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -185161,6 +185172,10 @@
         }
       }
     },
+    "The compressed data expands to far more than it holds, so it was not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the compressed data is corrupt or was cut short" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -186270,6 +186285,10 @@
           }
         }
       }
+    },
+    "The decompressed file needs more free disk space than this Mac has." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The default %@ is not written in a form this engine shares." : {
       "localizations" : {
@@ -187385,6 +187404,14 @@
     },
     "The group end at byte %lld matches no group start." : {
 
+    },
+    "The gzip data ends before its last block." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The gzip data is corrupt." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The header names version %lld, which this format does not have." : {
 
@@ -188715,6 +188742,9 @@
           }
         }
       }
+    },
+    "The package name has too many parts." : {
+
     },
     "The pad directive carries no date, so its accounts were not projected." : {
       "extractionState" : "manual",
@@ -190060,6 +190090,10 @@
           }
         }
       }
+    },
+    "the result has far more columns than its rows fill" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
 

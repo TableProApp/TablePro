@@ -1,16 +1,21 @@
 //
 //  CassandraVarint.swift
-//  CassandraDriverPlugin
+//  TableProCassandraCore
 //
 
 import Foundation
 
-/// CQL's `varint` is a big-endian two's complement integer of any length, and `decimal` is that integer unscaled
-/// with a 32-bit scale beside it. The C driver hands both over as raw bytes, so reading and writing them as numbers
-/// is done here.
-enum CassandraVarint {
-    static func decimalString(fromTwosComplement bytes: Data) -> String {
+// CQL's `varint` is a big-endian two's complement integer of any length, and `decimal` is that integer unscaled
+// with a 32-bit scale beside it. The C driver hands both over as raw bytes, so reading and writing them as numbers
+// is done here.
+public enum CassandraVarint {
+    // Each pass over the number yields nine digits, so the cost grows with the square of its length and a longer
+    // value is shown as hex. 4 KiB is about 9,900 digits, near the 10,000 characters the grid shows of a cell.
+    public static let maximumDecimalBytes = 4_096
+
+    public static func decimalString(fromTwosComplement bytes: Data) -> String {
         guard let first = bytes.first else { return "0" }
+        guard bytes.count <= maximumDecimalBytes else { return CassandraCellText.hex(bytes) }
         let isNegative = first & 0x80 != 0
         var magnitude = [UInt8](bytes)
         if isNegative {
@@ -20,11 +25,14 @@ enum CassandraVarint {
         return isNegative ? "-" + digits : digits
     }
 
-    /// A scale the plain form would pad with more zeros than this is written with an exponent instead. The wire
-    /// scale is any 32-bit value, and expanding one near its limits would allocate billions of characters.
+    // A scale the plain form would pad with more zeros than this is written with an exponent instead. The wire
+    // scale is any 32-bit value, and expanding one near its limits would allocate billions of characters.
     static let maximumExpandedZeros = 64
 
-    static func decimalString(unscaled: Data, scale: Int32) -> String {
+    public static func decimalString(unscaled: Data, scale: Int32) -> String {
+        guard unscaled.count <= maximumDecimalBytes else {
+            return CassandraCellText.hex(unscaled) + "E" + String(-Int(scale))
+        }
         let integer = decimalString(fromTwosComplement: unscaled)
         let isNegative = integer.hasPrefix("-")
         var digits = isNegative ? String(integer.dropFirst()) : integer
@@ -46,7 +54,7 @@ enum CassandraVarint {
         return isNegative ? "-" + rendered : String(rendered)
     }
 
-    static func bytes(fromDecimalInteger text: String) -> Data? {
+    public static func bytes(fromDecimalInteger text: String) -> Data? {
         var body = Substring(text)
         var isNegative = false
         if body.first == "-" || body.first == "+" {
@@ -72,7 +80,7 @@ enum CassandraVarint {
         return Data(twosComplement(magnitude: trimmedMagnitude(magnitude), isNegative: isNegative))
     }
 
-    static func decimal(fromText text: String) -> (unscaled: Data, scale: Int32)? {
+    public static func decimal(fromText text: String) -> (unscaled: Data, scale: Int32)? {
         var mantissa = Substring(text)
         var exponent = 0
         if let marker = mantissa.firstIndex(where: { $0 == "e" || $0 == "E" }) {
@@ -96,25 +104,48 @@ enum CassandraVarint {
         return (unscaled, scale32)
     }
 
+    private static let chunkDivisor: UInt64 = 1_000_000_000
+    private static let chunkDigits = 9
+
+    // Long division of 32-bit limbs by 10^9, nine digits a pass.
     private static func decimalDigits(ofMagnitude magnitude: [UInt8]) -> String {
-        var remaining = trimmedMagnitude(magnitude)
-        guard remaining != [0] else { return "0" }
-        var digits: [Character] = []
-        while !(remaining.count == 1 && remaining[0] == 0) {
-            var remainder = 0
-            var quotient: [UInt8] = []
-            for byte in remaining {
-                let value = remainder << 8 | Int(byte)
-                let digit = value / 10
-                remainder = value % 10
-                if !(quotient.isEmpty && digit == 0) {
-                    quotient.append(UInt8(digit))
-                }
+        var limbs = Self.limbs(ofMagnitude: magnitude)
+        guard !limbs.isEmpty else { return "0" }
+        var chunks: [UInt64] = []
+        while !limbs.isEmpty {
+            var remainder: UInt64 = 0
+            for index in limbs.indices {
+                let value = remainder << 32 | UInt64(limbs[index])
+                limbs[index] = UInt32(value / chunkDivisor)
+                remainder = value % chunkDivisor
             }
-            digits.append(Character(String(remainder)))
-            remaining = quotient.isEmpty ? [0] : quotient
+            chunks.append(remainder)
+            limbs.removeFirst(limbs.prefix { $0 == 0 }.count)
         }
-        return String(digits.reversed())
+        var text = String(chunks.removeLast())
+        for chunk in chunks.reversed() {
+            let digits = String(chunk)
+            text += String(repeating: "0", count: chunkDigits - digits.count) + digits
+        }
+        return text
+    }
+
+    private static func limbs(ofMagnitude magnitude: [UInt8]) -> [UInt32] {
+        let significant = magnitude.drop { $0 == 0 }
+        var limbs: [UInt32] = []
+        limbs.reserveCapacity((significant.count + 3) / 4)
+        var limb: UInt32 = 0
+        var filled = (4 - significant.count % 4) % 4
+        for byte in significant {
+            limb = limb << 8 | UInt32(byte)
+            filled += 1
+            if filled == 4 {
+                limbs.append(limb)
+                limb = 0
+                filled = 0
+            }
+        }
+        return limbs
     }
 
     private static func trimmedMagnitude(_ magnitude: [UInt8]) -> [UInt8] {

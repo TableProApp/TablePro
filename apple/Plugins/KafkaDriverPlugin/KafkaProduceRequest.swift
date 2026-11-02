@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 struct KafkaProduceResult: Sendable {
     let partition: Int32

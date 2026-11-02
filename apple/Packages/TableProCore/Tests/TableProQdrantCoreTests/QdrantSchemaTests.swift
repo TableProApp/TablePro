@@ -31,6 +31,14 @@ struct QdrantSchemaTests {
         #expect(collection.pointsCount == 4)
     }
 
+    @Test("A negative points_count reads as no count")
+    func negativePointsCount() throws {
+        let negative = try JSONSerialization.jsonObject(with: Data(#"{"result":{"points_count":-1}}"#.utf8))
+        #expect(QdrantCollection.parse(name: "docs", info: negative).pointsCount == nil)
+        let zero = try JSONSerialization.jsonObject(with: Data(#"{"result":{"points_count":0}}"#.utf8))
+        #expect(QdrantCollection.parse(name: "docs", info: zero).pointsCount == 0)
+    }
+
     @Test("A nested index path is an index, not a column that would always read NULL")
     func nestedIndexPaths() throws {
         let collection = QdrantCollection.parse(
@@ -193,6 +201,23 @@ struct QdrantSchemaTests {
         #expect(points[0].row(columns: columns) == ["1", "0.9", "Berlin", "[1,2]"])
         #expect(QdrantPoint.list(fromResponse: ["result": ["count": 3]]) == nil)
         #expect(QdrantPoint.list(fromResponse: ["result": [Any]()])?.isEmpty == true)
+    }
+
+    @Test("A payload schema of 100,000 keys is read, and its columns typed, in linear time", .timeLimit(.minutes(1)))
+    func manyPayloadKeys() {
+        var schema: [String: Any] = ["\"k7\"": ["data_type": "integer"]]
+        for index in 0 ..< 100_000 {
+            schema["k\(index)"] = ["data_type": "keyword"]
+        }
+        let collection = QdrantCollection.parse(name: "docs", info: info(vectors: ["size": 2], payloadSchema: schema))
+        #expect(collection.payloadFields.count == 100_000)
+        #expect(collection.indexes.count == 100_001)
+
+        let types = QdrantSchema.columns(for: collection).map { QdrantSchema.typeName(of: $0.name, in: collection) }
+        #expect(types.count == 100_002)
+        #expect(types.filter { $0 == "keyword" }.count == 99_999)
+        #expect(QdrantSchema.typeName(of: "k7", in: collection) == "integer")
+        #expect(types.last == "vector(2)")
     }
 
     @Test("Point ids parse back to the kind Qdrant expects")

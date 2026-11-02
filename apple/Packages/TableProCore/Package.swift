@@ -60,7 +60,15 @@ let package = Package(
         .library(name: "TableProPostgreSQLCore", targets: ["TableProPostgreSQLCore"]),
         .library(name: "TableProRedisCore", targets: ["TableProRedisCore"]),
         .library(name: "TableProMemcachedCore", targets: ["TableProMemcachedCore"]),
-        .library(name: "TableProTestSupport", targets: ["TableProTestSupport"])
+        .library(name: "TableProTestSupport", targets: ["TableProTestSupport"]),
+        .library(name: "TableProWireIO", targets: ["TableProWireIO"]),
+        .library(name: "TableProGzip", targets: ["TableProGzip"]),
+        .library(name: "TableProKafkaCore", targets: ["TableProKafkaCore"]),
+        .library(name: "TableProCassandraCore", targets: ["TableProCassandraCore"])
+    ],
+    // Kafka brokers hand back whatever codec the producer stored, and macOS has no zstd.
+    dependencies: [
+        .package(url: "https://github.com/facebook/zstd", from: "1.5.0")
     ],
     targets: [
         .target(
@@ -110,7 +118,7 @@ let package = Package(
         ),
         .target(
             name: "TableProImport",
-            dependencies: ["TableProConnectionLibrary", "TableProSSHTransport"],
+            dependencies: ["TableProConnectionLibrary", "TableProCoreTypes", "TableProSSHTransport"],
             path: "Sources/TableProImport"
         ),
         .target(
@@ -152,7 +160,7 @@ let package = Package(
         ),
         .target(
             name: "TableProTeradataCore",
-            dependencies: [],
+            dependencies: ["TableProWireIO"],
             path: "Sources/TableProTeradataCore"
         ),
         .target(
@@ -263,7 +271,7 @@ let package = Package(
         ),
         .target(
             name: "TableProTabularIO",
-            dependencies: [],
+            dependencies: ["TableProWireIO"],
             path: "Sources/TableProTabularIO"
         ),
         .target(
@@ -301,6 +309,33 @@ let package = Package(
             path: "Sources/TableProRedisCore",
             swiftSettings: pluginCoreSettings
         ),
+        .target(
+            name: "TableProWireIO",
+            dependencies: [],
+            path: "Sources/TableProWireIO"
+        ),
+        .target(
+            name: "TableProGzip",
+            dependencies: ["TableProWireIO"],
+            path: "Sources/TableProGzip"
+        ),
+        // Linked by a plugin bundle, so never TableProPluginKit.
+        .target(
+            name: "TableProKafkaCore",
+            dependencies: [
+                "TableProWireIO",
+                "TableProGzip",
+                .product(name: "libzstd", package: "zstd")
+            ],
+            path: "Sources/TableProKafkaCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
+            name: "TableProCassandraCore",
+            dependencies: [],
+            path: "Sources/TableProCassandraCore",
+            swiftSettings: pluginCoreSettings
+        ),
         .testTarget(
             name: "TableProBigtableCoreTests",
             dependencies: ["TableProBigtableCore", "TableProGoogleCloud"],
@@ -323,7 +358,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTeradataCoreTests",
-            dependencies: ["TableProTeradataCore"],
+            dependencies: ["TableProTeradataCore", "TableProWireIO"],
             path: "Tests/TableProTeradataCoreTests"
         ),
         .testTarget(
@@ -492,6 +527,28 @@ let package = Package(
             name: "TableProRedisCoreTests",
             dependencies: ["TableProRedisCore"],
             path: "Tests/TableProRedisCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProWireIOTests",
+            dependencies: ["TableProWireIO"],
+            path: "Tests/TableProWireIOTests"
+        ),
+        .testTarget(
+            name: "TableProGzipTests",
+            dependencies: ["TableProGzip", "TableProWireIO"],
+            path: "Tests/TableProGzipTests"
+        ),
+        .testTarget(
+            name: "TableProKafkaCoreTests",
+            dependencies: ["TableProKafkaCore", "TableProWireIO"],
+            path: "Tests/TableProKafkaCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProCassandraCoreTests",
+            dependencies: ["TableProCassandraCore"],
+            path: "Tests/TableProCassandraCoreTests",
             swiftSettings: pluginCoreSettings
         )
     ]

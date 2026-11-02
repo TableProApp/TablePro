@@ -58,11 +58,6 @@ packages:
   Yams:
     url: https://github.com/jpsim/Yams
     majorVersion: 5.1.0
-  # Kafka brokers hand a consumer whatever codec the producer stored, and never transcode.
-  # macOS supplies no zstd at any layer, so a zstd topic is unreadable without this.
-  zstd:
-    url: https://github.com/facebook/zstd
-    majorVersion: 1.5.0
   # Already in the graph through Packages/TableProOracle. Declared here so the Kafka plugin
   # can link them directly: Kafka is a length-prefixed binary protocol over TCP, and NIOSSL
   # reads the PEM paths SSLConfiguration already carries.
@@ -408,7 +403,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
+        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore
         products: [TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
@@ -952,6 +947,9 @@ targets:
           - -lc++
           - -lz
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/CassandraDriverPlugin/CCassandra
+    dependencies:
+      - package: TableProCore
+        product: TableProCassandraCore
 
   CloudflareD1DriverPlugin:
     templates: [DriverPlugin]
@@ -1062,8 +1060,10 @@ targets:
     sources:
       - Plugins/SharedNIO
     dependencies:
-      - package: zstd
-        product: libzstd
+      - package: TableProCore
+        product: TableProKafkaCore
+      - package: TableProCore
+        product: TableProWireIO
       - package: swift-nio
         product: NIOCore
       - package: swift-nio
@@ -1218,6 +1218,8 @@ targets:
       folder: SnowflakeDriverPlugin
       principalClass: SnowflakePlugin
     dependencies:
+      - package: TableProCore
+        product: TableProGzip
       - package: TableProCore
         product: TableProNumberFormatting
 

@@ -151,9 +151,16 @@ struct ProjectFolderScanSheet: View {
         step = .scanning
         selection = nil
         let url = rootURL
-        let result = await Task.detached(priority: .userInitiated) {
+        let scan = Task.detached(priority: .userInitiated) {
             ProjectFolderScanner.scan(rootURL: url)
-        }.value
+        }
+        // Closing the sheet or picking another folder stops the scan instead of leaving it running.
+        let result = await withTaskCancellationHandler {
+            await scan.value
+        } onCancel: {
+            scan.cancel()
+        }
+        guard !Task.isCancelled else { return }
         switch result {
         case .success(let scan):
             step = scan.candidates.isEmpty ? .empty : .results(scan.candidates)
