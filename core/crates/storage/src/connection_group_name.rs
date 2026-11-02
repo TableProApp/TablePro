@@ -34,15 +34,21 @@ impl ConnectionGroupName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Whether the two read as one name. Two groups in one place may not.
+    pub fn same_name(&self, other: &ConnectionGroupName) -> bool {
+        self.0.to_lowercase() == other.0.to_lowercase()
+    }
 }
 
-/// Reads a saved connection's `group` through `from_stored`.
-pub(crate) fn deserialize_stored<'de, D>(deserializer: D) -> Result<Option<ConnectionGroupName>, D::Error>
+/// Reads a group's `name` through `from_stored`. A blank one is refused:
+/// a group nobody can see cannot be told apart.
+pub(crate) fn deserialize_required<'de, D>(deserializer: D) -> Result<ConnectionGroupName, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let stored = Option::<String>::deserialize(deserializer)?;
-    Ok(stored.as_deref().and_then(ConnectionGroupName::from_stored))
+    let stored = String::deserialize(deserializer)?;
+    ConnectionGroupName::from_stored(&stored).ok_or_else(|| serde::de::Error::custom(GroupNameError::Empty))
 }
 
 impl TryFrom<String> for ConnectionGroupName {
