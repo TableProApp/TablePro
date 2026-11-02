@@ -99,16 +99,18 @@
 
 ## Gate, 2026-11-02
 
-The same 5 MB script as the RichEditBox gate (5,243,031 characters, 48,702 lines), drawn with WARP on GitHub's `windows-2025` (x64) and `windows-11-arm` (Arm64) runners, keys sent with `SendInput`. The harness lived on the temporary branch `spike/windows-editor`.
+The same 5 MB script as the RichEditBox gate (5,243,031 characters, 48,702 lines), drawn with WARP on GitHub's `windows-2025` (x64) and `windows-11-arm` (Arm64) runners, keys sent with `SendInput`. The harness is on the local branch `spike/windows-editor`.
 
 | Bar | x64 | Arm64 |
 |---|---|---|
-| Typing at the end, input to present, p95 (max) | 6.3 ms (24.6) | 5.5 ms (18.5) |
-| Typing in the middle, p95 (max) | 4.6 ms (5.2) | 4.7 ms (8.2) |
-| Scrolling 3 lines a step, scroll to present p95 (max); drawing p95 | 19.9 ms (35.9); 4.3 ms | 19.6 ms (20.1); 4.0 ms |
-| Scrolling a page a step, same | 21.2 ms (23.4); 6.0 ms | 20.9 ms (22.2); 5.8 ms |
+| Typing at the end, input to present, p95 (max) | 10.8 ms (25.6) | 6.9 ms (13.9) |
+| Typing in the middle, p95 (max) | 5.1 ms (6.4) | 3.9 ms (7.2) |
+| Scrolling 3 lines a step, scroll to present p95 (max); drawing p95 | 20.4 ms (21.0); 5.3 ms | 19.7 ms (20.9); 4.0 ms |
+| Scrolling a page a step, same | 22.7 ms (49.3); 6.9 ms | 6.6 ms (21.5); 5.8 ms |
 | 50 keys, then one Ctrl+Z | one undo step, text restored exactly | same |
 | Coloring while scrolling and jumping | no undo or redo step | same |
-| UIA | text, caret line and caret rectangle read back right | same |
+| Telex, keys ` tieengs vieetj ` | stays raw, as a stock TextBox does on Windows Server 2025 (lane `wingates2`) | composes `tiếng việt` at the caret |
+| Pinyin, keys `nihao` then 1 | composes `ni'hao` at the caret, candidate window 3 px under the caret line, commits `你好` | composes and commits; candidates under the composition in the screenshot |
+| UIA | text, caret line and caret rectangle read back right, also while composing | same |
 
-Runs 41461937779 (above) and 41453740796 (input methods): Telex composed `tiếng việt` on Arm64 and stayed raw on x64 Windows Server 2025, as a stock TextBox does there (lane `wingates2`). Pinyin composed `ni'hao` at the caret and committed `你好` on both; on x64 its candidate window opened 3 px under the caret line. A Native AOT build of the harness ran the same typing within the bar on both.
+Run 41472137359. A Native AOT build of the harness ran typing, scrolling and UIA within the bars on both.
