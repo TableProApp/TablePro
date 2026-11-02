@@ -19,7 +19,7 @@ internal static unsafe class FontWarmup
 {
     public const string Scripts = "Tiếng Việt 你好 日本語 한국어 العربية עברית ไทย Ελληνικά Русский देवनागरी ✓ 😀 🚀";
 
-    private static readonly HashSet<string> s_started = [];
+    private static readonly Dictionary<string, Task> s_started = [];
 
     public static double LastMilliseconds { get; private set; }
     private static readonly Lock s_lock = new();
@@ -28,14 +28,14 @@ internal static unsafe class FontWarmup
     {
         lock (s_lock)
         {
-            if (!s_started.Add(family))
+            if (s_started.TryGetValue(family, out var started))
             {
-                return Task.CompletedTask;
+                return started;
             }
         }
         factory->AddRef();
         var pointer = (nint)factory;
-        return Task.Run(() =>
+        var task = Task.Run(() =>
         {
             var started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
@@ -48,6 +48,11 @@ internal static unsafe class FontWarmup
                 ((IDWriteFactory*)pointer)->Release();
             }
         });
+        lock (s_lock)
+        {
+            s_started[family] = task;
+        }
+        return task;
     }
 
     private static void Warm(IDWriteFactory* factory, string family, float fontSize)

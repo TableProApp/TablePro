@@ -10,7 +10,11 @@ using TablePro.DataGrid.Automation;
 using TablePro.DataGrid.Model;
 using TablePro.Graphics;
 using Windows.Foundation;
+using TerraFX.Interop.DirectX;
+using TerraFX.Interop.Windows;
 using Windows.UI.ViewManagement;
+using static TerraFX.Interop.DirectX.DirectX;
+using static TerraFX.Interop.DirectX.DWRITE_FACTORY_TYPE;
 
 namespace TablePro.DataGrid;
 
@@ -156,6 +160,18 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         Unloaded += OnUnloaded;
         ActualThemeChanged += (_, _) => RefreshTheme();
         InitializeInput();
+    }
+
+    // For the app's startup, so the first non-Latin cell finds its fallback fonts loaded even in the first grid.
+    public static unsafe void WarmUpFonts()
+    {
+        IDWriteFactory* factory;
+        if (DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, NativeCom.Iid<IDWriteFactory>(), (IUnknown**)&factory).FAILED)
+        {
+            return;
+        }
+        FontWarmupTask = FontWarmup.Start(factory, CellPainter.PickFamily(factory), BaseFontSize);
+        factory->Release();
     }
 
     // Draws with WARP even when a GPU is there. Read when the first grid of a thread is made.
@@ -412,7 +428,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _textScale = _settings.TextScaleFactor;
         _rowHeight = Math.Ceiling(BaseRowHeight * _textScale);
         var painter = new CellPainter(s_device, (float)(BaseFontSize * _textScale), GridColors.Resolve(ActualTheme));
-        FontWarmupTask = FontWarmup.Start(s_device.DWrite, painter.FamilyName, painter.FontSize);
+        FontWarmupTask = FontWarmup.Start(s_device.DWrite, painter.FamilyName, BaseFontSize);
         Brushes.Apply(painter.Colors);
         return painter;
     }

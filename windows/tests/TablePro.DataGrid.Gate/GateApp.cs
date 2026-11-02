@@ -57,6 +57,7 @@ public sealed partial class GateApp : Application, IXamlMetadataProvider
         _report.Line("process_arch", System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString());
         _report.Line("os", Environment.OSVersion.VersionString);
         _report.Line("process_start_to_onlaunched_ms", Clock.SinceProcessStart());
+        DataGridView.WarmUpFonts();
         try
         {
             Resources.MergedDictionaries.Add(new XamlControlsResources());

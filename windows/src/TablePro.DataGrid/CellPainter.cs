@@ -216,7 +216,7 @@ internal sealed unsafe class CellPainter : IDisposable
         return brush;
     }
 
-    private static string PickFamily(IDWriteFactory* factory)
+    internal static string PickFamily(IDWriteFactory* factory)
     {
         IDWriteFontCollection* fonts;
         NativeCom.Check(factory->GetSystemFontCollection(&fonts, BOOL.FALSE));
