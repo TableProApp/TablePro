@@ -231,6 +231,40 @@ public sealed partial class EditorModel
         Apply(EditKind.Other, [Edit.Insert(Clamp(start), Clamp(end), text)], 0);
     }
 
+    // Text dropped at an offset. A move takes the primary selection away in the same undo step.
+    public void DropText(string text, int target, bool move)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        text = TextDocument.Normalize(text);
+        target = Clamp(target);
+        var source = Primary;
+        if (move && !source.IsEmpty && target >= source.Start && target <= source.End)
+        {
+            return;
+        }
+        Document.Undo.Begin(EditKind.Other, _selections.ToList());
+        _applying++;
+        try
+        {
+            var insertAt = target;
+            if (move && !source.IsEmpty)
+            {
+                if (target > source.End)
+                {
+                    insertAt -= source.Length;
+                }
+                Document.Replace(source.Start, source.Length, string.Empty);
+            }
+            Document.Replace(insertAt, 0, text);
+            SetSelections([new Selection(insertAt, insertAt + text.Length)]);
+        }
+        finally
+        {
+            _applying--;
+            Document.Undo.End(_selections.ToList());
+        }
+    }
+
     private static List<Edit> MergeDeletes(List<Edit> edits)
     {
         edits.Sort((a, b) => a.Start.CompareTo(b.Start));

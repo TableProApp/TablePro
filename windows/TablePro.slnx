@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TablePro.Editor/TablePro.Editor.csproj" />
     <Project Path="src/TablePro.Editor.Model/TablePro.Editor.Model.csproj" />
     <Project Path="src/TablePro.Interop/TablePro.Interop.csproj" />
   </Folder>
