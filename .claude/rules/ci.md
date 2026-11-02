@@ -33,6 +33,7 @@ paths:
 - Concurrency is only in `ci.yml`: a PR keeps its newest run, main pushes run one at a time and a newer pending run replaces the older, and each `release/**` commit and each dispatch has its own group.
 - macOS Tests runs the Unit and UI plans in full, with no shard, parallel, iteration or retry flag.
 - A `v*` tag runs only `release.yml`, a `linux-v*` tag only `release-linux.yml`.
+- `windows-grid-gate.yml` runs only by dispatch: the Windows data grid's timing and behavior gate on `windows-2025` and `windows-11-arm`, whose numbers vary too much between hosted runners to gate a merge (`windows/docs/decisions/0003-data-grid-control.md`, Gate). `windows.yml` runs the grid's tests on every change.
 
 ## Change detector
 

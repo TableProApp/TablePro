@@ -1,3 +1,4 @@
+using TablePro.Graphics;
 using TerraFX.Interop.DirectX;
 using Windows.UI;
 

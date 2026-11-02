@@ -83,7 +83,7 @@ public sealed partial class SqlEditor
     private double CaretX(int line, int column)
     {
         var text = LineText(line);
-        if (text.Length <= Rendering.TextLayouts.LongLine && _layouts is not null && _brushes is not null)
+        if (text.Length <= TablePro.Graphics.TextLayouts.LongLine && _layouts is not null && _brushes is not null)
         {
             return LayoutFor(line, text).XAt(column);
         }

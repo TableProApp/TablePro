@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../TablePro.Editor.Model/TablePro.Editor.Model.csproj" />
+    <ProjectReference Include="../TablePro.Graphics/TablePro.Graphics.csproj" />
     <ProjectReference Include="../TablePro.Interop/TablePro.Interop.csproj" />
   </ItemGroup>
 
