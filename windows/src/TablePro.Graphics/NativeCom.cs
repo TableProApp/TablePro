@@ -3,7 +3,7 @@ using TerraFX.Interop;
 using TerraFX.Interop.Windows;
 using static TerraFX.Interop.Windows.Windows;
 
-namespace TablePro.Editor.Rendering;
+namespace TablePro.Graphics;
 
 internal static unsafe class NativeCom
 {

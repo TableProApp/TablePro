@@ -20,7 +20,7 @@ using static TerraFX.Interop.DirectX.DXGI_SWAP_EFFECT;
 using static TerraFX.Interop.Windows.Windows;
 using static TerraFX.Interop.Windows.E;
 
-namespace TablePro.Editor.Rendering;
+namespace TablePro.Graphics;
 
 // Direct3D 11 for the swap chain, Direct2D on top of it for drawing, DirectWrite for text. The swap chain belongs to
 // a SwapChainPanel, so XAML composes it with the rest of the window and nothing is copied through a XAML surface.

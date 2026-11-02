@@ -1,6 +1,7 @@
 using TablePro.Editor.Input;
 using TablePro.Editor.Model;
 using TablePro.Editor.Rendering;
+using TablePro.Graphics;
 using TerraFX.Interop.DirectX;
 using static TerraFX.Interop.DirectX.D2D1_ANTIALIAS_MODE;
 using static TerraFX.Interop.DirectX.D2D1_DRAW_TEXT_OPTIONS;

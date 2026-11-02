@@ -7,7 +7,7 @@ using static TerraFX.Interop.DirectX.DWRITE_LINE_SPACING_METHOD;
 using static TerraFX.Interop.DirectX.DWRITE_TEXT_ALIGNMENT;
 using static TerraFX.Interop.DirectX.DWRITE_WORD_WRAPPING;
 
-namespace TablePro.Editor.Rendering;
+namespace TablePro.Graphics;
 
 // One laid-out line, or a slice of a very long one. Columns in it count from SegmentStart.
 internal sealed unsafe class LineLayout
@@ -48,9 +48,8 @@ internal sealed unsafe class LineLayout
     }
 }
 
-// Fonts, metrics and the cache of line layouts. A layout is keyed by its text and colors, so lines that shift up or
-// down after an edit find theirs again; only the edited line is laid out anew. Nothing here knows the editor: the
-// data grid is to draw its cells with the same layer, through the span overloads that make no string per cell.
+// The editor's fonts, metrics and cache of line layouts. A layout is keyed by its text and colors, so lines that shift
+// up or down after an edit find theirs again; only the edited line is laid out anew.
 internal sealed unsafe class TextLayouts : IDisposable
 {
     // Past this many characters a line is laid out in a slice around the visible columns.
@@ -65,60 +64,12 @@ internal sealed unsafe class TextLayouts : IDisposable
     private IDWriteTextFormat* _gutterFormat;
     private long _frame;
 
-    private static int s_fallbackWarmed;
-
     public TextLayouts(IDWriteFactory* factory, float fontSize, int tabSize)
     {
         _factory = factory;
         FamilyName = PickFamily();
         Configure(fontSize, tabSize);
-        WarmFontFallback(factory, FamilyName);
-    }
-
-    // The first text in a script the font lacks makes DirectWrite load its fallback fonts, which the grid gate
-    // measured at 316 to 1,346 ms (lane wingates2). Doing it once per process on a pool thread keeps it off the first
-    // keystroke or row that needs it.
-    public static void WarmFontFallback(IDWriteFactory* factory, string family)
-    {
-        if (Interlocked.Exchange(ref s_fallbackWarmed, 1) == 1)
-        {
-            return;
-        }
-        factory->AddRef();
-        var pointer = (nint)factory;
-        _ = Task.Run(() =>
-        {
-            var shared = (IDWriteFactory*)pointer;
-            try
-            {
-                IDWriteTextFormat* format;
-                fixed (char* name = family)
-                fixed (char* locale = "en-us")
-                {
-                    if (shared->CreateTextFormat(name, null, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-                        DWRITE_FONT_STRETCH_NORMAL, 14, locale, &format).FAILED)
-                    {
-                        return;
-                    }
-                }
-                const string Scripts = "Tiếng Việt 你好 日本語 한국어 العربية עברית ไทย Ελληνικά Русский ✓ 😀";
-                IDWriteTextLayout* layout;
-                fixed (char* text = Scripts)
-                {
-                    if (shared->CreateTextLayout(text, (uint)Scripts.Length, format, 10_000, 100, &layout).SUCCEEDED)
-                    {
-                        DWRITE_TEXT_METRICS metrics;
-                        layout->GetMetrics(&metrics);
-                        layout->Release();
-                    }
-                }
-                format->Release();
-            }
-            finally
-            {
-                shared->Release();
-            }
-        });
+        FontWarmup.Start(factory, FamilyName, fontSize);
     }
 
     // A layout of any UTF-16 text in the regular format, not cached; the caller releases it.
