@@ -125,6 +125,7 @@ internal sealed partial class Gate(RunContext ctx)
         var verify = new Verifier(this);
         int notApplied = 0;
         int[] gcStart = [GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2)];
+        var pauseStart = GC.GetTotalPauseDuration();
         var worst = "";
         var worstMs = -1.0;
         var gcSteps = 0;
@@ -173,6 +174,8 @@ internal sealed partial class Gate(RunContext ctx)
             verify.Check(afterFrame: true);
         }
         Frames.Report(_report, name, samples);
+        _report.Line($"{name}.worst_block", heartbeat.Worst() + string.Create(CultureInfo.InvariantCulture,
+            $" gc_pause_ms={(GC.GetTotalPauseDuration() - pauseStart).TotalMilliseconds:F1}"));
         _report.Stats($"{name}.heartbeat_wait_ms", heartbeat.Take());
         _report.Line($"{name}.cells_bound", _grid.Counters.CellsBound - bound);
         _report.Line($"{name}.elements_created", DrawnRow.Instances + HeaderCell.Instances - elements);

@@ -201,6 +201,9 @@ internal sealed class Heartbeat : IDisposable
     private readonly DispatcherQueue _queue;
     private readonly List<double> _latencies = [];
     private volatile bool _running = true;
+    private double _worst;
+    private bool _worstHadGc;
+    private int _waitsWithGc;
 
     public Heartbeat(DispatcherQueue queue)
     {
@@ -214,7 +217,19 @@ internal sealed class Heartbeat : IDisposable
         {
             var copy = _latencies.ToList();
             _latencies.Clear();
+            _worst = 0;
+            _worstHadGc = false;
+            _waitsWithGc = 0;
             return copy;
+        }
+    }
+
+    // The longest wait since the last Take, whether a GC ran during it, and how many waits held one.
+    public string Worst()
+    {
+        lock (_latencies)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"max={_worst:F1} gc_in_max={_worstHadGc} waits_with_gc={_waitsWithGc}");
         }
     }
 
@@ -225,13 +240,21 @@ internal sealed class Heartbeat : IDisposable
         while (_running)
         {
             var t0 = Clock.Now();
+            var collections = GC.CollectionCount(0);
             using var done = new ManualResetEventSlim();
             _queue.TryEnqueue(DispatcherQueuePriority.Normal, () =>
             {
                 var ms = Clock.MsSince(t0);
+                var gc = GC.CollectionCount(0) != collections;
                 lock (_latencies)
                 {
                     _latencies.Add(ms);
+                    _waitsWithGc += gc ? 1 : 0;
+                    if (ms > _worst)
+                    {
+                        _worst = ms;
+                        _worstHadGc = gc;
+                    }
                 }
                 done.Set();
             });

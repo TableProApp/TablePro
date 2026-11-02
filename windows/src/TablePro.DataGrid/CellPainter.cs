@@ -4,6 +4,11 @@ using TablePro.Graphics;
 using TerraFX.Interop.DirectX;
 using TerraFX.Interop.Windows;
 using Windows.UI;
+using static TerraFX.Interop.DirectX.D2D1_ALPHA_MODE;
+using static TerraFX.Interop.DirectX.D2D1_BITMAP_OPTIONS;
+using static TerraFX.Interop.DirectX.D2D1_DEVICE_CONTEXT_OPTIONS;
+using static TerraFX.Interop.DirectX.D2D1_DRAW_TEXT_OPTIONS;
+using static TerraFX.Interop.DirectX.D2D1_TEXT_ANTIALIAS_MODE;
 using static TerraFX.Interop.DirectX.DWRITE_FONT_STRETCH;
 using static TerraFX.Interop.DirectX.DWRITE_FONT_STYLE;
 using static TerraFX.Interop.DirectX.DWRITE_FONT_WEIGHT;
@@ -12,6 +17,7 @@ using static TerraFX.Interop.DirectX.DWRITE_READING_DIRECTION;
 using static TerraFX.Interop.DirectX.DWRITE_TEXT_ALIGNMENT;
 using static TerraFX.Interop.DirectX.DWRITE_TRIMMING_GRANULARITY;
 using static TerraFX.Interop.DirectX.DWRITE_WORD_WRAPPING;
+using static TerraFX.Interop.DirectX.DXGI_FORMAT;
 
 namespace TablePro.DataGrid;
 
@@ -165,10 +171,103 @@ internal sealed unsafe class CellPainter : IDisposable
         return metrics.widthIncludingTrailingWhitespace;
     }
 
+    // Lays out and draws sample cells of every common script as the rows do, on the rows' device from a pool thread.
+    public Task WarmAsync(float width, float height)
+    {
+        var text = (nint)_text;
+        var placeholder = (nint)_null;
+        var device = (nint)_device.Direct2D;
+        var factory = (nint)_device.DWrite;
+        _text->AddRef();
+        _null->AddRef();
+        _device.Direct2D->AddRef();
+        _device.DWrite->AddRef();
+        return Task.Run(() =>
+        {
+            try
+            {
+                DrawSamples((IDWriteFactory*)factory, (ID2D1Device*)device, (IDWriteTextFormat*)text,
+                    (IDWriteTextFormat*)placeholder, width, height);
+            }
+            finally
+            {
+                ((IUnknown*)text)->Release();
+                ((IUnknown*)placeholder)->Release();
+                ((IUnknown*)device)->Release();
+                ((IUnknown*)factory)->Release();
+            }
+        });
+    }
+
     public void Dispose()
     {
         ReleaseBrushes();
         ReleaseFormats();
+    }
+
+    private static void DrawSamples(IDWriteFactory* factory, ID2D1Device* device, IDWriteTextFormat* text,
+        IDWriteTextFormat* placeholder, float width, float height)
+    {
+        ID2D1DeviceContext* context = null;
+        ID2D1Bitmap1* target = null;
+        ID2D1SolidColorBrush* brush = null;
+        try
+        {
+            if (device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &context).FAILED)
+            {
+                return;
+            }
+            var properties = new D2D1_BITMAP_PROPERTIES1
+            {
+                pixelFormat = new D2D1_PIXEL_FORMAT { format = DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED },
+                dpiX = 96,
+                dpiY = 96,
+                bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET,
+            };
+            var size = new D2D_SIZE_U { width = (uint)Math.Ceiling(width) + 32, height = (uint)Math.Ceiling(height) };
+            if (context->CreateBitmap(size, null, 0, &properties, &target).FAILED)
+            {
+                return;
+            }
+            context->SetTarget((ID2D1Image*)target);
+            var black = new DXGI_RGBA { a = 1 };
+            if (context->CreateSolidColorBrush(&black, null, &brush).FAILED)
+            {
+                return;
+            }
+            context->BeginDraw();
+            context->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            var samples = FontWarmup.Scripts.Split(' ');
+            for (var i = -1; i <= samples.Length; i++)
+            {
+                var sample = i < 0 ? FontWarmup.Scripts : i == samples.Length ? NullText : samples[i];
+                var format = i == samples.Length ? placeholder : text;
+                IDWriteTextLayout* layout;
+                fixed (char* chars = sample)
+                {
+                    if (factory->CreateTextLayout(chars, (uint)sample.Length, format, width, height, &layout).FAILED)
+                    {
+                        continue;
+                    }
+                }
+                if (TextDirection.IsRightToLeft(sample))
+                {
+                    layout->SetReadingDirection(DWRITE_READING_DIRECTION_RIGHT_TO_LEFT);
+                }
+                var clear = default(DXGI_RGBA);
+                context->Clear(&clear);
+                context->DrawTextLayout(default, layout, (ID2D1Brush*)brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
+                layout->Release();
+            }
+            _ = context->EndDraw(null, null);
+            context->SetTarget(null);
+        }
+        finally
+        {
+            NativeCom.Release(ref brush);
+            NativeCom.Release(ref target);
+            NativeCom.Release(ref context);
+        }
     }
 
     private IDWriteTextLayout* Create(ReadOnlySpan<char> text, IDWriteTextFormat* format, float width, float height)
