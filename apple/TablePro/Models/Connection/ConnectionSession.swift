@@ -20,6 +20,8 @@ struct ConnectionSession: Identifiable {
     /// ordinary database switch on the engines that reconnect to perform one, and `.disconnected` is
     /// this struct's own default value.
     var liveness: ConnectionLiveness = .live
+    /// The reconnect loop's progress while it redials a dropped session; nil when nothing is redialing.
+    var recovery: ConnectionRecoveryProgress?
     var lastError: String?
     /// The warning the server sent with the login that opened this session, such as an Oracle password in its
     /// grace period. The user dismissing it clears it; the next connect brings it back, because the server sends
@@ -128,6 +130,7 @@ struct ConnectionSession: Identifiable {
         id == other.id
             && status == other.status
             && liveness == other.liveness
+            && recovery == other.recovery
             && connection == other.connection
             && pendingTruncates == other.pendingTruncates
             && pendingDeletes == other.pendingDeletes
