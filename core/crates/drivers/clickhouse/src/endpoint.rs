@@ -129,7 +129,7 @@ impl ClickHouseEndpoint {
             .control
             .query_raw(
                 "SELECT version() AS version, currentDatabase() AS database, \
-                 toUInt8OrZero((SELECT value FROM system.settings WHERE name = 'readonly')) AS readonly",
+                 toUInt8(getSetting('readonly')) AS readonly",
             )
             .fetch_one::<Identity>();
         let identity = match tokio::time::timeout(bound, asking).await {
