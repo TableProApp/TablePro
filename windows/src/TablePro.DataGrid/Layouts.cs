@@ -51,16 +51,27 @@ internal sealed partial class RowsLayout(IGridWindow grid, bool frozen, LayoutCo
 {
     private readonly Dictionary<int, UIElement> _realized = [];
     private readonly List<int> _leaving = [];
+    private readonly List<UIElement> _replaced = [];
 
     public Dictionary<int, UIElement> Realized => _realized;
 
-    // After the data was replaced: the repeater recycles every element itself.
-    public void Forget() => _realized.Clear();
+    // After the data was replaced. A new source leaves SuppressAutoRecycle elements realized, still drawing the old
+    // rows under the new ones, so the next measure hands them back.
+    public void Forget()
+    {
+        _replaced.AddRange(_realized.Values);
+        _realized.Clear();
+    }
 
     protected override Size MeasureOverride(VirtualizingLayoutContext context, Size availableSize)
     {
         counters.Measures++;
         var started = Stopwatch.GetTimestamp();
+        foreach (var element in _replaced)
+        {
+            context.RecycleElement(element);
+        }
+        _replaced.Clear();
         var (first, last) = grid.RowWindow;
         last = Math.Min(last, context.ItemCount - 1);
         _leaving.Clear();
@@ -115,13 +126,24 @@ internal sealed partial class HeaderLayout(IGridWindow grid) : VirtualizingLayou
 {
     private readonly Dictionary<int, UIElement> _realized = [];
     private readonly List<int> _leaving = [];
+    private readonly List<UIElement> _replaced = [];
 
     public Dictionary<int, UIElement> Realized => _realized;
 
-    public void Forget() => _realized.Clear();
+    // As RowsLayout.Forget.
+    public void Forget()
+    {
+        _replaced.AddRange(_realized.Values);
+        _realized.Clear();
+    }
 
     protected override Size MeasureOverride(VirtualizingLayoutContext context, Size availableSize)
     {
+        foreach (var element in _replaced)
+        {
+            context.RecycleElement(element);
+        }
+        _replaced.Clear();
         var (first, last) = grid.ColumnWindow;
         last = Math.Min(last, context.ItemCount - 1);
         _leaving.Clear();
