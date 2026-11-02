@@ -198,6 +198,8 @@ class DetectChangedPathsTests(unittest.TestCase):
             ".github/plugin-registry.json",
             "apple/scripts/release/build.sh",
             "apple/scripts/release/package.sh",
+            "apple/scripts/release/dmg.sh",
+            "apple/scripts/release/dmg.DS_Store",
             "apple/scripts/release/registry.py",
             "apple/scripts/release/notes.py",
             "apple/scripts/release/version.py",
