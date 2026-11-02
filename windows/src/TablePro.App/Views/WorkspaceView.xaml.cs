@@ -269,8 +269,6 @@ public sealed partial class WorkspaceView : UserControl
             Header = content.Title,
             IconSource = new SymbolIconSource { Symbol = icon },
             Content = content,
-            HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Stretch,
         };
         content.StateChanged += (_, _) => CommandsChanged?.Invoke(this, EventArgs.Empty);
         Tabs.TabItems.Add(item);
