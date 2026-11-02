@@ -25,6 +25,15 @@ internal static class CoreCall
         }
     }
 
+    public static Task RunAsync(Func<Native.CancelToken, Task> call, CancellationToken cancellationToken) =>
+        RunAsync(
+            async token =>
+            {
+                await call(token).ConfigureAwait(false);
+                return true;
+            },
+            cancellationToken);
+
     public static async Task<T> RunAsync<T>(Func<Task<T>> call)
     {
         try

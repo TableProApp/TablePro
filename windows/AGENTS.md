@@ -27,7 +27,8 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - A `CancellationToken` fires the core's own cancel token, since UniFFI cannot cancel a call. A cancelled call throws `OperationCanceledException`; a failed one throws `TableProException`, whose `Code` the app words. A statement the server refused is not an exception: the run ends `QueryOutcome.Failed`.
 - `QueryEditor.Run` returns at once. Read the run's events with `ReadEventsAsync` on the UI thread; rows that arrive while it is busy come as one event.
 - A grid reads a `ResultSet` through `ResultCursor.Fetch`, one window per visible range. A cursor belongs to one thread, and a window cannot be read after the cursor's next fetch.
-- The app implements `ISecretStore` over the Windows Credential Manager. The core calls it on a thread of its own.
+- The app starts the core with `TableProCore.CreateWithSystemSecrets`, so the core keeps secrets in Credential Manager itself. `ISecretStore` is for tests and hosts with a store of their own; the core calls it on a thread of its own.
+- `TableProCore.Library` reads and writes the saved connections in the storage directory the configuration names. A list the app shows is rebuilt from `GetSnapshotAsync` after each change.
 
 ## Commands
 

@@ -66,6 +66,14 @@ public sealed class DatabaseSession : IAsyncDisposable
         return [.. columns.Select(Mapping.Column)];
     }
 
+    // The statement a table tab opens with: the table's first rows, quoted and limited as the engine writes it.
+    public string BrowseSql(TableName table, long limit)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        ArgumentOutOfRangeException.ThrowIfNegative(limit);
+        return CoreCall.Run(() => _session.BrowseSql(Mapping.Table(table), checked((ulong)limit)));
+    }
+
     /// <summary>An editor tab's own connection, which keeps its transaction from one run to the next.</summary>
     public async Task<QueryEditor> OpenEditorAsync(CancellationToken cancellationToken = default)
     {
