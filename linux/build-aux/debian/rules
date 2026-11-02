@@ -30,16 +30,26 @@ export CARGO_PROFILE_RELEASE_DEBUG = line-tables-only
 # units takes; rustc links without -flto, so their GIMPLE half goes unused.
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=-lto
 
+# The tarball holds the repository's layout: the Meson project is linux/,
+# and the Cargo workspace and vendor/ are at the top.
 %:
-	dh $@ --buildsystem=meson
+	dh $@ --buildsystem=meson --sourcedirectory=linux
+
+# The upstream changelog is the Linux app's, not a file at the top.
+override_dh_installchangelogs:
+	dh_installchangelogs linux/CHANGELOG.md
+
+# DuckDB 2.0's C++ debug info passes dwz's limit of 50 million DIEs, and
+# dwz then fails the build instead of leaving the file as it is.
+override_dh_dwz:
 
 # dh_clean deletes *.orig files, and every vendored crate ships a
 # Cargo.toml.orig that its .cargo-checksum.json lists.
 override_dh_clean:
 	dh_clean -Xvendor/
 
-# Meson runs cargo from the build directory under this tree, and Cargo
-# reads .cargo/config.toml from the directories above where it runs.
+# Meson runs cargo from the build directory under the top of this tree, and
+# Cargo reads .cargo/config.toml from the directories above where it runs.
 override_dh_auto_configure:
 	mkdir -p .cargo
 	cp vendor/cargo-config.toml .cargo/config.toml

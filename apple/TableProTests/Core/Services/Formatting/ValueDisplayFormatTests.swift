@@ -21,6 +21,39 @@ struct ValueDisplayFormatTests {
         #expect(ValueDisplayFormat.uuidSwappedTime.rawValue == "uuidSwappedTime")
         #expect(ValueDisplayFormat.messagePack.rawValue == "messagePack")
         #expect(ValueDisplayFormat.protobuf.rawValue == "protobuf")
+        #expect(ValueDisplayFormat.igbinary.rawValue == "igbinary")
+        #expect(ValueDisplayFormat.avro(schemaID: "ab12").rawValue == "avro:ab12")
+    }
+
+    @Test("Every format reads back from its stored form, an Avro one with its schema ID")
+    func codableRoundTrip() throws {
+        let formats: [String: ValueDisplayFormat] = [
+            "a": .messagePack, "b": .igbinary, "c": .avro(schemaID: String(repeating: "ab12", count: 8)), "d": .raw,
+        ]
+        let data = try JSONEncoder().encode(formats)
+        #expect(try JSONDecoder().decode([String: ValueDisplayFormat].self, from: data) == formats)
+        #expect(try JSONDecoder().decode([String: ValueDisplayFormat].self, from: Data(#"{"x":"protobuf"}"#.utf8))
+            == ["x": .protobuf])
+        #expect(ValueDisplayFormat(rawValue: "avro:") == nil)
+        #expect(ValueDisplayFormat(rawValue: "avro:ab12") == nil)
+        #expect(ValueDisplayFormat(rawValue: "avro:" + String(repeating: "AB12", count: 8)) == nil)
+        #expect(ValueDisplayFormat(rawValue: "nope") == nil)
+    }
+
+    @Test("A Protobuf schema format keeps its schema and message, a Schema Registry one its connection")
+    func schemaFormatsRoundTrip() throws {
+        let schemaID = String(repeating: "ab12", count: 8)
+        let connection = UUID()
+        let protobuf = ValueDisplayFormat.protobufSchema(schemaID: schemaID, message: "shop.Item")
+        #expect(protobuf.rawValue == "protobuf:\(schemaID):shop.Item")
+        #expect(ValueDisplayFormat(rawValue: protobuf.rawValue) == protobuf)
+        #expect(ValueDisplayFormat(rawValue: "schemaRegistry:\(connection.uuidString)") == .schemaRegistry(connectionID: connection))
+        #expect(ValueDisplayFormat(rawValue: "protobuf:\(schemaID):") == nil)
+        #expect(ValueDisplayFormat(rawValue: "protobuf:ab12:shop.Item") == nil)
+        #expect(ValueDisplayFormat(rawValue: "schemaRegistry:nope") == nil)
+        #expect(protobuf.isApplicable(to: .blob(rawType: "BLOB")))
+        #expect(!protobuf.isApplicable(to: .text(rawType: "TEXT")))
+        #expect(ValueDisplayFormat.schemaRegistry(connectionID: connection).isApplicable(to: .text(rawType: "TEXT")))
     }
 
     @Test("only the formats that produce characters count as rendering binary as text")
@@ -30,6 +63,8 @@ struct ValueDisplayFormatTests {
         #expect(ValueDisplayFormat.uuidSwappedTime.rendersBinaryAsText)
         #expect(ValueDisplayFormat.messagePack.rendersBinaryAsText)
         #expect(ValueDisplayFormat.protobuf.rendersBinaryAsText)
+        #expect(ValueDisplayFormat.igbinary.rendersBinaryAsText)
+        #expect(ValueDisplayFormat.avro(schemaID: "ab12").rendersBinaryAsText)
         #expect(!ValueDisplayFormat.raw.rendersBinaryAsText)
         #expect(!ValueDisplayFormat.unixTimestamp.rendersBinaryAsText)
         #expect(!ValueDisplayFormat.json.rendersBinaryAsText)
@@ -60,7 +95,7 @@ struct ValueDisplayFormatTests {
         let formats = ValueDisplayFormat.applicableFormats(for: .blob(rawType: "BLOB"))
         #expect(!formats.contains(.json))
         #expect(!formats.contains(.phpSerialized))
-        #expect(formats == [.raw, .text, .uuid, .uuidSwappedTime, .messagePack, .protobuf])
+        #expect(formats == [.raw, .text, .uuid, .uuidSwappedTime, .messagePack, .protobuf, .igbinary])
     }
 
     @Test("The binary decoders and the swapped UUID stay off text and integer columns")
@@ -70,6 +105,8 @@ struct ValueDisplayFormatTests {
             #expect(!formats.contains(.uuidSwappedTime))
             #expect(!formats.contains(.messagePack))
             #expect(!formats.contains(.protobuf))
+            #expect(!formats.contains(.igbinary))
+            #expect(!ValueDisplayFormat.avro(schemaID: "ab12").isApplicable(to: columnType))
         }
     }
 
@@ -81,7 +118,7 @@ struct ValueDisplayFormatTests {
         )
 
         #expect(!formats.contains(.uuid))
-        #expect(formats == [.raw, .text, .messagePack, .protobuf])
+        #expect(formats == [.raw, .text, .messagePack, .protobuf, .igbinary])
     }
 
     @Test("nil column type returns only raw")

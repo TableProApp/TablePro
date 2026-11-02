@@ -20,15 +20,15 @@ enum SQLEscaping {
     /// - Returns: The escaped string safe for use in ANSI SQL string literals
     static func escapeStringLiteral(_ str: String) -> String {
         var result = str
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\0", with: "")
+        result = result.replacingOccurrences(of: "'", with: "''", options: .literal)
+        result = result.replacingOccurrences(of: "\0", with: "", options: .literal)
         return result
     }
 
     /// Quote a SQL identifier using ANSI double-quote rules, doubling any embedded quote.
     static func quoteIdentifier(_ identifier: String) -> String {
         let quote = "\""
-        let escaped = identifier.replacingOccurrences(of: quote, with: quote + quote)
+        let escaped = identifier.replacingOccurrences(of: quote, with: quote + quote, options: .literal)
         return "\(quote)\(escaped)\(quote)"
     }
 
@@ -40,9 +40,9 @@ enum SQLEscaping {
     /// - Returns: The escaped value with %, _, and \ escaped
     static func escapeLikeWildcards(_ value: String) -> String {
         var result = value
-        result = result.replacingOccurrences(of: "\\", with: "\\\\")
-        result = result.replacingOccurrences(of: "%", with: "\\%")
-        result = result.replacingOccurrences(of: "_", with: "\\_")
+        result = result.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+        result = result.replacingOccurrences(of: "%", with: "\\%", options: .literal)
+        result = result.replacingOccurrences(of: "_", with: "\\_", options: .literal)
         return result
     }
 }

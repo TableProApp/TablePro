@@ -209,7 +209,7 @@ enum TypesenseFilterBuilder {
     /// value: a backtick ends the literal, and everything after it is parsed as filter syntax.
     /// Measured on 29.0, ``tag:=`odd` || year:>0`` matched every document in the collection.
     static func textLiteral(_ value: String, column: String) throws -> String {
-        guard !value.contains("`") else {
+        guard !value.unicodeScalars.contains("`") else {
             throw TypesenseFilterError.backtickInValue(column: column)
         }
         return "`\(value)`"

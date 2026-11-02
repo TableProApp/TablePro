@@ -49,6 +49,7 @@ actor CassandraConnectionActor {
         sslClientCertPath: String?,
         sslClientKeyPath: String?,
         sslClientKeyPassphrase: String?,
+        pinnedToContactPoint: Bool,
         awsCredentials: AWSCredentials? = nil,
         awsRegion: String? = nil,
         connectTimeout: CassandraConnectTimeout = CassandraConnectTimeout(
@@ -62,6 +63,11 @@ actor CassandraConnectionActor {
 
         cass_cluster_set_contact_points(cluster, host)
         cass_cluster_set_port(cluster, Int32(port))
+        // Behind a tunnel the peers system.peers names sit outside it, and the tunnel already turned certificate
+        // checks off, so they would get the password unverified.
+        if pinnedToContactPoint {
+            cass_cluster_set_whitelist_filtering(cluster, host)
+        }
 
         if let awsCredentials, let awsRegion, !awsRegion.isEmpty {
             CassandraSigV4Authenticator.apply(to: cluster, credentials: awsCredentials, region: awsRegion)
@@ -1066,7 +1072,7 @@ actor CassandraConnectionActor {
     }
 
     private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"")
+        value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
     }
 
     private static func apply(_ consistency: CassandraConsistency?, to statement: OpaquePointer) throws {

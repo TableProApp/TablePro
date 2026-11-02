@@ -128,10 +128,8 @@ final class AppEvents {
     /// uniformly handle "this update may affect me" via `payload == nil || payload == self.connectionId`.
     let linkedSQLFoldersDidUpdate = PassthroughSubject<UUID?, Never>()
 
-    let versionHistoryRefreshRequested = PassthroughSubject<UUID, Never>()
-
-    /// Refresh on a table listing tab, which loads its own rows rather than through the coordinator.
-    let tableListingRefreshRequested = PassthroughSubject<UUID, Never>()
+    // Refresh on a tab that loads its own content rather than through the coordinator, by tab id.
+    let tabRefreshRequested = PassthroughSubject<UUID, Never>()
 
     // MARK: - License & Sync
 

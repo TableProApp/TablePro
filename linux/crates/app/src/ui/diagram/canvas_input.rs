@@ -226,13 +226,7 @@ pub(super) fn popup_menu(canvas: &DiagramCanvas, at: gdk::Rectangle) {
         .popover
         .borrow_mut()
         .get_or_insert_with(|| {
-            let menu = gio::Menu::new();
-            menu.append_item(&menu_item(&crate::i18n::gettext("Open Table"), "diagram.open-table"));
-            menu.append_item(&menu_item(
-                &crate::i18n::gettext("Show Structure"),
-                "diagram.show-structure",
-            ));
-            let popover = gtk::PopoverMenu::from_model(Some(&menu));
+            let popover = gtk::PopoverMenu::from_model(Some(&table_menu()));
             popover.set_has_arrow(true);
             popover.set_parent(canvas);
             popover
@@ -240,4 +234,24 @@ pub(super) fn popup_menu(canvas: &DiagramCanvas, at: gdk::Rectangle) {
         .clone();
     popover.set_pointing_to(Some(&at));
     popover.popup();
+}
+
+fn table_menu() -> gio::Menu {
+    let menu = gio::Menu::new();
+    menu.append_item(&menu_item(&crate::i18n::gettext("_Open Table"), "diagram.open-table"));
+    menu.append_item(&menu_item(
+        &crate::i18n::gettext("Show _Structure"),
+        "diagram.show-structure",
+    ));
+    menu
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_item_has_an_access_key_of_its_own() {
+        crate::test_support::assert_access_keys(&table_menu());
+    }
 }

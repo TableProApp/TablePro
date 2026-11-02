@@ -10,7 +10,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use tablepro_ai::{ChatRequest, ReplyEnd, ReplyEvent, StopReason};
-use tablepro_storage::settings::keys;
+use tablepro_linux_platform::settings::keys;
 use tokio_util::sync::CancellationToken;
 
 use super::AssistantRequest;

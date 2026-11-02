@@ -609,8 +609,8 @@ struct ElasticsearchQueryBuilder {
 
     private static func escapeWildcard(_ value: String) -> String {
         value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "*", with: "\\*")
-            .replacingOccurrences(of: "?", with: "\\?")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "*", with: "\\*", options: .literal)
+            .replacingOccurrences(of: "?", with: "\\?", options: .literal)
     }
 }

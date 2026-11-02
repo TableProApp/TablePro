@@ -7,6 +7,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::meta::TableRef;
+use tablepro_session::SessionKey;
 use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
@@ -45,7 +46,7 @@ pub(super) struct TabFactoryParts {
     pub shell: glib::WeakRef<WorkspaceShell>,
     pub toasts: glib::WeakRef<adw::ToastOverlay>,
     pub context: Rc<SessionContext>,
-    pub settings: Rc<tablepro_storage::AppSettings>,
+    pub settings: Rc<tablepro_linux_platform::AppSettings>,
     pub storage: crate::storage::SharedStorage,
     pub history: Option<HistoryService>,
     pub drafts: Rc<DraftWriter>,
@@ -184,10 +185,16 @@ impl TabFactory {
             close_timeout: parts.context.close_timeout(),
             snippets: parts.snippets.clone(),
         });
+        let moved = database.is_some();
         if let Some(database) = database {
             editor.move_to_database(&database);
         }
         connect_editor(&editor, id, &parts.input, &parts.toasts);
+        // It moved before the workspace heard it, which follows it once
+        // the tab is in.
+        if moved {
+            parts.input.deliver(WorkspaceInput::EditorTabDatabaseChanged(id));
+        }
         editor.attach_assistant(parts.assistant.clone());
         // After the signals are connected, so the workspace marks a tab
         // restored with unsaved changes.
@@ -231,7 +238,14 @@ impl TabFactory {
             tracker: parts.change_trackers.register(id),
             schema: schema.clone(),
             table: name.clone(),
-            connection_id: parts.context.active.metadata().map(|metadata| metadata.id),
+            // Column widths and filters are kept per connection and table;
+            // another database's table of the same name is not that one.
+            connection_id: match parts.label.key() {
+                SessionKey::SavedIn { .. } => None,
+                SessionKey::Saved(_) | SessionKey::File(_) => {
+                    parts.context.active.metadata().map(|metadata| metadata.id)
+                }
+            },
             read_only: parts.read_only,
             page_size: page.page_size,
             initial_offset: page.offset,
@@ -406,6 +420,8 @@ fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSe
     structure.connect_toast(move |_, text| toast.deliver(WorkspaceInput::ShowToast(text)));
     let alert = input.clone();
     structure.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
+    let open = input.clone();
+    structure.connect_open_in_editor(move |_, sql| open.deliver(WorkspaceInput::OpenInEditor { sql, database: None }));
 }
 
 /// The diagram's signals, as the workspace's inputs: a table it names

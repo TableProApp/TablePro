@@ -30,7 +30,7 @@ internal actor MCPRemoteServerTransport {
     private let endpoint: URL
     private let bearerToken: String
     private let urlSession: URLSession
-    private let redirectGuard: MCPRedirectGuard
+    private let redirectGuard: SameOriginRedirectGuard
     private let timeout: Duration
 
     private var negotiatedSessionId: String?
@@ -48,7 +48,7 @@ internal actor MCPRemoteServerTransport {
         self.endpoint = endpoint
         self.bearerToken = bearerToken
         self.timeout = timeout
-        self.redirectGuard = MCPRedirectGuard(origin: endpoint)
+        self.redirectGuard = SameOriginRedirectGuard(origin: endpoint)
         if let urlSession {
             self.urlSession = urlSession
         } else {
@@ -274,42 +274,5 @@ internal actor MCPRemoteServerTransport {
 
     private static var closedMessage: String {
         String(localized: "The connection to the server was closed.")
-    }
-}
-
-/// Refuses to follow a redirect off the endpoint's own origin.
-///
-/// `URLSession` follows redirects on its own and carries the request's headers to wherever it lands.
-/// The header here is `Authorization: Bearer <token>`, so a server that answers `302` pointing at
-/// another host hands that host the credential, and the user never sees a request they did not make.
-/// A same-origin redirect is ordinary routing and is followed; anything else is answered with the
-/// redirect response itself, which surfaces as an HTTP failure naming the status.
-private final class MCPRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    private let scheme: String?
-    private let host: String?
-    private let port: Int?
-
-    init(origin: URL) {
-        scheme = origin.scheme?.lowercased()
-        host = origin.host?.lowercased()
-        port = origin.port
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-        guard let target = request.url,
-              target.scheme?.lowercased() == scheme,
-              target.host?.lowercased() == host,
-              target.port == port
-        else {
-            completionHandler(nil)
-            return
-        }
-        completionHandler(request)
     }
 }

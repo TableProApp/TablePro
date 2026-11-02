@@ -17,6 +17,12 @@ struct DatabendCatalogTests {
         #expect(DatabendCatalog.quoteIdentifier("t`u\\") == "\"t`u\\\\\"")
     }
 
+    @Test("A backtick a combining mark follows still switches to double quotes")
+    func backtickBeforeCombiningMarkSwitchesQuotes() {
+        let quoted = DatabendCatalog.quoteIdentifier("t`\u{301} UNION SELECT 1 -- ")
+        #expect(Array(quoted.unicodeScalars) == Array("\"t`\u{301} UNION SELECT 1 -- \"".unicodeScalars))
+    }
+
     @Test("A system.columns row becomes the column, default and comment included")
     func parsesSystemColumnsRow() throws {
         let row: [PluginCellValue] = [.text("label"), .text("VARCHAR"), .text("DEFAULT"), .text("'x'"), .text("YES"), .text("cmt")]

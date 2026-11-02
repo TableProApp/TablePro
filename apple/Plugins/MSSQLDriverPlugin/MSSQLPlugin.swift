@@ -389,12 +389,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 database: config.database,
                 schema: currentSchemaName,
                 encryptionLevel: MSSQLSSLMapping.encryptionLevel(for: config.ssl.mode),
+                certificateVerification: MSSQLSSLMapping.certificateVerification(for: config.ssl.mode),
                 loginTimeoutSeconds: max(1, (remainingMilliseconds + 999) / 1_000),
                 authMethod: authMethod,
                 kerberosCachePath: kerberosCachePath,
                 kerberosServicePrincipal: kerberosServicePrincipal
             )
-            options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: config.ssl.mode)
             options.caCertificatePath = config.ssl.caCertificatePath
             options.fedAuthToken = fedAuthToken
             conn = FreeTDSConnection(options: options, connectTimeoutMilliseconds: remainingMilliseconds)

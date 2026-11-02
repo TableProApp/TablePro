@@ -139,7 +139,11 @@ internal struct ImportReviewStep: View {
         if !commanded.isEmpty {
             let choice = await AlertHelper.confirmThreeWay(
                 title: String(localized: "Import Commands?"),
-                message: Self.commandConfirmation(for: commanded),
+                message: String(localized: """
+                    These connections run commands every time they connect: a tunnel command on this Mac, \
+                    SQL on the server, or both.
+                    """),
+                detail: Self.commandConfirmation(for: commanded),
                 first: String(localized: "Import Without Commands"),
                 second: String(localized: "Import Commands"),
                 third: String(localized: "Cancel"),
@@ -177,10 +181,9 @@ internal struct ImportReviewStep: View {
         return banners
     }
 
-    /// Shows each command in full: it runs on this Mac every time the connection opens, so the
-    /// answer has to be given against the text, not against the fact that one exists.
+    // Every command whole: "Import Commands" keeps exactly this text, so the answer is given against all of it.
     static func commandConfirmation(for rows: [ConnectionRow]) -> String {
-        let entries = rows.map { row -> String in
+        rows.map { row -> String in
             let settings = row.settings
             var lines = [settings.name]
             if let tunnel = settings.tunnelCommand
@@ -195,25 +198,14 @@ internal struct ImportReviewStep: View {
                 lines.append(tunnel)
             }
             if row.carriesStartupCommands, let startup = settings.startupCommands {
-                lines.append(String(format: String(localized: "Startup SQL: %@"), Self.excerpt(startup)))
+                lines.append(String(
+                    format: String(localized: "Startup SQL: %@"),
+                    startup.trimmingCharacters(in: .whitespacesAndNewlines)
+                ))
             }
             return lines.joined(separator: "\n")
         }
-        return String(
-            format: String(localized: """
-                These connections run commands every time they connect: a tunnel command on this Mac, \
-                SQL on the server, or both.
-
-                %@
-                """),
-            entries.joined(separator: "\n\n")
-        )
-    }
-
-    private static func excerpt(_ sql: String) -> String {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines) as NSString
-        let limit = 300
-        return trimmed.length > limit ? trimmed.substring(to: limit) + "…" : trimmed as String
+        .joined(separator: "\n\n")
     }
 }
 

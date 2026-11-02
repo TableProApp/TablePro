@@ -59,7 +59,7 @@ nonisolated enum MongoScriptJson {
     /// The string a member's value text spells, escapes decoded, or nil when the value is not a string.
     static func decodedString(_ valueJson: String) -> String? {
         let trimmed = valueJson.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("\"") else { return nil }
+        guard trimmed.unicodeScalars.first == "\"" else { return nil }
         return try? JSONDecoder().decode(String.self, from: Data(trimmed.utf8))
     }
 

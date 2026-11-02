@@ -13,11 +13,10 @@ use tablepro_app::application::{AppServices, AppServicesParts, TableProApplicati
 use tablepro_app::runtime::AppRuntime;
 use tablepro_app::storage::AppStorage;
 use tablepro_core::{AuthMode, DriverRegistry, LivenessPolicy, TlsConfig};
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::fakes::FakeConnector;
 use tablepro_session::operation::DefaultDeadlines;
-use tablepro_storage::{
-    AppSettings, ConnectionColor, ConnectionIcon, ConnectionTagName, SavedConnection, StoragePaths,
-};
+use tablepro_storage::{ConnectionColor, ConnectionIcon, ConnectionTagName, SavedConnection, StoragePaths};
 use tablepro_test_support::FakeSecretVault;
 
 /// Long enough for a page to settle on a loaded CI runner.
@@ -137,6 +136,7 @@ fn saved_connection(database: &Path) -> SavedConnection {
         safe_mode: tablepro_core::SafeModeLevel::Off,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
+        query_timeout_secs: None,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,

@@ -45,11 +45,13 @@ extension QueryExecutionCoordinator {
         anchor: StatementAnchor? = nil
     ) -> ResultSet {
         let tableName = parent.extractTableName(from: sql)
+        let columns = result.columns.map { String($0) }
         let rows = TableRows.from(
             queryRows: result.rows,
-            columns: result.columns.map { String($0) },
+            columns: columns,
             columnTypes: result.columnTypes,
-            absentCells: result.absentCells
+            absentCells: result.absentCells,
+            masks: parent.columnMasks(forTabId: tabId, table: tableName, columns: columns, columnTypes: result.columnTypes)
         )
         let resultSet = ResultSet(
             label: ResultSet.label(tableName: tableName, anchor: anchor, index: index),

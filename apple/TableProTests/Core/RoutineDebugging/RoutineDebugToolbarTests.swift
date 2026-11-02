@@ -39,8 +39,8 @@ struct RoutineDebugToolbarTests {
     }
 
     @Test("Every other tab kind and Agent mode take the debug pair out of the titlebar", arguments: [
-        TabType.query, .table, .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .objectSource,
-        .versionHistory, .tableListing,
+        TabType.query, .table, .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .tableHealth,
+        .objectSource, .versionHistory, .tableListing,
     ])
     func otherKindsHideThePair(tabKind: TabType) {
         #expect(Self.hidden(tabKind: tabKind).isSuperset(of: Self.pair))

@@ -172,7 +172,6 @@ struct PostgreSQLViewDefinitionTests {
     func catalogQueryIsQualifiedAndScoped() {
         let query = PostgreSQLViewDefinition.catalogQuery(name: "vw", schema: "sales")
 
-        #expect(PostgreSQLViewDefinition.qualifiedReadPrefix == "SET LOCAL search_path = pg_catalog; ")
         #expect(query.contains("pg_catalog.pg_get_viewdef(c.oid, true)"))
         #expect(query.contains("n.nspname = 'sales'"))
         #expect(query.contains("c.relname = 'vw'"))

@@ -387,7 +387,7 @@ final class QueryCompletionController {
                 )
             }
             let closeText = text.substring(with: NSRange(location: close, length: 1))
-            let name = item.label.replacingOccurrences(of: closeText, with: closeText + closeText)
+            let name = item.label.replacingOccurrences(of: closeText, with: closeText + closeText, options: .literal)
             let inner = NSRange(location: quoted.open + 1, length: close - quoted.open - 1)
             return QueryCompletionEdit(range: inner, text: name, caret: inner.location + (name as NSString).length + 1)
         }

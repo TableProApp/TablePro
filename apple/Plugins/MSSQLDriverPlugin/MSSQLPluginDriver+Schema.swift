@@ -58,6 +58,74 @@ extension MSSQLPluginDriver {
         }
     }
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
+        let schema = effectiveSchema(schema)
+        let factRows = try await viewCatalogRows(MSSQLViewSources.viewFactsQuery(schema: schema, view: view))
+        guard let facts = MSSQLViewSources.ViewFacts(rows: factRows) else { return nil }
+        if let refusal = facts.refusal { return .readOnly(PluginViewReadOnlyReason(refusal)) }
+        // Once the relation proved to be a view, a failed read must not let it pass for a table.
+        do {
+            return try await rowEditing(throughView: view, schema: schema)
+        } catch {
+            return .readOnly(.couldNotCheck)
+        }
+    }
+
+    private func rowEditing(throughView view: String, schema: String) async throws -> PluginViewRowEditing {
+        let browse = MSSQLViewSources.BrowseFacts(
+            rows: try await viewCatalogRows(MSSQLViewSources.browseQuery(schema: schema, view: view))
+        )
+        let baseTable: MSSQLViewSources.BaseTable
+        switch browse.source {
+        case .refused(let refusal):
+            return .readOnly(PluginViewReadOnlyReason(refusal))
+        case .table(let table):
+            baseTable = table
+        }
+
+        let probeRows = try await viewCatalogRows(MSSQLViewSources.probesQuery(
+            schema: schema,
+            view: view,
+            writableColumns: browse.writableColumns
+        ))
+        if let refusal = MSSQLViewSources.refusal(probeRows: probeRows) {
+            return .readOnly(PluginViewReadOnlyReason(refusal))
+        }
+        let operations = MSSQLViewSources.allowedOperations(
+            writableColumns: browse.writableColumns,
+            probeRows: probeRows
+        )
+        let base = MSSQLViewSources.BaseFacts(
+            rows: try await viewCatalogRows(MSSQLViewSources.baseColumnsQuery(baseTable))
+        )
+
+        return PluginViewRowEditing.resolve(
+            operations: PluginViewWriteOperations(operations),
+            baseTable: PluginViewBaseTable(
+                database: baseTable.database,
+                schema: baseTable.schema,
+                name: baseTable.name
+            ),
+            columns: browse.columns.map {
+                PluginViewColumn(name: $0.name, baseColumn: $0.baseColumn, acceptsWrites: $0.acceptsWrites)
+            },
+            baseKeyColumns: base?.keyColumns,
+            baseColumns: base?.columns.map {
+                PluginViewBaseColumn(
+                    name: $0.name,
+                    isNullable: $0.isNullable,
+                    defaultValue: $0.defaultValue,
+                    assignsValue: $0.assignsValue,
+                    acceptsWrites: $0.acceptsWrites
+                )
+            }
+        )
+    }
+
+    private func viewCatalogRows(_ query: String) async throws -> [[String?]] {
+        try await execute(query: query).rows.map { $0.map(\.asText) }
+    }
+
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         /// Bracket-escaped for the identifier and literal-escaped for the string it sits in:
         /// SQL Server allows both `]` and `'` in an identifier.
@@ -451,5 +519,30 @@ extension MSSQLColumnRow {
             identityKind: isIdentity ? .always : nil,
             isGenerated: isGenerated
         )
+    }
+}
+
+private extension PluginViewReadOnlyReason {
+    init(_ refusal: MSSQLViewSources.Refusal) {
+        switch refusal {
+        case .notUpdatable: self = .notUpdatable
+        case .writesRunTriggers: self = .writesRunTriggers
+        case .readsSeveralTables: self = .readsSeveralTables
+        case .baseTableHidden: self = .baseTableHidden
+        case .couldNotCheck: self = .couldNotCheck
+        }
+    }
+}
+
+private extension PluginViewWriteOperations {
+    init(_ operations: Set<MSSQLViewSources.Operation>) {
+        self = []
+        for operation in operations {
+            switch operation {
+            case .update: insert(.update)
+            case .insert: insert(.insert)
+            case .delete: insert(.delete)
+            }
+        }
     }
 }

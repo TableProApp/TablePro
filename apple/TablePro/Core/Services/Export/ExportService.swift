@@ -250,7 +250,7 @@ final class ExportService: ObservableObject {
         do {
             result = try await plugin.export(
                 tables: pluginTables,
-                dataSource: dataSource,
+                dataSource: MaskingExportDataSource.wrapping(dataSource, policy: maskingPolicy(for: driver)),
                 destination: url,
                 progress: progress
             )
@@ -265,6 +265,13 @@ final class ExportService: ObservableObject {
 
         state.warnings = result.warnings + dataSource.cappedTableWarnings
         state.notes = result.notes
+    }
+
+    // MARK: - Masking
+
+    // The live session's copy, so a rule saved after the connection opened applies to this export.
+    private func maskingPolicy(for driver: DatabaseDriver) -> MaskingPolicy {
+        (DatabaseManager.shared.session(for: driver.connection.id)?.connection ?? driver.connection).maskingPolicy
     }
 
     // MARK: - Statement Timeout
@@ -433,7 +440,9 @@ final class ExportService: ObservableObject {
         do {
             result = try await plugin.export(
                 tables: [exportTable],
-                dataSource: dataSource,
+                dataSource: MaskingExportDataSource.wrapping(
+                    dataSource, policy: maskingPolicy(for: driver), streamsTables: false
+                ),
                 destination: url,
                 progress: progress
             )

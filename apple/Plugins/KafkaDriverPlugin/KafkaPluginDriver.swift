@@ -13,6 +13,8 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let state = KafkaDriverState()
     private let anchors = KafkaAnchorStore()
 
+    var liveCluster: KafkaCluster { cluster }
+
     var capabilities: PluginCapabilities { [] }
 
     /// The config is read here and not retained. It carries the password, and nothing after
@@ -226,8 +228,8 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// as further clauses.
     func escapeStringLiteral(_ value: String) -> String {
         value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
     }
 
     // MARK: - Browse

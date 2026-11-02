@@ -81,7 +81,7 @@ struct QueryTabManagerVisibleContainerTests {
     func serverTabsAreNotBound() {
         let manager = makeManager()
 
-        manager.addServerDashboardTab()
+        manager.addSingletonTab(.serverDashboard)
         manager.show(container: "tenant_b")
 
         #expect(manager.tabs.first?.tableContext.databaseName == "")

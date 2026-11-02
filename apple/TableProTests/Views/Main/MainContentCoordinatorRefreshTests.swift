@@ -370,11 +370,45 @@ struct MainContentCoordinatorRefreshTests {
         tabManager.addVersionHistoryTab(subject: .savedQuery(id: UUID()), title: "History: Revenue")
         let tabId = tabManager.selectedTabId
         var requested: [UUID] = []
-        let subscription = AppEvents.shared.versionHistoryRefreshRequested.sink { requested.append($0) }
+        let subscription = AppEvents.shared.tabRefreshRequested.sink { requested.append($0) }
         defer { subscription.cancel() }
 
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
 
         #expect(requested == [tabId].compactMap { $0 })
+    }
+
+    @Test("Refresh on a tab that loads its own content asks that tab to reload")
+    func refreshOnSelfLoadingTabsAsksThem() {
+        let (coordinator, tabManager) = makeCoordinator()
+        var requested: [UUID] = []
+        let subscription = AppEvents.shared.tabRefreshRequested.sink { requested.append($0) }
+        defer { subscription.cancel() }
+
+        var expected: [UUID] = []
+        for tabType in [TabType.serverDashboard, .insights, .tableHealth] {
+            tabManager.addSingletonTab(tabType)
+            expected += [tabManager.selectedTabId].compactMap { $0 }
+            coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+        }
+        tabManager.addObjectSourceTab(objectRef: DatabaseObjectRef(kind: .view, name: "active_orders", database: "shop"))
+        expected += [tabManager.selectedTabId].compactMap { $0 }
+        coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+
+        #expect(requested == expected)
+    }
+
+    @Test("Refresh on Users & Roles reloads the principals through the tab's own handler")
+    func refreshOnUsersRolesReloads() {
+        let (coordinator, tabManager) = makeCoordinator()
+        tabManager.addSingletonTab(.usersRoles)
+        let actions = UsersRolesActionHandler()
+        var reloads = 0
+        actions.refresh = { reloads += 1 }
+        coordinator.usersRolesActions = actions
+
+        coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})
+
+        #expect(reloads == 1)
     }
 }

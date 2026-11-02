@@ -217,6 +217,66 @@ struct AgentModeWindowTests {
         #expect(harness.detailItem.minimumThickness == UsersRolesLayoutMetrics.tabMinimumWidth)
     }
 
+    // The browse tab and grid stay behind the conversation, so Close and Undo must not reach them.
+    @Test("In Agent mode Close names the connection and Undo runs the mode's own history")
+    func agentModeCloseAndUndoSkipTheHiddenTab() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        try harness.requireContent()
+        let tabManager = try #require(harness.selected.sessionState?.tabManager)
+        tabManager.adoptTab(QueryTab(id: UUID(), title: "Users & Roles", query: "", tabType: .usersRoles))
+        var undoneBrowse = false
+        var undoneAgent = false
+        Self.register(on: harness.selected.undoManager) { undoneBrowse = true }
+
+        #expect(harness.controller.closeCommandTitle == String(localized: "Close Tab"))
+        #expect(harness.selected.activeUndoManager === harness.selected.undoManager)
+
+        harness.controller.setContentMode(.agent)
+        let title = try #require(harness.controller.closeCommandTitle)
+        #expect(title != String(localized: "Close Tab"))
+        #expect(harness.selected.activeUndoManager === harness.selected.agentUndoManager)
+        #expect(!harness.controller.menuValidationContext.canUndo, "A hidden browse edit lit Undo")
+
+        Self.register(on: harness.selected.agentUndoManager) { undoneAgent = true }
+        #expect(harness.controller.menuValidationContext.canUndo)
+        #expect(harness.controller.undoTitle == harness.selected.agentUndoManager.undoMenuItemTitle)
+        harness.controller.undo(nil)
+        #expect(undoneAgent)
+        #expect(!undoneBrowse)
+    }
+
+    private static func register(on manager: UndoManager, _ action: @escaping @MainActor () -> Void) {
+        manager.groupsByEvent = false
+        manager.beginUndoGrouping()
+        manager.registerUndo(withTarget: manager) { _ in action() }
+        manager.endUndoGrouping()
+    }
+
+    // The strip asks this of a row's connection before offering a command, so it has to read what the window reads.
+    @Test("A hosted connection's command facts match the window's own, and Agent mode offers no server tool")
+    func hostedContextMatchesTheWindow() throws {
+        let harness = try Harness(type: .postgresql)
+        defer { harness.tearDown() }
+        try harness.requireContent()
+
+        for mode in ConnectionWorkspaceContentMode.allCases {
+            harness.controller.setContentMode(mode)
+            let own = harness.controller.menuValidationContext
+            let hosted = try #require(harness.controller.menuValidationContext(forHosted: harness.connection.id))
+            #expect(hosted.isConnected == own.isConnected, "\(mode.rawValue)")
+            #expect(hosted.isAgentMode == own.isAgentMode, "\(mode.rawValue)")
+            #expect(hosted.supportsServerDashboard == own.supportsServerDashboard, "\(mode.rawValue)")
+
+            let offered = WorkspaceRailViewController.serverTools(offeredWith: hosted).map(\.title)
+            let expected = mode == .browse
+                ? [String(localized: "Server Dashboard"), String(localized: "Query Insights")]
+                : []
+            #expect(offered == expected, "\(mode.rawValue)")
+        }
+        #expect(harness.controller.menuValidationContext(forHosted: UUID()) == nil)
+    }
+
     /// The error, Retry and Manage Connections live on the browse side's unavailable screen, and a
     /// composer with none of them is a dead end. A reconnect hands the column back.
     @Test("A connection that drops in Agent mode shows the unavailable screen, and a reconnect the conversation")

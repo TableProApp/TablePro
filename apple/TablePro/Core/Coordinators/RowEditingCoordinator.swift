@@ -36,7 +36,7 @@ final class RowEditingCoordinator: ObservableObject {
     // MARK: - Row Operations
 
     func addNewRow() {
-        guard parent.canEditActiveResult,
+        guard parent.canEditActiveResult(.insert),
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tableContext.tableName != nil else { return }
 
@@ -62,7 +62,7 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func deleteRows(_ rowIDs: [RowID]) {
-        guard parent.canEditActiveResult,
+        guard parent.canEditActiveResult(.delete),
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               !rowIDs.isEmpty else { return }
 
@@ -101,7 +101,7 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func undoRowDeletions(_ rowIDs: [RowID]) {
-        guard parent.canEditActiveResult, let tabId = parent.tabManager.selectedTabId else { return }
+        guard parent.canEditActiveResult(.delete), let tabId = parent.tabManager.selectedTabId else { return }
         let deleted = rowIDs.filter { parent.changeManager.isRowDeleted($0) }
         guard !deleted.isEmpty else { return }
         for rowID in deleted {
@@ -111,7 +111,7 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func duplicateRow(_ rowID: RowID) {
-        guard parent.canEditActiveResult,
+        guard parent.canEditActiveResult(.insert),
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tableContext.tableName != nil else { return }
 
@@ -433,7 +433,7 @@ final class RowEditingCoordinator: ObservableObject {
     }
 
     func pasteRows() {
-        guard parent.canEditActiveResult,
+        guard parent.canEditActiveResult(.insert),
               let (tab, tabIndex) = parent.tabManager.selectedTabAndIndex,
               tab.tabType == .table else { return }
 

@@ -68,7 +68,7 @@ enum UserDefinedTypeSuggestions {
             && !(scalars.first.map { CharacterSet.decimalDigits.contains($0) } ?? false)
             && scalars.allSatisfy { Self.plainIdentifierScalars.contains($0) }
         guard !isPlain else { return name }
-        return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        return "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     private static let plainIdentifierScalars = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789_")

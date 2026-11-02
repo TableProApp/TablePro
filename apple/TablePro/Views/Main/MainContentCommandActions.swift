@@ -139,18 +139,25 @@ final class MainContentCommandActions: ObservableObject {
     // MARK: - Save Action
 
     private func saveInspectorEdits() {
-        let editState = trailingPaneState.inspector.editState
         Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.coordinator?.saveSidebarEdits(editState: editState)
-            } catch {
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Failed to Save Changes"),
-                    message: error.localizedDescription,
-                    window: self.window
-                )
-            }
+            await self?.saveInspectorEditsAwaiting()
+        }
+    }
+
+    // A close waits on this: started and left, the write could land after the window it reports to closed.
+    @discardableResult
+    private func saveInspectorEditsAwaiting() async -> Bool {
+        let editState = trailingPaneState.inspector.editState
+        do {
+            try await coordinator?.saveSidebarEdits(editState: editState)
+            return true
+        } catch {
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Failed to Save Changes"),
+                message: error.localizedDescription,
+                window: window
+            )
+            return false
         }
     }
 
@@ -389,6 +396,16 @@ final class MainContentCommandActions: ObservableObject {
         }
     }
 
+    // A view can take updates while the server refuses inserts or deletes through it.
+    func currentTabAllows(_ operation: PluginViewWriteOperations) -> Bool {
+        guard let coordinator, coordinator.tabManager.selectedTab != nil else { return false }
+        switch selectionOwner {
+        case .schemaGrid: return isCurrentTabEditable
+        case .dataGrid: return coordinator.canEditActiveResult(operation)
+        case .none: return false
+        }
+    }
+
     // Add and Duplicate Row gate on this; a structure grid adds only where its section allows it.
     var isCurrentTabSchemaResolved: Bool {
         guard let coordinator, let tabId = coordinator.tabManager.selectedTabId else { return false }
@@ -442,7 +459,7 @@ final class MainContentCommandActions: ObservableObject {
         case .schemaGrid:
             return canPasteSchemaRows
         case .dataGrid:
-            return tab.tabType == .table && isCurrentTabEditable && isCurrentTabSchemaResolved
+            return tab.tabType == .table && currentTabAllows(.insert) && isCurrentTabSchemaResolved
                 && ClipboardService.shared.hasText
         case .none:
             return false
@@ -667,14 +684,7 @@ final class MainContentCommandActions: ObservableObject {
             closeTab(id: selected.id)
             return
         }
-        if let entry = WorkspaceCloseAction.closableEntry(
-            connectionId: connectionId,
-            container: coordinator.tabManager.visibleContainer
-        ) {
-            Task { await WorkspaceCloseAction.close(entry.workspace) }
-            return
-        }
-        Task { await ConnectionCloseAction.close(connectionId: connectionId) }
+        closeWorkspace()
     }
 
     // asBatchSurvivor: nil for a lone close (the window decides), true for the window a batch keeps blank, false otherwise.
@@ -794,10 +804,8 @@ final class MainContentCommandActions: ObservableObject {
             }
         }
 
-        // Sidebar-only edits (made directly in the inspector panel)
         if trailingPaneState.inspector.editState.hasEdits {
-            saveInspectorEdits()
-            return true
+            return await saveInspectorEditsAwaiting()
         }
 
         // File save (query editor with source file)

@@ -238,6 +238,8 @@ struct CellInteractionResolverBinaryTests {
         arguments: [
             (ValueDisplayFormat.messagePack, BinaryValueFormat.messagePack),
             (.protobuf, .protobuf),
+            (.igbinary, .igbinary),
+            (.avro(schemaID: String(repeating: "c", count: 32)), .avro(schemaID: String(repeating: "c", count: 32))),
         ]
     )
     func decoderFormatOpensDecodedViewer(format: ValueDisplayFormat, expected: BinaryValueFormat) {
@@ -267,6 +269,16 @@ struct CellInteractionResolverBinaryTests {
             )
             #expect(resolver.resolve(context) == .editBlob)
         }
+    }
+
+    @Test("Schema Registry on a text column opens the decoded viewer, the way the cell reads it")
+    func schemaRegistryOnTextColumn() {
+        let connectionID = UUID()
+        let context = ContextFactory.make(
+            value: "\u{0}\u{0}\u{0}\u{0}\u{1}{}", columnType: .text(rawType: "TEXT"), isTableEditable: true,
+            displayFormatOverride: .schemaRegistry(connectionID: connectionID)
+        )
+        #expect(resolver.resolve(context) == .viewBinaryValue(.schemaRegistry(connectionID: connectionID)))
     }
 
     @Test("A decoder format left on a text column edits as text")

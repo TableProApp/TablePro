@@ -1,5 +1,18 @@
-use tablepro_core::credentials::SecretKind;
+use tablepro_core::AiProvider;
+use tablepro_core::credentials::{SecretItem, SecretKind};
 use tablepro_storage::SavedConnection;
+
+/// The keyring label for a secret that belongs to no connection.
+pub(crate) fn item_label(item: SecretItem) -> String {
+    match item {
+        SecretItem::McpToken => crate::i18n::gettext("TablePro MCP access token"),
+        SecretItem::AiKey(AiProvider::Anthropic) => crate::i18n::gettext("TablePro API key for Anthropic"),
+        SecretItem::AiKey(AiProvider::OpenAi) => crate::i18n::gettext("TablePro API key for OpenAI"),
+        SecretItem::AiKey(AiProvider::OpenAiCompatible) => {
+            crate::i18n::gettext("TablePro API key for an OpenAI-compatible server")
+        }
+    }
+}
 
 /// The keyring label for a connection's secret. Seahorse shows it, so
 /// it names what the secret opens in the user's own terms.
@@ -45,6 +58,7 @@ mod tests {
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
+            query_timeout_secs: None,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: None,
@@ -145,5 +159,16 @@ mod tests {
             .collect();
 
         assert_eq!(labels.len(), 3, "two kinds share a label: {labels:?}");
+    }
+
+    #[test]
+    fn an_item_untranslated_keeps_the_label_the_keyring_already_holds() {
+        let items = [SecretItem::McpToken]
+            .into_iter()
+            .chain(AiProvider::ALL.into_iter().map(SecretItem::AiKey));
+
+        for item in items {
+            assert_eq!(item_label(item), tablepro_storage::english_item_label(item), "{item:?}");
+        }
     }
 }

@@ -76,6 +76,35 @@ enum MySQLClientArguments {
         MySQLLocalSocket.path(in: connection.additionalFields) == nil && !connection.tunnelSecuresTransport
     }
 
+    // A restore pipes the file into the client, which also reads its own commands from it: `\!` runs
+    // a shell command and `\.` reads a file. `--binary-mode` turns off every one of them but
+    // charset and delimiter for piped input in both families; the family's own switch is added
+    // where the client's version has it.
+    static func restoreSafety(tool: NativeDumpResolvedTool) -> [String] {
+        let flags = ["--binary-mode", "--local-infile=0"]
+        guard let release = MySQLDumpToolIdentifier.release(fromVersionText: tool.versionText) else { return flags }
+        switch tool.flavor {
+        case .mysql where skipSystemCommandReleases.contains(where: { $0.contains(release) }):
+            return flags + ["--skip-system-command"]
+        case .mariadb where sandboxReleases.contains(where: { $0.contains(release) }):
+            return flags + ["--sandbox"]
+        case .mysql, .mariadb, .unidentified:
+            return flags
+        }
+    }
+
+    private static let skipSystemCommandReleases: [Range<NativeDumpToolRelease>] = [
+        NativeDumpToolRelease(8, 0, 40)..<NativeDumpToolRelease(8, 1, 0),
+        NativeDumpToolRelease(8, 4, 3)..<NativeDumpToolRelease(8, 5, 0),
+        NativeDumpToolRelease(9, 1, 0)..<NativeDumpToolRelease(Int.max, 0, 0)
+    ]
+
+    private static let sandboxReleases: [Range<NativeDumpToolRelease>] = [
+        NativeDumpToolRelease(10, 6, 18)..<NativeDumpToolRelease(10, 7, 0),
+        NativeDumpToolRelease(10, 11, 8)..<NativeDumpToolRelease(10, 12, 0),
+        NativeDumpToolRelease(11, 4, 2)..<NativeDumpToolRelease(Int.max, 0, 0)
+    ]
+
     static func pluginDirectory(_ folder: URL) -> [String] {
         ["--plugin-dir=\(folder.path)"]
     }

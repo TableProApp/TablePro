@@ -141,7 +141,7 @@ enum DynamoDBStatement: Sendable, Equatable {
     }
 
     static func quote(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     // MARK: - Parsing helpers

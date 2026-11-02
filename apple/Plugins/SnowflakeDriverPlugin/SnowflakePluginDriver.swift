@@ -122,9 +122,33 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
+        try await run(query, singleStatement: false)
+    }
+
+    // The host sends a user's statements one at a time, so the server holds each request to one statement.
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        let raw: PluginQueryResult
+        if let parameters, !parameters.isEmpty {
+            raw = try await executeParameterized(query: query, parameters: parameters)
+        } else {
+            raw = try await run(query, singleStatement: true)
+        }
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
+        return PluginQueryResult(
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            executionTime: raw.executionTime,
+            isTruncated: true,
+            statusMessage: raw.statusMessage
+        )
+    }
+
+    private func run(_ query: String, singleStatement: Bool) async throws -> PluginQueryResult {
         guard let conn = connection else { throw SnowflakeError.notConnected }
         let startTime = Date()
-        let result = try await conn.query(query, owner: queryOwner)
+        let result = try await conn.query(query, owner: queryOwner, singleStatement: singleStatement)
         let executionTime = Date().timeIntervalSince(startTime)
 
         if result.columns.isEmpty {

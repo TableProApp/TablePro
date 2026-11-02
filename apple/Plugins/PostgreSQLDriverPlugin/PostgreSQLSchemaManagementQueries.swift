@@ -22,11 +22,12 @@ enum PostgreSQLSchemaManagementQueries {
         }
     }
 
+    // CURRENT_USER is a keyword: `pg_catalog.current_user` reads as a column of a table named pg_catalog and fails.
     static func ownerAndComment(schema: String) -> String {
         """
         SELECT pg_catalog.pg_get_userbyid(n.nspowner),
                pg_catalog.obj_description(n.oid, 'pg_namespace'),
-               pg_catalog.current_user
+               CURRENT_USER
         FROM pg_catalog.pg_namespace n
         WHERE n.nspname = \(PostgreSQLObjectQueries.quoteLiteral(schema))
         """

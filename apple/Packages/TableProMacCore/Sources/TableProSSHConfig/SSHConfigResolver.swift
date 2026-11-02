@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProSSHTransport
 
 public struct ResolverEnvironment: Sendable {
     var runShell: @Sendable (String) -> Bool
@@ -90,11 +91,18 @@ public enum SSHConfigResolver {
         env: ResolverEnvironment
     ) -> ResolvedSSHTarget {
         let localUser = env.currentLocalUser()
-        var failure: SSHTokenExpansionError?
+        // The host and user can come from an imported file or a link, and Match exec hands them to
+        // /bin/sh, so like ssh no block is evaluated for a name it would refuse.
+        var failure = SSHDestinationName.problem(host: originalHost, user: formUser)
+            .map(SSHTokenExpansionError.invalidDestination)
+        if let failure {
+            logger.warning("\(failure.explanation, privacy: .public)")
+        }
+        let blocks = failure == nil ? document.blocks : []
 
         var firstPass = ResolutionState()
         applyMatchingBlocks(
-            blocks: document.blocks,
+            blocks: blocks,
             pass: PassInputs(
                 originalHost: originalHost,
                 currentHost: originalHost,
@@ -130,15 +138,21 @@ public enum SSHConfigResolver {
         let isProxied = !formJumpHosts.isEmpty || firstPass.proxyJump.map { !SSHConfigParser.isNone($0) } == true
         let canonicalizes = canonicalOptions.mode == .always || (canonicalOptions.mode == .yes && !isProxied)
         let canonicalizedHost: String
-        if canonicalizes, let canonical = env.canonicalize(substitutedHost, canonicalOptions) {
+        if !canonicalizes {
+            canonicalizedHost = substitutedHost
+        } else if let canonical = env.canonicalize(substitutedHost, canonicalOptions) {
             canonicalizedHost = canonical
         } else {
+            // Dialing the short name would leave the server to the network's search list.
+            let error = SSHTokenExpansionError.hostNotInCanonicalDomains(host: substitutedHost)
+            logger.warning("\(error.explanation, privacy: .public)")
+            if failure == nil { failure = error }
             canonicalizedHost = substitutedHost
         }
 
         var secondPass = ResolutionState()
         applyMatchingBlocks(
-            blocks: document.blocks,
+            blocks: blocks,
             pass: PassInputs(
                 originalHost: originalHost,
                 currentHost: canonicalizedHost,
@@ -246,7 +260,8 @@ public enum SSHConfigResolver {
             useKeychain: merged.useKeychain ?? true,
             addKeysToAgent: merged.addKeysToAgent ?? false,
             proxyJump: effectiveProxyJump,
-            expansionFailure: failure
+            expansionFailure: failure,
+            dialHost: canonicalizes && canonicalizedHost != substitutedHost ? canonicalizedHost + "." : effectiveHost
         )
     }
 
@@ -509,6 +524,12 @@ public enum SSHConfigResolver {
                 localUser: inputs.localUser,
                 localHostname: env.localHostname()
             )
+            // A HostName substitution or a canonical name from DNS never passed the entry check.
+            if let problem = destinationProblem(in: context, substituting: tokens(in: command)) {
+                logger.warning("\(problem.explanation, privacy: .public)")
+                if failure == nil { failure = problem }
+                return nil
+            }
             guard let expanded = expand(
                 command,
                 scope: .matchExec,
@@ -518,6 +539,49 @@ public enum SSHConfigResolver {
             ) else { return nil }
             return env.runShell(expanded)
         }
+    }
+
+    private static func destinationProblem(
+        in context: SSHTokenContext,
+        substituting tokens: Set<Character>
+    ) -> SSHTokenExpansionError? {
+        var hosts: [String?] = []
+        if !tokens.isDisjoint(with: ["n", "k"]) { hosts.append(context.originalHost) }
+        if tokens.contains("h") { hosts.append(context.hostname) }
+        for host in hosts.compactMap({ $0 }) where !SSHDestinationName.isValidHost(host) {
+            return .invalidDestination(.host(host))
+        }
+        // ssh lets `alice \-oProxyCommand=…` and `x$IFS-o…` through, and an unquoted %r turns
+        // either into an option of the probe's command.
+        if tokens.contains("r"), let user = context.remoteUser,
+           !SSHDestinationName.isValidUser(user) || user.contains("$") || startsAWordWithABackslash(user) {
+            return .invalidDestination(.user(user))
+        }
+        return nil
+    }
+
+    private static func startsAWordWithABackslash(_ value: String) -> Bool {
+        var previous: Unicode.Scalar = " "
+        for scalar in value.unicodeScalars {
+            if scalar == "\\", CharacterSet.whitespaces.contains(previous) { return true }
+            previous = scalar
+        }
+        return false
+    }
+
+    private static func tokens(in command: String) -> Set<Character> {
+        var tokens: Set<Character> = []
+        var index = command.startIndex
+        while index < command.endIndex {
+            let next = command.index(after: index)
+            guard command[index] == "%", next < command.endIndex else {
+                index = next
+                continue
+            }
+            if command[next] != "%" { tokens.insert(command[next]) }
+            index = command.index(after: next)
+        }
+        return tokens
     }
 }
 

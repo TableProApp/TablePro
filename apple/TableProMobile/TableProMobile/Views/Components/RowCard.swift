@@ -1,6 +1,12 @@
 import SwiftUI
 import TableProModels
 
+nonisolated enum RowKey {
+    static func columnIndex(columns: [ColumnInfo], primaryKeys: Set<String>) -> Int? {
+        columns.firstIndex { primaryKeys.contains($0.name) } ?? (columns.isEmpty ? nil : 0)
+    }
+}
+
 struct RowCard: View {
     let columns: [ColumnInfo]
     let columnDetails: [ColumnInfo]
@@ -12,12 +18,9 @@ struct RowCard: View {
     }
 
     private var titlePair: (name: String, value: String)? {
-        let pks = pkNames
-        for (col, val) in zip(columns, row) where pks.contains(col.name) {
-            return (col.name, val ?? "NULL")
-        }
-        guard let first = columns.first else { return nil }
-        return (first.name, row.first.flatMap { $0 } ?? "NULL")
+        guard let index = RowKey.columnIndex(columns: columns, primaryKeys: pkNames) else { return nil }
+        let value = row.indices.contains(index) ? row[index] : nil
+        return (columns[index].name, value ?? "NULL")
     }
 
     private var detailPairs: [(name: String, value: String)] {

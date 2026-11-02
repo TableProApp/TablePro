@@ -99,7 +99,7 @@ class ProblemsTests(unittest.TestCase):
     ):
         workdir = tempfile.TemporaryDirectory()
         self.addCleanup(workdir.cleanup)
-        root = Path(workdir.name)
+        root = Path(workdir.name) / "linux"
         for path, content in (
             (check_packaging.METAINFO, METAINFO.format(releases=releases)),
             (
@@ -252,7 +252,7 @@ class ProblemsTests(unittest.TestCase):
 
         found = check_packaging.problems(root, "1.2.0")
 
-        self.assertEqual(found, ["Cargo.toml names no workspace rust-version"])
+        self.assertEqual(found, ["../Cargo.toml names no workspace rust-version"])
 
     def test_a_release_needs_its_changelog_notes(self):
         for notes in (

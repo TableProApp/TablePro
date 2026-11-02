@@ -16,6 +16,15 @@ enum TrinoRedirectPolicy {
         return .tlsHandshakeFailed(kind: .serverRejectedPlaintext, serverMessage: "\(statusCode) redirect to \(shown)")
     }
 
+    static func isSameServer(_ target: URL, as requestURL: URL) -> Bool {
+        guard let host = target.host?.lowercased(), let requestHost = requestURL.host?.lowercased() else {
+            return false
+        }
+        return target.scheme?.lowercased() == requestURL.scheme?.lowercased()
+            && host == requestHost
+            && effectivePort(of: target) == effectivePort(of: requestURL)
+    }
+
     private static func target(of response: TrinoHTTPResponse, relativeTo requestURL: URL) -> URL? {
         guard let location = response.headers.first("Location")?.trimmingCharacters(in: .whitespaces),
               !location.isEmpty,

@@ -131,6 +131,8 @@ pub struct ConnectForm {
     pub safe_mode: SafeModeLevel,
     pub external_access: ExternalAccess,
     pub ai_policy: AiPolicy,
+    /// `None` follows the timeout in Preferences.
+    pub query_timeout_secs: Option<u32>,
     pub ssh: Option<SshFormState>,
     pub file: Option<FileEndpoint>,
     /// The ids of the tags ticked in the Appearance group.
@@ -165,6 +167,7 @@ impl ConnectForm {
             safe_mode: SafeModeLevel::Off,
             external_access: ExternalAccess::default(),
             ai_policy: AiPolicy::default(),
+            query_timeout_secs: None,
             ssh: None,
             file: None,
             tags: Vec::new(),
@@ -182,6 +185,7 @@ impl ConnectForm {
         form.safe_mode = saved.safe_mode;
         form.external_access = saved.external_access;
         form.ai_policy = saved.ai_policy;
+        form.query_timeout_secs = saved.query_timeout_secs;
         form.tags.clone_from(&saved.tags);
         form.icon = saved.icon;
         if caps.is_file_based() {
@@ -424,6 +428,7 @@ impl ConnectForm {
             safe_mode: self.safe_mode,
             external_access: self.external_access,
             ai_policy: self.ai_policy,
+            query_timeout_secs: self.query_timeout_secs,
             auth_mode,
             ssh: valid.ssh.as_ref().map(|(saved, _)| saved.clone()),
             last_opened_at: existing.and_then(|saved| saved.last_opened_at),

@@ -83,7 +83,7 @@ final class AppState {
         groupStorage = GroupPersistence(directory: libraryDirectory)
         tagStorage = TagPersistence(directory: libraryDirectory)
         let driverFactory: any DriverFactory = injectedDriverFactory
-            ?? IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles)
+            ?? IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localDatabaseFiles, secureStore: secureStore)
         self.secureStore = secureStore
         let sshProvider = IOSSSHProvider(secureStore: secureStore, container: localDatabaseFiles.container)
         self.sshProvider = sshProvider
@@ -217,8 +217,9 @@ final class AppState {
     }
 
     @discardableResult
-    func applySyncedConnections(_ merged: [DatabaseConnection]) -> Bool {
+    func applySyncedConnections(_ pulled: [DatabaseConnection]) -> Bool {
         guard !refuseWriteIfNotReady() else { return false }
+        let merged = pulled.map { MongoURISecretMigration.keepingSecretsInKeychain($0, in: secureStore) }
         guard merged != connections || unsavedLibraryParts.contains(.connections) else { return true }
         let removedIds = Set(connections.map(\.id)).subtracting(merged.map(\.id))
         guard persist(connections: merged, onlyIfSaved: true) else { return false }
@@ -237,6 +238,7 @@ final class AppState {
             let stored = try storage.load()
             connectionsState = .loaded(stored.connections)
             movePastedSSHKeysToKeychain(from: stored)
+            moveMongoURISecretsToKeychain(from: stored.connections)
         } catch {
             connectionsState = .failed(error)
             Self.logger.error("Connections load failed: \(error.localizedDescription, privacy: .public)")
@@ -254,6 +256,17 @@ final class AppState {
         } catch {
             tagsState = .failed(error)
             Self.logger.error("Tags load failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func moveMongoURISecretsToKeychain(from loaded: [DatabaseConnection]) {
+        let cleaned = loaded.map { MongoURISecretMigration.keepingSecretsInKeychain($0, in: secureStore) }
+        guard cleaned != loaded else { return }
+        connectionsState = .loaded(cleaned)
+        do {
+            try storage.save(cleaned, keepingPastedSSHKeys: pastedSSHKeysAwaitingKeychain)
+        } catch {
+            Self.logger.error("Rewriting connections without MongoDB secrets failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

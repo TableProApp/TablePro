@@ -9,8 +9,8 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use tablepro_core::AiPolicy;
+use tablepro_linux_platform::settings::keys;
 use tablepro_session::SessionKey;
-use tablepro_storage::settings::keys;
 
 use super::tab_index::TabIndex;
 use super::workspace_persistence::WorkspaceTabs;
@@ -40,7 +40,9 @@ pub(super) fn access(
     let saved = services.saved_connections.clone();
     let key = key.clone();
     AssistantAccess::new(services.ai.clone(), session, engine, move || match &key {
-        SessionKey::Saved(id) => saved.get(*id).map_or_else(AiPolicy::default, |saved| saved.ai_policy),
+        SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => {
+            saved.get(*id).map_or_else(AiPolicy::default, |saved| saved.ai_policy)
+        }
         SessionKey::File(_) => AiPolicy::default(),
     })
 }

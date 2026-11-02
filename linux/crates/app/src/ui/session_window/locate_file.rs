@@ -202,7 +202,8 @@ impl SessionWindow {
         if self.failed_saved(located.id).is_none() {
             return;
         }
-        if let Some((claim, _, _)) = self.take_failure(&SessionKey::Saved(located.id)) {
+        if let Some(super::session_page::TakenFailure { claim, .. }) = self.take_failure(&SessionKey::Saved(located.id))
+        {
             self.connect_with(
                 claim,
                 ConnectSource::Saved(Box::new(located)),

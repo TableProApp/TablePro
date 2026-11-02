@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
 struct QueryHistorySourceTests {
@@ -46,35 +47,35 @@ struct QueryHistoryStatementTypeTests {
     @Test("reads classify as select")
     func readsClassifyAsSelect() {
         for query in ["SELECT 1", "select 1", "SHOW TABLES", "WITH t AS (SELECT 1) SELECT * FROM t", "EXPLAIN SELECT 1"] {
-            #expect(QueryHistoryStatementType.classify(query) == .select, "\(query)")
+            #expect(QueryHistoryStatementType.classify(query, grammar: .ansi) == .select, "\(query)")
         }
     }
 
     @Test("writes classify by verb")
     func writesClassifyByVerb() {
-        #expect(QueryHistoryStatementType.classify("INSERT INTO t VALUES (1)") == .insert)
-        #expect(QueryHistoryStatementType.classify("UPDATE t SET a = 1") == .update)
-        #expect(QueryHistoryStatementType.classify("DELETE FROM t") == .delete)
-        #expect(QueryHistoryStatementType.classify("TRUNCATE TABLE t") == .delete)
+        #expect(QueryHistoryStatementType.classify("INSERT INTO t VALUES (1)", grammar: .ansi) == .insert)
+        #expect(QueryHistoryStatementType.classify("UPDATE t SET a = 1", grammar: .ansi) == .update)
+        #expect(QueryHistoryStatementType.classify("DELETE FROM t", grammar: .ansi) == .delete)
+        #expect(QueryHistoryStatementType.classify("TRUNCATE TABLE t", grammar: .ansi) == .delete)
     }
 
     @Test("structure changes classify as ddl")
     func structureChangesClassifyAsDdl() {
         for query in ["CREATE TABLE t (a INT)", "ALTER TABLE t ADD COLUMN b INT", "DROP TABLE t", "GRANT SELECT ON t TO r"] {
-            #expect(QueryHistoryStatementType.classify(query) == .ddl, "\(query)")
+            #expect(QueryHistoryStatementType.classify(query, grammar: .ansi) == .ddl, "\(query)")
         }
     }
 
     @Test("leading comments do not hide the verb")
     func leadingCommentsAreIgnored() {
-        #expect(QueryHistoryStatementType.classify("-- note\nSELECT 1") == .select)
-        #expect(QueryHistoryStatementType.classify("/* block */ DELETE FROM t") == .delete)
+        #expect(QueryHistoryStatementType.classify("-- note\nSELECT 1", grammar: .ansi) == .select)
+        #expect(QueryHistoryStatementType.classify("/* block */ DELETE FROM t", grammar: .ansi) == .delete)
     }
 
     @Test("unrecognized text classifies as other rather than guessing")
     func unknownClassifiesAsOther() {
-        #expect(QueryHistoryStatementType.classify("") == .other)
-        #expect(QueryHistoryStatementType.classify("db.users.find({})") == .other)
+        #expect(QueryHistoryStatementType.classify("", grammar: .ansi) == .other)
+        #expect(QueryHistoryStatementType.classify("db.users.find({})", grammar: .ansi) == .other)
     }
 }
 

@@ -156,13 +156,13 @@
   <menu id="history_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Show in Files</attribute>
+        <attribute name="label" translatable="yes">_Show in Files</attribute>
         <attribute name="action">history.show-in-files</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Clear All History…</attribute>
+        <attribute name="label" translatable="yes">_Clear All History…</attribute>
         <attribute name="action">history.clear-all</attribute>
       </item>
     </section>
@@ -170,11 +170,11 @@
   <menu id="export_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Export as SQL…</attribute>
+        <attribute name="label" translatable="yes">Export as _SQL…</attribute>
         <attribute name="action">history.export-sql</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Export as CSV…</attribute>
+        <attribute name="label" translatable="yes">Export as _CSV…</attribute>
         <attribute name="action">history.export-csv</attribute>
       </item>
     </section>

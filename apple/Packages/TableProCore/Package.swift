@@ -31,11 +31,15 @@ let package = Package(
         .library(name: "TableProKerberos", targets: ["TableProKerberos"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
         .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"]),
+        .library(name: "TableProDamengCore", targets: ["TableProDamengCore"]),
         .library(name: "TableProTLSClientIdentity", targets: ["TableProTLSClientIdentity"]),
         .library(name: "TableProTLSTestFixtures", targets: ["TableProTLSTestFixtures"]),
         .library(name: "TableProGoogleCloud", targets: ["TableProGoogleCloud"]),
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
+        .library(name: "TableProQdrantCore", targets: ["TableProQdrantCore"]),
+        .library(name: "TableProInfluxDBCore", targets: ["TableProInfluxDBCore"]),
+        .library(name: "TableProNeo4jCore", targets: ["TableProNeo4jCore"]),
         .library(name: "TableProFirebaseCore", targets: ["TableProFirebaseCore"]),
         .library(name: "TableProBigtableCore", targets: ["TableProBigtableCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
@@ -55,6 +59,7 @@ let package = Package(
         .library(name: "TableProMySQLCore", targets: ["TableProMySQLCore"]),
         .library(name: "TableProPostgreSQLCore", targets: ["TableProPostgreSQLCore"]),
         .library(name: "TableProRedisCore", targets: ["TableProRedisCore"]),
+        .library(name: "TableProMemcachedCore", targets: ["TableProMemcachedCore"]),
         .library(name: "TableProTestSupport", targets: ["TableProTestSupport"])
     ],
     targets: [
@@ -105,7 +110,7 @@ let package = Package(
         ),
         .target(
             name: "TableProImport",
-            dependencies: ["TableProConnectionLibrary"],
+            dependencies: ["TableProConnectionLibrary", "TableProSSHTransport"],
             path: "Sources/TableProImport"
         ),
         .target(
@@ -152,8 +157,14 @@ let package = Package(
         ),
         .target(
             name: "TableProTrinoCore",
-            dependencies: [],
+            dependencies: ["TableProSQLGrammar", "TableProTLSClientIdentity"],
             path: "Sources/TableProTrinoCore"
+        ),
+        .target(
+            name: "TableProDamengCore",
+            dependencies: ["TableProSQLGrammar"],
+            path: "Sources/TableProDamengCore",
+            swiftSettings: pluginCoreSettings
         ),
         .target(
             name: "TableProTLSClientIdentity",
@@ -184,6 +195,22 @@ let package = Package(
             name: "TableProWeaviateCore",
             dependencies: [],
             path: "Sources/TableProWeaviateCore"
+        ),
+        .target(
+            name: "TableProQdrantCore",
+            dependencies: [],
+            path: "Sources/TableProQdrantCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
+            name: "TableProInfluxDBCore",
+            dependencies: [],
+            path: "Sources/TableProInfluxDBCore"
+        ),
+        .target(
+            name: "TableProNeo4jCore",
+            dependencies: [],
+            path: "Sources/TableProNeo4jCore"
         ),
         .target(
             name: "TableProBigtableCore",
@@ -263,6 +290,12 @@ let package = Package(
             swiftSettings: pluginCoreSettings
         ),
         .target(
+            name: "TableProMemcachedCore",
+            dependencies: [],
+            path: "Sources/TableProMemcachedCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
             name: "TableProRedisCore",
             dependencies: [],
             path: "Sources/TableProRedisCore",
@@ -272,6 +305,16 @@ let package = Package(
             name: "TableProBigtableCoreTests",
             dependencies: ["TableProBigtableCore", "TableProGoogleCloud"],
             path: "Tests/TableProBigtableCoreTests"
+        ),
+        .testTarget(
+            name: "TableProNeo4jCoreTests",
+            dependencies: ["TableProNeo4jCore"],
+            path: "Tests/TableProNeo4jCoreTests"
+        ),
+        .testTarget(
+            name: "TableProFirebaseCoreTests",
+            dependencies: ["TableProFirebaseCore"],
+            path: "Tests/TableProFirebaseCoreTests"
         ),
         .testTarget(
             name: "TableProSpannerCoreTests",
@@ -284,9 +327,26 @@ let package = Package(
             path: "Tests/TableProTeradataCoreTests"
         ),
         .testTarget(
+            name: "TableProQdrantCoreTests",
+            dependencies: ["TableProQdrantCore"],
+            path: "Tests/TableProQdrantCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProInfluxDBCoreTests",
+            dependencies: ["TableProInfluxDBCore"],
+            path: "Tests/TableProInfluxDBCoreTests"
+        ),
+        .testTarget(
             name: "TableProTrinoCoreTests",
-            dependencies: ["TableProTrinoCore"],
+            dependencies: ["TableProTrinoCore", "TableProSQLGrammar"],
             path: "Tests/TableProTrinoCoreTests"
+        ),
+        .testTarget(
+            name: "TableProDamengCoreTests",
+            dependencies: ["TableProDamengCore", "TableProSQLGrammar"],
+            path: "Tests/TableProDamengCoreTests",
+            swiftSettings: pluginCoreSettings
         ),
         .testTarget(
             name: "TableProTabularIOTests",
@@ -420,6 +480,12 @@ let package = Package(
             name: "TableProPostgreSQLCoreTests",
             dependencies: ["TableProPostgreSQLCore"],
             path: "Tests/TableProPostgreSQLCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProMemcachedCoreTests",
+            dependencies: ["TableProMemcachedCore"],
+            path: "Tests/TableProMemcachedCoreTests",
             swiftSettings: pluginCoreSettings
         ),
         .testTarget(

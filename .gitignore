@@ -1,5 +1,11 @@
 # Repo-wide ignores. Each app keeps its own beside its code: apple/.gitignore, linux/.gitignore.
 
+# The shared Rust core, which a global ignore of core dumps would hide.
+!/core/
+
+# Cargo's output for the workspace at the top
+/target/
+
 # Claude Code worktrees and per-session state
 .claude/worktrees/
 

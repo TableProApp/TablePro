@@ -97,7 +97,8 @@ internal enum ConnectionActionsMenuResolver {
             entries.append(
                 ActionsMenuEntry(
                     title: String(localized: "Restore Previous Values…"),
-                    selector: NSSelectorFromString("restorePreviousValues:")
+                    selector: NSSelectorFromString("restorePreviousValues:"),
+                    shortcut: .restorePreviousValues
                 )
             )
         }
@@ -200,8 +201,7 @@ internal enum ConnectionActionsMenuResolver {
         ])
     }
 
-    /// The places in this connection the window can go. Each of these opens a tab or a drawer, so
-    /// they belong together and away from the commands that change data.
+    // Each opens a tab or a drawer, so they sit apart from the commands that change data.
     private static func windowSection(_ context: ToolbarContext) -> ActionsMenuSection? {
         var entries: [ActionsMenuEntry] = [
             ActionsMenuEntry(
@@ -215,14 +215,16 @@ internal enum ConnectionActionsMenuResolver {
             ),
             ActionsMenuEntry(
                 title: String(localized: "Query Insights"),
-                selector: NSSelectorFromString("showQueryInsights:")
+                selector: NSSelectorFromString("showQueryInsights:"),
+                shortcut: .showQueryInsights
             ),
         ]
         if context.supportsServerDashboard {
             entries.append(
                 ActionsMenuEntry(
                     title: String(localized: "Server Dashboard"),
-                    selector: NSSelectorFromString("showServerDashboard:")
+                    selector: NSSelectorFromString("showServerDashboard:"),
+                    shortcut: .showServerDashboard
                 )
             )
         }

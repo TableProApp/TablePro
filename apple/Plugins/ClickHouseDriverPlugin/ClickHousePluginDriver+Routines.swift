@@ -11,8 +11,8 @@ import TableProPluginKit
 nonisolated public enum ClickHouseObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
         value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "'", with: "\\'", options: .literal)
     }
 
     public static func quoteIdentifier(_ value: String) -> String {

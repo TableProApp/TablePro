@@ -9,9 +9,9 @@ use tablepro_core::FilterSet;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
 use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::Session;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
 
 use super::browse_tab_widgets::BrowseTabWidgets;
 use super::pager_bar::PagerRequest;
@@ -65,9 +65,9 @@ pub(super) fn build(tab: &BrowseTab, init: &LayoutInit<'_>) -> BrowseTabWidgets 
 /// room for it.
 fn more_menu(page_sizes: &[u64]) -> gio::Menu {
     let actions = gio::Menu::new();
-    actions.append(Some(&gettext("Filter Rows")), Some("browse.filter"));
-    actions.append(Some(&gettext("Export Rows…")), Some("browse.export"));
-    actions.append(Some(&gettext("Count Rows")), Some("browse.count-rows"));
+    actions.append(Some(&gettext("_Filter Rows")), Some("browse.filter"));
+    actions.append(Some(&gettext("_Export Rows…")), Some("browse.export"));
+    actions.append(Some(&gettext("_Count Rows")), Some("browse.count-rows"));
     let sizes = gio::Menu::new();
     for size in page_sizes {
         let item = gio::MenuItem::new(Some(&format_thousands(*size)), None);
@@ -283,6 +283,12 @@ fn collapse_top_bars_with(tab: &BrowseTab, filter: &FilterStrip) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_action_in_the_more_menu_has_an_access_key_of_its_own() {
+        // A page size is a number, which takes no key.
+        crate::test_support::assert_access_keys(&more_menu(&[]));
+    }
 
     #[gtk4::test]
     fn the_dropdown_shows_a_page_size_set_in_preferences() {

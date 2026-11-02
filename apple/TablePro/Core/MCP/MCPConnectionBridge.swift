@@ -113,14 +113,16 @@ public actor MCPConnectionBridge {
         query: String,
         maxRows: Int,
         timeoutSeconds: Int,
-        cancellation: MCPCancellationToken?
+        cancellation: MCPCancellationToken?,
+        maskingTable: String? = nil
     ) async throws -> JsonValue {
         let outcome = try await runStatement(
             scope: scope,
             query: query,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            cancellation: cancellation
+            cancellation: cancellation,
+            maskingTable: maskingTable
         )
         return Self.encode(
             result: outcome.result,
@@ -151,14 +153,16 @@ public actor MCPConnectionBridge {
         query: String,
         maxRows: Int,
         timeoutSeconds: Int,
-        cancellation: MCPCancellationToken?
+        cancellation: MCPCancellationToken?,
+        maskingTable: String? = nil
     ) async throws -> (result: QueryResult, executionTimeMs: Double) {
         let outcome = try await access.runStatement(
             scope: scope,
             query: query,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            cancellation: cancellation
+            cancellation: cancellation,
+            maskingTable: maskingTable
         )
         return (outcome.result, outcome.executionTimeMs)
     }

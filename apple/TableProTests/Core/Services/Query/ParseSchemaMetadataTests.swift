@@ -1,4 +1,5 @@
 import Foundation
+import TableProPluginKit
 import Testing
 @testable import TablePro
 
@@ -23,6 +24,63 @@ struct ParseSchemaMetadataTests {
         )
         let parsed = QueryExecutor.parseSchemaMetadata(schema)
         #expect(parsed.columnComments == ["id": "Primary key", "name": "Display name"])
+    }
+
+    @Test("An editable view is keyed on the view columns its driver named, which carry no key of their own")
+    func editableViewSuppliesKeys() {
+        var schema = FetchedTableSchema(
+            columns: [column("key_id", comment: nil), column("name", comment: nil)],
+            foreignKeys: nil,
+            approximateRowCount: nil
+        )
+        let answer = PluginViewRowEditing.editable(TestFixtures.viewTarget(keys: ["key_id"]))
+        schema.viewRowEditing = answer
+        let parsed = QueryExecutor.parseSchemaMetadata(schema)
+        #expect(parsed.primaryKeyColumns == ["key_id"])
+        #expect(parsed.viewRowEditing == answer)
+    }
+
+    @Test("A read-only view keeps no key and carries its reason")
+    func readOnlyViewHasNoKeys() {
+        var schema = FetchedTableSchema(columns: [column("name", comment: nil)], foreignKeys: nil, approximateRowCount: nil)
+        schema.viewRowEditing = .readOnly(.readsSeveralTables)
+        let parsed = QueryExecutor.parseSchemaMetadata(schema)
+        #expect(parsed.primaryKeyColumns.isEmpty)
+        #expect(parsed.viewRowEditing == .readOnly(.readsSeveralTables))
+    }
+
+    @Test("A view's computed and server-owned columns are never written, and its base table's defaults apply")
+    func editableViewTakesItsBaseColumns() {
+        var schema = FetchedTableSchema(
+            columns: ["id", "name", "q2", "ident", "note"].map { column($0, comment: nil) },
+            foreignKeys: nil,
+            approximateRowCount: nil
+        )
+        let serial = PluginViewBaseColumn(
+            name: "id", isNullable: false, defaultValue: "nextval('t_id_seq')", assignsValue: false, acceptsWrites: true
+        )
+        let name = PluginViewBaseColumn(
+            name: "name", isNullable: false, defaultValue: nil, assignsValue: false, acceptsWrites: true
+        )
+        let ident = PluginViewBaseColumn(
+            name: "ident", isNullable: false, defaultValue: nil, assignsValue: true, acceptsWrites: false
+        )
+        let note = PluginViewBaseColumn(
+            name: "note", isNullable: true, defaultValue: "'n/a'", assignsValue: false, acceptsWrites: true
+        )
+        schema.viewRowEditing = .editable(TestFixtures.viewTarget(
+            keys: ["id"],
+            readOnly: ["q2", "ident"],
+            baseColumnNames: ["id": "id", "name": "name", "ident": "ident", "note": "note"],
+            baseColumns: ["id": serial, "name": name, "ident": ident, "note": note]
+        ))
+        let parsed = QueryExecutor.parseSchemaMetadata(schema)
+        #expect(parsed.generatedColumns == ["q2", "ident"])
+        #expect((parsed.columnDefaults["id"] ?? nil) == "nextval('t_id_seq')")
+        #expect((parsed.columnDefaults["note"] ?? nil) == "'n/a'")
+        #expect(parsed.columnNullable["name"] == false)
+        #expect(parsed.columnIdentity["ident"] == .always)
+        #expect(parsed.columnIdentity["name"] == nil)
     }
 
     @Test("Excludes nil and empty comments")
@@ -53,6 +111,19 @@ struct ParseSchemaMetadataTests {
         #expect(rows.updateDisplayMetadata(columnDeclaredTypes: parsed.columnDeclaredTypes) == .columnsReplaced)
         #expect(rows.declaredType(at: 0) == "CHAR(32)")
         #expect(ParsedSchemaMetadata.cached(rows: rows, primaryKeyColumns: ["id"]).columnDeclaredTypes == parsed.columnDeclaredTypes)
+    }
+
+    @Test("Cached metadata keeps the view answer captured with the keys")
+    func cachedMetadataKeepsTheViewAnswer() {
+        var context = TabTableContext(isView: true, objectType: .view)
+        context.primaryKeyColumns = ["id"]
+        context.viewRowEditing = .editable(TestFixtures.viewTarget(keys: ["id"]))
+        let rows = TableRows.from(queryRows: [], columns: ["id"], columnTypes: [.text(rawType: nil)])
+
+        let cached = ParsedSchemaMetadata.cached(rows: rows, context: context)
+
+        #expect(cached.primaryKeyColumns == ["id"])
+        #expect(cached.viewRowEditing == context.viewRowEditing)
     }
 
     @Test("Returns an empty dictionary when no column has a comment")

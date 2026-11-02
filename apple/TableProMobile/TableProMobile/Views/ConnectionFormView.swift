@@ -123,15 +123,21 @@ struct ConnectionFormView: View {
                                 Text(String(localized: "Verify Identity")).tag(SSLModeChoice.verifyFull)
                             }
                         } else if viewModel.type == .mssql {
-                            // No verify modes: this form collects no CA file for FreeTDS, so the iOS driver checks no certificate.
+                            // No verify modes to choose: this form collects no CA file for FreeTDS. A synced one shows as it is.
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.mssqlSSLMode) {
                                 Text(String(localized: "Disabled")).tag(SSLModeChoice.disable)
                                 Text(String(localized: "Preferred")).tag(SSLModeChoice.preferred)
                                 Text(String(localized: "Required")).tag(SSLModeChoice.require)
+                                if viewModel.storedMSSQLVerifyMode == .verifyCa {
+                                    Text(String(localized: "Verify CA")).tag(SSLModeChoice.verifyCa)
+                                }
+                                if viewModel.storedMSSQLVerifyMode == .verifyFull {
+                                    Text(String(localized: "Verify Identity")).tag(SSLModeChoice.verifyFull)
+                                }
                             }
                         }
                     } footer: {
-                        if let note = viewModel.oracleSSLModeNote {
+                        if let note = viewModel.oracleSSLModeNote ?? viewModel.mssqlSSLModeNote {
                             Text(note)
                         }
                     }

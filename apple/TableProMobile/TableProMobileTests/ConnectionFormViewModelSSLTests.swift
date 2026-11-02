@@ -76,13 +76,15 @@ struct ConnectionFormViewModelSSLTests {
         #expect(rebuilt.sslConfiguration?.clientCertificatePath == "/Users/mac/client.pem")
     }
 
-    @Test("an MSSQL connection still coerces verify modes but keeps its paths")
+    @Test("an MSSQL connection keeps a synced verify mode, so the driver refuses it rather than skipping the check")
     func mssqlKeepsPaths() {
         let viewModel = ConnectionFormViewModel(editing: existingConnection(type: .mssql))
 
-        #expect(viewModel.mssqlSSLMode == .require)
+        #expect(viewModel.mssqlSSLMode == .verifyFull)
+        #expect(viewModel.storedMSSQLVerifyMode == .verifyFull)
+        #expect(viewModel.mssqlSSLModeNote != nil)
         let rebuilt = viewModel.buildConnection()
-        #expect(rebuilt.sslConfiguration?.mode == .require)
+        #expect(rebuilt.sslConfiguration?.mode == .verifyFull)
         #expect(rebuilt.sslConfiguration?.caCertificatePath == "/Users/mac/ca.pem")
     }
 

@@ -54,8 +54,15 @@ internal enum PostgreSQLSessionScopeSQL {
     }
 
     /// `pg_settings` spells `DateStyle`, `IntervalStyle` and `TimeZone` in mixed case, so the match ignores case.
+    ///
+    /// Sent on the user's own session, whose path may name another schema before `pg_catalog`, so the comparison
+    /// names `pg_catalog`'s operator.
     static func captureStatement(names: [String]) -> PostgreSQLBoundStatement {
-        let filter = PostgreSQLObjectQueries.membership("pg_catalog.lower(name)", in: names.map { $0.lowercased() })
+        let filter = names.isEmpty
+            ? "false"
+            : "pg_catalog.lower(name) OPERATOR(pg_catalog.=) ANY (ARRAY["
+                + names.map { PostgreSQLObjectQueries.quoteLiteral($0.lowercased()) }.joined(separator: ", ")
+                + "]::pg_catalog.text[])"
         return PostgreSQLBoundStatement(
             sql: "SELECT name, setting FROM pg_catalog.pg_settings WHERE \(filter)",
             parameters: []

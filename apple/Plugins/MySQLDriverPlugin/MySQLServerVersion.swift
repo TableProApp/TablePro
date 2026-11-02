@@ -46,7 +46,7 @@ nonisolated internal enum MySQLServerVersion {
             return isAtLeast((5, 7, 8), banner: banner)
         case .mariadb:
             return isAtLeast((10, 1, 1), banner: banner)
-        case .tidb, .oceanbase, .databend:
+        case .tidb, .oceanbase, .databend, .starrocks:
             return true
         }
     }
@@ -61,7 +61,7 @@ nonisolated internal enum MySQLServerVersion {
             return isAtLeast((10, 2, 0), banner: banner)
         case .tidb, .oceanbase:
             return true
-        case .databend:
+        case .databend, .starrocks:
             return false
         }
     }
@@ -190,7 +190,7 @@ nonisolated internal enum MySQLServerVersion {
         switch flavor {
         case .mysql, .mariadb:
             return isKnownBelow(target, banner: banner)
-        case .tidb, .oceanbase, .databend:
+        case .tidb, .oceanbase, .databend, .starrocks:
             return false
         }
     }

@@ -21,8 +21,8 @@ pub struct OpenSessionsRecord {
 
 impl VersionedDocument for OpenSessionsRecord {
     const KIND: &'static str = "open-sessions";
-    const VERSION: u32 = 2;
-    const UPGRADES: &'static [Upgrade] = &[window_per_session];
+    const VERSION: u32 = 3;
+    const UPGRADES: &'static [Upgrade] = &[window_per_session, databases_beside_connections];
 }
 
 /// Version 1 listed the sessions alone, and each opened in a window of
@@ -37,6 +37,14 @@ fn window_per_session(mut document: Value) -> Result<Value, String> {
         Some(_) => return Err("the sessions are not a list".to_owned()),
     };
     fields.insert("windows".to_owned(), Value::Array(windows));
+    Ok(document)
+}
+
+/// Version 3 adds another database of a connection beside it. Every
+/// version 2 key reads as it was, and a build that knows only version 2
+/// says a version 3 record is from a newer build rather than calling it
+/// unreadable.
+fn databases_beside_connections(document: Value) -> Result<Value, String> {
     Ok(document)
 }
 
@@ -110,7 +118,13 @@ mod tests {
     fn record() -> OpenSessionsRecord {
         OpenSessionsRecord {
             windows: vec![
-                vec![SessionKeyRecord::Saved { id: Uuid::new_v4() }],
+                vec![
+                    SessionKeyRecord::Saved { id: Uuid::new_v4() },
+                    SessionKeyRecord::SavedIn {
+                        id: Uuid::new_v4(),
+                        database: "analytics".to_owned(),
+                    },
+                ],
                 vec![SessionKeyRecord::File {
                     uri: "file:///srv/app.db".to_owned(),
                 }],
@@ -138,7 +152,7 @@ mod tests {
 
         assert_eq!(decoded, record);
         let text = String::from_utf8_lossy(&bytes);
-        assert!(text.contains("\"version\": 2"), "{text}");
+        assert!(text.contains("\"version\": 3"), "{text}");
         assert!(text.contains("\"kind\": \"saved\""), "{text}");
     }
 
@@ -146,7 +160,7 @@ mod tests {
     fn unsupported_version_moved_aside_and_loads_empty() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join(OpenSessionsRecord::FILE_NAME);
-        let original = br#"{"version": 3, "windows": []}"#;
+        let original = br#"{"version": 4, "windows": []}"#;
         std::fs::write(&path, original).expect("seed");
 
         let load = read_open_sessions_blocking(&path);
@@ -202,6 +216,26 @@ mod tests {
                 vec![SessionKey::Saved(first)],
                 vec![SessionKey::File("file:///srv/app.db".to_owned())],
             ]
+        );
+    }
+
+    /// A version 2 record, the last without another database beside a
+    /// connection. Never edit the literal: it is what that build wrote.
+    #[test]
+    fn a_version_2_record_reads_as_it_was_written() {
+        let first = Uuid::new_v4();
+        let bytes = format!(
+            r#"{{"version": 2, "windows": [[{{"kind": "saved", "id": "{first}"}}, {{"kind": "file", "uri": "file:///srv/app.db"}}]]}}"#
+        );
+
+        let record: OpenSessionsRecord = decode_document(Path::new("/tmp/o.json"), bytes.as_bytes()).expect("decode");
+
+        assert_eq!(
+            record.windows(),
+            [vec![
+                SessionKey::Saved(first),
+                SessionKey::File("file:///srv/app.db".to_owned()),
+            ]]
         );
     }
 

@@ -1,0 +1,1093 @@
+//! The catalogue as the sidebar, the grid and the structure tab read it.
+
+use tablepro_core::column::ColumnDefault;
+use tablepro_core::column::{
+    BoolStorage, ColumnKind, FloatWidth, IntegerKind, IntegerWidth, NetworkFamily, ReadForm, TemporalZone, TextLength,
+};
+use tablepro_core::ddl::{CollationName, GeneratedStorage, IdentityStyle};
+use tablepro_core::edit::CellInput;
+use tablepro_core::meta::{
+    EditorRefusal, EngineRowId, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
+};
+use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
+use tablepro_core::{DriverError, Value};
+use tablepro_test_fixtures::{HbaMode, PostgresFixture, PostgresVersion};
+
+use crate::support::{CALL, connect, rows, run_ok, scalar, session, setup, start, text, within};
+
+fn table(name: &str) -> TableRef {
+    TableRef::new(Some("public".to_owned()), name)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn object_kinds_listed() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE plain (id int)",
+            "CREATE TABLE parted (id int) PARTITION BY RANGE (id)",
+            "CREATE TABLE parted_low PARTITION OF parted FOR VALUES FROM (0) TO (10)",
+            "CREATE VIEW seen AS SELECT 1 AS n",
+            "CREATE MATERIALIZED VIEW kept AS SELECT 1 AS n",
+            "CREATE SEQUENCE counter",
+            "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1'",
+            "CREATE PROCEDURE p() LANGUAGE sql AS 'SELECT 1'",
+        ],
+    )
+    .await;
+
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects");
+
+    let kind_of = |name: &str| {
+        objects
+            .iter()
+            .find(|object| object.name == name)
+            .map(|object| object.kind)
+    };
+    assert_eq!(kind_of("plain"), Some(ObjectKind::Table));
+    assert_eq!(kind_of("parted"), Some(ObjectKind::PartitionedTable));
+    assert_eq!(kind_of("parted_low"), Some(ObjectKind::Table));
+    assert_eq!(kind_of("seen"), Some(ObjectKind::View));
+    assert_eq!(kind_of("kept"), Some(ObjectKind::MaterializedView));
+    assert_eq!(kind_of("counter"), Some(ObjectKind::Sequence));
+    assert_eq!(kind_of("f"), Some(ObjectKind::Function));
+    assert_eq!(kind_of("p"), Some(ObjectKind::Procedure));
+    assert!(objects.iter().all(|object| object.schema.as_deref() == Some("public")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn triggers_list_once_with_their_table() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE a (id int)",
+            "CREATE TABLE b (id int)",
+            "CREATE FUNCTION stamp() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+            "CREATE TRIGGER audit BEFORE INSERT ON a FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE TRIGGER audit AFTER UPDATE ON b FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE TABLE ev (id int, d date) PARTITION BY RANGE (d)",
+            "CREATE TABLE ev_2025 PARTITION OF ev FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')",
+            "CREATE TABLE ev_2026 PARTITION OF ev FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')",
+            "CREATE TRIGGER logged AFTER INSERT ON ev FOR EACH ROW EXECUTE FUNCTION stamp()",
+        ],
+    )
+    .await;
+
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .expect("the objects");
+    let triggers: Vec<(&str, Option<&str>)> = objects
+        .iter()
+        .filter(|object| object.kind == ObjectKind::Trigger)
+        .map(|object| (object.name.as_str(), object.parent_table.as_deref()))
+        .collect();
+    assert_eq!(
+        triggers,
+        [("audit", Some("a")), ("audit", Some("b")), ("logged", Some("ev"))],
+        "a partition's clone of its parent's trigger is not listed"
+    );
+    assert!(
+        objects
+            .iter()
+            .filter(|object| object.kind != ObjectKind::Trigger)
+            .all(|object| object.parent_table.is_none())
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_sequence_keeps_its_persistence_and_owner() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    // Unlogged sequences came in PostgreSQL 15.
+    let unlogged = connection.server_info().major >= 15;
+    let scratch_sql = if unlogged {
+        "CREATE UNLOGGED SEQUENCE scratch"
+    } else {
+        "CREATE SEQUENCE scratch"
+    };
+    setup(
+        connection.as_ref(),
+        &[
+            scratch_sql,
+            "CREATE TABLE orders (id serial, n int GENERATED ALWAYS AS IDENTITY)",
+        ],
+    )
+    .await;
+    let read = |name: &str| {
+        let connection = connection.clone();
+        let sequence = ObjectInfo::new(Some("public".to_owned()), name, ObjectKind::Sequence);
+        async move {
+            connection
+                .fetch_object_definition(&sequence, within(CALL))
+                .await
+                .expect("the definition")
+                .expect("a definition")
+        }
+    };
+
+    let scratch = read("scratch").await;
+    let kind = if unlogged {
+        "CREATE UNLOGGED SEQUENCE"
+    } else {
+        "CREATE SEQUENCE"
+    };
+    assert!(
+        scratch.sql.starts_with(&format!("{kind} public.scratch")),
+        "{}",
+        scratch.sql
+    );
+    assert_eq!(scratch.refusal, None);
+    let serial = read("orders_id_seq").await;
+    assert!(serial.sql.ends_with("OWNED BY public.orders.id;"), "{}", serial.sql);
+    assert_eq!(serial.refusal, None);
+    let identity = read("orders_n_seq").await;
+    assert_eq!(identity.refusal, Some(EditorRefusal::MadeWithOther), "{}", identity.sql);
+
+    setup(connection.as_ref(), &["DROP SEQUENCE scratch"]).await;
+    setup(connection.as_ref(), &[scratch.sql.as_str()]).await;
+    let again = read("scratch").await;
+    assert_eq!(again.sql, scratch.sql, "the text makes the sequence again as it was");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn routines_sequences_and_triggers_list_with_their_definitions() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE a (id int)",
+            "CREATE TABLE b (id int)",
+            "CREATE FUNCTION stamp() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+            "CREATE TRIGGER audit BEFORE INSERT ON a FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE TRIGGER audit AFTER UPDATE ON b FOR EACH ROW EXECUTE FUNCTION stamp()",
+            "CREATE FUNCTION add_one(x int) RETURNS int LANGUAGE sql AS $$ SELECT x + 1 $$",
+            "CREATE FUNCTION add_one(x text) RETURNS text LANGUAGE sql AS $$ SELECT x || '1' $$",
+            "CREATE PROCEDURE log_it() LANGUAGE sql AS $$ SELECT 42 $$",
+            "CREATE SEQUENCE \"Odd Seq\" AS integer START 7 INCREMENT 3 MINVALUE 2 MAXVALUE 900 CACHE 4 CYCLE",
+        ],
+    )
+    .await;
+
+    let public = || Some("public".to_owned());
+    let definition = |object: ObjectInfo| {
+        let connection = &connection;
+        async move {
+            let definition = connection
+                .fetch_object_definition(&object, within(CALL))
+                .await
+                .expect("the definition");
+            if let Some(definition) = &definition {
+                assert_eq!(definition.database, None, "{}", object.name);
+            }
+            definition.map(|definition| definition.sql)
+        }
+    };
+    let overloads = definition(ObjectInfo::new(public(), "add_one", ObjectKind::Function))
+        .await
+        .expect("the overloads");
+    assert!(
+        overloads.contains("SELECT x + 1") && overloads.contains("SELECT x || '1'"),
+        "{overloads}"
+    );
+    assert_eq!(
+        overloads.matches("CREATE OR REPLACE FUNCTION public.add_one").count(),
+        2,
+        "{overloads}"
+    );
+    assert_eq!(overloads.matches(";\n\nCREATE").count(), 1, "{overloads}");
+    assert!(overloads.ends_with(';'));
+
+    let procedure = definition(ObjectInfo::new(public(), "log_it", ObjectKind::Procedure))
+        .await
+        .expect("the procedure");
+    assert!(
+        procedure.starts_with("CREATE OR REPLACE PROCEDURE public.log_it") && procedure.contains("SELECT 42"),
+        "{procedure}"
+    );
+    assert_eq!(
+        definition(ObjectInfo::new(public(), "log_it", ObjectKind::Function)).await,
+        None
+    );
+
+    let sequence = definition(ObjectInfo::new(public(), "Odd Seq", ObjectKind::Sequence))
+        .await
+        .expect("the sequence");
+    for part in [
+        "public.\"Odd Seq\"",
+        "AS integer",
+        "INCREMENT BY 3",
+        "MINVALUE 2",
+        "MAXVALUE 900",
+        "START WITH 7",
+        "CACHE 4",
+        "CYCLE",
+    ] {
+        assert!(sequence.contains(part), "{part} in {sequence}");
+    }
+
+    let on_a = definition(ObjectInfo::trigger(public(), "audit", "a"))
+        .await
+        .expect("the trigger on a");
+    let on_b = definition(ObjectInfo::trigger(public(), "audit", "b"))
+        .await
+        .expect("the trigger on b");
+    assert!(
+        on_a.contains("BEFORE INSERT ON public.a") && on_a.contains("stamp()"),
+        "the table is named with its schema: {on_a}"
+    );
+    assert!(on_b.contains("AFTER UPDATE ON public.b"), "{on_b}");
+    assert_eq!(definition(ObjectInfo::trigger(public(), "audit", "gone")).await, None);
+
+    let table = connection
+        .fetch_object_definition(&ObjectInfo::new(public(), "a", ObjectKind::Table), within(CALL))
+        .await;
+    assert!(matches!(table, Err(DriverError::Unsupported { .. })), "{table:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn other_session_temp_table_excluded() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let other = session(connection.as_ref()).await;
+    run_ok(other.as_ref(), "CREATE TEMP TABLE private_scratch (n int)").await;
+
+    let schemas = connection.list_schemas(within(CALL)).await.expect("the schemas");
+    let objects = connection
+        .list_objects(&ObjectScope::AllSchemas, within(CALL))
+        .await
+        .expect("the objects");
+
+    assert!(
+        !schemas.iter().any(|schema| schema.name.starts_with("pg_temp")),
+        "{schemas:?}"
+    );
+    assert!(!objects.iter().any(|object| object.name == "private_scratch"));
+    assert!(
+        schemas
+            .iter()
+            .any(|schema| schema.name == "public" && schema.is_default)
+    );
+    assert!(
+        schemas
+            .iter()
+            .any(|schema| schema.name == "pg_catalog" && schema.is_system)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn expression_desc_partial_index_keys() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE t (id int PRIMARY KEY, label text)",
+            "CREATE UNIQUE INDEX t_label ON t (lower(label) DESC, id) WHERE id > 0",
+        ],
+    )
+    .await;
+
+    let indexes = connection
+        .fetch_indexes(&table("t"), within(CALL))
+        .await
+        .expect("the indexes");
+
+    let partial = indexes
+        .iter()
+        .find(|index| index.name == "t_label")
+        .expect("the partial index");
+    assert!(partial.unique && !partial.primary);
+    assert_eq!(partial.predicate.as_deref(), Some("(id > 0)"));
+    assert_eq!(
+        partial.keys,
+        vec![
+            IndexKey::Expression {
+                sql: "lower(label)".to_owned(),
+                descending: true
+            },
+            IndexKey::Column {
+                name: "id".to_owned(),
+                descending: false
+            },
+        ]
+    );
+    assert!(!partial.can_identify_rows());
+    assert!(indexes.iter().all(|index| index.definition.is_none()));
+    assert!(
+        indexes
+            .iter()
+            .any(|index| index.primary && index.key_columns() == ["id"])
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn index_statements_are_the_servers_and_skip_constraint_indexes() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE q (id int PRIMARY KEY, u int UNIQUE, r int4range, doc jsonb, \
+             EXCLUDE USING gist (r WITH &&))",
+            "CREATE INDEX q_doc ON q USING gin (doc jsonb_path_ops)",
+            "CREATE TABLE q_child (q_id int REFERENCES q (id))",
+            "CREATE TABLE p (k int) PARTITION BY RANGE (k)",
+            "CREATE TABLE p_low PARTITION OF p FOR VALUES FROM (0) TO (10)",
+            "CREATE TABLE p_high PARTITION OF p FOR VALUES FROM (10) TO (20)",
+            "CREATE INDEX p_k ON p (k)",
+        ],
+    )
+    .await;
+
+    let q = connection
+        .fetch_table_definition(&table("q"), within(CALL))
+        .await
+        .expect("q");
+    let statements: Vec<(&str, Option<&str>)> = q
+        .indexes
+        .iter()
+        .map(|index| (index.name.as_str(), index.definition.as_deref()))
+        .collect();
+    assert_eq!(
+        statements,
+        [
+            (
+                "q_doc",
+                Some("CREATE INDEX q_doc ON public.q USING gin (doc jsonb_path_ops)")
+            ),
+            ("q_pkey", None),
+            ("q_r_excl", None),
+            ("q_u_key", None),
+        ]
+    );
+
+    let read = |name: &'static str| {
+        let connection = connection.as_ref();
+        async move {
+            connection
+                .fetch_table_definition(&table(name), within(CALL))
+                .await
+                .expect("the table")
+                .indexes
+        }
+    };
+    let attached = read("p_low").await;
+    assert_eq!(attached.len(), 1);
+    assert_eq!(attached[0].definition, None, "only the parent's statement makes it");
+    let parent = read("p").await;
+    let statement = parent[0].definition.clone().expect("the parent's statement");
+    assert_eq!(statement, "CREATE INDEX p_k ON public.p USING btree (k)");
+    setup(connection.as_ref(), &["DROP INDEX p_k"]).await;
+    setup(connection.as_ref(), &[statement.as_str()]).await;
+
+    assert_eq!(read("p").await, parent);
+    assert_eq!(read("p_low").await.len(), 1);
+    assert_eq!(read("p_high").await.len(), 1);
+    assert_eq!(
+        text(
+            &scalar(
+                connection.as_ref(),
+                "SELECT bool_and(indisvalid)::text FROM pg_index WHERE indrelid = 'p'::regclass"
+            )
+            .await
+        ),
+        "true"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn identity_pk_unique_notnull_ctid_partitioned() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE keyed (id int PRIMARY KEY)",
+            "CREATE TABLE coded (code text NOT NULL UNIQUE, other int)",
+            "CREATE TABLE nullable_unique (code text UNIQUE)",
+            "CREATE TABLE bare (n int)",
+            "CREATE TABLE parted (n int) PARTITION BY RANGE (n)",
+            "CREATE VIEW seen AS SELECT 1 AS n",
+        ],
+    )
+    .await;
+    let identity = |name: &'static str| {
+        let connection = connection.clone();
+        async move { connection.row_identity(&table(name), within(CALL)).await }
+    };
+
+    assert_eq!(
+        identity("keyed").await,
+        Ok(RowIdentity::UniqueKey {
+            columns: vec!["id".to_owned()]
+        })
+    );
+    assert_eq!(
+        identity("coded").await,
+        Ok(RowIdentity::UniqueKey {
+            columns: vec!["code".to_owned()]
+        })
+    );
+    assert_eq!(
+        identity("nullable_unique").await,
+        Ok(RowIdentity::EngineRowId(EngineRowId::PostgresCtid))
+    );
+    assert_eq!(
+        identity("bare").await,
+        Ok(RowIdentity::EngineRowId(EngineRowId::PostgresCtid))
+    );
+    assert_eq!(
+        identity("parted").await,
+        Ok(RowIdentity::EngineRowId(EngineRowId::PostgresTableoidCtid))
+    );
+    assert_eq!(identity("seen").await, Ok(RowIdentity::Unordered));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn stale_ctid_edit_after_vacuum_reuse_row_guard_failed() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &["CREATE TABLE t (v text)", "INSERT INTO t VALUES ('old')"],
+    )
+    .await;
+    let target = table("t");
+    let before = rows(connection.as_ref(), "SELECT ctid::text, xmin::text FROM t").await;
+    let maintenance = session(connection.as_ref()).await;
+    run_ok(maintenance.as_ref(), "DELETE FROM t").await;
+    run_ok(maintenance.as_ref(), "VACUUM t").await;
+    run_ok(maintenance.as_ref(), "INSERT INTO t VALUES ('new')").await;
+    let after = rows(connection.as_ref(), "SELECT ctid::text FROM t").await;
+    let columns = connection
+        .fetch_columns(&target, within(CALL))
+        .await
+        .expect("the columns");
+    let identity = connection
+        .row_identity(&target, within(CALL))
+        .await
+        .expect("the identity");
+    let dialect = connection.dialect();
+    let changes = ChangeSet {
+        changes: vec![RowChange::Update(RowUpdate {
+            key: before[0].clone(),
+            assignments: vec![(0, CellInput::Value(Value::Text("changed".to_owned())))],
+        })],
+    };
+    let plan = plan_save(dialect.as_ref(), &target, &columns, &identity, &changes).expect("a plan");
+
+    let outcome = connection.write_batch(&plan.batch, within(CALL)).await;
+
+    assert_eq!(after[0][0], before[0][0], "VACUUM did not hand the slot to the new row");
+    assert_eq!(identity, RowIdentity::EngineRowId(EngineRowId::PostgresCtid));
+    assert!(
+        matches!(outcome, Err(DriverError::RowGuardFailed { actual: 0, .. })),
+        "{outcome:?}"
+    );
+    assert_eq!(text(&scalar(connection.as_ref(), "SELECT v FROM t").await), "new");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn estimate_heap_blocks_matches_relation_size() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &["CREATE TABLE t AS SELECT generate_series(1, 1000) AS n"],
+    )
+    .await;
+    let maintenance = session(connection.as_ref()).await;
+    run_ok(maintenance.as_ref(), "ANALYZE t").await;
+
+    let estimate = connection
+        .table_estimate(&table("t"), within(CALL))
+        .await
+        .expect("an estimate");
+    let blocks = scalar(
+        connection.as_ref(),
+        "SELECT pg_relation_size('t') / current_setting('block_size')::int8",
+    )
+    .await;
+
+    assert_eq!(estimate.rows, RowCountEstimate::Approximate(1000));
+    assert_eq!(
+        estimate.heap_blocks.map(|blocks| Value::Int(blocks as i64)),
+        Some(blocks)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn fetch_table_definition_reports_pk_name_collation_comment_and_inbound_keys() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE parent (id int CONSTRAINT parent_key PRIMARY KEY, name text COLLATE \"C\", \
+             doubled int GENERATED ALWAYS AS (id * 2) STORED, serial_no serial, ident int GENERATED BY DEFAULT AS IDENTITY)",
+            "COMMENT ON COLUMN parent.name IS 'the name'",
+            "CREATE TABLE child (parent_id int REFERENCES parent (id) ON DELETE CASCADE)",
+        ],
+    )
+    .await;
+
+    let definition = connection
+        .fetch_table_definition(&table("parent"), within(CALL))
+        .await
+        .expect("the definition");
+
+    let primary_key = definition.primary_key.clone().expect("a primary key");
+    assert_eq!(primary_key.name.as_deref(), Some("parent_key"));
+    assert_eq!(primary_key.columns, ["id"]);
+    let name = definition.column("name").expect("the name column");
+    assert_eq!(
+        name.attributes.collation,
+        Some(CollationName::new(Some("pg_catalog".to_owned()), "C"))
+    );
+    assert_eq!(name.info.comment.as_deref(), Some("the name"));
+    let doubled = definition.column("doubled").expect("the generated column");
+    assert!(doubled.info.is_generated);
+    assert_eq!(
+        doubled.attributes.generated.as_ref().map(|generated| generated.storage),
+        Some(GeneratedStorage::Stored)
+    );
+    assert_eq!(
+        definition.column("serial_no").map(|column| column.attributes.identity),
+        Some(IdentityStyle::SequenceDefault)
+    );
+    assert_eq!(
+        definition.column("ident").map(|column| column.attributes.identity),
+        Some(IdentityStyle::GeneratedByDefault)
+    );
+    assert_eq!(definition.inbound_foreign_keys.len(), 1);
+    let inbound = &definition.inbound_foreign_keys[0];
+    assert_eq!(inbound.table, table("child"));
+    assert_eq!(inbound.columns, ["parent_id"]);
+    assert_eq!(inbound.referenced_columns, ["id"]);
+    let outbound = connection
+        .fetch_foreign_keys(&table("child"), within(CALL))
+        .await
+        .expect("the foreign keys");
+    assert_eq!(outbound.len(), 1);
+    assert_eq!(outbound[0].ref_table, "parent");
+    assert_eq!(
+        outbound[0].on_delete,
+        Some(tablepro_core::ddl::ReferentialAction::Cascade)
+    );
+    assert!(definition.source.is_none());
+}
+
+/// A key to or from a partitioned table has a clone per partition,
+/// which the server makes and drops with it and refuses to drop alone.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn partition_clones_of_a_key_are_not_listed_as_keys() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE customers (id int, region text, PRIMARY KEY (id, region)) PARTITION BY LIST (region)",
+            "CREATE TABLE customers_eu PARTITION OF customers FOR VALUES IN ('eu')",
+            "CREATE TABLE customers_us PARTITION OF customers FOR VALUES IN ('us')",
+            "CREATE TABLE orders (id int PRIMARY KEY, customer_id int, region text, \
+             CONSTRAINT orders_to_customers FOREIGN KEY (customer_id, region) REFERENCES customers (id, region))",
+            "CREATE TABLE accounts (id int PRIMARY KEY)",
+            "CREATE TABLE events (id int, at int, account_id int REFERENCES accounts (id), PRIMARY KEY (id, at)) \
+             PARTITION BY RANGE (at)",
+            "CREATE TABLE events_2025 PARTITION OF events FOR VALUES FROM (2025) TO (2026)",
+            "CREATE TABLE events_2026 PARTITION OF events FOR VALUES FROM (2026) TO (2027)",
+        ],
+    )
+    .await;
+
+    let outbound = connection
+        .fetch_foreign_keys(&table("orders"), within(CALL))
+        .await
+        .expect("the keys of orders");
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&table("accounts"), within(CALL))
+        .await
+        .expect("the keys pointing at accounts");
+    let partition = connection
+        .fetch_foreign_keys(&table("events_2025"), within(CALL))
+        .await
+        .expect("the keys of a partition");
+    let definition = connection
+        .fetch_table_definition(&table("accounts"), within(CALL))
+        .await
+        .expect("the definition of accounts");
+
+    let referenced: Vec<(&str, &str)> = outbound
+        .iter()
+        .map(|key| (key.name.as_str(), key.ref_table.as_str()))
+        .collect();
+    assert_eq!(referenced, [("orders_to_customers", "customers")]);
+    assert_eq!(outbound[0].ref_columns, ["id", "region"]);
+    let referencing: Vec<&TableRef> = inbound.iter().map(|key| &key.table).collect();
+    assert_eq!(referencing, [&table("events")]);
+    assert_eq!(definition.inbound_foreign_keys, inbound);
+    assert_eq!(
+        partition.iter().map(|key| key.ref_table.as_str()).collect::<Vec<_>>(),
+        ["accounts"],
+        "a partition still has the key it inherited"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn inbound_keys_name_the_referencing_schema_and_pair_their_columns() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE SCHEMA sales",
+            "CREATE TABLE customers (id int, region text, PRIMARY KEY (id, region))",
+            "CREATE TABLE sales.orders (id int PRIMARY KEY, buyer int, buyer_region text, \
+             FOREIGN KEY (buyer_region, buyer) REFERENCES customers (region, id))",
+        ],
+    )
+    .await;
+
+    let inbound = connection
+        .fetch_inbound_foreign_keys(&table("customers"), within(CALL))
+        .await
+        .expect("the keys pointing at customers");
+
+    assert_eq!(inbound.len(), 1);
+    assert_eq!(inbound[0].table, TableRef::new(Some("sales".to_owned()), "orders"));
+    assert_eq!(inbound[0].columns, ["buyer_region", "buyer"]);
+    assert_eq!(inbound[0].referenced_columns, ["region", "id"]);
+}
+
+/// A filter reads a key's value under the other side's type, which
+/// finds what the key matches only when the two compare alike.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_key_says_whether_its_two_sides_compare_alike() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE narrow (id int4 PRIMARY KEY)",
+            "CREATE TABLE wide (id int8 PRIMARY KEY)",
+            "CREATE TABLE doubles (id float8 PRIMARY KEY)",
+            "CREATE TABLE words (id text PRIMARY KEY)",
+            "CREATE TABLE codes (id char(4) PRIMARY KEY)",
+            "CREATE TABLE days (id timestamp PRIMARY KEY)",
+            "CREATE TABLE child (n4 int4 REFERENCES wide, n8 int8 REFERENCES narrow, \
+             r4 float4 REFERENCES doubles, v varchar(8) REFERENCES words, c char(4) REFERENCES words, \
+             t text REFERENCES codes, d date REFERENCES days, \
+             w text COLLATE \"C\" REFERENCES words)",
+            "CREATE TABLE late (n8 int8)",
+            "ALTER TABLE late ADD CONSTRAINT late_n8 FOREIGN KEY (n8) REFERENCES narrow NOT VALID",
+        ],
+    )
+    .await;
+
+    let outbound = connection
+        .fetch_outbound_foreign_keys(&table("child"), within(CALL))
+        .await
+        .expect("the keys of child");
+    let late = connection
+        .fetch_outbound_foreign_keys(&table("late"), within(CALL))
+        .await
+        .expect("the keys of late");
+    let into_wide = connection
+        .fetch_inbound_foreign_keys(&table("wide"), within(CALL))
+        .await
+        .expect("the keys pointing at wide");
+    let into_narrow = connection
+        .fetch_inbound_foreign_keys(&table("narrow"), within(CALL))
+        .await
+        .expect("the keys pointing at narrow");
+
+    let mut alike: Vec<(&str, bool)> = outbound
+        .iter()
+        .map(|key| (key.key.columns[0].as_str(), key.parent_compares_alike))
+        .collect();
+    alike.sort_unstable();
+    assert_eq!(
+        alike,
+        [
+            ("c", false),
+            ("d", false),
+            ("n4", true),
+            ("n8", true),
+            ("r4", false),
+            ("t", false),
+            ("v", true),
+            ("w", true),
+        ],
+        "a validated int8 key holds only int4 values"
+    );
+    assert!(!late[0].parent_compares_alike, "an unvalidated key can hold any int8");
+    assert!(
+        !into_wide[0].child_compares_alike,
+        "an int4 column cannot hold every int8"
+    );
+    let narrow: Vec<(&str, bool)> = into_narrow
+        .iter()
+        .map(|key| (key.table.name.as_str(), key.child_compares_alike))
+        .collect();
+    assert_eq!(narrow, [("child", true), ("late", true)]);
+
+    if connection.server_info().major >= 18 {
+        setup(
+            connection.as_ref(),
+            &[
+                "CREATE EXTENSION IF NOT EXISTS btree_gist",
+                "CREATE TABLE rooms (id int4, during int4range, PRIMARY KEY (id, during WITHOUT OVERLAPS))",
+                "CREATE TABLE stays (room int4, during int4range, \
+                 FOREIGN KEY (room, PERIOD during) REFERENCES rooms (id, PERIOD during))",
+            ],
+        )
+        .await;
+        let stays = connection
+            .fetch_outbound_foreign_keys(&table("stays"), within(CALL))
+            .await
+            .expect("the keys of stays");
+        let into_rooms = connection
+            .fetch_inbound_foreign_keys(&table("rooms"), within(CALL))
+            .await
+            .expect("the keys pointing at rooms");
+        assert!(!stays[0].parent_compares_alike, "a PERIOD key matches by containment");
+        assert!(
+            !into_rooms[0].child_compares_alike,
+            "a PERIOD key matches by containment"
+        );
+    }
+}
+
+const CATALOG_TABLE: &[&str] = &[
+    "CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')",
+    "CREATE DOMAIN positive AS int4 CHECK (VALUE > 0)",
+    "CREATE TABLE typed (
+        id serial PRIMARY KEY,
+        small int2 NOT NULL DEFAULT 7,
+        num numeric(10, 2),
+        price money,
+        name varchar(20) DEFAULT 'it''s',
+        code char(4),
+        flag boolean,
+        born date,
+        at timestamptz(3) DEFAULT now(),
+        t time(3),
+        tz timetz,
+        span interval,
+        bits bit(8),
+        vbits varbit(16),
+        doc jsonb,
+        u uuid,
+        addr inet,
+        mac macaddr,
+        tags text[],
+        feeling mood,
+        pos point,
+        r int4range,
+        tsv tsvector,
+        count positive,
+        ratio float4
+    )",
+];
+
+async fn catalog_matches_information_schema(fixture: PostgresFixture) {
+    let version = fixture.version();
+    let connection = connect(&fixture, false).await;
+    assert_eq!(
+        connection.server_info().major,
+        version.major(),
+        "{}",
+        connection.server_info().version
+    );
+    setup(connection.as_ref(), CATALOG_TABLE).await;
+
+    let columns = connection
+        .fetch_columns(&table("typed"), within(CALL))
+        .await
+        .expect("the columns");
+    let schema = rows(
+        connection.as_ref(),
+        "SELECT column_name::text, (is_nullable = 'YES') FROM information_schema.columns \
+         WHERE table_name = 'typed' ORDER BY ordinal_position",
+    )
+    .await;
+
+    let ours: Vec<(String, Value)> = columns
+        .iter()
+        .map(|column| (column.name.clone(), Value::Bool(column.nullable)))
+        .collect();
+    let theirs: Vec<(String, Value)> = schema.iter().map(|row| (text(&row[0]), row[1].clone())).collect();
+    assert_eq!(ours, theirs, "PostgreSQL {}", version.major());
+
+    let column = |name: &str| columns.iter().find(|column| column.name == name).expect("a column");
+    for (name, kind, read_form) in typed_kinds() {
+        let info = column(name);
+        assert_eq!(info.column_type.kind, kind, "{name} on PostgreSQL {}", version.major());
+        assert_eq!(
+            info.column_type.read_form,
+            read_form,
+            "{name} on PostgreSQL {}",
+            version.major()
+        );
+    }
+    assert!(column("id").primary_key && column("id").is_auto_increment);
+    assert_eq!(column("id").default, ColumnDefault::None);
+    assert_eq!(column("small").default, ColumnDefault::Literal(Value::Int(7)));
+    assert_eq!(
+        column("name").default,
+        ColumnDefault::Literal(Value::Text("it's".to_owned()))
+    );
+    assert!(column("at").default.needs_server_evaluation());
+    assert_eq!(
+        column("count")
+            .column_type
+            .catalog
+            .as_ref()
+            .map(|catalog| catalog.cast_target.as_sql().to_owned()),
+        Some("positive".to_owned())
+    );
+}
+
+/// What each column of `CATALOG_TABLE` reads as, and how its values are
+/// read.
+fn typed_kinds() -> Vec<(&'static str, ColumnKind, ReadForm)> {
+    let int = |width| ColumnKind::Integer(IntegerKind { width, signed: true });
+    vec![
+        ("id", int(IntegerWidth::W32), ReadForm::Native),
+        ("small", int(IntegerWidth::W16), ReadForm::Native),
+        (
+            "num",
+            ColumnKind::Decimal {
+                precision: Some(10),
+                scale: Some(2),
+            },
+            ReadForm::Native,
+        ),
+        ("price", ColumnKind::Money { scale: None }, ReadForm::ServerNumeric),
+        (
+            "name",
+            ColumnKind::Text {
+                length: TextLength::Varying(20),
+            },
+            ReadForm::Native,
+        ),
+        (
+            "code",
+            ColumnKind::Text {
+                length: TextLength::Fixed(4),
+            },
+            ReadForm::Native,
+        ),
+        ("flag", ColumnKind::Bool(BoolStorage::Native), ReadForm::Native),
+        ("born", ColumnKind::Date, ReadForm::Native),
+        (
+            "at",
+            ColumnKind::Timestamp {
+                fractional_digits: Some(3),
+                zone: TemporalZone::Offset,
+            },
+            ReadForm::Native,
+        ),
+        (
+            "bits",
+            ColumnKind::BitString {
+                length: Some(8),
+                varying: false,
+            },
+            ReadForm::Native,
+        ),
+        ("doc", ColumnKind::Json { binary: true }, ReadForm::Native),
+        ("addr", ColumnKind::Network(NetworkFamily::Inet), ReadForm::Native),
+        (
+            "tags",
+            ColumnKind::Array {
+                element: Box::new(ColumnKind::Text {
+                    length: TextLength::Unbounded,
+                }),
+            },
+            ReadForm::Native,
+        ),
+        (
+            "feeling",
+            ColumnKind::Enum {
+                labels: vec!["sad".to_owned(), "ok".to_owned(), "happy".to_owned()],
+                multiple: false,
+            },
+            ReadForm::ServerText,
+        ),
+        ("pos", ColumnKind::Spatial, ReadForm::Native),
+        ("r", ColumnKind::Other, ReadForm::ServerText),
+        ("tsv", ColumnKind::Other, ReadForm::ServerText),
+        ("count", int(IntegerWidth::W32), ReadForm::Native),
+        ("ratio", ColumnKind::Float(FloatWidth::F32), ReadForm::Native),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn catalog_matches_information_schema_on_13() {
+    let fixture = PostgresFixture::start_version(PostgresVersion::V13, HbaMode::Password)
+        .await
+        .expect("a PostgreSQL container");
+    catalog_matches_information_schema(fixture).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn catalog_matches_information_schema_on_the_selected_release() {
+    catalog_matches_information_schema(start().await).await;
+}
+
+/// No statement is cached under a name, so a column added after the pool
+/// warmed up shows on every pooled connection at once.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn alter_add_column_then_query_bound_on_all_four_pooled_connections() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &["CREATE TABLE t (id int)", "INSERT INTO t VALUES (1)"],
+    )
+    .await;
+    let warm = (0..tablepro_driver_postgres::WORKSPACE_POOL_MAX_SIZE).map(|_| {
+        let connection = connection.clone();
+        async move {
+            connection
+                .query_bound(
+                    &crate::support::statement("SELECT *, pg_sleep(0.2) FROM t"),
+                    tablepro_core::RowLimit::EDITOR_DEFAULT,
+                    within(CALL),
+                )
+                .await
+        }
+    });
+    for warmed in futures_util::future::join_all(warm).await {
+        warmed.expect("a warm-up read");
+    }
+    setup(
+        connection.as_ref(),
+        &["ALTER TABLE t ADD COLUMN extra text DEFAULT 'x'"],
+    )
+    .await;
+
+    let reads = (0..tablepro_driver_postgres::WORKSPACE_POOL_MAX_SIZE).map(|_| {
+        let connection = connection.clone();
+        async move {
+            connection
+                .query_bound(
+                    &crate::support::statement("SELECT *, pg_sleep(0.2) FROM t"),
+                    tablepro_core::RowLimit::EDITOR_DEFAULT,
+                    within(CALL),
+                )
+                .await
+        }
+    });
+    for read in futures_util::future::join_all(reads).await {
+        let read = read.expect("a read after the change");
+        assert_eq!(read.columns.len(), 3, "{:?}", read.columns);
+        assert_eq!(read.rows[0][1], Value::Text("x".to_owned()));
+    }
+}
+
+/// Another user's functions and operators in `public` whose signatures
+/// match the catalog reads' arguments better than the built-ins do. A
+/// catalog read never runs one, and a table named without its schema is
+/// still found on the session's own path.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn lookalikes_in_public_never_run_in_a_catalog_read() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let trap = |name: &str, arguments: &str, returns: &str| {
+        format!(
+            "CREATE FUNCTION public.{name}({arguments}) RETURNS {returns} LANGUAGE plpgsql AS \
+             $$ BEGIN RAISE EXCEPTION 'public.{name} ran as %', current_user; END $$"
+        )
+    };
+    let statements = [
+        "CREATE TYPE mood AS ENUM ('sad', 'ok')".to_owned(),
+        "CREATE TABLE accounts (id int PRIMARY KEY, state mood)".to_owned(),
+        "CREATE TABLE orders (id int PRIMARY KEY, account int REFERENCES accounts (id))".to_owned(),
+        "CREATE INDEX orders_account ON orders (account)".to_owned(),
+        trap("starts_with", "name, text", "boolean"),
+        trap("unnest", "int2[]", "SETOF int2"),
+        trap("to_jsonb", "pg_catalog.pg_constraint", "jsonb"),
+        trap("array_agg_step", "text[], text", "text[]"),
+        "CREATE AGGREGATE public.array_agg(text) (SFUNC = public.array_agg_step, STYPE = text[])".to_owned(),
+        trap("oid_is_regclass", "oid, regclass", "boolean"),
+        "CREATE OPERATOR public.= (LEFTARG = oid, RIGHTARG = regclass, FUNCTION = public.oid_is_regclass)".to_owned(),
+        trap("oid_is_regtype", "oid, regtype", "boolean"),
+        "CREATE OPERATOR public.= (LEFTARG = oid, RIGHTARG = regtype, FUNCTION = public.oid_is_regtype)".to_owned(),
+        trap("jsonb_field", "jsonb, text", "text"),
+        "CREATE OPERATOR public.->> (LEFTARG = jsonb, RIGHTARG = text, FUNCTION = public.jsonb_field)".to_owned(),
+        trap("oid_is_not_int", "oid, integer", "boolean"),
+        "CREATE OPERATOR public.<> (LEFTARG = oid, RIGHTARG = integer, FUNCTION = public.oid_is_not_int)".to_owned(),
+        trap("real_below_int", "real, integer", "boolean"),
+        "CREATE OPERATOR public.< (LEFTARG = real, RIGHTARG = integer, FUNCTION = public.real_below_int)".to_owned(),
+    ];
+    let statements: Vec<&str> = statements.iter().map(String::as_str).collect();
+    setup(connection.as_ref(), &statements).await;
+
+    let schemas = connection.list_schemas(within(CALL)).await.unwrap();
+    assert!(
+        schemas
+            .iter()
+            .any(|schema| schema.name == "public" && schema.is_default)
+    );
+    connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .unwrap();
+    connection
+        .list_objects(&ObjectScope::AllSchemas, within(CALL))
+        .await
+        .unwrap();
+    for name in ["orders", "accounts"] {
+        connection.fetch_columns(&table(name), within(CALL)).await.unwrap();
+        connection.fetch_indexes(&table(name), within(CALL)).await.unwrap();
+        connection.fetch_foreign_keys(&table(name), within(CALL)).await.unwrap();
+        connection
+            .fetch_inbound_foreign_keys(&table(name), within(CALL))
+            .await
+            .unwrap();
+        connection
+            .fetch_table_definition(&table(name), within(CALL))
+            .await
+            .unwrap();
+        connection.row_identity(&table(name), within(CALL)).await.unwrap();
+        connection.table_estimate(&table(name), within(CALL)).await.unwrap();
+    }
+    let unqualified = TableRef::new(None, "orders");
+    let columns = connection.fetch_columns(&unqualified, within(CALL)).await.unwrap();
+    assert_eq!(columns.len(), 2);
+    assert!(
+        connection
+            .fetch_columns(&TableRef::new(None, "missing"), within(CALL))
+            .await
+            .is_err()
+    );
+}

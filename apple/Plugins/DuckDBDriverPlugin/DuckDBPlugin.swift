@@ -609,6 +609,10 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws {
+        try await DuckDBIsolatedImport.run(folder: folder.path, into: file.path)
+    }
+
     func disconnect() {
         liveConnection.interrupt()
         resetCurrentPosition()

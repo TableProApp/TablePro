@@ -32,6 +32,7 @@ struct OptionsPaneView: View {
             preConnectSection
             postDisconnectSection
             safetySection
+            MaskingRulesSection(model: coordinator.maskingRules)
             if aiIsEnabled {
                 aiRulesSection
             }
@@ -432,5 +433,81 @@ struct OptionsPaneView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Columns whose values TablePro hides, for this connection, in the grid, exports, the assistant and MCP.
+private struct MaskingRulesSection: View {
+    @ObservedObject var model: MaskingRulesPaneViewModel
+
+    var body: some View {
+        Section {
+            ForEach(model.rules) { rule in
+                MaskingRuleRow(rule: rule, onChange: model.update, onRemove: { model.removeRule(id: rule.id) })
+            }
+            Button(String(localized: "Add Rule")) {
+                model.addRule()
+            }
+            .accessibilityIdentifier("connection-form-add-masking-rule")
+        } header: {
+            Text(String(localized: "Masking"))
+        } footer: {
+            Text(String(localized: """
+                Hides matching values in the grid, copies, exports, the AI assistant and MCP. \
+                A pattern is table.column or column, with * as a wildcard, such as *.email. \
+                Filters and sorts still run on the stored values, so masking does not replace database permissions.
+                """))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct MaskingRuleRow: View {
+    let rule: MaskingRule
+    let onChange: (MaskingRule) -> Void
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Picker(String(localized: "Match"), selection: binding(\.target)) {
+                ForEach(MaskingTarget.allCases) { target in
+                    Text(target.displayName).tag(target)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+            TextField(
+                String(localized: "Pattern"),
+                text: binding(\.pattern),
+                prompt: Text(verbatim: rule.target == .column ? "*.email" : "uuid")
+            )
+            .labelsHidden()
+            .accessibilityIdentifier("connection-form-masking-pattern")
+            Picker(String(localized: "Mask"), selection: binding(\.style)) {
+                ForEach(MaskingStyle.allCases) { style in
+                    Text(style.displayName).tag(style)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+            Button(action: onRemove) {
+                Image(systemName: "minus.circle")
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Remove Rule"))
+            .accessibilityLabel(String(localized: "Remove Rule"))
+        }
+    }
+
+    private func binding<Value>(_ keyPath: WritableKeyPath<MaskingRule, Value>) -> Binding<Value> {
+        Binding(
+            get: { rule[keyPath: keyPath] },
+            set: { newValue in
+                var updated = rule
+                updated[keyPath: keyPath] = newValue
+                onChange(updated)
+            }
+        )
     }
 }

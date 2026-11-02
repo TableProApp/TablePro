@@ -44,6 +44,10 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
         )
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
+        if let refusal = ExternalStatementGate.privateRequestRefusal(sql: query) {
+            return ChatToolResult(content: refusal, isError: true)
+        }
+
         guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
             return ChatToolResult(
                 content: "Multi-statement queries are not supported. Send one statement at a time.",

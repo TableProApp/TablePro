@@ -34,6 +34,13 @@ struct TableRows: Sendable {
     /// filter or a removal cannot pair a row with another row's document. Only a driver that edits
     /// whole documents fills it, and a row with none cannot be edited that way.
     private(set) var rowLocators: [RowID: String] = [:]
+    /// The masking rules matched to these columns. Every fetched value is written through it, and a
+    /// masked column never takes an edit, so no reader can see the stored value.
+    private(set) var masks: ColumnMasks = .none
+
+    var maskedColumnNames: Set<String> {
+        Set(masks.maskedColumns.compactMap { columns.indices.contains($0) ? columns[$0] : nil })
+    }
 
     init(
         rows: ContiguousArray<Row> = [],
@@ -145,6 +152,22 @@ struct TableRows: Sendable {
         rows.contains { $0.hasUnloadedValues }
     }
 
+    /// Masks the held values of every column `incoming` adds. A column already masked keeps its mask, since the
+    /// value under it is gone until the next fetch.
+    @discardableResult
+    mutating func addMasks(_ incoming: ColumnMasks) -> Delta {
+        let added = incoming.styles.filter { column, _ in column < columns.count && !masks.isMasked(column) }
+        guard !added.isEmpty else { return .none }
+        let addedMasks = ColumnMasks(styles: added)
+        for index in rows.indices {
+            for column in added.keys where column < rows[index].values.count {
+                rows[index].values[column] = addedMasks.value(rows[index].values[column], column: column)
+            }
+        }
+        masks = ColumnMasks(styles: masks.styles.merging(added) { current, _ in current })
+        return .fullReplace
+    }
+
     // A cell an edit or an earlier load already filled keeps what it holds.
     @discardableResult
     mutating func fillUnloaded(_ values: [RowID: [Int: PluginCellValue]]) -> Delta {
@@ -153,7 +176,7 @@ struct TableRows: Sendable {
             guard let row = indexByID[id] else { continue }
             for (column, value) in columns where rows[row].unloadedColumns[column] != nil {
                 guard column < rows[row].values.count else { continue }
-                rows[row].values[column] = value
+                rows[row].values[column] = masks.value(value, column: column)
                 rows[row].unloadedColumns.removeValue(forKey: column)
                 changed.insert(CellPosition(row: row, column: column))
             }
@@ -208,6 +231,7 @@ struct TableRows: Sendable {
     }
 
     private mutating func write(_ value: PluginCellValue, isAbsent: Bool, row: Int, column: Int) -> Bool {
+        guard !masks.isMasked(column) else { return false }
         let wasAbsent = rows[row].isAbsent(column)
         let wasUnloaded = rows[row].unloadedColumns.removeValue(forKey: column) != nil
         guard rows[row].values[column] != value || wasAbsent != isAbsent || wasUnloaded else { return false }
@@ -264,7 +288,7 @@ struct TableRows: Sendable {
         rows.reserveCapacity(rows.count + pageRows.count)
         indexByID.reserveCapacity(indexByID.count + pageRows.count)
         for (idx, values) in pageRows.enumerated() {
-            let normalized = Self.normalize(values: values, toCount: columns.count)
+            let normalized = Self.normalize(values: masks.row(values), toCount: columns.count)
             let row = Row(
                 id: .existing(offset + idx),
                 values: normalized,
@@ -319,7 +343,7 @@ struct TableRows: Sendable {
         var rebuiltIndex = [RowID: Int]()
         rebuiltIndex.reserveCapacity(replacementRows.count)
         for (idx, values) in replacementRows.enumerated() {
-            let normalized = Self.normalize(values: values, toCount: columns.count)
+            let normalized = Self.normalize(values: masks.row(values), toCount: columns.count)
             let row = Row(
                 id: .existing(offset + idx),
                 values: normalized,
@@ -417,12 +441,13 @@ struct TableRows: Sendable {
         foreignKeysFetched: Bool = false,
         rowLocators: [String?]? = nil,
         absentCells: [Int: Set<Int>] = [:],
-        unloadedCells: [Int: [Int: Int]] = [:]
+        unloadedCells: [Int: [Int: Int]] = [:],
+        masks: ColumnMasks = .none
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
         rows.reserveCapacity(queryRows.count)
         for (index, values) in queryRows.enumerated() {
-            let normalized = normalize(values: values, toCount: columns.count)
+            let normalized = normalize(values: masks.row(values), toCount: columns.count)
             rows.append(Row(
                 id: .existing(index),
                 values: normalized,
@@ -447,6 +472,7 @@ struct TableRows: Sendable {
             foreignKeysFetched: foreignKeysFetched
         )
         tableRows.rowLocators = locators(rowLocators, rowCount: queryRows.count, offset: 0)
+        tableRows.masks = masks
         return tableRows
     }
 

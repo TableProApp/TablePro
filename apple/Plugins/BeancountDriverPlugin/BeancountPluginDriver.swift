@@ -300,11 +300,11 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 
     func execute(query: String) async throws -> PluginQueryResult {

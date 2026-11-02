@@ -71,6 +71,13 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                 extraParams[paramName] = value
             }
         }
+        MongoDBConnectionURI.applySecrets(
+            to: &extraParams,
+            keyPassphrase: config.ssl.isEnabled && !config.ssl.clientCertificatePath.isEmpty
+                ? config.additionalFields["sslClientKeyPassphrase"] : nil,
+            sessionToken: authMechanism?.uppercased() == "MONGODB-AWS"
+                ? config.additionalFields["mongoAWSSessionToken"] : nil
+        )
 
         let effectiveHost = config.additionalFields["mongoHosts"].flatMap { hosts in
             hosts.isEmpty ? nil : hosts

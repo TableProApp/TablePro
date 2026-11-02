@@ -9,6 +9,7 @@
 import CryptoKit
 import Foundation
 import os
+import TableProSSHTransport
 
 nonisolated final class HostKeyStore: @unchecked Sendable {
     static let shared = HostKeyStore()
@@ -19,6 +20,9 @@ nonisolated final class HostKeyStore: @unchecked Sendable {
         case trusted
         case unknown(fingerprint: String, keyType: String)
         case mismatch(expected: String, actual: String)
+        // The file is one entry per line split on spaces, so a host with a line break would plant
+        // an entry for another host.
+        case invalidHost(SSHDestinationName.Problem)
     }
 
     private let filePath: String
@@ -43,7 +47,9 @@ nonisolated final class HostKeyStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let hostKey = hostIdentifier(hostname, port)
+        guard let hostKey = hostIdentifier(hostname, port) else {
+            return .invalidHost(.host(hostname))
+        }
         let currentFingerprint = Self.fingerprint(of: keyData)
         let entries = loadEntries()
 
@@ -68,7 +74,7 @@ nonisolated final class HostKeyStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let hostKey = hostIdentifier(hostname, port)
+        guard let hostKey = hostIdentifier(hostname, port) else { return }
         var entries = loadEntries()
         entries.removeAll { $0.host == hostKey && $0.keyType == keyType }
         entries.append((host: hostKey, keyType: keyType, keyData: key))
@@ -79,7 +85,7 @@ nonisolated final class HostKeyStore: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let hostKey = hostIdentifier(hostname, port)
+        guard let hostKey = hostIdentifier(hostname, port) else { return }
         var entries = loadEntries()
         entries.removeAll { $0.host == hostKey }
         saveEntries(entries)
@@ -108,8 +114,12 @@ nonisolated final class HostKeyStore: @unchecked Sendable {
         return "SHA256:" + Data(digest).base64EncodedString().replacingOccurrences(of: "=", with: "")
     }
 
-    private func hostIdentifier(_ hostname: String, _ port: Int) -> String {
-        "[\(hostname)]:\(port)"
+    private func hostIdentifier(_ hostname: String, _ port: Int) -> String? {
+        guard SSHDestinationName.isValidHost(hostname) else {
+            Self.logger.warning("Refusing a host key entry for a host ssh would refuse")
+            return nil
+        }
+        return "[\(hostname)]:\(port)"
     }
 
     private func loadEntries() -> [(host: String, keyType: String, keyData: Data)] {

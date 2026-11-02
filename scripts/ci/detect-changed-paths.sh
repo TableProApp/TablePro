@@ -88,12 +88,14 @@ case "$SUITE" in
         PATTERNS=('.*\.swift$' '(.*/)?\.swiftlint\.yml$' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/workflows/(ci|swiftlint)\.yml$') ;;
     linux|linux-docs)
-        PATTERNS=('linux/' 'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/workflows/(ci|build-linux|linux-packages|release-linux)\.yml$')
+        # The Linux app builds the shared core in the Cargo workspace whose files are at the top.
+        PATTERNS=('linux/' 'core/' 'Cargo\.(toml|lock)$' '(rust-toolchain|rustfmt|clippy|deny)\.toml$'
+            '\.config/nextest\.toml$' 'scripts/ci/detect-changed-paths\.sh$'
+            '\.github/workflows/(ci|build-linux|core|linux-packages|release-linux)\.yml$')
         # linux-docs decides the docs links job, which reads every path. The other Linux jobs skip
         # Markdown, except the files a Meson test reads and the notices the build installs.
         if [ "$SUITE" = linux ]; then
-            SKIP='linux/.*\.md$'
+            SKIP='(linux|core)/.*\.md$'
             KEEP='linux/CHANGELOG\.md$|linux/docs/regression-tests\.md$|linux/data/'
         fi ;;
     *)

@@ -237,13 +237,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
-    /// `NSWindow.undoManager` resolves through here, so every undo domain that registers on the
-    /// window (the data grid's change manager, and the query editor's text view) lands in the
-    /// selected connection's own history. One window hosts every connection now, so sharing the
-    /// window's manager let Cmd+Z in one connection roll back an edit made in another.
+    // Every undo domain registering on the window lands in the selected connection's history for the mode on screen.
     internal func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
         guard let host = window.contentViewController as? MainSplitViewController else { return nil }
-        return host.workspaces.selected?.undoManager
+        return host.workspaces.selected?.activeUndoManager
     }
 
     internal func windowDidResignKey(_ notification: Notification) {

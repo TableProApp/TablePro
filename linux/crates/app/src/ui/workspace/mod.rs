@@ -7,6 +7,7 @@
 
 mod assistant;
 mod close_flow;
+mod definitions;
 mod diagram;
 mod editor_label;
 mod finished_work;
@@ -107,7 +108,7 @@ pub(crate) struct WorkspaceModel {
     this: glib::WeakRef<Workspace>,
     window: glib::WeakRef<adw::ApplicationWindow>,
     shell: glib::WeakRef<WorkspaceShell>,
-    settings: Rc<tablepro_storage::AppSettings>,
+    settings: Rc<tablepro_linux_platform::AppSettings>,
     storage: crate::storage::SharedStorage,
     tasks: tablepro_session::runtime::Tasks,
     history: crate::services::history_service::HistoryService,
@@ -124,6 +125,9 @@ pub(crate) struct WorkspaceModel {
     /// The last schema read the sidebar asked for; an older one landing
     /// late is not shown.
     sidebar_read: u64,
+    definition_reads: u64,
+    /// The Show Definition read in flight, which a newer one supersedes.
+    definition_read: Option<definitions::DefinitionRead>,
     /// Whether every schema's list has landed once. Until then the
     /// sidebar shows the default schema's.
     all_schemas_listed: bool,
@@ -518,6 +522,14 @@ pub(crate) enum WorkspaceInput {
     ResetWorkspaceLayout,
     /// The session moved to another Safe Mode level, which the title names.
     SafeModeChanged,
+    /// Completion in editor tab `tab_id` reads `session`'s catalog, its
+    /// database's, or its own connection's again with `None`.
+    FollowCatalog {
+        tab_id: Uuid,
+        session: Option<Arc<Session>>,
+    },
+    /// Another database of the connection opened beside it.
+    DatabaseOpened(Arc<Session>),
     /// The saved connections changed, the title's icon perhaps with them.
     SavedConnectionsChanged,
     WorkspaceLayoutReset(Result<Option<std::path::PathBuf>, crate::workspace::WorkspaceSaveError>),
@@ -588,6 +600,8 @@ pub(crate) enum WorkspaceInput {
     ShowDiagram {
         schema: Option<String>,
     },
+    ShowDefinition(tablepro_core::meta::ObjectInfo),
+    DefinitionLoaded(definitions::DefinitionLoaded),
     EditStructureTab {
         schema: Option<String>,
         table: String,
@@ -596,7 +610,12 @@ pub(crate) enum WorkspaceInput {
         schema: Option<String>,
         table: String,
     },
-    ShowCreateTableLoaded(String),
+    /// SQL to work on in a new editor tab, moved to `database` when the
+    /// text only runs there.
+    OpenInEditor {
+        sql: String,
+        database: Option<String>,
+    },
     DropTablePrompt {
         schema: Option<String>,
         table: String,
@@ -812,6 +831,8 @@ impl Workspace {
             sidebar,
             catalog_schemas: Arc::from([]),
             sidebar_read: 0,
+            definition_reads: 0,
+            definition_read: None,
             all_schemas_listed: false,
             reconnect_banner: imp.reconnect_banner.get(),
             transaction_banner: imp.transaction_banner.get(),
@@ -1066,8 +1087,13 @@ impl WorkspaceModel {
 
     /// Whether the shell has this session in front.
     pub(super) fn is_front(&self) -> bool {
-        let front = self.shell.upgrade().and_then(|shell| shell.front());
+        let front = self.front();
         front.is_some_and(|front| Some(front) == self.this.upgrade())
+    }
+
+    /// The session the shell has in front, this one or another.
+    pub(super) fn front(&self) -> Option<Workspace> {
+        self.shell.upgrade().and_then(|shell| shell.front())
     }
 
     /// Show the session it was built for: the sidebar, the empty tab
@@ -1109,7 +1135,9 @@ impl WorkspaceModel {
             workspace.notify_connection_name();
         }
         let icon = match &self.key {
-            SessionKey::Saved(id) => self.saved_connections.get(*id).and_then(|saved| saved.icon),
+            SessionKey::Saved(id) | SessionKey::SavedIn { id, .. } => {
+                self.saved_connections.get(*id).and_then(|saved| saved.icon)
+            }
             SessionKey::File(_) => None,
         }
         .map(|icon| crate::ui::icons::connection_icon(icon).to_owned());
@@ -1255,9 +1283,11 @@ impl WorkspaceModel {
             WorkspaceInput::TabDirtyChanged => self.refresh_unsaved(),
             WorkspaceInput::NewTableTab { schema } => self.on_new_table_tab(schema),
             WorkspaceInput::ShowDiagram { schema } => self.show_diagram(schema, Vec::new()),
+            WorkspaceInput::ShowDefinition(object) => self.on_show_definition(object),
+            WorkspaceInput::DefinitionLoaded(loaded) => self.on_definition_loaded(loaded),
             WorkspaceInput::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table),
             WorkspaceInput::ShowCreateTableForExisting { schema, table } => self.on_show_create_table(schema, table),
-            WorkspaceInput::ShowCreateTableLoaded(sql) => self.open_editor_tab(Some(sql)),
+            WorkspaceInput::OpenInEditor { sql, database } => self.open_sql_in_editor(sql, database),
             WorkspaceInput::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table),
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),
@@ -1276,6 +1306,8 @@ impl WorkspaceModel {
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::EditorTabDatabaseChanged(id) => self.on_editor_tab_database_changed(id),
+            WorkspaceInput::FollowCatalog { tab_id, session } => self.follow_catalog(tab_id, session),
+            WorkspaceInput::DatabaseOpened(session) => self.on_database_opened(&session),
             WorkspaceInput::WorkspaceLoaded(loaded) => self.on_workspace_loaded(loaded),
             WorkspaceInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             WorkspaceInput::SafeModeChanged => self.refresh_title(),

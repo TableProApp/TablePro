@@ -33,6 +33,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var redisConnection: (any RedisCommandChannel)?
 
+    var pubSubConnection: RedisPluginConnection? { redisConnection?.pubSubConnection() }
+
     private static let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginDriver")
 
     static let maxKeyBrowseScan = 10_000

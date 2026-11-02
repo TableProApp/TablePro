@@ -394,6 +394,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await pluginDriver.releaseIdleResource()
     }
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws {
+        try await pluginDriver.importExportedDatabase(from: folder, into: file)
+    }
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile
@@ -1233,6 +1237,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability? {
         try await pluginDriver.concurrentRefreshAvailability(materializedView: materializedView, schema: schema)
+    }
+
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? {
+        try await pluginDriver.fetchViewRowEditing(view: view, schema: schema ?? pluginDriver.currentSchema)
     }
 
     // MARK: - Table Options

@@ -57,6 +57,7 @@ public enum SQLNonCodeSpan {
     private static let closeBracket = UInt16(UnicodeScalar("]").value)
     private static let capitalE = UInt16(UnicodeScalar("E").value)
     private static let smallE = UInt16(UnicodeScalar("e").value)
+    private static let smallB = UInt16(UnicodeScalar("b").value)
 
     /// The comment, literal or quoted identifier starting at `index`, or nil when `index` starts code.
     public static func span(at index: Int, in text: NSString, grammar: SQLLexicalGrammar) -> Span? {
@@ -76,6 +77,15 @@ public enum SQLNonCodeSpan {
                 from: index,
                 length: length,
                 doubledCloseEscapes: grammar.contains(.doubledClosingBracketEscapes)
+            )
+            return closedSpan(.quoted, at: index, span, closerLength: 1)
+        }
+        if grammar.contains(.angleQuotedIdentifiers), character == SqlLexer.openAngleQuote {
+            let span = SqlLexer.skipAngleQuotedIdentifier(
+                text,
+                from: index,
+                length: length,
+                backslashEscapes: grammar.contains(.backslashEscapesInAngleQuotes)
             )
             return closedSpan(.quoted, at: index, span, closerLength: 1)
         }
@@ -132,7 +142,8 @@ public enum SQLNonCodeSpan {
                 text,
                 from: index,
                 length: length,
-                carriageReturnEnds: grammar.contains(.carriageReturnEndsLineComments)
+                carriageReturnEnds: grammar.contains(.carriageReturnEndsLineComments),
+                formFeedEnds: grammar.contains(.formFeedEndsLineComments)
             )
             return Span(kind: .lineComment, start: index, end: end, contentEnd: end, newlines: 0, isTerminated: true)
         }
@@ -217,12 +228,13 @@ public enum SQLNonCodeSpan {
         grammar: SQLLexicalGrammar
     ) -> Bool {
         if character == SqlLexer.dash {
-            return SqlLexer.startsDashComment(
+            guard !grammar.contains(.withoutDashComments), SqlLexer.startsDashComment(
                 text,
                 at: index,
                 length: length,
                 needsWhitespace: grammar.contains(.dashCommentsNeedWhitespace)
-            )
+            ) else { return false }
+            return !grammar.contains(.exponentSignsNeedNoDigits) || !TSQLTokens.signsExponent(at: index, in: text)
         }
         if character == SqlLexer.hash {
             return grammar.contains(.hashLineComments)
@@ -260,7 +272,8 @@ public enum SQLNonCodeSpan {
         return closedSpan(.quoted, at: index, span, closerLength: 1)
     }
 
-    /// `E'...'` and `q'[...]'`, which only start where a word could: `xE'` is an identifier followed by a string.
+    /// `E'...'`, `b'...'` and `q'[...]'`, which only start where a word could: `xE'` is an identifier followed by a
+    /// string.
     private static func prefixedLiteralSpan(
         at index: Int,
         character: UInt16,
@@ -269,8 +282,9 @@ public enum SQLNonCodeSpan {
         grammar: SQLLexicalGrammar
     ) -> Span? {
         guard index == 0 || !isWordUnit(text.character(at: index - 1)) else { return nil }
-        if grammar.contains(.escapeStringPrefix),
-           character == capitalE || character == smallE,
+        let startsEscapeString = grammar.contains(.escapeStringPrefix) && (character == capitalE || character == smallE)
+        let startsEscapeBytes = grammar.contains(.escapeBytesPrefix) && character == smallB
+        if startsEscapeString || startsEscapeBytes,
            index + 1 < length,
            text.character(at: index + 1) == SqlLexer.singleQuote {
             let span = SqlLexer.skipQuotedString(
@@ -283,11 +297,18 @@ public enum SQLNonCodeSpan {
             return closedSpan(.quoted, at: index, span, closerLength: 1)
         }
         guard grammar.contains(.alternativeQuoting),
-              let span = SqlLexer.skipAlternativeQuotedString(text, at: index, length: length)
+              let literal = SqlLexer.skipAlternativeQuotedString(text, at: index, length: length)
         else {
             return nil
         }
-        return closedSpan(.quoted, at: index, span, closerLength: 2)
+        return Span(
+            kind: .quoted,
+            start: index,
+            end: literal.span.next,
+            contentEnd: literal.bodyEnd,
+            newlines: literal.span.newlines,
+            isTerminated: literal.span.isClosed
+        )
     }
 
     private static func dollarQuotedSpan(at index: Int, in text: NSString, grammar: SQLLexicalGrammar) -> Span? {

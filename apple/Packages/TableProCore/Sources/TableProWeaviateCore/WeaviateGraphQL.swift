@@ -131,10 +131,8 @@ public enum WeaviateConsoleParser {
         let inlineBody = parts.count > 2
             ? String(parts[2]).trimmingCharacters(in: .whitespacesAndNewlines)
             : ""
-        return WeaviateConsoleRequest(
-            method: method,
-            path: path,
-            body: body ?? (inlineBody.isEmpty ? nil : inlineBody)
-        )
+        // A body can open on the request line and go on below it, as `POST /v1/graphql {`.
+        let joined = [inlineBody, body ?? ""].filter { !$0.isEmpty }.joined(separator: "\n")
+        return WeaviateConsoleRequest(method: method, path: path, body: joined.isEmpty ? nil : joined)
     }
 }

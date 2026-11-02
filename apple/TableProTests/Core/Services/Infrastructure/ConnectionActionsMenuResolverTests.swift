@@ -108,6 +108,40 @@ struct ConnectionActionsMenuResolverTests {
         }
     }
 
+    // The delegate draws a row's chord only when the entry declares one.
+    @Test("Every command entry declares the shortcut its menu-bar twin carries")
+    @MainActor
+    func entriesCarryTheirTwinsShortcut() {
+        var twinShortcuts: [String: ShortcutAction] = [:]
+        collectShortcuts(from: MainMenuBuilder.build(keyboard: KeyboardSettings()).bar, into: &twinShortcuts)
+
+        #expect(twinShortcuts.count > 20, "Only \(twinShortcuts.count) shortcuts collected; the walk missed the menus")
+        for tabKind in Self.tabKinds + [nil] {
+            for contentMode in ConnectionWorkspaceContentMode.allCases {
+                for isConnected in [true, false] {
+                    let context = Self.context(tabKind: tabKind, contentMode: contentMode, isConnected: isConnected)
+                    for entry in Self.entries(context) {
+                        guard case let .command(_, shortcut) = entry.role else { continue }
+                        #expect(shortcut == twinShortcuts[entry.title], "\(entry.title)")
+                    }
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func collectShortcuts(from menu: NSMenu, into shortcuts: inout [String: ShortcutAction]) {
+        let actions = Dictionary(
+            uniqueKeysWithValues: ShortcutAction.allCases.map { (MenuItemFactory.identifier(for: $0), $0) }
+        )
+        for item in menu.items where !item.isSeparatorItem {
+            if let identifier = item.identifier, let action = actions[identifier] {
+                shortcuts[item.title] = action
+            }
+            if let submenu = item.submenu { collectShortcuts(from: submenu, into: &shortcuts) }
+        }
+    }
+
     @MainActor
     private func collectTitles(from menu: NSMenu, into titles: inout Set<String>) {
         for item in menu.items where !item.isSeparatorItem {

@@ -126,5 +126,6 @@ struct CommandLineShimTests {
     @Test("A single quote in a path cannot break out of the quoting")
     func quotingEscapesSingleQuotes() {
         #expect(CommandLineShim.quote("/Apps/Dat's.app") == "'/Apps/Dat'\\''s.app'")
+        #expect(CommandLineShim.quote("/Apps/Dat'\u{301}s.app") == "'/Apps/Dat'\\''\u{301}s.app'")
     }
 }

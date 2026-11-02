@@ -57,16 +57,25 @@ final class DataGridModel: ObservableObject {
     private(set) weak var mountedView: (any DataGridMountedView)?
     private var orderRevision = 0
 
+    private let schemaRegistry: SchemaRegistryCache
+    private var schemaObservers: Set<AnyCancellable> = []
+    private var staleSchemaColumns: Set<Int> = []
+    // Per connection, per data index: what each row a filter kept showed before its registry switched.
+    private var registrySwitchSnapshots: [UUID: [Int: [RowID: String]]] = [:]
+
     init(
         store: any DataGridStateStore = InMemoryDataGridStateStore(),
         configuration: DataGridConfiguration = DataGridConfiguration(),
         themeScope: ThemeScope = .live,
-        selectionSummary: SelectionSummaryState? = nil
+        selectionSummary: SelectionSummaryState? = nil,
+        schemaRegistry: SchemaRegistryCache = .shared
     ) {
         self.store = store
         self.configuration = configuration
         self.themeScope = themeScope
         self.selectionSummary = selectionSummary
+        self.schemaRegistry = schemaRegistry
+        observeSchemas()
     }
 
     // MARK: - Rows
@@ -89,6 +98,7 @@ final class DataGridModel: ObservableObject {
 
     func reloadRows() {
         let current = rows
+        prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
         store.valueFilter = store.valueFilter.remapped(toColumns: current.columns)
         let rebuilt = DataGridColumnSet(tableRows: current, layout: store.columnLayout)
         if rebuilt != columns {
@@ -109,6 +119,18 @@ final class DataGridModel: ObservableObject {
             return
         }
         let current = rows
+        switch delta {
+        case .rowsInserted(let inserted):
+            prefetchSchemas(in: current, storageRows: inserted, retryingFailures: false)
+        case .columnsReplaced:
+            prefetchSchemas(in: current, storageRows: nil, retryingFailures: false)
+        case .cellChanged(let row, _):
+            prefetchSchemas(in: current, storageRows: IndexSet(integer: row), retryingFailures: false)
+        case .cellsChanged(let positions):
+            prefetchSchemas(in: current, storageRows: IndexSet(positions.map(\.row)), retryingFailures: false)
+        case .rowsRemoved, .fullReplace:
+            break
+        }
         if delta.changesRowSet || delta == .columnsReplaced {
             if delta == .columnsReplaced {
                 columns = DataGridColumnSet(tableRows: current, layout: store.columnLayout)
@@ -262,33 +284,221 @@ final class DataGridModel: ObservableObject {
         let current = rows
         let previous = displayFormat(for: column)
         guard previous != format else { return }
-        let formats = DisplayFormatArray.setting(
+        store.displayFormats = DisplayFormatArray.setting(
             format, at: column.dataIndex, in: store.displayFormats, columnCount: current.columns.count
         )
+        // Before the remap reads it: another connection may have loaded the schemas already.
+        prefetchSchemas(in: current, storageRows: nil, retryingFailures: true)
         // A filter stores the shown text, so the values the user picked follow the new format.
-        if let remapped = remappedValueFilter(column: column, from: previous, to: format, in: current) {
+        if let remapped = remappedValueFilter(
+            dataIndex: column.dataIndex, name: column.name, type: column.type, from: previous, to: format, in: current
+        ) {
             store.valueFilter = remapped
         }
-        store.displayFormats = formats
-        display.cache.removeAll()
-        if store.valueFilter.isActive {
+        redrawFormatted([column.dataIndex], in: current)
+    }
+
+    // Hidden columns too: their cached text and filters outlive the hiding.
+    private func redrawFormatted(_ dataIndexes: Set<Int>, in current: TableRows) {
+        display.cache.clearValues(forDataIndexes: dataIndexes)
+        if dataIndexes.contains(where: { store.valueFilter.filter(forColumn: $0) != nil }) {
             order = resolveOrder(in: current)
             restoreSelection(in: current)
             displayRevision &+= 1
             mountedView?.apply(.reload)
         } else {
-            mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: columns.displayPosition(of: column.id).map { IndexSet(integer: $0) }))
+            let positions = IndexSet(columns.columns.filter { dataIndexes.contains($0.dataIndex) }.compactMap {
+                columns.displayPosition(of: $0.id)
+            })
+            if !positions.isEmpty {
+                mountedView?.apply(.rowsUpdated(IndexSet(0..<rowCount), columns: positions))
+            }
         }
         refreshFind()
     }
 
+    // MARK: - Schemas
+
+    private func observeSchemas() {
+        let center = NotificationCenter.default
+        center.publisher(for: SchemaRegistryCache.didChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let connectionID = notification.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID else { return }
+                MainActor.assumeIsolated {
+                    self?.schemasDidChange { $0 == .schemaRegistry(connectionID: connectionID) }
+                }
+            }
+            .store(in: &schemaObservers)
+        // Delivered where it is posted, the main actor, before the switch it announces.
+        center.publisher(for: SchemaRegistryCache.willSwitch)
+            .sink { [weak self] notification in
+                guard let connectionID = notification.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID else { return }
+                MainActor.assumeIsolated { self?.registryWillSwitch(connectionID) }
+            }
+            .store(in: &schemaObservers)
+        center.publisher(for: AvroSchemaStore.didRestoreSchema)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let schemaID = notification.userInfo?[AvroSchemaStore.schemaIDKey] as? String else { return }
+                MainActor.assumeIsolated {
+                    self?.schemasDidChange { $0 == .avro(schemaID: schemaID) }
+                }
+            }
+            .store(in: &schemaObservers)
+        center.publisher(for: ProtobufSchemaStore.didRestoreSchema)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notification in
+                guard let schemaID = notification.userInfo?[ProtobufSchemaStore.schemaIDKey] as? String else { return }
+                MainActor.assumeIsolated {
+                    self?.schemasDidChange {
+                        if case .protobufSchema(schemaID, _) = $0 { return true }
+                        return false
+                    }
+                }
+            }
+            .store(in: &schemaObservers)
+    }
+
+    // Coalesced to one redraw per run loop turn, since a page of values can name many schemas.
+    func schemasDidChange(matching matches: (ValueDisplayFormat) -> Bool) {
+        let wasEmpty = staleSchemaColumns.isEmpty
+        for (dataIndex, format) in store.displayFormats.enumerated() {
+            if let format, matches(format) { staleSchemaColumns.insert(dataIndex) }
+        }
+        guard wasEmpty, !staleSchemaColumns.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.redrawStaleSchemaColumns() }
+        }
+    }
+
+    private func redrawStaleSchemaColumns() {
+        let current = rows
+        followRegistrySwitches(in: current)
+        let stale = staleSchemaColumns.filter { $0 < current.columns.count }
+        staleSchemaColumns = []
+        guard !stale.isEmpty else { return }
+        let formats = store.displayFormats
+        // The format is the same, but the values move from the stored bytes to decoded text, and a filter has to follow.
+        for dataIndex in stale.sorted() {
+            let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
+            let format = dataIndex < formats.count ? formats[dataIndex] : nil
+            if let remapped = remappedValueFilter(
+                dataIndex: dataIndex, name: current.columns[dataIndex], type: type, from: nil, to: format, in: current
+            ) {
+                store.valueFilter = remapped
+            }
+        }
+        redrawFormatted(stale, in: current)
+    }
+
+    private func prefetchSchemas(in current: TableRows, storageRows: IndexSet?, retryingFailures: Bool) {
+        let databaseType = configuration.traits.databaseType
+        var wanted: [UUID: Set<UInt32>] = [:]
+        for (dataIndex, format) in store.displayFormats.enumerated() {
+            guard case .schemaRegistry(let connectionID)? = format else { continue }
+            let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
+            guard format?.isApplicable(to: type, databaseType: databaseType) == true else { continue }
+            let holdsBytes = BinaryValueBytes.holdsBytes(columnType: type)
+            var ids = wanted[connectionID, default: []]
+            func collect(_ row: Row) {
+                guard dataIndex < row.values.count,
+                      let id = Self.schemaID(of: row.values[dataIndex], holdsBytes: holdsBytes) else { return }
+                ids.insert(id)
+            }
+            if let storageRows {
+                for index in storageRows where index < current.rows.count { collect(current.rows[index]) }
+            } else {
+                for row in current.rows { collect(row) }
+            }
+            wanted[connectionID] = ids
+        }
+        for (connectionID, ids) in wanted {
+            if schemaRegistry.prefetch(connectionID: connectionID, schemaIDs: ids, retryingFailures: retryingFailures) {
+                followRegistrySwitches(in: current)
+            }
+        }
+    }
+
+    private func registryWillSwitch(_ connectionID: UUID) {
+        let current = rows
+        let databaseType = configuration.traits.databaseType
+        for (dataIndex, format) in store.displayFormats.enumerated() where format == .schemaRegistry(connectionID: connectionID) {
+            guard let filter = store.valueFilter.filter(forColumn: dataIndex) else { continue }
+            let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
+            var shown: [RowID: String] = [:]
+            for row in current.rows where dataIndex < row.values.count && row.values[dataIndex] != .null {
+                let text = GridDisplayOrderResolver.displayValue(
+                    row.values[dataIndex], columnType: type, displayFormat: format, databaseType: databaseType
+                )
+                if filter.selectedValues.contains(text) { shown[row.id] = text }
+            }
+            if !shown.isEmpty { registrySwitchSnapshots[connectionID, default: [:]][dataIndex] = shown }
+        }
+    }
+
+    // A switched registry reads the same bytes differently, so the rows a filter kept stay kept under their new text.
+    private func followRegistrySwitches(in current: TableRows) {
+        guard !registrySwitchSnapshots.isEmpty else { return }
+        let snapshots = registrySwitchSnapshots
+        registrySwitchSnapshots = [:]
+        let databaseType = configuration.traits.databaseType
+        let rowsByID = Dictionary(current.rows.map { ($0.id, $0) }) { first, _ in first }
+        for (dataIndex, shown) in snapshots.values.flatMap({ $0 }) {
+            guard let existing = store.valueFilter.filter(forColumn: dataIndex), dataIndex < current.columns.count else { continue }
+            let type = dataIndex < current.columnTypes.count ? current.columnTypes[dataIndex] : nil
+            let format = displayFormatAt(dataIndex)
+            var removed = Set<String>()
+            var added = Set<String>()
+            for (rowID, old) in shown {
+                guard let row = rowsByID[rowID], dataIndex < row.values.count else { continue }
+                let new = GridDisplayOrderResolver.displayValue(
+                    row.values[dataIndex], columnType: type, displayFormat: format, databaseType: databaseType
+                )
+                if new != old {
+                    removed.insert(old)
+                    added.insert(new)
+                }
+            }
+            var selected = existing.selectedValues
+            selected.subtract(removed)
+            selected.formUnion(added)
+            guard selected != existing.selectedValues else { continue }
+            var filter = store.valueFilter
+            filter.set(
+                ColumnValueFilter(selectedValues: selected, includesNull: existing.includesNull),
+                columnName: current.columns[dataIndex],
+                forColumn: dataIndex
+            )
+            store.valueFilter = filter
+        }
+    }
+
+    private func displayFormatAt(_ dataIndex: Int) -> ValueDisplayFormat? {
+        let formats = store.displayFormats
+        return dataIndex < formats.count ? formats[dataIndex] : nil
+    }
+
+    private static func schemaID(of value: PluginCellValue, holdsBytes: Bool) -> UInt32? {
+        switch value {
+        case .null:
+            return nil
+        case .bytes(let data):
+            return SchemaRegistryFrame.schemaID(prefix: data)
+        case .text(let text):
+            let head = String(String.UnicodeScalarView(text.unicodeScalars.prefix(SchemaRegistryFrame.headerLength)))
+            return BinaryValueBytes.data(of: head, holdsBytes: holdsBytes).flatMap { SchemaRegistryFrame.schemaID(prefix: $0) }
+        }
+    }
+
     private func remappedValueFilter(
-        column: DataGridColumn,
+        dataIndex: Int,
+        name: String,
+        type: ColumnType?,
         from oldFormat: ValueDisplayFormat?,
         to newFormat: ValueDisplayFormat?,
         in rows: TableRows
     ) -> GridValueFilterState? {
-        let dataIndex = column.dataIndex
         guard let existing = store.valueFilter.filter(forColumn: dataIndex) else { return nil }
         let databaseType = configuration.traits.databaseType
         var removed = Set<String>()
@@ -297,11 +507,11 @@ final class DataGridModel: ObservableObject {
             let raw = row.values[dataIndex]
             guard raw != .null else { continue }
             let old = GridDisplayOrderResolver.displayValue(
-                raw, columnType: column.type, displayFormat: oldFormat, databaseType: databaseType
+                raw, columnType: type, displayFormat: oldFormat, databaseType: databaseType
             )
             guard existing.selectedValues.contains(old) else { continue }
             let new = GridDisplayOrderResolver.displayValue(
-                raw, columnType: column.type, displayFormat: newFormat, databaseType: databaseType
+                raw, columnType: type, displayFormat: newFormat, databaseType: databaseType
             )
             if old != new {
                 removed.insert(old)
@@ -315,7 +525,7 @@ final class DataGridModel: ObservableObject {
         var filter = store.valueFilter
         filter.set(
             ColumnValueFilter(selectedValues: selected, includesNull: existing.includesNull),
-            columnName: column.name,
+            columnName: name,
             forColumn: dataIndex
         )
         return filter

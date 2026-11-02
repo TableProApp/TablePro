@@ -1,6 +1,6 @@
 # 0006: Meson drives Cargo
 
-- **Status**: Accepted; where the version lives amended by [0017](0017-distribution-channels.md)
+- **Status**: Accepted; where the version lives amended by [0017](0017-distribution-channels.md), the release tarball and the place of the Cargo workspace amended by core 0001 (`core/docs/decisions/0001-shared-core.md`)
 - **Date**: 2026-09-15
 
 ## Context

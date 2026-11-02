@@ -15,6 +15,13 @@ internal struct BinaryValueDecodeError: Error, Equatable, Sendable {
         case integerOutOfRange
         case invalidField
         case unmatchedGroupEnd
+        case unknownVersion(UInt32)
+        case unknownReference(Int)
+        case indexOutOfRange(Int)
+        case invalidLength
+        case otherSchema(fingerprint: UInt64)
+        case notFramed
+        case invalidUTF8
     }
 
     let kind: Kind
@@ -42,6 +49,27 @@ internal struct BinaryValueDecodeError: Error, Equatable, Sendable {
             return String(format: String(localized: "Byte %lld does not start a valid field."), offset)
         case .unmatchedGroupEnd:
             return String(format: String(localized: "The group end at byte %lld matches no group start."), offset)
+        case .unknownVersion(let version):
+            return String(format: String(localized: "The header names version %lld, which this format does not have."), Int(version))
+        case .unknownReference(let index):
+            return String(
+                format: String(localized: "Byte %lld refers back to item %lld, which comes later or not at all."),
+                offset,
+                index
+            )
+        case .indexOutOfRange(let index):
+            return String(format: String(localized: "Byte %lld picks entry %lld, which the schema does not have."), offset, index)
+        case .invalidLength:
+            return String(format: String(localized: "The length at byte %lld is negative."), offset)
+        case .notFramed:
+            return String(localized: "The value does not start with the Schema Registry prefix: a zero byte and a schema ID.")
+        case .invalidUTF8:
+            return String(format: String(localized: "The text at byte %lld is not valid UTF-8."), offset)
+        case .otherSchema(let fingerprint):
+            return String(
+                format: String(localized: "The value was written with the schema whose fingerprint is %@, not this column's."),
+                String(format: "%016llX", fingerprint)
+            )
         }
     }
 }

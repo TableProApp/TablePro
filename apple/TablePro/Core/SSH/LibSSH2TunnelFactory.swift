@@ -224,7 +224,7 @@ internal enum LibSSH2TunnelFactory {
         let firstHop = resolved.firstHop
         let firstEndpoint = timeoutEndpoint(host: firstHop.host, port: firstHop.port)
         let socketFD = try await connectTCP(
-            host: firstHop.host,
+            host: firstHop.dialHost,
             port: firstHop.port,
             deadline: deadline,
             attempt: attempt
@@ -264,7 +264,7 @@ internal enum LibSSH2TunnelFactory {
                             try openChannel(
                                 session: currentSession,
                                 socketFD: currentSocketFD,
-                                remoteHost: nextResolved.host,
+                                remoteHost: nextResolved.dialHost,
                                 remotePort: nextResolved.port,
                                 endpoint: nextEndpoint,
                                 deadline: deadline,

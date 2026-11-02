@@ -11,17 +11,17 @@ nonisolated enum SQLBuilder {
 
     static func quoteIdentifier(_ name: String, for type: DatabaseType) -> String {
         if speaksMySQLDialect(type) {
-            return "`\(name.replacingOccurrences(of: "`", with: "``"))`"
+            return "`\(name.replacingOccurrences(of: "`", with: "``", options: .literal))`"
         }
         switch type {
         case .postgresql, .redshift:
-            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
         case .mssql:
-            return "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+            return "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
         case .clickhouse:
             return clickHouseQuotedIdentifier(name)
         default:
-            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
         }
     }
 

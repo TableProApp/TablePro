@@ -344,11 +344,20 @@ public final class TrinoStatementClient: @unchecked Sendable {
         guard let url = URL(string: uri) else {
             throw TrinoError.invalidResponse("\(config.flavor.productName) returned an invalid nextUri")
         }
-        guard config.useTLS, url.scheme?.lowercased() != "https" else { return url }
-        throw TrinoError.invalidResponse(
-            "\(config.flavor.productName) answered an HTTPS request with a plain http:// address, so it was not followed. "
-                + "A coordinator behind a TLS proxy needs http-server.process-forwarded=true."
-        )
+        if config.useTLS, url.scheme?.lowercased() != "https" {
+            throw TrinoError.invalidResponse(
+                "\(config.flavor.productName) answered an HTTPS request with a plain http:// address, so it was not followed. "
+                    + "A coordinator behind a TLS proxy needs http-server.process-forwarded=true."
+            )
+        }
+        // The request carries the connection's credential, so nextUri is a redirect in the body and stays on the server.
+        guard let statementURL = config.statementURL, TrinoRedirectPolicy.isSameServer(url, as: statementURL) else {
+            throw TrinoError.invalidResponse(
+                "\(config.flavor.productName) continued the statement on another host or port, so it was not followed. "
+                    + "A coordinator behind a proxy needs http-server.process-forwarded=true."
+            )
+        }
+        return url
     }
 
     private func failure(for response: TrinoHTTPResponse) -> TrinoError {

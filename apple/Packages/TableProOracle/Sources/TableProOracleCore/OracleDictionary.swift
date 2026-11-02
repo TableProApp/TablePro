@@ -63,4 +63,9 @@ public enum OracleDictionary {
     public static let dbaSegments = view("DBA_SEGMENTS")
     public static let userSegments = view("USER_SEGMENTS")
     public static let versionView = performanceView("V$VERSION")
+    public static let parameterView = performanceView("V$PARAMETER")
+    public static let sessionView = performanceView("V$SESSION")
+    public static let sqlPlanStatisticsView = performanceView("V$SQL_PLAN_STATISTICS_ALL")
+    // The global temporary table behind the PLAN_TABLE public synonym, granted to PUBLIC by catplan.sql.
+    public static let planTable = view("PLAN_TABLE$")
 }

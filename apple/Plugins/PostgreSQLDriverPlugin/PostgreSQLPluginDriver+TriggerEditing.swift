@@ -28,7 +28,7 @@ internal extension PostgreSQLPluginDriver {
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
         let resolvedSchema = schema ?? core.currentSchema
         let query = """
-            SELECT pg_get_functiondef(t.tgfoid), pg_get_triggerdef(t.oid)
+            SELECT pg_catalog.pg_get_functiondef(t.tgfoid), pg_catalog.pg_get_triggerdef(t.oid)
             FROM pg_catalog.pg_trigger t
             JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -38,7 +38,7 @@ internal extension PostgreSQLPluginDriver {
                 AND NOT t.tgisinternal
             LIMIT 1
             """
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         guard let row = result.rows.first, row.count >= 2,
               let functionDef = row[0].asText,
               let triggerDef = row[1].asText else { return nil }

@@ -26,6 +26,7 @@ mod row_number_column;
 mod selection;
 mod selection_summary;
 mod server_sorter;
+mod stripes;
 mod table_keys;
 #[cfg(test)]
 pub(crate) mod test_grid;
@@ -39,6 +40,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, gio, glib};
 use libadwaita as adw;
+use tablepro_core::dialect::SqlDialect;
 
 #[cfg(test)]
 pub(crate) use self::column_chooser::ColumnChooser;
@@ -54,7 +56,7 @@ use self::reversed_list::ReversedList;
 pub(crate) use self::row_detail::RowDetailPane;
 pub(crate) use self::row_json_dialog::{RowJsonRequest, present_row_json};
 pub(crate) use self::table_keys::{KeysHandle, TableKeys};
-pub(crate) use self::tracked_values::TrackedValues;
+pub(crate) use self::tracked_values::{ServerValue, TrackedValues};
 use crate::services::change_tracker::RowKey;
 use crate::services::grid::GridColumn;
 use crate::services::tracker_delta::TrackerDelta;
@@ -88,12 +90,19 @@ impl DataGrid {
         imp.detail_pane.attach(&grid);
         grid.set_columns(columns, sorting, rules);
         grid.watch_fonts();
+        grid.watch_stripes();
         grid
     }
 
     /// `None` only inside `glib::Object::new`, before `new` sets it.
     pub(crate) fn config(&self) -> Option<&GridConfig> {
         self.imp().config.get()
+    }
+
+    /// The connection's dialect, where the rows have an SQL spelling.
+    pub(crate) fn sql_dialect(&self) -> Option<Arc<dyn SqlDialect>> {
+        let dialect = (self.config()?.dialect.as_ref()?)()?;
+        dialect.grammar().is_sql().then_some(dialect)
     }
 
     pub fn connect_request<F: Fn(&Self, GridRequest) + 'static>(&self, f: F) -> glib::SignalHandlerId {

@@ -102,7 +102,7 @@ struct PostgreSQLDashboardProviderTests {
         let catalog = PostgreSQLActivityCatalog.procpid
         #expect(catalog.activeQueryCountQuery.contains("'<command string not found>'"))
         #expect(catalog.slowQueriesQuery.contains("'<command string not found>'"))
-        #expect(catalog.sessionsQuery.contains("WHEN '<command string not found>' THEN NULL"))
+        #expect(catalog.sessionsQuery.contains("WHEN current_query OPERATOR(pg_catalog.=) '<command string not found>' THEN NULL"))
     }
 
     @Test("Servers before 10 never ask for backend_type")
@@ -120,7 +120,9 @@ struct PostgreSQLDashboardProviderTests {
     func procpidCatalogUsesPreNinePointTwoColumns() {
         let catalog = PostgreSQLActivityCatalog.procpid
         let queries = [catalog.sessionsQuery, catalog.activeQueryCountQuery, catalog.slowQueriesQuery]
-        #expect(queries.allSatisfy { $0.contains("procpid <> pg_backend_pid()") && $0.contains("current_query") })
+        #expect(queries.allSatisfy {
+            $0.contains("procpid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()") && $0.contains("current_query")
+        })
         #expect(queries.allSatisfy { !$0.contains("left(query") })
         #expect(catalog.sessionsQuery.contains("SELECT procpid AS pid"))
         #expect(catalog.slowQueriesQuery.contains("SELECT procpid AS pid"))
@@ -128,12 +130,40 @@ struct PostgreSQLDashboardProviderTests {
         #expect(!catalog.activeQueryCountQuery.contains("state ="))
     }
 
-    @Test("The current catalog is the SQL the dashboard has always sent")
-    func currentCatalogIsUnchanged() {
+    @Test("The current catalog filters client backends and active sessions")
+    func currentCatalogFilters() {
         let catalog = PostgreSQLActivityCatalog.current
-        #expect(catalog.connectionCountQuery == "SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend'")
-        #expect(catalog.sessionsQuery.contains("AND backend_type = 'client backend'"))
-        #expect(catalog.slowQueriesQuery.contains("WHERE state = 'active'"))
+        #expect(catalog.connectionCountQuery == """
+            SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity \
+            WHERE backend_type OPERATOR(pg_catalog.=) 'client backend'
+            """)
+        #expect(catalog.sessionsQuery.contains("AND backend_type OPERATOR(pg_catalog.=) 'client backend'"))
+        #expect(catalog.slowQueriesQuery.contains("WHERE state OPERATOR(pg_catalog.=) 'active'"))
+    }
+
+    // A database owner can set a default search_path that puts its own schema before pg_catalog, where a function,
+    // operator or relation of the same name would be read instead.
+    @Test("Every dashboard statement names pg_catalog's functions, relations and operators")
+    func everyStatementNamesPgCatalog() async throws {
+        let provider = PostgreSQLDashboardProvider(activityCatalog: .current, metricSet: .full)
+        var asked: [String] = []
+        _ = try await provider.fetchMetrics { sql in
+            asked.append(sql)
+            return .empty
+        }
+        for catalog in [PostgreSQLActivityCatalog.current, .withoutBackendType, .procpid] {
+            asked += [
+                catalog.sessionsQuery, catalog.connectionCountQuery,
+                catalog.activeQueryCountQuery, catalog.slowQueriesQuery
+            ]
+        }
+        asked += [provider.killSessionSQL(processId: "42") ?? "", provider.cancelQuerySQL(processId: "42") ?? ""]
+        for sql in asked {
+            #expect(!sql.contains(" = ") && !sql.contains(" <> ") && !sql.contains(" IN ("), "\(sql)")
+            #expect(!sql.contains("FROM pg_stat"), "\(sql)")
+            #expect(!sql.contains("SELECT count(") && !sql.contains("(now()"), "\(sql)")
+        }
+        #expect(provider.killSessionSQL(processId: "42") == "SELECT pg_catalog.pg_terminate_backend(42)")
     }
 
     @Test("CockroachDB is asked only for the metrics it has")

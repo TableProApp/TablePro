@@ -263,7 +263,31 @@ pub(super) mod tests {
         let labels = menu_labels(&menu);
 
         assert!(labels.iter().any(|label| label == "C_hange Case"), "{labels:?}");
-        assert!(labels.iter().any(|label| label == "Explain with AI"), "{labels:?}");
+        assert!(labels.iter().any(|label| label == "Explain _with AI"), "{labels:?}");
+    }
+
+    /// GtkTextView 4.22 shows its own items on the context menu's first
+    /// page, before the extra menu.
+    const TEXT_VIEW_ITEMS: [&str; 8] = [
+        "Cu_t",
+        "_Copy",
+        "_Paste",
+        "_Delete",
+        "_Undo",
+        "_Redo",
+        "Select _All",
+        "Insert _Emoji",
+    ];
+
+    #[gtk4::test]
+    fn the_context_menu_leaves_the_text_views_access_keys_alone() {
+        let harness = editor_with_assistant("SELECT 1;", AiPolicy::Ask);
+        let menu = harness.editor.imp().source_view.extra_menu().expect("the context menu");
+
+        let mut pages = crate::test_support::menu_pages(&menu);
+        pages[0].labels.extend(TEXT_VIEW_ITEMS.map(str::to_owned));
+
+        assert_eq!(crate::test_support::access_key_problems(&pages), Vec::<String>::new());
     }
 
     #[gtk4::test]

@@ -166,11 +166,12 @@ private extension TabType {
         case .erDiagram: "erDiagram"
         case .serverDashboard: "serverDashboard"
         case .insights: "insights"
+        case .tableHealth: "tableHealth"
         case .usersRoles: "usersRoles"
         case .objectSource: "objectSource"
         case .versionHistory: "versionHistory"
         case .tableListing: "tableListing"
-        case .routineDebug: nil
+        case .routineDebug, .liveMessages: nil
         }
     }
 }

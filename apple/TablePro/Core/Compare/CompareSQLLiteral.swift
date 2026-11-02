@@ -54,9 +54,9 @@ internal enum CompareSQLLiteral {
         /// A driver that passed the value through unquoted answered for a number, so the value holds
         /// no quote to escape. Escaping anyway is what keeps that true if a driver ever renders a
         /// quoted literal some other way.
-        let quoted = rendered.hasPrefix("'")
+        let quoted = rendered.unicodeScalars.first == "'"
             ? rendered
-            : "'\(text.replacingOccurrences(of: "'", with: "''"))'"
+            : "'\(text.replacingOccurrences(of: "'", with: "''", options: .literal))'"
         return prefixed(quoted, databaseType: databaseType)
     }
 
@@ -64,7 +64,7 @@ internal enum CompareSQLLiteral {
     /// `NULL` for a null and passes a number through unquoted, and `N` in front of either is a
     /// syntax error, so the opening quote is what decides.
     internal static func prefixed(_ literal: String, databaseType: DatabaseType) -> String {
-        guard literal.hasPrefix("'") else { return literal }
+        guard literal.unicodeScalars.first == "'" else { return literal }
         return SQLStringLiteralPrefix.forDatabaseType(databaseType) + literal
     }
 
@@ -99,7 +99,7 @@ internal enum CompareSQLLiteral {
     /// name falls back to the driver's own spelling rather than guessing at one.
     internal static func binaryStyle(for databaseType: DatabaseType) -> BinaryStyle {
         switch databaseType {
-        case .mysql, .mariadb, .tidb, .databend, .oceanbase, .sqlite, .clickhouse, .libsql, .turso,
+        case .mysql, .mariadb, .tidb, .databend, .oceanbase, .starrocks, .sqlite, .clickhouse, .libsql, .turso,
              .cloudflareD1:
             return .bitString
         case .duckdb:

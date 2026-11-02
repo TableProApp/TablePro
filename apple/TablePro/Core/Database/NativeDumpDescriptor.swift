@@ -52,7 +52,7 @@ struct NativeDumpDescriptor: Sendable {
     struct Request: Sendable {
         let connection: DatabaseConnection
         let database: String
-        let fileURL: URL
+        var fileURL: URL
         let password: String?
         let scope: NativeDumpScope
 
@@ -239,6 +239,10 @@ struct NativeDumpDescriptor: Sendable {
         /// the caller has the engine's real error to report rather than this one.
         let cleanupStatements: @Sendable (String) -> [String]
 
+        // Set when the archive's own SQL must not run on the session: the driver imports it into a new file of this
+        // format in an isolated engine instance, and `restoreStatements` restore that file.
+        var isolatedImportFormat: ArchiveFormat?
+
         func statements(for kind: NativeDumpKind, request: Request, alias: String) -> [String] {
             kind == .backup ? backupStatements(request, alias) : restoreStatements(request, alias)
         }
@@ -252,6 +256,7 @@ struct NativeDumpDescriptor: Sendable {
     internal enum RestoreSemantics: Sendable, Equatable {
         case replacesObjects
         case addsToExistingObjects
+        case stopsAtFirstError
         case stopsAtExistingObjects
         case requiresEmptyDatabase
     }

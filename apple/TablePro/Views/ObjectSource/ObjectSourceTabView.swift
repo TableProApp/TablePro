@@ -119,6 +119,7 @@ final class ObjectSourceLoader: ObservableObject {
 }
 
 struct ObjectSourceTabView: View {
+    let tabId: UUID
     let connectionId: UUID
     let databaseType: DatabaseType
     let objectRef: DatabaseObjectRef
@@ -127,11 +128,13 @@ struct ObjectSourceTabView: View {
     @StateObject private var loader: ObjectSourceLoader
 
     init(
+        tabId: UUID,
         connectionId: UUID,
         databaseType: DatabaseType,
         objectRef: DatabaseObjectRef,
         onOpenInEditor: @escaping (String) -> Void
     ) {
+        self.tabId = tabId
         self.connectionId = connectionId
         self.databaseType = databaseType
         self.objectRef = objectRef
@@ -146,6 +149,10 @@ struct ObjectSourceTabView: View {
             content
         }
         .task { await loader.loadIfNeeded() }
+        .onReceive(AppEvents.shared.tabRefreshRequested) { requestedTabId in
+            guard requestedTabId == tabId else { return }
+            Task { await loader.load(isRefresh: true) }
+        }
     }
 
     private var header: some View {

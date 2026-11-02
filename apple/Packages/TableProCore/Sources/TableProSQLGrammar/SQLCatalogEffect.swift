@@ -65,7 +65,7 @@ public enum SQLCatalogEffectClassifier {
     }
 
     private static func textEffect(of sql: String, grammar: SQLLexicalGrammar) -> SQLCatalogEffect {
-        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql))
+        let trimmed = StatementBlank.trimming(SQLLeadingComments.stripping(sql, grammar: grammar))
         guard !trimmed.isEmpty else { return .none }
         if SQLProceduralBlock.runs(trimmed, grammar: grammar) {
             return .opaque
@@ -215,20 +215,24 @@ public enum SQLLeadingComments {
 
     public static let lineCommentTerminators: Set<Character> = ["\n", "\r", "\r\n"]
 
-    public static func stripping(_ sql: String) -> String {
-        var remaining = sql[...]
-        while true {
-            let trimmed = StatementBlank.trimmingLeading(remaining)
-            if trimmed.hasPrefix("--") {
-                guard let lineBreak = trimmed.firstIndex(where: endsLineComment) else { return "" }
-                remaining = trimmed[trimmed.index(after: lineBreak)...]
-            } else if trimmed.hasPrefix("/*"), !startsConditionalComment(trimmed) {
-                guard let close = trimmed.range(of: "*/") else { return "" }
-                remaining = trimmed[close.upperBound...]
-            } else {
-                return String(trimmed)
+    /// `sql` from its first token, past the blanks and the comments `grammar` reads, so a comment ends exactly where
+    /// the engine ends it. An executable comment is code and stays.
+    public static func stripping(_ sql: String, grammar: SQLLexicalGrammar) -> String {
+        let text = sql as NSString
+        let length = text.length
+        var index = 0
+        while index < length {
+            let blank = StatementBlank.blankLength(in: text, at: index)
+            if blank > 0 {
+                index += blank
+                continue
             }
+            guard let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar), span.kind.isComment else {
+                break
+            }
+            index = max(span.end, index + 1)
         }
+        return text.substring(from: min(index, length))
     }
 
     public static func startsConditionalComment(_ text: Substring) -> Bool {
@@ -261,20 +265,21 @@ public enum SQLProceduralBlock {
     }
 
     // A block may open after <<label>> prefixes; a WITH clause declaring a FUNCTION or PROCEDURE runs PL/SQL too.
-    public static func startsPLSQL(_ sql: String) -> Bool {
-        var head = SQLLeadingComments.stripping(sql)
+    // `code` is a projection, with every comment already blank.
+    public static func startsPLSQL(_ code: String) -> Bool {
+        var head = StatementBlank.trimmingLeading(code[...])
         while head.hasPrefix("<<") {
-            guard let close = head.range(of: ">>") else { return false }
-            head = SQLLeadingComments.stripping(String(head[close.upperBound...]))
+            guard let close = head.range(of: ">>", options: .literal) else { return false }
+            head = StatementBlank.trimmingLeading(head[close.upperBound...])
         }
         let keyword = leadingWord(of: head)
         if keyword == "DECLARE" || keyword == "BEGIN" { return true }
         guard keyword == "WITH" else { return false }
-        let declaration = leadingWord(of: SQLLeadingComments.stripping(String(head.dropFirst(keyword.count))))
+        let declaration = leadingWord(of: StatementBlank.trimmingLeading(head.dropFirst(keyword.count)))
         return declaration == "FUNCTION" || declaration == "PROCEDURE"
     }
 
-    private static func leadingWord(of text: String) -> String {
+    private static func leadingWord(of text: Substring) -> String {
         text.prefix { $0.isLetter || $0.isNumber || $0 == "_" }.uppercased()
     }
 }

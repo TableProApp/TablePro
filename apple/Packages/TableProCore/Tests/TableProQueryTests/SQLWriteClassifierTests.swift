@@ -93,11 +93,56 @@ struct SQLWriteClassifierTests {
         #expect(isWrite("PRAGMA journal_mode = WAL", .sqlite))
     }
 
+    @Test("a SELECT that holds a statement its engine runs is a write")
+    func embeddedStatementIsAWrite() {
+        #expect(isWrite("SELECT * FROM orders WHERE (DELETE orders)", .surrealdb))
+        #expect(isWrite("SELECT * FROM [DELETE FROM orders RETURNING id]", .cockroachdb))
+        #expect(!isWrite("SELECT * FROM orders WHERE (SELECT * FROM paid)", .surrealdb))
+        #expect(!isWrite("SELECT * FROM [SHOW TABLES]", .cockroachdb))
+    }
+
     @Test("SELECT INTO materialises a table, so it is a write")
     func selectIntoIsWrite() {
         #expect(isWrite("SELECT * INTO backup FROM users", .mssql))
         #expect(isWrite("SELECT * FROM users INTO OUTFILE '/tmp/u.csv'", .mysql))
         #expect(!isWrite("SELECT 'INTO' FROM users"))
+    }
+
+    @Test("a query that calls a state-changing function is a write", arguments: [
+        "SELECT setval('orders_id_seq', 1, false)",
+        "SELECT nextval('orders_id_seq')",
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid()",
+        "SELECT pg_catalog.set_config('search_path', 'evil', false)",
+        "SELECT lo_unlink(16403)",
+        "SELECT lo_export(16403, '/tmp/object')",
+        "SELECT dblink_exec('dbname=app', 'DELETE FROM users')",
+        "SELECT SETVAL /* moved */ ('orders_id_seq', 1)",
+        "SELECT \"setval\" ('orders_id_seq', 1)",
+        "SELECT U&\"\\0073etval\"('orders_id_seq', 1)",
+        "SELECT id FROM users WHERE id = (SELECT nextval('orders_id_seq'))",
+        "TABLE users LIMIT nextval('orders_id_seq')",
+        "VALUES (nextval('orders_id_seq'))",
+        "WITH moved AS (SELECT setval('orders_id_seq', 1)) SELECT * FROM moved"
+    ])
+    func stateChangingCallIsAWrite(sql: String) {
+        #expect(isWrite(sql))
+    }
+
+    @Test("a query that advances a sequence without a call is a write")
+    func sequenceAdvanceIsAWrite() {
+        #expect(isWrite("SELECT NEXT VALUE FOR dbo.invoice_no", .mssql))
+        #expect(isWrite("SELECT NEXT VALUE FOR invoice_no", .mariadb))
+        #expect(isWrite("SELECT invoice_no.NEXTVAL FROM dual", .oracle))
+        #expect(isWrite("WITH n AS (SELECT invoice_no.nextval AS id FROM dual) SELECT id FROM n", .oracle))
+        #expect(!isWrite("SELECT t.nextval FROM t"))
+    }
+
+    @Test("a query that only names a state-changing function is a read")
+    func stateChangingNameIsNotACall() {
+        #expect(!isWrite("SELECT 'setval(1)' AS note, setval FROM audit"))
+        #expect(!isWrite("SELECT last_value FROM orders_id_seq"))
+        #expect(!isWrite("SELECT my_setval(1), pg_backend_pid()"))
+        #expect(!isWrite("SELECT \"total\" FROM \"orders\" WHERE \"id\" IN (1, 2)"))
     }
 
     @Test("a backslash does not swallow the quote that ends a literal")
@@ -232,6 +277,15 @@ struct SQLWriteClassifierTests {
         #expect(!isWrite("SELECT 'a\nGO\nDROP TABLE t'", .mssql))
     }
 
+    @Test("a write after SQL Server's 1E-- is seen whether that is a comment or a signed exponent and a minus")
+    func signedEmptyExponentHidesAWrite() {
+        #expect(isWrite("SELECT 1E--1 DROP TABLE t", .mssql))
+        #expect(isWrite("SELECT 1E--1 INTO t2 FROM t", .mssql))
+        #expect(isWrite("SELECT 1E--'\nDROP TABLE t --'", .mssql))
+        #expect(!isWrite("SELECT 1 --1 DROP TABLE t", .mssql))
+        #expect(!isWrite("SELECT a1E--1 DROP TABLE t", .mssql))
+    }
+
     @Test("SQL Server runs a statement written after another without a semicolon, measured on Azure SQL Edge 15",
           arguments: [
               "SELECT 1\nDROP TABLE t", "SELECT 1 DELETE FROM t", "SELECT 1 TRUNCATE TABLE t",
@@ -252,6 +306,26 @@ struct SQLWriteClassifierTests {
     ])
     func unterminatedReadIsARead(sql: String) {
         #expect(!isWrite(sql, .mssql))
+    }
+
+    @Test("Snowflake runs every statement its pipe operator chains, from its reference", arguments: [
+        "SELECT 1 ->> DELETE FROM t", "SHOW TABLES ->> DROP TABLE t", "SELECT 1\n->>\nUPDATE t SET c = 1\n->> SELECT * FROM $1",
+    ])
+    func chainedStatementIsAWrite(sql: String) {
+        #expect(isWrite(sql, .snowflake))
+    }
+
+    @Test("a Snowflake chain of reads, or an operator inside a literal, is a read", arguments: [
+        "SHOW TABLES ->> SELECT \"name\" FROM $1", "SELECT '->> DELETE FROM t'", "SELECT $$->> DELETE FROM t$$",
+    ])
+    func chainedReadIsARead(sql: String) {
+        #expect(!isWrite(sql, .snowflake))
+    }
+
+    @Test("an engine where ->> reads JSON keeps reading a statement by its first word")
+    func jsonOperatorIsNoChain() {
+        #expect(!isWrite("SELECT doc ->> 'name' FROM t", .postgresql))
+        #expect(!isWrite("SELECT 1 ->> DELETE FROM t", .mysql))
     }
 
     @Test("an engine that needs a semicolon reads a statement by its first word", arguments: [

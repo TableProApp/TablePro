@@ -9,13 +9,12 @@ public enum PluginSQLRegexPattern {
     }
 
     public static func escapedLiteral(_ value: String) -> String {
-        var escaped = ""
-        escaped.reserveCapacity(value.utf8.count * 2)
-        for character in value {
-            if metacharacters.contains(character) { escaped.append("\\") }
-            escaped.append(character)
+        var escaped = String.UnicodeScalarView()
+        for scalar in value.unicodeScalars {
+            if metacharacters.contains(scalar) { escaped.append("\\") }
+            escaped.append(scalar)
         }
-        return escaped
+        return String(escaped)
     }
 
     public static func pattern(
@@ -38,7 +37,7 @@ public enum PluginSQLRegexPattern {
         return ignoresCase ? "(?i)\(body)" : body
     }
 
-    private static let metacharacters: Set<Character> = [
+    private static let metacharacters: Set<Unicode.Scalar> = [
         "\\", ".", "*", "+", "?", "(", ")", "[", "]", "{", "}", "|", "^", "$"
     ]
 }

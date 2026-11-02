@@ -413,7 +413,7 @@ targets:
       - package: Yams
       - package: PostHog
       - package: TableProCore
-        products: [TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProLogRedaction, TableProNumberFormatting, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
+        products: [TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
       - package: TableProMacCore
         products: [TableProCloudAPI, TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
@@ -1011,6 +1011,9 @@ targets:
     templateAttributes:
       folder: DamengDriverPlugin
       principalClass: DamengPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProDamengCore
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -1061,9 +1064,26 @@ targets:
     templateAttributes:
       folder: KafkaDriverPlugin
       principalClass: KafkaPlugin
+    sources:
+      - Plugins/SharedNIO
     dependencies:
       - package: zstd
         product: libzstd
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-nio-ssl
+        product: NIOSSL
+
+  MemcachedDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: MemcachedDriverPlugin
+      principalClass: MemcachedPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProMemcachedCore
       - package: swift-nio
         product: NIOCore
       - package: swift-nio
@@ -1169,6 +1189,23 @@ targets:
           - -lz
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/MongoDBDriverPlugin/CLibMongoc
 
+  Neo4jDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: Neo4jDriverPlugin
+      principalClass: Neo4jPlugin
+    sources:
+      - Plugins/SharedNIO
+    dependencies:
+      - package: TableProCore
+        product: TableProNeo4jCore
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
+      - package: swift-nio-ssl
+        product: NIOSSL
+
   OracleDriver:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1188,6 +1225,17 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProNumberFormatting
+
+  StarRocksDriverPlugin:
+    templates: [DriverPlugin, MySQLLinkage]
+    templateAttributes:
+      folder: StarRocksDriverPlugin
+      principalClass: StarRocksPlugin
+    sources:
+      - path: Plugins/MySQLDriverPlugin
+        excludes:
+          - Info.plist
+          - README.md
 
   SurrealDBDriverPlugin:
     templates: [DriverPlugin]
@@ -1255,6 +1303,17 @@ targets:
       - package: TableProCore
         product: TableProLogRedaction
 
+  QdrantDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: QdrantDriverPlugin
+      principalClass: QdrantPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProQdrantCore
+      - package: TableProCore
+        product: TableProTLSClientIdentity
+
   WeaviateDriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
@@ -1263,6 +1322,15 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProWeaviateCore
+
+  InfluxDBDriverPlugin:
+    templates: [DriverPlugin]
+    templateAttributes:
+      folder: InfluxDBDriverPlugin
+      principalClass: InfluxDBPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProInfluxDBCore
 
 # Every plugin is in exactly one of BundledPlugins (embedded in the app) and RegistryPlugins (each
 # release publishes it); scripts/ci/check-plugin-manifest.py enforces it. AllPlugins compiles both.
@@ -1301,15 +1369,20 @@ aggregateTargets:
       - EtcdDriverPlugin
       - FirebaseDriverPlugin
       - HanaDriver
+      - InfluxDBDriverPlugin
       - KafkaDriverPlugin
       - KingbaseESDriverPlugin
       - LibSQLDriverPlugin
+      - MemcachedDriverPlugin
       - MSSQLDriver
       - MongoDBDriver
+      - Neo4jDriverPlugin
       - OracleDriver
       - ParquetExport
+      - QdrantDriverPlugin
       - SnowflakeDriverPlugin
       - SpannerDriverPlugin
+      - StarRocksDriverPlugin
       - SurrealDBDriverPlugin
       - TeradataDriver
       - TrinoDriverPlugin

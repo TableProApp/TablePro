@@ -20,6 +20,10 @@ private final class ScopeQuotingDriver: PluginDriverStub, @unchecked Sendable {
     }
 }
 
+private final class BackslashLiteralDriver: PluginDriverStub, @unchecked Sendable {
+    var requiresBackslashEscapingInLiterals: Bool { true }
+}
+
 private enum ScopeDialect {
     static func make(
         paginationStyle: SQLDialectDescriptor.PaginationStyle = .limit,
@@ -614,6 +618,16 @@ struct KeyOrderedQueryScopeTests {
 
 struct CompareSQLLiteralTextTests {
     private let driver = ScopeQuotingDriver()
+
+    @Test
+    func aValueLedByACombiningMarkKeepsTheDriversBackslashEscape() {
+        let literal = CompareSQLLiteral.textLiteral(
+            "\u{301}\\' OR 1=1 -- ", columnType: .text(rawType: "TEXT"), databaseType: .mysql,
+            driver: BackslashLiteralDriver()
+        )
+
+        #expect(Array(literal.unicodeScalars) == Array("'\u{301}\\\\'' OR 1=1 -- '".unicodeScalars))
+    }
 
     @Test
     func numericLookingTextIsQuotedForATextColumn() {

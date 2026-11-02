@@ -51,6 +51,66 @@ struct TabObjectKindTests {
         #expect(!TabTableContext(isView: true, objectType: nil).allowsRowEditing)
     }
 
+    @Test("A view allows row edits only once its driver keyed it on the base table")
+    func viewFollowsItsEditingAnswer() {
+        let target = TestFixtures.viewTarget(keys: ["id"], operations: [.update, .delete])
+        let answer = PluginViewRowEditing.editable(target)
+        var view = TabTableContext(isView: true, objectType: .view)
+        #expect(!view.allowsRowEditing)
+        #expect(view.viewEditRefusal == .view(nil))
+        view.viewRowEditing = .readOnly(.notUpdatable)
+        #expect(!view.allowsRowEditing)
+        #expect(view.viewEditRefusal == .view(.notUpdatable))
+        #expect(view.viewWriteTarget == nil)
+        view.viewRowEditing = answer
+        #expect(!view.allowsRowEditing, "the tab does not key its edits on the driver's columns yet")
+        view.primaryKeyColumns = ["id"]
+        #expect(view.allowsRowEditing)
+        #expect(view.viewEditRefusal == nil)
+        #expect(view.viewWriteTarget?.operations == [.update, .delete])
+        view.isTemporary = true
+        #expect(!view.allowsRowEditing)
+
+        var matview = TabTableContext(isView: true, objectType: .materializedView)
+        matview.viewRowEditing = answer
+        matview.primaryKeyColumns = ["id"]
+        #expect(!matview.allowsRowEditing)
+        #expect(matview.viewEditRefusal == nil)
+    }
+
+    @Test("A query tab knows a view only from an answer for the same relation")
+    func queryTabKnowsViewFromItsAnswer() {
+        var query = TabTableContext()
+        query.tableName = "v_orders"
+        #expect(!query.knowsView(named: "v_orders"))
+        query.viewRowEditing = .readOnly(.keyNotExposed)
+        #expect(query.knowsView(named: "v_orders"))
+        #expect(!query.knowsView(named: "orders"))
+        #expect(TabTableContext(isView: true, objectType: .view).knowsView(named: "anything"))
+    }
+
+    @Test("A table tab opened without a kind becomes a view once the driver answers for it")
+    func tableTabAdoptsTheViewKind() {
+        var context = TabTableContext()
+        context.adoptViewAnswer(nil, tabType: .table)
+        #expect(context.resolvedObjectKind() == .table)
+        context.adoptViewAnswer(.readOnly(.notUpdatable), tabType: .table)
+        #expect(context.resolvedObjectKind() == .view)
+        #expect(context.isView)
+
+        var query = TabTableContext()
+        query.adoptViewAnswer(.readOnly(.notUpdatable), tabType: .query)
+        #expect(query.resolvedObjectKind() == .table)
+        #expect(query.viewRowEditing == .readOnly(.notUpdatable))
+    }
+
+    @Test("A table never explains a view refusal")
+    func tableOffersEveryOperation() {
+        let table = TabTableContext(isView: false, objectType: .table)
+        #expect(table.viewEditRefusal == nil)
+        #expect(table.viewWriteTarget == nil)
+    }
+
     @Test("A writable kind, or no kind at all, keeps the rows writable")
     func writableKindsKeepRowEditing() {
         #expect(TabTableContext(isView: false, objectType: .table).allowsRowEditing)

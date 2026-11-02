@@ -12,19 +12,13 @@ struct QueryInsightsToolbar: View {
 
                 Spacer(minLength: 8)
 
-                if viewModel.isRefreshing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel(String(localized: "Refreshing"))
-                } else if let date = viewModel.lastRefreshDate {
-                    Text(date, style: .time)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .accessibilityLabel(String(localized: "Last updated"))
+                PaneRefreshControls(
+                    isRefreshing: viewModel.isRefreshing,
+                    lastRefreshDate: viewModel.lastRefreshDate,
+                    accessibilityIdentifier: "query-insights-refresh-button"
+                ) {
+                    Task { await viewModel.reload() }
                 }
-
-                refreshButton
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -91,20 +85,7 @@ struct QueryInsightsToolbar: View {
         )
     }
 
-    private var refreshButton: some View {
-        Button {
-            Task { await viewModel.reload() }
-        } label: {
-            Label(String(localized: "Refresh"), systemImage: "arrow.clockwise")
-        }
-        .labelStyle(.iconOnly)
-        .disabled(viewModel.isRefreshing)
-        .help(String(localized: "Refresh"))
-        .accessibilityIdentifier("query-insights-refresh-button")
-    }
-
-    /// A source the user turns off is a source they do not want counted, but an empty set would
-    /// filter every panel to nothing, so the last one on stays on.
+    // The last source on stays on: an empty set would filter every panel to nothing.
     private func binding(for source: QueryHistorySource) -> Binding<Bool> {
         Binding(
             get: { viewModel.sources.contains(source) },

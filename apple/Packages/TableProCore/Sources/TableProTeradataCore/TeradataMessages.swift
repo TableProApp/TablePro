@@ -130,10 +130,10 @@ enum TeradataMessages {
     }
 
     private static func quoteDouble(_ value: String) -> String {
-        "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        "\"" + value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
     }
 
     private static func quoteSingle(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        "'" + value.replacingOccurrences(of: "'", with: "''", options: .literal) + "'"
     }
 }

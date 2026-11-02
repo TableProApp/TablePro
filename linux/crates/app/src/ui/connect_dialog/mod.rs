@@ -28,7 +28,7 @@ use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
     AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, NetworkOption,
-    NetworkOptions, SafeModeLevel, TlsConfig, TransportClass, WorkspaceSettings,
+    NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TransportClass, WorkspaceSettings,
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{ConnectError, ConnectRequest, ConnectionMetadata, Connector, CredentialSource, PendingSave};
@@ -436,6 +436,10 @@ impl ConnectDialog {
                 .get(imp.ai_policy_row.selected() as usize)
                 .copied()
                 .unwrap_or_default(),
+            query_timeout_secs: imp
+                .query_timeout_row
+                .enables_expansion()
+                .then(|| imp.query_timeout_seconds_row.value() as u32),
             ssh: (!caps.is_file_based()).then(|| imp.ssh_section.form_state()).flatten(),
             file: imp.file_row.endpoint(),
             tags: self.picked_tags(),
@@ -512,6 +516,11 @@ impl ConnectDialog {
             .position(|policy| *policy == form.ai_policy)
             .unwrap_or_default();
         imp.ai_policy_row.set_selected(policy as u32);
+        imp.query_timeout_row
+            .set_enable_expansion(form.query_timeout_secs.is_some());
+        if let Some(seconds) = form.query_timeout_secs {
+            imp.query_timeout_seconds_row.set_value(f64::from(seconds));
+        }
         if form.file.is_some() || imp.file_row.endpoint().is_some() {
             imp.file_row.set_endpoint(form.file.clone());
         }
@@ -979,7 +988,8 @@ fn connect_request(
         },
         driver: entry.driver.clone(),
         target: valid.target.clone(),
-        workspace_settings: WorkspaceSettings::workspace(form.safe_mode.blocks_writes()),
+        workspace_settings: WorkspaceSettings::workspace(form.safe_mode.blocks_writes())
+            .with_editor_timeout(QueryTimeout::from_seconds(form.query_timeout_secs)),
         safe_mode: form.safe_mode,
     }
 }

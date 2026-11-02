@@ -41,7 +41,7 @@ internal enum OracleBrowseSQL {
             quoteIdentifier: quote,
             escapeTypedValue: filterValue,
             regexCondition: { quoted, value, ignoresCase in
-                let pattern = value.replacingOccurrences(of: "'", with: "''")
+                let pattern = value.replacingOccurrences(of: "'", with: "''", options: .literal)
                 guard ignoresCase else { return "REGEXP_LIKE(\(quoted), '\(pattern)')" }
                 return "REGEXP_LIKE(\(quoted), '\(pattern)', 'i')"
             }
@@ -66,7 +66,7 @@ internal enum OracleBrowseSQL {
             kind: kind,
             trueLiteral: nil,
             falseLiteral: nil,
-            quote: { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+            quote: { "'\($0.replacingOccurrences(of: "'", with: "''", options: .literal))'" }
         )
     }
 
@@ -100,7 +100,7 @@ internal enum OracleBrowseSQL {
     }
 
     static func quote(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     static func qualifiedName(schema: String?, table: String) -> String {

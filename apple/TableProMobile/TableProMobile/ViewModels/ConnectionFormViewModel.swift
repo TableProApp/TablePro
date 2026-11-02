@@ -49,6 +49,7 @@ final class ConnectionFormViewModel {
     var sslEnabled = false
     var sslMode: SSLModeChoice = .disable
     var mssqlSSLMode: SSLModeChoice = .disable
+    @ObservationIgnored private(set) var storedMSSQLVerifyMode: SSLModeChoice?
     var oracleSSLMode: SSLModeChoice = .disable
 
     // Client certificates
@@ -131,6 +132,7 @@ final class ConnectionFormViewModel {
     @ObservationIgnored private var addedNewConnection = false
     @ObservationIgnored private var loadedStoredCredentials = false
     @ObservationIgnored private var sshProfileSecrets: [String: String] = [:]
+    @ObservationIgnored private var driverSecrets: [ConnectionSecretKind: String] = [:]
     private(set) var baseline: ConnectionFormSnapshot?
     private(set) var storedSecrets = ConnectionFormSecrets()
     private let localFiles: LocalDatabaseFileLocator
@@ -163,8 +165,9 @@ final class ConnectionFormViewModel {
         database = conn.database
         sslEnabled = conn.sslEnabled
         let storedMode = conn.sslConfiguration.map { SSLModeChoice($0) } ?? (conn.sslEnabled ? .require : .disable)
-        // The iOS SQL Server driver checks no certificate, so a verify mode runs as Required.
-        mssqlSSLMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? .require : storedMode
+        // A verify mode stays as stored: the driver refuses it, where turning it into Required would skip the check.
+        mssqlSSLMode = storedMode
+        storedMSSQLVerifyMode = (storedMode == .verifyCa || storedMode == .verifyFull) ? storedMode : nil
         oracleSSLMode = storedMode
         sslMode = storedMode
         oracleConnectionType = OracleConnectionOptions.identifierMode(from: conn.additionalFields)
@@ -311,6 +314,14 @@ final class ConnectionFormViewModel {
         localized: "OracleNIO has no TLS fallback. Preferred connects in plain TCP. Use Required for TCPS to Oracle Autonomous Database."
     )
 
+    var mssqlSSLModeNote: String? {
+        guard type == .mssql, mssqlSSLMode == .verifyCa || mssqlSSLMode == .verifyFull else { return nil }
+        return String(localized: """
+            This device cannot check a SQL Server certificate, so it does not connect in this mode. Choose Required \
+            to connect without the check.
+            """)
+    }
+
     var oracleSSLModeNote: String? {
         guard type == .oracle else { return nil }
         switch oracleSSLMode {
@@ -436,6 +447,10 @@ final class ConnectionFormViewModel {
                 guard let value = try? secureStore.retrieve(forKey: account), !value.isEmpty else { continue }
                 sshProfileSecrets[account] = value
             }
+        }
+        // The driver reads these itself, so a test connect needs them under its own id.
+        for (kind, _) in MongoDBDialPlan.keychainFields {
+            driverSecrets[kind] = Self.storedSecret(kind, for: conn.id, in: secureStore)
         }
         let iamSecrets = ConnectionIAMSecrets.stored(for: conn.id, in: secureStore)
         iam.secrets = iamSecrets
@@ -632,6 +647,9 @@ final class ConnectionFormViewModel {
             secrets[ConnectionSecretKind.password.account(for: connectionId)] = password
         }
         secrets.merge(iamTestSecrets(for: connectionId)) { _, iamSecret in iamSecret }
+        for (kind, value) in driverSecrets {
+            secrets[kind.account(for: connectionId)] = value
+        }
         guard sshEnabled else { return secrets }
         if !sshPassword.isEmpty {
             secrets[ConnectionSecretKind.sshPassword.account(for: connectionId)] = sshPassword
@@ -673,7 +691,7 @@ final class ConnectionFormViewModel {
 
         let secrets = EphemeralSecureStore(testSecrets(for: tempId))
         let manager = ConnectionManager(
-            driverFactory: IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localFiles),
+            driverFactory: IOSDriverFactory(bookmarkStore: bookmarkStore, localFiles: localFiles, secureStore: secrets),
             secureStore: secrets,
             sshProvider: IOSSSHProvider(secureStore: secrets, container: localFiles.container)
         )

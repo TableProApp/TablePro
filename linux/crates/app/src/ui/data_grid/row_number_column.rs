@@ -37,6 +37,7 @@ pub fn build(grid: &DataGrid) -> gtk::ColumnViewColumn {
         content.append(&icon);
         content.append(&number);
         cell.set_child(Some(&content));
+        super::stripes::follow(cell);
     });
     let watches: Watches = Rc::default();
     let weak = grid.downgrade();

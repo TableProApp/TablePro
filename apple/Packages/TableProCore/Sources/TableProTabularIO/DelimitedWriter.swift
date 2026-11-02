@@ -123,12 +123,12 @@ public struct DelimitedWriter {
         guard needsQuoting else { return field }
         let quoteText = String(quote)
         guard !dialect.escapesByDoubling else {
-            return quoteText + field.replacingOccurrences(of: quoteText, with: quoteText + quoteText) + quoteText
+            return quoteText + field.replacingOccurrences(of: quoteText, with: quoteText + quoteText, options: .literal) + quoteText
         }
         let escapeText = String(UnicodeScalar(dialect.escape))
         let body = field
-            .replacingOccurrences(of: escapeText, with: escapeText + escapeText)
-            .replacingOccurrences(of: quoteText, with: escapeText + quoteText)
+            .replacingOccurrences(of: escapeText, with: escapeText + escapeText, options: .literal)
+            .replacingOccurrences(of: quoteText, with: escapeText + quoteText, options: .literal)
         return quoteText + body + quoteText
     }
 

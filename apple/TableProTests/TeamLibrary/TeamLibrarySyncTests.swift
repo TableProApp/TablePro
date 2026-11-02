@@ -68,6 +68,20 @@ struct TeamLibrarySyncTests {
         #expect(TeamLibraryFixture.cursor(of: pulled) == "r2", "An incremental pull, not a snapshot")
     }
 
+    @Test("A pulled connection whose SSH host ssh would refuse is dropped")
+    func pulledConnectionWithARefusedSSHHost() async throws {
+        let prod = try Self.connectionData(name: "Prod", sshHost: "bastion.example.com")
+        let planted = try Self.connectionData(name: "Planted", sshHost: "replica.example\n[prod.example")
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "connection", clientID: "c1", data: prod)
+            library.write(Self.team, kind: "connection", clientID: "c2", data: planted)
+        }
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        #expect(fixture.sync.content.connections.map(\.settings.name) == ["Prod"])
+    }
+
     @Test("A query moved to another folder by someone else shows under that folder after the next pull")
     func pulledFolderMove() async throws {
         let fixture = try await TeamLibraryFixture { library in
@@ -778,5 +792,17 @@ struct TeamLibrarySyncTests {
         #expect(fixture.store.loadAll().isEmpty)
         #expect(fixture.sync.status == .idle)
         fixture.sync.stop()
+    }
+
+    nonisolated private static func connectionData(name: String, sshHost: String) throws -> [String: Any] {
+        let ssh = ExportableSSHConfig(
+            enabled: true, host: sshHost, port: 22, username: "deploy", authMethod: "password",
+            privateKeyPath: "", agentSocketPath: "", jumpHosts: nil,
+            totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil
+        )
+        let settings = ExportableConnection(
+            name: name, host: "db", port: 5432, database: "app", username: "deploy", type: "PostgreSQL", sshConfig: ssh
+        )
+        return try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as? [String: Any])
     }
 }

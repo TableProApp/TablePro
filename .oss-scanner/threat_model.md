@@ -23,18 +23,18 @@ The user is trusted: the SQL they type, the connections they create, the plugins
 
 1. Code in this repository that parses server responses:
    - Swift: `apple/Plugins/*DriverPlugin`, the HTTP and REST engines (Trino, ClickHouse, Etcd, Google REST, DynamoDB, Snowflake, Elasticsearch and others), Teradata's TD2 protocol, Kafka with its Snappy decoder, and the C interop that reads cells out of libpq, libmariadb, FreeTDS, libmongoc, hiredis and libcassandra.
-   - Rust: `linux/crates/drivers/*`, `linux/crates/net`.
-2. File parsers: `apple/Packages/TableProCore/Sources/TableProTabularIO` (its own ZIP reader, XLSX XML, delimited text), `TableProImport` (`.tablepro` bundles, PBKDF2 and AES-GCM), `apple/TablePro/Core/Services/Export/ForeignApp/` (other apps' files, the Navicat cipher, a KDBX reader), `apple/TablePro/Core/Services/ProjectImport/`, `linux/crates/core/src/import`.
+   - Rust: `core/crates/drivers/*`, `core/crates/net`.
+2. File parsers: `apple/Packages/TableProCore/Sources/TableProTabularIO` (its own ZIP reader, XLSX XML, delimited text), `TableProImport` (`.tablepro` bundles, PBKDF2 and AES-GCM), `apple/TablePro/Core/Services/Export/ForeignApp/` (other apps' files, the Navicat cipher, a KDBX reader), `apple/TablePro/Core/Services/ProjectImport/`, `core/crates/core/src/import`.
 3. Deep links: `apple/TablePro/Core/Services/Infrastructure/DeeplinkParser.swift`, `ExternalConnectionGate.swift`, `apple/TablePro/Core/Utilities/Connection/ConnectionURLParser.swift`.
 4. MCP server: `apple/TablePro/Core/MCP/` and `apple/Packages/TableProMacCore/Sources/TableProMCP/` (a hand-written HTTP parser, bearer tokens, PKCE pairing, Origin and Host checks, `MCPStatementGate`).
 5. AI tools that run SQL: `apple/TablePro/Core/AI/Chat/Tools/`, `ToolApprovalCenter.swift`.
 6. Plugin install and load: `apple/TablePro/Core/Plugins/Registry/`, `PluginInstaller.swift`, `PluginCodeSignatureVerifier.swift`, `PluginManager+Validation.swift`. The app is not sandboxed and disables library validation, so this check is the only gate.
-7. Secrets: `apple/TablePro/Core/Storage/KeychainHelper.swift`, `apple/TablePro/Core/Sync/SyncRecordMapper.swift` (passwords must never reach CloudKit), `linux/crates/storage/src/secrets`, `TableProLogRedaction`, the MCP error redactor.
-8. SQL the app builds from data: `apple/TablePro/Core/ChangeTracking/SQLStatementGenerator.swift`, `apple/TablePro/Core/Database/FilterSQLGenerator.swift`, `SQLEscaping.swift`, `DialectQuoteHelper.swift`, each driver's `quoteIdentifier`; on Linux `linux/crates/core/src/dml`, `linux/crates/core/src/filter/validate_raw_predicate.rs` and each driver's `dialect.rs`. A crafted table or column name that escapes quoting runs SQL with the user's privileges.
-9. SSH and TLS: `apple/TablePro/Core/SSH/` (libssh2, host key prompts), `apple/Packages/TableProMacCore/Sources/TableProSSHConfig`, `linux/crates/ssh` (drives the system `ssh`, so watch for option injection from connection fields), `linux/crates/net/src/tls`.
+7. Secrets: `apple/TablePro/Core/Storage/KeychainHelper.swift`, `apple/TablePro/Core/Sync/SyncRecordMapper.swift` (passwords must never reach CloudKit), `linux/crates/platform/src/secrets`, `TableProLogRedaction`, the MCP error redactor.
+8. SQL the app builds from data: `apple/TablePro/Core/ChangeTracking/SQLStatementGenerator.swift`, `apple/TablePro/Core/Database/FilterSQLGenerator.swift`, `SQLEscaping.swift`, `DialectQuoteHelper.swift`, each driver's `quoteIdentifier`; in the Rust core `core/crates/core/src/dml`, `core/crates/core/src/filter/validate_raw_predicate.rs` and each driver's `dialect.rs`. A crafted table or column name that escapes quoting runs SQL with the user's privileges.
+9. SSH and TLS: `apple/TablePro/Core/SSH/` (libssh2, host key prompts), `apple/Packages/TableProMacCore/Sources/TableProSSHConfig`, `core/crates/ssh` (drives the system `ssh`, so watch for option injection from connection fields), `core/crates/net/src/tls`.
 10. Rendering of cell values: the out-of-process image renderer (`apple/TablePro/CLI/ImageRenderMain.swift`), the Linux Row Details picture, which glycin decodes in a sandbox (`linux/crates/app/src/ui/data_grid/row_detail/picture.rs`), `apple/TablePro/Core/Services/Formatting/PhpSerializeParser.swift`, the MongoDB shell's JavaScriptCore runtime.
 
-Matter least: layout, theming and localization code, `linux/crates/test-fixtures`, `linux/crates/test-support`, `apple/TableProUITests`, `scripts/`, `.github/`, docs.
+Matter least: layout, theming and localization code, `core/crates/test-fixtures`, `core/crates/test-support`, `apple/TableProUITests`, `scripts/`, `.github/`, docs.
 
 ## How to exercise it
 

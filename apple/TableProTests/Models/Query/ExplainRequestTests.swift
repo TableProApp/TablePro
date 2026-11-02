@@ -115,7 +115,7 @@ struct ExplainRequestTests {
                 variant: driverVariants[0], declaredVariants: driverVariants, databaseType: .mssql, statement: statement
             )
         )
-        #expect(ExplainRequest.gatedSQL(subject: statement, runsStatement: false) == statement)
+        #expect(ExplainRequest.gatedSQL(subject: statement, runsStatement: false, databaseType: .mssql) == statement)
         #expect(request.operationKind(databaseType: .mssql) == .writeQuery)
     }
 

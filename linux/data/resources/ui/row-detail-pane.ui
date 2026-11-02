@@ -6,24 +6,24 @@
   <menu id="value_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Set to Empty</attribute>
+        <attribute name="label" translatable="yes">Set _to Empty</attribute>
         <attribute name="action">grid.set-empty</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Set to NULL</attribute>
+        <attribute name="label" translatable="yes">Set to _NULL</attribute>
         <attribute name="action">grid.set-null</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Set to DEFAULT</attribute>
+        <attribute name="label" translatable="yes">Set to DEFAU_LT</attribute>
         <attribute name="action">grid.set-default</attribute>
         <attribute name="hidden-when">action-disabled</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Copy Value</attribute>
+        <attribute name="label" translatable="yes">_Copy Value</attribute>
         <attribute name="action">grid.copy</attribute>
       </item>
     </section>

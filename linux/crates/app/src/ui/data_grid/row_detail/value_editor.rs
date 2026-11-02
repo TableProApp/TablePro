@@ -92,10 +92,11 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
     let (text, refusal) = match input {
         CellInput::Value(value) => typed_form(column, value),
         CellInput::Default => (String::new(), None),
+        CellInput::Expression(expression) => (expression.sql.to_owned(), None),
     };
     let decodable = match input {
         CellInput::Value(value) => matches!(edit_text(value, column.value_type()), EditText::Editable(_)),
-        CellInput::Default => true,
+        CellInput::Default | CellInput::Expression(_) => true,
     };
     let message = lock.map(|lock| lock.explanation(edit_parse_message)).or(refusal);
     let editable = message.is_none();
@@ -111,6 +112,7 @@ pub fn value_content(column: &GridColumn, row: &GridRowId, lock: Option<CellLock
                 .to_owned(),
         ),
         CellInput::Value(_) => emptied_placeholder.clone(),
+        CellInput::Expression(_) => None,
     };
     ValueContent {
         text,
@@ -529,11 +531,10 @@ impl RowDetailPane {
         };
         let mut guards = vec![HandlerGuard::new(&style_manager, on_dark)];
         if let Some(settings) = settings {
-            let on_scheme = settings
-                .gio()
-                .connect_changed(Some(tablepro_storage::settings::keys::STYLE_SCHEME), move |_, _| {
-                    paint()
-                });
+            let on_scheme = settings.gio().connect_changed(
+                Some(tablepro_linux_platform::settings::keys::STYLE_SCHEME),
+                move |_, _| paint(),
+            );
             guards.push(HandlerGuard::new(settings.gio(), on_scheme));
         }
         self.imp().guards.borrow_mut().extend(guards);

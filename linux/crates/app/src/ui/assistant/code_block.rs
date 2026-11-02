@@ -11,7 +11,7 @@ use crate::ui::handler_guard::HandlerGuard;
 /// What a code block's buttons reach beyond it.
 #[derive(Clone)]
 pub(crate) struct BlockHooks {
-    pub settings: Rc<tablepro_storage::AppSettings>,
+    pub settings: Rc<tablepro_linux_platform::AppSettings>,
     /// Put the code in the editor.
     pub insert: Rc<dyn Fn(String)>,
     pub toast: Rc<dyn Fn(String)>,
@@ -24,7 +24,7 @@ pub(crate) struct BlockHooks {
 pub(crate) struct CodeBlock {
     root: gtk::Box,
     shown: Rc<Shown>,
-    settings: Rc<tablepro_storage::AppSettings>,
+    settings: Rc<tablepro_linux_platform::AppSettings>,
     _theme: [HandlerGuard; 2],
 }
 
@@ -73,7 +73,7 @@ impl CodeBlock {
         });
         let themed = Rc::downgrade(&shown);
         let scheme = hooks.settings.gio().connect_changed(
-            Some(tablepro_storage::settings::keys::STYLE_SCHEME),
+            Some(tablepro_linux_platform::settings::keys::STYLE_SCHEME),
             move |settings, key| {
                 if let Some(shown) = themed.upgrade() {
                     shown.paint(&settings.string(key));

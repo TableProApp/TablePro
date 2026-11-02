@@ -10,7 +10,7 @@ import TableProPluginKit
 extension MySQLPluginDriver {
     /// The routines and their parameters are two reads; `MySQLRoutineSignatures` says why.
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
-        guard !flavor.isDatabend, serverHasInformationSchema else { return [] }
+        guard flavor.hasMySQLObjectCatalogs, serverHasInformationSchema else { return [] }
         let resolvedSchema = routineSchema(schema)
         let exactSchema = await schemaNamesAreCaseSensitive()
         let query = MySQLObjectQueries.routineList(schema: resolvedSchema, exactSchema: exactSchema)
@@ -96,7 +96,7 @@ extension MySQLPluginDriver {
     var providesBulkTriggerFetch: Bool { true }
 
     func fetchAllTriggers(schema: String?) async throws -> [PluginTriggerInfo] {
-        guard !flavor.isDatabend else { return [] }
+        guard flavor.hasMySQLObjectCatalogs else { return [] }
         return try await triggerList(schema: routineSchema(schema), table: nil)
     }
 

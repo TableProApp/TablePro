@@ -28,7 +28,9 @@ struct MenuActionSelectorCollisionTests {
             #selector(MainSplitViewController.exportTables(_:)),
             #selector(MainSplitViewController.exportQueryResults(_:)),
             #selector(MainSplitViewController.backupDatabase(_:)),
-            #selector(MainSplitViewController.restoreDatabase(_:))
+            #selector(MainSplitViewController.restoreDatabase(_:)),
+            #selector(MainSplitViewController.showServerDashboard(_:)),
+            #selector(MainSplitViewController.showQueryInsights(_:))
         ]
     )
     func railDoesNotShadowMenuBarCommands(command: Selector) {

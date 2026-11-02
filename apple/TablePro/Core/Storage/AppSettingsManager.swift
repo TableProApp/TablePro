@@ -277,6 +277,7 @@ final class AppSettingsManager: ObservableObject {
         mcp = .default
         typography = .default
         storage.resetToDefaults()
+        InspectorFieldHeightStore.shared.reload()
         connectionListPreferences.resetShowsRecent()
         SoftwareUpdater.shared.resetUpdatePreferences()
         AppModuleActivation.resetToDefaults()

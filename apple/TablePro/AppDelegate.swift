@@ -21,7 +21,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         LaunchTracer.shared.mark(.willFinishLaunchingBegan)
         AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
-        AppSettingsStorage.shared.migrateJsonFieldHeightKeyIfNeeded()
+        AppSettingsStorage.shared.removeRetiredFieldHeightKeys()
         AIProviderRegistration.registerAll()
 
         /// Installed before any window exists, so the bar is correct from the first frame.
@@ -143,6 +143,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !AppStorageEnvironment.shared.isIsolated else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
+        ConnectionStorage.shared.moveMongoURISecretsToKeychain()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
         // Before the account starts, so a stored key's migration reaches it as a sign-in.

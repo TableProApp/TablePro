@@ -17,7 +17,8 @@ extension QueryClassifier {
 
     // Their reads hold though the driver declares no read-only mode: MongoDB, Redis and etcd classify their own
     // language and call anything not proven a read a write, and SAP HANA is SQL, read as every SQL engine is.
-    static let enginesWithProvenReads: Set<DatabaseType> = [.mongodb, .redis, .etcd, .sapHana]
+    // Neo4j is here so its driver opens a proven read in Bolt's read mode, where the server refuses a write.
+    static let enginesWithProvenReads: Set<DatabaseType> = [.mongodb, .redis, .etcd, .sapHana, .neo4j]
 
     private static func queryTier(of tier: MongoStatementTier) -> QueryTier {
         switch tier {

@@ -398,8 +398,8 @@ enum KafkaQL {
     /// let the rest of the value parse as further clauses.
     static func quote(_ value: String) -> String {
         let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
         return "\"\(escaped)\""
     }
 

@@ -148,7 +148,7 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [ColumnInfo] {
-        let safe = table.replacingOccurrences(of: "'", with: "''")
+        let safe = table.replacingOccurrences(of: "'", with: "''", options: .literal)
         let raw = try await actor.execute("PRAGMA table_info('\(safe)')")
         let createStatement = try await fetchCreateStatement(table: safe)
 
@@ -186,7 +186,7 @@ nonisolated final class SQLiteDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [IndexInfo] {
-        let safe = table.replacingOccurrences(of: "'", with: "''")
+        let safe = table.replacingOccurrences(of: "'", with: "''", options: .literal)
         let raw = try await actor.execute("""
             SELECT il.name, il."unique", il.origin, ii.name AS col_name
             FROM pragma_index_list('\(safe)') il

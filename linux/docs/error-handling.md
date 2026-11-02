@@ -1,6 +1,6 @@
 # Error handling
 
-Errors are typed enums, built with `thiserror` wherever they cross a crate boundary. No TablePro crate depends on `anyhow`: the caller matches on the enum, and the app decides what to say from it, never from the message.
+Errors are typed enums, built with `thiserror` wherever they cross a crate boundary. No TablePro crate depends on `anyhow`: the caller matches on the enum, and the app decides what to say from it, never from the message. Each error the shared core returns across a crate boundary also has a stable `code()`, such as `driver.timeout`, for an app outside Rust ([core/ARCHITECTURE.md, Platforms](../../core/ARCHITECTURE.md#platforms)); the Linux app matches on the variants.
 
 ## Errors by layer
 
@@ -10,7 +10,8 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `tablepro-net` | `tls::TlsSetupError` | Wraps a `ConfigError`, a rustls error or a PEM encoding error while a TLS config is built; drivers turn it into `DriverError`. |
 | `tablepro-ssh` | `SshFailure`, inside `TransportError::Ssh` | Classified from OpenSSH's exit status and stderr. |
 | `drivers/<engine>` | `DriverError` only | The client library's error never leaves the crate. |
-| `tablepro-storage` | `StorageError`, `SettingsError`, `KeyringError`, `CredentialError` | `KeyringError::Secret` wraps core's `SecretError`. |
+| `tablepro-storage` | `StorageError`, `KeyringError`, `CredentialError` | `KeyringError::Secret` wraps core's `SecretError`. |
+| `tablepro-linux-platform` | `SettingsError` | GSettings. The Secret Service's errors map to core's `SecretError`. |
 | `tablepro-session` | `ConnectError`, `OperationError`, `ClaimError` | `ConnectError::Driver` and `OperationError::Driver` carry the driver's error unchanged. |
 | `tablepro` (the app) | Small enums per module (`StartupError`, `LoggingError`, `AcquireError`, ...) | User-facing text comes from `crates/app/src/ui/error_text/`. |
 

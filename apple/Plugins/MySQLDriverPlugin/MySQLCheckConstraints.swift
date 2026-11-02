@@ -41,6 +41,8 @@ internal enum MySQLCheckConstraints {
             return .informationSchema
         case .databend:
             return .databendCatalog
+        case .starrocks:
+            return .unavailable
         }
     }
 
@@ -98,7 +100,7 @@ internal enum MySQLCheckConstraints {
             return MySQLServerVersion.components(from: banner) != nil
         case .tidb(let version), .oceanbase(let version):
             return version != nil
-        case .databend:
+        case .databend, .starrocks:
             return true
         }
     }
@@ -109,7 +111,7 @@ internal enum MySQLCheckConstraints {
         case .mariadb: return "MariaDB 10.2.1"
         case .tidb: return "TiDB 7.2"
         case .oceanbase: return "OceanBase 4.0"
-        case .databend: return nil
+        case .databend, .starrocks: return nil
         }
     }
 

@@ -128,7 +128,7 @@ impl DataGrid {
         for (index, label) in labelled(open.collect()) {
             choices.append_item(&choice(&label, OPEN_CHOICE, index));
         }
-        let open_label = gettext("Open Referenced Row");
+        let open_label = gettext("_Open Referenced Row");
         match armed.offers.open.as_slice() {
             [] => {}
             // The item shows Ctrl+J but acts on the key it offered, as a key
@@ -150,7 +150,7 @@ impl DataGrid {
             referencing.append_item(&choice(&label, REFERENCING, index));
         }
         if referencing.n_items() > 0 {
-            section.append_submenu(Some(&gettext("Show Referencing Rows")), &referencing);
+            section.append_submenu(Some(&gettext("_Show Referencing Rows")), &referencing);
         }
     }
 

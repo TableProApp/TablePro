@@ -383,9 +383,12 @@ final class AlertHelper {
 
     // MARK: - Three-Way Confirmations
 
+    // `detail` is the text the answer is given against, so it goes whole into a scrolling box that reveals invisible
+    // characters; `informativeText` does neither. An overlay scroller would hide that more is below.
     static func confirmThreeWay(
         title: String,
         message: String,
+        detail: String? = nil,
         first: String,
         second: String,
         third: String,
@@ -394,6 +397,12 @@ final class AlertHelper {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
+        if let detail {
+            let box = scrollingTextAccessory(RevealedText(detail).plainText)
+            box.scrollerStyle = .legacy
+            box.autohidesScrollers = true
+            alert.accessoryView = box
+        }
         alert.alertStyle = .warning
         alert.addButton(withTitle: first)
         alert.addButton(withTitle: second)

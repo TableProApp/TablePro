@@ -53,14 +53,14 @@ func escapeStringLiteralFromDialect(_ dialect: SQLDialectDescriptor) -> @Sendabl
     guard dialect.requiresBackslashEscaping else { return SQLEscaping.escapeStringLiteral }
     return { value in
         var result = value
-        result = result.replacingOccurrences(of: "\\", with: "\\\\")
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\n", with: "\\n")
-        result = result.replacingOccurrences(of: "\r", with: "\\r")
-        result = result.replacingOccurrences(of: "\t", with: "\\t")
-        result = result.replacingOccurrences(of: "\0", with: "\\0")
-        result = result.replacingOccurrences(of: "\u{08}", with: "\\b")
-            result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z")
+        result = result.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+        result = result.replacingOccurrences(of: "'", with: "''", options: .literal)
+        result = result.replacingOccurrences(of: "\n", with: "\\n", options: .literal)
+        result = result.replacingOccurrences(of: "\r", with: "\\r", options: .literal)
+        result = result.replacingOccurrences(of: "\t", with: "\\t", options: .literal)
+        result = result.replacingOccurrences(of: "\0", with: "\\0", options: .literal)
+        result = result.replacingOccurrences(of: "\u{08}", with: "\\b", options: .literal)
+        result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z", options: .literal)
         return result
     }
 }

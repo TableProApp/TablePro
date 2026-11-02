@@ -202,11 +202,11 @@ internal struct CrossEngineValueCoercer: Sendable {
         if raw == "true" || raw == "false" { return raw }
         if Int64(raw) != nil || Double(raw) != nil { return raw }
         let escaped = raw
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\t", with: "\\t")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
+            .replacingOccurrences(of: "\n", with: "\\n", options: .literal)
+            .replacingOccurrences(of: "\r", with: "\\r", options: .literal)
+            .replacingOccurrences(of: "\t", with: "\\t", options: .literal)
         return "\"\(escaped)\""
     }
 }

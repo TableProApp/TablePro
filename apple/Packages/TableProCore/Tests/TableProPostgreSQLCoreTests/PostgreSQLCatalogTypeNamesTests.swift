@@ -58,7 +58,7 @@ struct PostgreSQLCatalogTypeNamesTests {
     @Test("The lookup lists each oid once, in order, and tells an array by its element and length")
     func lookupQueryShape() throws {
         let sql = try #require(PostgreSQLCatalogTypeNames.lookupQuery(oids: [16_390, 16_385, 16_390]))
-        #expect(sql.contains("WHERE t.oid IN (16385, 16390)"))
+        #expect(sql.contains("WHERE t.oid IN ('16385'::pg_catalog.oid, '16390'::pg_catalog.oid)"))
         #expect(sql.contains("LEFT JOIN pg_catalog.pg_type el ON el.oid = t.typelem AND t.typlen = -1"))
         #expect(sql.contains("pg_catalog.format_type(t.typbasetype, t.typtypmod)"))
         #expect(!sql.contains("typcategory"))

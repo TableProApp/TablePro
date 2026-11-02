@@ -104,6 +104,28 @@ struct ImportReviewTests {
         #expect(store.written.first?.planned.settings.startupCommands == nil)
     }
 
+    @Test("The command confirmation lists Startup SQL whole, so what is kept is what was shown")
+    func commandConfirmationShowsWholeStartupSQL() async throws {
+        var settings = Self.orders
+        settings.startupCommands = """
+            SET search_path TO app;
+            -- session defaults \(String(repeating: "-", count: 300))
+            DROP TABLE IF EXISTS audit_log;
+            """
+        let store = RecordingLibraryStore()
+        let review = try makeReview(settings: settings, store: store)
+
+        let confirmation = ImportReviewStep.commandConfirmation(for: review.rowsWithCommands)
+        _ = await review.commit(keepingCommands: true)
+        let kept = try #require(store.written.first?.planned.settings.startupCommands)
+
+        #expect(confirmation.contains("SET search_path TO app;"))
+        #expect(!confirmation.contains("…"))
+        for line in kept.split(separator: "\n") {
+            #expect(confirmation.contains(line))
+        }
+    }
+
     @Test("Keep Existing writes no settings, so its tunnel command is not asked about")
     func keepExistingSkipsTunnelQuestion() throws {
         var settings = Self.orders

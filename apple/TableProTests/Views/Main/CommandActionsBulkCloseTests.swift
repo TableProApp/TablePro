@@ -289,6 +289,37 @@ struct CommandActionsBulkCloseTests {
         #expect(current.coordinator.savability(of: selected) == .nothingAtRisk)
     }
 
+    // Closing the connection used to save only the selected tab, then close over a background tab's edits.
+    @Test("closing the connection keeps it open when a background tab holds work only that tab can save")
+    func connectionSaveRefusesUnreachableBackgroundWork() async throws {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+        let background = try #require(current.coordinator.tabManager.tabs.first)
+        current.coordinator.tabManager.mutate(tabId: background.id) { tab in
+            tab.pendingChanges.deletedRowIDs = [.existing(0)]
+        }
+
+        #expect(current.actions.holdsWorkOnlyItsTabCanSave(among: current.coordinator.tabManager.tabs))
+        #expect(await current.actions.saveEveryTabsWork() == false)
+    }
+
+    @Test("closing a clean connection saves nothing and lets it close")
+    func connectionSaveOfCleanTabsCloses() async {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let current = makeWindow(connection: connection)
+        defer { current.coordinator.teardown() }
+
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 1", databaseName: "db_a")
+        current.coordinator.tabManager.addTab(initialQuery: "SELECT 2", databaseName: "db_a")
+
+        #expect(!current.actions.holdsWorkOnlyItsTabCanSave(among: current.coordinator.tabManager.tabs))
+        #expect(await current.actions.saveEveryTabsWork())
+    }
+
     @Test("a clean batch closes without asking")
     func cleanBatchNeedsNoPrompt() async {
         let connection = TestFixtures.makeConnection(database: "db_a")

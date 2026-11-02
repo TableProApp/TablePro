@@ -20,7 +20,7 @@ use crate::ui::handler_guard::HandlerGuard;
 
 /// Rows sampled for a column's opening width.
 const WIDTH_SAMPLE: usize = 200;
-/// Cell padding Adwaita gives a data table's cell, both sides, and the
+/// The padding `style.css` gives a cell's child, both sides, and the
 /// column separator.
 const CELL_CHROME_PX: i32 = 13;
 /// A resize step, in digits of the font the cells draw in, so a step is
@@ -204,6 +204,7 @@ impl DataGrid {
             let grid_cell = GridCell::new(setup_paint.clone());
             grid_cell.attach(cell);
             cell.set_child(Some(&grid_cell));
+            super::stripes::follow(cell);
         });
         factory.connect_bind(|_, item| {
             let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
@@ -561,19 +562,92 @@ impl DataGrid {
             // Narrow stops at one step, so the column the focus is in stays
             // on screen to widen again.
             false if width > step => (width - step).max(step),
-            false => return,
+            false => {
+                view.error_bell();
+                return;
+            }
         };
         self.set_column_width(index, Some(width));
     }
 
-    /// The data columns on screen, in the order the user arranged them.
-    pub(crate) fn shown_columns(&self) -> Vec<usize> {
-        let set = self.imp().columns.borrow();
+    pub(super) fn move_column(&self, index: usize, left: bool) {
         let view = self.column_view();
-        (0..view.columns().n_items())
-            .filter_map(|position| view.columns().item(position).and_downcast::<gtk::ColumnViewColumn>())
-            .filter(|column| column.is_visible())
-            .filter_map(|column| set.index_of(&column))
+        // GtkColumnView mirrors its columns by its own direction, not the grid's.
+        let toward_start = left != (view.direction() == gtk::TextDirection::Rtl);
+        let shown = self.shown_slots();
+        let neighbour = shown
+            .iter()
+            .position(|(_, slot)| *slot == index)
+            .and_then(|at| match toward_start {
+                true => at.checked_sub(1),
+                false => at.checked_add(1),
+            })
+            .and_then(|neighbour| shown.get(neighbour).copied());
+        let (Some((destination, passed)), Some(column)) = (neighbour, self.data_view_column(index)) else {
+            // As GtkTreeView does at the edge, so the key never passes on unheard.
+            view.error_bell();
+            return;
+        };
+        // `insert_column` takes the column out first, so either way it lands past the neighbour.
+        view.insert_column(destination, &column);
+        self.keep_focus_in_view(index);
+        self.announce_move(index, passed, toward_start);
+    }
+
+    // `scroll_to` reads the headers' last layout, and GtkNative's layout handler runs before this one.
+    fn keep_focus_in_view(&self, index: usize) {
+        let Some(surface) = self.native().and_then(|native| native.surface()) else {
+            return;
+        };
+        let grid = self.downgrade();
+        let handler = Rc::new(Cell::new(None::<glib::SignalHandlerId>));
+        let slot = handler.clone();
+        let id = surface.connect_layout(move |surface, _, _| {
+            if let Some(id) = slot.take() {
+                surface.disconnect(id);
+            }
+            if let Some(grid) = grid.upgrade()
+                && let Some(position) = grid
+                    .focused_cell()
+                    .filter(|cell| cell.column() == index)
+                    .and_then(|cell| cell.position())
+                && let Some(column) = grid.data_view_column(index)
+            {
+                grid.column_view()
+                    .scroll_to(position, Some(&column), gtk::ListScrollFlags::NONE, None);
+            }
+        });
+        handler.set(Some(id));
+        surface.request_layout();
+    }
+
+    fn announce_move(&self, index: usize, passed: usize, toward_start: bool) {
+        let columns = self.grid_columns();
+        let (Some(moved), Some(passed)) = (columns.get(index), columns.get(passed)) else {
+            return;
+        };
+        let names = [("column", moved.name.as_str()), ("neighbour", passed.name.as_str())];
+        let text = match toward_start {
+            true => crate::i18n::gettext_f("Moved {column} before {neighbour}", &names),
+            false => crate::i18n::gettext_f("Moved {column} after {neighbour}", &names),
+        };
+        crate::ui::a11y::announce(&self.column_view(), &text, gtk::AccessibleAnnouncementPriority::Medium);
+    }
+
+    pub(crate) fn shown_columns(&self) -> Vec<usize> {
+        self.shown_slots().into_iter().map(|(_, index)| index).collect()
+    }
+
+    // View positions count the row numbers, the filler and hidden columns too.
+    fn shown_slots(&self) -> Vec<(u32, usize)> {
+        let set = self.imp().columns.borrow();
+        let columns = self.column_view().columns();
+        (0..columns.n_items())
+            .filter_map(|position| {
+                let column = columns.item(position).and_downcast::<gtk::ColumnViewColumn>()?;
+                let index = set.index_of(&column).filter(|_| column.is_visible())?;
+                Some((position, index))
+            })
             .collect()
     }
 
@@ -754,8 +828,20 @@ impl DataGrid {
 
 // GTK makes the header and rows only as wide as the columns unless one
 // expands, and never resizes the last column; this one takes both.
+// Its empty child carries the stripe out to the view's edge.
 fn filler_column() -> gtk::ColumnViewColumn {
-    let column = gtk::ColumnViewColumn::builder().expand(true).build();
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, item| {
+        let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
+            return;
+        };
+        let blank = adw::Bin::builder()
+            .accessible_role(gtk::AccessibleRole::Presentation)
+            .build();
+        cell.set_child(Some(&blank));
+        super::stripes::follow(cell);
+    });
+    let column = gtk::ColumnViewColumn::builder().expand(true).factory(&factory).build();
     column.set_id(Some("filler"));
     column
 }

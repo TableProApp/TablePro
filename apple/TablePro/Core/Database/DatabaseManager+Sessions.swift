@@ -442,8 +442,10 @@ extension DatabaseManager {
             }
         } else if driver is PluginDriverAdapter {
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
+            let browsesSchemas = grouping == .bySchema || grouping == .hierarchicalSchema
             let sessionStartedAt = session(for: connectionId)?.connectedAt
-            let adapter = try await sessionDriverGate.withExclusiveAccess(connectionId) {
+            // Read inside the gate: a pinned operation queued behind the switch can move the driver.
+            let schema = try await sessionDriverGate.withExclusiveAccess(connectionId) {
                 try await trackOperation(sessionId: connectionId) {
                     try Task.checkCancellation()
                     guard session(for: connectionId)?.connectedAt == sessionStartedAt else {
@@ -456,14 +458,17 @@ extension DatabaseManager {
                     if grouping == .bySchema {
                         await resetSchema(on: adapter, to: pm?.schema.defaultSchemaName)
                     }
-                    return adapter
+                    return adapter.currentSchema
                 }
             }
             updateSession(connectionId) { session in
                 session.browseDatabase = database
-                if grouping == .bySchema {
-                    session.browseSchema = adapter.currentSchema
+                if browsesSchemas {
+                    session.browseSchema = schema
                 }
+            }
+            if persist, browsesSchemas {
+                appSettingsStorage.saveLastSchema(schema, for: connectionId)
             }
         }
 
@@ -746,6 +751,7 @@ extension DatabaseManager {
         // Before the tunnel goes: a debug target whose client vanishes keeps its locks until someone aborts it.
         await RoutineDebugSessions.shared.stopAll(connectionId: sessionId, tabsCloseAfter: true)
         defer { RoutineDebugSessions.shared.reopenAdmission(for: sessionId) }
+        LiveMessageSessions.shared.end(connectionId: sessionId)
 
         tabStatePersister?.persistTabState(for: sessionId)
         if origin == .userRequested {
@@ -907,6 +913,8 @@ extension DatabaseManager {
         adopted.color = source.color
         adopted.iconName = source.iconName
         adopted.tagIds = source.tagIds
+        // Masking changes no route, and a rule saved while the window is open must hide values at once.
+        adopted.maskingRules = source.maskingRules
         return adopted
     }
 

@@ -141,7 +141,7 @@ struct CredentialProfileEditorSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .pgpass:
-                Text("Looked up in ~/.pgpass by the host, port, database and username of whichever connection is opening.")
+                Text("Looked up in ~/.pgpass by the host, port, database and username of the PostgreSQL-family connection that is opening. Other connections ask for the password.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .source:

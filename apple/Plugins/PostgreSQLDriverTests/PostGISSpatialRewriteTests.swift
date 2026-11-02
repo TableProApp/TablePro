@@ -13,13 +13,13 @@ struct PostGISConversionQueryTests {
     @Test("geometry casts each element to the probed geometry type")
     func geometryQuery() throws {
         let query = try #require(PostGISSpatialRewrite.conversionQuery(for: geometry))
-        #expect(query.contains("\"public\".ST_AsEWKT(($1::text[])[i]::\"public\".\"geometry\")"))
+        #expect(query.contains("\"public\".ST_AsEWKT(($1::pg_catalog.text[])[i]::\"public\".\"geometry\")"))
     }
 
     @Test("geography casts each element to the probed geography type")
     func geographyQuery() throws {
         let query = try #require(PostGISSpatialRewrite.conversionQuery(for: geography))
-        #expect(query.contains("\"gis\".ST_AsEWKT(($1::text[])[i]::\"gis\".\"geography\")"))
+        #expect(query.contains("\"gis\".ST_AsEWKT(($1::pg_catalog.text[])[i]::\"gis\".\"geography\")"))
     }
 
     @Test("Unknown type name returns nil")
@@ -32,7 +32,7 @@ struct PostGISConversionQueryTests {
     @Test("Elements are walked by generate_subscripts, which 9.1 has, in array order")
     func portableOrdering() throws {
         let query = try #require(PostGISSpatialRewrite.conversionQuery(for: geometry))
-        #expect(query.contains("pg_catalog.generate_subscripts($1::text[], 1) AS i ORDER BY i"))
+        #expect(query.contains("pg_catalog.generate_subscripts($1::pg_catalog.text[], 1) AS i ORDER BY i"))
         #expect(!query.contains("WITH ORDINALITY"))
         #expect(!query.contains("unnest"))
     }
@@ -63,6 +63,24 @@ struct PostGISConversionQueryTests {
     func probeReadsNamespace() {
         #expect(PostGISSpatialRewrite.probeQuery.contains("n.nspname"))
         #expect(PostGISSpatialRewrite.probeQuery.contains("JOIN pg_catalog.pg_namespace n"))
+    }
+
+    // Another role's `CREATE TYPE evil.geometry AS ENUM (...)` beside an `evil.st_asewkt(evil.geometry)` took the
+    // conversion to that role's function.
+    @Test("The probe takes only base types the postgis extension owns")
+    func probeTakesOnlyThePostgisExtensionsBaseTypes() {
+        let probe = PostGISSpatialRewrite.probeQuery
+        #expect(probe.contains("t.typtype = 'b'"))
+        #expect(probe.contains("d.deptype = 'e'"))
+        #expect(probe.contains("JOIN pg_catalog.pg_extension x ON x.oid = d.refobjid"))
+        #expect(probe.contains("x.extname = 'postgis'"))
+    }
+
+    @Test("The conversion casts its parameter to pg_catalog's text array")
+    func conversionNamesPgCatalogText() throws {
+        let query = try #require(PostGISSpatialRewrite.conversionQuery(for: geometry))
+        #expect(query.contains("$1::pg_catalog.text[]"))
+        #expect(!query.contains("$1::text[]"))
     }
 }
 

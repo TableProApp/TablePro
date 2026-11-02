@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import SwiftUI
 import TableProTheme
 
@@ -23,6 +24,7 @@ internal struct BinaryValueViewerView: View {
     @State private var hexDump = ""
     @State private var decodedKey: TaskKey?
     @State private var searchText = ""
+    @State private var schemaRevision = 0
 
     init(data: Data, format: BinaryValueFormat, onPopOut: (() -> Void)? = nil) {
         self.data = data
@@ -37,14 +39,31 @@ internal struct BinaryValueViewerView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .task(id: TaskKey(data: data, format: format)) {
+        .task(id: TaskKey(data: data, format: format, schemaRevision: schemaRevision)) {
             await decode()
+        }
+        // Matched on the format, not the document: a decode still running may be about to report it missing.
+        .onReceive(NotificationCenter.default.publisher(for: AvroSchemaStore.didRestoreSchema).receive(on: RunLoop.main)) { notification in
+            guard case .avro(let schemaID) = format,
+                  notification.userInfo?[AvroSchemaStore.schemaIDKey] as? String == schemaID else { return }
+            schemaRevision += 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ProtobufSchemaStore.didRestoreSchema).receive(on: RunLoop.main)) { notification in
+            guard case .protobufSchema(let schemaID, _) = format,
+                  notification.userInfo?[ProtobufSchemaStore.schemaIDKey] as? String == schemaID else { return }
+            schemaRevision += 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SchemaRegistryCache.didChange).receive(on: RunLoop.main)) { notification in
+            guard case .schemaRegistry(let connectionID) = format,
+                  notification.userInfo?[SchemaRegistryCache.connectionIDKey] as? UUID == connectionID else { return }
+            schemaRevision += 1
         }
     }
 
     private struct TaskKey: Equatable {
         let data: Data
         let format: BinaryValueFormat
+        let schemaRevision: Int
     }
 
     // MARK: - Toolbar
@@ -100,6 +119,25 @@ internal struct BinaryValueViewerView: View {
                 Divider()
                 hexBody
             }
+        case .missingSchema?:
+            VStack(spacing: 0) {
+                banner(missingSchemaMessage, systemImage: "questionmark.folder")
+                Divider()
+                hexBody
+            }
+        case .registryUnavailable(let schemaID, let reason)?:
+            VStack(spacing: 0) {
+                banner(
+                    String(
+                        format: String(localized: "Schema %lld could not be read from the Schema Registry. %@ Showing the stored bytes."),
+                        Int(schemaID),
+                        reason
+                    ),
+                    systemImage: "exclamationmark.triangle"
+                )
+                Divider()
+                hexBody
+            }
         case .decoded(let tree, let text, let note)?:
             VStack(spacing: 0) {
                 if let note {
@@ -129,6 +167,12 @@ internal struct BinaryValueViewerView: View {
                 searchText: $searchText,
                 fullValueModeName: String(localized: "Text")
             )
+        case .php(let root):
+            FilterableTreeView(
+                rootNode: root,
+                searchText: $searchText,
+                fullValueModeName: String(localized: "Text")
+            )
         }
     }
 
@@ -147,6 +191,13 @@ internal struct BinaryValueViewerView: View {
     // The dump alone: HexEditorBody brings a Close button the popover, window and inspector each own.
     private var hexBody: some View {
         HexDumpDisplayView(text: hexDump, font: themeEngine.valueFont)
+    }
+
+    private var missingSchemaMessage: String {
+        if case .protobufSchema = format {
+            return String(localized: "This Mac no longer has the schema chosen for this column, so the stored bytes show. Choose it again with Display As > Protobuf Schema…")
+        }
+        return String(localized: "This Mac no longer has the schema chosen for this column, so the stored bytes show. Choose it again with Display As > Avro Schema…")
     }
 
     private func failureBanner(_ error: BinaryValueDecodeError) -> some View {
@@ -174,10 +225,19 @@ internal struct BinaryValueViewerView: View {
 
     // A pane added back restarts the task with the same key.
     private func decode() async {
-        let key = TaskKey(data: data, format: format)
+        let key = TaskKey(data: data, format: format, schemaRevision: schemaRevision)
         guard decodedKey != key else { return }
         let data = data
         let format = format
+        // A new value never shows the last one's document while its schema is fetched.
+        if decodedKey?.data != data || decodedKey?.format != format {
+            document = nil
+            hexDump = ""
+        }
+        if case .schemaRegistry(let connectionID) = format, let schemaID = try? SchemaRegistryFrame.schemaID(data) {
+            _ = await SchemaRegistryCache.shared.schema(connectionID: connectionID, schemaID: schemaID)
+            guard !Task.isCancelled else { return }
+        }
         let (decoded, dump) = await Task.detached(priority: .userInitiated) {
             (
                 BinaryValueDecoding.document(data, format: format),

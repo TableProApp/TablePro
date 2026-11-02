@@ -456,7 +456,7 @@ extension MainContentCoordinator {
         )
         /// Asking again for a listing already open brings it up to date, the way Refresh would. A tab
         /// opened just now loads when its view first appears, and nothing is listening for this yet.
-        AppEvents.shared.tableListingRefreshRequested.send(tabId)
+        AppEvents.shared.tabRefreshRequested.send(tabId)
     }
 
     /// The schema the sidebar lists, which a cross-database tab can leave the shared driver off.

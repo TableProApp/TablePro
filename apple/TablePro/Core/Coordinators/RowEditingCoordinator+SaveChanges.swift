@@ -124,7 +124,7 @@ extension RowEditingCoordinator {
                         }
                     }
                     if case .showRows(let line) = choice {
-                        showCascadeRows(line, scope: plan.scope)
+                        showCascadeRows(line, scope: plan.cascadeScope ?? plan.scope)
                     }
                     return
                 }
@@ -378,8 +378,7 @@ extension RowEditingCoordinator {
         parent.reloadActiveResult()
     }
 
-    /// Every table this save wrote rows to or truncated, so a tab showing one in this window or
-    /// another stops showing the rows as they were. The saving tab reloads itself and is left out.
+    // The saving tab reloads itself and is left out.
     private func announceWrittenTables(
         plan: DataWritePlan,
         truncatedTables: Set<DatabaseTreeTableRef>,
@@ -390,6 +389,13 @@ extension RowEditingCoordinator {
         var written = Set(plan.steps.filter { $0.kind == .rowWrite }.compactMap { step in
             step.tableName.map { DataWriteTarget(database: plan.scope.database, schema: plan.scope.schema, table: $0) }
         })
+        if let base = plan.viewTarget?.baseTable, plan.steps.contains(where: { $0.kind == .rowWrite }) {
+            written.insert(DataWriteTarget(
+                database: base.database ?? plan.scope.database,
+                schema: base.schema ?? plan.scope.schema,
+                table: base.name
+            ))
+        }
         for ref in truncatedTables {
             guard let scope = adoption.objectScope(for: ref, connectionId: connectionId) else { continue }
             written.insert(DataWriteTarget(database: scope.database, schema: scope.schema, table: ref.table.name))
@@ -576,6 +582,7 @@ extension RowEditingCoordinator {
         let databaseType = connection.type
         let connectionId = connection.id
         let capturedAt = Date()
+        let writtenThroughView: Bool? = plan.viewTarget == nil ? nil : true
 
         Task(priority: .utility) {
             var historyId: UUID?
@@ -593,22 +600,22 @@ extension RowEditingCoordinator {
                     generatedColumns: generatedColumns,
                     identityColumns: identityColumns,
                     columnTypeNames: columnTypeNames,
-                    operations: operations
+                    operations: operations,
+                    writtenThroughView: writtenThroughView
                 )
             )
         }
     }
 
     private func previewCascade(of plan: DataWritePlan) async -> CascadeDeletePreview? {
-        guard let root = CascadeDeleteRoot(operations: plan.rowOperations),
-              var environment = CascadeDeletePreviewer.Environment.live(
-                  scope: plan.scope,
-                  databaseType: plan.databaseType
-              )
+        guard var root = CascadeDeleteRoot(operations: plan.rowOperations) else { return nil }
+        guard let scope = plan.cascadeScope else { return CascadeDeletePreview(outcome: .unavailable) }
+        if let target = plan.viewTarget { root = root.onBaseTable(of: target) }
+        guard var environment = CascadeDeletePreviewer.Environment.live(scope: scope, databaseType: plan.databaseType)
         else { return nil }
         // The only prologue a save carries turns foreign key checks off for "Ignore foreign key checks".
         environment.checksTurnedOffBySave = !plan.prologue.isEmpty
-        return await CascadeDeletePreviewer.preview(of: root, in: plan.scope, environment: environment)
+        return await CascadeDeletePreviewer.preview(of: root, in: scope, environment: environment)
     }
 
     // The save was cancelled first, so the staged deletes stay for the user to save after looking.

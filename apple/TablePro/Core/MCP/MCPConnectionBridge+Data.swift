@@ -98,7 +98,8 @@ extension MCPConnectionBridge {
                 databaseType: databaseType,
                 pluginDriver: driver.queryBuildingPluginDriver,
                 dialect: dialect,
-                pagination: pagination
+                pagination: pagination,
+                dialectQuote: dialect.map { quoteIdentifierFromDialect($0) } ?? { SQLEscaping.quoteIdentifier($0) }
             )
             let sortState = try MCPConnectionBridge.sortState(from: request.sort, columns: names)
             let requested = try MCPConnectionBridge.validatedSelection(request.columns, available: names)
@@ -146,7 +147,8 @@ extension MCPConnectionBridge {
             query: sql,
             maxRows: limit,
             timeoutSeconds: timeoutSeconds,
-            cancellation: cancellation
+            cancellation: cancellation,
+            maskingTable: request.table
         )
         if case .object(var fields) = payload {
             fields["table"] = .string(request.table)
@@ -438,7 +440,7 @@ extension MCPConnectionBridge {
         guard !trimmed.isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
-        guard !QueryClassifier.isExplainStatement(trimmed) else {
+        guard !QueryClassifier.isExplainStatement(trimmed, grammar: databaseType.lexicalGrammar) else {
             return MCPExplainRequest(statement: trimmed, gatedSQL: trimmed, subjectSQL: trimmed, driverStep: nil)
         }
         guard let first = variants.first else {
@@ -452,7 +454,9 @@ extension MCPConnectionBridge {
         case .driver(let runsStatement):
             return MCPExplainRequest(
                 statement: trimmed,
-                gatedSQL: ExplainRequest.gatedSQL(subject: trimmed, runsStatement: runsStatement),
+                gatedSQL: ExplainRequest.gatedSQL(
+                    subject: trimmed, runsStatement: runsStatement, databaseType: databaseType
+                ),
                 subjectSQL: trimmed,
                 driverStep: ExplainRequest.DriverStep(variantId: variant.id, runsStatement: runsStatement)
             )

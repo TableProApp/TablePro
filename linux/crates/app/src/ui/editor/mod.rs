@@ -77,7 +77,7 @@ glib::wrapper! {
 
 pub struct SqlEditorInit {
     pub initial_query: Option<String>,
-    pub settings: Rc<tablepro_storage::AppSettings>,
+    pub settings: Rc<tablepro_linux_platform::AppSettings>,
     pub history: Option<HistoryService>,
     pub tasks: Tasks,
     /// The window's session, which the tab opens its own connection
@@ -100,7 +100,7 @@ struct PlannedRun {
 }
 
 pub(crate) struct EditorDeps {
-    settings: Rc<tablepro_storage::AppSettings>,
+    settings: Rc<tablepro_linux_platform::AppSettings>,
     history: Option<HistoryService>,
     tasks: Tasks,
     session: ActiveSession,
@@ -495,7 +495,10 @@ impl SqlEditor {
         let run = ScriptRun {
             batches,
             policy,
-            statement_timeout: deps.settings.query_timeout(),
+            statement_timeout: session
+                .workspace_settings()
+                .editor_timeout
+                .resolve(deps.settings.query_timeout()),
             row_limit: RowLimit::EDITOR_DEFAULT,
             run_row_limit: RUN_ROW_LIMIT,
         };
@@ -720,7 +723,7 @@ impl SqlEditor {
         imp.source_view.grab_focus();
     }
 
-    fn connect_theme(&self, settings: &Rc<tablepro_storage::AppSettings>) {
+    fn connect_theme(&self, settings: &Rc<tablepro_linux_platform::AppSettings>) {
         let view = self.imp().source_view.get().upcast::<sourceview5::View>();
         view.set_monospace(true);
         crate::ui::style_scheme_resolver::apply(&view, &settings.style_scheme());
@@ -736,7 +739,7 @@ impl SqlEditor {
             }
         ));
         let scheme = settings.gio().connect_changed(
-            Some(tablepro_storage::settings::keys::STYLE_SCHEME),
+            Some(tablepro_linux_platform::settings::keys::STYLE_SCHEME),
             glib::clone!(
                 #[weak]
                 view,
@@ -749,8 +752,8 @@ impl SqlEditor {
         ];
         crate::ui::editor_font_provider::apply(settings);
         for key in [
-            tablepro_storage::settings::keys::USE_SYSTEM_FONT,
-            tablepro_storage::settings::keys::CUSTOM_FONT,
+            tablepro_linux_platform::settings::keys::USE_SYSTEM_FONT,
+            tablepro_linux_platform::settings::keys::CUSTOM_FONT,
         ] {
             let settings_for_key = Rc::downgrade(settings);
             let font = settings.gio().connect_changed(Some(key), move |_, _| {

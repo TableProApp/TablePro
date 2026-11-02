@@ -542,7 +542,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     table: table.name, databaseName: table.databaseName)
                 for seq in sequences where !emittedSequenceNames.contains(seq.name) {
                     emittedSequenceNames.insert(seq.name)
-                    let quotedName = "\"\(seq.name.replacingOccurrences(of: "\"", with: "\"\""))\""
+                    let quotedName = "\"\(seq.name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
                     if optionValue(table, at: 1) {
                         try writer.write(
                             "DROP SEQUENCE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\(statementEnd)")
@@ -562,7 +562,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     table: table.name, databaseName: table.databaseName)
                 for enumType in enumTypes where !emittedTypeNames.contains(enumType.name) {
                     emittedTypeNames.insert(enumType.name)
-                    let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
+                    let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
                     if optionValue(table, at: 1) {
                         try writer.write(
                             "DROP TYPE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\(statementEnd)")

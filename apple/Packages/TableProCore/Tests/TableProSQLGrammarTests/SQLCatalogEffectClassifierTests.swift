@@ -77,9 +77,20 @@ struct SQLCatalogEffectClassifierTests {
 
     @Test("Leading comments are skipped, a MySQL executable comment is kept")
     func leadingComments() {
-        #expect(SQLLeadingComments.stripping("-- a\n/* b */ SELECT 1") == "SELECT 1")
-        #expect(SQLLeadingComments.stripping("/*!40101 SET x = 1 */") == "/*!40101 SET x = 1 */")
-        #expect(SQLLeadingComments.stripping("-- only a comment").isEmpty)
+        let mySQL: SQLLexicalGrammar = [.hashLineComments, .executableComments]
+        #expect(SQLLeadingComments.stripping("-- a\n/* b */ SELECT 1", grammar: mySQL) == "SELECT 1")
+        #expect(SQLLeadingComments.stripping("/*!40101 SET x = 1 */", grammar: mySQL) == "/*!40101 SET x = 1 */")
+        #expect(SQLLeadingComments.stripping("-- only a comment", grammar: mySQL).isEmpty)
+    }
+
+    @Test("Leading comments end where the grammar ends them, and the * of an opener closes nothing")
+    func leadingCommentsFollowTheGrammar() {
+        #expect(SQLLeadingComments.stripping("/*/ -- */ DROP TABLE t", grammar: .ansi) == "DROP TABLE t")
+        #expect(SQLLeadingComments.stripping("/**/ DROP TABLE t", grammar: .ansi) == "DROP TABLE t")
+        #expect(SQLLeadingComments.stripping("/*/", grammar: .ansi).isEmpty)
+        #expect(SQLLeadingComments.stripping("/* a /* b */ c */ DROP TABLE t", grammar: .nestedBlockComments) == "DROP TABLE t")
+        #expect(SQLLeadingComments.stripping("-- a\rDROP TABLE t", grammar: .carriageReturnEndsLineComments) == "DROP TABLE t")
+        #expect(SQLLeadingComments.stripping("-- a\rDROP TABLE t", grammar: .ansi).isEmpty)
     }
 
     @Test("A procedure or block runs statements the text does not show; database DDL refreshes as much but says what it does")

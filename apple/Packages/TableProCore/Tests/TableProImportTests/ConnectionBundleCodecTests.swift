@@ -300,6 +300,34 @@ struct ConnectionBundleCodecTests {
         #expect(imported.queryTimeoutSeconds == 0)
     }
 
+    @Test("Decoding strips the fields that pick a credential kept on this device or let a ledger run code")
+    func decodeStripsLocalCredentialSelectors() throws {
+        let settings = Self.settings(additionalFields: [
+            "mssqlAuthMethod": "entra",
+            "entraTenantId": "5b0f3c1e-0000-4000-8000-00000000c0de",
+            "entraClientId": "9a1d7e42-0000-4000-8000-0000000000aa",
+            "snowflakeAccount": "org-account",
+            "snowflakeConnectionName": "default",
+            "beancountRunLedgerPlugins": "true",
+            "mongoAuthMechanism": "MONGODB-AWS"
+        ])
+        let data = try ConnectionBundleCodec.encode(Self.bundle(settings: [settings]))
+
+        let imported = try #require(ConnectionBundleCodec.decode(data).connections.first?.settings)
+
+        #expect(imported.additionalFields == ["mssqlAuthMethod": "entra", "snowflakeAccount": "org-account"])
+    }
+
+    @Test("Decoding keeps a MongoDB auth mechanism that signs in with what the file carries")
+    func decodeKeepsOrdinaryMongoMechanisms() throws {
+        let settings = Self.settings(additionalFields: ["mongoAuthMechanism": "SCRAM-SHA-256"])
+        let data = try ConnectionBundleCodec.encode(Self.bundle(settings: [settings]))
+
+        let imported = try #require(ConnectionBundleCodec.decode(data).connections.first?.settings)
+
+        #expect(imported.additionalFields == ["mongoAuthMechanism": "SCRAM-SHA-256"])
+    }
+
     @Test("An older file without timeout fields decodes them as nil")
     func olderFileWithoutTimeouts() throws {
         let json = Data("""

@@ -24,7 +24,7 @@ internal enum MySQLFunctionalKeyParts {
         case .mysql:
             guard MySQLServerVersion.isKnownBelow(firstRelease, banner: banner) else { return nil }
             return String(localized: "Indexing an expression needs MySQL 8.0.13 or later.")
-        case .tidb, .oceanbase, .databend:
+        case .tidb, .oceanbase, .databend, .starrocks:
             return nil
         }
     }

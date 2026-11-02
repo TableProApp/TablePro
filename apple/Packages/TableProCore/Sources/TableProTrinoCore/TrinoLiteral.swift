@@ -55,7 +55,7 @@ public enum TrinoLiteral {
     }
 
     static func quoted(_ text: String) -> String {
-        "'" + text.replacingOccurrences(of: "'", with: "''") + "'"
+        "'" + text.replacingOccurrences(of: "'", with: "''", options: .literal) + "'"
     }
 
     static func isNumeric(_ text: String) -> Bool {

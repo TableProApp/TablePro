@@ -212,6 +212,6 @@ struct SQLParameterInliner {
 
     /// Escapes single quotes by doubling them for SQL string literals.
     private static func escapeString(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 }

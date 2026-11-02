@@ -58,7 +58,7 @@ struct SQLDDLFallbackPolicyTests {
     }
 
     private static let fabricatingTypes: Set<DatabaseType> = [
-        .mysql, .mariadb, .tidb, .databend, .oceanbase, .postgresql, .kingbasees, .sqlite, .redshift,
+        .mysql, .mariadb, .tidb, .databend, .oceanbase, .starrocks, .postgresql, .kingbasees, .sqlite, .redshift,
         .cockroachdb, .pglite, .mssql, .oracle, .snowflake, .dameng, .clickhouse, .duckdb,
         .cassandra, .scylladb, .cloudflareD1, .cloudflareR2SQL, .bigQuery, .spanner,
         .libsql, .turso, .teradata, .trino, .presto, .sapHana,

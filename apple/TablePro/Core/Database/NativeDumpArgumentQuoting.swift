@@ -27,7 +27,28 @@ enum NativeDumpArgumentQuoting {
     }
 
     private static func quotedPatternPart(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+    }
+
+    // libpq reads a -d value holding `=` or a URI prefix as a whole conninfo, whose host, port and
+    // sslmode override -h, -p and PGSSLMODE. As the dbname of a conninfo it is only a name again.
+    static func postgresDatabase(_ name: String) throws -> String {
+        try refuseNUL(name)
+        let escaped = name
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "'", with: "\\'", options: .literal)
+        return "dbname='\(escaped)'"
+    }
+
+    // SqlClient ends a bare value at the next `;` and takes the last of a repeated keyword, so a
+    // database name could move the sign-in, password included, to another server.
+    static func sqlServerConnectionStringValue(_ value: String) throws -> String {
+        try refuseNUL(value)
+        return "\"\(value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+    }
+
+    private static func refuseNUL(_ value: String) throws {
+        if value.unicodeScalars.contains("\0") { throw NativeDumpError.nulInArgument }
     }
 
     /// The whole `.dump` invocation for a narrowed SQLite backup, as ONE process argument.
@@ -55,12 +76,12 @@ enum NativeDumpArgumentQuoting {
 
     static func sqliteDumpToken(_ name: String) -> String {
         let pattern = name
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "%", with: "\\%", options: .literal)
+            .replacingOccurrences(of: "_", with: "\\_", options: .literal)
         let tokenized = pattern
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
         return "\"\(tokenized)\""
     }
 

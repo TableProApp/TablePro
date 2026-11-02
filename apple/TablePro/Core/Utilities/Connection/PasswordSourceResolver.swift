@@ -147,7 +147,7 @@ enum PasswordSourceResolver {
     }
 
     static func shellQuote(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''", options: .literal) + "'"
     }
 
     static func extractJsonField(_ key: String, from json: String) throws -> String {

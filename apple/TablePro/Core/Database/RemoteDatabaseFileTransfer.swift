@@ -400,7 +400,7 @@ enum RemoteDatabaseFileTransfer {
     /// Quotes a path for a SQL string literal, which is not the same job as quoting it for the
     /// shell: SQL escapes a single quote by doubling it, and the shell cannot.
     private static func sqlStringLiteral(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        "'" + value.replacingOccurrences(of: "'", with: "''", options: .literal) + "'"
     }
 
     private static func requireLocalSpace(for bytes: UInt64, at directory: URL) throws {

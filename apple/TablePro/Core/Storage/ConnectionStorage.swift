@@ -663,9 +663,10 @@ final class ConnectionStorage {
 
     // MARK: - SSL Client Key Passphrase Storage
 
-    func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) {
+    @discardableResult
+    func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
-        keychain.writeString(passphrase, forKey: key)
+        return keychain.writeString(passphrase, forKey: key)
     }
 
     func loadSSLClientKeyPassphrase(for connectionId: UUID) -> String? {
@@ -863,5 +864,61 @@ final class ConnectionStorage {
                 Self.logger.error("Failed to persist plugin secure field migration; will retry on next launch")
             }
         }
+    }
+
+    // MARK: - MongoDB Connection-String Secrets
+
+    // Import from URL once kept these as plain options, which exports, links, the team library and sync carry. Runs
+    // every launch, so a row an older build wrote is moved too.
+    func moveMongoURISecretsToKeychain() {
+        let connections = loadConnections()
+        guard !lastLoadFailed else { return }
+        var cleaned: [UUID: [String: String]] = [:]
+        for connection in connections {
+            let kept = keepingMongoURISecretsInKeychain(connection)
+            if kept.additionalFields != connection.additionalFields {
+                cleaned[connection.id] = kept.additionalFields
+            }
+        }
+        guard !cleaned.isEmpty else { return }
+        let moved = mutateConnections(ids: Set(cleaned.keys), byUser: false) { connection in
+            connection.additionalFields = cleaned[connection.id] ?? connection.additionalFields
+        }
+        if !moved {
+            Self.logger.error("Could not remove MongoDB connection-string secrets from connections.json; retrying next launch")
+        }
+    }
+
+    // The Keychain write comes first: a field whose write fails stays in the record rather than being lost. A value
+    // already in the Keychain wins, since a legacy record an older build syncs can carry a stale copy.
+    func keepingMongoURISecretsInKeychain(_ connection: DatabaseConnection) -> DatabaseConnection {
+        var kept = connection
+        let id = connection.id
+        let tokenId = ConnectionSecretOptions.mongoSessionTokenFieldId
+        let holdsToken = { [self] (token: String) in
+            !(loadPluginSecureField(fieldId: tokenId, for: id) ?? "").isEmpty
+                || savePluginSecureField(token, fieldId: tokenId, for: id)
+        }
+        for (key, value) in connection.additionalFields where ConnectionSecretOptions.isSecret(key: key, value: value) {
+            guard let option = ConnectionSecretOptions.mongoOption(in: key) else {
+                if holdsToken(value) {
+                    kept.additionalFields[key] = nil
+                }
+                continue
+            }
+            if ConnectionSecretOptions.isMongoKeyPassphrase(option: option) {
+                if !(loadSSLClientKeyPassphrase(for: id) ?? "").isEmpty || saveSSLClientKeyPassphrase(value, for: id) {
+                    kept.additionalFields[key] = nil
+                }
+            } else if ConnectionSecretOptions.isMongoMechanismProperties(option: option) {
+                let split = ConnectionSecretOptions.splitSessionToken(from: value)
+                if let token = split.sessionToken, holdsToken(token) {
+                    kept.additionalFields[key] = split.remaining
+                }
+            } else {
+                kept.additionalFields[key] = nil
+            }
+        }
+        return kept
     }
 }

@@ -117,7 +117,7 @@ public struct FilterSQLGenerator: Sendable {
     private func comparisonCondition(
         _ column: String, _ operand: String, _ operatorText: String, _ literal: String, folding: PluginSQLCaseFolding
     ) -> String {
-        guard folding.foldsComparisonOperands, literal.hasPrefix("'") else {
+        guard folding.foldsComparisonOperands, literal.unicodeScalars.first == "'" else {
             return "\(column) \(operatorText) \(literal)"
         }
         return "\(folding.fold(operand)) \(operatorText) \(folding.fold(literal))"
@@ -172,7 +172,7 @@ public struct FilterSQLGenerator: Sendable {
     ) -> String {
         let keyword = negated ? "NOT IN" : "IN"
         let items = listItems(rawValue).map { escapeValue($0, kind: kind) }
-        let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.hasPrefix("'") }
+        let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.unicodeScalars.first == "'" }
         let rendered = foldable ? items.map { folding.fold($0) } : items
         let subject = foldable ? folding.fold(operand) : column
         return "\(subject) \(keyword) (\(rendered.joined(separator: ", ")))"
@@ -202,7 +202,7 @@ public struct FilterSQLGenerator: Sendable {
         if let identifierQuoter { return identifierQuoter(name) }
         let open = dialect.identifierQuote
         let close = open == "[" ? "]" : open
-        let escaped = name.replacingOccurrences(of: close, with: "\(close)\(close)")
+        let escaped = name.replacingOccurrences(of: close, with: "\(close)\(close)", options: .literal)
         return "\(open)\(escaped)\(close)"
     }
 

@@ -337,6 +337,11 @@ struct PasswordSourceResolverTests {
         #expect(command == "op read --no-newline 'x'\\''; rm -rf ~ #'")
     }
 
+    @Test("Shell quoting escapes a quote that a combining mark follows")
+    func shellQuotingIsByCodeUnit() {
+        #expect(PasswordSourceResolver.shellQuote("x'\u{301}; rm -rf ~ #") == "'x'\\''\u{301}; rm -rf ~ #'")
+    }
+
     @Test("Extracts a JSON field from a secret string")
     func extractsJsonField() throws {
         let value = try PasswordSourceResolver.extractJsonField(

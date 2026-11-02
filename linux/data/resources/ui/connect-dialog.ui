@@ -160,6 +160,30 @@
                         </property>
                       </object>
                     </child>
+                    <child>
+                      <!-- Off follows the query timeout in Preferences. -->
+                      <object class="AdwExpanderRow" id="query_timeout_row">
+                        <property name="title" translatable="yes">Custom Query Timeout</property>
+                        <property name="subtitle" translatable="yes">Use a timeout for editor queries on this connection instead of the one in Preferences</property>
+                        <property name="show-enable-switch">True</property>
+                        <property name="enable-expansion">False</property>
+                        <child>
+                          <object class="AdwSpinRow" id="query_timeout_seconds_row">
+                            <property name="title" translatable="yes">Query Timeout (seconds)</property>
+                            <property name="subtitle" translatable="yes">Set to 0 to disable</property>
+                            <property name="adjustment">
+                              <object class="GtkAdjustment">
+                                <property name="lower">0</property>
+                                <property name="upper">3600</property>
+                                <property name="value">60</property>
+                                <property name="step-increment">5</property>
+                                <property name="page-increment">60</property>
+                              </object>
+                            </property>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
                   </object>
                 </child>
                 <child>

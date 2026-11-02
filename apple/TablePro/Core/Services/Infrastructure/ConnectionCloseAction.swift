@@ -25,20 +25,23 @@ internal enum ConnectionCloseAction {
         case confirmUnsavedWork
     }
 
-    /// Pure so the case that used to fail silently is pinned by a test: a connection with no session
-    /// has nothing to lose, and asking about it produced an alert nobody could answer.
-    /// Saves in every window hosting the connection, not only the one that answered first. Each
-    /// coordinator can save just its own selected tab's live work, so a Save that reached one of
-    /// them left the other window's grid edits behind and closed over them.
+    // Every window hosting the connection, every tab in each: saving only the selected tab closed over the rest.
     private static func saveEveryWindowsWork(
         across coordinators: [MainContentCoordinator],
         fallback: MainContentCoordinator?
     ) async -> Bool {
         let targets = coordinators.isEmpty ? [fallback].compactMap { $0 } : coordinators
         for coordinator in targets {
-            guard await coordinator.commandActions?.saveSelectedTabWork() == true else { return false }
+            guard await coordinator.commandActions?.saveEveryTabsWork() == true else { return false }
         }
         return !targets.isEmpty
+    }
+
+    private static func unsavedWorkMessage(across coordinators: [MainContentCoordinator]) -> String {
+        let keepsTabsOpen = coordinators.contains { coordinator in
+            coordinator.commandActions?.holdsWorkOnlyItsTabCanSave(among: coordinator.tabManager.tabs) == true
+        }
+        return MainContentCommandActions.unsavedWorkMessage(keepsTabsOpen: keepsTabsOpen)
     }
 
     /// The transaction is asked about before unsaved work, whose Save writes at once: a Cancel on the
@@ -106,8 +109,9 @@ internal enum ConnectionCloseAction {
         }
 
         let presentingWindow = reveal(connectionId: connectionId)
+        let targets = coordinators.isEmpty ? [coordinator].compactMap { $0 } : coordinators
         switch await AlertHelper.confirmSaveChanges(
-            message: String(localized: "Your changes will be lost if you don't save them."),
+            message: unsavedWorkMessage(across: targets),
             window: presentingWindow
         ) {
         case .save:

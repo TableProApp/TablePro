@@ -198,8 +198,9 @@ final class DuckDBDriverTests: XCTestCase {
 
     func testStreamThrowsAnErrorRaisedAfterItsFirstChunks() async throws {
         let driver = try XCTUnwrap(driver)
-        // DuckDB buffers about 128k rows of a streaming result ahead of the reader, so the failing row has to lie
-        // past that for the error to come from a fetch rather than from executing the query.
+        // A 1 MB buffer holds about 128k rows of a streaming result ahead of the reader, so the failing row lies past
+        // it and the error comes from a fetch rather than from executing the query. DuckDB 2.0's default is 10 MiB.
+        _ = try await driver.execute(query: "SET streaming_buffer_size = '1MB'")
         let query = "SELECT CASE WHEN i = 250000 THEN error('boom at 250000') ELSE i END AS v FROM range(250001) t(i)"
         var rows = 0
         do {
@@ -446,5 +447,30 @@ struct DuckDBTransactionProbeTests {
         #expect(DuckDBTransactionProbe.state(first: .value("12"), second: .abortedTransaction) == .abortedTransaction)
         #expect(DuckDBTransactionProbe.state(first: .value("12"), second: .unreadable) == .unknown)
         #expect(DuckDBTransactionProbe.state(first: .unreadable, second: .value("12")) == .unknown)
+    }
+}
+
+struct DuckDBDriverStorageVersionTests {
+    @Test("A database the driver creates or attaches stays readable by DuckDB 1.x")
+    func createdAndAttachedFilesStayOnAOneXStorageVersion() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("duckdb-storage-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let attached = directory.appendingPathComponent("side.duckdb")
+
+        let driver = DuckDBDriver(source: .file(directory.appendingPathComponent("cube.duckdb")), openMode: .createNew)
+        try await driver.connect()
+        _ = try await driver.execute(query: "CREATE TABLE facts (id INTEGER)")
+        _ = try await driver.execute(query: "ATTACH '\(attached.path)' AS side")
+        _ = try await driver.execute(query: "CREATE TABLE side.facts (id INTEGER)")
+        let rows = try await driver.execute(query: """
+            SELECT database_name, tags['storage_version'] FROM duckdb_databases()
+            WHERE database_name IN ('cube', 'side') ORDER BY database_name
+            """).rows
+        try await driver.disconnect()
+
+        #expect(rows.map { $0[0] } == ["cube", "side"])
+        #expect(rows.allSatisfy { $0[1]?.hasPrefix("v1.") == true })
     }
 }

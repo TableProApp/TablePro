@@ -40,7 +40,8 @@ struct DatabaseTypeTests {
         DatabaseType.mariadb,
         DatabaseType.tidb,
         DatabaseType.databend,
-        DatabaseType.oceanbase
+        DatabaseType.oceanbase,
+        DatabaseType.starrocks
     ])
     func testMariaDBClientEnginesDefaultSSLPreferred(type: DatabaseType) {
         #expect(type.defaultSSLMode == .preferred)
@@ -79,6 +80,7 @@ struct DatabaseTypeTests {
         DatabaseType.tidb,
         DatabaseType.databend,
         DatabaseType.oceanbase,
+        DatabaseType.starrocks,
         DatabaseType.mssql
     ])
     func testOpportunisticTLSSupported(type: DatabaseType) {

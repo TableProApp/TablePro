@@ -112,22 +112,23 @@ struct MCPSqlExportDialect: Sendable {
 
     func quote(_ name: String) -> String {
         guard identifierQuote != "[" else {
-            return "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+            return "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
         }
         let escaped = name.replacingOccurrences(
             of: identifierQuote,
-            with: identifierQuote + identifierQuote
+            with: identifierQuote + identifierQuote,
+            options: .literal
         )
         return "\(identifierQuote)\(escaped)\(identifierQuote)"
     }
 
     func literal(_ value: String) -> String {
         guard usesBackslashEscaping else {
-            return "'\(value.replacingOccurrences(of: "'", with: "''"))'"
+            return "'\(value.replacingOccurrences(of: "'", with: "''", options: .literal))'"
         }
         let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "'", with: "''", options: .literal)
         return "'\(escaped)'"
     }
 

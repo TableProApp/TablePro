@@ -59,7 +59,7 @@ extension MainContentCoordinator {
         OperationRequest(
             connectionId: connectionId,
             databaseType: connection.type,
-            sql: request.gatedSQL,
+            sql: request.gatedSQL(databaseType: connection.type),
             kind: request.operationKind(databaseType: connection.type),
             caller: .userInterface,
             capabilities: .interactiveUser,

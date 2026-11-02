@@ -115,6 +115,24 @@ nonisolated struct MongoDBConnectionURI: Sendable {
         return options
     }
 
+    // The Keychain holds these, so they replace any spelling a pasted connection string left among the options.
+    static func applySecrets(to params: inout [String: String], keyPassphrase: String?, sessionToken: String?) {
+        if let keyPassphrase, !keyPassphrase.isEmpty {
+            params = params.filter { canonicalKey($0.key) != "tlscertificatekeyfilepassword" }
+            params["tlsCertificateKeyFilePassword"] = keyPassphrase
+        }
+        if let sessionToken, !sessionToken.isEmpty {
+            let current = params.first { $0.key.lowercased() == "authmechanismproperties" }
+            params = params.filter { $0.key.lowercased() != "authmechanismproperties" }
+            let kept = (current?.value ?? "").split(separator: ",").filter { pair in
+                let name = pair.split(separator: ":", maxSplits: 1).first ?? ""
+                return name.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("AWS_SESSION_TOKEN") != .orderedSame
+            }
+            params["authMechanismProperties"] = (kept.map(String.init) + ["AWS_SESSION_TOKEN:\(sessionToken)"])
+                .joined(separator: ",")
+        }
+    }
+
     // libmongoc still reads the old `ssl` names as their `tls` options, so a typed one would turn off a check the SSL
     // mode asked for.
     static let deprecatedAliases = [

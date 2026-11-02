@@ -69,7 +69,7 @@ int main(int argc, char **argv) {
 }
 PROBE
 
-cc -O1 -I "$HEADERS" "$WORK/probe.c" "$LIB" -lc++ -o "$WORK/probe"
+cc -O1 -I "$HEADERS" "$WORK/probe.c" -Wl,-force_load,"$LIB" -lc++ -o "$WORK/probe"
 
 cd "$WORK"
 ./probe create warehouse.duckdb

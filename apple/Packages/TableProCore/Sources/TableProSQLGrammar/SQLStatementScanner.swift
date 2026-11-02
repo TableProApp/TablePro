@@ -235,6 +235,14 @@ public enum SQLStatementScanner {
         )
     }
 
+    /// Whether the text ends inside a block it opened, so the last statement swallowed everything after its opener.
+    /// An engine that reads that opener as a name runs the rest as statements of their own.
+    public static func endsInsideOpenBlock(_ sql: String, grammar: SQLLexicalGrammar) -> Bool {
+        var holdsOpenBlock = false
+        scan(sql: sql, cursorPosition: nil, grammar: grammar, onFinish: { holdsOpenBlock = $0 }) { _ in true }
+        return holdsOpenBlock
+    }
+
     /// Returns statements preserving trailing semicolons, for display/history/favorites.
     public static func allStatementsPreservingSemicolons(in sql: String, grammar: SQLLexicalGrammar) -> [String] {
         var results: [String] = []
@@ -281,6 +289,7 @@ public enum SQLStatementScanner {
         cursorPosition: Int?,
         grammar: SQLLexicalGrammar,
         onBatchSeparator: (SQLBatchSeparator) -> Void = { _ in },
+        onFinish: (_ holdsOpenBlock: Bool) -> Void = { _ in },
         onStatement: (LocatedStatement) -> Bool
     ) {
         let nsQuery = sql as NSString
@@ -419,6 +428,7 @@ public enum SQLStatementScanner {
             )
             _ = onStatement(statement)
         }
+        onFinish(tracker.holdsOpenBlock)
     }
 
     /// Whether the `/` at `offset` stands alone on its line, which is what makes it SQL*Plus's terminator rather than

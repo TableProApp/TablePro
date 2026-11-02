@@ -69,6 +69,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// not restore what the session is currently holding.
     func releaseIdleResource() async throws -> PluginResourceRelease
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile
@@ -407,6 +409,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing?
+
     // MARK: - Table Options
 
     /// Nil where the engine has no table options.
@@ -685,6 +689,10 @@ extension DatabaseDriver {
 
     func releaseIdleResource() async throws -> PluginResourceRelease { .nothingToRelease }
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws {
+        throw PluginDriverUnsupportedOperation.importExportedDatabase
+    }
+
     func testConnection() async throws -> Bool {
         try await connect()
         disconnect()
@@ -905,6 +913,8 @@ extension DatabaseDriver {
     ) async throws -> PluginConcurrentRefreshAvailability? {
         nil
     }
+
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? { nil }
 
     func fetchTableOptions(tableName: String) async throws -> TableOptions? { nil }
 

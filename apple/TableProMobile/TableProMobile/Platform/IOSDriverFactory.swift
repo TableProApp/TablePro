@@ -13,17 +13,20 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     private let materializer: CertificateMaterializer
     private let localFiles: LocalDatabaseFileLocator
     private let mint: IAMPasswordMint
+    private let secureStore: any SecureStore
 
     init(
         bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
         materializer: CertificateMaterializer = CertificateMaterializer(),
         localFiles: LocalDatabaseFileLocator = .live,
-        mint: IAMPasswordMint = IAMPasswordMint()
+        mint: IAMPasswordMint = IAMPasswordMint(),
+        secureStore: any SecureStore = KeychainSecureStore()
     ) {
         self.bookmarkStore = bookmarkStore
         self.materializer = materializer
         self.localFiles = localFiles
         self.mint = mint
+        self.secureStore = secureStore
     }
 
     private func sqliteSource(for connection: DatabaseConnection) throws -> LocalDatabaseFileSource {
@@ -188,7 +191,11 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 password: password,
                 ssl: tls,
                 preTunnelHost: preTunnelHost,
-                fields: try MongoDBDialPlan.additionalFields(of: connection, preTunnelHost: preTunnelHost)
+                fields: MongoDBDialPlan.addingKeychainSecrets(
+                    to: try MongoDBDialPlan.additionalFields(of: connection, preTunnelHost: preTunnelHost),
+                    of: connection,
+                    in: secureStore
+                )
             )
             return MongoDBBackedDriver(
                 mongo: MongoDBPluginDriver(config: config),

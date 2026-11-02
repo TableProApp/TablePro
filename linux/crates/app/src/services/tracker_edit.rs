@@ -12,7 +12,7 @@ pub enum TrackerEdit {
         row_key: RowKey,
         col: usize,
         original: Value,
-        value: Value,
+        value: CellInput,
     },
     DraftCell {
         draft_id: u64,

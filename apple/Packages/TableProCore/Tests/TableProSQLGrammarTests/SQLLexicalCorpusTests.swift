@@ -25,6 +25,8 @@ struct SQLLexicalCorpusTests {
     static let dollar = "SELECT $$it's$$; DROP TABLE lexer_canary; SELECT 'x'"
     static let nonASCIITag = "SELECT $ü$it's$ü$; DROP TABLE lexer_canary; SELECT 'x'"
     static let escapeString = "SELECT E'\\''; DROP TABLE lexer_canary; --'"
+    static let escapeBytes = "SELECT b'\\''; DROP TABLE lexer_canary; --'"
+    static let escapeBytesThenPlain = "SELECT b'\\'', '\\'; DROP TABLE lexer_canary; --'"
     static let hashComment = "SELECT 1 # '\n; DROP TABLE lexer_canary; -- '"
     static let mySQLEscape = "SELECT 'a\\'; DROP TABLE lexer_canary; -- '"
     static let doubledBracket = "SELECT 1 AS [a]]'b]; DROP TABLE lexer_canary; SELECT 'x'"
@@ -36,6 +38,9 @@ struct SQLLexicalCorpusTests {
     static let gluedDollars = "SELECT 1 AS x$$; DROP TABLE lexer_canary; --$$"
     static let gluedNonASCIIDollars = "SELECT 1 AS é$$; DROP TABLE lexer_canary; --$$"
     static let tripleQuote = "SELECT '''it's'''; DROP TABLE lexer_canary; SELECT 'x'"
+    static let escapedBacktick = "SELECT `\\`` FROM lexer_t; REMOVE TABLE lexer_canary; -- `"
+    static let literalBackslashInBackticks = "SELECT `\\` FROM lexer_t; REMOVE TABLE lexer_canary; -- `"
+    static let equivalentTag = "SELECT $K$ x $\u{212A}$ , $K$; DROP TABLE lexer_canary; -- $K$"
 
     static let cases: [Case] = [
         Case(engine: "PostgreSQL", sql: backslash, executed: 2, plausible: 2, measured: "PQexec ran the DROP"),
@@ -73,6 +78,9 @@ struct SQLLexicalCorpusTests {
         Case(engine: "PostgreSQL", sql: escapeString, executed: 2, plausible: 2, measured: "E'\\'' ran the DROP"),
         Case(engine: "DuckDB", sql: escapeString, executed: 2, plausible: 2, measured: "E'\\'' ran the DROP"),
         Case(engine: "SQLite", sql: escapeString, executed: 1, plausible: 1, measured: "no E'' prefix"),
+        Case(engine: "CockroachDB", sql: escapeString, executed: 2, plausible: 2, measured: "e'\\'', from scan.go"),
+        Case(engine: "CockroachDB", sql: escapeBytes, executed: 2, plausible: 2, measured: "b'\\'', from scan.go"),
+        Case(engine: "CockroachDB", sql: escapeBytesThenPlain, executed: 2, plausible: 2, measured: "from scan.go"),
 
         Case(engine: "MySQL", sql: hashComment, executed: 2, plausible: 2, measured: "# is a comment"),
         Case(engine: "MariaDB", sql: hashComment, executed: 2, plausible: 2, measured: "# is a comment"),
@@ -89,6 +97,7 @@ struct SQLLexicalCorpusTests {
         Case(engine: "Dameng", sql: alternativeQuote, executed: 2, plausible: 2, measured: "DM8 ran the DELETE"),
 
         Case(engine: "Dameng", sql: doubleSlash, executed: 2, plausible: 2, measured: "// is a comment on DM8"),
+        Case(engine: "ClickHouse", sql: doubleSlash, executed: 2, plausible: 2, measured: "// comment, from Lexer.cpp"),
         Case(engine: "Oracle", sql: doubleSlash, executed: 1, plausible: 1, measured: "// is not a comment"),
 
         Case(engine: "PostgreSQL", sql: carriageReturn, executed: 2, plausible: 2, measured: "CR ends --"),
@@ -106,6 +115,18 @@ struct SQLLexicalCorpusTests {
 
         Case(engine: "Spanner", sql: tripleQuote, executed: 3, plausible: 3, measured: "''' literal on GoogleSQL"),
         Case(engine: "BigQuery", sql: tripleQuote, executed: 3, plausible: 3, measured: "''' literal, from ZetaSQL"),
+
+        Case(engine: "PostgreSQL", sql: equivalentTag, executed: 2, plausible: 2, measured: "scan.l compares tags with strcmp"),
+
+        Case(engine: "SurrealDB", sql: escapedBacktick, executed: 2, plausible: 2, measured: "\\` escapes, per its lexer"),
+        Case(engine: "MySQL", sql: escapedBacktick, executed: 1, plausible: 1, measured: "a backslash is literal"),
+        Case(
+            engine: "SurrealDB",
+            sql: literalBackslashInBackticks,
+            executed: 1,
+            plausible: 2,
+            measured: "\\` escapes, 2 if a backslash is literal"
+        ),
     ]
 
     @Test(arguments: cases)

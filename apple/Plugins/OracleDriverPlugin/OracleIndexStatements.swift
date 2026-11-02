@@ -18,8 +18,8 @@ internal enum OracleIndexStatements {
     /// carrying its `SYS_NC` shadow column instead of its expression, so it is left out of the dump
     /// rather than written wrong.
     internal static func query(schema: String, table: String) -> String {
-        let owner = schema.replacingOccurrences(of: "'", with: "''")
-        let tableName = table.replacingOccurrences(of: "'", with: "''")
+        let owner = schema.replacingOccurrences(of: "'", with: "''", options: .literal)
+        let tableName = table.replacingOccurrences(of: "'", with: "''", options: .literal)
         return """
             SELECT i.INDEX_NAME, i.UNIQUENESS, i.INDEX_TYPE, ic.COLUMN_NAME, ic.DESCEND
             FROM SYS.ALL_INDEXES i

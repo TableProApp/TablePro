@@ -40,15 +40,15 @@ struct TabStructureVersionTests {
         #expect(manager.tabStructureVersion == afterFirstAdd)
     }
 
-    @Test("addServerDashboardTab() for a new tab bumps once; activating existing does NOT bump")
+    @Test("addSingletonTab() for a new tab bumps once; activating existing does NOT bump")
     func addServerDashboardBumpsOnceAndIdempotent() {
         let manager = QueryTabManager()
 
-        manager.addServerDashboardTab()
+        manager.addSingletonTab(.serverDashboard)
         let afterFirstAdd = manager.tabStructureVersion
         #expect(afterFirstAdd == 1)
 
-        manager.addServerDashboardTab()
+        manager.addSingletonTab(.serverDashboard)
 
         #expect(manager.tabStructureVersion == afterFirstAdd)
     }

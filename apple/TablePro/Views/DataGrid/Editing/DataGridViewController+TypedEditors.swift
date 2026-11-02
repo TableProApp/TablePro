@@ -373,7 +373,9 @@ extension DataGridViewController {
         switch cell.value {
         case .null: return
         case .bytes(let bytes): data = bytes
-        case .text(let text): data = text.storedBytes
+        case .text(let text):
+            let holdsBytes = BinaryValueBytes.holdsBytes(columnType: cell.column.type)
+            data = BinaryValueBytes.data(of: text, holdsBytes: holdsBytes) ?? text.storedBytes
         }
         let name = cell.column.name
         presentTypedPopover(for: cell, edits: false, contentSize: NSSize(width: 560, height: 360)) { dismiss in

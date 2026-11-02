@@ -211,7 +211,7 @@ struct PhpSerializeParserSpecialTests {
         #expect(payload == "xyzab")
     }
 
-    /// PHP 8.1 writes an enum case as `E:`. Before, any value holding one failed to parse at all.
+    // PHP 8.1 writes an enum case as `E:`. Before, any value holding one failed to parse at all.
     @Test("E token returns .enumCase, inside an array too")
     func enumCaseToken() {
         #expect(PhpSerializeParser.parse(#"E:11:"Suit:Hearts";"#) == .enumCase(className: "Suit", caseName: "Hearts"))
@@ -228,9 +228,20 @@ struct PhpSerializeParserSpecialTests {
         #expect(tree.badgeLabel == "enum")
     }
 
-    @Test("r token returns .reference")
+    @Test("An object member with an integer key, as ArrayObject and __serialize data have, parses and writes back")
+    func integerObjectKeys() {
+        let text = #"O:11:"ArrayObject":4:{i:0;i:0;i:1;a:2:{i:0;i:1;i:1;i:2;}i:2;a:0:{}i:3;N;}"#
+        guard case .object("ArrayObject", let properties)? = PhpSerializeParser.parse(text) else {
+            Issue.record("expected an object")
+            return
+        }
+        #expect(properties.map(\.index) == [0, 1, 2, 3])
+        #expect(PhpSerializeWriter.text(.object(className: "ArrayObject", properties: properties)) == text)
+    }
+
+    @Test("r token returns .objectReference, so it is written back as r and not as R")
     func referenceLowerR() {
-        #expect(PhpSerializeParser.parse("r:7;") == .reference(id: 7))
+        #expect(PhpSerializeParser.parse("r:7;") == .objectReference(id: 7))
     }
 
     @Test("R token returns .reference")

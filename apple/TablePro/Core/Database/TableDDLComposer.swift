@@ -93,7 +93,7 @@ internal enum TableDDLComposer {
             preamble += sequence.ddl + "\n\n"
         }
         for enumType in enumTypes {
-            let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
+            let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
             let quotedLabels = enumType.labels.map { "'\(SQLEscaping.escapeStringLiteral($0))'" }
             preamble += "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n"
         }

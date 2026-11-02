@@ -20,6 +20,27 @@ struct ConnectionFormURLImportTests {
         return coordinator
     }
 
+    @Test("Secrets a MongoDB connection string carries reach Keychain-backed fields, never plain options")
+    func mongoURISecretsStayOutOfPlainOptions() throws {
+        let coordinator = try formImporting(
+            "mongodb://app:s3cret@db.example.com:27017/orders?tls=true"
+                + "&tlsCertificateKeyFile=%2FUsers%2Falice%2Fclient.pem&tlsCertificateKeyFilePassword=hunter2"
+                + "&authMechanism=MONGODB-AWS&authMechanismProperties=AWS_SESSION_TOKEN%3AFQoGZXIvYXdz"
+                + "&proxyPassword=proxy-secret&retryWrites=true"
+        )
+        let plain = coordinator.allAdditionalFieldValues.filter { $0.key != "mongoAWSSessionToken" }
+
+        #expect(coordinator.ssl.clientCertPath == "/Users/alice/client.pem")
+        #expect(coordinator.ssl.clientKeyPassphrase == "hunter2")
+        #expect(coordinator.ssl.clientKeyPath == "/Users/alice/client.pem")
+        #expect(coordinator.auth.additionalFieldValues["mongoAWSSessionToken"] == "FQoGZXIvYXdz")
+        #expect(coordinator.secureFieldsOwnedByForm().contains { $0.id == "mongoAWSSessionToken" })
+        #expect(!plain.values.contains("hunter2"))
+        #expect(!plain.values.contains { $0.contains("FQoGZXIvYXdz") })
+        #expect(!plain.values.contains("proxy-secret"))
+        #expect(plain["mongoParam_retryWrites"] == "true")
+    }
+
     @Test("sslmode=verify-full opens the form on Verify Identity")
     func verifyFullKeepsIdentityVerification() throws {
         let coordinator = try formImporting("postgresql://u@db.example.com/app?sslmode=verify-full")

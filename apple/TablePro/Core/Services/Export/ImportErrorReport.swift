@@ -60,14 +60,14 @@ enum ImportErrorReport {
     /// in Excel. The CSV export guards the same way, for the same reason.
     private static func csvField(_ value: String) -> String {
         var flattened = value
-            .replacingOccurrences(of: "\r\n", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
-        if let first = flattened.first, Self.formulaPrefixes.contains(first) {
+            .replacingOccurrences(of: "\r\n", with: " ", options: .literal)
+            .replacingOccurrences(of: "\n", with: " ", options: .literal)
+            .replacingOccurrences(of: "\r", with: " ", options: .literal)
+        if let first = flattened.unicodeScalars.first, Self.formulaPrefixes.contains(Character(first)) {
             flattened = "'" + flattened
         }
-        guard flattened.contains(",") || flattened.contains("\"") else { return flattened }
-        return "\"\(flattened.replacingOccurrences(of: "\"", with: "\"\""))\""
+        guard flattened.unicodeScalars.contains(where: { $0 == "," || $0 == "\"" }) else { return flattened }
+        return "\"\(flattened.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     private static let formulaPrefixes: Set<Character> = ["=", "+", "-", "@"]

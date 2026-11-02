@@ -58,5 +58,5 @@ internal func cloudflareD1LooksLikeExpression(_ value: String) -> Bool {
 }
 
 internal func cloudflareD1DefaultLiteralEscape(_ value: String) -> String {
-    value.replacingOccurrences(of: "\'", with: "\'\'")
+    value.replacingOccurrences(of: "\'", with: "\'\'", options: .literal)
 }

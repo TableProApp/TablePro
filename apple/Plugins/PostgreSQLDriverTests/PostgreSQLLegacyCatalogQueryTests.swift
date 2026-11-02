@@ -102,7 +102,7 @@ struct PostgreSQLLegacyCatalogQueryTests {
 
     @Test("The search-path fallback parenthesises the function before subscripting it")
     func searchPathFallbackParses() {
-        #expect(PostgreSQLSchemaQueries.firstSearchPathSchema == "SELECT (current_schemas(false))[1]")
+        #expect(PostgreSQLSchemaQueries.firstSearchPathSchema == "SELECT (pg_catalog.current_schemas(false))[1]")
     }
 }
 
@@ -413,8 +413,8 @@ struct PostgreSQLCollationAndMetadataQueryTests {
 
     @Test("The schema is quoted as a literal")
     func allTablesMetadataQuotesSchema() {
-        #expect(PostgreSQLSchemaQueries.allTablesMetadata(schema: "o'brien").contains("schemaname = 'o''brien'"))
-        #expect(PostgreSQLSchemaQueries.allTablesMetadata(schema: "a\\b").contains("schemaname = E'a\\\\b'"))
+        #expect(PostgreSQLSchemaQueries.allTablesMetadata(schema: "o'brien").contains("schemaname OPERATOR(pg_catalog.=) 'o''brien'"))
+        #expect(PostgreSQLSchemaQueries.allTablesMetadata(schema: "a\\b").contains("schemaname OPERATOR(pg_catalog.=) E'a\\\\b'"))
     }
 }
 

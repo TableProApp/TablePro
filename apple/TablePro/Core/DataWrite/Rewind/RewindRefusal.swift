@@ -30,6 +30,9 @@ enum RewindRefusal: String, Codable, Sendable, Equatable, CaseIterable {
     /// The key is binary or otherwise cannot be written as a filter, so the row cannot be read
     /// back and checked before writing to it.
     case keyNotComparable
+    // Never stored: RewindRecord.refusal(of:) and the planner derive these, so older builds still decode the record.
+    case deletedThroughView
+    case rowLeftView
 
     var explanation: String {
         switch self {
@@ -49,6 +52,10 @@ enum RewindRefusal: String, Codable, Sendable, Equatable, CaseIterable {
             return String(localized: "The table is no longer reachable.")
         case .keyNotComparable:
             return String(localized: "This row's key cannot be matched, so it cannot be checked before writing.")
+        case .deletedThroughView:
+            return String(localized: "The row was deleted through a view, which may not show every column of its table.")
+        case .rowLeftView:
+            return String(localized: "The row no longer shows through the view, so it cannot be checked before writing.")
         }
     }
 }

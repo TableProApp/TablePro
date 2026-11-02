@@ -39,11 +39,13 @@ final class InProcessDumpRunner: NativeDumpRunner, @unchecked Sendable {
         }
     }
 
+    // The task's cancellation reaches the isolated import, which `cancelQuery` on the session driver cannot.
     func cancel() {
         stateLock.lock()
         wasCancelled = true
         let driver = runningDriver
         stateLock.unlock()
+        task?.cancel()
         try? driver?.cancelQuery()
     }
 
@@ -63,8 +65,15 @@ final class InProcessDumpRunner: NativeDumpRunner, @unchecked Sendable {
     }
 
     private func execute() async {
-        let statements = job.statements
-        let cleanup = job.cleanupStatements
+        let result = await run()
+        if let isolated = job.isolatedImport {
+            try? FileManager.default.removeItem(at: isolated.directory)
+        }
+        finish(result)
+    }
+
+    private func run() async -> NativeDumpRunResult {
+        let job = self.job
         let adopt: @Sendable (DatabaseDriver?) -> Void = { [weak self] driver in
             guard let self else { return }
             self.stateLock.lock()
@@ -80,33 +89,46 @@ final class InProcessDumpRunner: NativeDumpRunner, @unchecked Sendable {
             ) { driver in
                 adopt(driver)
                 defer { adopt(nil) }
+                if let isolated = job.isolatedImport {
+                    do {
+                        try await driver.importExportedDatabase(from: isolated.archive, into: isolated.file)
+                    } catch {
+                        throw IsolatedImportFailure(underlying: error)
+                    }
+                }
                 do {
-                    for statement in statements {
+                    for statement in job.statements {
+                        try Task.checkCancellation()
                         _ = try await driver.execute(query: statement)
                     }
                 } catch {
-                    /// Best effort and deliberately ignored. DuckDB aborts the whole transaction on
-                    /// a failed `COPY FROM DATABASE`, so the `DETACH` that would tidy up fails too,
-                    /// and the caller has the real error to report instead of this one. The alias is
-                    /// unique per run, so a leaked attachment blocks nothing.
-                    for statement in cleanup {
+                    // Ignored: the DETACH can fail in the transaction the COPY aborted, and the alias is unique per run.
+                    for statement in job.cleanupStatements {
                         _ = try? await driver.execute(query: statement)
                     }
                     throw error
                 }
             }
-            finish(NativeDumpRunResult(exitCode: 0, stderr: "", wasCancelled: readCancelled()))
+            return NativeDumpRunResult(exitCode: 0, stderr: "", wasCancelled: readCancelled())
         } catch {
             let cancelled = readCancelled()
-            Self.logger.error("in-engine dump failed: \(error.publicLogShape, privacy: .public)")
-            finish(
-                NativeDumpRunResult(
-                    exitCode: cancelled ? 130 : 1,
-                    stderr: cancelled ? "" : error.localizedDescription,
-                    wasCancelled: cancelled
-                )
+            let isolated = error as? IsolatedImportFailure
+            Self.logger.error("in-engine dump failed: \((isolated?.underlying ?? error).publicLogShape, privacy: .public)")
+            return NativeDumpRunResult(
+                exitCode: cancelled ? 130 : 1,
+                stderr: cancelled ? "" : Self.message(for: error),
+                wasCancelled: cancelled,
+                targetUntouched: isolated != nil
             )
         }
+    }
+
+    private static func message(for error: any Error) -> String {
+        guard let isolated = error as? IsolatedImportFailure else { return error.localizedDescription }
+        return String(
+            format: String(localized: "The backup could not be imported, so this database was not changed. %@"),
+            isolated.underlying.localizedDescription
+        )
     }
 
     private func readCancelled() -> Bool {
@@ -128,4 +150,8 @@ final class InProcessDumpRunner: NativeDumpRunner, @unchecked Sendable {
         stateLock.unlock()
         pending?.resume(returning: result)
     }
+}
+
+private struct IsolatedImportFailure: Error {
+    let underlying: any Error
 }

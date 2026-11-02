@@ -296,7 +296,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func switchDatabase(to name: String) async throws {
-        let safe = name.replacingOccurrences(of: "`", with: "``")
+        let safe = name.replacingOccurrences(of: "`", with: "``", options: .literal)
         _ = try await actor.execute("USE `\(safe)`")
     }
 
@@ -509,7 +509,7 @@ nonisolated extension MySQLDriver {
     }
 
     private static func quotedIdentifier(_ name: String) -> String {
-        "`\(name.replacingOccurrences(of: "`", with: "``"))`"
+        "`\(name.replacingOccurrences(of: "`", with: "``", options: .literal))`"
     }
 }
 

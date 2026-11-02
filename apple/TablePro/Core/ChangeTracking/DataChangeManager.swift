@@ -733,9 +733,11 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         database: String,
         schema: String?,
         containsTableOperation: Bool,
-        rowsWithUnloadedValues: Set<RowID> = []
+        rowsWithUnloadedValues: Set<RowID> = [],
+        writesThroughView: Bool = false
     ) throws -> RowWriteBuild {
-        let factory = try statementFactory()
+        var factory = try statementFactory()
+        factory.holdsKeyedWritesToOneRow = writesThroughView
         let operations = RowWriteOperationBuilder.operations(
             from: pending.changes,
             insertedRowData: pending.insertedRowData,
@@ -746,7 +748,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             primaryKeyColumns: primaryKeyColumns,
             generatedColumns: generatedColumns,
             containsTableOperation: containsTableOperation,
-            rowsWithUnloadedValues: rowsWithUnloadedValues
+            rowsWithUnloadedValues: rowsWithUnloadedValues,
+            writesThroughView: writesThroughView
         )
 
         let steps = try writeSteps(

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 import TableProPluginKit
 
 internal enum MongoToolsConnectionString {
@@ -118,7 +119,25 @@ internal enum MongoToolsConnectionString {
             by: connection, besides: setKeys,
             tls: setKeys.contains("tls"), skipsVerification: setKeys.contains("tlsInsecure")
         )
-        return parameters + typed.map { "\(encodedValue($0.key))=\(encodedValue($0.value))" }
+        var options = typed
+        MongoToolsConnectionString.applyKeychainSecrets(of: connection, to: &options)
+        return parameters + options.map { "\(encodedValue($0.key))=\(encodedValue($0.value))" }
+    }
+
+    // The dump service puts the Keychain's passphrase and session token in the fields, as the driver gets them; the
+    // string goes only into the tools' private configuration file.
+    private static func applyKeychainSecrets(of connection: DatabaseConnection, to options: inout [(key: String, value: String)]) {
+        let ssl = connection.sslConfig
+        if ssl.isEnabled, !ssl.clientCertificatePath.isEmpty,
+           let passphrase = connection.additionalFields["sslClientKeyPassphrase"], !passphrase.isEmpty {
+            options.append((key: "tlsCertificateKeyFilePassword", value: passphrase))
+        }
+        guard connection.mongoAuthMechanism?.uppercased() == "MONGODB-AWS",
+              let token = connection.additionalFields[ConnectionSecretOptions.mongoSessionTokenFieldId], !token.isEmpty
+        else { return }
+        let current = options.first { $0.key.lowercased() == "authmechanismproperties" }?.value
+        options.removeAll { $0.key.lowercased() == "authmechanismproperties" }
+        options.append((key: "authMechanismProperties", value: ConnectionSecretOptions.joiningSessionToken(token, to: current)))
     }
 
     private static func encodedHost(_ host: String) -> String {

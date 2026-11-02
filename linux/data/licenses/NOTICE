@@ -1,10 +1,10 @@
 The NOTICE files of the crates linked into TablePro, as the Apache License
 2.0 asks. build-aux/update-third-party-licenses.sh writes this file.
 
-Used by: arrow 58.4.0, arrow-arith 58.4.0, arrow-array 58.4.0,
-arrow-buffer 58.4.0, arrow-cast 58.4.0, arrow-data 58.4.0, arrow-ord
-58.4.0, arrow-row 58.4.0, arrow-schema 58.4.0, arrow-select 58.4.0,
-arrow-string 58.4.0
+Used by: arrow 60.1.0, arrow-arith 60.1.0, arrow-array 60.1.0,
+arrow-buffer 60.1.0, arrow-cast 60.1.0, arrow-cmp 60.1.0, arrow-data
+60.1.0, arrow-ord 60.1.0, arrow-row 60.1.0, arrow-schema 60.1.0,
+arrow-select 60.1.0, arrow-string 60.1.0
 
 Apache Arrow
 Copyright 2016-2026 The Apache Software Foundation

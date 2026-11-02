@@ -545,7 +545,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         )
 
         do {
-            let escapedId = queryId.replacingOccurrences(of: "'", with: "''")
+            let escapedId = queryId.replacingOccurrences(of: "'", with: "''", options: .literal)
             let request = try buildRequest(
                 query: "KILL QUERY WHERE query_id = '\(escapedId)'",
                 database: "",

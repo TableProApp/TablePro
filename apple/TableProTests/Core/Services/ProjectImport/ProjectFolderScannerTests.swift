@@ -137,6 +137,55 @@ struct ProjectFolderScannerTests {
         }
     }
 
+    @Test("A dotenv reference the project does not define is not filled from TablePro's environment")
+    func dotenvReferenceIgnoresProcessEnvironment() throws {
+        let (name, secret) = setProbeVariable()
+        defer { unsetenv(name) }
+        try write("DB_CONNECTION=pgsql\nDB_HOST=db.example.com\nDB_USERNAME=app\nDB_PASSWORD=${\(name)}", to: ".env")
+
+        let candidate = try #require(try scan().candidates.first)
+
+        #expect(candidate.parsedURL.host == "db.example.com")
+        #expect(candidate.parsedURL.password != secret)
+        #expect(!candidate.hasPassword)
+    }
+
+    @Test("A Spring placeholder the project does not define is not filled from TablePro's environment")
+    func springPlaceholderIgnoresProcessEnvironment() throws {
+        let (name, secret) = setProbeVariable()
+        defer { unsetenv(name) }
+        try write(
+            """
+            spring.datasource.url=jdbc:postgresql://db.example.com:5432/appdb
+            spring.datasource.username=app
+            spring.datasource.password=${\(name)}
+            """,
+            to: "application.properties"
+        )
+        try write(
+            """
+            spring:
+              datasource:
+                url: jdbc:postgresql://db.example.com:5432/appdb
+                username: app
+                password: ${\(name)}
+            """,
+            to: "application.yml"
+        )
+
+        let result = try scan()
+
+        #expect(!result.candidates.isEmpty)
+        #expect(!result.candidates.contains { $0.parsedURL.password == secret })
+    }
+
+    private func setProbeVariable() -> (name: String, secret: String) {
+        let name = "TABLEPRO_SCAN_PROBE_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        let secret = UUID().uuidString
+        setenv(name, secret, 1)
+        return (name, secret)
+    }
+
     @Test("Results are ordered with the most trustworthy sources first")
     func testOrdering() throws {
         try write("DATABASE_URL=postgresql://u:p@localhost:5432/fromlocal", to: ".env.local")

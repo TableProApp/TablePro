@@ -29,19 +29,28 @@ struct RewindRecord: Codable, Sendable, Identifiable, Equatable {
     /// column's type. Nil in a record saved before it was kept.
     var columnTypeNames: [String: String]?
     let operations: [RowWriteOperation]
+    // Nil in a record saved before views could be edited, and in one that wrote a table.
+    var writtenThroughView: Bool?
 
     var reversibleOperations: [RowWriteOperation] {
-        operations.filter(\.isReversible)
+        operations.filter { refusal(of: $0) == nil }
+    }
+
+    // A deleted row comes back through the view with only the columns it shows. The refusal is
+    // decided here, not stored in the operation, so builds that predate the case still read the record.
+    func refusal(of operation: RowWriteOperation) -> RewindRefusal? {
+        if writtenThroughView == true, operation.kind == .delete { return .deletedThroughView }
+        return operation.refusal
     }
 
     var isReversible: Bool {
         !reversibleOperations.isEmpty
     }
 
-    /// The single reason nothing here can be taken back, when every row agrees on one.
+    // Only when every row agrees on one.
     var blanketRefusal: RewindRefusal? {
         guard !operations.isEmpty, reversibleOperations.isEmpty else { return nil }
-        let reasons = Set(operations.compactMap(\.refusal))
+        let reasons = Set(operations.compactMap(refusal(of:)))
         return reasons.count == 1 ? reasons.first : nil
     }
 

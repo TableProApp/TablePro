@@ -257,7 +257,7 @@ struct ImportPlannerConnectionTests {
         #expect(kept.settings.tunnelCommand?.command == "/usr/bin/forward --listen {port}")
     }
 
-    @Test("An imported profile asks for its password unless it reads pgpass")
+    @Test("An imported profile asks for its password, whatever mode the file names")
     func profilePasswordModes() throws {
         let bundle = try Fixtures.makeBundle(
             connections: [
@@ -275,7 +275,7 @@ struct ImportPlannerConnectionTests {
         let result = plan(preview)
 
         #expect(result.credentialProfiles.map(\.ref) == ["p1", "p2"])
-        #expect(result.credentialProfiles.map(\.passwordMode) == [.pgpass, .prompt])
+        #expect(result.credentialProfiles.map(\.passwordMode) == [.prompt, .prompt])
         #expect(result.credentialProfiles[0].secureFieldIds == ["token"])
     }
 

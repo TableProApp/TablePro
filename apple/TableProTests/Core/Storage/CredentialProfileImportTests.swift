@@ -77,7 +77,7 @@ struct CredentialProfileImportTests {
         #expect(storage.loadProfiles().first { $0.name == "Prod Reader" }?.username == "local_user")
     }
 
-    @Test("A created profile asks for its password unless it reads pgpass")
+    @Test("A created profile asks for its password, whatever mode the file names")
     func createdProfileAsksForItsPassword() throws {
         let created = try #require(storage.addImportedProfiles([
             planned("stored", name: "Stored", passwordMode: .stored, secureFieldIds: ["awsSecretAccessKey"]),
@@ -89,7 +89,7 @@ struct CredentialProfileImportTests {
         #expect(stored.passwordMode == .prompt)
         #expect(stored.secureFieldIds == ["awsSecretAccessKey"])
         let pgpassId = try #require(created["pgpass"])
-        #expect(storage.profile(for: pgpassId)?.passwordMode == .pgpass)
+        #expect(storage.profile(for: pgpassId)?.passwordMode == .prompt)
     }
 
     @Test("Two rows with one name create one profile")

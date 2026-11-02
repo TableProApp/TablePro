@@ -1,4 +1,4 @@
-use tablepro_core::meta::TableRef;
+use tablepro_core::meta::{ObjectInfo, TableRef};
 
 /// What the user asked the sidebar for. The workspace carries it out.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,4 +14,5 @@ pub(crate) enum SidebarEvent {
     NewTable(Option<String>),
     /// This schema's ER diagram, or the default one's.
     ShowDiagram(Option<String>),
+    ShowDefinition(ObjectInfo),
 }

@@ -93,8 +93,23 @@ struct QueryClassifierLexicalTests {
         ),
         Bypass(
             engine: .postgresql,
+            sql: "SELECT $K$ x $\u{212A}$ , $K$; DROP TABLE users; -- $K$",
+            measured: "PostgreSQL's scan.l compares tags with strcmp, so the KELVIN SIGN does not close $K$"
+        ),
+        Bypass(
+            engine: .postgresql,
             sql: "SELECT E'\\''; DROP TABLE users; --'",
             measured: "PostgreSQL 17.11 escapes inside E'' and ran the DROP"
+        ),
+        Bypass(
+            engine: .cockroachdb,
+            sql: "SELECT b'\\''; DROP TABLE users; --'",
+            measured: "CockroachDB's scanner escapes inside b'' as it does inside e''"
+        ),
+        Bypass(
+            engine: .cockroachdb,
+            sql: "SELECT b'\\'', '\\'; DROP TABLE users; --'",
+            measured: "CockroachDB's scanner escapes inside b'' and not inside a plain string"
         ),
         Bypass(
             engine: .postgresql,
@@ -141,6 +156,38 @@ struct QueryClassifierLexicalTests {
         #expect(QueryClassifier.isDangerousQuery("SELECT 'x\\'; DELETE FROM users", databaseType: .postgresql))
     }
 
+    @Test("A DELETE hidden after a $ inside a CTE's name is a write, measured on SQLite 3.46")
+    func dollarInsideANameDoesNotHideADelete() {
+        let sql = "WITH x$y(\"')\") AS (SELECT 1) DELETE FROM users --\""
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .sqlite) == .write)
+        #expect(QueryClassifier.isDangerousQuery(sql, databaseType: .sqlite))
+    }
+
+    @Test("A REMOVE hidden after a backtick that a backslash escapes is a second statement and a write on SurrealDB")
+    func hiddenRemoveAfterEscapedBacktickIsAWrite() {
+        let sql = "SELECT `\\`` FROM person; REMOVE TABLE person; -- `"
+        #expect(QueryClassifier.isMultiStatement(sql, databaseType: .surrealdb))
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) == .write)
+    }
+
+    @Test(
+        "A REMOVE hidden after a quote inside a SurrealQL ⟨...⟩ identifier is a second statement and a write",
+        arguments: [
+            "SELECT ⟨'⟩ FROM person; REMOVE TABLE person; --'",
+            "SELECT ⟨\\⟩'⟩ FROM person; REMOVE TABLE person; --'",
+        ]
+    )
+    func surrealQLAngleQuotedIdentifierDoesNotHideAStatement(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) != .safe)
+        #expect(QueryClassifier.isMultiStatement(sql, databaseType: .surrealdb))
+    }
+
+    @Test("A form feed ends a Databend line comment, so the DROP after it is destructive")
+    func databendFormFeedDoesNotHideADrop() {
+        let sql = "-- note\u{0C}DROP TABLE customers /*\nSELECT 1 -- */"
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .databend) == .destructive)
+    }
+
     @Test("A nested comment in front of a statement ends where PostgreSQL ends it")
     func leadingNestedCommentDoesNotHideADrop() {
         let sql = "/* a /* b */ SELECT 1 */ DROP TABLE users"
@@ -167,6 +214,48 @@ struct QueryClassifierLexicalTests {
         #expect(classification.tier == .destructive)
         #expect(classification.reachesFilesystemOrExecutesCode)
         #expect(!QueryClassifier.isMultiStatement(sql, databaseType: .snowflake))
+    }
+
+    @Test("A statement SQL Server runs from a string is tiered by the string", arguments: [
+        "EXEC('DROP TABLE users')",
+        "EXECUTE ( N'DROP TABLE users' )",
+        "EXEC('DROP TABLE ' + @name)",
+        "SELECT 1 EXEC('DROP TABLE users')",
+        "EXEC sp_executesql N'DROP TABLE users'",
+        "EXEC sys.[sp_executesql] @stmt = N'DROP TABLE users'",
+        "sp_executesql N'DROP TABLE users'",
+    ])
+    func dynamicTSQLReadsItsString(sql: String) {
+        let classification = QueryClassifier.classify(sql, databaseType: .mssql)
+        #expect(classification.tier == .destructive)
+        #expect(classification.reachesFilesystemOrExecutesCode)
+    }
+
+    @Test("A string SQL Server runs that the text does not show is a write that runs code", arguments: [
+        "DECLARE @s nvarchar(max) = N'DROP TABLE users'; EXEC(@s)",
+        "DECLARE @p sysname = 'xp_cmdshell'; EXEC @p 'whoami'",
+        "EXEC('xp_cmdshell ''whoami''')",
+        "EXEC [xp_cmdshell] 'whoami'",
+    ])
+    func unreadableDynamicTSQLRunsCode(sql: String) {
+        let classification = QueryClassifier.classify(sql, databaseType: .mssql)
+        #expect(classification.tier == .write)
+        #expect(classification.reachesFilesystemOrExecutesCode)
+    }
+
+    @Test("A T-SQL statement that only looks like one that runs a string keeps its tier", arguments: [
+        ("EXEC dbo.report 1", QueryTier.write),
+        ("EXEC sp_help 'dbo.users'", QueryTier.write),
+        ("GRANT EXECUTE ON sys.sp_executesql TO reader", QueryTier.write),
+        ("CREATE PROCEDURE p AS EXEC('DROP TABLE users')", QueryTier.write),
+        ("SELECT 'EXEC(''DROP TABLE users'')'", QueryTier.safe),
+        ("SELECT [sp_executesql] FROM t", QueryTier.safe),
+        ("(SELECT 1) UNION (SELECT 2)", QueryTier.safe),
+    ])
+    func tsqlLookalikesKeepTheirTier(sql: String, tier: QueryTier) {
+        let classification = QueryClassifier.classify(sql, databaseType: .mssql)
+        #expect(classification.tier == tier)
+        #expect(!classification.reachesFilesystemOrExecutesCode)
     }
 
     @Test("A MySQL executable comment is tiered by what it runs, on any engine")
@@ -210,6 +299,65 @@ struct QueryClassifierLexicalTests {
           arguments: serverSignalSpellings)
     func serverSignalCallIsAWrite(_ spelling: Bypass) {
         #expect(QueryClassifier.classifyTier(spelling.sql, databaseType: spelling.engine) == .write)
+    }
+
+    static let fileFunctionSpellings: [Bypass] = [
+        Bypass(engine: .postgresql, sql: "SELECT \"pg_read_file\"('/etc/passwd')", measured: "a quoted name"),
+        Bypass(
+            engine: .postgresql,
+            sql: "SELECT pg_catalog.\"pg_read_file\"('/etc/passwd')",
+            measured: "a qualified quoted name"
+        ),
+        Bypass(
+            engine: .postgresql,
+            sql: "SELECT \"pg_read_file\" /* c */ ('/etc/passwd')",
+            measured: "a quoted name, then a comment before the parenthesis"
+        ),
+        Bypass(engine: .postgresql, sql: "SELECT \"pg_read_binary_file\"('/etc/passwd')", measured: "a binary read"),
+        Bypass(engine: .postgresql, sql: "SELECT * FROM \"pg_ls_dir\"('/')", measured: "a directory listing"),
+        Bypass(engine: .postgresql, sql: "SELECT \"lo_import\"('/etc/passwd')", measured: "a large object import"),
+        Bypass(engine: .postgresql, sql: "SELECT \"lo_export\"(16384, '/tmp/out')", measured: "a large object export"),
+        Bypass(
+            engine: .postgresql,
+            sql: "SELECT U&\"pg!005Fread_file\" UESCAPE '!' ('/etc/passwd')",
+            measured: "a Unicode escape with its own escape character"
+        ),
+        Bypass(engine: .mysql, sql: "SELECT `load_file`('/etc/passwd')", measured: "a backtick-quoted name"),
+        Bypass(engine: .mariadb, sql: "SELECT `LOAD_FILE`('/etc/passwd')", measured: "a backtick-quoted upper-case name"),
+        Bypass(
+            engine: .mysql,
+            sql: "SELECT 1 /*!40101 , `load_file`('/etc/passwd') */",
+            measured: "a backtick-quoted name inside an executable comment"
+        ),
+        Bypass(
+            engine: .mssql,
+            sql: "SELECT * FROM sys.[fn_get_audit_file]('/var/opt/mssql/audit/*', default, default)",
+            measured: "a bracket-quoted name"
+        ),
+        Bypass(engine: .mssql, sql: "EXEC [xp_cmdshell] 'whoami'", measured: "a bracket-quoted procedure"),
+        Bypass(engine: .mssql, sql: "EXEC master..\"xp_cmdshell\" 'whoami'", measured: "a double-quoted procedure"),
+        Bypass(
+            engine: .mssql,
+            sql: "DECLARE @o INT; EXEC [sp_OACreate] 'x', @o OUT",
+            measured: "a bracket-quoted procedure in mixed case"
+        ),
+    ]
+
+    @Test("A call that reads or writes a server file reaches the filesystem however its name is quoted",
+          arguments: fileFunctionSpellings)
+    func quotedFileFunctionReachesFilesystem(_ spelling: Bypass) {
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(spelling.sql, databaseType: spelling.engine))
+        #expect(QueryClassifier.isWriteQuery(spelling.sql, databaseType: spelling.engine))
+    }
+
+    @Test("A quoted column or table named like a file function stays a read", arguments: [
+        (DatabaseType.postgresql, "SELECT \"pg_read_file\" FROM t"),
+        (DatabaseType.postgresql, "SELECT 1 AS \"load_file\""),
+        (DatabaseType.mysql, "SELECT * FROM `lo_export` WHERE id IN (1, 2)"),
+    ])
+    func quotedFileFunctionNameAsColumnStaysSafe(engine: DatabaseType, sql: String) {
+        #expect(!QueryClassifier.reachesFilesystemOrExecutesCode(sql, databaseType: engine))
+        #expect(QueryClassifier.classifyTier(sql, databaseType: engine) == .safe)
     }
 
     @Test("A call that changes server, sequence or lock state is a write wherever the statement makes it", arguments: [
@@ -270,6 +418,25 @@ struct QueryClassifierLexicalTests {
     ])
     func sqlTextRunnerIsAWrite(sql: String) {
         #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .write)
+    }
+
+    @Test("A SQL Server pass-through query runs its last argument on the linked server, so it is a write", arguments: [
+        "SELECT * FROM OPENQUERY(reporting, 'SELECT 1 AS a; DELETE FROM dbo.orders')",
+        "SELECT * FROM OPENQUERY([loopback], 'SELECT 1 AS a; EXEC master..xp_cmdshell ''whoami''')",
+        "SELECT * FROM OPENROWSET('MSOLEDBSQL', 'Server=(local);Trusted_Connection=yes;', 'SELECT 1 AS a; DELETE FROM dbo.orders')",
+        "WITH c AS (SELECT * FROM openquery (reporting, 'SELECT 1 AS a; DELETE FROM dbo.orders')) SELECT * FROM c",
+        "SELECT 1 SELECT * FROM OPENQUERY(reporting, 'SELECT 1 AS a; DELETE FROM dbo.orders')",
+    ])
+    func passThroughQueryIsAWrite(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .mssql) == .write)
+    }
+
+    @Test("A column or a string that only names a pass-through function stays a read", arguments: [
+        "SELECT openquery FROM dbo.audit",
+        "SELECT 'OPENQUERY(reporting, ''DELETE FROM dbo.orders'')' AS example",
+    ])
+    func namingAPassThroughFunctionIsNotCallingIt(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .mssql) == .safe)
     }
 
     @Test("A read that only names such a function, or calls a lookalike, stays safe", arguments: [

@@ -289,7 +289,7 @@ internal struct OracleRowWriter {
     }
 
     static func quote(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 
     private static func serverOwnedReason(_ column: String) -> String {

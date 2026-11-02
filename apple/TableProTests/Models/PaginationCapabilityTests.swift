@@ -58,7 +58,9 @@ struct PaginationCapabilityTests {
 
     @Test("Without its own browse, a Cassandra table query reads the leading rows with no OFFSET and no ceiling")
     func cassandraHostQueryReadsLeadingRows() {
-        let builder = TableQueryBuilder(databaseType: .cassandra, pagination: .leadingRowsOnly(maximumRows: nil))
+        let builder = TableQueryBuilder(
+            databaseType: .cassandra, pagination: .leadingRowsOnly(maximumRows: nil), dialectQuote: SQLEscaping.quoteIdentifier
+        )
         let query = builder.buildBaseQuery(tableName: "users", schemaName: "shop", limit: 500_000, offset: 3_000)
 
         #expect(query == #"SELECT * FROM "shop"."users" LIMIT 500000"#)
@@ -72,7 +74,7 @@ struct PaginationCapabilityTests {
 
     @Test("A leading-rows table query states a clamped LIMIT and never an OFFSET")
     func builderNeverOffsets() {
-        let builder = TableQueryBuilder(databaseType: .cloudflareR2SQL, pagination: leadingRows)
+        let builder = TableQueryBuilder(databaseType: .cloudflareR2SQL, pagination: leadingRows, dialectQuote: SQLEscaping.quoteIdentifier)
         let query = builder.buildBaseQuery(tableName: "events", schemaName: "logs", limit: 50_000, offset: 0)
 
         #expect(query == #"SELECT * FROM "logs"."events" LIMIT 10000"#)
@@ -81,7 +83,7 @@ struct PaginationCapabilityTests {
 
     @Test("An offset table query keeps LIMIT and OFFSET")
     func builderOffsets() {
-        let builder = TableQueryBuilder(databaseType: .postgresql, pagination: .offset)
+        let builder = TableQueryBuilder(databaseType: .postgresql, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
         let query = builder.buildBaseQuery(tableName: "events", limit: 100, offset: 200)
 
         #expect(query.hasSuffix("LIMIT 100 OFFSET 200"))

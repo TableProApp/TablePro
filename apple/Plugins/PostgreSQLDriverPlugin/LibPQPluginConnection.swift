@@ -61,6 +61,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let suppressServerSideCancel: Bool
     private let connectTimeout: LibPQConnectTimeout
     private let kerberos: LibPQKerberosSignIn?
+    private let pinsCatalogSearchPath: Bool
 
     private let stateLock = NSLock()
     let cancellationGate = PluginQueryCancellationGate()
@@ -124,7 +125,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         connectTimeout: LibPQConnectTimeout = LibPQConnectTimeout(
             milliseconds: LibPQConnectTimeout.defaultMilliseconds
         ),
-        kerberos: LibPQKerberosSignIn? = nil
+        kerberos: LibPQKerberosSignIn? = nil,
+        pinsCatalogSearchPath: Bool = true
     ) {
         self.host = host
         self.port = port
@@ -137,6 +139,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.suppressServerSideCancel = suppressServerSideCancel
         self.connectTimeout = connectTimeout
         self.kerberos = kerberos
+        self.pinsCatalogSearchPath = pinsCatalogSearchPath
     }
 
     deinit {
@@ -625,6 +628,39 @@ final class LibPQPluginConnection: @unchecked Sendable {
         typeNames.merge(names)
     }
 
+    // MARK: - Notifications
+
+    // Waits at most `waitMicroseconds` on the queue, so a NOTIFY sent on this session gets its turn between waits.
+    func nextNotifications(waitMicroseconds: Int64) async throws -> [LibPQNotification] {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            var received = Self.drainNotifications(conn)
+            guard received.isEmpty else { return received }
+            let socket = PQsocket(conn)
+            guard socket >= 0 else { throw connectionError(from: conn) }
+            let deadline = pg_usec_time_t(Int64(PQgetCurrentTimeUSec()) + waitMicroseconds)
+            guard PQsocketPoll(socket, 1, 0, deadline) >= 0 else { throw connectionError(from: conn) }
+            guard PQconsumeInput(conn) != 0, PQstatus(conn) == CONNECTION_OK else {
+                stateLock.withLock { _hasLostConnection = true }
+                throw connectionError(from: conn)
+            }
+            received = Self.drainNotifications(conn)
+            return received
+        }
+    }
+
+    private static func drainNotifications(_ conn: OpaquePointer) -> [LibPQNotification] {
+        var received: [LibPQNotification] = []
+        while let notify = PQnotifies(conn) {
+            received.append(LibPQNotification(
+                channel: String(cString: notify.pointee.relname),
+                payload: notify.pointee.extra.map { String(cString: $0) } ?? ""
+            ))
+            PQfreemem(notify)
+        }
+        return received
+    }
+
     // MARK: - Query Cancellation
 
     func cancelCurrentQuery() {
@@ -643,6 +679,16 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 return try executeConnectQuerySync(queryToRun, deadline: deadline)
             }
             return try executeQuerySync(queryToRun)
+        }
+    }
+
+    // The extended query protocol refuses a text holding a second statement, so one the host's split missed fails.
+    func executeSingleStatement(_ query: String) async throws -> LibPQPluginQueryResult {
+        let queryToRun = String(query)
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            return try executeQuerySync(queryToRun, singleStatement: true)
         }
     }
 
@@ -665,6 +711,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw LibPQPluginError.notConnected }
+            // The post-connect probes read the catalogs too; no transaction can be open yet.
+            if let deadline = activeConnectDeadline {
+                return try executeConnectQuerySync(statementToRun, deadline: deadline)
+            }
             guard isInsideTransactionBlockOnQueue() else {
                 return try executeQuerySync(statementToRun)
             }
@@ -679,6 +729,22 @@ final class LibPQPluginConnection: @unchecked Sendable {
             _ = try executeQuerySync(Self.scopedReadRollback)
             return result
         }
+    }
+
+    /// A catalog query the driver sends on its own while reading a result, on the connection's queue, scoped the way
+    /// `executeTransactionScopedRead` scopes one. The caller clears the result. Inside an aborted block it hands back
+    /// the savepoint's own `25P02` failure.
+    func pinnedCatalogSideQueryOnQueue(_ statement: String, conn: OpaquePointer) -> OpaquePointer? {
+        preconditionOnQueue()
+        guard pinsCatalogSearchPath else { return statement.withCString { PQexec(conn, $0) } }
+        let pinned = PostgreSQLCatalogSearchPath.pinned + statement
+        guard isInsideTransactionBlockOnQueue() else { return pinned.withCString { PQexec(conn, $0) } }
+        guard let savepoint = Self.scopedReadSavepoint.withCString({ PQexec(conn, $0) }) else { return nil }
+        guard PQresultStatus(savepoint) == PGRES_COMMAND_OK else { return savepoint }
+        PQclear(savepoint)
+        let result = pinned.withCString { PQexec(conn, $0) }
+        if let rollback = Self.scopedReadRollback.withCString({ PQexec(conn, $0) }) { PQclear(rollback) }
+        return result
     }
 
     private static let scopedReadSavepoint = "SAVEPOINT tablepro_scoped_read"
@@ -838,7 +904,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return decoded
     }
 
-    private func executeQuerySync(_ query: String) throws -> LibPQPluginQueryResult {
+    private func executeQuerySync(_ query: String, singleStatement: Bool = false) throws -> LibPQPluginQueryResult {
         let conn = connectionHandle
 
         guard !isShuttingDown, let conn else {
@@ -854,7 +920,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
         let localQuery = String(query)
         let result: OpaquePointer? = localQuery.withCString { queryPtr in
-            PQexec(conn, queryPtr)
+            singleStatement ? PQexecParams(conn, queryPtr, 0, nil, nil, nil, nil, 0) : PQexec(conn, queryPtr)
         }
 
         guard let result = result else {

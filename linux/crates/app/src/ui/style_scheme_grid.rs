@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use gtk4::prelude::*;
-use tablepro_storage::AppSettings;
-use tablepro_storage::settings::keys;
+use tablepro_linux_platform::AppSettings;
+use tablepro_linux_platform::settings::keys;
 
 /// One preview per installed scheme. `StyleSchemePreview` is a toggle,
 /// so the group behaves like a radio set: picking one writes the id and

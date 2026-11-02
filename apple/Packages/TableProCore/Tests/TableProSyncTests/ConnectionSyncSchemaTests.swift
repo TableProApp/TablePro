@@ -180,6 +180,21 @@ struct ConnectionSyncSchemaTests {
         #expect(SyncRecordMapper.toConnection(record)?.connectTimeoutSeconds == 12)
     }
 
+    @Test("a MongoDB connection-string secret never reaches the record")
+    func mongoURISecretsStayOffTheRecord() throws {
+        var connection = makeFullyPopulatedConnection()
+        connection.additionalFields = [
+            "mongoParam_sslClientCertificateKeyPassword": "hunter2",
+            "mongoParam_authMechanismProperties": "SERVICE_NAME:mongodb,AWS_SESSION_TOKEN:FQoG"
+        ]
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        let data = try #require(record.fields(ConnectionSyncField.self)[.additionalFieldsJson] as? Data)
+        let additionalFields = try JSONDecoder().decode([String: String].self, from: data)
+
+        #expect(additionalFields["mongoParam_sslClientCertificateKeyPassword"] == nil)
+        #expect(additionalFields["mongoParam_authMechanismProperties"] == "SERVICE_NAME:mongodb")
+    }
+
     @Test("clearing additional fields removes their previous record value")
     func clearingAdditionalFieldsRemovesRecordValue() {
         var connection = makeFullyPopulatedConnection()

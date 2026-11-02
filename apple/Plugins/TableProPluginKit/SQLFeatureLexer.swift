@@ -22,6 +22,7 @@ struct SQLFeatureLexer {
     }
 
     private static let space: UInt16 = 0x20
+    private static let delete: UInt16 = 0x7F
     private static let newline: UInt16 = 0x0A
     private static let carriageReturn: UInt16 = 0x0D
     private static let singleQuote: UInt16 = 0x27
@@ -44,6 +45,8 @@ struct SQLFeatureLexer {
     private static let exclamationMark: UInt16 = 0x21
     private static let at: UInt16 = 0x40
     private static let colon: UInt16 = 0x3A
+    private static let questionMark: UInt16 = 0x3F
+    private static let byteOrderMark: UInt16 = 0xFEFF
 
     let units: [UInt16]
     let features: SQLLexicalFeatures
@@ -100,7 +103,7 @@ struct SQLFeatureLexer {
         case Self.dash:
             guard unitAt(index + 1) == Self.dash else { return false }
             guard features.contains(.dashCommentsNeedWhitespace), let next = unitAt(index + 2) else { return true }
-            return next <= Self.space
+            return next <= Self.space || next == Self.delete
         case Self.hash:
             return features.contains(.hashLineComments)
         case Self.slash:
@@ -313,6 +316,7 @@ struct SQLFeatureLexer {
         guard prefix == Self.dollar || prefix == Self.at || prefix == Self.colon || prefix == Self.hash else {
             return nil
         }
+        if prefix == Self.dollar, continuesSQLiteWord(before: index) { return nil }
         var cursor = index + 1
         while cursor < units.count, isSQLiteIdentifierUnit(units[cursor]) {
             cursor += 1
@@ -321,10 +325,24 @@ struct SQLFeatureLexer {
         cursor += 1
         while cursor < units.count {
             if units[cursor] == Self.closeParen { return cursor + 1 }
-            if units[cursor] <= Self.space { return cursor }
+            if units[cursor] == 0 || isSQLiteSpace(units[cursor]) { return cursor }
             cursor += 1
         }
         return cursor
+    }
+
+    // `$` is one of SQLite's identifier characters, so `a$b(` is the name `a$b` and a `(`. A byte order mark is white
+    // space where a token could start, and `?1` ends at its last digit, so a `$` after either one starts a token.
+    private func continuesSQLiteWord(before index: Int) -> Bool {
+        var cursor = index
+        while cursor > 0, units[cursor - 1] == Self.byteOrderMark {
+            cursor -= 1
+        }
+        guard cursor > 0, isSQLiteIdentifierUnit(units[cursor - 1]) else { return false }
+        while cursor > 0, units[cursor - 1] >= 0x30, units[cursor - 1] <= 0x39 {
+            cursor -= 1
+        }
+        return cursor == 0 || units[cursor - 1] != Self.questionMark
     }
 
     // MARK: - Characters
@@ -367,5 +385,9 @@ struct SQLFeatureLexer {
 
     private func isSQLiteIdentifierUnit(_ unit: UInt16) -> Bool {
         isASCIIIdentifierPart(unit) || unit == Self.dollar || unit >= 0x80
+    }
+
+    private func isSQLiteSpace(_ unit: UInt16) -> Bool {
+        unit == Self.space || (unit >= 0x09 && unit <= Self.carriageReturn)
     }
 }

@@ -8,6 +8,15 @@ pub(crate) fn label(level: SafeModeLevel) -> String {
     }
 }
 
+// The window title and the connect dialog show `label`, which has no access key.
+pub(crate) fn menu_label(level: SafeModeLevel) -> String {
+    match level {
+        SafeModeLevel::Off => crate::i18n::gettext("_Off"),
+        SafeModeLevel::ConfirmWrites => crate::i18n::gettext("_Confirm Writes"),
+        SafeModeLevel::ReadOnly => crate::i18n::gettext("_Read-Only"),
+    }
+}
+
 /// What the level does on this engine. Read-Only's guarantee differs by
 /// engine, so the row says which one the user is getting, naming an
 /// engine that cannot hold a connection to reads, an engine of keys is
