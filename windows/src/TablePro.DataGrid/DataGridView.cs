@@ -153,6 +153,9 @@ public sealed partial class DataGridView : UserControl, IGridWindow
             ZoomMode = ZoomMode.Disabled,
             IsTabStop = false,
             Background = Brushes.Background,
+            // NaN turns anchoring off: rows have a fixed height, so the grid has nothing to keep in place.
+            HorizontalAnchorRatio = double.NaN,
+            VerticalAnchorRatio = double.NaN,
         };
         _scroller.ViewChanging += (_, e) => Follow(e.NextView.HorizontalOffset, e.NextView.VerticalOffset);
         _scroller.ViewChanged += (_, _) => Follow(_scroller.HorizontalOffset, _scroller.VerticalOffset);
