@@ -58078,42 +58078,42 @@
         }
       }
     },
-    "Data Rewind needs a Starter license" : {
+    "Data Rewind needs a Pro license" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le retour arrière des données nécessite une licence Starter"
+            "value" : "Le retour arrière des données nécessite une licence Pro"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "데이터 되감기에는 Starter 라이선스가 필요합니다"
+            "value" : "데이터 되감기에는 Pro 라이선스가 필요합니다"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Veri Geri Sarma bir Starter lisansı gerektirir"
+            "value" : "Veri Geri Sarma bir Pro lisansı gerektirir"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tua lại dữ liệu cần giấy phép Starter"
+            "value" : "Tua lại dữ liệu cần giấy phép Pro"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "数据回溯需要 Starter 许可证"
+            "value" : "数据回溯需要 Pro 许可证"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "資料回溯需要 Starter 授權"
+            "value" : "資料回溯需要 Pro 授權"
           }
         }
       }
@@ -137408,7 +137408,6 @@
       }
     },
     "Pro" : {
-      "extractionState" : "stale",
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -150256,42 +150255,42 @@
         }
       }
     },
-    "Restoring a save that already committed needs a Starter license." : {
+    "Restoring a save that already committed needs a Pro license." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Restaurer un enregistrement déjà validé nécessite une licence Starter."
+            "value" : "Restaurer un enregistrement déjà validé nécessite une licence Pro."
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이미 커밋된 저장을 복원하려면 Starter 라이선스가 필요합니다."
+            "value" : "이미 커밋된 저장을 복원하려면 Pro 라이선스가 필요합니다."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zaten işlenmiş bir kaydı geri yüklemek bir Starter lisansı gerektirir."
+            "value" : "Zaten işlenmiş bir kaydı geri yüklemek bir Pro lisansı gerektirir."
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Khôi phục một lần lưu đã commit cần giấy phép Starter."
+            "value" : "Khôi phục một lần lưu đã commit cần giấy phép Pro."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "恢复一次已提交的保存需要 Starter 许可证。"
+            "value" : "恢复一次已提交的保存需要 Pro 许可证。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "還原一次已提交的儲存需要 Starter 授權。"
+            "value" : "還原一次已提交的儲存需要 Pro 授權。"
           }
         }
       }
@@ -172501,46 +172500,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Recommencez le bloc avec MULTI."
-          }
-        }
-      }
-    },
-    "Starter" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starter"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starter"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starter"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starter"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starter"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Starter"
           }
         }
       }
