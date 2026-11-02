@@ -31,7 +31,7 @@ public sealed partial class MainWindow : Window, IShell
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         Title = "TablePro";
-        AppWindow.SetIcon("Assets/AppIcon.ico");
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         if (MicaController.IsSupported())
         {
             SystemBackdrop = new MicaBackdrop();

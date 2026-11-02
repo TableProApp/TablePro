@@ -42,7 +42,7 @@ public sealed partial class ConnectionFormWindow : Window
         SetTitleBar(FormTitleBar);
         Title = Strings.Get(_isNew ? "NewConnectionTitle" : "EditConnectionTitle");
         FormTitleBar.Title = Title;
-        AppWindow.SetIcon("Assets/AppIcon.ico");
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         if (MicaController.IsSupported())
         {
             SystemBackdrop = new MicaBackdrop();

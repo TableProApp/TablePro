@@ -27,7 +27,7 @@ public sealed partial class ResultsPane : UserControl
 
     public event EventHandler<string>? StatusChanged;
 
-    public IResultGrid? Grid
+    public IResultGrid? ResultGrid
     {
         get => GridHost.Content as IResultGrid;
         set
@@ -49,7 +49,7 @@ public sealed partial class ResultsPane : UserControl
 
     public void Clear()
     {
-        Grid?.Clear();
+        ResultGrid?.Clear();
         _shown?.Dispose();
         _shown = null;
         ErrorBar.IsOpen = false;
@@ -77,7 +77,7 @@ public sealed partial class ResultsPane : UserControl
                     _shown = run.GetResultSet(started.SetIndex);
                     if (_shown is not null)
                     {
-                        Grid?.Show(_shown, started.Columns);
+                        ResultGrid?.Show(_shown, started.Columns);
                     }
 
                     break;
@@ -142,7 +142,7 @@ public sealed partial class ResultsPane : UserControl
 
     private void Summarize(long rows, int columns)
     {
-        if (Grid is null)
+        if (ResultGrid is null)
         {
             Placeholder.Text = Strings.Format(
                 "ResultsSummary",

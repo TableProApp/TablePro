@@ -143,7 +143,7 @@ public sealed partial class HomeView : UserControl
 
     private void OnLibraryDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is LibraryItem { Node.Connection: { } connection })
+        if (ConnectionTree.ItemFromContainer((DependencyObject)sender) is LibraryItem { Node.Connection: { } connection })
         {
             e.Handled = true;
             _shell.Connect(connection);
@@ -186,7 +186,7 @@ public sealed partial class HomeView : UserControl
 
     private void OnLibraryContextRequested(UIElement sender, ContextRequestedEventArgs args)
     {
-        if ((sender as FrameworkElement)?.DataContext is not LibraryItem item)
+        if (ConnectionTree.ItemFromContainer(sender) is not LibraryItem item)
         {
             return;
         }
