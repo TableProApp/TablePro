@@ -29,9 +29,10 @@ struct SQLLexicalFeatureMappingTests {
             .sqlScriptBlocks, .cqlBatches, .hashAndAtInIdentifiers, .angleQuotedIdentifiers,
             .backslashEscapesInAngleQuotes, .escapeBytesPrefix, .exponentSignsNeedNoDigits, .formFeedEndsLineComments,
             .atomicRoutineBodies, .triggerBodies, .statementsAsValues, .bracketedStatementSources, .pipeOperatorChains,
+            .withoutDashComments, .escapeStringContinuations,
         ]
         #expect(grammarBits.isDisjoint(with: curatedOnly))
-        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 38) - 1)
+        #expect(grammarBits.union(curatedOnly).rawValue == (1 << 40) - 1)
     }
 
     @Test("SAP HANA's SQLScript blocks stay in the app's curated grammar and never reach the kit")
@@ -75,7 +76,9 @@ struct SQLLexicalFeatureMappingTests {
         #expect(cockroach.pluginFeatures == DatabaseType.postgresql.lexicalGrammar.pluginFeatures)
         #expect(
             SQLLexicalGrammar(pluginFeatures: cockroach.pluginFeatures)
-                == cockroach.subtracting([.escapeBytesPrefix, .atomicRoutineBodies, .bracketedStatementSources])
+                == cockroach.subtracting([
+                    .escapeBytesPrefix, .escapeStringContinuations, .atomicRoutineBodies, .bracketedStatementSources,
+                ])
         )
     }
 
@@ -89,8 +92,9 @@ struct SQLLexicalFeatureMappingTests {
     @Test("A grammar survives the trip through the kit's features, less the facts only the curated table sets")
     func roundTrip() {
         let grammar = DatabaseType.postgresql.lexicalGrammar
-        #expect(grammar.contains(.atomicRoutineBodies))
-        #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar.subtracting(.atomicRoutineBodies))
+        let curatedOnly: SQLLexicalGrammar = [.atomicRoutineBodies, .escapeStringContinuations]
+        #expect(grammar.isSuperset(of: curatedOnly))
+        #expect(SQLLexicalGrammar(pluginFeatures: grammar.pluginFeatures) == grammar.subtracting(curatedOnly))
         #expect(SQLLexicalGrammar(pluginFeatures: DatabaseType.mysql.lexicalGrammar.pluginFeatures) == DatabaseType.mysql.lexicalGrammar)
     }
 

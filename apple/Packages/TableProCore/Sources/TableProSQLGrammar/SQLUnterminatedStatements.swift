@@ -45,6 +45,12 @@ public enum SQLUnterminatedStatements {
         "TRUNCATE", "UPDATE", "UPDATETEXT", "USE", "WAITFOR", "WHILE", "WRITETEXT",
     ]
 
+    /// Whether T-SQL runs a batch that opens with `keyword` as the procedure of that name, as it runs `SHOW 'x'`: no
+    /// statement begins with the word. A common table expression's `WITH` begins one.
+    public static func callsProcedure(opening keyword: String) -> Bool {
+        !keyword.isEmpty && keyword != "WITH" && !statementKeywords.contains(keyword)
+    }
+
     private static let routineKinds: Set<String> = ["PROC", "PROCEDURE", "FUNCTION", "TRIGGER"]
 
     /// The statement keywords that are also permissions. Followed by a comma, `ON` or `TO`, as in

@@ -179,7 +179,10 @@ struct SQLStatementTiering {
         let touchesUnsafeSurface = Self.namesFilesystemSurface(code.tokens, in: code.code as NSString)
             || Self.callsFilesystemFunction(calls)
             || Self.quotesFilesystemProcedure(in: statement, grammar: grammar)
-        let keywordTier = keywordClassification(code, grammar: grammar, depth: depth)
+        var keywordTier = keywordClassification(code, grammar: grammar, depth: depth)
+        if grammar.contains(.unterminatedStatements), SQLUnterminatedStatements.callsProcedure(opening: code.keyword) {
+            keywordTier = keywordTier.escalated(to: .write)
+        }
         let base = keywordTier.tier == .safe
             ? keywordTier.escalated(to: stateChangingCallTier(code, calls: calls, grammar: grammar))
             : keywordTier

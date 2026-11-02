@@ -248,6 +248,18 @@ class DetectChangedPathsTests(unittest.TestCase):
                 self.assertEqual(self.verdict_after(suite, "apple/scripts/localization.py"), "true")
                 self.assertEqual(self.verdict_after(suite, "apple/scripts/test_localization.py"), "false")
 
+    def test_ios_and_linux_run_on_the_function_names_both_apps_share(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        shared = "core/crates/core/tests/fixtures/state_changing_functions.json"
+        for suite in ["ios", "linux"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, shared), "true")
+        self.assertEqual(self.verdict_after("ios", "core/crates/core/tests/fixtures/other.json"), "false")
+        self.assertEqual(self.verdict_after("macos", shared), "false")
+
     def test_macos_runs_on_the_build_setup_action(self):
         self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")
 

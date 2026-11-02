@@ -157,7 +157,8 @@ nonisolated extension DuckDBDriver {
 
     // DuckDBLexicalFeatures in the DuckDB plugin, which this app does not compile.
     private static let lexicalFeatures: SQLLexicalFeatures = [
-        .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .carriageReturnEndsLineComments,
+        .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .backtickQuotes,
+        .carriageReturnEndsLineComments,
     ]
 
     // The key list as the plugin reads it: a quoted name unquoted, an expression as written.

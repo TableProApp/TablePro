@@ -93,15 +93,18 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     // MARK: - Grammars
 
     /// PostgreSQL 17.11, measured: a backslash is literal under `standard_conforming_strings`, block comments nest,
-    /// `$tag$` takes non-ASCII and case-sensitive tags, `E'\''` escapes, a carriage return ends `--`, and `#` and `//`
+    /// `$tag$` takes non-ASCII and case-sensitive tags, `E'\''` escapes, a `'...'` after a line break continues an
+    /// `E'...'` with its escapes, a vertical tab before the break too, a carriage return ends `--`, and `#` and `//`
     /// are operators. From its grammar: a routine's body is a literal or `BEGIN ATOMIC ... END`.
     static let postgreSQL: SQLLexicalGrammar = [
-        .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .carriageReturnEndsLineComments,
-        .atomicRoutineBodies,
+        .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .escapeStringContinuations,
+        .carriageReturnEndsLineComments, .atomicRoutineBodies,
     ]
 
     /// CockroachDB, from its scanner: PostgreSQL's grammar, and a `b'...'` byte literal read by the routine that reads
-    /// `e'...'`, so `b'\''` escapes. Not measured.
+    /// `e'...'`, so `b'\''` escapes and a `'...'` after a line break continues either one. It takes only blanks
+    /// between the two, not a comment or a vertical tab, and refuses a text where PostgreSQL's rule joins and its own
+    /// does not, since two literals cannot stand side by side. Not measured.
     static let cockroachDB: SQLLexicalGrammar = postgreSQL.union(.escapeBytesPrefix)
 
     /// MySQL 8.4.11 and MariaDB 11.8.9, measured: a backslash escapes in `'` and `"` strings and is literal in a
@@ -119,11 +122,14 @@ public struct SQLLexicalProfile: Sendable, Hashable {
         .backtickQuotes, .bracketQuotedIdentifiers, .parenthesizedParameterNames, .triggerBodies,
     ]
 
-    /// DuckDB 1.5.2 and 1.5.4, measured: lexes strings, comments and dollar quotes as PostgreSQL does. It has no
-    /// `BEGIN ... END` body, so it takes PostgreSQL's narrower fact.
+    /// DuckDB 2.0.0, measured: lexes strings, comments and dollar quotes as PostgreSQL does, except that a backtick
+    /// quotes a name and a `'...'` after a line break is a string of its own, not part of an `E'...'`. 1.5.4 continues
+    /// the `E'...'` as PostgreSQL does, a registry plugin built before 2.0 links 1.5, and `enable_legacy_parser` brings
+    /// 1.5's parser back on 2.0, so a gate reads both. It has no `BEGIN ... END` body, so it takes PostgreSQL's
+    /// narrower fact.
     static let duckDB: SQLLexicalGrammar = [
-        .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .carriageReturnEndsLineComments,
-        .atomicRoutineBodies,
+        .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .backtickQuotes,
+        .carriageReturnEndsLineComments, .atomicRoutineBodies,
     ]
 
     /// Oracle 23.26, measured: a backslash is literal, block comments do not nest, `q'[...]'` is a literal, `$` and
@@ -254,12 +260,15 @@ public struct SQLLexicalProfile: Sendable, Hashable {
                 grammar: postgreSQL,
                 undetermined: [
                     .backslashEscapesInSingleQuotes, .alternativeQuoting, .plsqlBlocks,
-                    .slashLineTerminators, .dollarAndHashInIdentifiers,
+                    .slashLineTerminators, .dollarAndHashInIdentifiers, .escapeStringContinuations,
                 ]
             ),
             "Redshift": SQLLexicalProfile(
                 grammar: postgreSQL,
-                undetermined: [.backslashEscapesInSingleQuotes, .nestedBlockComments, .escapeStringPrefix]
+                undetermined: [
+                    .backslashEscapesInSingleQuotes, .nestedBlockComments, .escapeStringPrefix,
+                    .escapeStringContinuations,
+                ]
             ),
             "CockroachDB": SQLLexicalProfile(
                 grammar: cockroachDB.union(.bracketedStatementSources),
@@ -283,7 +292,7 @@ public struct SQLLexicalProfile: Sendable, Hashable {
             "libSQL": sqliteFamily,
             "Turso": sqliteFamily,
             "Cloudflare D1": sqliteFamily,
-            "DuckDB": SQLLexicalProfile(grammar: duckDB),
+            "DuckDB": SQLLexicalProfile(grammar: duckDB, undetermined: [.escapeStringContinuations]),
             "Oracle": SQLLexicalProfile(grammar: oracle),
             "Dameng": SQLLexicalProfile(
                 grammar: dameng,

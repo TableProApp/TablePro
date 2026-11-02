@@ -47,7 +47,9 @@ case "$SUITE" in
             'apple/scripts/(generate-project|download-libs|create-openssl-dylibs)\.sh$' 'apple/scripts/lib/'
             'apple/scripts/ci/summarize-xcresult\.sh$' 'apple/scripts/localization\.py$'
             'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/(ci|ios-tests)\.yml$')
+            '\.github/actions/setup-xcode(gen)?/' '\.github/workflows/(ci|ios-tests)\.yml$'
+            # The TableProCore package tests read the function names the Linux app shares.
+            'core/crates/core/tests/fixtures/state_changing_functions\.json$')
         # The iOS project compiles files from Plugins/, Packages/ and TablePro/, so every path its
         # spec reaches outside TableProMobile/ is read from the spec instead of copied here.
         SHARED="$(grep -oE '\.\./(Configs|Packages|Plugins|TablePro)/[^"[:space:]]*' apple/TableProMobile/project.yml \
