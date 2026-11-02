@@ -184,13 +184,13 @@ struct LicensePresentationTests {
         )
         #expect(line.contains("Yearly"))
         #expect(line.contains("12 Mar 2027"))
-        #expect(line == "Starter, Yearly, \(String(format: String(localized: "Expires %@"), "12 Mar 2027"))")
+        #expect(line == "Pro, Yearly, \(String(format: String(localized: "Expires %@"), "12 Mar 2027"))")
     }
 
     @Test("A license with no billing cycle still reads cleanly")
     func planWithoutCycle() {
         let line = LicensePresentation.planDescription(tier: "starter", billingCycle: nil, expiry: "1 Jan 2030")
-        #expect(line.hasPrefix("Starter"))
+        #expect(line.hasPrefix("Pro"))
         #expect(line.contains(", , ") == false, "No empty segment")
     }
 
@@ -305,7 +305,7 @@ struct LicensePresentationTests {
         #expect(access == [.unlicensed, .unlicensed])
     }
 
-    @Test("A Starter license includes the Starter plan and offers Team as an upgrade")
+    @Test("A starter-tier license includes the Pro plan and offers Team as an upgrade")
     func starterLicenseOffersTheUpgrade() {
         let groups = LicensePresentation.featureGroups(status: .active, tier: .starter)
         let access = groups.map { $0.access }
