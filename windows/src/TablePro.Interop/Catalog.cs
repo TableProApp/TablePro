@@ -7,9 +7,7 @@ public enum DataModel
     Document,
 }
 
-/// <summary>An engine linked into the core, as the connect dialog lists it.</summary>
-/// <param name="FileSuffixes">For an engine that opens files, the name suffixes it claims, the one a new file
-/// gets first. Empty for a network engine.</param>
+// FileSuffixes: the suffixes a file engine claims, the one a new file gets first. Empty for a network engine.
 public sealed record DatabaseEngine(
     string Id,
     string DisplayName,
@@ -33,11 +31,11 @@ public enum ObjectKind
     Dictionary,
     Key,
 
-    /// <summary>A kind a newer core reports that this build does not name.</summary>
+    // A kind a newer core reports that this build does not name.
     Other,
 }
 
-/// <param name="ParentTable">The table a trigger fires on.</param>
+// ParentTable: the table a trigger fires on.
 public sealed record ObjectEntry(string? Schema, string Name, ObjectKind Kind, string? ParentTable);
 
 public abstract record ObjectScope
@@ -59,10 +57,16 @@ public abstract record ObjectScope
     public sealed record AllSchemasScope : ObjectScope;
 }
 
-/// <summary>A table as the server qualifies it. No schema means the engine has none, or the default one.</summary>
+// No schema means the engine has none, or the default one.
 public sealed record TableName(string? Schema, string Name);
 
-/// <param name="TypeName">The type as the server spells it, for display.</param>
+// Column is the table's column position, as the grid numbers its columns.
+public sealed record ColumnSort(int Column, bool Ascending);
+
+// The engine's row address may follow the visible columns; a grid shows the first VisibleColumns.
+public sealed record TableQuery(string Sql, int VisibleColumns);
+
+// TypeName: the type as the server spells it, for display.
 public sealed record ColumnEntry(
     string Name,
     string TypeName,

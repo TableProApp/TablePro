@@ -38,6 +38,6 @@ pub use library::{
 };
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TruncationTag};
-pub use session::DatabaseSession;
+pub use session::{ColumnSort, DatabaseSession, TableQuery};
 
 uniffi::setup_scaffolding!();

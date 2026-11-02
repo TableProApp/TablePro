@@ -2,7 +2,6 @@
 
 #![expect(
     clippy::unwrap_used,
-    clippy::expect_used,
     reason = "the setup helpers fail a test the way the test functions themselves do"
 )]
 
@@ -228,20 +227,24 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
         .unwrap();
     let objects = session.objects(ObjectScopeArg::DefaultSchema, None).await.unwrap();
     let browse = session
-        .browse_sql(
+        .table_query(
             TableName {
                 schema: None,
                 name: "people".to_owned(),
             },
+            None,
             100,
+            None,
         )
+        .await
         .unwrap();
     session.close().await.unwrap();
     let snapshot = library.snapshot().await.unwrap();
 
     assert!(objects.iter().any(|object| object.name == "people"));
-    assert!(browse.starts_with("SELECT * FROM \"people\""), "{browse}");
-    assert!(browse.contains("100"), "{browse}");
+    assert!(browse.sql.contains("FROM \"people\""), "{browse:?}");
+    assert!(browse.sql.contains("100"), "{browse:?}");
+    assert_eq!(browse.visible_columns, 2);
     assert_eq!(snapshot.recent, [saved.id]);
     assert!(snapshot.connections[0].last_opened_ms.is_some());
 }

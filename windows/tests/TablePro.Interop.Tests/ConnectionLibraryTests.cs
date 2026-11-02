@@ -72,11 +72,12 @@ public sealed class ConnectionLibraryTests : IDisposable
         await _core.TestConnectionAsync(saved, ConnectionSecrets.None, cancellationToken);
         await using var session = await _core.ConnectAsync(saved.Id!.Value, cancellationToken: cancellationToken);
         var objects = await session.GetObjectsAsync(ObjectScope.DefaultSchema, cancellationToken);
-        var browse = session.BrowseSql(new TableName(null, "people"), 100);
+        var browse = await session.GetTableQueryAsync(new TableName(null, "people"), null, 100, cancellationToken);
         var snapshot = await library.GetSnapshotAsync();
 
         Assert.Contains(objects, entry => entry.Name == "people");
-        Assert.StartsWith("SELECT * FROM \"people\"", browse, StringComparison.Ordinal);
+        Assert.Contains("FROM \"people\"", browse.Sql, StringComparison.Ordinal);
+        Assert.Equal(3, browse.VisibleColumns);
         Assert.Equal([saved.Id.Value], snapshot.Recent);
         Assert.NotNull(snapshot.Connections[0].LastOpened);
     }

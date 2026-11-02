@@ -308,7 +308,6 @@ fn no_storage() -> CoreError {
     CoreError::failed("ffi.no_storage", "the core was started without a storage folder")
 }
 
-#[cfg(windows)]
 type SystemSecrets = (Arc<dyn SecretVault>, Arc<dyn SecretItems>);
 
 #[cfg(windows)]
@@ -321,7 +320,7 @@ fn system_secrets(tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
 }
 
 #[cfg(not(windows))]
-fn system_secrets(_tasks: &Tasks) -> Result<(Arc<dyn SecretVault>, Arc<dyn SecretItems>), CoreError> {
+fn system_secrets(_tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
     Err(CoreError::failed(
         "ffi.no_system_secret_store",
         "this platform's secret store is not built into the core",
