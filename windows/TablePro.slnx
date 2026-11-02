@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TablePro.Interop/TablePro.Interop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TablePro.Interop.Tests/TablePro.Interop.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,121 @@
+using System.Text;
+
+namespace TablePro.Interop.Tests;
+
+public sealed class VerticalPathTests
+{
+    [Fact]
+    public void EveryEngineOfTheFirstReleaseIsLinkedIn()
+    {
+        using var core = TableProCore.Create(new HostConfiguration("test"), new MemorySecretStore());
+
+        var ids = core.Engines.Select(engine => engine.Id).Order().ToList();
+        var sqlite = core.Engines.Single(engine => engine.Id == "sqlite");
+
+        Assert.Equal(
+            ["cassandra", "clickhouse", "duckdb", "mongodb", "mssql", "mysql", "postgres", "redis", "sqlite"],
+            ids);
+        Assert.Contains("sqlite3", sqlite.FileSuffixes);
+        Assert.Null(sqlite.DefaultPort);
+        Assert.Equal(5432, core.Engines.Single(engine => engine.Id == "postgres").DefaultPort);
+    }
+
+    [Fact]
+    public async Task TheCatalogListsEachLevelWhenAskedFor()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+        var session = database.Session;
+
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var schemas = await session.GetSchemasAsync(cancellationToken);
+        var objects = await session.RefreshObjectsAsync(ObjectScope.DefaultSchema, cancellationToken);
+        var cached = await session.GetObjectsAsync(ObjectScope.DefaultSchema, cancellationToken);
+        var columns = await session.GetColumnsAsync(new TableName(null, "people"), cancellationToken);
+
+        Assert.Contains(schemas, schema => schema.IsDefault);
+        var people = Assert.Single(objects, entry => entry.Name == "people");
+        Assert.Equal(ObjectKind.Table, people.Kind);
+        Assert.Equal(objects, cached);
+        Assert.Equal(["id", "name", "note"], columns.Select(column => column.Name));
+        Assert.Equal(ValueKind.Integer, columns[0].ValueKind);
+        Assert.True(columns[0].IsPrimaryKey);
+        Assert.Equal(ValueKind.Text, columns[1].ValueKind);
+        Assert.False(columns[1].IsNullable);
+        Assert.Equal("app.sqlite", session.Name);
+        Assert.Equal("sqlite", session.EngineId);
+    }
+
+    [Fact]
+    public async Task AQueryStreamsIntoAResultSetThatAWindowReads()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+
+        using var run = database.Editor.Run(
+            "SELECT id, name, note FROM people ORDER BY id",
+            cancellationToken: TestContext.Current.CancellationToken);
+        var events = new List<QueryEvent>();
+        await foreach (var queryEvent in run.ReadEventsAsync(TestContext.Current.CancellationToken))
+        {
+            events.Add(queryEvent);
+        }
+
+        var outcome = await run.Completion;
+        Assert.IsType<QueryOutcome.Completed>(outcome);
+        var started = Assert.IsType<QueryEvent.ResultSetStarted>(events[0]);
+        Assert.Equal(["id", "name", "note"], started.Columns.Select(column => column.Name));
+        Assert.Contains(new QueryEvent.RowsAppended(0, SqliteDatabase.PeopleRows), events);
+        Assert.IsType<QueryEvent.Finished>(events[^1]);
+
+        using var set = run.GetResultSet(0);
+        Assert.NotNull(set);
+        Assert.Equal(SqliteDatabase.PeopleRows, set.RowCount);
+        Assert.True(set.IsFinished);
+        Assert.Equal("line one\nline two", set.GetCellText(1, 2));
+        Assert.Null(set.GetCellText(0, 2));
+
+        using var cursor = set.OpenCursor();
+        var window = cursor.Fetch(0, 50, 0, 3, 6);
+        Assert.Equal(3, window.RowCount);
+        Assert.Equal(3, window.ColumnCount);
+        Assert.Equal(SqliteDatabase.PeopleRows, window.TotalRows);
+        Assert.True(window.IsFinished);
+        Assert.Equal("1", window.GetText(0, 0));
+        Assert.Equal(3, window.GetRaw(2, 0));
+        Assert.Equal(ValueKind.Integer, window.GetKind(0, 0));
+        Assert.Equal("Zoë 👋", window.GetText(2, 1));
+        Assert.Equal(ValueKind.Text, window.GetKind(2, 1));
+        Assert.Equal(Encoding.UTF8.GetByteCount("Zoë 👋"), window.GetRaw(2, 1));
+        Assert.True(window.IsNull(0, 2));
+        Assert.Null(window.GetText(0, 2));
+        Assert.Equal("line o", window.GetText(1, 2));
+        Assert.True(window.IsTruncated(1, 2));
+        Assert.Equal("中文", window.GetText(2, 2));
+        Assert.False(window.IsTruncated(2, 2));
+    }
+
+    [Fact]
+    public async Task AWindowOutlivedByALaterFetchRefusesToBeRead()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+        using var run = database.Editor.Run(
+            "SELECT id FROM people",
+            cancellationToken: TestContext.Current.CancellationToken);
+        await run.Completion;
+        using var set = run.GetResultSet(0)!;
+        using var cursor = set.OpenCursor();
+
+        var first = cursor.Fetch(0, 1, 0, 1, 10).RowCount;
+        cursor.Fetch(1, 1, 0, 1, 10);
+
+        Assert.Equal(1, first);
+        Assert.Throws<InvalidOperationException>(() => ReadStale(cursor));
+    }
+
+    private static string? ReadStale(ResultCursor cursor)
+    {
+        var stale = cursor.Fetch(0, 1, 0, 1, 10);
+        cursor.Fetch(2, 1, 0, 1, 10);
+        return stale.GetText(0, 0);
+    }
+}

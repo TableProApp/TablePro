@@ -60,3 +60,6 @@ apple/TablePro/Resources/ThirdPartyLicenses/texts/sqlite.txt -linguist-vendored
 Cargo.lock linguist-generated
 linux/data/licenses/** linguist-generated
 linux/build-aux/debian/copyright linguist-generated
+
+# The Windows interop bindings, written by uniffi-bindgen-cs and csbindgen (windows/AGENTS.md, Bindings)
+windows/src/TablePro.Interop/Generated/** linguist-generated eol=lf
