@@ -10,6 +10,7 @@ using TablePro.Editor.Automation;
 using TablePro.Editor.Input;
 using TablePro.Editor.Model;
 using TablePro.Editor.Rendering;
+using TablePro.Graphics;
 using Windows.UI.ViewManagement;
 using static TerraFX.Interop.Windows.Windows;
 

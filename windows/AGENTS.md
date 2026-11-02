@@ -1,13 +1,13 @@
 # TablePro for Windows
 
-The Windows app: C# on .NET 10 with WinUI 3, for Windows 10 1809 and later and Windows 11, on x64 and Arm64, over the shared Rust core in `core/` (`core/AGENTS.md`). This folder holds the app, the interop library it reaches the core through, the SQL editor control, and their tests.
+The Windows app: C# on .NET 10 with WinUI 3, for Windows 10 1809 and later and Windows 11, on x64 and Arm64, over the shared Rust core in `core/` (`core/AGENTS.md`). This folder holds the app, the interop library it reaches the core through, the SQL editor and data grid controls, and their tests.
 
 This is the guide for work under `windows/`. The root `AGENTS.md` holds the rules every app shares. Claude Code loads this file through `windows/CLAUDE.md` once a file under `windows/` is read; Codex reads it when started in `windows/`.
 
 ## Principles
 
 1. **Tests define behavior**, as in the root `AGENTS.md`.
-2. **Native only.** WinUI 3 controls, used as the Fluent guidance describes. No custom control where WinUI has one, no web view, no cross-platform toolkit. The SQL editor is our own control because RichEditBox failed its gate (`docs/decisions/0002-sql-editor-control.md`).
+2. **Native only.** WinUI 3 controls, used as the Fluent guidance describes. No custom control where WinUI has one, no web view, no cross-platform toolkit. The SQL editor is our own control because RichEditBox failed its gate (`docs/decisions/0002-sql-editor-control.md`), and the data grid because WinUI has none (`docs/decisions/0003-data-grid-control.md`).
 3. **The core does the work.** Drivers, sessions, the catalog, result sets and error codes live in `core/`. This folder words, lays out and styles. What the core lacks is added there, with its Rust tests.
 4. **Nothing generated is edited.** `src/TablePro.Interop/Generated/` changes only through the generator (Bindings, below).
 
@@ -17,7 +17,12 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `src/TablePro.Interop`: the library the app calls. Its public API is hand-written; `Generated/` holds the uniffi-bindgen-cs and csbindgen output, all `internal`, so a generator upgrade cannot change what the app sees. The project is AOT and trim compatible, and its analyzers fail the build otherwise.
 - `tests/TablePro.Interop.Tests`: xunit v3 tests against the real core and real SQLite files.
 - `src/TablePro.Editor.Model`: the editor's text, carets, undo history, find and line-state highlighter. Plain `net10.0` with no WinUI, so `tests/TablePro.Editor.Model.Tests` runs anywhere.
+- `src/TablePro.Graphics`: the one text and drawing stack the controls share: Direct3D, Direct2D and DirectWrite through TerraFX, the editor's swap chain and line layouts, theme colors, and the font fallback warm-up. Its types are internal to the controls.
 - `src/TablePro.Editor`: the `SqlEditor` control over that model: Direct2D and DirectWrite in a SwapChainPanel, TSF, the UIA text provider, and the core's lexer through `CoreSqlLexer`.
+- `src/TablePro.DataGrid.Model`: the grid's columns, selection, keys, cell blocks read from the core (`ResultSetData`) and Excel-style copy. Plain `net10.0`, so `tests/TablePro.DataGrid.Model.Tests` runs anywhere; its `Needs=Core` tests load the real core.
+- `src/TablePro.DataGrid`: the read-only `DataGridView` control: ItemsRepeater rows that draw their cells with DirectWrite into composition surfaces, frozen columns, the header row, and UIA peers.
+- `tests/TablePro.DataGrid.Tests`: the control in a real WinUI window on a thread of its own. It runs on Windows and only compiles elsewhere.
+- `tests/TablePro.DataGrid.Gate` and `tests/TablePro.DataGrid.Gate.Uia`: the grid's timing and behavior gate, outside the solution. `ci/run-gate.ps1` builds and runs it; `.github/workflows/windows-grid-gate.yml` runs it by dispatch.
 - `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw`.
 - `src/TablePro.App.Model`: the app's settings and session files, the library tree, the connection form's fields and the object folders. Plain `net10.0`, so `tests/TablePro.App.Model.Tests` runs anywhere.
 - `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own.
@@ -30,6 +35,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - A `CancellationToken` fires the core's own cancel token, since UniFFI cannot cancel a call. A cancelled call throws `OperationCanceledException`; a failed one throws `TableProException`, whose `Code` the app words. A statement the server refused is not an exception: the run ends `QueryOutcome.Failed`.
 - `QueryEditor.Run` returns at once. Read the run's events with `ReadEventsAsync` on the UI thread; rows that arrive while it is busy come as one event.
 - A grid reads a `ResultSet` through `ResultCursor.Fetch`, one window per visible range. A cursor belongs to one thread, and a window cannot be read after the cursor's next fetch.
+- `DataGridView.SetData(new ResultSetData(set, columns))` shows a set. Call the grid's `RowsChanged` after each `RowsAppended`. Sorting is the host's: the grid raises `SortRequested` and shows `Sort`.
 - The app starts the core with `TableProCore.CreateWithSystemSecrets`, so the core keeps secrets in Credential Manager itself. `ISecretStore` is for tests and hosts with a store of their own; the core calls it on a thread of its own.
 - `TableProCore.Library` reads and writes the saved connections in the storage directory the configuration names. A list the app shows is rebuilt from `GetSnapshotAsync` after each change.
 

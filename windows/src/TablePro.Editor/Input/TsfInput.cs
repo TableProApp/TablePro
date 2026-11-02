@@ -3,7 +3,7 @@
 
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
-using TablePro.Editor.Rendering;
+using TablePro.Graphics;
 using TerraFX.Interop.Windows;
 using static TerraFX.Interop.Windows.E;
 using static TerraFX.Interop.Windows.S;

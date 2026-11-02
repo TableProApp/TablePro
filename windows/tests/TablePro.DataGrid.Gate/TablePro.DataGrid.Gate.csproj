@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The data grid's performance and behavior gate, run by ci/run-gate.ps1 on Windows only and kept out of the
+       solution (windows/docs/decisions/0003-data-grid-control.md, Gate). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <RootNamespace>TablePro.DataGrid.Gate</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <AnalysisLevel>latest-minimum</AnalysisLevel>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/TablePro.DataGrid/TablePro.DataGrid.csproj" />
+    <ProjectReference Include="../../src/TablePro.DataGrid.Model/TablePro.DataGrid.Model.csproj" />
+    <ProjectReference Include="../../src/TablePro.Interop/TablePro.Interop.csproj" />
+  </ItemGroup>
+
+</Project>

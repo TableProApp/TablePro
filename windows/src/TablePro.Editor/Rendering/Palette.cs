@@ -1,12 +1,12 @@
 using Microsoft.UI.Xaml;
+using TablePro.Graphics;
 using TerraFX.Interop.DirectX;
 using Windows.UI;
 using Windows.UI.ViewManagement;
 
 namespace TablePro.Editor.Rendering;
 
-// The colors the editor draws with. Chrome colors come from WinUI's theme resources, and in high contrast from the
-// system's colors, where text, selection and caret take the user's own choices and syntax colors step aside.
+// In high contrast the system colors take over and syntax colors step aside.
 internal sealed class Palette
 {
     public Color Background { get; private init; }
@@ -75,49 +75,11 @@ internal sealed class Palette
         };
     }
 
-    public static DXGI_RGBA ToD2D(Color color) => new()
-    {
-        r = color.R / 255f,
-        g = color.G / 255f,
-        b = color.B / 255f,
-        a = color.A / 255f,
-    };
+    public static DXGI_RGBA ToD2D(Color color) => ThemeColors.ToD2D(color);
 
-    private static Color Colors(uint argb) =>
-        Color.FromArgb((byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb);
+    private static Color Colors(uint argb) => ThemeColors.FromArgb(argb);
 
-    private static Color SystemColor(string key, Color fallback) =>
-        Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Color color ? color : fallback;
+    private static Color SystemColor(string key, Color fallback) => ThemeColors.System(key, fallback);
 
-    // Theme resources live in the theme dictionaries of the app's merged dictionaries, keyed Light, Dark or Default.
-    private static Color ThemeColor(string key, ElementTheme theme, Color fallback)
-    {
-        var resources = Application.Current?.Resources;
-        if (resources is null)
-        {
-            return fallback;
-        }
-        var themeKey = theme == ElementTheme.Dark ? "Dark" : "Light";
-        return Find(resources, key, themeKey) ?? fallback;
-
-        static Color? Find(ResourceDictionary dictionary, string key, string themeKey)
-        {
-            foreach (var name in new[] { themeKey, "Default" })
-            {
-                if (dictionary.ThemeDictionaries.TryGetValue(name, out var themed) && themed is ResourceDictionary inner
-                    && inner.TryGetValue(key, out var value) && value is Color color)
-                {
-                    return color;
-                }
-            }
-            foreach (var merged in dictionary.MergedDictionaries)
-            {
-                if (Find(merged, key, themeKey) is Color found)
-                {
-                    return found;
-                }
-            }
-            return dictionary.TryGetValue(key, out var plain) && plain is Color direct ? direct : null;
-        }
-    }
+    private static Color ThemeColor(string key, ElementTheme theme, Color fallback) => ThemeColors.Theme(key, theme, fallback);
 }
