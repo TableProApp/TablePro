@@ -25,6 +25,7 @@ public sealed partial class HomeView : UserControl
         _workbench = workbench;
         _shell = shell;
         InitializeComponent();
+        ConnectionTree.ItemInvoked += OnLibraryItemInvoked;
         workbench.LibraryChanged += async (_, _) => await ReloadAsync().ConfigureAwait(true);
         Loaded += async (_, _) => await ReloadAsync().ConfigureAwait(true);
     }
@@ -133,7 +134,7 @@ public sealed partial class HomeView : UserControl
         }
     }
 
-    private void OnLibraryItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    private static void OnLibraryItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
         if (args.InvokedItem is LibraryItem { Node.Kind: not LibraryNodeKind.Connection } item)
         {

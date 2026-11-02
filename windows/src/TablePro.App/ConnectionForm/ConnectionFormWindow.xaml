@@ -58,7 +58,6 @@
                 Grid.Row="1"
                 Margin="0,12,0,0"
                 AutomationProperties.AutomationId="EngineGrid"
-                ContainerContentChanging="OnEngineContainerChanging"
                 IsItemClickEnabled="True"
                 ItemClick="OnEngineClick"
                 ItemsSource="{x:Bind EngineSource.View, Mode=OneWay}"

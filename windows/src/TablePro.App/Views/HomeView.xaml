@@ -84,7 +84,6 @@
             AutomationProperties.AutomationId="ConnectionTree"
             CanDragItems="False"
             CanReorderItems="False"
-            ItemInvoked="OnLibraryItemInvoked"
             ItemsSource="{x:Bind Items}"
             PreviewKeyDown="OnLibraryKeyDown"
             SelectionMode="Single"

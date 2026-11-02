@@ -26,6 +26,7 @@ public sealed partial class WorkspaceView : UserControl
         _workbench = workbench;
         _connection = connection;
         InitializeComponent();
+        ObjectList.ContainerContentChanging += OnObjectContainerChanging;
         for (var number = 1; number <= 9; number++)
         {
             var position = number;
@@ -402,7 +403,7 @@ public sealed partial class WorkspaceView : UserControl
     }
 
     private static ObjectNode EntryNode(ObjectEntry entry, bool showSchema) =>
-        new(ObjectNodeKind.Object, entry.Name)
+        new(ObjectNodeKind.Item, entry.Name)
         {
             Entry = entry,
             Schema = entry.Schema,
@@ -452,7 +453,7 @@ public sealed partial class WorkspaceView : UserControl
 
         switch (node.Kind)
         {
-            case ObjectNodeKind.Object:
+            case ObjectNodeKind.Item:
                 Open(node);
                 break;
             case ObjectNodeKind.ShowAll when node.Folder is { } folder:
@@ -469,7 +470,7 @@ public sealed partial class WorkspaceView : UserControl
     }
 
     // A list item's name comes from its container, not from the template inside it.
-    private void OnObjectContainerChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    private static void OnObjectContainerChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
         if (args.Item is ObjectNode node)
         {

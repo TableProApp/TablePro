@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -28,7 +27,7 @@ public sealed partial class ConnectionFormWindow : Window
     private DatabaseEngine? _engine;
     private bool _createFile;
     private IReadOnlyList<ConnectionGroup> _groups = [];
-    private Guid? _groupToSelect;
+    private readonly Guid? _groupToSelect;
     private CancellationTokenSource? _testing;
     private bool _busy;
 
@@ -38,6 +37,7 @@ public sealed partial class ConnectionFormWindow : Window
         _isNew = existing is null;
         Key = Keys(existing?.Id);
         InitializeComponent();
+        EngineGrid.ContainerContentChanging += OnEngineContainerChanging;
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(FormTitleBar);
         Title = Strings.Get(_isNew ? "NewConnectionTitle" : "EditConnectionTitle");
@@ -287,7 +287,7 @@ public sealed partial class ConnectionFormWindow : Window
         return false;
     }
 
-    private Control Field(FormField field) => field switch
+    private TextBox Field(FormField field) => field switch
     {
         FormField.Host => HostBox,
         FormField.Port => PortBox,
@@ -409,7 +409,7 @@ public sealed partial class ConnectionFormWindow : Window
         FillEngines(sender.Text);
 
     // A GridView item's name comes from its container, not from the template inside it.
-    private void OnEngineContainerChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    private static void OnEngineContainerChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
         if (args.Item is EngineChoice choice)
         {
@@ -636,6 +636,6 @@ public sealed partial class ConnectionFormWindow : Window
         var session = await _workbench.Core.OpenFileAsync(new FileOpenOptions(path, draft.EngineId, Create: true)).ConfigureAwait(true);
         await session.DisposeAsync().ConfigureAwait(true);
         _createFile = false;
-        SetStatus(string.Format(CultureInfo.CurrentCulture, Strings.Get("FileCreated"), Path.GetFileName(path)), true);
+        SetStatus(Strings.Format("FileCreated", Path.GetFileName(path)), true);
     }
 }

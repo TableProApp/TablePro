@@ -11,7 +11,7 @@ public enum ObjectNodeKind
 {
     Schema,
     Folder,
-    Object,
+    Item,
     ShowAll,
     FilterHint,
 }
@@ -34,15 +34,15 @@ public sealed partial class ObjectNode : INotifyPropertyChanged
 
     public string Title { get; }
 
-    public string Detail { get; init; } = string.Empty;
+    public string Detail { get; set; } = string.Empty;
 
-    public Symbol Icon { get; init; } = Symbol.Document;
+    public Symbol Icon { get; set; } = Symbol.Document;
 
-    public string? Schema { get; init; }
+    public string? Schema { get; set; }
 
-    public ObjectEntry? Entry { get; init; }
+    public ObjectEntry? Entry { get; set; }
 
-    public ObjectFolder? Folder { get; init; }
+    public ObjectFolder? Folder { get; set; }
 
     public ObservableCollection<ObjectNode> Children { get; } = [];
 

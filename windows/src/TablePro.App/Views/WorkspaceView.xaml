@@ -129,7 +129,6 @@
                     x:Uid="ObjectList"
                     Grid.Row="2"
                     AutomationProperties.AutomationId="ObjectList"
-                    ContainerContentChanging="OnObjectContainerChanging"
                     IsItemClickEnabled="True"
                     ItemClick="OnObjectListClick"
                     SelectionMode="Single"
