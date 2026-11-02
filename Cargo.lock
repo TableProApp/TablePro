@@ -3516,6 +3516,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
 dependencies = [
  "bindgen 0.72.1",
+ "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -6003,6 +6004,7 @@ dependencies = [
  "num-bigint 0.4.8",
  "proptest",
  "rust_xlsxwriter",
+ "rustix",
  "rustls-pki-types",
  "secrecy",
  "serde",
@@ -6013,6 +6015,7 @@ dependencies = [
  "tokio-util",
  "unicode-width",
  "uuid",
+ "winapi-util",
  "zip",
 ]
 
@@ -6338,7 +6341,6 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
- "glib",
  "secrecy",
  "serde",
  "serde_json",

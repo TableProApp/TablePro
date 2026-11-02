@@ -120,8 +120,8 @@ pub use file_endpoint::FileEndpoint;
 pub use file_format::{FileFormat, FileSignature};
 pub use file_open_mode::FileOpenMode;
 pub use file_opens::{
-    FileClaim, any_claimed_by_another, claim_file, claimed_by_another, held_by_this_process, opening_file,
-    opening_file_blocking,
+    FileClaim, FileIdentity, any_claimed_by_another, claim_file, claimed_by_another, held_by_this_process,
+    opening_file, opening_file_blocking,
 };
 pub use filter::{
     BuildFilterError, Combinator, FilterOp, FilterRule, FilterSet, FilterValue, build_filter, operators_for,

@@ -143,6 +143,8 @@ glib = { version = "0.22", features = ["v2_88"] }
 glib-build-tools = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = "1.9"
+# The volume and index that name a file on Windows, which std reads only on nightly.
+winapi-util = "0.1"
 tempfile = "3"
 testcontainers = { version = "0.27", default-features = false, features = ["aws-lc-rs"] }
 testcontainers-modules = { version = "0.15", default-features = false, features = ["aws-lc-rs"] }

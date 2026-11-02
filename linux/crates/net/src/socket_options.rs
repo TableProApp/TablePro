@@ -12,7 +12,11 @@ pub(crate) fn apply_socket_options(stream: &TcpStream, liveness: &LivenessPolicy
         .with_interval(liveness.tcp_keepalive_interval)
         .with_retries(liveness.tcp_keepalive_retries);
     socket.set_tcp_keepalive(&keepalive)?;
-    socket.set_tcp_user_timeout(Some(liveness.tcp_user_timeout))
+    // socket2 offers TCP_USER_TIMEOUT on Linux alone; elsewhere the
+    // keepalive probes find a dead peer.
+    #[cfg(target_os = "linux")]
+    socket.set_tcp_user_timeout(Some(liveness.tcp_user_timeout))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -32,12 +36,16 @@ mod tests {
         let socket = SockRef::from(&stream);
         assert!(stream.nodelay().unwrap());
         assert!(socket.keepalive().unwrap());
+        // Windows sets the keepalive times but has no option to read them.
+        #[cfg(not(windows))]
         assert_eq!(socket.tcp_keepalive_time().unwrap(), liveness.tcp_keepalive_idle);
+        #[cfg(not(windows))]
         assert_eq!(
             socket.tcp_keepalive_interval().unwrap(),
             liveness.tcp_keepalive_interval
         );
         assert_eq!(socket.tcp_keepalive_retries().unwrap(), liveness.tcp_keepalive_retries);
+        #[cfg(target_os = "linux")]
         assert_eq!(socket.tcp_user_timeout().unwrap(), Some(liveness.tcp_user_timeout));
     }
 }

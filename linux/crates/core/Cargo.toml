@@ -24,6 +24,12 @@ tokio-util.workspace = true
 unicode-width.workspace = true
 uuid.workspace = true
 
+[target.'cfg(all(unix, not(target_os = "linux")))'.dependencies]
+rustix = { workspace = true, features = ["fs"] }
+
+[target.'cfg(windows)'.dependencies]
+winapi-util.workspace = true
+
 [dev-dependencies]
 proptest.workspace = true
 zip.workspace = true

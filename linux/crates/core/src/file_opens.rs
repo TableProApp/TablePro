@@ -7,9 +7,11 @@
 //! it (`claim_file`, `claimed_by_another`), and a header read, which opens
 //! and closes a descriptor, never runs while an engine opens a file and
 //! has no descriptor on it yet for the reader to see (`opening_file`).
+//!
+//! Windows locks belong to the handle and lists no process's handles, so
+//! there a claim alone says an engine has the file open.
 
 use std::collections::{HashMap, HashSet};
-use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::PoisonError;
 
@@ -19,7 +21,7 @@ use crate::error::DriverError;
 static FILE_OPENS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// The engine holding each claimed file, and how many claims it holds.
-static CLAIMS: std::sync::Mutex<Option<HashMap<FileKey, (&'static str, usize)>>> = std::sync::Mutex::new(None);
+static CLAIMS: std::sync::Mutex<Option<HashMap<FileIdentity, (&'static str, usize)>>> = std::sync::Mutex::new(None);
 
 /// Held by an engine from before it opens a database file until it holds
 /// a descriptor on it, and by a header read throughout.
@@ -32,18 +34,34 @@ pub fn opening_file_blocking() -> tokio::sync::MutexGuard<'static, ()> {
     FILE_OPENS.blocking_lock()
 }
 
-/// A file whatever path names it.
+/// A file whatever path names it: a hard link or a second path to it is
+/// the same file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct FileKey {
+pub struct FileIdentity {
     device: u64,
     inode: u64,
 }
 
-impl FileKey {
-    fn of(path: &Path) -> Option<Self> {
+impl FileIdentity {
+    #[cfg(unix)]
+    pub fn of(path: &Path) -> Option<Self> {
+        use std::os::unix::fs::MetadataExt;
+
         std::fs::metadata(path).ok().map(|metadata| Self {
             device: metadata.dev(),
             inode: metadata.ino(),
+        })
+    }
+
+    /// The volume's serial number and the file's index on it, which std
+    /// reads only on nightly.
+    #[cfg(windows)]
+    pub fn of(path: &Path) -> Option<Self> {
+        let handle = winapi_util::Handle::from_path_any(path).ok()?;
+        let information = winapi_util::file::information(&handle).ok()?;
+        Some(Self {
+            device: information.volume_serial_number(),
+            inode: information.file_index(),
         })
     }
 }
@@ -52,7 +70,7 @@ impl FileKey {
 #[derive(Debug)]
 #[must_use = "the claim ends when it is dropped"]
 pub struct FileClaim {
-    key: FileKey,
+    key: FileIdentity,
 }
 
 impl Drop for FileClaim {
@@ -73,7 +91,7 @@ impl Drop for FileClaim {
 /// Record that `engine` has the file at `path` open, or refuse while
 /// another engine has it. `None` when nothing is at `path`.
 pub fn claim_file(path: &Path, engine: &'static str) -> Result<Option<FileClaim>, DriverError> {
-    let Some(key) = FileKey::of(path) else {
+    let Some(key) = FileIdentity::of(path) else {
         return Ok(None);
     };
     let mut claims = CLAIMS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -95,7 +113,7 @@ pub fn claim_file(path: &Path, engine: &'static str) -> Result<Option<FileClaim>
 /// claim outlives a DETACH, which closes the file, so only one whose file
 /// a descriptor of this process still names counts.
 pub fn claimed_by_another(path: &Path, engine: &str) -> bool {
-    let Some(key) = FileKey::of(path) else {
+    let Some(key) = FileIdentity::of(path) else {
         return false;
     };
     let claimed = {
@@ -111,7 +129,7 @@ pub fn claimed_by_another(path: &Path, engine: &str) -> bool {
 /// Whether an engine other than `engine` has any file open, for a check
 /// that cannot tell which file an open will reach.
 pub fn any_claimed_by_another(engine: &str) -> bool {
-    let keys: Vec<FileKey> = {
+    let keys: Vec<FileIdentity> = {
         let claims = CLAIMS.lock().unwrap_or_else(PoisonError::into_inner);
         claims
             .as_ref()
@@ -133,18 +151,58 @@ pub fn any_claimed_by_another(engine: &str) -> bool {
 
 /// Whether a descriptor this process has open names the file at `path`.
 pub fn held_by_this_process(path: &Path) -> bool {
-    FileKey::of(path).is_some_and(|key| held_keys().contains(&key))
+    FileIdentity::of(path).is_some_and(|key| held_keys().contains(&key))
 }
 
 /// The files the descriptors of this process name.
-fn held_keys() -> HashSet<FileKey> {
+#[cfg(target_os = "linux")]
+fn held_keys() -> HashSet<FileIdentity> {
     let Ok(descriptors) = std::fs::read_dir("/proc/self/fd") else {
         return HashSet::new();
     };
     descriptors
         .flatten()
-        .filter_map(|descriptor| FileKey::of(&descriptor.path()))
+        .filter_map(|descriptor| FileIdentity::of(&descriptor.path()))
         .collect()
+}
+
+/// The files the descriptors of this process name. A stat of `/dev/fd/N`
+/// reports the fdesc file system's device, and opening it would add a
+/// descriptor whose close drops the locks, so each one is read with
+/// fstat.
+#[cfg(all(unix, not(target_os = "linux")))]
+fn held_keys() -> HashSet<FileIdentity> {
+    use std::os::fd::{BorrowedFd, RawFd};
+
+    let Ok(descriptors) = std::fs::read_dir("/dev/fd") else {
+        return HashSet::new();
+    };
+    descriptors
+        .flatten()
+        .filter_map(|descriptor| descriptor.file_name().to_str()?.parse::<RawFd>().ok())
+        .filter_map(|raw| {
+            // SAFETY: fstat only reads the descriptor. One closed since the
+            // listing fails with EBADF, as a closed entry under
+            // /proc/self/fd fails its stat.
+            let descriptor = unsafe { BorrowedFd::borrow_raw(raw) };
+            rustix::fs::fstat(descriptor).ok()
+        })
+        // The cast std's MetadataExt::dev makes, so both reads agree.
+        .map(|stat| FileIdentity {
+            device: stat.st_dev as u64,
+            inode: stat.st_ino,
+        })
+        .collect()
+}
+
+/// Every claimed file, since a claim is all that says one is open.
+#[cfg(windows)]
+fn held_keys() -> HashSet<FileIdentity> {
+    let claims = CLAIMS.lock().unwrap_or_else(PoisonError::into_inner);
+    claims
+        .as_ref()
+        .map(|claims| claims.keys().copied().collect())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -174,6 +232,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_file_one_engine_holds_is_refused_to_the_other_until_let_go() {
         let directory = Scratch::new();
@@ -209,6 +268,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_descriptor_on_any_name_of_a_file_holds_it() {
         let directory = Scratch::new();
@@ -222,5 +282,43 @@ mod tests {
         assert!(held_by_this_process(&link));
         drop(open);
         assert!(!held_by_this_process(&link));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_claim_on_any_name_of_a_file_holds_it_until_dropped() {
+        let directory = Scratch::new();
+        let path = directory.path().join("held.db");
+        std::fs::write(&path, b"x").unwrap();
+        let link = directory.path().join("link.db");
+        std::fs::hard_link(&path, &link).unwrap();
+
+        let claim = claim_file(&path, "duckdb").unwrap();
+
+        assert!(claimed_by_another(&link, "sqlite"));
+        assert!(!claimed_by_another(&link, "duckdb"));
+        assert!(held_by_this_process(&link));
+        assert_eq!(
+            claim_file(&link, "sqlite").unwrap_err(),
+            DriverError::Busy(BusyReason::FileLocked)
+        );
+        drop(claim);
+        assert!(!claimed_by_another(&link, "sqlite"));
+        assert!(!held_by_this_process(&path));
+    }
+
+    #[test]
+    fn two_names_of_one_file_are_one_identity() {
+        let directory = Scratch::new();
+        let path = directory.path().join("one.db");
+        std::fs::write(&path, b"x").unwrap();
+        let link = directory.path().join("two.db");
+        std::fs::hard_link(&path, &link).unwrap();
+        let other = directory.path().join("other.db");
+        std::fs::write(&other, b"y").unwrap();
+
+        assert_eq!(FileIdentity::of(&path), FileIdentity::of(&link));
+        assert_ne!(FileIdentity::of(&path), FileIdentity::of(&other));
+        assert_eq!(FileIdentity::of(&directory.path().join("missing.db")), None);
     }
 }

@@ -1,12 +1,32 @@
-use std::fs::{DirBuilder, OpenOptions, Permissions};
+use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::{ErrorKind, Write};
+#[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 use crate::error::StorageError;
 
+// Windows keeps a profile's folders to their user through their ACLs,
+// which every file and folder made in them inherits.
+#[cfg(unix)]
 const PRIVATE_DIR: u32 = 0o700;
+#[cfg(unix)]
 const PRIVATE_FILE: u32 = 0o600;
+
+fn private_dir_builder() -> DirBuilder {
+    let mut builder = DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    builder.mode(PRIVATE_DIR);
+    builder
+}
+
+fn private_file_options() -> OpenOptions {
+    let mut options = OpenOptions::new();
+    #[cfg(unix)]
+    options.mode(PRIVATE_FILE);
+    options
+}
 
 /// Create the directory and everything above it, then force 0700 on the
 /// leaf. `DirBuilder::mode` only applies to directories this call
@@ -16,69 +36,68 @@ const PRIVATE_FILE: u32 = 0o600;
 /// a directory that lost it. These are the app's own directories, and it
 /// has to be able to write to them.
 pub fn ensure_private_dir(path: &Path) -> Result<(), StorageError> {
-    DirBuilder::new()
-        .recursive(true)
-        .mode(PRIVATE_DIR)
-        .create(path)
-        .map_err(|source| StorageError::Io {
-            path: path.to_owned(),
-            source,
-        })?;
-    std::fs::set_permissions(path, Permissions::from_mode(PRIVATE_DIR)).map_err(|source| StorageError::Permissions {
+    private_dir_builder().create(path).map_err(|source| StorageError::Io {
         path: path.to_owned(),
         source,
-    })
+    })?;
+    #[cfg(unix)]
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(PRIVATE_DIR)).map_err(|source| {
+        StorageError::Permissions {
+            path: path.to_owned(),
+            source,
+        }
+    })?;
+    Ok(())
 }
 
 /// Create a folder the user keeps their own files in, and any missing
 /// above it, as 0700. One that exists keeps its mode: it is the user's,
 /// and may be a link to a folder other tools read too.
 pub fn ensure_user_dir(path: &Path) -> Result<(), StorageError> {
-    DirBuilder::new()
-        .recursive(true)
-        .mode(PRIVATE_DIR)
-        .create(path)
-        .map_err(|source| StorageError::Io {
-            path: path.to_owned(),
-            source,
-        })
+    private_dir_builder().create(path).map_err(|source| StorageError::Io {
+        path: path.to_owned(),
+        source,
+    })
 }
 
 /// Write bytes so a reader sees either the old file or the new one, and
-/// so the new one survives a power cut.
-///
-/// `g_file_set_contents_full` keeps an existing file's mode, so a file
-/// that was already 0644 is tightened first. The mode argument only
-/// applies when it creates the file.
+/// so the new one survives a power cut: a 0600 temporary file beside it,
+/// synced, renamed over it, and the directory synced so the rename lasts
+/// too. The rename replaces a symbolic link rather than its target, and
+/// leaves a hard link's other names on the old file.
 pub fn write_private_blocking(path: &Path, bytes: &[u8]) -> Result<(), StorageError> {
     if let Some(parent) = path.parent() {
         ensure_private_dir(parent)?;
     }
-    match std::fs::metadata(path) {
-        Ok(_) => std::fs::set_permissions(path, Permissions::from_mode(PRIVATE_FILE)).map_err(|source| {
-            StorageError::Permissions {
-                path: path.to_owned(),
-                source,
-            }
-        })?,
-        Err(error) if error.kind() == ErrorKind::NotFound => {}
-        Err(source) => {
-            return Err(StorageError::Io {
-                path: path.to_owned(),
-                source,
-            });
-        }
-    }
-    glib::file_set_contents_full(
-        path,
-        bytes,
-        glib::FileSetContentsFlags::CONSISTENT | glib::FileSetContentsFlags::DURABLE,
-        PRIVATE_FILE as i32,
-    )
-    .map_err(|source| StorageError::Write {
+    let write_error = |source| StorageError::Write {
         path: path.to_owned(),
         source,
-    })
+    };
+    let directory = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let name = path.file_name().map(|name| name.to_string_lossy()).unwrap_or_default();
+    let mut temporary = tempfile::Builder::new()
+        .prefix(&format!(".{name}."))
+        .suffix(".tmp")
+        .tempfile_in(directory)
+        .map_err(write_error)?;
+    temporary.write_all(bytes).map_err(write_error)?;
+    temporary.as_file().sync_all().map_err(write_error)?;
+    temporary.persist(path).map_err(|error| write_error(error.error))?;
+    sync_directory(directory).map_err(write_error)
+}
+
+#[cfg(unix)]
+fn sync_directory(directory: &Path) -> std::io::Result<()> {
+    File::open(directory)?.sync_all()
+}
+
+/// Windows opens no directory as a file, and NTFS journals the rename.
+#[cfg(windows)]
+fn sync_directory(_directory: &Path) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// Create an empty 0600 file when it is absent, so a library that opens
@@ -88,12 +107,7 @@ pub fn create_private_file_if_missing(path: &Path) -> Result<(), StorageError> {
     if let Some(parent) = path.parent() {
         ensure_private_dir(parent)?;
     }
-    match OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(PRIVATE_FILE)
-        .open(path)
-    {
+    match private_file_options().write(true).create_new(true).open(path) {
         Ok(_) => Ok(()),
         Err(error) if error.kind() == ErrorKind::AlreadyExists => Ok(()),
         Err(source) => Err(StorageError::Io {
@@ -115,10 +129,9 @@ pub fn append_private_blocking(path: &Path, bytes: &[u8]) -> Result<(), StorageE
         path: path.to_owned(),
         source,
     };
-    let mut file = OpenOptions::new()
+    let mut file: File = private_file_options()
         .append(true)
         .create(true)
-        .mode(PRIVATE_FILE)
         .open(path)
         .map_err(io_error)?;
     file.write_all(bytes).map_err(io_error)?;
@@ -242,7 +255,10 @@ pub fn remove_moved_aside_blocking(path: &Path) -> Result<usize, StorageError> {
 }
 
 #[cfg(test)]
+#[cfg(unix)]
 mod tests {
+    use std::fs::Permissions;
+
     use super::*;
 
     fn mode_of(path: &Path) -> u32 {
@@ -332,8 +348,8 @@ mod tests {
 
     #[test]
     fn a_rewrite_replaces_the_contents_whole() {
-        // CONSISTENT writes a temporary file and renames, so a reader sees
-        // the old bytes or the new ones, never a mix.
+        // A temporary file renamed over the old one, so a reader sees the
+        // old bytes or the new ones, never a mix.
         let root = tempfile::tempdir().expect("tempdir");
         let file = root.path().join("data.json");
         write_private_blocking(&file, b"a-much-longer-original-payload").expect("seed");
@@ -341,6 +357,49 @@ mod tests {
         write_private_blocking(&file, b"short").expect("rewrite");
 
         assert_eq!(std::fs::read(&file).expect("read"), b"short");
+    }
+
+    #[test]
+    fn a_write_leaves_no_temporary_file_and_replaces_a_link_not_its_target() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let target = root.path().join("target.json");
+        std::fs::write(&target, b"target").expect("seed");
+        let link = root.path().join("link.json");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+        let hard = root.path().join("hard.json");
+        std::fs::hard_link(&target, &hard).expect("hard link");
+
+        write_private_blocking(&link, b"through the link").expect("write");
+        write_private_blocking(&hard, b"through the hard link").expect("write");
+
+        assert!(!std::fs::symlink_metadata(&link).expect("metadata").is_symlink());
+        assert_eq!(std::fs::read(&link).expect("read"), b"through the link");
+        assert_eq!(std::fs::read(&hard).expect("read"), b"through the hard link");
+        assert_eq!(std::fs::read(&target).expect("read"), b"target");
+        let mut names: Vec<_> = std::fs::read_dir(root.path())
+            .expect("list")
+            .map(|entry| entry.expect("entry").file_name())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["hard.json", "link.json", "target.json"]);
+    }
+
+    #[test]
+    fn a_failed_rename_keeps_what_was_there_and_leaves_no_temporary_file() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let occupied = root.path().join("data.json");
+        std::fs::create_dir(&occupied).expect("create");
+        std::fs::write(occupied.join("kept"), b"kept").expect("seed");
+
+        let result = write_private_blocking(&occupied, b"new");
+
+        assert!(matches!(result, Err(StorageError::Write { .. })), "{result:?}");
+        assert_eq!(std::fs::read(occupied.join("kept")).expect("read"), b"kept");
+        let names: Vec<_> = std::fs::read_dir(root.path())
+            .expect("list")
+            .map(|entry| entry.expect("entry").file_name())
+            .collect();
+        assert_eq!(names, ["data.json"]);
     }
 
     #[test]

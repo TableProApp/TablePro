@@ -13,7 +13,7 @@ pub enum StorageError {
     Write {
         path: std::path::PathBuf,
         #[source]
-        source: glib::Error,
+        source: std::io::Error,
     },
 
     #[error("could not set permissions on {}: {source}", .path.display())]
