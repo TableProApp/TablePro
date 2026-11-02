@@ -5,6 +5,8 @@ namespace TablePro.Editor;
 
 public sealed partial class SqlEditor
 {
+    private const int CountLimit = 10_000;
+
     public bool IsFindOpen => _findBar?.IsOpen == true;
 
     public void OpenFind()
@@ -53,12 +55,13 @@ public sealed partial class SqlEditor
         {
             _model.SetSelection(found.Start, found.Start + found.Length);
             EnsureCaretVisible();
-            var all = TextSearch.InRange(Document, query, 0, Document.Length);
-            _findBar.ShowCount(all.FindIndex(m => m.Start == found.Start) + 1, all.Count);
+            // Counting stops at a limit, so a one-letter search in a 5 MB script stays quick.
+            var all = TextSearch.InRange(Document, query, 0, Document.Length, CountLimit);
+            _findBar.ShowCount(all.FindIndex(m => m.Start == found.Start) + 1, all.Count, all.Count >= CountLimit);
         }
         else
         {
-            _findBar.ShowCount(0, 0);
+            _findBar.ShowCount(0, 0, false);
         }
         Invalidate();
     }

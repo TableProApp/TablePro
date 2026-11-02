@@ -226,6 +226,17 @@ public sealed class EditingTests
     }
 
     [Fact]
+    public void DroppingAMoveTakesTheTextAlongInOneStep()
+    {
+        var model = Carets.Model("select a, b from t");
+        model.SetSelection(7, 10);
+        model.DropText("a, ", 17, move: true);
+        Assert.Equal("select b from [a, ]t", Carets.Show(model));
+        model.Undo();
+        Assert.Equal("select [a, ]b from t", Carets.Show(model));
+    }
+
+    [Fact]
     public void AnOutsideEditMovesTheCarets()
     {
         var model = Carets.Model("select |1");

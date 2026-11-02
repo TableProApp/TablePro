@@ -23,7 +23,7 @@ public interface ISyntaxLexer
 // from there stops early once a line after the edit is clean again as it was before, because a lexer that starts
 // clean on unchanged text reads it the same way. Nothing here touches the document, so coloring never makes an
 // undo step.
-public sealed class SyntaxHighlighter
+public sealed class SyntaxHighlighter : IDisposable
 {
     private const byte Unknown = 0;
     private const byte Clean = 1;
@@ -42,8 +42,14 @@ public sealed class SyntaxHighlighter
         _document = document;
         _lexer = lexer;
         Reset();
-        document.Changed += (_, change) => OnChanged(change);
-        document.Reset += (_, _) => Reset();
+        document.Changed += OnChanged;
+        document.Reset += OnReset;
+    }
+
+    public void Dispose()
+    {
+        _document.Changed -= OnChanged;
+        _document.Reset -= OnReset;
     }
 
     // Lines whose start state is known, for tests and the idle pass.
@@ -190,7 +196,9 @@ public sealed class SyntaxHighlighter
         return _lexer.Tokenize(text, spans);
     }
 
-    private void OnChanged(TextChange change)
+    private void OnReset(object? sender, EventArgs e) => Reset();
+
+    private void OnChanged(object? sender, TextChange change)
     {
         var removedEnd = change.StartLine + change.RemovedBreaks;
         var delta = change.InsertedBreaks - change.RemovedBreaks;

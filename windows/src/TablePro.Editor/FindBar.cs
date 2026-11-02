@@ -69,8 +69,12 @@ internal sealed partial class FindBar : UserControl
 
     public void Close() => Visibility = Visibility.Collapsed;
 
-    public void ShowCount(int current, int total) =>
-        _count.Text = total == 0 ? (_box.Text.Length == 0 ? string.Empty : "No results") : $"{current} of {total}";
+    public void ShowCount(int current, int total, bool more)
+    {
+        var count = more ? $"{total}+" : total.ToString(System.Globalization.CultureInfo.CurrentCulture);
+        _count.Text = total == 0 ? (_box.Text.Length == 0 ? string.Empty : "No results")
+            : current > 0 ? $"{current} of {count}" : count;
+    }
 
     private void OnBoxKeyDown(object sender, KeyRoutedEventArgs e)
     {

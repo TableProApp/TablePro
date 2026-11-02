@@ -113,6 +113,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         set
         {
             _lexer = value;
+            _highlighter?.Dispose();
             _highlighter = value is null ? null : new SyntaxHighlighter(Document, value);
             _layouts?.Clear();
             Invalidate();
@@ -173,6 +174,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
             return;
         }
         _disposed = true;
+        _highlighter?.Dispose();
         ReleaseDevice();
         _tsf?.Dispose();
         _tsf = null;

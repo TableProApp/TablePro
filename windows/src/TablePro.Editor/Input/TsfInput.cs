@@ -92,7 +92,7 @@ internal sealed unsafe partial class TsfInput : IDisposable
             input.Initialize();
             return input;
         }
-        catch (COMException)
+        catch (Exception e) when (e is COMException or InvalidCastException or ArgumentException or UnauthorizedAccessException)
         {
             input.Dispose();
             return null;
@@ -102,7 +102,8 @@ internal sealed unsafe partial class TsfInput : IDisposable
     public void Focus()
     {
         _window = FindWindowOfActiveTsf();
-        NativeCom.Check(_threadMgr->SetFocus(_documentMgr));
+        var focused = _threadMgr->SetFocus(_documentMgr);
+        FailureReason = focused.FAILED ? $"SetFocus 0x{focused.Value:X8}" : FailureReason;
     }
 
     public void Unfocus()

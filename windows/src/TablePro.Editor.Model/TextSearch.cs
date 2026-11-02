@@ -21,8 +21,9 @@ public static class TextSearch
         return found is int start ? (start, query.Text.Length) : null;
     }
 
-    // Matches that start inside [start, end), for painting the visible lines.
-    public static List<(int Start, int Length)> InRange(TextDocument document, SearchQuery query, int start, int end)
+    // Matches that start inside [start, end), up to limit of them.
+    public static List<(int Start, int Length)> InRange(TextDocument document, SearchQuery query, int start, int end,
+        int limit = int.MaxValue)
     {
         var matches = new List<(int, int)>();
         if (string.IsNullOrEmpty(query.Text))
@@ -39,13 +40,14 @@ public static class TextSearch
                 break;
             }
             matches.Add((at, query.Text.Length));
+            if (matches.Count >= limit)
+            {
+                break;
+            }
             index = at + Math.Max(1, query.Text.Length);
         }
         return matches;
     }
-
-    public static int Count(TextDocument document, SearchQuery query) =>
-        InRange(document, query, 0, document.Length).Count;
 
     private static int? Forward(string text, SearchQuery query, int from)
     {
