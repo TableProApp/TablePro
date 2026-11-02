@@ -34,11 +34,12 @@
 - A ScrollViewer holds four regions: the scrolling columns as content, their header row in `TopHeader`, the row numbers and frozen columns in `LeftHeader`, and their headers in `TopLeftHeader`. The headers need the content aligned left and top.
 - `LeftHeader` lies over the content, which scrolls under it, so the frozen pane paints the grid's background.
 - In each pane an ItemsRepeater realizes the rows in view through `RowsLayout`; the header row realizes the scrolling columns in view through `HeaderLayout`. Rows are arranged against an origin that moves in steps of 4,096 px, so arrange coordinates stay small in a 32M px grid.
-- The four traps, each with a test in `tests/TablePro.DataGrid.Tests/ItemsRepeaterTrapTests.cs`:
+- The five traps, each with a test in `tests/TablePro.DataGrid.Tests/ItemsRepeaterTrapTests.cs`:
   1. **Auto-recycle.** `ViewManager::GetElement` marks each element a layout gets for recycling unless the layout asks for it again in the same pass. The layouts keep elements across passes, so they pass `SuppressAutoRecycle`; without it one element served two rows.
   2. **The 10,000 px viewport.** `ViewportManager::UpdateViewport` takes an effective viewport past x and y 10,000 as cleared. The layouts take their windows from the grid's own scroll state, not `context.RealizationRect`, and the grid invalidates them on each scroll.
   3. **The O(n²) walk.** `ViewManager::GetElementIfAlreadyHeldByLayout` walks every child inside a cached index range that only grows. A repeater per row pane over row indices, and one over column indices for the headers, keeps each range small and contiguous.
   4. **Scroll anchoring.** ItemsRepeater makes each element it prepares an anchor candidate, and the ScrollViewer moved its offset after a recycled row. Rows have a fixed height, so the grid turns anchoring off: `HorizontalAnchorRatio` and `VerticalAnchorRatio` are NaN, each prepared row and header cell has `CanBeScrollAnchor` false, and the canvas that holds a pane's rows is an `IScrollAnchorProvider` that takes no candidates.
+  5. **A new source.** Replacing the items left the elements the layouts held where they were, drawing the old rows under the new ones; the app's sorted results showed it. `SetData` hands the old elements to the layouts, which recycle them on the next measure.
 
 ### Drawing
 

@@ -83,6 +83,15 @@ internal sealed class AppSession : IDisposable
                 throwOnTimeout: false).Result
             ?? throw Failure($"No element named {prefix}... appeared.");
 
+    // Mouse and keys reach the foreground window, and the Arm64 runner opens windows of its own over the app.
+    public void Front(Window? window = null) => (window ?? Window).SetForeground();
+
+    public void Click(AutomationElement element, Window? window = null)
+    {
+        Front(window);
+        element.Click();
+    }
+
     // A cell's name is its text. Waits until done accepts it, as rows from a new run replace the old ones.
     public string WaitForCell(AutomationElement grid, int row, int column, Func<string, bool> done)
     {
