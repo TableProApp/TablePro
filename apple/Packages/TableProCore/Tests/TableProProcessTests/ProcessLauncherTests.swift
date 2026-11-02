@@ -20,6 +20,16 @@ private func text(_ data: Data) -> String {
 }
 
 struct ProcessLauncherTests {
+    @Test("A relaunch's fixed script may run the shell, and the pid and the path stay positional parameters")
+    func reopenPassesValuesPositionally() throws {
+        let path = "/Applications/Odd \"; /usr/bin/false; \".app"
+        let process = try ProcessLauncher.process(for: .reopen(URL(fileURLWithPath: path), afterExitOf: 4_242))
+
+        #expect(process.executableURL?.path == "/bin/sh")
+        #expect(process.arguments == ["-c", ProcessCommand.reopenScript, "4242", path])
+        #expect(process.environment?.isEmpty == true)
+    }
+
     @Test("A NUL in an argument, a variable or its name is refused instead of ending the app", arguments: [
         ProcessCommand(executable: printf, arguments: ["%s", "abc\u{0}def"], environment: [:]),
         ProcessCommand(executable: printf, arguments: ["x"], environment: ["A": "b\u{0}c"]),

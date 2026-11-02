@@ -58,7 +58,7 @@ public enum ProcessLauncher {
         guard executable.isFileURL, executable.baseURL == nil, executable.path.hasPrefix("/") else {
             throw ProcessLaunchError.executableNotAbsolute(command.executable.relativeString)
         }
-        if !command.isUserAuthored, shellNames.contains(command.executable.lastPathComponent) {
+        if !command.isUserAuthored, !command.isFixedScript, shellNames.contains(command.executable.lastPathComponent) {
             throw ProcessLaunchError.shellNotAllowed(command.executable.path)
         }
         for argument in command.arguments {
