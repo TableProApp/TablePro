@@ -507,6 +507,51 @@ struct DockerComposeExtractorTests {
         #expect(candidate?.parsedURL.type == .mariadb)
         #expect(candidate?.parsedURL.port == 3_399)
     }
+
+    @Test("A .env value referenced thousands of times from one compose value stops at the expansion budget")
+    func testSubstitutionIsBounded() throws {
+        let environment = DotenvParser.parse("V=" + String(repeating: "x", count: 1_000), processEnvironment: [:])
+        let references = String(repeating: "${V}", count: 5_000)
+        let contents = """
+        services:
+          db:
+            image: postgres:16
+            environment:
+              POSTGRES_PASSWORD: "\(references)"
+            ports:
+              - "5432:5432"
+        """
+        let candidate = try #require(extract(contents, environment: environment).first)
+        #expect(candidate.parsedURL.password.utf8.count <= references.utf8.count + ProjectScanExpansionBudget.standardLimit)
+        #expect(candidate.warnings.contains(String(localized: "Some values are set outside this file")))
+    }
+
+    @Test("A compose file and the .env beside it draw on one budget")
+    func testSubstitutionSharesTheBudget() throws {
+        let budget = ProjectScanExpansionBudget(limit: 8)
+        let environment = DotenvParser.parse("A=pass\nB=$A$A", processEnvironment: [:], budget: budget)
+        let contents = """
+        services:
+          db:
+            image: postgres:16
+            environment:
+              POSTGRES_USER: ${A}
+              POSTGRES_PASSWORD: ${A}
+            ports:
+              - "5432:5432"
+        """
+        let candidate = try #require(
+            DockerComposeExtractor.extract(
+                contents: contents,
+                relativePath: "docker-compose.yml",
+                environment: environment,
+                budget: budget
+            ).first
+        )
+        #expect(environment["B"] == "passpass")
+        #expect(candidate.parsedURL.username == "${A}")
+        #expect(candidate.parsedURL.password == "${A}")
+    }
 }
 
 struct SpringYamlExtractorTests {

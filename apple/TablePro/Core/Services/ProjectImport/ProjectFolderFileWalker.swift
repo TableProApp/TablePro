@@ -58,7 +58,7 @@ enum ProjectFolderFileWalker {
         var visited = 0
         for case let url as URL in enumerator {
             visited += 1
-            guard visited <= maxVisitedEntries else {
+            guard visited <= maxVisitedEntries, !Task.isCancelled else {
                 break
             }
             guard let values = try? url.resourceValues(forKeys: Set(keys)) else {

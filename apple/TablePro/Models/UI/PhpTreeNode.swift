@@ -298,12 +298,6 @@ internal enum PhpTreeBuilder {
                 visibilityBadge: badge
             )
 
-        case .depthExceeded:
-            return PhpTreeNode(
-                key: key, keyPath: keyPath, path: path, nodeType: .truncated,
-                displayValue: String(localized: "Maximum depth reached"),
-                visibilityBadge: badge
-            )
 
         case .tooLarge:
             return PhpTreeNode(

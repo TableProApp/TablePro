@@ -479,8 +479,8 @@ extension RedisPluginConnection {
                 throw transportFailure(ctx, delivered: true)
             }
             guard let reply = rawReply else { return replies }
-            replies.append(parseReply(reply.assumingMemoryBound(to: redisReply.self)))
-            freeReplyObject(reply)
+            replies.append(HiredisReply.value(of: reply.assumingMemoryBound(to: redisReply.self)))
+            HiredisReply.release(reply)
         }
     }
     #endif
@@ -524,6 +524,7 @@ private extension RedisPluginConnection {
             logger.error("Failed to create Redis context")
             throw RedisPluginError.connectionFailed
         }
+        HiredisReply.installIterativeFree(on: ctx)
 
         if ctx.pointee.err != 0 {
             let errMsg = Self.contextErrorMessage(ctx)
@@ -796,9 +797,7 @@ private extension RedisPluginConnection {
         !failure.wasDelivered || routing.isReadOnly(args)
     }
 
-    /// The append/flush/read split that `redisCommandArgv` performs internally, spelled out so a
-    /// failure can say whether the command reached the server. hiredis does exactly these three
-    /// steps, so the behaviour is unchanged.
+    // redisCommandArgv's append, flush and read, split so a failure can say whether the command reached the server.
     func executeCommandSync(_ args: [Data]) throws -> RedisReply {
         stateLock.lock()
         guard let ctx = context else {
@@ -830,9 +829,8 @@ private extension RedisPluginConnection {
             throw transportFailure(ctx, delivered: true)
         }
 
-        let replyPtr = reply.assumingMemoryBound(to: redisReply.self)
-        let parsed = parseReply(replyPtr)
-        freeReplyObject(reply)
+        let parsed = HiredisReply.value(of: reply.assumingMemoryBound(to: redisReply.self))
+        HiredisReply.release(reply)
         return parsed
     }
 
@@ -864,7 +862,7 @@ private extension RedisPluginConnection {
                     for _ in 0 ..< appendedCount {
                         var discard: UnsafeMutableRawPointer?
                         if redisGetReply(ctx, &discard) != REDIS_OK { break }
-                        if let d = discard { freeReplyObject(d) }
+                        if let d = discard { HiredisReply.release(d) }
                     }
                     let failure = transportFailure(ctx, delivered: false)
                     markDisconnected()
@@ -884,15 +882,14 @@ private extension RedisPluginConnection {
                 for _ in (i + 1) ..< commands.count {
                     var discard: UnsafeMutableRawPointer?
                     if redisGetReply(ctx, &discard) == REDIS_OK, let d = discard {
-                        freeReplyObject(d)
+                        HiredisReply.release(d)
                     }
                 }
                 markDisconnected()
                 throw failure
             }
-            let replyPtr = reply.assumingMemoryBound(to: redisReply.self)
-            let parsed = parseReply(replyPtr)
-            freeReplyObject(reply)
+            let parsed = HiredisReply.value(of: reply.assumingMemoryBound(to: redisReply.self))
+            HiredisReply.release(reply)
             replies.append(parsed)
         }
         return replies
@@ -915,121 +912,6 @@ private extension RedisPluginConnection {
         #endif
     }
 
-    func parseReply(_ reply: UnsafeMutablePointer<redisReply>) -> RedisReply {
-        let type = reply.pointee.type
-
-        switch type {
-        case REDIS_REPLY_STRING:
-            if let str = reply.pointee.str {
-                let len = reply.pointee.len
-                let data = Data(bytes: str, count: len)
-                if let string = String(data: data, encoding: .utf8) {
-                    return .string(string)
-                }
-                return .data(data)
-            }
-            return .null
-
-        case REDIS_REPLY_INTEGER:
-            return .integer(reply.pointee.integer)
-
-        case REDIS_REPLY_ARRAY:
-            let count = reply.pointee.elements
-            guard count > 0, let elements = reply.pointee.element else {
-                return .array([])
-            }
-            var items: [RedisReply] = []
-            items.reserveCapacity(count)
-            for i in 0 ..< count {
-                if let element = elements[i] {
-                    items.append(parseReply(element))
-                } else {
-                    items.append(.null)
-                }
-            }
-            return .array(items)
-
-        case REDIS_REPLY_NIL:
-            return .null
-
-        case REDIS_REPLY_STATUS:
-            if let str = reply.pointee.str {
-                let len = reply.pointee.len
-                let data = Data(bytes: str, count: len)
-                return .status(String(data: data, encoding: .utf8) ?? "")
-            }
-            return .status("")
-
-        case REDIS_REPLY_ERROR:
-            if let str = reply.pointee.str {
-                let len = reply.pointee.len
-                let data = Data(bytes: str, count: len)
-                return .error(String(data: data, encoding: .utf8) ?? "Unknown error")
-            }
-            return .error("Unknown error")
-
-        case REDIS_REPLY_DOUBLE:
-            if let str = reply.pointee.str {
-                let len = reply.pointee.len
-                let data = Data(bytes: str, count: len)
-                if let string = String(data: data, encoding: .utf8) {
-                    return .string(string)
-                }
-            }
-            return .string(String(reply.pointee.dval))
-
-        case REDIS_REPLY_BOOL:
-            return .integer(reply.pointee.integer)
-
-        case REDIS_REPLY_MAP:
-            let count = reply.pointee.elements
-            guard count > 0, let elements = reply.pointee.element else {
-                return .array([])
-            }
-            var items: [RedisReply] = []
-            items.reserveCapacity(count)
-            for i in 0 ..< count {
-                if let element = elements[i] {
-                    items.append(parseReply(element))
-                } else {
-                    items.append(.null)
-                }
-            }
-            return .array(items)
-
-        case REDIS_REPLY_SET, REDIS_REPLY_PUSH:
-            let count = reply.pointee.elements
-            guard count > 0, let elements = reply.pointee.element else {
-                return .array([])
-            }
-            var items: [RedisReply] = []
-            items.reserveCapacity(count)
-            for i in 0 ..< count {
-                if let element = elements[i] {
-                    items.append(parseReply(element))
-                } else {
-                    items.append(.null)
-                }
-            }
-            return .array(items)
-
-        case REDIS_REPLY_BIGNUM, REDIS_REPLY_VERB:
-            if let str = reply.pointee.str {
-                let len = reply.pointee.len
-                let data = Data(bytes: str, count: len)
-                if let string = String(data: data, encoding: .utf8) {
-                    return .string(string)
-                }
-                return .data(data)
-            }
-            return .null
-
-        default:
-            logger.warning("Unknown Redis reply type: \(type)")
-            return .null
-        }
-    }
-
     func fetchServerVersionSync() throws -> String? {
         stateLock.lock()
         guard context != nil else {
@@ -1042,6 +924,102 @@ private extension RedisPluginConnection {
             return RedisServerInfo.version(from: info)
         }
         return nil
+    }
+}
+#endif
+
+#if canImport(CRedis)
+// A server decides how deep a reply nests, a few bytes a level.
+enum HiredisReply {
+    // Deeper than any command or module replies. Past it a reply is not built, so nothing that walks one later
+    // runs out of stack.
+    static let maximumDepth = 128
+
+    static func value(of reply: UnsafeMutablePointer<redisReply>, depth: Int = 0) -> RedisReply {
+        switch reply.pointee.type {
+        case REDIS_REPLY_STRING, REDIS_REPLY_BIGNUM, REDIS_REPLY_VERB:
+            guard let data = bytes(of: reply) else { return .null }
+            return String(data: data, encoding: .utf8).map(RedisReply.string) ?? .data(data)
+
+        case REDIS_REPLY_INTEGER, REDIS_REPLY_BOOL:
+            return .integer(reply.pointee.integer)
+
+        case REDIS_REPLY_ARRAY, REDIS_REPLY_MAP, REDIS_REPLY_SET, REDIS_REPLY_PUSH:
+            guard depth < maximumDepth else {
+                return .error(String(localized: "Reply nested too deeply to show"))
+            }
+            let count = reply.pointee.elements
+            guard count > 0, let elements = reply.pointee.element else {
+                return .array([])
+            }
+            var items: [RedisReply] = []
+            items.reserveCapacity(count)
+            for index in 0 ..< count {
+                items.append(elements[index].map { value(of: $0, depth: depth + 1) } ?? .null)
+            }
+            return .array(items)
+
+        case REDIS_REPLY_NIL:
+            return .null
+
+        case REDIS_REPLY_STATUS:
+            return .status(bytes(of: reply).flatMap { String(data: $0, encoding: .utf8) } ?? "")
+
+        case REDIS_REPLY_ERROR:
+            return .error(bytes(of: reply).flatMap { String(data: $0, encoding: .utf8) } ?? "Unknown error")
+
+        case REDIS_REPLY_DOUBLE:
+            return .string(bytes(of: reply).flatMap { String(data: $0, encoding: .utf8) } ?? String(reply.pointee.dval))
+
+        default:
+            logger.warning("Unknown Redis reply type: \(reply.pointee.type)")
+            return .null
+        }
+    }
+
+    // freeReplyObject recurses once per level, which a deeply nested reply overflows. Detaching each node's
+    // children first leaves every call one node to free.
+    static func release(_ reply: UnsafeMutableRawPointer) {
+        var pending = [reply.assumingMemoryBound(to: redisReply.self)]
+        while let node = pending.popLast() {
+            if let elements = node.pointee.element {
+                for index in 0 ..< node.pointee.elements {
+                    guard let child = elements[index] else { continue }
+                    pending.append(child)
+                    elements[index] = nil
+                }
+            }
+            freeReplyObject(node)
+        }
+    }
+
+    // hiredis frees a reply it has not handed over (cut short by a protocol error or a freed context) and every
+    // RESP3 push it drops with freeReplyObject. Both go through release instead.
+    static func installIterativeFree(on context: UnsafeMutablePointer<redisContext>) {
+        if let functions, let reader = context.pointee.reader {
+            reader.pointee.fn = functions
+        }
+        redisSetPushCallback(context) { _, reply in
+            if let reply { HiredisReply.release(reply) }
+        }
+    }
+
+    // A reader keeps this pointer for its whole life, so the table is built once and never written again.
+    nonisolated(unsafe) private static let functions: UnsafeMutablePointer<redisReplyObjectFunctions>? = {
+        guard let reader = redisReaderCreate() else { return nil }
+        defer { redisReaderFree(reader) }
+        guard let defaults = reader.pointee.fn else { return nil }
+        let table = UnsafeMutablePointer<redisReplyObjectFunctions>.allocate(capacity: 1)
+        table.initialize(to: defaults.pointee)
+        table.pointee.freeObject = { reply in
+            if let reply { HiredisReply.release(reply) }
+        }
+        return table
+    }()
+
+    private static func bytes(of reply: UnsafeMutablePointer<redisReply>) -> Data? {
+        guard let str = reply.pointee.str else { return nil }
+        return Data(bytes: str, count: reply.pointee.len)
     }
 }
 #endif

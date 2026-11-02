@@ -14,7 +14,8 @@ extension DotenvParser {
     static func resolve(
         _ assignment: DotenvAssignment,
         document: DotenvDocument,
-        processEnvironment: [String: String]
+        processEnvironment: [String: String],
+        budget: ProjectScanExpansionBudget
     ) -> DotenvEntry {
         guard assignment.quoting != .single else {
             return DotenvEntry(
@@ -39,9 +40,11 @@ extension DotenvParser {
                 index += length
                 unresolved = true
             case .valid(let name, let defaultValue, let length):
-                if let resolved = lookUp(name, document: document, processEnvironment: processEnvironment) {
+                let resolved = lookUp(name, document: document, processEnvironment: processEnvironment)
+                // A reference over the budget stays literal and unresolved, so the lines built on it stop growing too.
+                if let resolved, budget.spend(resolved.utf8.count) {
                     value.append(resolved)
-                } else if let defaultValue {
+                } else if resolved == nil, let defaultValue {
                     value.append(defaultValue)
                 } else {
                     value.append(literal(characters, from: index, length: length))

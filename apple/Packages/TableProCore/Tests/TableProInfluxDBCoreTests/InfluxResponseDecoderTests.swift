@@ -7,8 +7,8 @@ private func bytes(_ text: String) -> Data {
 }
 
 struct InfluxResponseDecoderTests {
-    @Test func aNullInAOneColumnV3ResultIsAQuotedEmptyCell() {
-        let table = InfluxResponseDecoder.decodeV3CSV(bytes("note\n\"\"\n\"hot, \"\"quoted\"\"\"\na;b\n"))
+    @Test func aNullInAOneColumnV3ResultIsAQuotedEmptyCell() throws {
+        let table = try InfluxResponseDecoder.decodeV3CSV(bytes("note\n\"\"\n\"hot, \"\"quoted\"\"\"\na;b\n"))
         #expect(table == InfluxResultTable(
             columns: ["note"],
             typeNames: [InfluxTypeName.string],
@@ -16,32 +16,32 @@ struct InfluxResponseDecoderTests {
         ))
     }
 
-    @Test func aNullV3AggregateIsOneRowOfNil() {
-        let table = InfluxResponseDecoder.decodeV3CSV(bytes("max(cpu.usage)\n\"\"\n"))
+    @Test func aNullV3AggregateIsOneRowOfNil() throws {
+        let table = try InfluxResponseDecoder.decodeV3CSV(bytes("max(cpu.usage)\n\"\"\n"))
         #expect(table.columns == ["max(cpu.usage)"])
         #expect(table.rows == [[nil]])
     }
 
-    @Test func anEmptyV3CellBesideOthersIsNil() {
-        let table = InfluxResponseDecoder.decodeV3CSV(bytes("host,note\na,\nb,\"hot, \"\"quoted\"\"\"\nc,a;b\n"))
+    @Test func anEmptyV3CellBesideOthersIsNil() throws {
+        let table = try InfluxResponseDecoder.decodeV3CSV(bytes("host,note\na,\nb,\"hot, \"\"quoted\"\"\"\nc,a;b\n"))
         #expect(table.columns == ["host", "note"])
         #expect(table.rows == [["a", nil], ["b", "hot, \"quoted\""], ["c", "a;b"]])
     }
 
-    @Test func aZeroByteV3BodyIsEmpty() {
-        #expect(InfluxResponseDecoder.decodeV3CSV(Data()) == .empty)
+    @Test func aZeroByteV3BodyIsEmpty() throws {
+        #expect(try InfluxResponseDecoder.decodeV3CSV(Data()) == .empty)
     }
 
-    @Test func aV3TimestampWithoutAZoneGetsZ() {
+    @Test func aV3TimestampWithoutAZoneGetsZ() throws {
         let csv = "time,usage\n2024-10-27T03:33:20,12.5\n2024-10-27T03:34:20.500,50.1\n2024-10-27T03:35:20Z,7.0\n"
-        let table = InfluxResponseDecoder.decodeV3CSV(bytes(csv))
+        let table = try InfluxResponseDecoder.decodeV3CSV(bytes(csv))
         #expect(table.typeNames == [InfluxTypeName.timestamp, InfluxTypeName.float])
         #expect(table.column(named: "time") == ["2024-10-27T03:33:20Z", "2024-10-27T03:34:20.500Z", "2024-10-27T03:35:20Z"])
     }
 
-    @Test func v3ColumnTypesAreInferredFromEveryValue() {
+    @Test func v3ColumnTypesAreInferredFromEveryValue() throws {
         let csv = "i,f,b,s,mixed,u\n-3,1.5,true,s,1,18446744073709551615\n4,2,false,t,2.5,\n"
-        let table = InfluxResponseDecoder.decodeV3CSV(bytes(csv))
+        let table = try InfluxResponseDecoder.decodeV3CSV(bytes(csv))
         #expect(table.typeNames == [
             InfluxTypeName.integer,
             InfluxTypeName.float,
@@ -53,16 +53,16 @@ struct InfluxResponseDecoderTests {
         #expect(table.rows == [["-3", "1.5", "true", "s", "1", "18446744073709551615"], ["4", "2", "false", "t", "2.5", nil]])
     }
 
-    @Test func invalidUTF8InOneV3CellKeepsTheOtherRows() {
+    @Test func invalidUTF8InOneV3CellKeepsTheOtherRows() throws {
         var body = bytes("note\nok\n")
         body.append(contentsOf: [0x61, 0xFF, 0x62, 0x0A])
         body.append(bytes("fine\n"))
-        let table = InfluxResponseDecoder.decodeV3CSV(body)
+        let table = try InfluxResponseDecoder.decodeV3CSV(body)
         #expect(table.rows == [["ok"], ["a\u{FFFD}b"], ["fine"]])
     }
 
-    @Test func v3CSVReadsCRLFLineEnds() {
-        let table = InfluxResponseDecoder.decodeV3CSV(bytes("host,usage\r\na,1\r\nb,2\r\n"))
+    @Test func v3CSVReadsCRLFLineEnds() throws {
+        let table = try InfluxResponseDecoder.decodeV3CSV(bytes("host,usage\r\na,1\r\nb,2\r\n"))
         #expect(table.columns == ["host", "usage"])
         #expect(table.rows == [["a", "1"], ["b", "2"]])
     }
@@ -208,6 +208,83 @@ struct InfluxResponseDecoderTests {
         #expect(try InfluxResponseDecoder.decodeFluxCSV(bytes("\r\n")) == .empty)
     }
 
+    private static let tooWide = InfluxError.malformedResponse(
+        String(localized: "the result has far more columns than its rows fill")
+    )
+
+    private static let wideHeader = (0 ..< 40_000).map { "c\($0)" }.joined(separator: ",")
+
+    @Test("A v3 header of 40,000 columns over 1,000 empty records is refused, not padded to 40 million cells")
+    func shortV3RecordsUnderAWideHeaderAreRefused() throws {
+        let body = bytes(Self.wideHeader + "\n" + String(repeating: "\n", count: 1_000))
+        #expect(throws: Self.tooWide) { try InfluxResponseDecoder.decodeV3CSV(body) }
+        #expect(try InfluxResponseDecoder.decodeV3CSV(bytes("host,note\na\n")).rows == [["a", nil]])
+    }
+
+    @Test("A dense v3 result past a million cells is read whole")
+    func denseV3ResultPastTheFloor() throws {
+        let header = (0 ..< 1_000).map { "c\($0)" }.joined(separator: ",")
+        let record = Array(repeating: "1", count: 1_000).joined(separator: ",")
+        let body = bytes(header + "\n" + String(repeating: record + "\n", count: 1_100))
+        let table = try InfluxResponseDecoder.decodeV3CSV(body)
+        #expect(table.columns.count == 1_000)
+        #expect(table.rows.count == 1_100)
+        #expect(table.rows.allSatisfy { $0.count == 1_000 })
+        #expect(table.typeNames.allSatisfy { $0 == InfluxTypeName.integer })
+    }
+
+    @Test("A v1 series of 40,000 columns over 1,000 empty value rows is refused")
+    func shortV1RowsUnderWideColumnsAreRefused() {
+        let columns = (0 ..< 40_000).map { "\"c\($0)\"" }.joined(separator: ",")
+        let values = Array(repeating: "[]", count: 1_000).joined(separator: ",")
+        let body = bytes(#"{"results":[{"statement_id":0,"series":[{"name":"m","columns":["# + columns + #"],"values":["# + values + "]}]}]}")
+        #expect(throws: Self.tooWide) { try InfluxResponseDecoder.decodeV1JSON(body) }
+    }
+
+    @Test("Flux rows under a wider earlier or later table are refused, not padded to 40 million cells", arguments: [true, false])
+    func shortFluxRowsUnderAWideTableAreRefused(wideFirst: Bool) {
+        let wide = ",result,table," + Self.wideHeader + "\r\n\r\n"
+        let narrow = ",result,table\r\n" + String(repeating: ",_result,0\r\n", count: 1_000) + "\r\n"
+        let body = bytes(wideFirst ? wide + narrow : narrow + wide)
+        #expect(throws: Self.tooWide) { try InfluxResponseDecoder.decodeFluxCSV(body) }
+    }
+
+    // `SELECT * FROM /.*/ LIMIT 10` over 300 measurements, each with its own 10 fields.
+    @Test("A sparse result of 3,000 rows by 3,002 columns from a few hundred KB is read in v1 JSON and Flux")
+    func sparseResultAcrossManyMeasurements() throws {
+        let fields = (0 ..< 300).map { measurement in (0 ..< 10).map { "m\(measurement)_f\($0)" } }
+        let values = Array(repeating: "12.5", count: 10).joined(separator: ",")
+
+        do {
+            let series = fields.enumerated().map { measurement, names in
+                let columns = (["time"] + names).map { "\"\($0)\"" }.joined(separator: ",")
+                let rows = Array(repeating: "[\"2024-10-27T03:33:20Z\"," + values + "]", count: 10).joined(separator: ",")
+                return #"{"name":"sensor\#(measurement)","columns":[\#(columns)],"values":[\#(rows)]}"#
+            }
+            let table = try InfluxResponseDecoder.decodeV1JSON(
+                bytes(#"{"results":[{"statement_id":0,"series":["# + series.joined(separator: ",") + "]}]}")
+            )
+            #expect(table.columns.count == 3_002)
+            #expect(table.rows.count == 3_000)
+            #expect(table.rows[2_999][0] == "sensor299")
+            #expect(table.rows[2_999][3_001] == "12.5")
+            #expect(table.rows[0][3_001] == nil)
+        }
+        do {
+            let tables = fields.enumerated().map { measurement, names in
+                ",result,table,_time," + names.joined(separator: ",") + "\r\n"
+                    + String(repeating: ",_result,\(measurement),2024-10-27T03:33:20Z," + values + "\r\n", count: 10)
+            }
+            let table = try InfluxResponseDecoder.decodeFluxCSV(bytes(tables.joined(separator: "\r\n")))
+            #expect(table.columns.count == 3_002)
+            #expect(table.rows.count == 3_000)
+            #expect(table.rows.allSatisfy { $0.count == 3_002 })
+            #expect(table.rows[2_999][0] == "299")
+            #expect(table.rows[2_999][3_001] == "12.5")
+            #expect(table.rows[0][3_001] == nil)
+        }
+    }
+
     @Test func schemaTypesReplaceInferredTypesByColumnName() {
         let table = InfluxResultTable(
             columns: ["time", "host", "usage", "extra"],
@@ -256,7 +333,7 @@ struct InfluxResponseDecoderTests {
         #expect(InfluxSchema.v3Columns(from: table) == [InfluxColumn(name: "c", typeName: typeName, role: role)])
     }
 
-    @Test func v3ColumnsPutTimeFirstAndTheRestByName() {
+    @Test func v3ColumnsPutTimeFirstAndTheRestByName() throws {
         let csv = """
         column_name,data_type
         b,Boolean
@@ -270,7 +347,7 @@ struct InfluxResponseDecoderTests {
         zone,"Dictionary(Int32, Utf8)"
 
         """
-        let columns = InfluxSchema.v3Columns(from: InfluxResponseDecoder.decodeV3CSV(bytes(csv)))
+        let columns = try InfluxSchema.v3Columns(from: InfluxResponseDecoder.decodeV3CSV(bytes(csv)))
         #expect(columns == [
             InfluxColumn(name: "time", typeName: InfluxTypeName.timestamp, role: .time),
             InfluxColumn(name: "b", typeName: InfluxTypeName.boolean, role: .field),

@@ -24,6 +24,27 @@ struct XLSXCellStorageTests {
         #expect(array.lastIndex { $0 < 10 } == 70_000)
     }
 
+    @Test func testCellsSpreadFarApartDoNotFillTheirColumnWithEmptySlots() {
+        var rows = [0]
+        while true {
+            let last = rows[rows.count - 1]
+            let next = last + 1 + max(64, (last + 1) / 8)
+            guard next < XLSXCellReference.maximumRowCount else { break }
+            rows.append(next)
+        }
+        var builder = XLSXColumnBuilder()
+        for row in rows {
+            builder.append(row: row, kind: XLSXStoredCell.decimalBase, payload: UInt64(row))
+        }
+        let store = builder.makeStore(rowOrigin: 0)
+        #expect(store.kinds.count <= 65 * rows.count)
+        var hint = -1
+        let found = rows.filter { store.slot(forRow: $0, hint: &hint) != nil }
+        #expect(found == rows)
+        var probe = -1
+        #expect(store.slot(forRow: rows[1] - 1, hint: &probe) == nil)
+    }
+
     @Test func testByteHeapReturnsEveryEntryIncludingOnesLargerThanABlock() throws {
         let builder = XLSXByteHeapBuilder()
         let small = Array("small".utf8)
@@ -50,7 +71,8 @@ struct XLSXCellStorageTests {
             XLSXDecimal.append(mantissa: parsed.mantissa, scale: parsed.scale, to: &output)
             #expect(String(bytes: output, encoding: .utf8) == text)
         }
-        for text in ["", "-", "-0", "007", ".5", "5.", "1e3", "1,5", "1234567890123456789", " 1"] {
+        let tooLong = ["9223372036854775808", "9999999999999999999", "-9999999999999999999", "9.999999999999999999"]
+        for text in ["", "-", "-0", "007", ".5", "5.", "1e3", "1,5", "1234567890123456789", " 1"] + tooLong {
             var copy = text
             #expect(copy.withUTF8 { XLSXDecimal.parse($0) } == nil, "\(text)")
         }

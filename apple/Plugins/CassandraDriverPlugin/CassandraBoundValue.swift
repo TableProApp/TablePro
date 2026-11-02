@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProCassandraCore
 import TableProPluginKit
 
 /// The CQL type a bind marker expects, as the prepared statement reports it.

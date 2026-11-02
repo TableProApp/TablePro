@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 /// Where a browse starts reading. Kafka has no ORDER BY and no skip-N, so a scan is defined by
 /// an anchor plus a direction, which is the vocabulary every Kafka UI converges on.

@@ -1,7 +1,6 @@
 import Foundation
-import TableProPluginKit
 
-enum KafkaError: LocalizedError {
+public enum KafkaError: LocalizedError {
     case notConnected
     case connectionFailed(String)
     case truncatedResponse(needed: Int, available: Int)
@@ -11,6 +10,7 @@ enum KafkaError: LocalizedError {
     case authenticationFailed(String)
     case unsupportedCompression(String)
     case decompressionFailed(codec: String, reason: String)
+    case decompressionExceeded(codec: String)
     case syntax(String)
     case unknownTopic(String)
     case unknownGroup(String)
@@ -23,7 +23,7 @@ enum KafkaError: LocalizedError {
     case partitionsHaveNoLeader(topic: String, partitions: [Int32])
     case verifyCaNeedsCertificate
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .notConnected:
             return String(localized: "Not connected to the Kafka cluster.")
@@ -69,6 +69,11 @@ enum KafkaError: LocalizedError {
                 format: String(localized: "Could not decompress a %@ batch: %@"),
                 codec,
                 reason
+            )
+        case .decompressionExceeded(let codec):
+            return String(
+                format: String(localized: "A %@ batch decompresses to far more data than the broker sent, so it was not read."),
+                codec
             )
         case .syntax(let detail):
             return detail
@@ -144,7 +149,7 @@ enum KafkaPartitionList {
 }
 
 /// What to do about an error code before giving it to the user.
-enum KafkaRetryAction: Sendable {
+public enum KafkaRetryAction: Sendable {
     /// A real answer. Report it.
     case report
     /// The client's view of the cluster is stale. Re-read Metadata, re-resolve the leader, retry.
@@ -157,37 +162,37 @@ enum KafkaRetryAction: Sendable {
 
 /// The subset of Kafka's error codes this client can meet, with what to do about each.
 /// A code that is not listed still reports its number rather than being swallowed.
-enum KafkaErrorCode {
-    static let none: Int16 = 0
-    static let offsetOutOfRange: Int16 = 1
-    static let unknownTopicOrPartition: Int16 = 3
-    static let leaderNotAvailable: Int16 = 5
-    static let notLeaderOrFollower: Int16 = 6
-    static let requestTimedOut: Int16 = 7
-    static let brokerNotAvailable: Int16 = 8
-    static let replicaNotAvailable: Int16 = 9
-    static let messageTooLarge: Int16 = 10
-    static let networkException: Int16 = 13
-    static let coordinatorLoadInProgress: Int16 = 14
-    static let coordinatorNotAvailable: Int16 = 15
-    static let notCoordinator: Int16 = 16
-    static let illegalSaslState: Int16 = 34
-    static let unsupportedVersion: Int16 = 35
-    static let notController: Int16 = 41
-    static let topicAuthorizationFailed: Int16 = 29
-    static let groupAuthorizationFailed: Int16 = 30
-    static let clusterAuthorizationFailed: Int16 = 31
-    static let kafkaStorageError: Int16 = 56
-    static let saslAuthenticationFailed: Int16 = 58
+public enum KafkaErrorCode {
+    public static let none: Int16 = 0
+    public static let offsetOutOfRange: Int16 = 1
+    public static let unknownTopicOrPartition: Int16 = 3
+    public static let leaderNotAvailable: Int16 = 5
+    public static let notLeaderOrFollower: Int16 = 6
+    public static let requestTimedOut: Int16 = 7
+    public static let brokerNotAvailable: Int16 = 8
+    public static let replicaNotAvailable: Int16 = 9
+    public static let messageTooLarge: Int16 = 10
+    public static let networkException: Int16 = 13
+    public static let coordinatorLoadInProgress: Int16 = 14
+    public static let coordinatorNotAvailable: Int16 = 15
+    public static let notCoordinator: Int16 = 16
+    public static let illegalSaslState: Int16 = 34
+    public static let unsupportedVersion: Int16 = 35
+    public static let notController: Int16 = 41
+    public static let topicAuthorizationFailed: Int16 = 29
+    public static let groupAuthorizationFailed: Int16 = 30
+    public static let clusterAuthorizationFailed: Int16 = 31
+    public static let kafkaStorageError: Int16 = 56
+    public static let saslAuthenticationFailed: Int16 = 58
     /// 72 is LISTENER_NOT_FOUND and 73 is TOPIC_DELETION_DISABLED, which is the opposite of what
     /// this file said until #2993. Nothing read the constant, so nothing broke; the two are
     /// spelled out here because a hand-transcribed code table is exactly the thing that drifts.
-    static let listenerNotFound: Int16 = 72
-    static let topicDeletionDisabled: Int16 = 73
-    static let fencedLeaderEpoch: Int16 = 74
-    static let unknownLeaderEpoch: Int16 = 75
-    static let offsetNotAvailable: Int16 = 78
-    static let unknownTopicId: Int16 = 100
+    public static let listenerNotFound: Int16 = 72
+    public static let topicDeletionDisabled: Int16 = 73
+    public static let fencedLeaderEpoch: Int16 = 74
+    public static let unknownLeaderEpoch: Int16 = 75
+    public static let offsetNotAvailable: Int16 = 78
+    public static let unknownTopicId: Int16 = 100
 
     /// What a code means for the request that drew it.
     ///
@@ -197,7 +202,7 @@ enum KafkaErrorCode {
     /// and would only be delayed by them. 8 BROKER_NOT_AVAILABLE is deliberately not retried:
     /// Kafka does not classify it retriable, and a client that retries it hides a broker that
     /// is genuinely down.
-    static func retryAction(for code: Int16) -> KafkaRetryAction {
+    public static func retryAction(for code: Int16) -> KafkaRetryAction {
         switch code {
         case unknownTopicOrPartition, leaderNotAvailable, notLeaderOrFollower, replicaNotAvailable,
              networkException, kafkaStorageError, listenerNotFound, fencedLeaderEpoch,
@@ -221,7 +226,7 @@ enum KafkaErrorCode {
     /// broke and of a log directory that failed mid-append. This client sends no producer id,
     /// so Kafka cannot deduplicate a replay and the message is appended twice. The codes below
     /// all mean the broker refused the request outright, which is safe to send elsewhere.
-    static func provesRequestWasNotApplied(_ code: Int16) -> Bool {
+    public static func provesRequestWasNotApplied(_ code: Int16) -> Bool {
         switch code {
         case unknownTopicOrPartition, leaderNotAvailable, notLeaderOrFollower, replicaNotAvailable,
              listenerNotFound, fencedLeaderEpoch, unknownLeaderEpoch, unknownTopicId:
@@ -231,7 +236,7 @@ enum KafkaErrorCode {
         }
     }
 
-    static func describe(_ code: Int16) -> String {
+    public static func describe(_ code: Int16) -> String {
         switch code {
         case offsetOutOfRange:
             return String(localized: "the requested offset is outside the partition's range")
@@ -290,7 +295,7 @@ enum KafkaErrorCode {
         }
     }
 
-    static func check(_ code: Int16, api: String) throws {
+    public static func check(_ code: Int16, api: String) throws {
         guard code != none else { return }
         if code == saslAuthenticationFailed || code == illegalSaslState {
             throw KafkaError.authenticationFailed(describe(code))

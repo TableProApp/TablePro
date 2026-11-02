@@ -227,7 +227,7 @@ internal final class InfluxDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         guard response.isSuccess else { throw response.error }
         switch (server.generation, statement.language) {
         case (.v3, _):
-            return InfluxResponseDecoder.decodeV3CSV(response.data)
+            return try InfluxResponseDecoder.decodeV3CSV(response.data)
         case (_, .flux):
             return try InfluxResponseDecoder.decodeFluxCSV(response.data)
         default:

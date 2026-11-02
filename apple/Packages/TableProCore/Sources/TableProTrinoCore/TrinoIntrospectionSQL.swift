@@ -140,6 +140,12 @@ public enum TrinoIntrospectionSQL {
         "SHOW STATS FOR \(qualifiedName(catalog: catalog, schema: schema, table: table))"
     }
 
+    // `row_count` is a double: NaN, an infinity or a value outside `Int` is no count.
+    public static func rowCount(fromStatsValue text: String) -> Int? {
+        guard let value = Double(text) else { return nil }
+        return Int(exactly: value.rounded(.towardZero))
+    }
+
     public static func showCreateTable(catalog: String?, schema: String?, table: String) -> String {
         "SHOW CREATE TABLE \(qualifiedName(catalog: catalog, schema: schema, table: table))"
     }

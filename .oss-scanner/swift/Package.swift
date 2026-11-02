@@ -15,8 +15,12 @@ let package = Package(
         .target(name: "TableProDocumentPath"),
         .target(name: "TableProJavaScriptText"),
         .target(name: "TableProDamengCore", dependencies: ["TableProSQLGrammar"]),
+        .target(name: "TableProWireIO"),
+        .target(name: "TableProCassandraCore"),
         .testTarget(name: "TableProSQLGrammarTests", dependencies: ["TableProSQLGrammar"]),
         .testTarget(name: "TableProLogRedactionTests", dependencies: ["TableProLogRedaction"]),
-        .testTarget(name: "TableProDamengCoreTests", dependencies: ["TableProDamengCore", "TableProSQLGrammar"])
+        .testTarget(name: "TableProDamengCoreTests", dependencies: ["TableProDamengCore", "TableProSQLGrammar"]),
+        .testTarget(name: "TableProWireIOTests", dependencies: ["TableProWireIO"]),
+        .testTarget(name: "TableProCassandraCoreTests", dependencies: ["TableProCassandraCore"])
     ]
 )

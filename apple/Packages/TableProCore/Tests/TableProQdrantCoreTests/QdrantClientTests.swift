@@ -141,6 +141,30 @@ struct QdrantSortedPagerTests {
         }
     }
 
+    @Test("A negative point count is refused as a malformed answer instead of crashing the page past it")
+    func negativeCountRefused() async throws {
+        let hostile = RecordingTransport { request in
+            switch request.url.path {
+            case "/collections/docs/points/count":
+                if canonical(bodyObject(request)).contains("values_count") { return jsonResponse(["result": ["count": 0]]) }
+                return jsonResponse(["result": ["count": Int.min]])
+            case "/collections/docs/points/query":
+                return jsonResponse(["result": ["points": [Any]()]])
+            default:
+                return scrollResponse([], next: nil)
+            }
+        }
+        let client = makeClient(transport: hostile)
+        let refusal = QdrantError.malformedResponse(String(localized: "Qdrant answered a count without a number."))
+        await #expect(throws: refusal) {
+            _ = try await page(client, offset: 4, limit: 4, cache: QdrantPagingCache())
+        }
+        await #expect(throws: refusal) {
+            _ = try await client.count(collection: "docs", filter: nil)
+        }
+        #expect(try await makeClient(transport: transport(listed: 0)).count(collection: "docs", filter: nil) == 6)
+    }
+
     @Test("A field holding a list in some point is refused, since Qdrant would show that point once per value")
     func listedValuesRefused() async throws {
         let client = makeClient(transport: transport(listed: 2))

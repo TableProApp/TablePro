@@ -57,6 +57,59 @@ private final class RowsOnlyFormat: ExportFormatPlugin, @unchecked Sendable {
     }
 }
 
+private final class HugeCountDriver: DatabaseDriver, @unchecked Sendable {
+    let connection = TestFixtures.makeConnection(type: .postgresql)
+    var status: ConnectionStatus = .connected
+    var serverVersion: String? { nil }
+
+    func execute(query: String) async throws -> QueryResult {
+        let count = PluginCellValue.text(String(Int.max))
+        return QueryResult(
+            columns: ["c"], columnTypes: [.integer(rawType: "BIGINT")],
+            rows: query.contains("COUNT(") ? [[count], [count]] : [],
+            rowsAffected: 0, executionTime: 0, error: nil
+        )
+    }
+
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
+        try await execute(query: query)
+    }
+    func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
+        try await execute(query: query)
+    }
+    func connect() async throws {}
+    func disconnect() {}
+    func testConnection() async throws -> Bool { true }
+    func ping() async throws {}
+    func cancelQuery() throws {}
+    func applyQueryTimeout(_ seconds: Int) async throws {}
+    func fetchTables() async throws -> [TableInfo] { [] }
+    func fetchTables(schema: String?) async throws -> [TableInfo] { [] }
+    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
+    func fetchAllColumns() async throws -> [String: [ColumnInfo]] { [:] }
+    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
+    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchDatabases() async throws -> [String] { [] }
+    func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
+        DatabaseMetadata(
+            id: database, name: database, tableCount: nil, sizeBytes: nil,
+            lastAccessed: nil, isSystemDatabase: false, icon: "cylinder"
+        )
+    }
+    func fetchTableDDL(table: String) async throws -> String { "" }
+    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+        TableMetadata(
+            tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil, avgRowLength: nil,
+            rowCount: nil, comment: nil, engine: nil, collation: nil, createTime: nil, updateTime: nil
+        )
+    }
+    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func beginTransaction() async throws {}
+    func commitTransaction() async throws {}
+    func rollbackTransaction() async throws {}
+}
+
 @MainActor
 struct ExportServiceRowCountTests {
     private func run(
@@ -108,5 +161,22 @@ struct ExportServiceRowCountTests {
         #expect(counts.first?.contains("orders") == true)
         #expect(counts.first?.contains("customers") == false)
         #expect(service.state.readsRows)
+    }
+
+    @Test("Two tables whose counts add past Int.max total Int.max instead of crashing")
+    func countsSaturate() async throws {
+        let driver = HugeCountDriver()
+        let format = StructureAndDataFormat()
+        let service = ExportService(driver: driver, databaseType: .postgresql) { _ in format }
+        var config = ExportConfiguration()
+        config.formatId = StructureAndDataFormat.formatId
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try await service.export(objects: [
+            ExportObjectItem(name: "orders", kind: .table, optionValues: [true, true]),
+            ExportObjectItem(name: "customers", kind: .table, optionValues: [true, true])
+        ], config: config, to: url)
+
+        #expect(service.state.totalRows == Int.max)
     }
 }

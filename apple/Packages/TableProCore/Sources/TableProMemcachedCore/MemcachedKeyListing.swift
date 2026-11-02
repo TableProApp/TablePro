@@ -12,13 +12,28 @@ public struct MemcachedKeyEntry: Equatable, Sendable {
         self.flags = flags
     }
 
-    /// Seconds left at `serverTime`, nil for no expiry. An item past its time reads as gone.
+    // Nil for no expiry, and for a clock too far from the expiry to subtract, so the item stays listed.
     public func secondsLeft(at serverTime: Int64) -> Int64? {
-        expiresAt.map { $0 - serverTime }
+        guard let expiresAt else { return nil }
+        let (left, overflow) = expiresAt.subtractingReportingOverflow(serverTime)
+        return overflow ? nil : left
     }
 
     public func isExpired(at serverTime: Int64) -> Bool {
         (secondsLeft(at: serverTime) ?? 1) <= 0
+    }
+}
+
+// A server clock too far off to subtract reads as the local one, as a missing `STAT time` does.
+public enum MemcachedServerClock {
+    public static func offset(serverTime: Int64, localTime: Int64) -> Int64 {
+        let (offset, overflow) = serverTime.subtractingReportingOverflow(localTime)
+        return overflow ? 0 : offset
+    }
+
+    public static func serverTime(localTime: Int64, offset: Int64) -> Int64 {
+        let (time, overflow) = localTime.addingReportingOverflow(offset)
+        return overflow ? localTime : time
     }
 }
 
@@ -56,13 +71,12 @@ public enum MemcachedKeyListing {
         return MemcachedKeyEntry(key: key, expiresAt: expiry.flatMap { $0 > 0 ? $0 : nil }, flags: nil)
     }
 
-    /// The slab classes holding items, read from `stats items` lines such as `STAT items:1:number 3`.
     public static func slabClasses(fromItemStats lines: [String]) -> [Int] {
-        var classes: [Int] = []
+        var classes = Set<Int>()
         for (name, value) in statPairs(lines) where name.hasSuffix(":number") && (Int(value) ?? 0) > 0 {
             let parts = name.split(separator: ":")
-            if parts.count == 3, parts[0] == "items", let id = Int(parts[1]), !classes.contains(id) {
-                classes.append(id)
+            if parts.count == 3, parts[0] == "items", let id = Int(parts[1]) {
+                classes.insert(id)
             }
         }
         return classes.sorted()

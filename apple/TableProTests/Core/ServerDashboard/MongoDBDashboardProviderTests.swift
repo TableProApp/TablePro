@@ -123,6 +123,22 @@ struct MongoDBDashboardProviderTests {
         #expect(entry.query.contains("orders"))
     }
 
+    @Test("Resident memory past Int64 bytes shows the largest size instead of crashing")
+    func residentMemoryPastInt64() async throws {
+        let metrics = try await MongoDBDashboardProvider().fetchMetrics { _ in
+            Self.result(["resident"], [["8796093022208"]])
+        }
+        #expect(metrics.first { $0.id == "resident_memory" }?.value == ByteSizeFormatting.string(bytes: Int64.max))
+    }
+
+    @Test("A profiled operation's milliseconds past the integer range show the longest duration instead of crashing")
+    func slowQueryMillisecondsPastInt() async throws {
+        let slow = try await MongoDBDashboardProvider().fetchSlowQueries { _ in
+            Self.result(["command", "millis", "ns", "user"], [["{}", "9223372036854776", "shop.orders", "app"]])
+        }
+        #expect(slow.first?.duration == DurationFormatting.string(microseconds: .max))
+    }
+
     @Test("The database is the namespace before its first dot", arguments: [
         ("shop.orders", "shop"),
         ("admin.$cmd", "admin"),

@@ -1,4 +1,5 @@
 import Foundation
+import TableProWireIO
 
 enum Der {
     static let objectIdentifierTag: UInt8 = 0x06
@@ -51,10 +52,13 @@ enum Der {
     static func decodeLength(_ reader: inout ByteReader) throws -> Int {
         let first = try reader.u8()
         if first < 0x80 { return Int(first) }
-        let count = Int(first & 0x7F)
-        var length = 0
-        for _ in 0..<count { length = (length << 8) | Int(try reader.u8()) }
-        return length
+        var length: UInt64 = 0
+        for _ in 0..<(first & 0x7F) {
+            let (shifted, overflow) = length.multipliedReportingOverflow(by: 0x100)
+            guard !overflow else { throw TeradataWireError.malformed("DER length wider than 64 bits") }
+            length = shifted | UInt64(try reader.u8())
+        }
+        return try WireLength.checked(length, limit: .max)
     }
 
     private static func base128(_ value: Int) -> [UInt8] {

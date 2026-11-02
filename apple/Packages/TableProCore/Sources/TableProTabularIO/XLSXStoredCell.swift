@@ -48,9 +48,9 @@ enum XLSXDecimal {
         var mantissa: Int64 = 0
         var digits = 0
         while index < count, isDigit(bytes[index]) {
+            guard digits < XLSXStoredCell.largestDecimalScale else { return nil }
             mantissa = mantissa * 10 + Int64(bytes[index] - 0x30)
             digits += 1
-            guard digits <= XLSXStoredCell.largestDecimalScale else { return nil }
             index += 1
         }
         let integerDigits = index - integerStart
@@ -59,10 +59,10 @@ enum XLSXDecimal {
         if index < count, bytes[index] == 0x2E {
             index += 1
             while index < count, isDigit(bytes[index]) {
+                guard digits < XLSXStoredCell.largestDecimalScale else { return nil }
                 mantissa = mantissa * 10 + Int64(bytes[index] - 0x30)
                 digits += 1
                 scale += 1
-                guard digits <= XLSXStoredCell.largestDecimalScale else { return nil }
                 index += 1
             }
             guard scale > 0 else { return nil }

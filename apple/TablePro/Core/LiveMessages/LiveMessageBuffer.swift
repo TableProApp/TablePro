@@ -35,9 +35,13 @@ internal struct LiveMessageBuffer: Sendable {
     static let defaultCapacity = 10_000
 
     let capacity: Int
-    private(set) var entries: [LiveMessageEntry] = []
+    // A ring once full: each new entry takes the slot of the oldest, which is released then.
+    private var storage: [LiveMessageEntry] = []
+    private var oldest = 0
     private(set) var droppedCount = 0
     private var nextId = 0
+
+    var entries: [LiveMessageEntry] { Array(storage[oldest...]) + storage[..<oldest] }
 
     init(capacity: Int = defaultCapacity) {
         self.capacity = max(1, capacity)
@@ -47,16 +51,15 @@ internal struct LiveMessageBuffer: Sendable {
         for message in messages {
             push(.message(message))
         }
-        trim()
     }
 
     mutating func appendGap(reason: String) {
         push(.gap(reason: reason))
-        trim()
     }
 
     mutating func clear() {
-        entries.removeAll(keepingCapacity: true)
+        storage.removeAll(keepingCapacity: true)
+        oldest = 0
         droppedCount = 0
     }
 
@@ -71,14 +74,14 @@ internal struct LiveMessageBuffer: Sendable {
     }
 
     private mutating func push(_ kind: LiveMessageEntry.Kind) {
-        entries.append(LiveMessageEntry(id: nextId, kind: kind))
+        let entry = LiveMessageEntry(id: nextId, kind: kind)
         nextId += 1
-    }
-
-    private mutating func trim() {
-        let excess = entries.count - capacity
-        guard excess > 0 else { return }
-        entries.removeFirst(excess)
-        droppedCount += excess
+        guard storage.count == capacity else {
+            storage.append(entry)
+            return
+        }
+        storage[oldest] = entry
+        oldest = oldest + 1 == capacity ? 0 : oldest + 1
+        droppedCount += 1
     }
 }

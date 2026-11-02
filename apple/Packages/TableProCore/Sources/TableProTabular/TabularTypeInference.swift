@@ -23,38 +23,70 @@ public enum TabularInferredKind: String, Sendable, Equatable, CaseIterable {
 
 public enum TabularTypeInference {
     public static let sampleSize = 200
+    // Columns still short of a full sample when this many cells have been read are typed from what they have.
+    public static let cellBudget = 10_000_000
 
     private static let booleanWords: Set<String> = ["true", "false", "yes", "no", "t", "f", "y", "n"]
 
-    public static func inferKinds(of table: TabularTable) -> [TabularColumnID: TabularInferredKind] {
+    public static func inferKinds(
+        of table: TabularTable,
+        cellBudget: Int = TabularTypeInference.cellBudget
+    ) throws -> [TabularColumnID: TabularInferredKind] {
         var samples: [TabularColumnID: [(TabularCellKind, String)]] = [:]
-        let ids = table.columnIDs
-        for id in ids {
-            samples[id] = []
-        }
-        var open = Set(ids)
+        var open = table.columnIDs
         var row = 0
-        let rows = table.rowCount
-        while row < rows, !open.isEmpty {
-            let end = min(rows, row + 256)
-            table.scan(columns: ids, rows: row..<end) { _, cells in
-                for (slot, id) in ids.enumerated() where open.contains(id) {
-                    let kind = cells.kinds[slot]
-                    guard !cells.bytes[slot].isEmpty, !kind.isNullLike else { continue }
-                    samples[id, default: []].append((kind, cells.string(at: slot)))
-                    if samples[id, default: []].count >= sampleSize {
-                        open.remove(id)
-                    }
-                }
-                return !open.isEmpty
-            }
-            row = end
+        var budget = cellBudget
+        while row < table.rowCount, !open.isEmpty, budget >= open.count {
+            let pass = try samplePass(table, columns: open, from: row, budget: budget, into: &samples)
+            guard pass.rows > 0 else { break }
+            row += pass.rows
+            budget -= pass.rows * open.count
+            open = pass.open
         }
         var result: [TabularColumnID: TabularInferredKind] = [:]
-        for id in ids {
+        for id in table.columnIDs {
             result[id] = infer(samples[id] ?? [])
         }
         return result
+    }
+
+    // A pass ends once half its columns have a full sample, so the next scan plan is built for the rest only.
+    private static func samplePass(
+        _ table: TabularTable,
+        columns: [TabularColumnID],
+        from start: Int,
+        budget: Int,
+        into samples: inout [TabularColumnID: [(TabularCellKind, String)]]
+    ) throws -> (rows: Int, open: [TabularColumnID]) {
+        var isOpen = [Bool](repeating: true, count: columns.count)
+        var openCount = columns.count
+        var visited = 0
+        var cellsSinceCheck = 0
+        var cancelled = false
+        let end = start + min(table.rowCount - start, budget / columns.count)
+        table.scan(columns: columns, rows: start..<end) { _, cells in
+            visited += 1
+            for slot in columns.indices where isOpen[slot] {
+                let kind = cells.kinds[slot]
+                guard !cells.bytes[slot].isEmpty, !kind.isNullLike else { continue }
+                samples[columns[slot], default: []].append((kind, cells.string(at: slot)))
+                if samples[columns[slot], default: []].count >= sampleSize {
+                    isOpen[slot] = false
+                    openCount -= 1
+                }
+            }
+            cellsSinceCheck += columns.count
+            if cellsSinceCheck >= TabularScanEngine.cancellationStride {
+                cellsSinceCheck = 0
+                if Task.isCancelled {
+                    cancelled = true
+                    return false
+                }
+            }
+            return openCount * 2 > columns.count
+        }
+        if cancelled { throw CancellationError() }
+        return (visited, columns.indices.filter { isOpen[$0] }.map { columns[$0] })
     }
 
     public static func infer(_ sample: [(TabularCellKind, String)]) -> TabularInferredKind {

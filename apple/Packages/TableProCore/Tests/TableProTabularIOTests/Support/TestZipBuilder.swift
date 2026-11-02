@@ -18,6 +18,7 @@ struct TestZipBuilder {
     var usesDataDescriptors = false
     var usesZip64Extra = false
     var zip64OffsetOverride: UInt64?
+    var zip64UncompressedSizeOverride: UInt64?
 
     mutating func add(_ path: String, _ text: String, method: Method = .deflate) {
         add(path, data: Data(text.utf8), method: method)
@@ -74,7 +75,7 @@ struct TestZipBuilder {
         if usesZip64Extra {
             extra.append(Self.uint16(0x0001))
             extra.append(Self.uint16(24))
-            extra.append(Self.uint64(UInt64(file.body.count)))
+            extra.append(Self.uint64(zip64UncompressedSizeOverride ?? UInt64(file.body.count)))
             extra.append(Self.uint64(UInt64(payload.count)))
             extra.append(Self.uint64(zip64OffsetOverride ?? UInt64(offset)))
         }

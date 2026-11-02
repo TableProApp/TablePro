@@ -1,7 +1,7 @@
 import AppKit
-import Compression
 import Foundation
 import os
+import TableProGzip
 import TableProNumberFormatting
 import TableProPluginKit
 
@@ -966,53 +966,13 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Gzip
 
-    private static func gunzipIfNeeded(_ data: Data) -> Data {
-        guard data.count > 18, data[data.startIndex] == 0x1F, data[data.startIndex + 1] == 0x8B else {
-            return data
+    private static func gunzipIfNeeded(_ data: Data) throws -> Data {
+        guard data.starts(with: [0x1F, 0x8B]) else { return data }
+        do {
+            return try GzipInflater.decompress(data)
+        } catch {
+            throw SnowflakeError.invalidResponse(error.localizedDescription)
         }
-        let bytes = [UInt8](data)
-        let flags = bytes[3]
-        var offset = 10
-        if flags & 0x04 != 0, offset + 2 <= bytes.count {
-            let extraLen = Int(bytes[offset]) | (Int(bytes[offset + 1]) << 8)
-            offset += 2 + extraLen
-        }
-        if flags & 0x08 != 0 {
-            while offset < bytes.count, bytes[offset] != 0 { offset += 1 }
-            offset += 1
-        }
-        if flags & 0x10 != 0 {
-            while offset < bytes.count, bytes[offset] != 0 { offset += 1 }
-            offset += 1
-        }
-        if flags & 0x02 != 0 { offset += 2 }
-        guard offset < bytes.count - 8 else { return data }
-
-        let deflateBytes = Array(bytes[offset..<(bytes.count - 8)])
-        return inflate(deflateBytes) ?? data
-    }
-
-    private static func inflate(_ deflate: [UInt8]) -> Data? {
-        guard !deflate.isEmpty else { return nil }
-        var capacity = max(deflate.count * 8, 65_536)
-        for _ in 0..<6 {
-            var output = Data(count: capacity)
-            let written = output.withUnsafeMutableBytes { (outPtr: UnsafeMutableRawBufferPointer) -> Int in
-                deflate.withUnsafeBufferPointer { (inPtr: UnsafeBufferPointer<UInt8>) -> Int in
-                    guard let outBase = outPtr.bindMemory(to: UInt8.self).baseAddress,
-                          let inBase = inPtr.baseAddress else { return 0 }
-                    return compression_decode_buffer(
-                        outBase, capacity, inBase, deflate.count, nil, COMPRESSION_ZLIB
-                    )
-                }
-            }
-            if written > 0, written < capacity {
-                output.removeSubrange(written..<output.count)
-                return output
-            }
-            capacity *= 2
-        }
-        return nil
     }
 }
 

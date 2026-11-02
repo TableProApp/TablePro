@@ -2,9 +2,10 @@ import Foundation
 
 public enum InfluxResponseDecoder {
     // 3.x CSV keeps the statement's column order; its JSON drops null columns. CSV has no null, so an empty cell is one.
-    public static func decodeV3CSV(_ data: Data) -> InfluxResultTable {
+    public static func decodeV3CSV(_ data: Data) throws -> InfluxResultTable {
         var records = InfluxCSV.records(data)[...]
         guard let columns = records.popFirst() else { return .empty }
+        try CellBudget.perByte(of: data).check(rows: records.count, columns: columns.count)
         let rows: [[String?]] = records.map { record in
             columns.indices.map { index in
                 guard index < record.count, !record[index].isEmpty else { return nil }
@@ -66,14 +67,16 @@ public enum InfluxResponseDecoder {
             uniquingKeysWith: { first, _ in first }
         )
         let tagRange = offset ..< offset + tagKeys.count
+        let seriesValues = series.map { $0["values"] as? [[Any]] ?? [] }
+        try CellBudget.sparse(of: data).check(rows: seriesValues.reduce(0) { $0 + $1.count }, columns: columns.count)
 
         var rows: [[String?]] = []
         var jsonTypes = [String?](repeating: nil, count: columns.count)
-        for item in series {
+        for (item, itemValues) in zip(series, seriesValues) {
             let targets = (item["columns"] as? [String] ?? []).map { position[$0] }
             let tags = item["tags"] as? [String: Any] ?? [:]
             let tagValues = tagKeys.map { text(tags[$0]) }
-            for values in item["values"] as? [[Any]] ?? [] {
+            for values in itemValues {
                 var row = [String?](repeating: nil, count: columns.count)
                 if includesName { row[0] = item["name"] as? String }
                 for (index, value) in tagValues.enumerated() {
@@ -102,10 +105,12 @@ public enum InfluxResponseDecoder {
         var typeNames: [String] = []
         var position: [String: Int] = [:]
         var rows: [[String?]] = []
+        let budget = CellBudget.sparse(of: data)
 
         var datatypes: [String] = []
         var header: [String]?
         var targets: [Int?] = []
+        var width = 0
         for record in InfluxCSV.records(data) {
             if record == [""] {
                 datatypes = []
@@ -131,22 +136,50 @@ public enum InfluxResponseDecoder {
                     typeNames.append(fluxTypeName(index < datatypes.count ? datatypes[index] : ""))
                     return columns.count - 1
                 }
+                // A row is only as wide as its own table; the grid pads it once every header is known.
+                width = (targets.compactMap { $0 }.max() ?? -1) + 1
                 continue
             }
             if isFluxErrorHeader(currentHeader) {
                 throw InfluxError.query(record.count > 1 ? record[1] : "Flux error")
             }
-            var row = [String?](repeating: nil, count: columns.count)
+            try budget.check(rows: rows.count + 1, columns: columns.count)
+            var row = [String?](repeating: nil, count: width)
             for (index, target) in targets.enumerated() where index < record.count {
                 guard let target else { continue }
                 row[target] = record[index].isEmpty ? nil : record[index]
             }
             rows.append(row)
         }
+        try budget.check(rows: rows.count, columns: columns.count)
         for index in rows.indices where rows[index].count < columns.count {
             rows[index] += [String?](repeating: nil, count: columns.count - rows[index].count)
         }
         return InfluxResultTable(columns: columns, typeNames: typeNames, rows: rows)
+    }
+
+    // Rows are as wide as every header together, so a short record costs more cells than bytes.
+    private struct CellBudget {
+        let limit: Int
+
+        // Every v3 CSV row carries every column, a byte per cell at least: 16 cells per byte, or a million at any size.
+        static func perByte(of data: Data) -> CellBudget {
+            let (scaled, overflow) = data.count.multipliedReportingOverflow(by: 16)
+            return CellBudget(limit: overflow ? .max : max(scaled, 1 << 20))
+        }
+
+        // v1 JSON and Flux widen each series to every series' columns, so a real result can fill far more cells than
+        // bytes: 300 measurements of 10 fields fill 9 million from 460 KB. 32 million empty cells take about 512 MB,
+        // and a large result whose rows are full still gets 16 cells per byte.
+        static func sparse(of data: Data) -> CellBudget {
+            CellBudget(limit: max(perByte(of: data).limit, 32 << 20))
+        }
+
+        func check(rows: Int, columns: Int) throws {
+            let (cells, overflow) = rows.multipliedReportingOverflow(by: columns)
+            guard overflow || cells > limit else { return }
+            throw InfluxError.malformedResponse(String(localized: "the result has far more columns than its rows fill"))
+        }
     }
 
     private static func isFluxErrorHeader(_ header: [String]) -> Bool {
