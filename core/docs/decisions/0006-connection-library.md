@@ -1,4 +1,4 @@
-# 0002: The connection library holds a group tree, manual order and favourites
+# 0006: The connection library holds a group tree, manual order and favourites
 
 - **Status**: Accepted
 - **Date**: 2026-11-02
