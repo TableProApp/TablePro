@@ -12,7 +12,11 @@ use uuid::Uuid;
 
 use crate::document_problem::{DocumentProblem, DocumentProblemKind};
 use crate::error::StorageError;
-use crate::{ConnectionTag, ConnectionTagName};
+use crate::{ConnectionGroup, ConnectionTag, ConnectionTagName, GroupTree};
+
+mod legacy_groups;
+mod library;
+mod placement;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {
@@ -62,14 +66,11 @@ pub struct SavedConnection {
     /// apart from staging at a glance. `None` until they pick one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<crate::ConnectionColor>,
-    /// The folder the user filed this connection under. `None` means it
-    /// sits on its own, which is where every connection starts.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::connection_group_name::deserialize_stored"
-    )]
-    pub group: Option<crate::ConnectionGroupName>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<Uuid>,
+    /// Every write numbers each group's connections from 0 again.
+    #[serde(default)]
+    pub order: u32,
     /// Ids from the list's tags. Every picker shows them in the list's
     /// order, by name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -123,7 +124,8 @@ impl SavedConnection {
             name: String::new(),
             last_opened_at: None,
             color: None,
-            group: None,
+            group_id: None,
+            order: 0,
             tags: Vec::new(),
             icon: None,
             ..saved.clone()
@@ -199,7 +201,11 @@ pub enum SavedSshAuth {
 struct ConnectionsDocument {
     connections: Vec<SavedConnection>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    groups: Vec<ConnectionGroup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<ConnectionTag>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    favorites: Vec<Uuid>,
 }
 
 impl ConnectionsDocument {
@@ -237,20 +243,24 @@ impl ConnectionsDocument {
                 .filter(|id| seen.insert(*id))
                 .collect();
         }
+        self.tidy_library();
     }
 
     fn list(&self) -> ConnectionList {
         ConnectionList {
             connections: Arc::from(self.connections.as_slice()),
+            groups: Arc::from(self.groups.as_slice()),
             tags: Arc::from(self.tags.as_slice()),
+            favorites: Arc::from(self.favorites.as_slice()),
         }
     }
 }
 
 impl crate::document::VersionedDocument for ConnectionsDocument {
     const KIND: &'static str = "connections";
-    const VERSION: u32 = 2;
-    const UPGRADES: &'static [crate::document::Upgrade] = &[read_only_to_safe_mode];
+    const VERSION: u32 = 3;
+    const UPGRADES: &'static [crate::document::Upgrade] =
+        &[read_only_to_safe_mode, legacy_groups::group_names_to_groups];
 }
 
 /// Version 1 had a read-only switch, which became the Safe Mode level:
@@ -290,19 +300,75 @@ struct SafeModeLevelled {
     rest: serde_json::Value,
 }
 
-/// The connections and the tags they can carry, as one write left them.
+/// The connections, their groups and tags, and the favourites, as one
+/// write left them.
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionList {
     pub connections: Arc<[SavedConnection]>,
+    pub groups: Arc<[ConnectionGroup]>,
     pub tags: Arc<[ConnectionTag]>,
+    pub favorites: Arc<[Uuid]>,
 }
 
 impl ConnectionList {
     pub fn new(connections: impl Into<Arc<[SavedConnection]>>, tags: impl Into<Arc<[ConnectionTag]>>) -> Self {
         Self {
             connections: connections.into(),
+            groups: Arc::from([]),
             tags: tags.into(),
+            favorites: Arc::from([]),
         }
+    }
+
+    #[must_use]
+    pub fn with_groups(self, groups: impl Into<Arc<[ConnectionGroup]>>) -> Self {
+        Self {
+            groups: groups.into(),
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn with_favorites(self, favorites: impl Into<Arc<[Uuid]>>) -> Self {
+        Self {
+            favorites: favorites.into(),
+            ..self
+        }
+    }
+
+    pub fn group_tree(&self) -> GroupTree<'_> {
+        GroupTree::new(&self.groups)
+    }
+
+    pub fn is_favorite(&self, id: Uuid) -> bool {
+        self.favorites.contains(&id)
+    }
+
+    pub fn connections_in(&self, group: Option<Uuid>) -> Vec<&SavedConnection> {
+        let mut found: Vec<&SavedConnection> = self
+            .connections
+            .iter()
+            .filter(|connection| connection.group_id == group)
+            .collect();
+        found.sort_by_key(|connection| connection.order);
+        found
+    }
+
+    /// Favourites are left out, as in the macOS library.
+    pub fn recent(&self, limit: usize) -> Vec<&SavedConnection> {
+        let mut opened: Vec<&SavedConnection> = self
+            .connections
+            .iter()
+            .filter(|connection| connection.last_opened_at.is_some() && !self.is_favorite(connection.id))
+            .collect();
+        opened.sort_by(|left, right| {
+            right
+                .last_opened_at
+                .cmp(&left.last_opened_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        opened.truncate(limit);
+        opened
     }
 }
 
@@ -453,9 +519,17 @@ impl ConnectionStore {
         Ok(Arc::from(self.ensure_loaded(&mut state)?.tags))
     }
 
+    /// A new entry, or one that changed group, goes last in its group.
     pub fn upsert_blocking(&self, connection: SavedConnection) -> Result<(), StorageError> {
         let mut state = self.lock();
         let mut document = self.ensure_loaded(&mut state)?;
+        let mut connection = connection;
+        let stored = document
+            .connections
+            .iter()
+            .find(|saved| saved.id == connection.id)
+            .map(|saved| (saved.group_id, saved.order));
+        document.settle_place(&mut connection, stored);
         document.connections.retain(|saved| saved.id != connection.id);
         document.connections.push(connection);
         self.commit(&mut state, document)
@@ -541,9 +615,13 @@ impl ConnectionStore {
             return Ok(None);
         };
         let before = document.connections[index].clone();
-        change(&mut document.connections[index]);
+        let mut changed = before.clone();
+        change(&mut changed);
         // The keyring files the entry's secrets under its id.
-        document.connections[index].id = id;
+        changed.id = id;
+        let kept = Some((before.group_id, changed.order));
+        document.settle_place(&mut changed, kept);
+        document.connections[index] = changed;
         document.tidy();
         let updated = document.connections[index].clone();
         if updated != before {
@@ -609,7 +687,8 @@ impl ConnectionStore {
     ///
     /// Tags are matched by id first and then by name, so importing a
     /// file twice, or a file from a machine whose `production` tag has
-    /// another id, leaves one tag of each name.
+    /// another id, leaves one tag of each name. Groups are matched by id,
+    /// then by the same name in the same place, the same way.
     pub fn preview_import_blocking(&self, path: &Path, bytes: &[u8]) -> Result<ImportPreview, StorageError> {
         let mut incoming = crate::document::decode_document::<ConnectionsDocument>(path, bytes)
             .map_err(StorageError::DocumentUnavailable)?;
@@ -623,37 +702,33 @@ impl ConnectionStore {
             .map(|saved| (saved.name.clone(), saved.id))
             .collect();
         let mut entries = Vec::with_capacity(incoming.connections.len());
-        let same = merge_tags(&mut document.tags, incoming.tags);
+        let same_tags = merge_tags(&mut document.tags, incoming.tags);
+        let same_groups = library::merge_groups(&mut document.groups, &incoming.groups);
+        let mut landed: HashMap<Uuid, Uuid> = HashMap::with_capacity(incoming.connections.len());
+        // Added entries follow the list's own and keep the file's order.
+        let mut after: HashMap<Option<Uuid>, u32> = HashMap::new();
         for mut connection in incoming.connections {
-            connection.tags = connection.tags.iter().filter_map(|id| same.get(id).copied()).collect();
-            let list = &mut document.connections;
-            match list.iter().position(|saved| saved.id == connection.id) {
-                Some(index) if list[index].connects_like(&connection) => {
-                    let name = unclaimed_name(list, &held, &connection.name, Some(connection.id));
-                    let existing = &mut list[index];
-                    existing.name = name;
-                    existing.color = connection.color;
-                    existing.group = connection.group;
-                    existing.tags = connection.tags;
-                    existing.icon = connection.icon;
-                    entries.push(ImportEntry {
-                        connection: existing.clone(),
-                        change: ImportChange::Updated,
-                    });
-                }
-                Some(_) => {
-                    connection.id = Uuid::new_v4();
-                    entries.push(ImportEntry {
-                        connection: add_imported(list, &held, connection),
-                        change: ImportChange::Added,
-                    });
-                }
-                None => {
-                    entries.push(ImportEntry {
-                        connection: add_imported(list, &held, connection),
-                        change: ImportChange::Added,
-                    });
-                }
+            let from = connection.id;
+            connection.tags = connection
+                .tags
+                .iter()
+                .filter_map(|id| same_tags.get(id).copied())
+                .collect();
+            connection.group_id = connection.group_id.and_then(|id| same_groups.get(&id).copied());
+            let last = *after
+                .entry(connection.group_id)
+                .or_insert_with(|| placement::next_order(&document.connections, connection.group_id));
+            connection.order = connection.order.saturating_add(last);
+            let entry = merge_connection(&mut document.connections, &held, connection);
+            landed.insert(from, entry.connection.id);
+            entries.push(entry);
+        }
+        // Added and never taken away: a file written before favourites
+        // existed lists none, and must not clear the user's.
+        let mut favorites: HashSet<Uuid> = document.favorites.iter().copied().collect();
+        for id in incoming.favorites.iter().filter_map(|id| landed.get(id)) {
+            if favorites.insert(*id) {
+                document.favorites.push(*id);
             }
         }
         Ok(ImportPreview {
@@ -724,6 +799,22 @@ impl ConnectionStore {
             StoreState::Unavailable(problem) => Err(StorageError::DocumentUnavailable(problem.clone())),
             StoreState::Unloaded => unreachable!("just loaded"),
         }
+    }
+
+    /// A change that changes nothing writes nothing.
+    fn edit<T>(
+        &self,
+        change: impl FnOnce(&mut ConnectionsDocument) -> Result<T, StorageError>,
+    ) -> Result<T, StorageError> {
+        let mut state = self.lock();
+        let before = self.ensure_loaded(&mut state)?;
+        let mut document = before.clone();
+        let outcome = change(&mut document)?;
+        document.tidy();
+        if document != before {
+            self.commit(&mut state, document)?;
+        }
+        Ok(outcome)
     }
 
     /// Write first, then adopt. A failed write leaves both the file and
@@ -820,6 +911,46 @@ fn merge_tags(local: &mut Vec<ConnectionTag>, incoming: Vec<ConnectionTag>) -> H
     same
 }
 
+/// An updated entry keeps its place unless it changed group.
+fn merge_connection(
+    list: &mut Vec<SavedConnection>,
+    held: &HashMap<String, Uuid>,
+    mut connection: SavedConnection,
+) -> ImportEntry {
+    match list.iter().position(|saved| saved.id == connection.id) {
+        Some(index) if list[index].connects_like(&connection) => {
+            let name = unclaimed_name(list, held, &connection.name, Some(connection.id));
+            let order = if list[index].group_id == connection.group_id {
+                list[index].order
+            } else {
+                placement::next_order(list, connection.group_id)
+            };
+            let existing = &mut list[index];
+            existing.name = name;
+            existing.color = connection.color;
+            existing.group_id = connection.group_id;
+            existing.order = order;
+            existing.tags = connection.tags;
+            existing.icon = connection.icon;
+            ImportEntry {
+                connection: existing.clone(),
+                change: ImportChange::Updated,
+            }
+        }
+        Some(_) => {
+            connection.id = Uuid::new_v4();
+            ImportEntry {
+                connection: add_imported(list, held, connection),
+                change: ImportChange::Added,
+            }
+        }
+        None => ImportEntry {
+            connection: add_imported(list, held, connection),
+            change: ImportChange::Added,
+        },
+    }
+}
+
 /// Add an entry the import brought. Two rows of one name, one of them
 /// pointing somewhere else, would leave the user guessing which is
 /// theirs, and a file's last-opened time is no open on this machine.
@@ -886,7 +1017,8 @@ mod tests {
             ssh: None,
             last_opened_at: Some(Utc::now()),
             color: None,
-            group: None,
+            group_id: None,
+            order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
@@ -915,7 +1047,8 @@ mod tests {
             ssh: None,
             last_opened_at: None,
             color: None,
-            group: None,
+            group_id: None,
+            order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
@@ -987,7 +1120,7 @@ mod tests {
     #[test]
     fn f003_a_newer_version_is_never_written() {
         let root = TempDir::new().expect("tempdir");
-        let path = seed(&root, r#"{"version": 3, "connections": []}"#);
+        let path = seed(&root, r#"{"version": 4, "connections": []}"#);
         let before = std::fs::read(&path).expect("read");
         let store = store(&root);
 
@@ -1316,6 +1449,8 @@ mod tests {
 
         store.upsert_blocking(full.clone()).expect("upsert full");
         store.upsert_blocking(minimal.clone()).expect("upsert minimal");
+        // A new entry goes last in its group.
+        let minimal = SavedConnection { order: 1, ..minimal };
         assert_eq!(store.load_blocking().expect("load").to_vec(), vec![full, minimal]);
 
         let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).expect("read")).expect("json");
@@ -1361,7 +1496,7 @@ mod tests {
 
         assert!(text.contains("production"), "{text}");
         assert!(text.contains("staging"), "{text}");
-        assert!(text.contains("\"version\": 2"), "{text}");
+        assert!(text.contains("\"version\": 3"), "{text}");
     }
 
     /// Every key in `value`, however deep, so a secret cannot be added
@@ -1490,6 +1625,7 @@ mod tests {
                     id: crafted.id,
                     name: crafted.name.clone(),
                     last_opened_at: crafted.last_opened_at,
+                    order: crafted.order,
                     ..imported.clone()
                 },
                 crafted,
@@ -1791,30 +1927,40 @@ mod tests {
         )
     }
 
+    /// The label of the group `store`'s first connection sits in.
+    fn first_group(store: &ConnectionStore) -> Option<String> {
+        let list = store.list_blocking().expect("the list");
+        let group = list.connections[0].group_id?;
+        list.group_tree().label(group)
+    }
+
     #[test]
-    fn group_round_trips_through_connections_document() {
+    fn a_group_name_from_an_older_file_becomes_a_group_written_by_id() {
         let root = TempDir::new().expect("tempdir");
         seed(&root, &connections_json(None));
-        assert_eq!(store(&root).load_blocking().expect("load")[0].group, None);
+        assert_eq!(first_group(&store(&root)), None);
 
         let root = TempDir::new().expect("tempdir");
         seed(&root, &connections_json(Some(r#"" Work ""#)));
         let opened = store(&root);
+        assert_eq!(first_group(&opened).as_deref(), Some("Work"));
+        let work = crate::ConnectionGroup::legacy(crate::ConnectionGroupName::new("Work").expect("a name"));
         let list = opened.load_blocking().expect("load");
-        assert_eq!(
-            list[0].group.as_ref().map(crate::ConnectionGroupName::as_str),
-            Some("Work")
-        );
+        assert_eq!(list[0].group_id, Some(work.id));
         opened.upsert_blocking(list[0].clone()).expect("rewrite");
         let raw: serde_json::Value =
             serde_json::from_slice(&std::fs::read(opened.path()).expect("read")).expect("json");
-        assert_eq!(raw["connections"][0]["group"], "Work");
+        assert_eq!(raw["version"], 3);
+        assert_eq!(raw["connections"][0]["group_id"], work.id.to_string());
+        assert!(raw["connections"][0].get("group").is_none(), "{raw}");
+        assert_eq!(raw["groups"][0]["name"], "Work");
 
         for blank in [r#""""#, r#""   ""#, "null"] {
             let root = TempDir::new().expect("tempdir");
             seed(&root, &connections_json(Some(blank)));
 
-            assert_eq!(store(&root).load_blocking().expect(blank)[0].group, None, "{blank}");
+            assert_eq!(first_group(&store(&root)), None, "{blank}");
+            assert!(store(&root).list_blocking().expect(blank).groups.is_empty(), "{blank}");
         }
     }
 
@@ -1831,13 +1977,9 @@ mod tests {
             let root = TempDir::new().expect("tempdir");
             seed(&root, &connections_json(Some(&stored)));
 
-            let list = store(&root).load_blocking().expect("the list loads");
+            let group = first_group(&store(&root));
 
-            assert_eq!(
-                list[0].group.as_ref().map(crate::ConnectionGroupName::as_str),
-                Some(read.as_str()),
-                "{stored}"
-            );
+            assert_eq!(group.as_deref(), Some(read.as_str()), "{stored}");
         }
     }
 
@@ -1848,14 +1990,19 @@ mod tests {
         let connection = sample_connection();
         store.upsert_blocking(connection.clone()).expect("upsert");
         store.touch_last_opened_blocking(connection.id).expect("touch");
-        let work = crate::ConnectionGroupName::new("Work").expect("a name");
+        let work = store
+            .create_group_blocking(crate::ConnectionGroup::new(
+                crate::ConnectionGroupName::new("Work").expect("a name"),
+                None,
+            ))
+            .expect("the group");
 
         let updated = store
-            .update_blocking(connection.id, |entry| entry.group = Some(work.clone()))
+            .update_blocking(connection.id, |entry| entry.group_id = Some(work.id))
             .expect("update")
             .expect("the entry");
 
-        assert_eq!(updated.group, Some(work));
+        assert_eq!(updated.group_id, Some(work.id));
         assert!(updated.last_opened_at.is_some(), "the update undid the stamp");
         assert_eq!(store.load_blocking().expect("load")[0], updated);
     }
@@ -1911,7 +2058,12 @@ mod tests {
     }
 
     fn document(connections: Vec<SavedConnection>, tags: Vec<ConnectionTag>) -> Vec<u8> {
-        crate::document::encode_document(&ConnectionsDocument { connections, tags }).expect("encode")
+        crate::document::encode_document(&ConnectionsDocument {
+            connections,
+            tags,
+            ..ConnectionsDocument::default()
+        })
+        .expect("encode")
     }
 
     fn tag_names(store: &ConnectionStore, connection: &SavedConnection) -> Vec<String> {

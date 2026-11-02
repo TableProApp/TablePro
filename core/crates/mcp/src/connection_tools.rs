@@ -28,6 +28,7 @@ struct ListedConnection {
     port: Option<u16>,
     #[serde(skip_serializing_if = "String::is_empty")]
     database: String,
+    /// The group's path from the top, as `Work / Staging`.
     #[serde(skip_serializing_if = "Option::is_none")]
     group: Option<String>,
     is_open: bool,
@@ -36,7 +37,8 @@ struct ListedConnection {
 }
 
 pub async fn list_connections(context: &ToolContext, _args: NoArgs) -> Result<String, ToolError> {
-    let mut saved = context.visible_connections()?;
+    let (mut saved, library) = context.visible_library()?;
+    let groups = library.group_tree();
     saved.sort_by(|left, right| {
         left.name
             .to_lowercase()
@@ -62,7 +64,7 @@ pub async fn list_connections(context: &ToolContext, _args: NoArgs) -> Result<St
                 host: connection.host,
                 driver: connection.driver_id,
                 database: connection.database,
-                group: connection.group.map(|group| group.as_str().to_owned()),
+                group: connection.group_id.and_then(|group| groups.label(group)),
                 is_open: session.is_some(),
                 external_access: connection.external_access,
                 safe_mode: session.map_or(connection.safe_mode, |session| session.safe_mode()),

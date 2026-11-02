@@ -9,3 +9,4 @@ The format, the statuses and how a later ADR changes an earlier one follow [the 
 | # | Title | Status | Summary |
 |---|---|---|---|
 | [0001](0001-shared-core.md) | One shared Rust core, a native UI per platform | Accepted | The UI-free crates move to `core/crates` and build on Linux, Windows and macOS; each app keeps a native UI and passes its platform services in. |
+| [0002](0002-connection-library.md) | The connection library holds a group tree, manual order and favourites | Accepted | Groups form a tree by id, connections and groups carry an explicit order, favourites are one ordered list; version 2 group names become top-level groups. |
