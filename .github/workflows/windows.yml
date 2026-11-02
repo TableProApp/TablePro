@@ -86,6 +86,7 @@ jobs:
         run: |
           . windows/tests/TablePro.DataGrid.Gate/ci/desktop.ps1
           Clear-FirstLogon
+          Start-WslWatch "$env:GITHUB_WORKSPACE/windows/tests/TablePro.App.UITests/TestResults/wsl-watch.log"
           Set-Display 1920 1080
       - name: UI tests
         if: matrix.app
