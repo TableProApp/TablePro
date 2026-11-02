@@ -385,8 +385,13 @@ final class ConnectionCoordinator {
         let token = attemptToken
         var workWasRunning = appState.sessionTransactions.isRunningStatements(connection.id)
 
-        if await takesNewerSession(than: held, token: token) {
+        switch await newerSession(than: held, token: token) {
+        case .taken:
             return held == nil && reportDroppedTransaction(unsettledLoss)
+        case .deferred:
+            return false
+        case .none:
+            break
         }
         if let held {
             if appState.connectionManager.session(for: connection.id) != nil, await Self.answersPing(held.driver) {
@@ -394,7 +399,7 @@ final class ConnectionCoordinator {
             }
             guard attemptToken == token else { return false }
             // Another window can finish a whole redial while this ping is out.
-            if await takesNewerSession(than: held, token: token) { return false }
+            if await newerSession(than: held, token: token) != .none { return false }
         }
 
         workWasRunning = workWasRunning || appState.sessionTransactions.isRunningStatements(connection.id)
@@ -441,16 +446,34 @@ final class ConnectionCoordinator {
         return true
     }
 
-    private func takesNewerSession(than held: ConnectionSession?, token: UUID) async -> Bool {
+    private enum NewerSession {
+        case none
+        case taken
+        // Another window holds it on another database or schema, and this window's unsaved edit belongs where it is.
+        case deferred
+    }
+
+    private func newerSession(than held: ConnectionSession?, token: UUID) async -> NewerSession {
         // A redial another window started is not ready to share until its schema is back.
         await appState.sessionRedialer.settled(connection.id, consumer: self, prompter: prompts)
         guard attemptToken == token,
               let live = appState.connectionManager.session(for: connection.id),
               live.driver !== held?.driver else {
-            return false
+            return .none
         }
-        await takeSession(live, token: token, dialedHere: false)
-        return true
+        guard !editPins(against: live) else {
+            followPending = true
+            return .deferred
+        }
+        return await takeSession(live, token: token, dialedHere: false) ? .taken : .deferred
+    }
+
+    // An unsaved edit belongs to the placement it was made in, so a session elsewhere waits until the edit ends;
+    // taking it would rebuild the editor's screen, or point its save at a same-named table in another database.
+    private func editPins(against live: ConnectionSession) -> Bool {
+        guard isHeldByEditor else { return false }
+        let moved = movedPlacement(of: live, includingDatabase: true)
+        return moved.database != nil || moved.schema != nil
     }
 
     private var dialTarget: DatabaseConnection {
@@ -476,6 +499,10 @@ final class ConnectionCoordinator {
             fetched = nil
         }
         guard attemptToken == token else { return false }
+        if !dialedHere, editPins(against: newSession) {
+            followPending = true
+            return false
+        }
         // A row edit started while the tables loaded lives on a screen this would rebuild, and another switch that
         // landed meanwhile made these tables the wrong database's.
         if yieldingToEdits,
@@ -523,14 +550,14 @@ final class ConnectionCoordinator {
 
     // Another window replaced the shared session, or switched its database or schema.
     func followLiveSession() async {
+        guard canFollowLiveSession, !isFollowing else {
+            followPending = true
+            return
+        }
         // A window whose redial failed takes the session another window dialed.
         if isLost {
             guard appState.connectionManager.session(for: connection.id) != nil else { return }
             await restoreSession(after: .whileIdle)
-            return
-        }
-        guard canFollowLiveSession, !isFollowing else {
-            followPending = true
             return
         }
         isFollowing = true
@@ -604,7 +631,7 @@ final class ConnectionCoordinator {
     }
 
     private var canFollowLiveSession: Bool {
-        session != nil && !isSwitching && !isReconnecting && connectTask == nil && !isHeldByEditor
+        (session != nil || isLost) && !isSwitching && !isReconnecting && connectTask == nil && !isHeldByEditor
     }
 
     private func resumeFollowIfPending() {

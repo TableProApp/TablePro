@@ -483,6 +483,67 @@ struct SessionRecoveryLoopTests {
         await cleanUpProxied(fixture, server: server)
     }
 
+    @Test("A dropped transport closes the lanes it carried and notes their open transactions")
+    func dropClosesTheLanesItCarried() async {
+        let fixture = makeFixture()
+        let lane = MockDatabaseDriver(connection: fixture.connection)
+        lane.sessionTransactionStateToReturn = .inTransaction
+        fixture.manager.sessionLanes.park(lane, database: "logs", for: fixture.id)
+
+        await fixture.manager.handleSSHTunnelDied(connectionId: fixture.id)
+        await fixture.clock.waitUntilSleeping()
+
+        #expect(fixture.manager.sessionLanes.parkedDriver(for: fixture.id, database: "logs") == nil)
+        #expect(lane.disconnectCallCount == 1)
+        #expect(fixture.manager.sessionLanes.hasTransactionLoss(database: "logs", for: fixture.id))
+        #expect(fixture.session?.driver === fixture.driver)
+        await cleanUp(fixture)
+    }
+
+    @Test("A loop superseded while a blocked ping holds the monitor's stop leaves the replacement's lanes alone")
+    func supersededDuringMonitorStopKeepsTheReplacementLanes() async throws {
+        let fixture = makeFixture()
+        let manager = fixture.manager
+        let id = fixture.id
+        let monitorClock = ManualClock()
+        let ping = AsyncGate()
+        let monitor = ConnectionHealthMonitor(
+            connectionId: id,
+            pingInterval: { .seconds(30) },
+            pingHandler: {
+                await ping.wait()
+                return false
+            },
+            onPingFailed: { .handedOff },
+            clock: monitorClock
+        )
+        manager.healthMonitors[id] = monitor
+        await monitor.startMonitoring()
+        for _ in 0 ..< 2 {
+            await monitorClock.waitUntilSleeping()
+            monitorClock.advance(by: .seconds(60))
+        }
+        await ping.arrived(1)
+
+        await manager.handleSSHTunnelDied(connectionId: id)
+        let loop = try loopTask(fixture)
+        try await waitUntil { await MainActor.run { manager.healthMonitors[id] == nil } }
+
+        try await manager.connectToSession(fixture.connection)
+        let replacementLane = MockDatabaseDriver(connection: fixture.connection)
+        replacementLane.sessionTransactionStateToReturn = .inTransaction
+        manager.sessionLanes.park(replacementLane, database: "logs", for: id)
+        await ping.open()
+        await loop.value
+
+        #expect(manager.sessionLanes.parkedDriver(for: id, database: "logs") === replacementLane)
+        #expect(replacementLane.disconnectCallCount == 0)
+        #expect(!manager.sessionLanes.hasTransactionLoss(database: "logs", for: id))
+        #expect(fixture.session?.driver !== fixture.driver)
+        #expect(fixture.session?.liveness == .live)
+        await cleanUp(fixture)
+    }
+
     @Test("A failed health check hands the session to the loop and retires the monitor")
     func failedHealthCheckStartsTheLoop() async {
         let fixture = makeFixture()

@@ -54,6 +54,9 @@
     "%@ holds values that cannot be compared, so the row cannot be found again." : {
 
     },
+    "Connect" : {
+
+    },
     "connected" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -74,6 +77,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Reconnect" : {
+
+    },
     "Reconnecting" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -81,6 +87,9 @@
     "Reconnecting (%lld of %lld)" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Switching to %@…" : {
+
     },
     "The %@ setting holds a NUL character, which a PostgreSQL connection cannot carry." : {
 

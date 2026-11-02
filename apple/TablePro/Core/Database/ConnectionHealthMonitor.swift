@@ -29,6 +29,7 @@ actor ConnectionHealthMonitor {
     private let pingInterval: @Sendable () async -> Duration?
     private let pingHandler: @Sendable () async -> Bool
     private let failureHandler: @Sendable () async -> FailureHandling
+    private let clock: any Clock<Duration>
 
     private var state: HealthState = .healthy
     private var monitoringTask: Task<Void, Never>?
@@ -39,12 +40,14 @@ actor ConnectionHealthMonitor {
         connectionId: UUID,
         pingInterval: @escaping @Sendable () async -> Duration?,
         pingHandler: @escaping @Sendable () async -> Bool,
-        onPingFailed: @escaping @Sendable () async -> FailureHandling
+        onPingFailed: @escaping @Sendable () async -> FailureHandling,
+        clock: any Clock<Duration> = ContinuousClock()
     ) {
         self.connectionId = connectionId
         self.pingInterval = pingInterval
         self.pingHandler = pingHandler
         self.failureHandler = onPingFailed
+        self.clock = clock
     }
 
     var currentState: HealthState {
@@ -64,17 +67,18 @@ actor ConnectionHealthMonitor {
         Self.logger.trace("Starting health monitoring for connection \(self.connectionId)")
 
         let intervalForPass = pingInterval
+        let clock = clock
         monitoringTask = Task { [weak self] in
             guard let self else { return }
 
             let initialDelay = Double.random(in: 0 ... 10)
-            try? await Task.sleep(for: .seconds(initialDelay))
+            try? await clock.sleep(for: .seconds(initialDelay))
             guard !Task.isCancelled else { return }
 
             while !Task.isCancelled {
                 guard let interval = await intervalForPass() else { break }
                 // The tolerance lets the system coalesce every open connection's ping into one wake.
-                try? await Task.sleep(for: interval, tolerance: interval / 4)
+                try? await clock.sleep(for: interval, tolerance: interval / 4)
                 guard !Task.isCancelled else { break }
                 // Asked again after the sleep, so turning checks off stops the next one.
                 guard await intervalForPass() != nil else { break }

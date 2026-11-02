@@ -347,6 +347,85 @@ struct ConnectionCoordinatorStatusTests {
         #expect(ranUpdate(second))
     }
 
+    // A window on app_staging whose redial failed; `beforeLoss` runs while it is still connected.
+    private func lostOnStaging(
+        beforeLoss: (ConnectionCoordinator) -> Void = { _ in }
+    ) async throws -> ConnectionCoordinator {
+        let first = driver(tables: ["orders"])
+        let coordinator = try await attachedCoordinator(on: first)
+        first.scriptedTables = [TableInfo(name: "staging_orders")]
+        await coordinator.switchDatabase(to: "app_staging")
+        beforeLoss(coordinator)
+        first.pingError = MockDatabaseDriver.MockError.scripted
+        factory.queue(refusingDriver())
+        await coordinator.reconnectIfNeeded()
+        #expect(coordinator.session == nil)
+        return coordinator
+    }
+
+    // Another window opens the connection, which dials the saved app_prod.
+    private func reconnectAnotherWindow() async -> MockDatabaseDriver {
+        let second = driver(tables: ["orders"])
+        factory.queue(second)
+        await ConnectionCoordinator(connection: connection, appState: appState).connect()
+        #expect(appState.connectionManager.session(for: connection.id)?.activeDatabase == "app_prod")
+        return second
+    }
+
+    @Test("A lost window with an unsaved edit leaves another window's session on another database alone until the edit ends")
+    func editPinsALostWindowAgainstAnotherDatabase() async throws {
+        var editor: RowDetailViewModel?
+        let coordinator = try await lostOnStaging { connected in
+            editor = rowScreen(on: connected)
+            connected.isHeldByEditor = true
+        }
+        let viewModel = try #require(editor)
+        let second = await reconnectAnotherWindow()
+
+        await coordinator.followLiveSession()
+        await coordinator.reconnectIfNeeded()
+        let saved = await viewModel.saveChanges()
+
+        #expect(coordinator.session == nil)
+        #expect(coordinator.activeDatabase == "app_staging")
+        #expect(coordinator.tables.map { $0.name } == ["staging_orders"])
+        #expect(!saved)
+        #expect(!ranUpdate(second))
+
+        coordinator.isHeldByEditor = false
+        await coordinator.resumedFollow?.value
+
+        #expect(coordinator.session?.driver === second)
+        #expect(coordinator.activeDatabase == "app_prod")
+        #expect(coordinator.tables.map { $0.name } == ["orders"])
+        #expect(isConnected(coordinator))
+    }
+
+    @Test("An unsaved edit that starts while a lost window loads another database's tables keeps the window where it was")
+    func editArrivingDuringTheFetchPinsTheWindow() async throws {
+        let coordinator = try await lostOnStaging()
+        let second = await reconnectAnotherWindow()
+        let loading = TestGate()
+        second.beforeFetchTables = { await loading.enter() }
+
+        let check = Task { await coordinator.reconnectIfNeeded() }
+        await loading.waitUntilEntered()
+        coordinator.isHeldByEditor = true
+        second.beforeFetchTables = nil
+        await loading.open()
+        await check.value
+
+        #expect(coordinator.session == nil)
+        #expect(coordinator.activeDatabase == "app_staging")
+        #expect(coordinator.tables.map { $0.name } == ["staging_orders"])
+
+        coordinator.isHeldByEditor = false
+        await coordinator.resumedFollow?.value
+
+        #expect(coordinator.session?.driver === second)
+        #expect(coordinator.activeDatabase == "app_prod")
+    }
+
     @Test("A planned insert is built with the escaping of whichever driver runs it")
     func plannedInsertUsesEachDriversEscaping() throws {
         let columns = [

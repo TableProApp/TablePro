@@ -239,7 +239,7 @@ extension DatabaseManager {
         let connectionForDriver: DatabaseConnection
         if connection.activeTunnelKind != nil {
             // A rebuilt tunnel moves to a new local port, stranding every other database's connection.
-            await sessionLanes.closeAllNotingLostTransactions(for: connectionId)
+            await closeTransportLanes(for: connectionId) { self.isCurrentAttempt(generation, for: connectionId) }
             connectionForDriver = try await buildEffectiveConnection(
                 for: connection,
                 deadline: deadline,
@@ -368,7 +368,7 @@ extension DatabaseManager {
             // A debug target dialed through this transport would be left holding its locks once it goes.
             await RoutineDebugSessions.shared.stopAll(connectionId: sessionId)
             MetadataConnectionPool.shared.beginTransportReplacement(connectionId: sessionId)
-            await sessionLanes.closeAllNotingLostTransactions(for: sessionId)
+            await closeTransportLanes(for: sessionId) { self.isCurrentAttempt(generation, for: sessionId) }
         }
         defer {
             if replacesPooledTransport {

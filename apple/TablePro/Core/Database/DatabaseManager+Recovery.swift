@@ -147,9 +147,15 @@ extension DatabaseManager {
         cause: RecoveryCause,
         redialsAtOnce: Bool
     ) async {
+        // A connect that took the session over before this task ran owns the monitor it started.
+        guard ownsRecovery(token, for: connectionId) else { return }
+        // Waits out a ping blocked in a C call, which a cancel cannot interrupt, so the session may have moved on.
         await stopHealthMonitor(for: connectionId)
+        guard ownsRecovery(token, for: connectionId) else { return }
         if case .transportClosed = cause {
-            await sessionLanes.closeAllNotingLostTransactions(for: connectionId)
+            await closeTransportLanes(for: connectionId) {
+                self.ownsRecovery(token, for: connectionId) && self.holdsRecoveringSession(connectionId, driver: driver)
+            }
         }
 
         let maxAttempts = ConnectionRecoveryProgress.maxAttempts
@@ -229,6 +235,26 @@ extension DatabaseManager {
             driver: driver,
             info: Self.exhaustedRecoveryInfo(cause: cause, lastFailure: lastFailure, attempts: maxAttempts)
         )
+    }
+
+    // Closes only the lanes parked when it starts, each while still parked as the same driver and only while
+    // `owns` holds: a connect that took the session over parks lanes, and transactions, that are not this teardown's.
+    internal func closeTransportLanes(for connectionId: UUID, while owns: () -> Bool) async {
+        guard owns() else { return }
+        let lanes = sessionLanes.parkedDatabases(for: connectionId).compactMap { database in
+            sessionLanes.parkedDriver(for: connectionId, database: database).map { (database, $0) }
+        }
+        // Opens still in flight were dialed through the transport that is going away.
+        _ = sessionLanes.beginSwitch(for: connectionId)
+        for (database, driver) in lanes {
+            let held = await driver.heldSessionTransactionState()
+            guard owns() else { return }
+            guard sessionLanes.parkedDriver(for: connectionId, database: database) === driver else { continue }
+            if !held.permitsAppTransaction {
+                sessionLanes.markTransactionLost(database: database, for: connectionId)
+            }
+            sessionLanes.close(database: database, for: connectionId, supersedingOpens: false)
+        }
     }
 
     private func ownsRecovery(_ token: UUID, for connectionId: UUID) -> Bool {
