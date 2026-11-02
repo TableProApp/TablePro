@@ -118,17 +118,28 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _window.Children.Add(_selectionBox);
         _window.Children.Add(_rows);
         _window.Children.Add(_focusBox);
-        _content = new PaneContent(this, frozen: false) { Background = Brushes.Clear };
+        // ScrollViewer's headers require left-aligned content.
+        _content = new PaneContent(this, frozen: false)
+        {
+            Background = Brushes.Clear,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
         _content.Children.Add(_window);
 
         _frozenWindow = new RowWindow();
         _frozenWindow.Children.Add(_frozenSelectionBox);
         _frozenWindow.Children.Add(_frozenRows);
         _frozenWindow.Children.Add(_frozenFocusBox);
-        _frozenContent = new PaneContent(this, frozen: true) { Background = Brushes.Clear };
+        _frozenContent = new PaneContent(this, frozen: true)
+        {
+            Background = Brushes.Clear,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
         _frozenContent.Children.Add(_frozenWindow);
 
-        _corner = new Canvas();
+        _corner = new Canvas { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
 
         _scroller = new ScrollViewer
         {
