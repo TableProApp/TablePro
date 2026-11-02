@@ -66,11 +66,11 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
         returnValue = new double[rects.Count * 4];
         for (var i = 0; i < rects.Count; i++)
         {
-            var screen = peer.Editor.ToScreen(rects[i]);
-            returnValue[i * 4] = screen.left;
-            returnValue[i * 4 + 1] = screen.top;
-            returnValue[i * 4 + 2] = screen.right - screen.left;
-            returnValue[i * 4 + 3] = screen.bottom - screen.top;
+            var client = peer.Editor.ToUiaClient(rects[i]);
+            returnValue[i * 4] = client.X;
+            returnValue[i * 4 + 1] = client.Y;
+            returnValue[i * 4 + 2] = client.Width;
+            returnValue[i * 4 + 3] = client.Height;
         }
     }
 

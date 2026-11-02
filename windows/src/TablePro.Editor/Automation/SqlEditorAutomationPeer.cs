@@ -29,7 +29,7 @@ internal sealed partial class SqlEditorAutomationPeer(SqlEditor editor) : Framew
 
     public ITextRangeProvider RangeFromPoint(Point screenLocation)
     {
-        var offset = Editor.OffsetAt(Editor.FromScreen(screenLocation));
+        var offset = Editor.OffsetAt(Editor.FromUiaClient(screenLocation));
         return new EditorTextRange(this, offset, offset);
     }
 

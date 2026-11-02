@@ -48,16 +48,20 @@ public sealed partial class SqlEditor
         return new Windows.Graphics.RectInt32(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
     }
 
-    internal Point FromScreen(Point screen)
+    // WinUI's UIA bridge works in the island's client pixels: it turns the rectangles a text provider returns from
+    // client to screen itself, and hands RangeFromPoint a client point (microsoft-ui-xaml,
+    // dxaml/xcp/win/shared/UIAPatternProviderWrapper.cpp). Screen coordinates here would be offset twice.
+    internal Rect ToUiaClient(Rect rect)
     {
         var scale = XamlRoot?.RasterizationScale ?? 1;
-        var client = new POINT { x = (int)screen.X, y = (int)screen.Y };
-        unsafe
-        {
-            ScreenToClient(WindowHandle, &client);
-        }
-        var inverse = _panel.TransformToVisual(null).Inverse;
-        return inverse.TransformPoint(new Point(client.x / scale, client.y / scale));
+        var origin = _panel.TransformToVisual(null).TransformPoint(new Point(rect.X, rect.Y));
+        return new Rect(origin.X * scale, origin.Y * scale, rect.Width * scale, rect.Height * scale);
+    }
+
+    internal Point FromUiaClient(Point client)
+    {
+        var scale = XamlRoot?.RasterizationScale ?? 1;
+        return _panel.TransformToVisual(null).Inverse.TransformPoint(new Point(client.X / scale, client.Y / scale));
     }
 
     private sealed class TsfHost(SqlEditor editor) : ITsfHost
