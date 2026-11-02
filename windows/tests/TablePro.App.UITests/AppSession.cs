@@ -66,38 +66,48 @@ internal sealed class AppSession : IDisposable
                 () => (window ?? Window).FindFirstDescendant(condition => condition.ByAutomationId(automationId)),
                 Wait,
                 throwOnTimeout: false).Result
-            ?? throw new InvalidOperationException($"No element {automationId} appeared.");
+            ?? throw Failure($"No element {automationId} appeared.");
 
     public AutomationElement FindByName(string name, AutomationElement? scope = null) =>
         Retry.WhileNull(
                 () => (scope ?? Window).FindFirstDescendant(condition => condition.ByName(name)),
                 Wait,
                 throwOnTimeout: false).Result
-            ?? throw new InvalidOperationException($"No element named {name} appeared.");
+            ?? throw Failure($"No element named {name} appeared.");
 
-    public static AutomationElement FindByNamePrefix(string prefix, AutomationElement scope) =>
+    public AutomationElement FindByNamePrefix(string prefix, AutomationElement scope) =>
         Retry.WhileNull(
                 () => scope.FindAllDescendants().FirstOrDefault(element =>
                     element.Properties.Name.TryGetValue(out var name) && name.StartsWith(prefix, StringComparison.Ordinal)),
                 Wait,
                 throwOnTimeout: false).Result
-            ?? throw new InvalidOperationException($"No element named {prefix}... appeared.");
+            ?? throw Failure($"No element named {prefix}... appeared.");
 
     public AutomationElement? TryFind(string automationId) =>
         Window.FindFirstDescendant(condition => condition.ByAutomationId(automationId));
 
+    // UI Automation lists an owned window under its owner, not under the desktop.
     public Window WaitForWindow(string title) =>
-        Retry.WhileNull(
-                () => _application.GetAllTopLevelWindows(_automation).FirstOrDefault(window => window.Title == title),
-                Wait,
-                throwOnTimeout: false).Result
-            ?? throw new InvalidOperationException($"No window {title} opened.");
+        Retry.WhileNull(() => OpenWindow(title), Wait, throwOnTimeout: false).Result
+            ?? throw Failure($"No window {title} opened.");
 
     public bool WindowClosed(string title) =>
-        !Retry.WhileTrue(
-            () => _application.GetAllTopLevelWindows(_automation).Any(window => window.Title == title),
-            Wait,
-            throwOnTimeout: false).Result;
+        !Retry.WhileTrue(() => OpenWindow(title) is not null, Wait, throwOnTimeout: false).Result;
+
+    private Window? OpenWindow(string title) =>
+        _application.GetAllTopLevelWindows(_automation).FirstOrDefault(window => window.Title == title)
+        ?? Window.FindFirstChild(condition => condition.ByControlType(ControlType.Window).And(condition.ByName(title)))
+            ?.AsWindow();
+
+    // A failure says what the screen showed and what the app logged before it ended.
+    private InvalidOperationException Failure(string message)
+    {
+        Screenshot("failure-" + DateTime.UtcNow.ToString("HHmmssfff", System.Globalization.CultureInfo.InvariantCulture));
+        var crash = Path.Combine(DataFolder, "crash.log");
+        var log = File.Exists(crash) ? Environment.NewLine + File.ReadAllText(crash) : string.Empty;
+        var exited = _application.HasExited ? " The app has exited." : string.Empty;
+        return new InvalidOperationException(message + exited + log);
+    }
 
     public static string WaitForText(AutomationElement element, Func<string, bool> done)
     {
@@ -125,6 +135,12 @@ internal sealed class AppSession : IDisposable
         Thread.Sleep(500);
         var folder = Path.Combine(root, Theme.ToLowerInvariant());
         Directory.CreateDirectory(folder);
+        if (_application.HasExited)
+        {
+            Capture.Screen().ToFile(Path.Combine(folder, name + ".png"));
+            return;
+        }
+
         Capture.Element(window ?? Window).ToFile(Path.Combine(folder, name + ".png"));
     }
 

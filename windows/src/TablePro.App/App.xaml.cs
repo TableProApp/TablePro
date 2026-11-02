@@ -11,6 +11,8 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        UnhandledException += (_, args) => CrashLog.Write(args.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, args) => CrashLog.Write(args.ExceptionObject as Exception);
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
