@@ -29,7 +29,7 @@ $uia = Start-Process "$env:RUNNER_TEMP\gate-uia\TablePro.DataGrid.Gate.Uia.exe" 
     -RedirectStandardOutput "$Out\uia-stdout.txt" -RedirectStandardError "$Out\uia-stderr.txt"
 
 # A runner is still busy for a while after the build (Defender, indexing); the gate measures the grid, not that.
-function Wait-Idle([int]$seconds = 120) {
+function Wait-Idle([int]$seconds = 300) {
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $quiet = 0
     $load = 100

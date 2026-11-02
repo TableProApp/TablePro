@@ -115,8 +115,7 @@ internal sealed partial class Gate
         Native.Up(Native.VkShift);
         await Task.Delay(400);
         _report.Line("keyboard.shift_extend", $"selection={_grid.SelectionRange} ok={_grid.SelectionRange == new CellRange(0, 0, 1, 1)}");
-        Native.Chord(Native.VkControl, (ushort)'A');
-        await Task.Delay(400);
+        await SendAsync("ctrl_a", () => Native.Chord(Native.VkControl, (ushort)'A'), () => _grid.SelectionKind == SelectionKind.All, 3000);
         _report.Line("keyboard.ctrl_a", $"kind={_grid.SelectionKind} range={_grid.SelectionRange} ok={_grid.SelectionKind == SelectionKind.All}");
         await Native.SaveScreenAsync(ctx.Shot("keyboard-ctrl-a"));
     }
@@ -171,8 +170,7 @@ internal sealed partial class Gate
         await Native.SaveScreenAsync(ctx.Shot("shift-range"));
 
         var copies = _grid.Copies;
-        Native.Chord(Native.VkControl, (ushort)'C');
-        await WaitAsync(() => _grid.Copies > copies, 10_000);
+        await SendAsync("ctrl_c", () => Native.Chord(Native.VkControl, (ushort)'C'), () => _grid.Copies > copies, 10_000);
         var clip = await ClipboardTextAsync();
         var expected = ExpectedTsv(expectedRange);
         _report.Line("selection.ctrl_c", $"tsv_matches={clip == expected} lines={clip.Split("\r\n").Length - 1} tabs_in_first_line={clip.Split("\r\n")[0].Count(ch => ch == '\t')}");
@@ -200,8 +198,7 @@ internal sealed partial class Gate
         heartbeat.Take();
         var copies = _grid.Copies;
         var t = Clock.Now();
-        Native.Chord(Native.VkControl, (ushort)'C');
-        var finished = await WaitAsync(() => _grid.Copies > copies, 120_000);
+        var finished = await SendAsync("large_ctrl_c", () => Native.Chord(Native.VkControl, (ushort)'C'), () => _grid.Copies > copies, 120_000);
         var ms = Clock.MsSince(t);
         var block = heartbeat.Take();
         var clip = await ClipboardTextAsync();
@@ -420,6 +417,21 @@ internal sealed partial class Gate
         var verify = new Verifier(this);
         verify.Check(afterFrame: true);
         return verify.Summary();
+    }
+
+    // A press the runner's shell took is sent once more after the window has the foreground and the grid the focus.
+    private async Task<bool> SendAsync(string name, Action send, Func<bool> done, int milliseconds)
+    {
+        send();
+        if (await WaitAsync(done, Math.Min(milliseconds, 3000)))
+        {
+            return true;
+        }
+        _report.Line(name + ".resent", $"foreground={Native.IsForeground(ctx.Window)} focus={_grid.FocusState}");
+        await Driver.EnsureForegroundAsync(ctx, _status);
+        _grid.Focus(FocusState.Keyboard);
+        send();
+        return await WaitAsync(done, milliseconds);
     }
 
     private static async Task<bool> WaitAsync(Func<bool> condition, int milliseconds)
