@@ -68,7 +68,7 @@ internal sealed partial class Gate
 
         var latencies = new List<double>();
         var results = new JsonArray();
-        int wrong = 0, hidden = 0, timeouts = 0;
+        int wrong = 0, hidden = 0, timeouts = 0, resent = 0;
         foreach (var (name, send, targetRow, targetColumn) in steps)
         {
             var changed = new TaskCompletionSource<long>();
@@ -77,11 +77,22 @@ internal sealed partial class Gate
             var t0 = Clock.Now();
             send();
             var done = await Task.WhenAny(changed.Task, Task.Delay(3000));
+            // The Arm64 image's shell takes the foreground or focus now and then, and a press sent meanwhile goes to it.
+            if (done != changed.Task)
+            {
+                results.Add($"{name}: lost with foreground={Native.IsForeground(ctx.Window)} focus={_grid.FocusState}, sent again");
+                await Driver.EnsureForegroundAsync(ctx, _status);
+                _grid.Focus(FocusState.Keyboard);
+                resent++;
+                t0 = Clock.Now();
+                send();
+                done = await Task.WhenAny(changed.Task, Task.Delay(3000));
+            }
             _grid.FocusedCellChanged -= Handler;
             if (done != changed.Task)
             {
                 timeouts++;
-                results.Add($"{name}: timeout at ({_grid.FocusedRow},{_grid.FocusedColumn})");
+                results.Add($"{name}: timeout at ({_grid.FocusedRow},{_grid.FocusedColumn}) foreground={Native.IsForeground(ctx.Window)}");
                 continue;
             }
             var frame = await Frames.NextAsync();
@@ -96,7 +107,7 @@ internal sealed partial class Gate
         }
         _report.Line("keyboard.steps", results);
         _report.Stats("keyboard.input_to_frame_ms", latencies);
-        _report.Line("keyboard.summary", $"steps={steps.Count} wrong_cell={wrong} not_visible={hidden} timeouts={timeouts} page={page}");
+        _report.Line("keyboard.summary", $"steps={steps.Count} wrong_cell={wrong} not_visible={hidden} timeouts={timeouts} page={page} resent_after_losing_foreground={resent}");
 
         Native.Down(Native.VkShift);
         Native.Press(Native.VkDown);
