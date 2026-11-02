@@ -168,8 +168,10 @@
                 CanReorderTabs="True"
                 IsAddTabButtonVisible="True"
                 SelectionChanged="OnTabSelectionChanged"
+                HorizontalContentAlignment="Stretch"
                 TabCloseRequested="OnTabCloseRequested"
-                TabWidthMode="Equal" />
+                TabWidthMode="Equal"
+                VerticalContentAlignment="Stretch" />
         </Grid>
     </Grid>
 </UserControl>
