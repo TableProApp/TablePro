@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProMCP
+import TableProSQLGrammar
 import Testing
 
 struct MCPStatementGateRefusalTests {

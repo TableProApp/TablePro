@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 internal actor DefaultExecutionGate: ExecutionGate {
     private let confirming: OperationConfirming

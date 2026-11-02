@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProMCP
+import TableProSQLGrammar
 
 public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
     public static let name = "confirm_destructive_operation"

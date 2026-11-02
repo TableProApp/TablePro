@@ -1,5 +1,6 @@
 import Foundation
 import TableProInfluxDBCore
+import TableProSQLGrammar
 
 // The SQL reading tiers a Flux read as an unknown statement, a write, so it would refuse every Flux read on a read-only
 // connection. Each statement is read as the driver receives it, through the driver's own routing and Flux reading.

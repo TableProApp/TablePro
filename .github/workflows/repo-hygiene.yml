@@ -121,6 +121,9 @@ jobs:
       - name: Check Oracle SQL names dictionary objects through OracleDictionary
         run: python3 apple/scripts/ci/check-oracle-dictionary-names.py
 
+      - name: Check the statement classifiers read words through the grammar's tokens
+        run: python3 apple/scripts/ci/check-classifier-text-matching.py
+
       # The corpora run by hand against servers (scripts/probes/check-column-type-corpus.sh), so a type a driver
       # starts listing is caught here.
       - name: Check every listed column type has a corpus column

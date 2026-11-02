@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension PluginStatementContext {
     /// Decided per statement rather than taken from the gate, because a table tab, an export or MCP

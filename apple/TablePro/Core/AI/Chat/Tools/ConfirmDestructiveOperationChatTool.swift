@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProMCP
+import TableProSQLGrammar
 
 struct ConfirmDestructiveOperationChatTool: ChatTool {
     static let requiredPhrase = "I understand this is irreversible"
