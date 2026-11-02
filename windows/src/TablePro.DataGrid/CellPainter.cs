@@ -242,7 +242,7 @@ internal sealed unsafe class CellPainter : IDisposable
             var drawn = 0;
             context->BeginDraw();
             context->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
-            var samples = FontWarmup.Scripts.Split(' ');
+            var samples = FontWarmup.Scripts.Split(' ').Concat(FontWarmup.Glyphs.Chunk(48).Select(chunk => new string(chunk))).ToArray();
             for (var i = -1; i <= samples.Length; i++)
             {
                 var sample = i < 0 ? FontWarmup.Scripts : i == samples.Length ? NullText : samples[i];

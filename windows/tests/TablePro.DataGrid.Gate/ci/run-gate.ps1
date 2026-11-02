@@ -29,7 +29,21 @@ $build | ConvertTo-Json | Set-Content "$Out\build-$Arch.json"
 $uia = Start-Process "$env:RUNNER_TEMP\gate-uia\TablePro.DataGrid.Gate.Uia.exe" -ArgumentList "serve `"$Out`" 5400" -PassThru `
     -RedirectStandardOutput "$Out\uia-stdout.txt" -RedirectStandardError "$Out\uia-stderr.txt"
 
+# A runner is still busy for a while after the build (Defender, indexing); the gate measures the grid, not that.
+function Wait-Idle([int]$seconds = 120) {
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    $quiet = 0
+    $load = 100
+    while ($clock.Elapsed.TotalSeconds -lt $seconds -and $quiet -lt 3) {
+        $load = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+        if ($load -lt 15) { $quiet++ } else { $quiet = 0 }
+        Start-Sleep 1
+    }
+    Write-Host "== idle after $([int]$clock.Elapsed.TotalSeconds) s, load $load%"
+}
+
 function Run-Gate([string]$name, [string]$arguments, [int]$timeout) {
+    Wait-Idle
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $p = Start-Process "$env:RUNNER_TEMP\gate-app\TablePro.DataGrid.Gate.exe" -ArgumentList "$arguments --name $name --out `"$Out`"" -PassThru
     if (-not $p.WaitForExit($timeout * 1000)) {
