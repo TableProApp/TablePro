@@ -73,10 +73,10 @@ final class WelcomeWindowUITests: UITestCase {
         XCTAssertTrue(generalPaneButton.waitToExist(timeout: 10))
         generalPaneButton.click()
 
+        // The Form builds every row, so the row reads without scrolling to it.
         let action = settings.descendants(matching: .any).matching(identifier: "software-update-action").firstMatch
-        let form = settings.scrollViews.firstMatch
-        XCTAssertTrue(scrollUntilHittable(action, in: form, timeout: 15), "General must show the Software Update row")
-        XCTAssertEqual(action.title, "Check Now")
+        XCTAssertTrue(action.waitToExist(timeout: 10), "General must show the Software Update row")
+        XCTAssertEqual(action.label, "Check Now")
 
         let headline = settings.descendants(matching: .any).matching(identifier: "software-update-headline").firstMatch
         let headlineText = (headline.value as? String).flatMap { $0.isEmpty ? nil : $0 } ?? headline.label
