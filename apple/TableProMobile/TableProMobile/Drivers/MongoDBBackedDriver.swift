@@ -6,7 +6,7 @@ import TableProPluginKit
 import TableProQuery
 
 // The plugin builds every browse, count and lookup on the session driver, whose field kinds type the filter values.
-nonisolated final class MongoDBBackedDriver: PluginBackedDriver, DriverQueryBuilding, @unchecked Sendable {
+nonisolated final class MongoDBBackedDriver: PluginRowWritingDriver, DriverQueryBuilding, @unchecked Sendable {
     private let mongo: MongoDBPluginDriver
 
     init(mongo: MongoDBPluginDriver, dialedHosts: [String], queryTimeoutSeconds: Int? = nil) {

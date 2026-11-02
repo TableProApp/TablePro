@@ -5,14 +5,15 @@ import TableProModels
 import Testing
 
 struct IOSDriverFactoryCatalogTests {
-    @Test("Network engines get a catalog connection, file engines keep one connection")
+    @Test("Wire-protocol SQL servers get a catalog connection; file, HTTP and Redis engines keep one connection")
     func whichEnginesOpenOne() {
         let factory = IOSDriverFactory()
         let opens: [DatabaseType] = [.mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .mssql, .oracle]
         for type in opens {
             #expect(factory.opensCatalogConnections(for: DatabaseConnection(name: "c", type: type)))
         }
-        for type in [DatabaseType.sqlite, .duckdb, .redis] {
+        // D1 holds no session state a catalog read could disturb, and a second driver costs requests on every open.
+        for type in [DatabaseType.sqlite, .duckdb, .redis, .clickhouse, .cloudflareD1] {
             #expect(!factory.opensCatalogConnections(for: DatabaseConnection(name: "c", type: type)))
         }
     }

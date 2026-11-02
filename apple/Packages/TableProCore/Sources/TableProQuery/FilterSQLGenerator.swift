@@ -96,14 +96,33 @@ public struct FilterSQLGenerator: Sendable {
             return "\(quotedColumn) BETWEEN \(escapedValue) AND \(escapedSecond)"
         case .contains:
             let pattern = likePatternBody(filter.value)
+            if exceedsLikePatternLimit(pattern, wildcards: 2) {
+                return SQLSubstringMatch.contains(operand, literal: stringLiteral(filter.value), fold: dialect.caseFoldFunction)
+            }
             return likeCondition(operand, "'%\(pattern)%'", negated: false, folding: folding)
         case .startsWith:
             let pattern = likePatternBody(filter.value)
+            if exceedsLikePatternLimit(pattern, wildcards: 1) {
+                return SQLSubstringMatch.startsWith(operand, literal: stringLiteral(filter.value), fold: dialect.caseFoldFunction)
+            }
             return likeCondition(operand, "'\(pattern)%'", negated: false, folding: folding)
         case .endsWith:
             let pattern = likePatternBody(filter.value)
+            if exceedsLikePatternLimit(pattern, wildcards: 1) {
+                return SQLSubstringMatch.endsWith(operand, literal: stringLiteral(filter.value), fold: dialect.caseFoldFunction)
+            }
             return likeCondition(operand, "'%\(pattern)'", negated: false, folding: folding)
         }
+    }
+
+    // An engine that refuses a LIKE pattern this long (D1 past 50 bytes) gets the plain substring test instead, which
+    // reads no wildcard, so its literal carries no LIKE escape.
+    public func exceedsLikePatternLimit(_ patternBody: String, wildcards: Int) -> Bool {
+        SQLSubstringMatch.exceeds(patternBody, wildcards: wildcards, limit: dialect.likePatternByteLimit)
+    }
+
+    public func stringLiteral(_ value: String) -> String {
+        "'\(literalBody(value))'"
     }
 
     // A number, a boolean or a bit has no case, and compared folded as text `5.50` would no longer equal `5.5`.

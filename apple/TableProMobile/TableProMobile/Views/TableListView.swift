@@ -161,10 +161,10 @@ struct TableListView: View {
                     Task {
                         guard let driver = driver(for: action) else { return }
                         do {
-                            let quoted = SQLBuilder.qualifiedIdentifier(
-                                table: action.table.name, schema: action.placement.schema, for: connection.type
+                            let statement = SQLBuilder.truncateStatement(
+                                table: action.table.name, schema: action.placement.schema, type: connection.type
                             )
-                            _ = try await coordinator.track { try await driver.executeWrite(["TRUNCATE TABLE \(quoted)"]) }
+                            _ = try await coordinator.track { try await driver.executeWrite([statement]) }
                             await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription

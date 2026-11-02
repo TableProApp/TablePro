@@ -47,6 +47,34 @@ struct ConnectionInfoContentTests {
         #expect(ConnectionInfoContent.section(for: connection, fileURL: nil) == .server)
     }
 
+    @Test("A Cloudflare D1 connection gets the Account section, with no host, port or SSL")
+    func cloudflareD1Account() {
+        let connection = DatabaseConnection(
+            type: .cloudflareD1,
+            host: "b5ad7a2e0123",
+            port: 0,
+            database: "shop",
+            additionalFields: ["cfAccountId": "b5ad7a2e0123"]
+        )
+
+        let section = ConnectionInfoContent.section(for: connection, fileURL: nil)
+
+        #expect(section == .account(ConnectionAccountDetail(accountId: "b5ad7a2e0123")))
+    }
+
+    @Test("A D1 connection with no Account ID stored shows none")
+    func cloudflareD1WithoutAccountId() {
+        let connection = DatabaseConnection(
+            type: .cloudflareD1,
+            host: "",
+            port: 0,
+            database: "shop",
+            additionalFields: ["cfAccountId": ""]
+        )
+
+        #expect(ConnectionInfoContent.section(for: connection, fileURL: nil) == .account(ConnectionAccountDetail(accountId: nil)))
+    }
+
     @Test("Only SQLite and DuckDB are local file engines", arguments: DatabaseType.mobileSupportedTypes)
     func localFileEngines(type: DatabaseType) {
         #expect(type.isLocalFile == (type == .sqlite || type == .duckdb))

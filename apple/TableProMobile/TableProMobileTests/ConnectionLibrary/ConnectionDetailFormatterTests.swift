@@ -107,4 +107,13 @@ struct ConnectionDetailFormatterTests {
         #expect(ConnectionDetailFormatter.detail(for: blank) == "db.acme.io:3307")
         #expect(ConnectionDetailFormatter.detail(for: redshift) == "db.acme.io")
     }
+
+    @Test("A Cloudflare D1 connection shows its database, never the account id a Mac import keeps in Host")
+    func cloudflareD1ShowsTheDatabase() {
+        let macImport = DatabaseConnection(type: .cloudflareD1, host: "b5ad7a2e0123", port: 0, database: "shop")
+        let formMade = DatabaseConnection(type: .cloudflareD1, host: "", port: 0, database: "shop")
+
+        #expect(ConnectionDetailFormatter.detail(for: macImport) == "shop")
+        #expect(ConnectionDetailFormatter.detail(for: formMade) == "shop")
+    }
 }

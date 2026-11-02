@@ -65,6 +65,14 @@ struct CompletionIdentifierQuotingTests {
         #expect(CompletionIdentifierQuoting.quoted(name, for: type) == expected)
     }
 
+    @Test("D1 quotes names by SQLite's rules, since it runs SQLite")
+    func cloudflareD1FollowsSQLite() {
+        #expect(CompletionIdentifierQuoting.quoted("café", for: .cloudflareD1) == "café")
+        #expect(CompletionIdentifierQuoting.quoted("price$", for: .cloudflareD1) == "price$")
+        #expect(CompletionIdentifierQuoting.quoted("pragma", for: .cloudflareD1) == "\"pragma\"")
+        #expect(CompletionIdentifierQuoting.quoted("user", for: .cloudflareD1) == "user")
+    }
+
     @Test("a word only another engine reserves stays bare")
     func otherEngineReservedWord() {
         #expect(CompletionIdentifierQuoting.quoted("user", for: .mysql) == "user")

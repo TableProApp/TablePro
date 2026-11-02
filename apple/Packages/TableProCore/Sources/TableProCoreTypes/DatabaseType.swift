@@ -99,6 +99,15 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         }
     }
 
+    // These engines run SQLite itself, so they share its grammar and its storage classes. DuckDB, which PluginKit's
+    // SqlDialect files under SQLite, types and compares values its own way.
+    public var isSQLiteFamily: Bool {
+        switch self {
+        case .sqlite, .cloudflareD1, .libsql, .turso: return true
+        default: return false
+        }
+    }
+
     public var pluginTypeId: String {
         switch self {
         case .mariadb, .tidb, .databend, .oceanbase: return DatabaseType.mysql.rawValue

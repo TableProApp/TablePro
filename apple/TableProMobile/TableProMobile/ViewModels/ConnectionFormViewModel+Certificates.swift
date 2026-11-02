@@ -7,7 +7,7 @@ extension ConnectionFormViewModel {
     private static let certificateLogger = Logger(subsystem: "com.TablePro", category: "ConnectionFormViewModel")
 
     var usesCertificateSection: Bool {
-        !isFileBased && type != .oracle && type != .mssql
+        hasNetworkTransport && type != .oracle && type != .mssql
     }
 
     var showsCertificateRows: Bool {
