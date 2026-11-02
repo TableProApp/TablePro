@@ -116,9 +116,16 @@ jobs:
     with:
       docs-only: ${{ needs.plan.outputs.linux != 'true' }}
 
+  # The shared Rust core on Windows and macOS, with the Linux suite, which core/ and the workspace files at
+  # the top trigger. Skipped on a release/** line, as the Linux job is.
+  core:
+    needs: plan
+    if: needs.plan.outputs.linux == 'true' && !startsWith(github.ref, 'refs/heads/release/')
+    uses: ./.github/workflows/core.yml
+
   ci:
     name: CI
-    needs: [plan, macos, ios, swiftlint, hygiene, linux]
+    needs: [plan, macos, ios, swiftlint, hygiene, linux, core]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
