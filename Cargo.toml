@@ -1,26 +1,26 @@
 [workspace]
 resolver = "3"
 members = [
-    "linux/crates/ai",
+    "core/crates/ai",
+    "core/crates/core",
+    "core/crates/mcp",
+    "core/crates/net",
+    "core/crates/session",
+    "core/crates/ssh",
+    "core/crates/storage",
+    "core/crates/test-fixtures",
+    "core/crates/test-support",
+    "core/crates/drivers/cassandra",
+    "core/crates/drivers/clickhouse",
+    "core/crates/drivers/duckdb",
+    "core/crates/drivers/mongodb",
+    "core/crates/drivers/mssql",
+    "core/crates/drivers/mysql",
+    "core/crates/drivers/postgres",
+    "core/crates/drivers/redis",
+    "core/crates/drivers/sqlite",
     "linux/crates/app",
-    "linux/crates/core",
-    "linux/crates/mcp",
-    "linux/crates/net",
     "linux/crates/platform",
-    "linux/crates/session",
-    "linux/crates/ssh",
-    "linux/crates/storage",
-    "linux/crates/test-fixtures",
-    "linux/crates/test-support",
-    "linux/crates/drivers/cassandra",
-    "linux/crates/drivers/clickhouse",
-    "linux/crates/drivers/duckdb",
-    "linux/crates/drivers/mongodb",
-    "linux/crates/drivers/mssql",
-    "linux/crates/drivers/mysql",
-    "linux/crates/drivers/postgres",
-    "linux/crates/drivers/redis",
-    "linux/crates/drivers/sqlite",
 ]
 
 [workspace.package]
@@ -30,25 +30,25 @@ license = "AGPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
-tablepro-ai = { path = "linux/crates/ai" }
-tablepro-core = { path = "linux/crates/core" }
-tablepro-driver-cassandra = { path = "linux/crates/drivers/cassandra" }
-tablepro-driver-clickhouse = { path = "linux/crates/drivers/clickhouse" }
-tablepro-driver-duckdb = { path = "linux/crates/drivers/duckdb" }
-tablepro-driver-mongodb = { path = "linux/crates/drivers/mongodb" }
-tablepro-driver-mssql = { path = "linux/crates/drivers/mssql" }
-tablepro-driver-mysql = { path = "linux/crates/drivers/mysql" }
-tablepro-driver-postgres = { path = "linux/crates/drivers/postgres" }
-tablepro-driver-redis = { path = "linux/crates/drivers/redis" }
-tablepro-driver-sqlite = { path = "linux/crates/drivers/sqlite" }
-tablepro-mcp = { path = "linux/crates/mcp" }
-tablepro-net = { path = "linux/crates/net" }
+tablepro-ai = { path = "core/crates/ai" }
+tablepro-core = { path = "core/crates/core" }
+tablepro-driver-cassandra = { path = "core/crates/drivers/cassandra" }
+tablepro-driver-clickhouse = { path = "core/crates/drivers/clickhouse" }
+tablepro-driver-duckdb = { path = "core/crates/drivers/duckdb" }
+tablepro-driver-mongodb = { path = "core/crates/drivers/mongodb" }
+tablepro-driver-mssql = { path = "core/crates/drivers/mssql" }
+tablepro-driver-mysql = { path = "core/crates/drivers/mysql" }
+tablepro-driver-postgres = { path = "core/crates/drivers/postgres" }
+tablepro-driver-redis = { path = "core/crates/drivers/redis" }
+tablepro-driver-sqlite = { path = "core/crates/drivers/sqlite" }
+tablepro-mcp = { path = "core/crates/mcp" }
+tablepro-net = { path = "core/crates/net" }
 tablepro-linux-platform = { path = "linux/crates/platform" }
-tablepro-session = { path = "linux/crates/session" }
-tablepro-ssh = { path = "linux/crates/ssh" }
-tablepro-storage = { path = "linux/crates/storage" }
-tablepro-test-fixtures = { path = "linux/crates/test-fixtures" }
-tablepro-test-support = { path = "linux/crates/test-support" }
+tablepro-session = { path = "core/crates/session" }
+tablepro-ssh = { path = "core/crates/ssh" }
+tablepro-storage = { path = "core/crates/storage" }
+tablepro-test-fixtures = { path = "core/crates/test-fixtures" }
+tablepro-test-support = { path = "core/crates/test-support" }
 async-trait = "0.1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }

@@ -74,6 +74,11 @@
                     ]
                 },
                 {
+                    "type": "dir",
+                    "path": "../../../core",
+                    "dest": "core"
+                },
+                {
                     "type": "file",
                     "path": "../../../Cargo.toml"
                 },

@@ -22,10 +22,14 @@ fn private_dir_builder() -> DirBuilder {
 }
 
 fn private_file_options() -> OpenOptions {
-    let mut options = OpenOptions::new();
     #[cfg(unix)]
-    options.mode(PRIVATE_FILE);
-    options
+    {
+        let mut options = OpenOptions::new();
+        options.mode(PRIVATE_FILE);
+        options
+    }
+    #[cfg(windows)]
+    OpenOptions::new()
 }
 
 /// Create the directory and everything above it, then force 0700 on the

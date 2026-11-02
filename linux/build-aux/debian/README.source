@@ -8,8 +8,8 @@ debian/changelog for the version and Ubuntu series being built.
 
 Sources: tablepro_X.Y.Z.orig.tar.xz is the tarball
 linux/build-aux/packaging/make-dist.sh writes, with the repository's layout:
-linux/, the Linux app and its Meson project, and the Cargo workspace at the
-top that it builds in.
+linux/, the Linux app and its Meson project, core/, the shared Rust core,
+and the Cargo workspace at the top that both build in.
 tablepro_X.Y.Z.orig-vendor.tar.xz holds vendor/ from cargo vendor
 --versioned-dirs, with the source replacement cargo printed as
 vendor/cargo-config.toml. dpkg-source unpacks it into vendor/, and

@@ -23,8 +23,6 @@ mod fake_prompter;
 mod fake_reply;
 mod fake_run;
 mod fake_secret_vault;
-// Its route is a Unix socket, as an SSH forward's is.
-#[cfg(unix)]
 mod fault;
 pub mod history_cases;
 mod replies;
@@ -45,7 +43,6 @@ pub use fake_prompter::FakePrompter;
 pub use fake_reply::FakeReply;
 pub use fake_run::{FakeRun, RunWait};
 pub use fake_secret_vault::{Call, FakeSecretVault};
-#[cfg(unix)]
 pub use fault::FaultTransport;
 pub use replies::Replies;
 pub use snippet_text::expand_snippet;

@@ -7,14 +7,12 @@ use bson::doc;
 use mongodb::Client;
 use mongodb::error::ErrorKind;
 use mongodb::options::{ClientOptions, Credential, DriverInfo, ServerAddress};
-use rustls_pki_types::ServerName;
 use secrecy::ExposeSecret;
 use tablepro_core::{
     APPLICATION_NAME, ConfigError, ConnectEnvironment, Credentials, DriverError, LivenessPolicy, LossPhase,
     NetworkEndpoint, NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, Transport, TransportRoute,
 };
-use tablepro_net::tls::{TlsSetupError, build_client_config};
-use tokio_rustls::TlsConnector;
+use tablepro_net::tls::TlsSetupError;
 
 use crate::client_tls::{ClientTls, private_dir};
 use crate::connect_watch::ConnectWatch;
@@ -255,8 +253,10 @@ impl MongoEndpoint {
     /// A connect the server ended on a TLS session the library set up,
     /// before any answer: the session ended without TLS's own close.
     fn closed_in_tls(&self, error: &mongodb::error::Error, during: LossPhase) -> bool {
-        let Route::Dialed(tls) = &self.route else {
-            return false;
+        let tls = match &self.route {
+            Route::Dialed(tls) => tls,
+            #[cfg(unix)]
+            Route::Relayed(_) => return false,
         };
         during == LossPhase::Connect
             && tls.enabled()
@@ -337,12 +337,13 @@ fn credential(target: &NetworkTarget) -> Result<Option<Credential>, DriverError>
 
 #[cfg(unix)]
 fn relay_tls(tls: &tablepro_core::TlsConfig, server_name: String) -> Result<Option<RelayTls>, DriverError> {
-    let Some(config) = build_client_config(tls).map_err(setup_error)? else {
+    let Some(config) = tablepro_net::tls::build_client_config(tls).map_err(setup_error)? else {
         return Ok(None);
     };
-    let server_name = ServerName::try_from(server_name).map_err(|_| ConfigError::InvalidServerName)?;
+    let server_name =
+        rustls_pki_types::ServerName::try_from(server_name).map_err(|_| ConfigError::InvalidServerName)?;
     Ok(Some(RelayTls {
-        connector: TlsConnector::from(config),
+        connector: tokio_rustls::TlsConnector::from(config),
         server_name,
     }))
 }

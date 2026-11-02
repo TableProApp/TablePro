@@ -86,7 +86,7 @@ impl Transport for FaultTransport {
     }
 
     fn route(&self) -> TransportRoute {
-        TransportRoute::UnixSocket(self.proxy.path().to_owned())
+        self.proxy.route()
     }
 
     async fn open(&self) -> Result<Box<dyn TransportStream>, TransportError> {
@@ -134,7 +134,9 @@ impl FaultDialer {
 #[cfg(test)]
 mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::{TcpListener, UnixStream};
+    use tokio::net::TcpListener;
+    #[cfg(unix)]
+    use tokio::net::UnixStream;
     use tokio::time::Instant;
 
     use super::*;
@@ -177,6 +179,7 @@ mod tests {
         assert!(!echoes(&mut stream, b"after").await, "a black-holed stream answered");
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn the_route_proxy_relays_and_carries_the_black_hole() {
         let transport = FaultTransport::direct(echo_server().await, &LivenessPolicy::DESKTOP).unwrap();

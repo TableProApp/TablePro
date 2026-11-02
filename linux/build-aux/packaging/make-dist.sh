@@ -1,7 +1,7 @@
 #!/bin/sh
-# Writes tablepro-X.Y.Z.tar.xz into <output dir>: the last commit's Linux app
-# and the Cargo workspace it builds in, under tablepro-X.Y.Z/, with the
-# repository's layout. X.Y.Z is the version in linux/meson.build. A tree
+# Writes tablepro-X.Y.Z.tar.xz into <output dir>: the last commit's Linux app,
+# the shared core and the Cargo workspace they build in, under
+# tablepro-X.Y.Z/, with the repository's layout. X.Y.Z is the version in linux/meson.build. A tree
 # with uncommitted changes to those paths is refused, since the tarball
 # holds the commit and not the tree.
 # Usage: make-dist.sh <output dir>
@@ -17,7 +17,7 @@ linux="$(cd "$here/../.." && pwd)"
 repo="$(git -C "$linux" rev-parse --show-toplevel)"
 
 # Every path a build from the tarball reads, from the top of the repository.
-set -- "$1" Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml deny.toml .config linux
+set -- "$1" Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml deny.toml .config core linux
 
 out="$1"
 shift

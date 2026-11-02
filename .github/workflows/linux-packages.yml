@@ -20,6 +20,7 @@ on:
       - "linux/build-aux/packaging/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "core/**"
       - "linux/meson.build"
       - "linux/meson.options"
       - "linux/crates/**/meson.build"

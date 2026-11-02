@@ -300,7 +300,7 @@ platform_step() {
                     cargo test --locked --no-fail-fast -p "$package" ${filter[@]+"${filter[@]}"}
                 code=$?
                 if grep -q "package ID specification .* did not match any packages" "$log" 2> /dev/null; then
-                    echo "no such package: $package (the names are in each linux/crates/*/Cargo.toml)" >&2
+                    echo "no such package: $package (the names are in each Cargo.toml under core/crates and linux/crates)" >&2
                     exit 3
                 fi
                 if compile_failed "$log"; then
