@@ -1,6 +1,6 @@
 # 0016: Driver contract v2
 
-- **Status**: Accepted
+- **Status**: Accepted; the no-fork rule for tiberius superseded by core 0005 (`core/docs/decisions/0005-sql-server-transport.md`)
 - **Date**: 2026-10-13
 
 ## Context
