@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 public struct WeaviateHTTPRequest: Sendable, Equatable {
     public let method: String
@@ -69,6 +70,38 @@ private final class ParsedResponseJSON: @unchecked Sendable {
     }
 }
 
+// Behind a tunnel the URL names its loopback forward, so URLSession's own check would test 127.0.0.1.
+public struct WeaviateTunneledTrust: Sendable, Equatable {
+    public let serverName: String
+    public let checksServerName: Bool
+
+    public init(serverName: String, checksServerName: Bool) {
+        self.serverName = serverName
+        self.checksServerName = checksServerName
+    }
+
+    func refusal(of trust: SecTrust) -> WeaviateError? {
+        let policy = SecPolicyCreateSSL(true, checksServerName ? serverName as CFString : nil)
+        let status = SecTrustSetPolicies(trust, policy)
+        guard status == errSecSuccess else {
+            return Self.untrusted(SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)")
+        }
+        var error: CFError?
+        guard !SecTrustEvaluateWithError(trust, &error) else { return nil }
+        let detail = error.map { CFErrorCopyDescription($0) as String } ?? ""
+        guard let error, CFErrorGetCode(error) == Int(errSecHostNameMismatch) else { return Self.untrusted(detail) }
+        return .transport(String(
+            format: String(localized: "The server's TLS certificate does not name %1$@. %2$@"),
+            serverName,
+            detail
+        ))
+    }
+
+    private static func untrusted(_ detail: String) -> WeaviateError {
+        .transport(String(format: String(localized: "The server's TLS certificate could not be verified. %@"), detail))
+    }
+}
+
 public protocol WeaviateTransport: Sendable {
     func send(_ request: WeaviateHTTPRequest) async throws -> WeaviateHTTPResponse
     func cancelAll()
@@ -76,15 +109,18 @@ public protocol WeaviateTransport: Sendable {
 
 public final class URLSessionWeaviateTransport: WeaviateTransport, @unchecked Sendable {
     private let session: URLSession
+    private let tunneledTrust: WeaviateTunneledTrust?
     private let lock = NSLock()
     private var inFlight: [ObjectIdentifier: URLSessionTask] = [:]
 
     public init(
         configuration: URLSessionConfiguration = .ephemeral,
         resourceTimeout: TimeInterval,
-        skipTLSVerify: Bool = false
+        skipTLSVerify: Bool = false,
+        tunneledTrust: WeaviateTunneledTrust? = nil
     ) {
         configuration.timeoutIntervalForResource = resourceTimeout
+        self.tunneledTrust = skipTLSVerify ? nil : tunneledTrust
         if skipTLSVerify {
             let delegate = InsecureTLSDelegate()
             session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
@@ -111,7 +147,7 @@ public final class URLSessionWeaviateTransport: WeaviateTransport, @unchecked Se
             urlRequest.setValue(value, forHTTPHeaderField: name)
         }
 
-        let tracker = TaskTracker(transport: self)
+        let tracker = TaskTracker(transport: self, tunneledTrust: tunneledTrust)
         defer { tracker.finish() }
         do {
             let (data, response) = try await session.data(for: urlRequest, delegate: tracker)
@@ -120,7 +156,7 @@ public final class URLSessionWeaviateTransport: WeaviateTransport, @unchecked Se
             }
             return WeaviateHTTPResponse(statusCode: httpResponse.statusCode, body: data)
         } catch let error as URLError where error.code == .cancelled {
-            throw WeaviateError.cancelled
+            throw tracker.trustRefusal ?? WeaviateError.cancelled
         } catch let error as WeaviateError {
             throw error
         } catch let error as URLError {
@@ -155,11 +191,40 @@ private final class InsecureTLSDelegate: NSObject, URLSessionDelegate {
 
 private final class TaskTracker: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private weak var transport: URLSessionWeaviateTransport?
+    private let tunneledTrust: WeaviateTunneledTrust?
     private let lock = NSLock()
     private var task: URLSessionTask?
+    private var refusal: WeaviateError?
 
-    init(transport: URLSessionWeaviateTransport) {
+    init(transport: URLSessionWeaviateTransport, tunneledTrust: WeaviateTunneledTrust?) {
         self.transport = transport
+        self.tunneledTrust = tunneledTrust
+    }
+
+    var trustRefusal: WeaviateError? {
+        lock.withLock { refusal }
+    }
+
+    // Reached only when the session has no delegate of its own, which is every session but the skip-verify one.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard let tunneledTrust,
+              challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let trust = challenge.protectionSpace.serverTrust
+        else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        if let refused = tunneledTrust.refusal(of: trust) {
+            lock.withLock { refusal = refused }
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(trust: trust))
     }
 
     func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {

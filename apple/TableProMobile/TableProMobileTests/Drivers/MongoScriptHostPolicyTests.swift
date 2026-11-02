@@ -25,7 +25,8 @@ struct MongoScriptHostPolicyTests {
 
     private func runtime() -> MongoScriptRuntime {
         MongoScriptRuntime(connection: MongoDBConnection(
-            host: "127.0.0.1", port: 27_017, user: "", password: nil, database: "app", configuredDatabase: "app"
+            host: "127.0.0.1", port: 27_017, user: "", password: nil, database: "app", configuredDatabase: "app",
+            tunneledServerName: nil
         ))
     }
 

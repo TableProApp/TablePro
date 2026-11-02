@@ -111,6 +111,37 @@ struct SQLNonCodeSpanTests {
         #expect(end("E'\\'' x", .ansi) == nil)
     }
 
+    private static func execution(_ engine: String) -> SQLLexicalGrammar {
+        SQLLexicalReadings.resolve(databaseTypeId: engine, declared: nil, session: nil).execution
+    }
+
+    @Test("A string after a line break continues a PostgreSQL E'...' with its escapes, as quotecontinue reads it")
+    func escapeStringContinuesAfterALineBreak() {
+        let postgreSQL = Self.execution("PostgreSQL")
+        #expect(end("E'x'\n'\\' || 'y", postgreSQL) == 13)
+        #expect(end("E'x'\r'y' z", postgreSQL) == 8)
+        #expect(end("E'x'\u{0B}\n'y' z", postgreSQL) == 9)
+        #expect(end("E'x'\n\u{0B}\u{0C}\t 'y' z", postgreSQL) == 12)
+        #expect(end("E'x' -- c\n'y' z", postgreSQL) == 13)
+        #expect(end("E'x'\n-- c\n'y' z", postgreSQL) == 13)
+        #expect(end("E'x'\n'y'\n\n'z' w", postgreSQL) == 13)
+        #expect(end("E'x'\u{00A0}\n\u{3000}'y' z", postgreSQL) == 10)
+        #expect(end("E'x'\u{200C}\n'y' z", postgreSQL) == 4)
+        #expect(SQLNonCodeSpan.span(at: 0, in: "E'x'\r\n'y'\n'z'" as NSString, grammar: postgreSQL)?.newlines == 2)
+    }
+
+    @Test("An E'...' ends at its quote without a line break, across a block comment, or on DuckDB")
+    func escapeStringEndsAtItsQuote() {
+        let postgreSQL = Self.execution("PostgreSQL")
+        #expect(end("E'x' 'y'", postgreSQL) == 4)
+        #expect(end("E'x' /* c */\n'y'", postgreSQL) == 4)
+        #expect(end("E'x' -- c'y'", postgreSQL) == 4)
+        #expect(end("E'x'\n-- c'y'", postgreSQL) == 4)
+        #expect(end("E'x'\nz 'y'", postgreSQL) == 4)
+        #expect(end("'x'\n'\\' || 'y", postgreSQL) == 3)
+        #expect(end("E'x'\n'\\' || 'y", Self.execution("DuckDB")) == 4)
+    }
+
     @Test("b'...' escapes with a backslash where it is a byte literal, and B'...' never does")
     func escapeBytesPrefix() {
         #expect(end("b'\\'' x", .escapeBytesPrefix) == 5)

@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProHTTP
 import TableProMCP
 
 enum ResponsesDialect: Sendable {
@@ -78,7 +79,7 @@ final class OpenAIResponsesProvider: ChatTransport {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         } catch {
             Self.logger.warning("OpenAI Responses model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError("Failed to fetch models")
@@ -98,7 +99,7 @@ final class OpenAIResponsesProvider: ChatTransport {
         let testOptions = ChatTransportOptions(model: testModel, maxOutputTokens: 16)
         let testTurn = ChatTurnWire(role: .user, blocks: [.text("Hi")])
         let request = try buildRequest(turns: [testTurn], options: testOptions, stream: false)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         guard let httpResponse = response as? HTTPURLResponse else { return false }
         if httpResponse.statusCode == 200 || httpResponse.statusCode == 400 {
             return true

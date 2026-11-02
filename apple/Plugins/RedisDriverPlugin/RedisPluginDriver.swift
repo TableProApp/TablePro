@@ -105,6 +105,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 password: password,
                 database: database,
                 sslConfig: config.ssl,
+                tlsServerName: config.tunneledServerName,
                 connectTimeoutMilliseconds: connectTimeout.milliseconds
             )
         case .sentinel:

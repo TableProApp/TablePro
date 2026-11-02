@@ -176,3 +176,16 @@ private enum MalformedKeyInput {
         String(repeating: "A", count: 70_000)
     ]
 }
+
+struct GoogleServiceAccountPasswordTests {
+    @Test("A key taken from the password is only ever an inline document, never a path", arguments: [
+        ("{\"type\":\"service_account\"}", "{\"type\":\"service_account\"}"),
+        ("\u{FEFF} {\"type\":\"service_account\"}\n", "{\"type\":\"service_account\"}"),
+        ("~/.config/gcloud/legacy_credentials/sa/adc.json", nil),
+        ("/Users/me/key.json", nil),
+        ("", nil),
+    ] as [(String, String?)])
+    func passwordKeyIsInline(password: String, document: String?) {
+        #expect(GoogleServiceAccountKey.inlineDocument(fromPassword: password) == document)
+    }
+}

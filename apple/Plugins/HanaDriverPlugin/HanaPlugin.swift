@@ -15,6 +15,7 @@ final class HanaPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let brandColorHex = HanaMetadata.brandColorHex
     static let isDownloadable = true
     static let supportsSSL = true
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let supportsSSH = false
     static let supportsForeignKeys = true
     static let supportsSchemaEditing = false

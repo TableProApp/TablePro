@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProHTTP
 import TableProPluginKit
 
 // Redshift issues the user and a temporary password together, so a sign-in mints both.
@@ -37,7 +38,7 @@ struct RedshiftIAMSignIn: Sendable {
             let data: Data
             let response: URLResponse
             do {
-                (data, response) = try await session.data(for: urlRequest)
+                (data, response) = try await session.data(for: urlRequest, delegate: SameOriginRedirects.shared)
             } catch {
                 throw RedshiftIAMError.requestFailed(error.localizedDescription)
             }

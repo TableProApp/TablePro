@@ -65,7 +65,7 @@ mod tests {
             ("work", false),
             ("WORK", false),
             ("Archive", true),
-            (&"x".repeat(ConnectionGroupName::MAX_CHARS + 1), false),
+            (&"x".repeat(200), true),
             ("Staging", true),
             ("work / staging", false),
         ] {

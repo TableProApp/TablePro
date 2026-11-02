@@ -1,0 +1,137 @@
+{
+  "advisory_locks": [
+    "get_lock",
+    "pg_advisory_lock",
+    "pg_advisory_lock_shared",
+    "pg_advisory_unlock",
+    "pg_advisory_unlock_all",
+    "pg_advisory_unlock_shared",
+    "pg_advisory_xact_lock",
+    "pg_advisory_xact_lock_shared",
+    "pg_try_advisory_lock",
+    "pg_try_advisory_lock_shared",
+    "pg_try_advisory_xact_lock",
+    "pg_try_advisory_xact_lock_shared",
+    "release_all_locks",
+    "release_lock"
+  ],
+  "catalog_and_storage": [
+    "heap_force_freeze",
+    "heap_force_kill",
+    "pg_import_system_collations",
+    "pg_truncate_visibility_map"
+  ],
+  "files_and_extensions": [
+    "lo_export",
+    "lo_import",
+    "load_extension",
+    "pg_file_rename",
+    "pg_file_unlink",
+    "pg_file_write",
+    "writefile"
+  ],
+  "index_maintenance": [
+    "brin_desummarize_range",
+    "brin_summarize_new_values",
+    "brin_summarize_range",
+    "gin_clean_pending_list",
+    "pragma_optimize"
+  ],
+  "large_objects": [
+    "lo_creat",
+    "lo_create",
+    "lo_from_bytea",
+    "lo_put",
+    "lo_truncate",
+    "lo_truncate64",
+    "lo_unlink",
+    "lowrite"
+  ],
+  "recovery_and_backup": [
+    "pg_backup_start",
+    "pg_backup_stop",
+    "pg_create_restore_point",
+    "pg_log_standby_snapshot",
+    "pg_promote",
+    "pg_start_backup",
+    "pg_stop_backup",
+    "pg_switch_wal",
+    "pg_switch_xlog",
+    "pg_wal_replay_pause",
+    "pg_wal_replay_resume",
+    "pg_xlog_replay_pause",
+    "pg_xlog_replay_resume"
+  ],
+  "replication": [
+    "pg_copy_logical_replication_slot",
+    "pg_copy_physical_replication_slot",
+    "pg_create_logical_replication_slot",
+    "pg_create_physical_replication_slot",
+    "pg_drop_replication_slot",
+    "pg_logical_emit_message",
+    "pg_logical_slot_get_binary_changes",
+    "pg_logical_slot_get_changes",
+    "pg_replication_origin_advance",
+    "pg_replication_origin_create",
+    "pg_replication_origin_drop",
+    "pg_replication_origin_session_reset",
+    "pg_replication_origin_session_setup",
+    "pg_replication_origin_xact_reset",
+    "pg_replication_origin_xact_setup",
+    "pg_replication_slot_advance",
+    "pg_sync_replication_slots"
+  ],
+  "sequences": [
+    "nextval",
+    "setval"
+  ],
+  "server_signals": [
+    "pg_cancel_backend",
+    "pg_log_backend_memory_contexts",
+    "pg_reload_conf",
+    "pg_rotate_logfile",
+    "pg_terminate_backend"
+  ],
+  "session_control": [
+    "abortsessions",
+    "system$abort_session",
+    "system$abort_transaction",
+    "system$cancel_all_queries",
+    "system$cancel_query"
+  ],
+  "settings_and_statistics": [
+    "pg_clear_attribute_stats",
+    "pg_clear_relation_stats",
+    "pg_notify",
+    "pg_restore_attribute_stats",
+    "pg_restore_relation_stats",
+    "pg_stat_reset",
+    "pg_stat_reset_backend_stats",
+    "pg_stat_reset_replication_slot",
+    "pg_stat_reset_shared",
+    "pg_stat_reset_single_function_counters",
+    "pg_stat_reset_single_table_counters",
+    "pg_stat_reset_slru",
+    "pg_stat_reset_subscription_stats",
+    "pg_stat_statements_reset",
+    "set_config"
+  ],
+  "sql_text_runners": [
+    "connectby",
+    "crosstab",
+    "crosstab2",
+    "crosstab3",
+    "crosstab4",
+    "dblink",
+    "dblink_exec",
+    "dblink_open",
+    "dblink_send_query",
+    "openquery",
+    "openrowset",
+    "query_to_xml",
+    "query_to_xml_and_xmlschema",
+    "ts_rewrite",
+    "ts_stat",
+    "xpath_table"
+  ]
+}

@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProHTTP
 import TableProMCP
 
 final class AnthropicProvider: ChatTransport {
@@ -77,7 +78,7 @@ final class AnthropicProvider: ChatTransport {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         } catch {
             Self.logger.warning("Anthropic model fetch failed; using known models: \(error.publicLogShape, privacy: .public)")
             return Self.offlineModels
@@ -185,7 +186,7 @@ final class AnthropicProvider: ChatTransport {
             effort: nil
         )
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             return false

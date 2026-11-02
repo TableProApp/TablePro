@@ -143,46 +143,15 @@ public extension ExportableConnection {
     private static let connectTimeoutSecondsRange = 1 ... 600
     private static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
 
-    static let importBlockedAdditionalFieldKeys: Set<String> = [
-        "beancountrunledgerplugins",
-        "postdisconnectscript",
-        "preconnectscript",
-        "pretunnelhost",
-        "pretunnelport",
-        "promptforpassword",
-        "snowflakeconnectionname",
-        "spendpoint",
-        "sslclientkeypassphrase",
-        "usepgpass",
-    ]
-
-    static let importBlockedAdditionalFieldPrefixes: Set<String> = ["aws", "entra"]
-
-    // Values that pick a credential kept on this Mac, under keys whose other values are plain settings.
-    static let importBlockedAdditionalFieldValues: [String: Set<String>] = [
-        "mongoauthmechanism": ["mongodb-aws"],
-    ]
-
-    static func isImportBlockedAdditionalFieldKey(_ key: String) -> Bool {
-        let normalized = key.lowercased()
-        if importBlockedAdditionalFieldKeys.contains(normalized) { return true }
-        return importBlockedAdditionalFieldPrefixes.contains { normalized.hasPrefix($0) }
-    }
-
-    static func isImportBlockedAdditionalField(key: String, value: String) -> Bool {
-        if isImportBlockedAdditionalFieldKey(key) { return true }
-        if ConnectionSecretOptions.isSecret(key: key, value: value) { return true }
-        let blockedValues = importBlockedAdditionalFieldValues[key.lowercased()] ?? []
-        return blockedValues.contains(value.trimmingCharacters(in: .whitespaces).lowercased())
-    }
-
     static func shareableAdditionalFields(
         _ fields: [String: String],
-        excluding excludedKeys: Set<String> = []
+        excluding excludedKeys: Set<String> = [],
+        keepingLocalCredentials: Bool
     ) -> [String: String]? {
-        let shareable = fields.filter { key, value in
-            !excludedKeys.contains(key) && !isImportBlockedAdditionalField(key: key, value: value)
-        }
+        let shareable = ConnectionFieldCatalog.portable(
+            fields.filter { !excludedKeys.contains($0.key) },
+            keepingLocalCredentials: keepingLocalCredentials
+        )
         return shareable.isEmpty ? nil : shareable
     }
 
@@ -232,9 +201,9 @@ public extension ExportableConnection {
         return copy
     }
 
-    /// An explicit timeout that is out of range is dropped, not replaced by a legacy additional field.
-    func sanitizedForImport() -> ExportableConnection {
-        var allowed = (additionalFields ?? [:]).filter { !Self.isImportBlockedAdditionalField(key: $0.key, value: $0.value) }
+    // An explicit timeout that is out of range is dropped, not replaced by a legacy additional field.
+    func sanitizedForImport(keepingLocalCredentials: Bool = false) -> ExportableConnection {
+        var allowed = ConnectionFieldCatalog.portable(additionalFields ?? [:], keepingLocalCredentials: keepingLocalCredentials)
         let legacyConnectTimeout = allowed.removeValue(forKey: Self.connectTimeoutSecondsKey).flatMap(Int.init)
         let legacyQueryTimeout = allowed.removeValue(forKey: Self.queryTimeoutSecondsKey).flatMap(Int.init)
         var copy = self

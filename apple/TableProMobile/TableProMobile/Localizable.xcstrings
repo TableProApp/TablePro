@@ -255,6 +255,10 @@
         }
       }
     },
+    "\"%@\" is not an AWS region" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "\"%@\" will be permanently deleted." : {
       "localizations" : {
         "ko" : {
@@ -29083,6 +29087,10 @@
           }
         }
       }
+    },
+    "Verify Identity through a tunnel checks the certificate against the server's host name, and %@ is an IP address. Enter the server's host name, or set SSL Mode to Verify CA." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Version" : {
       "localizations" : {

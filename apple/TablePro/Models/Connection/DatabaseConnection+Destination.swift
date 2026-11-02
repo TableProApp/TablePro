@@ -21,11 +21,8 @@ extension DatabaseConnection {
         )
     }
 
-    // Fields some drivers dial in place of the host: libSQL and Turso, DynamoDB, Spanner, Firebase.
-    private static let endpointFieldIds = ["databaseUrl", "awsEndpointUrl", "spEndpoint", "fbDatabaseURL"]
-
-    // Host and port first, then every other server the connection may dial, so a prompt never hides the
-    // real host behind a value the engine ignores, or a server behind "(+N more)".
+    // Host and port first, then every other server or project the connection may sign in to, so a prompt never
+    // hides the real host behind a value the engine ignores, or a server behind "(+N more)".
     var destinationSummary: String {
         var servers = [host.isEmpty || host.hasPrefix("/") ? endpointDescription : HostListEndpoint(host: host, port: port).entry]
         let account = (additionalFields["snowflakeAccount"] ?? "").trimmingCharacters(in: .whitespaces)
@@ -37,7 +34,7 @@ extension DatabaseConnection {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
         }
-        servers += Self.endpointFieldIds
+        servers += activeDestinationFieldIds
             .map { (additionalFields[$0] ?? "").trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         var seen: Set<String> = []
@@ -49,6 +46,24 @@ extension DatabaseConnection {
             server,
             "\(ssh.host):\(ssh.port ?? 22)"
         )
+    }
+
+    // The catalog's destinations this engine reads with these settings, in form order. Host lists are named entry by
+    // entry above. An engine with no declared fields names every destination it carries.
+    private var activeDestinationFieldIds: [String] {
+        let declared = PluginMetadataRegistry.shared.snapshot(for: type)?.connection.additionalConnectionFields ?? []
+        guard !declared.isEmpty else {
+            return additionalFields.keys
+                .filter { ConnectionFieldCatalog.trust(of: $0) == .destination }
+                .sorted()
+        }
+        return declared.compactMap { field -> String? in
+            if case .hostList = field.fieldType { return nil }
+            guard ConnectionFieldCatalog.trust(of: field.id) == .destination,
+                  declared.isVisible(field, forValues: additionalFields)
+            else { return nil }
+            return field.id
+        }
     }
 
     private var destinationTransport: ConnectionDestination.Transport {

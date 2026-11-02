@@ -22,6 +22,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     static let databaseDisplayName = "Oracle"
     static let iconName = "oracle-icon"
     static let defaultPort = 1_521
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: OracleConnectionOptions.AdditionalFieldKey.connectionType,
@@ -245,7 +246,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             serviceName: config.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? "",
             sid: config.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? "",
             role: OracleConnectionOptions.role(from: config.additionalFields),
-            tls: config.ssl.oracleTLSDescription,
+            tls: config.ssl.oracleTLSDescription(serverName: config.tunneledServerName),
             networkEncryption: OracleConnectionOptions.networkEncryption(from: config.additionalFields),
             loginTimeoutSeconds: OracleConnectionOptions.loginTimeoutSeconds(from: config.additionalFields)
         )

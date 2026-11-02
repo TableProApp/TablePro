@@ -60,7 +60,7 @@ internal enum SpannerCredentialFactory {
         if let value = trimmed(fields["spServiceAccountJson"]) {
             return value
         }
-        if let value = trimmed(password) {
+        if let value = GoogleServiceAccountKey.inlineDocument(fromPassword: password) {
             return value
         }
         throw SpannerConfigurationError.missingField("spServiceAccountJson")

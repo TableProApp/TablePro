@@ -12,6 +12,141 @@ struct SQLStatementClassifierTests {
         classify(sql, engine).tier
     }
 
+    private static func deletesEveryRow(_ sql: String, _ engine: String) -> Bool {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: engine, declared: nil, session: nil)
+        return SQLStatementClassifier.deletesEveryRow(sql, databaseTypeId: engine, readings: readings)
+    }
+
+    @Test("A PostgreSQL E'' string continued after a line break hides no statement, a vertical tab before it too",
+          arguments: [
+              "SELECT E'x'\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+              "SELECT e'x' -- note\r\n  -- note\n\t'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+              "SELECT E'x'\n'y'\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+              "SELECT E'x'\u{0B}\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'",
+          ])
+    func continuedEscapeStringHidesNoStatement(sql: String) {
+        #expect(Self.tier(sql, "PostgreSQL") == .write)
+        #expect(Self.deletesEveryRow(sql, "PostgreSQL"))
+        #expect(Self.deletesEveryRow(sql, "KingbaseES"))
+        #expect(Self.deletesEveryRow(sql, "DuckDB"))
+    }
+
+    @Test("A CockroachDB b'' string continued after a line break hides no statement")
+    func continuedEscapeBytesHidesNoStatement() {
+        #expect(Self.deletesEveryRow("SELECT b'a'\n'\\''; COMMIT; DELETE FROM orders; --'", "CockroachDB"))
+    }
+
+    @Test("DuckDB 2.0 ends an E'' string at its quote and quotes a name in backticks", arguments: [
+        "SELECT E'x'\n'\\'; DELETE FROM orders; --'",
+        "SELECT 1 AS `'`; DELETE FROM orders; --'",
+        "SELECT 1 AS `'`; COMMIT; DELETE FROM orders; --'",
+    ])
+    func duckDBHidesNoStatementInAString(sql: String) {
+        #expect(Self.deletesEveryRow(sql, "DuckDB"))
+    }
+
+    @Test("A DuckDB backtick name hides no DROP, and names a file only when it holds a path")
+    func duckDBBacktickNameHidesNoDrop() {
+        #expect(Self.tier("SELECT 1 AS `'`; DROP TABLE orders; --'", "DuckDB") == .destructive)
+        #expect(Self.tier("SELECT `a;b` FROM t", "DuckDB") == .safe)
+        #expect(Self.classify("SELECT * FROM `main`.`orders`", "DuckDB") == .safe)
+        #expect(Self.classify("SELECT * FROM `payroll.csv`", "DuckDB").reachesFilesystemOrExecutesCode)
+    }
+
+    @Test("T-SQL calls the procedure a batch opens with when no statement begins with that word", arguments: [
+        "SHOW 'x'", "HELP 'x'", "INFO 'x'", "show tables", "EXPLAIN SELECT 1", "DESCRIBE orders",
+    ])
+    func batchOpeningWithAProcedureNameWrites(sql: String) {
+        #expect(Self.tier(sql, "SQL Server") == .write)
+    }
+
+    @Test("A T-SQL read that opens with a statement keyword, or a SHOW elsewhere, stays a read", arguments: [
+        ("SQL Server", "PRINT 'x'"),
+        ("SQL Server", "SELECT 1"),
+        ("SQL Server", "WITH c AS (SELECT 1 AS a) SELECT a FROM c"),
+        ("SQL Server", "SELECT a FROM t OPTION (USE HINT ('FORCE_LEGACY_CARDINALITY_ESTIMATION'))"),
+        ("SQL Server", "SELECT a FROM t ORDER BY a OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY"),
+        ("SQL Server", "SELECT a FROM t WITH (NOLOCK) WHERE id = 1"),
+        ("MySQL", "SHOW TABLES"),
+        ("ClickHouse", "SHOW TABLES"),
+    ])
+    func readsStayReads(engine: String, sql: String) {
+        #expect(Self.tier(sql, engine) == .safe)
+    }
+
+    @Test("A T-SQL statement after a SELECT with no ; that sets session or server state writes", arguments: [
+        "SELECT 1\nSET NOCOUNT ON",
+        "SELECT 1\nUSE master",
+        "SELECT 1\nRAISERROR('x', 10, 1) WITH LOG",
+        "SELECT 1\nWAITFOR DELAY '00:00:05'",
+        "SELECT 1\nDECLARE @n int",
+    ])
+    func sessionStatementAfterASelectWrites(sql: String) {
+        #expect(Self.tier(sql, "SQL Server") == .write)
+    }
+
+    @Test("A WHERE in a later T-SQL statement does not filter an earlier DELETE or UPDATE")
+    func laterWhereFiltersNothingEarlier() {
+        let sqlServer = SQLLexicalReadings.resolve(databaseTypeId: "SQL Server", declared: nil, session: nil).execution
+        for sql in [
+            "DELETE FROM orders\nSET @c = CURSOR FOR SELECT id FROM orders WHERE id = 1",
+            "DELETE FROM orders\nCREATE INDEX ix ON lines (order_id) WHERE order_id > 0",
+        ] {
+            #expect(Self.deletesEveryRow(sql, "SQL Server"), "\(sql)")
+        }
+        for sql in [
+            "UPDATE orders SET total = 0\nDECLARE c CURSOR FOR SELECT id FROM orders WHERE id = 1",
+            "UPDATE orders SET total = 0\nCREATE STATISTICS s ON lines (order_id) WHERE order_id > 0",
+        ] {
+            #expect(SQLUnfilteredWrite.writes(in: sql, grammar: sqlServer).contains(.update), "\(sql)")
+        }
+        #expect(Self.tier("ALTER TABLE t ADD x int\nDROP PARTITION SCHEME ps", "SQL Server") == .destructive)
+        #expect(Self.tier("ALTER TABLE t ADD x int\nDROP SYMMETRIC KEY k", "SQL Server") == .destructive)
+    }
+
+    @Test("A built-in measured to change state from inside a read is a write", arguments: [
+        ("PostgreSQL", """
+        SELECT * FROM crosstab('SELECT pid::text, ''x'', pg_terminate_backend(pid)::text FROM pg_stat_activity') \
+        AS ct(r text, x text)
+        """),
+        ("PostgreSQL", "SELECT * FROM crosstab2('SELECT 1')"),
+        ("PostgreSQL", "SELECT * FROM connectby('tree', 'id', 'parent', '1', 0) AS t(id text, parent text, level int)"),
+        ("PostgreSQL", "SELECT * FROM xpath_table('id', 'doc', 'docs', '/a', 'true') AS t(id int, a text)"),
+        ("PostgreSQL", "SELECT pg_import_system_collations('public'::regnamespace)"),
+        ("PostgreSQL", "SELECT heap_force_kill('orders'::regclass, ARRAY['(0,1)']::tid[])"),
+        ("PostgreSQL", "SELECT pg_truncate_visibility_map('orders'::regclass)"),
+        ("PostgreSQL", "SELECT pg_file_write('postgresql.auto.conf', 'x', true)"),
+        ("PostgreSQL", "SELECT pg_file_unlink('postgresql.auto.conf')"),
+        ("MariaDB", "SELECT relea\u{017F}e_lock('l')"),
+        ("MariaDB", "SELECT RELEA\u{017F}E_ALL_LOCK\u{017F}()"),
+        ("DuckDB", "SELECT * FROM query('SELECT nextval(''s'')')"),
+        ("DuckDB", "SELECT * FROM json_execute_serialized_sql(json_serialize_sql('SELECT nextval(''s'')'))"),
+        ("DuckDB", "SELECT * FROM postgres_execute('pg', 'DROP TABLE orders')"),
+        ("DuckDB", "SELECT * FROM postgres_query('pg', 'DROP TABLE orders')"),
+        ("DuckDB", "SELECT * FROM mysql_query('my', 'DELETE FROM orders')"),
+        ("DuckDB", "SELECT * FROM sqlite_query('lite', 'DELETE FROM orders')"),
+        ("DuckDB", "SELECT * FROM dbgen(sf = 0.01)"),
+        ("SQLite", "SELECT * FROM pragma_optimize"),
+        ("SQLite", "SELECT * FROM main.pragma_optimize(0x10002)"),
+        ("SQLite", "SELECT * FROM orders, \"pragma_optimize\""),
+        ("SQLite", "SELECT * FROM pragma_optimize WHERE arg = 65538"),
+        ("SQLite", "SELECT * FROM [PRAGMA_OPTIMIZE]"),
+        ("SQLite", "SELECT * FROM 'pragma_optimize'"),
+    ])
+    func stateChangingBuiltInWrites(engine: String, sql: String) {
+        #expect(Self.tier(sql, engine) == .write)
+    }
+
+    @Test("A name that only looks like one of those built-ins reads", arguments: [
+        ("PostgreSQL", "SELECT dblink FROM links"),
+        ("PostgreSQL", "SELECT file, url, query(1) FROM downloads"),
+        ("DuckDB", "SELECT query FROM searches"),
+        ("SQLite", "SELECT * FROM pragma_table_info('orders')"),
+    ])
+    func lookalikeNameReads(engine: String, sql: String) {
+        #expect(Self.tier(sql, engine) == .safe)
+    }
+
     @Test("SurrealQL's REMOVE drops what it names, wherever the statement stands", arguments: [
         "REMOVE TABLE person",
         "remove table if exists person;",

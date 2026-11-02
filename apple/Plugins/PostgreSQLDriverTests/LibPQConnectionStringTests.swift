@@ -79,7 +79,7 @@ struct LibPQConnectionStringTests {
         )
     }
 
-    private func buildKerberos(host: String, serviceHost: String? = nil) throws -> String {
+    private func buildKerberos(host: String, serverName: String? = nil) throws -> String {
         try LibPQConnectionString.build(
             host: host,
             port: 5_432,
@@ -88,7 +88,35 @@ struct LibPQConnectionStringTests {
             database: "app",
             sslConfig: SSLConfiguration(),
             options: nil,
-            kerberos: LibPQKerberosSignIn(gssEncryptionMode: "require", cachePath: nil, serviceHost: serviceHost)
+            kerberos: LibPQKerberosSignIn(gssEncryptionMode: "require", cachePath: nil),
+            serverName: serverName
+        )
+    }
+
+    private func build(dialing host: String, serverName: String?, mode: SSLMode = .verifyIdentity) throws -> String {
+        try LibPQConnectionString.build(
+            host: host,
+            port: 54_321,
+            user: "postgres",
+            password: "hunter2",
+            database: "app",
+            sslConfig: SSLConfiguration(mode: mode, caCertificatePath: "/ca.pem"),
+            options: nil,
+            serverName: serverName
+        )
+    }
+
+    private func build(from config: DriverConnectionConfig, kerberos: LibPQKerberosSignIn? = nil) throws -> String {
+        try LibPQConnectionString.build(
+            host: config.host,
+            port: config.port,
+            user: config.username,
+            password: config.password,
+            database: config.database,
+            sslConfig: config.ssl,
+            options: nil,
+            kerberos: kerberos,
+            serverName: config.tunneledServerName
         )
     }
 
@@ -112,16 +140,84 @@ struct LibPQConnectionStringTests {
 
     @Test("Behind a tunnel, GSS names the server's own host while libpq dials the tunnel")
     func kerberosThroughATunnel() throws {
-        let conninfo = try buildKerberos(host: "127.0.0.1", serviceHost: "db.corp.example.com")
+        let conninfo = try buildKerberos(host: "127.0.0.1", serverName: "db.corp.example.com")
 
         #expect(conninfo.hasPrefix("host='db.corp.example.com' hostaddr='127.0.0.1' port="))
     }
 
     @Test("A tunnel host that is not an address keeps the plain host", arguments: ["localhost", "/tmp"])
     func kerberosWithoutAnAddressKeepsTheHost(host: String) throws {
-        let conninfo = try buildKerberos(host: host, serviceHost: "db.corp.example.com")
+        let conninfo = try buildKerberos(host: host, serverName: "db.corp.example.com")
 
         #expect(!conninfo.contains("db.corp.example.com"))
+    }
+
+    @Test(
+        "Verify Identity through a forward checks the server's name while libpq dials the forward",
+        arguments: ["127.0.0.1", "::1"]
+    )
+    func verifyFullThroughAForward(dial: String) throws {
+        let conninfo = try build(dialing: dial, serverName: "db.example.com")
+
+        #expect(conninfo.hasPrefix("host='db.example.com' hostaddr='\(dial)' port='54321'"))
+        #expect(conninfo.contains("sslmode='verify-full'"))
+        #expect(conninfo.contains("sslrootcert='/ca.pem'"))
+    }
+
+    @Test("Verify CA through a forward keeps the CA and still dials the forward")
+    func verifyCAThroughAForward() throws {
+        let conninfo = try build(dialing: "127.0.0.1", serverName: "db.example.com", mode: .verifyCa)
+
+        #expect(conninfo.hasPrefix("host='db.example.com' hostaddr='127.0.0.1' port='54321'"))
+        #expect(conninfo.contains("sslmode='verify-ca'"))
+        #expect(conninfo.contains("sslrootcert='/ca.pem'"))
+    }
+
+    @Test(
+        "A stored pre-tunnel host names the server only when libpq dials a tunnel's forward",
+        arguments: [
+            ("127.0.0.1", "host='db.example.com' hostaddr='127.0.0.1' port="),
+            ("10.0.0.5", "host='10.0.0.5' port=")
+        ]
+    )
+    func storedPreTunnelHostOnlyThroughAForward(dial: String, expectedPrefix: String) throws {
+        let config = DriverConnectionConfig(
+            host: dial,
+            port: 5_432,
+            username: "postgres",
+            password: "",
+            database: "app",
+            ssl: SSLConfiguration(mode: .verifyIdentity, caCertificatePath: "/ca.pem"),
+            additionalFields: ["preTunnelHost": "db.example.com"]
+        )
+        let kerberos = LibPQKerberosSignIn(gssEncryptionMode: "prefer", cachePath: nil)
+
+        #expect(try build(from: config).hasPrefix(expectedPrefix))
+        #expect(try build(from: config, kerberos: kerberos).hasPrefix(expectedPrefix))
+    }
+
+    @Test("Every connection names a password file that cannot exist, so libpq never reads ~/.pgpass on its own")
+    func everyConnectionSkipsLibpqPassfile() throws {
+        let conninfos = [
+            try build(),
+            try build(password: nil),
+            try build(user: "", password: ""),
+            try buildKerberos(host: "db.corp.example.com"),
+            try build(dialing: "127.0.0.1", serverName: "db.example.com"),
+            try LibPQConnectionString.build(
+                host: "/tmp",
+                port: 5_432,
+                user: "postgres",
+                password: nil,
+                database: "app",
+                sslConfig: SSLConfiguration(),
+                options: nil
+            )
+        ]
+
+        for conninfo in conninfos {
+            #expect(conninfo.contains("passfile='/dev/null/pgpass'"))
+        }
     }
 
     @Test("The session is pinned to UTF8 in the startup packet, so RESET ALL and DISCARD ALL keep it")

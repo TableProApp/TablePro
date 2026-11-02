@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProImport
 
 @MainActor
@@ -106,6 +107,7 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         Set(connections.loadConnections().map(\.id))
     }
 
+    // A file's credential is the secret itself: a key document given as a path would read a key file on this Mac.
     func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {
         if let password = credentials.password {
             connections.savePassword(password, for: connectionId)
@@ -122,7 +124,16 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         if let totpSecret = credentials.totpSecret {
             connections.saveTOTPSecret(totpSecret, for: connectionId)
         }
-        for (fieldId, value) in credentials.pluginSecureFields ?? [:] {
+        let pluginSecureFields = credentials.pluginSecureFields ?? [:]
+        guard !pluginSecureFields.isEmpty else { return }
+        // A file names any id it likes; the Keychain holds only the fields this connection's type declares secure.
+        let declared = connections.loadConnection(id: connectionId)
+            .map { Set(PluginManager.shared.secureConnectionFieldIds(for: $0.type)) } ?? []
+        for (fieldId, value) in pluginSecureFields where declared.contains(fieldId) {
+            if ConnectionFieldCatalog.keyDocumentFieldIds.contains(fieldId),
+               !ConnectionFieldCatalog.isInlineKeyDocument(value) {
+                continue
+            }
             connections.savePluginSecureField(value, fieldId: fieldId, for: connectionId)
         }
     }
@@ -172,7 +183,7 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
                             ?? connection.redisDatabase,
                         socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
                     ),
-                    settings: exporter.portableSettings(for: connection)
+                    settings: exporter.portableSettings(for: connection, keepingLocalCredentials: false)
                 )
             },
             savedQueries: ledger ?? []

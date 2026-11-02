@@ -749,7 +749,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: cassandraColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [
+                    additionalConnectionFields: AWSAuthFields.standard() + [
                         ConnectionField(
                             id: "sslCaCertPath",
                             label: "CA Certificate",

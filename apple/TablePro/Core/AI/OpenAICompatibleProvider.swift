@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProHTTP
 import TableProMCP
 
 final class OpenAICompatibleProvider: ChatTransport {
@@ -285,7 +286,7 @@ final class OpenAICompatibleProvider: ChatTransport {
             ]
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 return false
@@ -546,7 +547,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         } catch {
             Self.logger.warning("OpenAI-compatible model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError(
@@ -593,7 +594,7 @@ final class OpenAICompatibleProvider: ChatTransport {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         } catch {
             Self.logger.warning("Ollama model fetch failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError(

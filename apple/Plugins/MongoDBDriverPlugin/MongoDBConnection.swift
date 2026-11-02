@@ -76,6 +76,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     private let extraUriParams: [String: String]
     let uuidRepresentation: MongoDBUuidRepresentation
     private let connectTimeout: MongoDBConnectTimeout
+    private let tunneledServerName: String?
 
     private let controlQueue = DispatchQueue(label: "com.TablePro.mongodb.control", qos: .userInitiated)
 
@@ -89,6 +90,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     private var _clientCertificateFile: MongoDBClientCertificateFile?
     #if canImport(CLibMongoc)
     private var _activeSessionLsid: OpaquePointer?
+    private var _tunnelStreamInitiator: MongoDBTunnelStreamInitiator?
     #endif
     private var _sessionsBeingKilled = MongoSessionKills()
 
@@ -144,6 +146,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         database: String,
         configuredDatabase: String,
         ssl: SSLConfiguration = SSLConfiguration(),
+        tunneledServerName: String?,
         authSource: String? = nil,
         readPreference: String? = nil,
         writeConcern: String? = nil,
@@ -162,6 +165,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         self.password = password
         self.database = database
         self.ssl = ssl
+        self.tunneledServerName = tunneledServerName
         self.resolvedAuthSource = MongoDBAuthSourceResolver.resolve(
             explicitAuthSource: authSource,
             configuredDatabase: configuredDatabase,
@@ -223,17 +227,31 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         stateLock.lock()
         let handle = client
         client = nil
+        let initiator = _tunnelStreamInitiator
         stateLock.unlock()
         let cleanupQueue = queue
         if let handle = handle {
             cleanupQueue.async {
-                mongoc_client_destroy(handle)
+                withExtendedLifetime(initiator) { mongoc_client_destroy(handle) }
             }
         }
         #endif
     }
 
     // MARK: - URI Construction
+
+    private var uriOptions: [MongoDBURIOption] {
+        MongoDBConnectionURI.options(
+            connectTimeout: connectTimeout,
+            authSource: resolvedAuthSource,
+            ssl: MongoDBSSLMapping.uriOptions(for: ssl, certificateKeyFile: clientCertificateFile?.path),
+            readPreference: readPreference,
+            writeConcern: writeConcern,
+            authMechanism: authMechanism,
+            replicaSet: replicaSet,
+            extraParams: extraUriParams
+        )
+    }
 
     private func buildUri() -> String {
         MongoDBConnectionURI(
@@ -243,17 +261,21 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
             user: user,
             password: password,
             database: database,
-            options: MongoDBConnectionURI.options(
-                connectTimeout: connectTimeout,
-                authSource: resolvedAuthSource,
-                ssl: MongoDBSSLMapping.uriOptions(for: ssl, certificateKeyFile: clientCertificateFile?.path),
-                readPreference: readPreference,
-                writeConcern: writeConcern,
-                authMechanism: authMechanism,
-                replicaSet: replicaSet,
-                extraParams: extraUriParams
-            )
+            options: uriOptions
         ).text
+    }
+
+    var tunnelTLS: MongoDBTunnelTLS? {
+        // The spelling the URI keeps, when a pasted string left more than one.
+        let keyPassword = uriOptions.first {
+            MongoDBConnectionURI.canonicalKey($0.key) == "tlscertificatekeyfilepassword"
+        }
+        return MongoDBSSLMapping.tunnelTLS(
+            for: ssl,
+            serverName: tunneledServerName,
+            certificateKeyFile: clientCertificateFile?.path,
+            certificateKeyPassword: keyPassword?.value
+        )
     }
 
     /// Strips a trailing `:port` from a hostname intended for an SRV URI.
@@ -290,9 +312,15 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         try await pluginDispatchAsync(on: queue) { [self] in
             try prepareClientCertificateFile()
             let uriString = buildUri()
+            let initiator = tunnelTLS.map {
+                MongoDBTunnelStreamInitiator($0, connectTimeoutMS: connectTimeout.milliseconds)
+            }
+            stateLock.lock()
+            _tunnelStreamInitiator = initiator
+            stateLock.unlock()
             logger.debug("Connecting to MongoDB at \(self.host):\(self.port)")
 
-            let newClient = try Self.makeClient(uriString)
+            let newClient = try Self.makeClient(uriString, initiator: initiator)
 
             var error = bson_error_t()
             guard let pingCmd = jsonToBson("{\"ping\": 1}") else {
@@ -351,6 +379,8 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         client = nil
         let staleLsid = _activeSessionLsid
         _activeSessionLsid = nil
+        let initiator = _tunnelStreamInitiator
+        _tunnelStreamInitiator = nil
         #endif
         _isConnected = false
         _cachedServerVersion = nil
@@ -361,7 +391,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         #if canImport(CLibMongoc)
         if let staleLsid { bson_destroy(staleLsid) }
         if let handle = handle {
-            queue.async { mongoc_client_destroy(handle) }
+            queue.async { withExtendedLifetime(initiator) { mongoc_client_destroy(handle) } }
         }
         #endif
         removeClientCertificateFile()
@@ -434,6 +464,9 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     // The connection's own queue is blocked inside the call being cancelled, so killSessions needs its own client.
     private func killSession(lsid: OpaquePointer, key: String) {
         let uriString = buildUri()
+        stateLock.lock()
+        let initiator = _tunnelStreamInitiator
+        stateLock.unlock()
         let session = QueueTransfer(value: lsid)
         controlQueue.async { [weak self] in
             let lsid = session.value
@@ -441,8 +474,8 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
                 bson_destroy(lsid)
                 self?.finishedKilling(key)
             }
-            guard let controlClient = try? MongoDBConnection.makeClient(uriString) else { return }
-            defer { mongoc_client_destroy(controlClient) }
+            guard let controlClient = try? MongoDBConnection.makeClient(uriString, initiator: initiator) else { return }
+            defer { withExtendedLifetime(initiator) { mongoc_client_destroy(controlClient) } }
 
             let command = bson_new()
             defer { bson_destroy(command) }
@@ -469,7 +502,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
     }
 
     // The URI holds the password, so the error carries only libmongoc's reason.
-    private static func makeClient(_ uriString: String) throws -> OpaquePointer {
+    private static func makeClient(_ uriString: String, initiator: MongoDBTunnelStreamInitiator?) throws -> OpaquePointer {
         var error = bson_error_t()
         guard let uri = mongoc_uri_new_with_error(uriString, &error) else {
             let message = MongoBsonBuilder.errorMessage(&error)
@@ -482,6 +515,7 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
             logger.error("Failed to create MongoDB client: \(message)")
             throw MongoDBError(code: error.code, message: message)
         }
+        initiator?.install(on: client)
         return client
     }
     #endif

@@ -472,7 +472,7 @@ struct IOSConnectionImportServiceTests {
         #expect(appState.addConnection(existing))
         let keyAccount = ConnectionSecretKind.sshPrivateKey.account(for: existing.id)
         store.seed(keyAccount, "PASTED KEY")
-        let imported = IOSConnectionExportService.portableSettings(for: existing)
+        let imported = IOSConnectionExportService.portableSettings(for: existing, keepingLocalCredentials: true)
         let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
         let preview = try await analyzed(bundle)
         let row = try ref(of: existing.name, in: preview)
@@ -510,9 +510,9 @@ struct IOSConnectionImportServiceTests {
         )
         #expect(appState.addConnection(documents))
         #expect(appState.addConnection(tunnelled))
-        var otherHosts = IOSConnectionExportService.portableSettings(for: documents)
+        var otherHosts = IOSConnectionExportService.portableSettings(for: documents, keepingLocalCredentials: true)
         otherHosts.additionalFields?["mongoHosts"] = "mongo1.example.com:27017,mongo.attacker.example:27017"
-        var otherServer = IOSConnectionExportService.portableSettings(for: tunnelled)
+        var otherServer = IOSConnectionExportService.portableSettings(for: tunnelled, keepingLocalCredentials: true)
         otherServer.sshConfig?.host = "bastion.attacker.example"
 
         for (imported, existing) in [(otherHosts, documents), (otherServer, tunnelled)] {
@@ -522,6 +522,65 @@ struct IOSConnectionImportServiceTests {
             #expect(row.duplicate?.id == existing.id, "\(existing.name)")
             #expect(row.resolutions == [.addCopy], "\(existing.name)")
         }
+    }
+
+    @Test("A row that signs in with this device's Microsoft Entra account imports without that sign-in")
+    func entraSignInIsDropped() async throws {
+        let entra = ExportableConnection(
+            name: "Reports",
+            host: "sql.attacker.example",
+            port: 1_433,
+            database: "reports",
+            username: "",
+            type: DatabaseType.mssql.rawValue,
+            additionalFields: [
+                "mssqlAuthMethod": "entra",
+                "entraTenantId": "victim-tenant",
+                "entraClientId": "attacker-app",
+                "mssqlSchema": "dbo"
+            ]
+        )
+
+        let connection = try await importedConnection(entra)
+
+        #expect(connection.additionalFields == ["mssqlSchema": "dbo"])
+        #expect(DatabaseConnection(importedSettings: entra).additionalFields == ["mssqlSchema": "dbo"])
+    }
+
+    @Test("A row that signs in with this device's credentials is still offered Replace, and keeps its sign-in and scripts")
+    func replaceKeepsTheLocalSignIn() async throws {
+        let existing = DatabaseConnection(
+            name: "Reports",
+            type: .mssql,
+            host: "sql.corp.example",
+            port: 1_433,
+            username: "",
+            database: "reports",
+            additionalFields: [
+                "mssqlAuthMethod": "entra",
+                "entraTenantId": "corp-tenant",
+                "mssqlSchema": "dbo",
+                "preConnectScript": "op signin",
+                "zzzFutureSetting": "kept"
+            ]
+        )
+        #expect(appState.addConnection(existing))
+        var exported = IOSConnectionExportService.portableSettings(for: existing, keepingLocalCredentials: true)
+        exported.name = "Reports (shared)"
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: exported)])
+        let preview = try await analyzed(bundle)
+        let row = try ref(of: "Reports (shared)", in: preview)
+        var selection = ImportSelection.defaults(for: preview)
+        selection.setSelected(true, connection: row, in: preview)
+
+        let replaces = selection.resolve(row, as: .replace(existing.id), in: preview)
+        #expect(replaces)
+        let outcome = await apply(preview, selection)
+        #expect(outcome.connectionsReplaced == 1)
+
+        let replaced = try #require(appState.connections.first { $0.id == existing.id })
+        #expect(replaced.name == "Reports (shared)")
+        #expect(replaced.additionalFields == existing.additionalFields)
     }
 
     @Test("Replacing a connection keeps the route a Mac dialed for the same tunnel")
@@ -541,7 +600,7 @@ struct IOSConnectionImportServiceTests {
             target: .init(alias: "bastion.example.com", host: "10.0.0.5", port: 22, username: "deploy")
         )
         #expect(appState.addConnection(existing))
-        let imported = IOSConnectionExportService.portableSettings(for: existing)
+        let imported = IOSConnectionExportService.portableSettings(for: existing, keepingLocalCredentials: true)
         let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
         let preview = try await analyzed(bundle)
         let row = try ref(of: existing.name, in: preview)
@@ -573,7 +632,7 @@ struct IOSConnectionImportServiceTests {
             let profileId = UUID()
             existing.sshProfileId = profileId
             #expect(appState.addConnection(existing))
-            var imported = IOSConnectionExportService.portableSettings(for: existing)
+            var imported = IOSConnectionExportService.portableSettings(for: existing, keepingLocalCredentials: true)
             imported.sshConfig?.host = host
             let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
             let preview = try await analyzed(bundle)
@@ -777,7 +836,7 @@ struct IOSConnectionImportServiceTests {
         let connection = try await importedConnection(settings(ssl: ExportableSSLConfig(mode: "Preferred")))
         #expect(connection.sslConfiguration?.mode == .require)
         #expect(connection.sslConfiguration?.isMacPreferred == true)
-        #expect(IOSConnectionExportService.portableSettings(for: connection).sslConfig?.mode == "Preferred")
+        #expect(IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: true).sslConfig?.mode == "Preferred")
     }
 
     // MARK: - Settings
@@ -829,13 +888,13 @@ struct IOSConnectionImportServiceTests {
             additionalFields: [
                 DatabaseConnection.connectTimeoutSecondsKey: "99",
                 DatabaseConnection.queryTimeoutSecondsKey: "88",
-                "schema": "public"
+                "connectionOptions": "-c search_path=app"
             ]
         ))
 
         #expect(connection.connectTimeoutSeconds == 12)
         #expect(connection.queryTimeoutSeconds == 0)
-        #expect(connection.additionalFields["schema"] == "public")
+        #expect(connection.additionalFields["connectionOptions"] == "-c search_path=app")
     }
 
     @Test("Older additional fields migrate to timeout overrides")
@@ -857,13 +916,13 @@ struct IOSConnectionImportServiceTests {
             additionalFields: [
                 DatabaseConnection.connectTimeoutSecondsKey: "15",
                 DatabaseConnection.queryTimeoutSecondsKey: "30",
-                "schema": "public"
+                "connectionOptions": "-c search_path=app"
             ]
         ))
 
         #expect(connection.connectTimeoutSeconds == nil)
         #expect(connection.queryTimeoutSeconds == nil)
-        #expect(connection.additionalFields == ["schema": "public"])
+        #expect(connection.additionalFields == ["connectionOptions": "-c search_path=app"])
     }
 
     @Test("Query timeout import accepts the maximum safe value")

@@ -61,6 +61,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let suppressServerSideCancel: Bool
     private let connectTimeout: LibPQConnectTimeout
     private let kerberos: LibPQKerberosSignIn?
+    private let serverName: String?
     let pinsCatalogSearchPath: Bool
 
     private let stateLock = NSLock()
@@ -126,6 +127,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             milliseconds: LibPQConnectTimeout.defaultMilliseconds
         ),
         kerberos: LibPQKerberosSignIn? = nil,
+        serverName: String? = nil,
         pinsCatalogSearchPath: Bool = true
     ) {
         self.host = host
@@ -139,6 +141,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         self.suppressServerSideCancel = suppressServerSideCancel
         self.connectTimeout = connectTimeout
         self.kerberos = kerberos
+        self.serverName = serverName
         self.pinsCatalogSearchPath = pinsCatalogSearchPath
     }
 
@@ -587,7 +590,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
             options: options,
             applicationName: applicationName,
             connectTimeoutSeconds: connectTimeout.nativeSeconds,
-            kerberos: kerberos
+            kerberos: kerberos,
+            serverName: serverName
         )
     }
 

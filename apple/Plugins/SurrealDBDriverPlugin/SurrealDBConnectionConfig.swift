@@ -36,6 +36,9 @@ public struct SurrealDBConnectionConfig: Sendable {
     public let access: String
     public let useTLS: Bool
     public let skipTLSVerify: Bool
+    // Behind a tunnel the URL names its loopback forward, so URLSession's own check would test 127.0.0.1.
+    public let tunneledServerName: String?
+    public let verifiesHostname: Bool
 
     public init(config: DriverConnectionConfig) {
         let fields = config.additionalFields
@@ -51,6 +54,8 @@ public struct SurrealDBConnectionConfig: Sendable {
         self.useTLS = config.ssl.isEnabled
         self.skipTLSVerify = fields[Self.skipTLSVerifyField] == "true"
             || (config.ssl.isEnabled && !config.ssl.verifiesCertificate)
+        self.tunneledServerName = skipTLSVerify || !config.ssl.verifiesCertificate ? nil : config.tunneledServerName
+        self.verifiesHostname = config.ssl.verifiesHostname
     }
 
     public var baseURL: URL? {

@@ -47,6 +47,7 @@ enum NativeDumpError: LocalizedError, Equatable {
     case incompatibleTool(message: String)
     case unreachableServer(message: String)
     case nulInArgument
+    case uncheckedThroughTunnel(tool: String, mode: SSLMode, supportedModes: [SSLMode])
 
     var errorDescription: String? {
         switch self {
@@ -70,6 +71,15 @@ enum NativeDumpError: LocalizedError, Equatable {
             return message
         case .nulInArgument:
             return String(localized: "The database name or a sign-in value holds a NUL character, which a command line cannot carry.")
+        case .uncheckedThroughTunnel(let tool, let mode, let supportedModes):
+            return String(
+                format: String(
+                    localized: "This connection uses SSL Mode %2$@, which %1$@ cannot check through a tunnel. Set SSL Mode to %3$@, or connect without the tunnel."
+                ),
+                tool,
+                mode.displayLabel,
+                supportedModes.map(\.displayLabel).formatted(.list(type: .or))
+            )
         }
     }
 }

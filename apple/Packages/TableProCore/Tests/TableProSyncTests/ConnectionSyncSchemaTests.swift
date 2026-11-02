@@ -195,6 +195,29 @@ struct ConnectionSyncSchemaTests {
         #expect(additionalFields["mongoParam_authMechanismProperties"] == "SERVICE_NAME:mongodb")
     }
 
+    @Test("host-set fields and secure values never reach the record, scripts and unknown fields do")
+    func hostFieldsAndSecretsStayOffTheRecord() throws {
+        var connection = makeFullyPopulatedConnection()
+        connection.additionalFields = [
+            "preTunnelHost": "db.internal",
+            "sqliteBackend": "agent",
+            "esApiKey": "c2VjcmV0",
+            "kerberosPassword": "hunter2",
+            "preConnectScript": "op signin",
+            "zzzFutureSelector": "kept"
+        ]
+        let record = SyncRecordMapper.toRecord(connection, zoneID: zoneID)
+        let data = try #require(record.fields(ConnectionSyncField.self)[.additionalFieldsJson] as? Data)
+        let additionalFields = try JSONDecoder().decode([String: String].self, from: data)
+
+        #expect(additionalFields == ["preConnectScript": "op signin", "zzzFutureSelector": "kept"])
+
+        let updated = SyncRecordMapper.toRecord(makeFullyPopulatedConnection(), zoneID: zoneID)
+        SyncRecordMapper.updateRecord(updated, with: connection)
+        let updatedData = try #require(updated.fields(ConnectionSyncField.self)[.additionalFieldsJson] as? Data)
+        #expect(try JSONDecoder().decode([String: String].self, from: updatedData) == additionalFields)
+    }
+
     @Test("clearing additional fields removes their previous record value")
     func clearingAdditionalFieldsRemovesRecordValue() {
         var connection = makeFullyPopulatedConnection()

@@ -29,6 +29,10 @@ public struct HTTPOrigin: Hashable, Sendable {
         host == "127.0.0.1" || host == "::1" || host == "localhost"
     }
 
+    public func contains(_ url: URL?) -> Bool {
+        url.flatMap(HTTPOrigin.init) == self
+    }
+
     public var url: URL? {
         var components = URLComponents()
         components.scheme = scheme
@@ -41,7 +45,7 @@ public struct HTTPOrigin: Hashable, Sendable {
     public func followServerURL(_ value: String) throws -> URL {
         guard let base = url,
               let resolved = URL(string: value, relativeTo: base)?.absoluteURL,
-              HTTPOrigin(resolved) == self
+              contains(resolved)
         else {
             throw CredentialedHTTPError.crossOrigin(value)
         }

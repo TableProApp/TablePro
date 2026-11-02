@@ -378,6 +378,11 @@ let package = Package(
             path: "Tests/TableProNeo4jCoreTests"
         ),
         .testTarget(
+            name: "TableProWeaviateCoreTests",
+            dependencies: ["TableProWeaviateCore", "TableProTLSTestFixtures"],
+            path: "Tests/TableProWeaviateCoreTests"
+        ),
+        .testTarget(
             name: "TableProFirebaseCoreTests",
             dependencies: ["TableProFirebaseCore"],
             path: "Tests/TableProFirebaseCoreTests"
@@ -405,7 +410,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTrinoCoreTests",
-            dependencies: ["TableProTrinoCore", "TableProSQLGrammar"],
+            dependencies: ["TableProTrinoCore", "TableProSQLGrammar", "TableProTLSTestFixtures"],
             path: "Tests/TableProTrinoCoreTests"
         ),
         .testTarget(
