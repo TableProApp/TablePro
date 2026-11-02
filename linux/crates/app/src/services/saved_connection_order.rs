@@ -1,8 +1,48 @@
 //! The order every connection picker shows the saved connections in.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
-use tablepro_storage::{ConnectionGroupName, ConnectionTag, SavedConnection};
+use tablepro_storage::{ConnectionGroup, ConnectionTag, GroupTree, SavedConnection};
+use uuid::Uuid;
+
+/// A group as the pickers name it: its path, such as `Work / Staging`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct GroupLabels {
+    by_id: HashMap<Uuid, String>,
+    /// In the order of the library's tree, so a label two groups share
+    /// names the first of them.
+    listed: Vec<(Uuid, String)>,
+}
+
+impl GroupLabels {
+    pub(crate) fn new(groups: &[ConnectionGroup]) -> Self {
+        let tree = GroupTree::new(groups);
+        let listed: Vec<(Uuid, String)> = tree
+            .walk()
+            .into_iter()
+            .filter_map(|group| Some((group.id, tree.label(group.id)?)))
+            .collect();
+        Self {
+            by_id: listed.iter().cloned().collect(),
+            listed,
+        }
+    }
+
+    pub(crate) fn of(&self, connection: &SavedConnection) -> Option<&str> {
+        connection
+            .group_id
+            .and_then(|id| self.by_id.get(&id))
+            .map(String::as_str)
+    }
+
+    pub(crate) fn group_labelled(&self, label: &str) -> Option<Uuid> {
+        self.listed
+            .iter()
+            .find(|(_, listed)| listed == label)
+            .map(|(id, _)| *id)
+    }
+}
 
 /// Sort the list the way every picker shows it.
 ///
@@ -12,10 +52,10 @@ use tablepro_storage::{ConnectionGroupName, ConnectionTag, SavedConnection};
 /// recency-first with an alphabetical tiebreaker, so the connection
 /// opened last is the one nearest the top. Never-opened connections
 /// fall to the end of their block and sort by name among themselves.
-pub(crate) fn sort(connections: &mut [SavedConnection]) {
+pub(crate) fn sort(connections: &mut [SavedConnection], labels: &GroupLabels) {
     connections.sort_by(|a, b| {
-        group_key(a)
-            .cmp(&group_key(b))
+        group_key(labels, a)
+            .cmp(&group_key(labels, b))
             .then_with(|| recency_key(a).cmp(&recency_key(b)))
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
@@ -24,22 +64,19 @@ pub(crate) fn sort(connections: &mut [SavedConnection]) {
 /// The order of the window's connection tree: the picker's blocks, each
 /// by name rather than by recency, so a connect never moves an open
 /// connection's row away from under the pointer.
-pub(crate) fn by_name(a: &SavedConnection, b: &SavedConnection) -> Ordering {
-    group_key(a)
-        .cmp(&group_key(b))
+pub(crate) fn by_name(labels: &GroupLabels, a: &SavedConnection, b: &SavedConnection) -> Ordering {
+    group_key(labels, a)
+        .cmp(&group_key(labels, b))
         .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         .then_with(|| a.name.cmp(&b.name))
         .then_with(|| a.id.cmp(&b.id))
 }
 
-/// Ungrouped sorts before every group, and groups sort by name
-/// regardless of how they were capitalised. Two names that differ only
+/// Ungrouped sorts before every group, and groups sort by label
+/// regardless of how they were capitalised. Two labels that differ only
 /// in case stay two blocks, in a fixed order.
-fn group_key(connection: &SavedConnection) -> Option<(String, &str)> {
-    connection
-        .group
-        .as_ref()
-        .map(|group| (group.as_str().to_lowercase(), group.as_str()))
+fn group_key<'a>(labels: &'a GroupLabels, connection: &SavedConnection) -> Option<(String, &'a str)> {
+    labels.of(connection).map(|label| (label.to_lowercase(), label))
 }
 
 /// Newest first, with never-opened last. The timestamp is negated
@@ -65,11 +102,11 @@ pub(crate) fn sort_tags(tags: &mut [ConnectionTag]) {
 
 /// Every group in `sorted`, once each, in the order the list shows them:
 /// the order of the picker's sections and of every Move to Group menu.
-pub(crate) fn groups(sorted: &[SavedConnection]) -> Vec<ConnectionGroupName> {
-    let mut found: Vec<ConnectionGroupName> = Vec::new();
-    for group in sorted.iter().filter_map(|connection| connection.group.as_ref()) {
-        if !found.contains(group) {
-            found.push(group.clone());
+pub(crate) fn groups(sorted: &[SavedConnection], labels: &GroupLabels) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for label in sorted.iter().filter_map(|connection| labels.of(connection)) {
+        if !found.iter().any(|held| held == label) {
+            found.push(label.to_owned());
         }
     }
     found
@@ -103,7 +140,8 @@ mod tests {
                     .expect("a time")
             }),
             color: None,
-            group: group.map(|group| ConnectionGroupName::new(group).expect("a group name")),
+            group_id: group.map(crate::test_support::group_id),
+            order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
@@ -114,6 +152,19 @@ mod tests {
         connections.iter().map(|saved| saved.name.clone()).collect()
     }
 
+    fn labels(connections: &[SavedConnection]) -> GroupLabels {
+        GroupLabels::new(&crate::test_support::groups_of(connections))
+    }
+
+    fn sorted(list: &mut [SavedConnection]) {
+        let labels = labels(list);
+        sort(list, &labels);
+    }
+
+    fn group_list(list: &[SavedConnection]) -> Vec<String> {
+        groups(list, &labels(list))
+    }
+
     #[test]
     fn ungrouped_connections_lead_the_list() {
         let mut list = vec![
@@ -121,7 +172,7 @@ mod tests {
             connection("on its own", None, Some(1)),
         ];
 
-        sort(&mut list);
+        sorted(&mut list);
 
         assert_eq!(names(&list), vec!["on its own", "in a group"]);
     }
@@ -134,7 +185,7 @@ mod tests {
             connection("b", Some("Personal"), Some(1)),
         ];
 
-        sort(&mut list);
+        sorted(&mut list);
 
         assert_eq!(names(&list), vec!["a", "b", "c"]);
     }
@@ -147,7 +198,7 @@ mod tests {
             connection("never", Some("Work"), None),
         ];
 
-        sort(&mut list);
+        sorted(&mut list);
 
         assert_eq!(names(&list), vec!["newer", "older", "never"]);
     }
@@ -156,7 +207,7 @@ mod tests {
     fn never_opened_connections_sort_by_name_among_themselves() {
         let mut list = vec![connection("zeta", None, None), connection("Alpha", None, None)];
 
-        sort(&mut list);
+        sorted(&mut list);
 
         assert_eq!(names(&list), vec!["Alpha", "zeta"]);
     }
@@ -169,10 +220,9 @@ mod tests {
             connection("c", Some("Work"), Some(2)),
             connection("d", None, Some(1)),
         ];
-        sort(&mut list);
+        sorted(&mut list);
 
-        let names: Vec<String> = groups(&list).into_iter().map(String::from).collect();
-        assert_eq!(names, ["Archive", "Work"]);
+        assert_eq!(group_list(&list), ["Archive", "Work"]);
     }
 
     #[test]
@@ -185,11 +235,15 @@ mod tests {
             connection("gamma", Some("Archive"), Some(2)),
         ];
 
-        list.sort_by(by_name);
+        let labels = labels(&list);
+        list.sort_by(|a, b| by_name(&labels, a, b));
 
         assert_eq!(names(&list), vec!["Alpha", "zeta", "gamma", "alpha", "Beta"]);
-        let groups: Vec<String> = groups(&list).into_iter().map(String::from).collect();
-        assert_eq!(groups, ["Archive", "Work", "work"], "the same groups as the picker's");
+        assert_eq!(
+            group_list(&list),
+            ["Archive", "Work", "work"],
+            "the same groups as the picker's"
+        );
     }
 
     #[test]
@@ -201,10 +255,38 @@ mod tests {
             connection("d", Some("Work"), Some(2)),
         ];
 
-        sort(&mut list);
+        sorted(&mut list);
 
         assert_eq!(names(&list), vec!["d", "b", "a", "c"]);
-        let groups: Vec<String> = groups(&list).into_iter().map(String::from).collect();
-        assert_eq!(groups, ["Work", "work"]);
+        assert_eq!(group_list(&list), ["Work", "work"]);
+    }
+
+    #[test]
+    fn a_nested_group_sorts_by_its_path_after_its_parent() {
+        let name = |name: &str| tablepro_storage::ConnectionGroupName::new(name).expect("a group name");
+        let work = ConnectionGroup::new(name("Work"), None);
+        let staging = ConnectionGroup::new(name("Staging"), Some(work.id));
+        let workshop = ConnectionGroup::new(name("Workshop"), None);
+        let labels = GroupLabels::new(&[workshop.clone(), staging.clone(), work.clone()]);
+        let filed = |connection: &str, group: &ConnectionGroup| SavedConnection {
+            group_id: Some(group.id),
+            ..connection_named(connection)
+        };
+        let mut list = vec![
+            filed("in workshop", &workshop),
+            filed("in staging", &staging),
+            filed("in work", &work),
+        ];
+
+        sort(&mut list, &labels);
+
+        assert_eq!(names(&list), vec!["in work", "in staging", "in workshop"]);
+        assert_eq!(groups(&list, &labels), ["Work", "Work / Staging", "Workshop"]);
+        assert_eq!(labels.group_labelled("Work / Staging"), Some(staging.id));
+        assert_eq!(labels.group_labelled("Staging"), None);
+    }
+
+    fn connection_named(name: &str) -> SavedConnection {
+        connection(name, None, Some(1))
     }
 }

@@ -6,7 +6,7 @@ use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::{ConnectionGroupName, ConnectionTag, SavedConnection};
+use tablepro_storage::{ConnectionTag, SavedConnection};
 
 use super::connection_menu::{
     CONNECT, MOVE_TO_GROUP, NONE, PICKER, ROW, ROW_COLOR, ROW_GROUP, ROW_MENU, SET_COLOR, SET_TAG, connection_menu,
@@ -18,10 +18,11 @@ use crate::services::saved_connection_object::{SavedConnectionObject, subtitle_f
 use crate::ui::a11y::describe_icon_button;
 use crate::ui::connection_appearance::{color_dot, icon_image, tag_pills, tags_description};
 
-/// What every row's menu offers: the list's groups and tags.
+/// What every row's menu offers: the labels of the list's groups, and
+/// its tags.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RowChoices {
-    pub groups: Vec<ConnectionGroupName>,
+    pub groups: Vec<String>,
     pub tags: std::sync::Arc<[ConnectionTag]>,
 }
 
@@ -64,7 +65,17 @@ pub(crate) fn connection_row(object: &glib::Object, choices: &RowChoices, tasks:
         Some(&format!("{ROW}.{ROW_MENU}")),
     );
     row.add_suffix(&menu_button);
-    row.insert_action_group(ROW, Some(&row_actions(&row, &saved, &choices.tags, &menu_button)));
+    let group = connection.group();
+    row.insert_action_group(
+        ROW,
+        Some(&row_actions(
+            &row,
+            &saved,
+            group.as_deref(),
+            &choices.tags,
+            &menu_button,
+        )),
+    );
     row.add_controller(local_shortcut_controller(ShortcutOwner::PickerRow));
     row.add_controller(secondary_click(&menu_button));
     if let Some(tasks) = tasks {
@@ -97,6 +108,7 @@ fn describe_row(row: &adw::ActionRow, subtitle: &str, tags: &[ConnectionTag]) {
 fn row_actions(
     row: &adw::ActionRow,
     saved: &SavedConnection,
+    group: Option<&str>,
     tags: &[ConnectionTag],
     menu_button: &gtk::MenuButton,
 ) -> gio::SimpleActionGroup {
@@ -110,7 +122,7 @@ fn row_actions(
     });
     actions.add_action(&menu);
     let current_color = saved.color.map_or(NONE, |color| color.id());
-    let current_group = saved.group.as_ref().map_or(NONE, ConnectionGroupName::as_str);
+    let current_group = group.unwrap_or(NONE);
     for (name, state, forward) in [
         (ROW_COLOR, current_color, SET_COLOR),
         (ROW_GROUP, current_group, MOVE_TO_GROUP),
@@ -213,7 +225,8 @@ mod tests {
             ssh: None,
             last_opened_at: None,
             color: Some(ConnectionColor::Red),
-            group: None,
+            group_id: None,
+            order: 0,
             tags: tags.iter().map(|tag| tag.id).collect(),
             icon,
             options: Default::default(),
@@ -225,7 +238,7 @@ mod tests {
     }
 
     fn row_for(saved: SavedConnection, tags: Vec<ConnectionTag>) -> adw::ActionRow {
-        let object = SavedConnectionObject::new(saved, false);
+        let object = SavedConnectionObject::new(saved, None, false);
         let choices = RowChoices {
             groups: Vec::new(),
             tags: tags.into(),

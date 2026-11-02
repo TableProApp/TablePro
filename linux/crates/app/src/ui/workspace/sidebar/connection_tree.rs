@@ -491,7 +491,8 @@ impl TreeInner {
             .filter_map(|at| model.item(at).and_downcast::<SavedConnectionObject>())
             .filter_map(|object| Some((object.saved()?.clone(), object.file_based())))
             .collect();
-        listed.sort_by(|left, right| saved_connection_order::by_name(&left.0, &right.0));
+        let labels = self.saved.labels();
+        listed.sort_by(|left, right| saved_connection_order::by_name(&labels, &left.0, &right.0));
         let mut ungrouped: Vec<TreeNode> = Vec::new();
         let mut grouped: Vec<(String, Vec<TreeNode>)> = Vec::new();
         let mut kept: HashSet<SessionKey> = HashSet::new();
@@ -518,11 +519,11 @@ impl TreeInner {
                 kept.insert(sibling);
                 rows.push(node);
             }
-            match &saved.group {
+            match labels.of(saved) {
                 None => ungrouped.extend(rows),
                 Some(group) => match grouped.last_mut() {
-                    Some((name, members)) if *name == group.as_str() => members.extend(rows),
-                    _ => grouped.push((group.as_str().to_owned(), rows)),
+                    Some((name, members)) if name == group => members.extend(rows),
+                    _ => grouped.push((group.to_owned(), rows)),
                 },
             }
         }
@@ -817,7 +818,7 @@ impl TreeInner {
         let search = self.search.borrow();
         match &key {
             SessionKey::Saved(id) => match self.saved.get(*id) {
-                Some(saved) => search.matches(&saved, &self.saved.tags()),
+                Some(saved) => search.matches(&saved, self.saved.group_label(&saved).as_deref(), &self.saved.tags()),
                 None => search.matches_name(&node.title()),
             },
             SessionKey::SavedIn { .. } | SessionKey::File(_) => search.matches_name(&node.title()),
@@ -1157,7 +1158,14 @@ impl TreeInner {
             return Some(menu);
         };
         let tags = self.saved.tags();
-        crate::ui::picker::insert_choice_actions(&self.popover, self.root.upcast_ref(), &saved, &tags);
+        let group = self.saved.group_label(&saved);
+        crate::ui::picker::insert_choice_actions(
+            &self.popover,
+            self.root.upcast_ref(),
+            &saved,
+            group.as_deref(),
+            &tags,
+        );
         Some(crate::ui::picker::connection_menu_with(
             &lead,
             saved.id,
