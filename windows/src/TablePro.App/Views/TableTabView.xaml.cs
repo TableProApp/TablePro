@@ -2,12 +2,15 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Model;
 using TablePro.App.Services;
+using TablePro.DataGrid;
+using TablePro.DataGrid.Model;
 using TablePro.Editor;
 using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// A table tab: the table's first rows, read with the statement the core writes for the engine.
+// A table tab: the table's first rows, read with the statement the core writes for the engine. A sort is an ORDER BY
+// in that statement, so it orders the whole table, not the rows already read.
 public sealed partial class TableTabView : UserControl, ITabContent
 {
     private readonly Workbench _workbench;
@@ -16,6 +19,8 @@ public sealed partial class TableTabView : UserControl, ITabContent
     private readonly string _table;
     private QueryEditor? _editor;
     private QueryRun? _run;
+    private GridSort _sort = GridSort.None;
+    private GridSort _shownSort = GridSort.None;
 
     internal TableTabView(Workbench workbench, DatabaseSession session, string? schema, string table)
     {
@@ -25,6 +30,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
         _table = table;
         InitializeComponent();
         Results.StatusChanged += (_, status) => StatusText.Text = status;
+        Results.SortRequested += OnSortRequested;
     }
 
     public event EventHandler? StateChanged;
@@ -35,7 +41,9 @@ public sealed partial class TableTabView : UserControl, ITabContent
 
     public SqlEditor? Editor => null;
 
-    public ResultsPane ResultsArea => Results;
+    public DataGridView Grid => Results.GridView;
+
+    public bool GridIsTarget => true;
 
     public bool Shows(string? schema, string table) =>
         string.Equals(_table, table, StringComparison.Ordinal) && string.Equals(_schema, schema, StringComparison.Ordinal);
@@ -44,7 +52,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
 
     public void Stop() => _run?.Cancel();
 
-    public void FocusContent() => RefreshButton.Focus(FocusState.Programmatic);
+    public void FocusContent() => Results.GridView.Focus(FocusState.Programmatic);
 
     public SessionTab Snapshot() => new() { Kind = TabKind.Table, Title = Title, Schema = _schema, Table = _table };
 
@@ -72,13 +80,21 @@ public sealed partial class TableTabView : UserControl, ITabContent
         {
             _editor ??= await _session.OpenEditorAsync().ConfigureAwait(true);
             var limit = _workbench.Settings.RowLimit;
-            var sql = _session.BrowseSql(new TableName(_schema, _table), limit);
+            var sort = _sort.Direction == SortDirection.None
+                ? null
+                : new ColumnSort(_sort.Column, _sort.Direction == SortDirection.Ascending);
+            var query = await _session.GetTableQueryAsync(new TableName(_schema, _table), sort, limit)
+                .ConfigureAwait(true);
             _run?.Dispose();
-            _run = _editor.Run(sql, new QueryOptions(limit));
-            await Results.ShowRunAsync(_run).ConfigureAwait(true);
+            _run = _editor.Run(query.Sql, new QueryOptions(limit));
+            await Results.ShowRunAsync(_run, _sort, query.VisibleColumns).ConfigureAwait(true);
+            _shownSort = _sort;
         }
         catch (TableProException exception)
         {
+            // An engine that reads a table only in its own order refuses the sort; the rows shown keep theirs.
+            _sort = _shownSort;
+            Results.Sort = _shownSort;
             Results.ShowError(Strings.Error(exception.Error));
         }
         finally
@@ -93,6 +109,18 @@ public sealed partial class TableTabView : UserControl, ITabContent
         RefreshButton.IsEnabled = !running;
         StopButton.IsEnabled = running;
         StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnSortRequested(object? sender, GridSort sort)
+    {
+        if (IsRunning)
+        {
+            Results.Sort = _sort;
+            return;
+        }
+
+        _sort = sort;
+        Run();
     }
 
     private void OnRefresh(object sender, RoutedEventArgs e) => Run();

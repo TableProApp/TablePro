@@ -288,7 +288,7 @@
   <data name="RefreshTableButton.Label" xml:space="preserve">
     <value>Refresh</value>
   </data>
-  <data name="GridHost.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+  <data name="ResultsGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Results</value>
   </data>
   <data name="HomeTitle.Text" xml:space="preserve">
@@ -744,8 +744,8 @@
   <data name="ResultsNoRows" xml:space="preserve">
     <value>The statement returned no rows</value>
   </data>
-  <data name="ResultsSummary" xml:space="preserve">
-    <value>Rows: {0} · Columns: {1}</value>
+  <data name="StatusSortUnavailable" xml:space="preserve">
+    <value>Sorting runs the query again, so it works only for a single query that reads.</value>
   </data>
   <data name="SectionFavorites" xml:space="preserve">
     <value>Favorites</value>

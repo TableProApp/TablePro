@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using TablePro.App.Services;
+using TablePro.DataGrid;
 using TablePro.Interop;
 
 namespace TablePro.App;
@@ -22,5 +23,7 @@ public partial class App : Application
         var core = TableProCore.CreateWithSystemSecrets(new HostConfiguration(AppStorage.Version, folder));
         _window = new MainWindow(new Workbench(core, folder));
         _window.Activate();
+        // Off the first grid's path: the fallback fonts for non-Latin cells load in the background.
+        DataGridView.WarmUpFonts();
     }
 }

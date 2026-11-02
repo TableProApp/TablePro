@@ -83,6 +83,31 @@ internal sealed class AppSession : IDisposable
                 throwOnTimeout: false).Result
             ?? throw Failure($"No element named {prefix}... appeared.");
 
+    // A cell's name is its text. Waits until done accepts it, as rows from a new run replace the old ones.
+    public string WaitForCell(AutomationElement grid, int row, int column, Func<string, bool> done)
+    {
+        var text = string.Empty;
+        if (!Retry.WhileFalse(
+                () =>
+                {
+                    text = grid.Patterns.Grid.Pattern.GetItem(row, column)?.Name ?? string.Empty;
+                    return done(text);
+                },
+                Wait,
+                throwOnTimeout: false).Success)
+        {
+            throw Failure($"Cell ({row}, {column}) stayed '{text}'.");
+        }
+
+        return text;
+    }
+
+    public static string Cell(AutomationElement grid, int row, int column) =>
+        grid.Patterns.Grid.Pattern.GetItem(row, column)?.Name ?? string.Empty;
+
+    public void SortBy(AutomationElement grid, string column) =>
+        FindByName(column, grid).Patterns.Invoke.Pattern.Invoke();
+
     public AutomationElement? TryFind(string automationId) =>
         Window.FindFirstDescendant(condition => condition.ByAutomationId(automationId));
 

@@ -40,6 +40,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../TablePro.App.Model/TablePro.App.Model.csproj" />
+    <ProjectReference Include="../TablePro.DataGrid/TablePro.DataGrid.csproj" />
     <ProjectReference Include="../TablePro.Editor/TablePro.Editor.csproj" />
     <ProjectReference Include="../TablePro.Interop/TablePro.Interop.csproj" />
   </ItemGroup>

@@ -75,7 +75,20 @@ public sealed class ShellTests
             var status = app.Find("TableStatus");
             var text = AppSession.WaitForText(status, value => value.StartsWith("Rows: 347", StringComparison.Ordinal));
             Assert.StartsWith("Rows: 347", text, StringComparison.Ordinal);
+            var grid = app.Find("ResultsGrid");
+            Assert.Equal("1", AppSession.Cell(grid, 0, 0));
             app.Screenshot("05-table");
+
+            // The table sorts on the server: each click runs the table's query again with an ORDER BY.
+            var unsorted = AppSession.Cell(grid, 0, 1);
+            app.SortBy(grid, "Title");
+            var ascending = app.WaitForCell(grid, 0, 1, value => value.Length > 0 && value != unsorted);
+            Assert.True(string.CompareOrdinal(ascending, AppSession.Cell(grid, 1, 1)) <= 0);
+            app.SortBy(grid, "Title");
+            var descending = app.WaitForCell(grid, 0, 1, value => value.Length > 0 && value != ascending);
+            Assert.True(string.CompareOrdinal(descending, AppSession.Cell(grid, 1, 1)) >= 0);
+            Assert.StartsWith("Rows: 347", app.Find("TableStatus").Name, StringComparison.Ordinal);
+            app.Screenshot("05-table-sorted");
 
             app.Find("Tabs");
             Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
@@ -85,7 +98,18 @@ public sealed class ShellTests
             Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
             var query = AppSession.WaitForText(app.Find("QueryStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal));
             Assert.StartsWith("Rows: 275", query, StringComparison.Ordinal);
+            var results = app.Find("ResultsGrid");
+            Assert.Equal("AC/DC", AppSession.Cell(results, 0, 0));
             app.Screenshot("06-query");
+
+            // A query result sorts by running its statement again, as on macOS.
+            app.SortBy(results, "Name");
+            var first = app.WaitForCell(results, 0, 0, value => value.Length > 0 && value != "AC/DC");
+            Assert.True(string.CompareOrdinal(first, AppSession.Cell(results, 1, 0)) <= 0);
+            Assert.StartsWith(
+                "Rows: 275",
+                AppSession.WaitForText(app.Find("QueryStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal)),
+                StringComparison.Ordinal);
             app.Close();
         }
 

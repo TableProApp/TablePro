@@ -79,6 +79,14 @@ jobs:
         if: matrix.app
         working-directory: windows
         run: dotnet build src/TablePro.App -r "${{ matrix.rid }}" -p:Platform="${{ matrix.platform }}"
+      # The Arm64 image opens its privacy settings window over the desktop, where it takes the tests' clicks.
+      - name: Prepare the desktop
+        if: matrix.app
+        shell: pwsh
+        run: |
+          . windows/tests/TablePro.DataGrid.Gate/ci/desktop.ps1
+          Clear-FirstLogon
+          Set-Display 1920 1080
       - name: UI tests
         if: matrix.app
         working-directory: windows

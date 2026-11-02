@@ -392,10 +392,13 @@ public sealed partial class MainWindow : Window, IShell
         MenuRun.IsEnabled = tab is { IsRunning: false };
         MenuStop.IsEnabled = tab is { IsRunning: true };
         var editor = tab?.Editor is not null;
-        foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuCopy, MenuPaste, MenuSelectAll, MenuFind })
+        foreach (var item in new[] { MenuUndo, MenuRedo, MenuCut, MenuPaste, MenuFind })
         {
             item.IsEnabled = editor;
         }
+
+        MenuCopy.IsEnabled = tab is not null;
+        MenuSelectAll.IsEnabled = tab is not null;
     }
 
     private void OnNewConnection(object sender, RoutedEventArgs e) => NewConnection();
@@ -418,7 +421,20 @@ public sealed partial class MainWindow : Window, IShell
 
     private void OnCut(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Editor?.Cut();
 
-    private void OnCopy(object sender, RoutedEventArgs e) => Workspace?.ActiveTab?.Editor?.Copy();
+    private async void OnCopy(object sender, RoutedEventArgs e)
+    {
+        switch (Workspace?.ActiveTab)
+        {
+            case { GridIsTarget: true } tab:
+                await tab.Grid.CopySelectionAsync();
+                break;
+            case { Editor: { } editor }:
+                editor.Copy();
+                break;
+            default:
+                break;
+        }
+    }
 
     private async void OnPaste(object sender, RoutedEventArgs e)
     {
@@ -428,7 +444,17 @@ public sealed partial class MainWindow : Window, IShell
         }
     }
 
-    private void OnSelectAll(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.A);
+    private void OnSelectAll(object sender, RoutedEventArgs e)
+    {
+        if (Workspace?.ActiveTab is { GridIsTarget: true } tab)
+        {
+            tab.Grid.SelectAll();
+            tab.Grid.Focus(FocusState.Programmatic);
+            return;
+        }
+
+        EditorKey(VirtualKey.A);
+    }
 
     private void OnFind(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.F);
 

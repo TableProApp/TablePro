@@ -1,4 +1,5 @@
 using TablePro.App.Model;
+using TablePro.DataGrid;
 using TablePro.Editor;
 
 namespace TablePro.App.Views;
@@ -13,6 +14,11 @@ internal interface ITabContent
     bool IsRunning { get; }
 
     SqlEditor? Editor { get; }
+
+    DataGridView Grid { get; }
+
+    // Copy and Select All reach the grid when it, not the editor, had focus last.
+    bool GridIsTarget { get; }
 
     void Run();
 

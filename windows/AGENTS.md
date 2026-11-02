@@ -36,6 +36,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `QueryEditor.Run` returns at once. Read the run's events with `ReadEventsAsync` on the UI thread; rows that arrive while it is busy come as one event.
 - A grid reads a `ResultSet` through `ResultCursor.Fetch`, one window per visible range. A cursor belongs to one thread, and a window cannot be read after the cursor's next fetch.
 - `DataGridView.SetData(new ResultSetData(set, columns))` shows a set. Call the grid's `RowsChanged` after each `RowsAppended`. Sorting is the host's: the grid raises `SortRequested` and shows `Sort`.
+- The core writes every sorted statement: `GetTableQueryAsync` for a table, `SortedQuery` for a query result, null when the statement cannot run again.
 - The app starts the core with `TableProCore.CreateWithSystemSecrets`, so the core keeps secrets in Credential Manager itself. `ISecretStore` is for tests and hosts with a store of their own; the core calls it on a thread of its own.
 - `TableProCore.Library` reads and writes the saved connections in the storage directory the configuration names. A list the app shows is rebuilt from `GetSnapshotAsync` after each change.
 

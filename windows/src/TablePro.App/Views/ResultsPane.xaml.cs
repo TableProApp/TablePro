@@ -1,20 +1,13 @@
-using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TablePro.App.Services;
+using TablePro.DataGrid;
+using TablePro.DataGrid.Model;
 using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// The data grid that GridHost holds. The pane hands it each run's first result set as the set starts, while rows
-// still arrive; the grid reads it through ResultSet.OpenCursor.
-public interface IResultGrid
-{
-    void Show(ResultSet results, IReadOnlyList<ResultColumn> columns);
-
-    void Clear();
-}
-
+// A run's first result set in the data grid. The grid reads it through ResultSet.OpenCursor while rows still arrive.
 public sealed partial class ResultsPane : UserControl
 {
     private ResultSet? _shown;
@@ -23,21 +16,26 @@ public sealed partial class ResultsPane : UserControl
     {
         InitializeComponent();
         Placeholder.Text = Strings.Get("ResultsEmpty");
+        ResultGrid.SortRequested += (_, sort) => SortRequested?.Invoke(this, sort);
     }
 
     public event EventHandler<string>? StatusChanged;
 
-    public IResultGrid? ResultGrid
-    {
-        get => GridHost.Content as IResultGrid;
-        set
-        {
-            GridHost.Content = value;
-            Placeholder.Visibility = value is null ? Visibility.Visible : Visibility.Collapsed;
-        }
-    }
+    // The grid already shows the new sort; the tab runs it, or sets Sort back.
+    public event EventHandler<GridSort>? SortRequested;
 
-    public ResultSet? Shown => _shown;
+    public DataGridView GridView => ResultGrid;
+
+    public IReadOnlyList<ResultColumn> Columns { get; private set; } = [];
+
+    // How many result sets the last run produced; only one can be sorted by running its statement again.
+    public int ResultSetCount { get; private set; }
+
+    public GridSort Sort
+    {
+        get => ResultGrid.Sort;
+        set => ResultGrid.Sort = value;
+    }
 
     public void ShowError(string message)
     {
@@ -49,21 +47,20 @@ public sealed partial class ResultsPane : UserControl
 
     public void Clear()
     {
-        ResultGrid?.Clear();
-        _shown?.Dispose();
-        _shown = null;
+        Release();
         ErrorBar.IsOpen = false;
         Placeholder.Text = Strings.Get("ResultsEmpty");
     }
 
-    // Reads the run's events on the UI thread until it ends, and says how it went.
-    internal async Task ShowRunAsync(QueryRun run)
+    // Reads the run's events on the UI thread until it ends. The rows shown stay until the run's first set starts,
+    // so a sort does not blank the grid. A table tab shows only its first visibleColumns.
+    internal async Task ShowRunAsync(QueryRun run, GridSort sort, int visibleColumns = int.MaxValue)
     {
         ArgumentNullException.ThrowIfNull(run);
-        Clear();
+        ErrorBar.IsOpen = false;
         Status(Strings.Get("StatusRunning"));
+        ResultSetCount = 0;
         var shownIndex = -1;
-        var columns = 0;
         long rows = 0;
         long? affected = null;
         var truncated = false;
@@ -71,22 +68,18 @@ public sealed partial class ResultsPane : UserControl
         {
             switch (queryEvent)
             {
-                case QueryEvent.ResultSetStarted started when shownIndex < 0:
-                    shownIndex = started.SetIndex;
-                    columns = started.Columns.Count;
-                    _shown = run.GetResultSet(started.SetIndex);
-                    if (_shown is not null)
+                case QueryEvent.ResultSetStarted started:
+                    ResultSetCount++;
+                    if (shownIndex < 0 && run.GetResultSet(started.SetIndex) is { } set)
                     {
-                        ResultGrid?.Show(_shown, started.Columns);
+                        shownIndex = started.SetIndex;
+                        Show(set, [.. started.Columns.Take(visibleColumns)], sort);
                     }
 
                     break;
-                case QueryEvent.ColumnsResolved resolved when resolved.SetIndex == shownIndex:
-                    columns = resolved.Columns.Count;
-                    break;
                 case QueryEvent.RowsAppended appended when appended.SetIndex == shownIndex:
                     rows = appended.RowCount;
-                    Summarize(rows, columns);
+                    ResultGrid.RowsChanged();
                     break;
                 case QueryEvent.RowLimitReached limit when limit.SetIndex == shownIndex:
                     truncated = true;
@@ -94,12 +87,13 @@ public sealed partial class ResultsPane : UserControl
                 case QueryEvent.ResultSetFinished finished when finished.SetIndex == shownIndex:
                     rows = finished.RowCount;
                     truncated |= finished.Truncation != Truncation.Complete;
+                    ResultGrid.RowsChanged();
                     break;
                 case QueryEvent.CommandCompleted command:
                     affected = (affected ?? 0) + (command.RowsAffected ?? 0);
                     break;
                 case QueryEvent.Finished finished:
-                    Finish(finished.Outcome, shownIndex >= 0, rows, columns, affected, truncated);
+                    Finish(finished.Outcome, shownIndex >= 0, rows, affected, truncated);
                     break;
                 default:
                     break;
@@ -107,15 +101,42 @@ public sealed partial class ResultsPane : UserControl
         }
     }
 
-    private void Finish(QueryOutcome outcome, bool hasRows, long rows, int columns, long? affected, bool truncated)
+    private void Show(ResultSet set, IReadOnlyList<ResultColumn> columns, GridSort sort)
     {
+        var previous = _shown;
+        _shown = set;
+        Columns = columns;
+        ResultGrid.SetData(new ResultSetData(set, columns));
+        ResultGrid.Sort = sort;
+        ResultGrid.Visibility = Visibility.Visible;
+        Placeholder.Visibility = Visibility.Collapsed;
+        // The grid disposed the old set's cursor in SetData.
+        previous?.Dispose();
+    }
+
+    private void Release()
+    {
+        ResultGrid.SetData(null);
+        ResultGrid.Visibility = Visibility.Collapsed;
+        Placeholder.Visibility = Visibility.Visible;
+        _shown?.Dispose();
+        _shown = null;
+        Columns = [];
+    }
+
+    private void Finish(QueryOutcome outcome, bool hasRows, long rows, long? affected, bool truncated)
+    {
+        if (!hasRows)
+        {
+            Release();
+        }
+
         switch (outcome)
         {
             case QueryOutcome.Completed completed:
                 var milliseconds = (long)completed.Elapsed.TotalMilliseconds;
                 if (hasRows)
                 {
-                    Summarize(rows, columns);
                     Status(Strings.Format(truncated ? "StatusRowsLimited" : "StatusRows", rows, milliseconds));
                 }
                 else
@@ -137,17 +158,6 @@ public sealed partial class ResultsPane : UserControl
             default:
                 Status(Strings.Get("StatusCancelled"));
                 break;
-        }
-    }
-
-    private void Summarize(long rows, int columns)
-    {
-        if (ResultGrid is null)
-        {
-            Placeholder.Text = Strings.Format(
-                "ResultsSummary",
-                rows.ToString("N0", CultureInfo.CurrentCulture),
-                columns.ToString("N0", CultureInfo.CurrentCulture));
         }
     }
 

@@ -69,9 +69,11 @@ The Windows app needs its window, navigation, the Connections page, the connecti
 
 - The object tree is a `TreeView` in ItemsSource mode with lazy children (`HasUnrealizedChildren`, `Expanding`) ([Tree view](https://learn.microsoft.com/en-us/windows/apps/develop/ui/controls/tree-view)). Schemas show only when there is more than one that is not a system schema. Objects go into a folder per kind with their count.
 - TreeView is not virtualized, so a folder realizes its first 500 objects, then "Show all N", which opens the whole folder in the virtualized `ListView`, and "Type in the filter box to find the rest". Typing in the filter switches to the same list of matches across schemas, names that start with the text first.
-- Invoking a table or view opens its table tab, or brings the open one forward. The core writes the statement (`DatabaseSession.BrowseSql`), quoted and limited as the engine writes it.
+- Invoking a table or view opens its table tab, or brings the open one forward. The core writes the statement (`DatabaseSession.GetTableQueryAsync`, over the core's `build_page`), quoted, ordered and limited as the engine writes it.
 - A query tab is the SQL editor over the run's results; a table tab is the results alone. Each opens its own editor connection on first use.
-- Results: `ResultsPane.GridHost` holds the data grid, which implements `IResultGrid`. The pane hands it each run's first result set as the set starts. Until the grid is wired in, the pane shows the row and column counts as text.
+- Results: the run's first result set in `DataGridView` (ADR 0003), given to the grid as the set starts and grown on each `RowsAppended`. The rows shown stay until the next run's first set starts. Copy and Select All in the Edit menu reach the grid when it had focus last.
+- A header click on a table tab runs the table's query again with the sort: `build_page` writes the ORDER BY, with the row key as the tiebreak, so it orders the whole table, not the rows already read. A row address the engine adds for edits (SQLite's rowid, PostgreSQL's ctid) follows the visible columns and is not shown. An engine that pages in its own order refuses the sort, and the grid keeps the shown one.
+- A header click on a query result does what the macOS app does: the result's statement runs again with the column's ORDER BY in place of its own and before its row limit (`DatabaseSession.SortedQuery`, the core's `with_order_by`). Only one statement that reads runs again; for a script, a write, SHOW or EXPLAIN the grid keeps its order and the status says why. macOS sorts those rows where they are; the core has no sort of held rows yet.
 
 ### Settings
 
@@ -104,6 +106,7 @@ Facts the CI runs on `windows-2025` and `windows-11-arm` established, which the 
 - TabView's default style sets `VerticalAlignment` to `Top`, so a tab's content gets its smallest height. The workspace sets it to `Stretch`.
 - A `TreeViewItem.IsExpanded` binding loses its first value when the row joins the tree, in ItemsSource mode. Rows open through their container instead: `ContainerFromItem` after a layout pass, or the row's `Loaded`.
 - UI Automation lists an owned window under its owner, not under the desktop.
+- The `windows-11-arm` image opens "Choose privacy settings for your device" over the desktop while the tests run, and it takes their clicks. CI turns the experience off by policy and stops it first, with the grid gate's `ci/desktop.ps1`.
 - The Community Toolkit's clickable `SettingsCard` offers no Invoke pattern, so the UI tests click it.
 - Concurrent Credential Manager writes from one process lost each other's changes: a stored secret read back as missing, a deleted one came back. The core serializes its calls.
 - System.Text.Json's source generator sets every init-only property when it builds a record, so a key a file leaves out took the type's default, not the property's initializer. The stored records use settable properties.
@@ -111,10 +114,10 @@ Facts the CI runs on `windows-2025` and `windows-11-arm` established, which the 
 
 ## Consequences
 
-- The core gained the library and connecting through it: `Core::library`, `connect_saved`, `test_connection`, `parse_connection_url`, `DatabaseSession::browse_sql`, and `Core::with_system_secrets`, which keeps secrets in Credential Manager on Windows (`core/ARCHITECTURE.md`, Platforms).
-- `tests/TablePro.App.Model.Tests` covers settings, the session file, the library tree and search, the form's fields and the object folders on any machine. `tests/TablePro.App.UITests` drives the unpackaged build through UI Automation (FlaUI): first run, Settings, the form, connecting to a SQLite file, opening a table, a query, a failed connect and session restore, in light and dark, with screenshots.
+- The core gained the library and connecting through it: `Core::library`, `connect_saved`, `test_connection`, `parse_connection_url`, `DatabaseSession::table_query` and `sorted_query` with `sql_syntax::with_order_by`, and `Core::with_system_secrets`, which keeps secrets in Credential Manager on Windows (`core/ARCHITECTURE.md`, Platforms).
+- `tests/TablePro.App.Model.Tests` covers settings, the session file, the library tree and search, the form's fields and the object folders on any machine. `tests/TablePro.App.UITests` drives the unpackaged build through UI Automation (FlaUI): first run, Settings, the form, connecting to a SQLite file, opening and sorting a table, a query and its sort, a failed connect and session restore, in light and dark, with screenshots.
 - SSH fields are saved, but the core has no SSH transport on Windows yet, so such a connection fails with `ssh.open_ssh_client_missing`.
-- Not built yet: drag and drop and multi-select on the Connections page, inline rename, tags, importing from other apps (the core reads only TablePro's own file), a password asked when connecting, a resizable object pane, window placement restore, tab tear-out, Reopen closed tab, and the open-transaction and reconnect bars.
+- Not built yet: drag and drop and multi-select on the Connections page, inline rename, tags, importing from other apps (the core reads only TablePro's own file), a password asked when connecting, a resizable object pane, window placement restore, tab tear-out, Reopen closed tab, the open-transaction and reconnect bars, paging past the row limit, sorting a result the core cannot run again, and column widths kept across a sort.
 - Unverified: the Community Toolkit settings controls target Windows 10 2004 (19041) and the app 1809; Native AOT publishing of the app; the app on Windows 10 at all.
 
 ## Alternatives considered
