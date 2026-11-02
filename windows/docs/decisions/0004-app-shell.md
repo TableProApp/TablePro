@@ -97,6 +97,18 @@ The data folder is the package's `ApplicationData.Current.LocalFolder` (`%LOCALA
 
 Single-project MSIX for x64 and Arm64, minimum 10.0.17763, identity `TablePro` with publisher `CN=TablePro Development` until signing lands, and a `tablepro.exe` execution alias. A development build runs unpackaged with the Windows App SDK beside it (`WindowsAppSDKSelfContained`), which is what the UI tests launch; `-p:WindowsPackageType=MSIX` builds the package.
 
+## What the runner showed
+
+Facts the CI runs on `windows-2025` and `windows-11-arm` established, which the code relies on:
+
+- TabView's default style sets `VerticalAlignment` to `Top`, so a tab's content gets its smallest height. The workspace sets it to `Stretch`.
+- A `TreeViewItem.IsExpanded` binding loses its first value when the row joins the tree, in ItemsSource mode. Rows open through their container instead: `ContainerFromItem` after a layout pass, or the row's `Loaded`.
+- UI Automation lists an owned window under its owner, not under the desktop.
+- The Community Toolkit's clickable `SettingsCard` offers no Invoke pattern, so the UI tests click it.
+- Concurrent Credential Manager writes from one process lost each other's changes: a stored secret read back as missing, a deleted one came back. The core serializes its calls.
+- System.Text.Json's source generator sets every init-only property when it builds a record, so a key a file leaves out took the type's default, not the property's initializer. The stored records use settable properties.
+- The signed MSIX, self-contained and not AOT-compiled, is 144.5 MB for x64 and 142.6 MB for Arm64.
+
 ## Consequences
 
 - The core gained the library and connecting through it: `Core::library`, `connect_saved`, `test_connection`, `parse_connection_url`, `DatabaseSession::browse_sql`, and `Core::with_system_secrets`, which keeps secrets in Credential Manager on Windows (`core/ARCHITECTURE.md`, Platforms).
