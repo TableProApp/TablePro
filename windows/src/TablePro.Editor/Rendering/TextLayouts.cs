@@ -283,6 +283,14 @@ internal sealed unsafe class TextLayouts : IDisposable
 
     private IDWriteTextLayout* CreateLayout(char* text, int length, IDWriteTextFormat* format, float width)
     {
+        // Pinning an empty span gives a null pointer, which DirectWrite refuses even for no text.
+        if (text is null)
+        {
+            fixed (char* empty = string.Empty)
+            {
+                return CreateLayout(empty, 0, format, width);
+            }
+        }
         IDWriteTextLayout* layout;
         NativeCom.Check(_factory->CreateTextLayout(text, (uint)length, format, width, LineHeight > 0 ? LineHeight : 100, &layout));
         return layout;
