@@ -18,6 +18,7 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 internal enum CrossEngineDefaultValue {
     internal enum Outcome: Equatable, Sendable {
@@ -55,15 +56,12 @@ internal enum CrossEngineDefaultValue {
 
     // MARK: - Shapes
 
-    /// PostgreSQL writes a default's type onto it: `'active'::character varying`, `0::numeric`,
-    /// `'{}'::jsonb`. The cast is PostgreSQL's own syntax and every other engine rejects it, while
-    /// the value in front of it is portable.
+    // PostgreSQL writes a default's type onto it, `'active'::character varying`, which no other engine reads. Only a
+    // cast that ends the expression goes, found by scalar: a quote a combining mark follows is one Character.
     internal static func strippingCast(_ value: String) -> String {
-        guard let range = value.range(of: "::") else { return value }
-        /// Only a cast that ends the expression. A `::` inside quotes is part of the value, and one
-        /// in the middle of a larger expression means the expression is not a bare literal anyway.
+        guard let range = value.range(of: "::", options: .literal) else { return value }
         let head = String(value[value.startIndex..<range.lowerBound])
-        let tail = String(value[range.upperBound...])
+        let tail = value[range.upperBound...].unicodeScalars
         guard !tail.contains("'"), !tail.contains("("), !head.isEmpty else { return value }
         return head.trimmingCharacters(in: .whitespaces)
     }
@@ -111,22 +109,10 @@ internal enum CrossEngineDefaultValue {
         return Int64(value) != nil || Double(value) != nil
     }
 
-    /// A quoted literal, which every engine here writes the same way. A doubled quote inside is the
-    /// escape all of them share; a backslash escape is MySQL's alone and is left to be dropped.
+    // One whole quoted literal, which every engine here writes the same way. A backslash escape is MySQL's alone, so a
+    // literal holding a backslash is dropped.
     private static func stringLiteral(_ value: String) -> String? {
-        guard value.hasPrefix("'"), value.hasSuffix("'"), value.count >= 2 else { return nil }
-        guard !value.contains("\\") else { return nil }
-        let inner = value.dropFirst().dropLast()
-        var index = inner.startIndex
-        while index < inner.endIndex {
-            guard inner[index] == "'" else {
-                index = inner.index(after: index)
-                continue
-            }
-            let next = inner.index(after: index)
-            guard next < inner.endIndex, inner[next] == "'" else { return nil }
-            index = inner.index(after: next)
-        }
+        guard !value.unicodeScalars.contains("\\"), SQLQuoting.decodedStringLiteral(value) != nil else { return nil }
         return value
     }
 }

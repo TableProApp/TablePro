@@ -14,17 +14,18 @@ public struct TrinoColumnValue: Sendable, Equatable {
         self.expression = expression
     }
 
-    var sql: String {
+    // Nil when the value cannot be written for its column's type.
+    public var sql: String? {
         expression ?? TrinoLiteral.render(value, typeName: typeName)
     }
 }
 
 public enum TrinoRowEditSQL {
     public static func insert(qualifiedTable: String, columns: [TrinoColumnValue]) -> String? {
-        guard !columns.isEmpty else { return nil }
+        let values = columns.compactMap(\.sql)
+        guard !columns.isEmpty, values.count == columns.count else { return nil }
         let names = columns.map { TrinoIntrospectionSQL.quoteIdentifier($0.name) }.joined(separator: ", ")
-        let values = columns.map(\.sql).joined(separator: ", ")
-        return "INSERT INTO \(qualifiedTable) (\(names)) VALUES (\(values))"
+        return "INSERT INTO \(qualifiedTable) (\(names)) VALUES (\(values.joined(separator: ", ")))"
     }
 
     public static func update(
@@ -32,9 +33,12 @@ public enum TrinoRowEditSQL {
         assignments: [TrinoColumnValue],
         keyColumns: [TrinoColumnValue]
     ) -> String? {
-        guard !assignments.isEmpty, let predicate = predicate(keyColumns) else { return nil }
-        let sets = assignments
-            .map { "\(TrinoIntrospectionSQL.quoteIdentifier($0.name)) = \($0.sql)" }
+        let values = assignments.compactMap(\.sql)
+        guard !assignments.isEmpty, values.count == assignments.count, let predicate = predicate(keyColumns) else {
+            return nil
+        }
+        let sets = zip(assignments, values)
+            .map { "\(TrinoIntrospectionSQL.quoteIdentifier($0.name)) = \($1)" }
             .joined(separator: ", ")
         return "UPDATE \(qualifiedTable) SET \(sets) WHERE \(predicate)"
     }
@@ -57,7 +61,8 @@ public enum TrinoRowEditSQL {
             if case .null = key.value {
                 conditions.append("\(quoted) IS NULL")
             } else {
-                conditions.append("\(quoted) = \(TrinoLiteral.render(key.value, typeName: key.typeName))")
+                guard let literal = TrinoLiteral.render(key.value, typeName: key.typeName) else { return nil }
+                conditions.append("\(quoted) = \(literal)")
             }
         }
         return conditions.isEmpty ? nil : conditions.joined(separator: " AND ")

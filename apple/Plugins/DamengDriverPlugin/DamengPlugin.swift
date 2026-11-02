@@ -1,6 +1,7 @@
 import Foundation
 import TableProDamengCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Dameng Driver"
@@ -417,12 +418,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        var quoted = String.UnicodeScalarView()
-        for scalar in name.unicodeScalars {
-            if scalar == "\"" { quoted.append(scalar) }
-            quoted.append(scalar)
-        }
-        return "\"\(String(quoted))\""
+        SQLQuoting.identifier(name)
     }
 
     var requiresBackslashEscapingInLiterals: Bool { textEscaping == .backslashEscape }

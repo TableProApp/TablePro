@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProSQLQuoting
 
 /// How the app plans to take a copy of a remote database, and what it may promise about the result.
 enum RemoteFetchPlan: Equatable, Sendable {
@@ -337,9 +338,7 @@ enum RemoteDatabaseFileTransfer {
         )
     }
 
-    /// Schedules deletion on the server while the connection deadline is still live. The immediate
-    /// `defer` above remains the common path; this detached fallback owns no SSH channel descriptors
-    /// and survives the session being interrupted after a timed-out download.
+    // The detached cleanup owns no SSH channel and survives a session cut off after a timed-out download.
     static func remoteSnapshotCommand(
         executable: String,
         remotePath: String,
@@ -348,7 +347,7 @@ enum RemoteDatabaseFileTransfer {
     ) -> String {
         let quotedPath = LibSSH2ExecChannel.shellQuoted(remotePath)
         let vacuum = "\(executable) \(quotedPath) "
-            + LibSSH2ExecChannel.shellQuoted("VACUUM INTO \(sqlStringLiteral(snapshotPath))")
+            + LibSSH2ExecChannel.shellQuoted("VACUUM INTO \(SQLQuoting.stringLiteral(snapshotPath))")
         let delayedCleanup = "trap '' HUP; sleep \(cleanupDelaySeconds); rm -f -- "
             + LibSSH2ExecChannel.shellQuoted(snapshotPath)
         let quotedCleanup = LibSSH2ExecChannel.shellQuoted(delayedCleanup)
@@ -396,12 +395,6 @@ enum RemoteDatabaseFileTransfer {
     }
 
     // MARK: - Helpers
-
-    /// Quotes a path for a SQL string literal, which is not the same job as quoting it for the
-    /// shell: SQL escapes a single quote by doubling it, and the shell cannot.
-    private static func sqlStringLiteral(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''", options: .literal) + "'"
-    }
 
     private static func requireLocalSpace(for bytes: UInt64, at directory: URL) throws {
         let values = try? directory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])

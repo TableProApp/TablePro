@@ -7,6 +7,7 @@ import Foundation
 import os
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProSQLQuoting
 import TableProTLSClientIdentity
 
 nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -230,24 +231,9 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         Self.escapeStringLiteral(value)
     }
 
-    // Only escapes ClickHouse decodes: it reads an unknown one such as MySQL's `\Z` as a backslash and the letter.
+    // `.backslash`, not `.mysql`: ClickHouse reads an unknown escape such as MySQL's `\Z` as a backslash and the letter.
     static func escapeStringLiteral(_ value: String) -> String {
-        var escaped = String.UnicodeScalarView()
-        escaped.reserveCapacity(value.utf8.count)
-        for scalar in value.unicodeScalars {
-            switch scalar {
-            case "\\": escaped.append(contentsOf: #"\\"#.unicodeScalars)
-            case "'": escaped.append(contentsOf: "''".unicodeScalars)
-            case "\n": escaped.append(contentsOf: #"\n"#.unicodeScalars)
-            case "\r": escaped.append(contentsOf: #"\r"#.unicodeScalars)
-            case "\t": escaped.append(contentsOf: #"\t"#.unicodeScalars)
-            case "\0": escaped.append(contentsOf: #"\0"#.unicodeScalars)
-            case "\u{08}": escaped.append(contentsOf: #"\b"#.unicodeScalars)
-            case "\u{0C}": escaped.append(contentsOf: #"\f"#.unicodeScalars)
-            default: escaped.append(scalar)
-            }
-        }
-        return String(escaped)
+        SQLQuoting.stringLiteralBody(value, escapes: .backslash)
     }
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
@@ -577,9 +563,8 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         )
 
         do {
-            let escapedId = queryId.replacingOccurrences(of: "'", with: "''", options: .literal)
             let request = try buildRequest(
-                query: "KILL QUERY WHERE query_id = '\(escapedId)'",
+                query: "KILL QUERY WHERE query_id = \(SQLQuoting.stringLiteral(queryId, escapes: .backslash))",
                 database: "",
                 queryId: nil,
                 executionTimeLimit: nil,

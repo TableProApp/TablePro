@@ -17,7 +17,7 @@ internal enum IdentityPath {
             return component
         }
         return component
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: String(separator), with: "\\" + String(separator))
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: String(separator), with: "\\" + String(separator), options: .literal)
     }
 }

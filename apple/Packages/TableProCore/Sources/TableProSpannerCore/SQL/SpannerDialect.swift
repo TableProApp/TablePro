@@ -1,5 +1,6 @@
 import Foundation
 import TableProGoogleCloud
+import TableProSQLQuoting
 
 public enum SpannerDialect: String, Sendable, Codable {
     case googleSQL
@@ -43,7 +44,7 @@ public enum SpannerDialect: String, Sendable, Codable {
         case .googleSQL:
             GoogleSQLLiteral.quotedIdentifier(name)
         case .postgreSQL:
-            "\"" + name.replacingOccurrences(of: "\u{0}", with: "", options: .literal).replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
+            SQLQuoting.identifier(name)
         }
     }
 
@@ -56,7 +57,7 @@ public enum SpannerDialect: String, Sendable, Codable {
         case .googleSQL:
             GoogleSQLLiteral.escapedStringBody(value)
         case .postgreSQL:
-            value.replacingOccurrences(of: "\u{0}", with: "", options: .literal).replacingOccurrences(of: "'", with: "''", options: .literal)
+            SQLQuoting.stringLiteralBody(value)
         }
     }
 

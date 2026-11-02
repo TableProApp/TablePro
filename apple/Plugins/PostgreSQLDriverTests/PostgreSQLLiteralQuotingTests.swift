@@ -152,6 +152,12 @@ struct PostgreSQLLiteralQuotingTests {
         #expect(PostgreSQLObjectQueries.quoteIdentifier("a\"\u{301}") == "\"a\"\"\u{301}\"")
     }
 
+    // As libpq's PQescapeLiteral writes it: only the backslash and the quote take an escape.
+    @Test("In an E'' string a line break is written as it is")
+    func escapeStringKeepsControlCharacters() {
+        #expect(PostgreSQLObjectQueries.quoteLiteral("a\\\nb") == #"E'a\\"# + "\nb'")
+    }
+
     @Test("A NUL is dropped on both arms rather than reaching libpq")
     func nulIsStripped() {
         #expect(PostgreSQLObjectQueries.quoteLiteral("a\0b") == "'ab'")

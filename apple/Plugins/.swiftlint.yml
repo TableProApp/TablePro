@@ -15,4 +15,5 @@ only_rules:
   - pg_session_schema_lookup
   - pg_session_escape_helper
   - plugin_logger_import
+  - literal_quote_search
   - suite_without_trait

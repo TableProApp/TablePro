@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 internal extension SQLTypeRenderer {
     // MARK: - SQL Server
@@ -202,7 +203,7 @@ internal extension SQLTypeRenderer {
 
     // MARK: - ClickHouse
 
-    static func clickHouse(_ type: CanonicalColumnType) -> RenderedColumnType {
+    static func clickHouse(_ type: CanonicalColumnType, stringEscapes: SQLStringEscapes = .backslash) -> RenderedColumnType {
         switch type.kind {
         case .boolean:
             return RenderedColumnType(spelling: "Bool")
@@ -241,11 +242,11 @@ internal extension SQLTypeRenderer {
         case .uuid:
             return RenderedColumnType(spelling: "UUID")
         case .enumeration(let values):
-            return clickHouseEnum(values)
+            return clickHouseEnum(values, stringEscapes: stringEscapes)
         case .array(let element):
             let inner = clickHouse(CanonicalColumnType(
                 kind: element, isUnsigned: type.isUnsigned, sourceSpelling: type.sourceSpelling
-            ))
+            ), stringEscapes: stringEscapes)
             return RenderedColumnType(
                 spelling: "Array(\(inner.spelling))", fidelity: inner.fidelity, reason: inner.reason
             )
@@ -257,12 +258,12 @@ internal extension SQLTypeRenderer {
         }
     }
 
-    private static func clickHouseEnum(_ values: [String]) -> RenderedColumnType {
+    private static func clickHouseEnum(_ values: [String], stringEscapes: SQLStringEscapes) -> RenderedColumnType {
         guard !values.isEmpty, values.count <= 255 else {
             return RenderedColumnType(spelling: "String", fidelity: .approximated, reason: enumBecomesText)
         }
         let labels = values.enumerated()
-            .map { "'\($0.element.replacingOccurrences(of: "'", with: "\\'", options: .literal))' = \($0.offset + 1)" }
+            .map { "\(SQLQuoting.stringLiteral($0.element, escapes: stringEscapes)) = \($0.offset + 1)" }
             .joined(separator: ", ")
         return RenderedColumnType(spelling: "Enum8(\(labels))")
     }

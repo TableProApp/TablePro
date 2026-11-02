@@ -10,9 +10,11 @@ public struct MySQLCreationSettings: Equatable, Sendable {
     public let sqlMode: String
     public let timeZone: String?
 
-    /// Nil when a value would close the version comment it is written in.
+    // Nil when a value would close the version comment it is written in. `.literal` finds a `*/` a combining mark follows.
     public init?(sqlMode: String, timeZone: String? = nil) {
-        guard !sqlMode.contains("*/"), timeZone?.contains("*/") != true else { return nil }
+        guard sqlMode.range(of: "*/", options: .literal) == nil,
+              timeZone?.range(of: "*/", options: .literal) == nil
+        else { return nil }
         let portableMode = Self.portableMode(sqlMode)
         self.sqlMode = portableMode
         self.timeZone = timeZone

@@ -49,6 +49,7 @@ let package = Package(
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
+        .library(name: "TableProSQLQuoting", targets: ["TableProSQLQuoting"]),
         .library(name: "TableProSQLVocabulary", targets: ["TableProSQLVocabulary"]),
         .library(name: "TableProAutocomplete", targets: ["TableProAutocomplete"]),
         .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"]),
@@ -123,13 +124,14 @@ let package = Package(
         ),
         .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar", "TableProSSHTransport"],
+            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar", "TableProSQLQuoting", "TableProSSHTransport"],
             path: "Sources/TableProDatabase"
         ),
         .target(
             name: "TableProQuery",
             dependencies: [
-                "TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar", "TableProRedisCore"
+                "TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar", "TableProSQLQuoting",
+                "TableProRedisCore"
             ],
             path: "Sources/TableProQuery"
         ),
@@ -150,7 +152,7 @@ let package = Package(
         ),
         .target(
             name: "TableProMSSQLCore",
-            dependencies: ["TableProCoreTypes", "TableProSQLGrammar"],
+            dependencies: ["TableProCoreTypes", "TableProSQLGrammar", "TableProSQLQuoting"],
             path: "Sources/TableProMSSQLCore"
         ),
         .target(
@@ -160,12 +162,12 @@ let package = Package(
         ),
         .target(
             name: "TableProTeradataCore",
-            dependencies: ["TableProWireIO"],
+            dependencies: ["TableProSQLQuoting", "TableProWireIO"],
             path: "Sources/TableProTeradataCore"
         ),
         .target(
             name: "TableProTrinoCore",
-            dependencies: ["TableProSQLGrammar", "TableProTLSClientIdentity"],
+            dependencies: ["TableProSQLGrammar", "TableProSQLQuoting", "TableProTLSClientIdentity"],
             path: "Sources/TableProTrinoCore"
         ),
         .target(
@@ -191,12 +193,12 @@ let package = Package(
         ),
         .target(
             name: "TableProGoogleCloud",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProGoogleCloud"
         ),
         .target(
             name: "TableProSpannerCore",
-            dependencies: ["TableProGoogleCloud"],
+            dependencies: ["TableProGoogleCloud", "TableProSQLQuoting"],
             path: "Sources/TableProSpannerCore"
         ),
         .target(
@@ -217,7 +219,7 @@ let package = Package(
         ),
         .target(
             name: "TableProNeo4jCore",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProNeo4jCore"
         ),
         .target(
@@ -232,7 +234,7 @@ let package = Package(
         ),
         .target(
             name: "TableProR2SQLCore",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProR2SQLCore"
         ),
         .target(
@@ -242,8 +244,14 @@ let package = Package(
         ),
         .target(
             name: "TableProSQLGrammar",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProSQLGrammar"
+        ),
+        // Linked by PluginKit, plugin bundles and both apps, so it depends on nothing.
+        .target(
+            name: "TableProSQLQuoting",
+            dependencies: [],
+            path: "Sources/TableProSQLQuoting"
         ),
         // Linked by the macOS app, six plugin bundles and the iOS app, so never TableProPluginKit.
         .target(
@@ -255,7 +263,7 @@ let package = Package(
         // The macOS app links it, so never TableProPluginKit.
         .target(
             name: "TableProAutocomplete",
-            dependencies: ["TableProSQLGrammar", "TableProSQLVocabulary"],
+            dependencies: ["TableProSQLGrammar", "TableProSQLQuoting", "TableProSQLVocabulary"],
             path: "Sources/TableProAutocomplete",
             swiftSettings: pluginCoreSettings
         ),
@@ -287,13 +295,13 @@ let package = Package(
         // Linked by a plugin bundle, so never TableProPluginKit: the plugin would carry its own copy of PluginKit's types.
         .target(
             name: "TableProMySQLCore",
-            dependencies: ["TableProGeometry"],
+            dependencies: ["TableProGeometry", "TableProSQLQuoting"],
             path: "Sources/TableProMySQLCore",
             swiftSettings: pluginCoreSettings
         ),
         .target(
             name: "TableProPostgreSQLCore",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProPostgreSQLCore",
             swiftSettings: pluginCoreSettings
         ),
@@ -332,7 +340,7 @@ let package = Package(
         ),
         .target(
             name: "TableProCassandraCore",
-            dependencies: [],
+            dependencies: ["TableProSQLGrammar", "TableProSQLQuoting"],
             path: "Sources/TableProCassandraCore",
             swiftSettings: pluginCoreSettings
         ),
@@ -459,6 +467,14 @@ let package = Package(
             path: "Tests/TableProSQLGrammarTests"
         ),
         .testTarget(
+            name: "TableProSQLQuotingTests",
+            dependencies: ["TableProSQLQuoting", "TableProSQLGrammar", "CSQLite"],
+            path: "Tests/TableProSQLQuotingTests",
+            // CSQLite carries the headers only; the apps link the vendored library. The test reads quoted text
+            // back through SQLite's own tokenizer, which the system library shares.
+            linkerSettings: [.linkedLibrary("sqlite3")]
+        ),
+        .testTarget(
             name: "TableProSQLVocabularyTests",
             dependencies: ["TableProSQLVocabulary", "TableProPluginKit"],
             path: "Tests/TableProSQLVocabularyTests",
@@ -477,7 +493,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProMSSQLCoreTests",
-            dependencies: ["TableProMSSQLCore", "TableProTestSupport"],
+            dependencies: ["TableProMSSQLCore", "TableProSQLGrammar", "TableProTestSupport"],
             path: "Tests/TableProMSSQLCoreTests"
         ),
         .testTarget(
@@ -502,7 +518,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProPluginKitTests",
-            dependencies: ["TableProPluginKit"],
+            dependencies: ["TableProPluginKit", "TableProSQLQuoting"],
             path: "Tests/TableProPluginKitTests"
         ),
         .testTarget(
@@ -547,7 +563,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProCassandraCoreTests",
-            dependencies: ["TableProCassandraCore"],
+            dependencies: ["TableProCassandraCore", "TableProSQLGrammar"],
             path: "Tests/TableProCassandraCoreTests",
             swiftSettings: pluginCoreSettings
         )

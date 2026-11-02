@@ -47,22 +47,16 @@ extension TextView {
         return selections.map { Self.cutRange(for: $0, in: text) }
     }
 
-    /// Pasted text can carry line endings the document does not use, and a lone carriage return
-    /// reads as a single unterminated line. `TextView+Drag` already normalizes an insertion this
-    /// way; a paste is the same kind of foreign input.
-    ///
-    /// The carriage-return test goes through `NSString`. Swift's `contains` compares grapheme
-    /// clusters and `\r\n` is one cluster, so `"a\r\nb".contains("\r")` is false and a
-    /// CRLF-only clipboard, the common Windows case, would skip the pass it needs.
+    // By code unit: `\r\n` is one grapheme cluster, so a Character search for `\r` misses a CRLF-only clipboard.
     private func normalizedLineEndings(in string: String) -> String {
         let target = layoutManager.detectedLineEnding
         let carriesReturn = (string as NSString).range(of: "\r").location != NSNotFound
         if target == .lineFeed, !carriesReturn { return string }
         let unified = string
-            .replacingOccurrences(of: LineEnding.carriageReturnLineFeed.rawValue, with: "\n")
-            .replacingOccurrences(of: LineEnding.carriageReturn.rawValue, with: "\n")
+            .replacingOccurrences(of: LineEnding.carriageReturnLineFeed.rawValue, with: "\n", options: .literal)
+            .replacingOccurrences(of: LineEnding.carriageReturn.rawValue, with: "\n", options: .literal)
         guard target != .lineFeed else { return unified }
-        return unified.replacingOccurrences(of: "\n", with: target.rawValue)
+        return unified.replacingOccurrences(of: "\n", with: target.rawValue, options: .literal)
     }
 
     /// When a selection is empty, a cut removes the whole current line (including

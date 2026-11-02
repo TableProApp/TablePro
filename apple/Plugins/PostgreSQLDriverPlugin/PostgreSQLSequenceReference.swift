@@ -8,6 +8,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 struct PostgreSQLSequenceReference: Equatable {
     /// `regclassout` under a `search_path` of `pg_catalog`: `sales.orders_id_seq`.
@@ -91,20 +92,9 @@ struct PostgreSQLSequenceReference: Equatable {
         return unmatched.isEmpty ? String(output) : nil
     }
 
-    /// `simple_quote_literal` in `ruleutils.c`: a quote is always doubled, a backslash only when
-    /// `standard_conforming_strings` is off, and never an `E` prefix. Scalar by scalar, as the server
-    /// works byte by byte: a quote followed by a combining mark is one `Character` and still a quote.
+    // No `E` prefix, as `simple_quote_literal` in `ruleutils.c` writes it: the setting decides the backslash.
     static func quotedLiteral(_ value: String, standardConformingStrings: Bool) -> String {
-        let quote: Unicode.Scalar = "'"
-        var literal = String.UnicodeScalarView([quote])
-        for scalar in value.unicodeScalars {
-            if scalar == quote || (scalar == "\\" && !standardConformingStrings) {
-                literal.append(scalar)
-            }
-            literal.append(scalar)
-        }
-        literal.append(quote)
-        return String(literal)
+        SQLQuoting.stringLiteral(value, escapes: standardConformingStrings ? .standard : .backslash)
     }
 
     private static func names(_ array: String?) -> [String]? {

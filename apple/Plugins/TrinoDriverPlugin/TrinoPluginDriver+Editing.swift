@@ -47,6 +47,7 @@ extension TrinoPluginDriver {
                 let values = TrinoRowEditValues.insertValues(
                     change, columns: columns, insertedRowData: insertedRowData, typeName: typeName
                 ).map { TrinoRowEditValues.writing($0, asExpression: expressions.contains($0.name)) }
+                try Self.refuseUnwritable(values, in: change)
                 if let sql = TrinoRowEditSQL.insert(qualifiedTable: target, columns: values) {
                     writes.append(PluginRowWrite(statement: sql, rowIndices: [change.rowIndex]))
                 }
@@ -62,6 +63,7 @@ extension TrinoPluginDriver {
                         asExpression: expressions.contains($0.columnName)
                     )
                 }
+                try Self.refuseUnwritable(assignments, in: change)
                 let keys = try keyColumns(primaryKeyColumns, columns: columns, change: change, typeName: typeName)
                 guard let sql = TrinoRowEditSQL.update(qualifiedTable: target, assignments: assignments, keyColumns: keys)
                 else { throw Self.unmatchable(change) }
@@ -87,12 +89,15 @@ extension TrinoPluginDriver {
     ) -> [(statement: String, parameters: [PluginCellValue])]? {
         let target = qualifiedName(table: table, schema: schema)
         let typeName = columnTypeName(table: table, schema: schema, context: nil)
-        return rows.compactMap { row in
+        var statements: [(statement: String, parameters: [PluginCellValue])] = []
+        for row in rows {
             let values = zip(columns, row).map {
                 TrinoColumnValue(name: $0, value: TrinoRowEditValues.trinoValue($1), typeName: typeName($0))
             }
-            return TrinoRowEditSQL.insert(qualifiedTable: target, columns: values).map { ($0, []) }
+            guard let sql = TrinoRowEditSQL.insert(qualifiedTable: target, columns: values) else { return nil }
+            statements.append((sql, []))
         }
+        return statements
     }
 
     private func columnTypeName(
@@ -109,6 +114,15 @@ extension TrinoPluginDriver {
         TrinoRowEditSQL.lookup(qualifiedTable: target, keyColumns: keys).map {
             PluginRowLookup(query: $0, parameters: [], rowCount: 1, pinsRows: false)
         }
+    }
+
+    // A structured value is cast to its column's type, which the server reported and which is written only when it reads as one.
+    private static func refuseUnwritable(_ values: [TrinoColumnValue], in change: PluginRowChange) throws {
+        guard let value = values.first(where: { $0.sql == nil }) else { return }
+        throw PluginRowWriteRefusal(
+            rowIndex: change.rowIndex,
+            reason: unwritableTypeReason(column: value.name, type: value.typeName)
+        )
     }
 
     private static func unmatchable(_ change: PluginRowChange) -> PluginRowWriteRefusal {

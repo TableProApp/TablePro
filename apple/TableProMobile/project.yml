@@ -150,6 +150,7 @@ targets:
           - TableProQuery
           - TableProRedisCore
           - TableProSQLGrammar
+          - TableProSQLQuoting
           - TableProSQLVocabulary
           - TableProSSHTransport
           - TableProSync

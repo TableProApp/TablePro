@@ -1,18 +1,9 @@
 import Foundation
+import TableProSQLQuoting
 
-/// A form feed is written as itself: MySQL and MariaDB have no `\f` escape and read one as the
-/// letter `f`, measured on MySQL 8.4 and MariaDB 13.
+// The plugin's own spelling, which `MySQLLiteralSpelling.respelled` turns into the session's.
 nonisolated public func mysqlEscapeStringLiteral(_ value: String) -> String {
-    var result = value
-    result = result.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-    result = result.replacingOccurrences(of: "'", with: "''", options: .literal)
-    result = result.replacingOccurrences(of: "\n", with: "\\n", options: .literal)
-    result = result.replacingOccurrences(of: "\r", with: "\\r", options: .literal)
-    result = result.replacingOccurrences(of: "\t", with: "\\t", options: .literal)
-    result = result.replacingOccurrences(of: "\0", with: "\\0", options: .literal)
-    result = result.replacingOccurrences(of: "\u{08}", with: "\\b", options: .literal)
-    result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z", options: .literal)
-    return result
+    SQLQuoting.stringLiteralBody(value, escapes: .mysql)
 }
 
 /// MySQL rejects a CURRENT_TIMESTAMP expression whose fractional-second precision differs

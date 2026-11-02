@@ -390,7 +390,7 @@ internal struct CompareRunner {
 
         if includedKinds.contains(.procedure) || includedKinds.contains(.function) {
             async let sourceRoutines = metadataService.routineReads(
-                for: context.source, connection: context.sourceConnection
+                for: context.source, connection: context.sourceConnection, readsCreationScopes: true
             )
             async let targetRoutines = metadataService.routineReads(
                 for: context.target, connection: context.targetConnection
@@ -402,7 +402,8 @@ internal struct CompareRunner {
             async let sourceTriggers = metadataService.triggerReads(
                 for: context.source,
                 connection: context.sourceConnection,
-                tables: sourceReads.map(\.table.name)
+                tables: sourceReads.map(\.table.name),
+                readsCreationScopes: true
             )
             async let targetTriggers = metadataService.triggerReads(
                 for: context.target,

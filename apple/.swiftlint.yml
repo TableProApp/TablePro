@@ -514,6 +514,17 @@ custom_rules:
     excluded_match_kinds: [comment, doccomment]
     message: "CKRecord.ID raises past 255 UTF-16 units. Go through SyncRecordMapper.recordID(type:id:in:)."
     severity: error
+  # Also listed in Plugins/.swiftlint.yml and TableProMobile/.swiftlint.yml. The default search
+  # compares grapheme clusters, so a quote a combining mark follows is not found.
+  literal_quote_search:
+    name: "Literal Quote Search"
+    regex: 'replacingOccurrences\(\s*of:\s*(?:"(?:[^"\\\n]|\\.)*?(?:''|\\"|`|\[|\]|\\\\|\\[nrt0]|\\u\{[0-9A-Fa-f]+\})(?:[^"\\\n]|\\.)*"|#"[^"\n]*?(?:''|`|\[|\]|\\)[^"\n]*"#)\s*,\s*with:(?![^()]*(?:\([^()]*\)[^()]*)*options:\s*(?:\[[^\]]*)?\.(?:literal|regularExpression))'
+    excluded:
+      - '.*/[^/]*Tests/'
+      - '.*Tests\.swift$'
+    excluded_match_kinds: [comment, doccomment]
+    message: "Quote SQL through SQLQuoting, or pass options: .literal."
+    severity: error
 
   # Plugins (listed in Plugins/.swiftlint.yml)
   ping_never_reconnects:

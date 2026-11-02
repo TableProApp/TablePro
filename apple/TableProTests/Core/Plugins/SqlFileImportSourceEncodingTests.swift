@@ -5,6 +5,8 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
+import TableProSQLGrammar
 import TableProTabularIO
 import Testing
 
@@ -15,7 +17,7 @@ struct SqlFileImportSourceEncodingTests {
         try bytes.write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
         let grammar = family == .mysql ? TestGrammar.mysql : TestGrammar.postgres
-        let source = SqlFileImportSource(url: url, encoding: encoding, grammar: grammar, family: family)
+        let source = SqlFileImportSource(url: url, encoding: encoding, grammar: { grammar }, family: family)
         var result: [String] = []
         for try await (statement, _) in try await source.statements() {
             result.append(statement)
@@ -47,6 +49,26 @@ struct SqlFileImportSourceEncodingTests {
         let dump = "/*!40101 SET NAMES latin1 */;\nINSERT INTO t VALUES ('é');\n"
         let result = try await statements(of: Data(dump.utf8), encoding: .utf8, family: .mysql)
         #expect(result.first == "/*!40101 SET NAMES latin1 */")
+    }
+
+    @Test("The import cuts with the grammar of the session it leased, handed over after the source was built")
+    func cutsWithTheLeasedSessionsGrammar() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SqlFileImportSourceEncodingTests-\(UUID().uuidString).sql")
+        try Data("INSERT INTO t VALUES ('C:\\');\nINSERT INTO t VALUES ('two');\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let noEscapes = SQLLexicalResolver.readings(for: .mysql, session: PluginSessionLexicalState(
+            determined: [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes], enabled: []
+        )).execution
+        let source = SqlFileImportSource(url: url, encoding: .utf8, grammar: { TestGrammar.mysql }, family: .mysql)
+        source.readsGrammar { noEscapes }
+
+        var result: [String] = []
+        for try await (statement, _) in try await source.statements() {
+            result.append(statement)
+        }
+
+        #expect(result == ["INSERT INTO t VALUES ('C:\\')", "INSERT INTO t VALUES ('two')"])
     }
 
     @Test("Each East Asian import encoding matches the detector's encoding")

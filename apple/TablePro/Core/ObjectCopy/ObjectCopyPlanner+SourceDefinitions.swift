@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import os
 import TableProPluginKit
 
 internal enum ObjectCopyDefinitionOutcome: Equatable, Sendable {
@@ -26,16 +25,7 @@ internal enum ObjectCopyDefinitionBuild: Sendable {
     case refused(String)
 }
 
-/// The settings each routine and trigger was created under on the source, by selection id. An id in
-/// `unreadable` is created under the target's own settings, as before these were read.
-internal struct ObjectCopyCreationScopes: Sendable {
-    internal var scopes: [String: PluginStatementScope] = [:]
-    internal var unreadable: Set<String> = []
-}
-
 internal extension ObjectCopyPlanner {
-    nonisolated private static let creationLogger = Logger(subsystem: "com.TablePro", category: "ObjectCopyPlanner")
-
     nonisolated static func definitionBuild(
         for input: ObjectCopyDefinitionInput,
         using builder: SourceObjectSyncBuilder
@@ -80,6 +70,8 @@ internal extension ObjectCopyPlanner {
             return .skipped(noDefinition)
         case .notACreateStatement:
             return .skipped(ObjectCopyEligibility.definitionNotExecutableRefusal)
+        case .severalStatements:
+            return .skipped(defect.reason(on: .source))
         }
     }
 
@@ -106,7 +98,7 @@ internal extension ObjectCopyPlanner {
         if !routines.isEmpty {
             do {
                 for read in try await CompareMetadataService.readRoutineDefinitions(
-                    schema: schema, endpointName: endpointName, using: plugin
+                    schema: schema, endpointName: endpointName, readsCreationScopes: true, using: plugin
                 ) {
                     guard let selection = routines.first(where: {
                         $0.kind == read.kind
@@ -124,7 +116,11 @@ internal extension ObjectCopyPlanner {
         if !triggers.isEmpty {
             do {
                 for read in try await CompareMetadataService.readTriggerDefinitions(
-                    tables: triggerTables, schema: schema, endpointName: endpointName, using: plugin
+                    tables: triggerTables,
+                    schema: schema,
+                    endpointName: endpointName,
+                    readsCreationScopes: true,
+                    using: plugin
                 ) {
                     guard let selection = triggers.first(where: {
                         $0.name.lowercased() == read.name.lowercased()
@@ -168,107 +164,6 @@ internal extension ObjectCopyPlanner {
             await scopes?.close()
             throw error
         }
-    }
-
-    nonisolated static func creationScopes(
-        for selections: [ObjectCopySelection],
-        triggerTables: [String],
-        schema: String?,
-        using plugin: any PluginDatabaseDriver
-    ) async throws -> ObjectCopyCreationScopes {
-        var result = ObjectCopyCreationScopes()
-
-        let routines = selections.filter { $0.kind == .procedure || $0.kind == .function }
-        if !routines.isEmpty {
-            let listed = try await creationListing(of: routines, into: &result) {
-                try await plugin.fetchRoutines(schema: schema)
-            }
-            for selection in routines {
-                let routine = listed.first { info in
-                    selection.kind == (info.kind == .procedure ? .procedure : .function)
-                        && selection.name.lowercased() == info.name.lowercased()
-                        && (selection.signature ?? "") == (info.argumentSignature ?? "")
-                }
-                try await record(selection, into: &result) {
-                    guard let routine else { throw PluginObjectSourceError.notFound(selection.name) }
-                    return try await plugin.fetchRoutineCreationScope(routine)
-                }
-            }
-        }
-
-        let triggers = selections.filter { $0.kind == .trigger }
-        if !triggers.isEmpty {
-            let owners = triggers.compactMap(\.owner)
-            let tables = owners.count == triggers.count ? Array(Set(owners)) : triggerTables
-            let listed = try await creationListing(of: triggers, into: &result) {
-                try await listTriggers(tables: tables, schema: schema, using: plugin)
-            }
-            for selection in triggers {
-                let trigger = listed.first { listing in
-                    selection.name.lowercased() == listing.trigger.name.lowercased()
-                        && (selection.owner.map {
-                            $0.lowercased() == (listing.trigger.table ?? listing.owningTable ?? "").lowercased()
-                        } ?? true)
-                }
-                try await record(selection, into: &result) {
-                    guard let trigger else { throw PluginObjectSourceError.notFound(selection.name) }
-                    return try await plugin.fetchTriggerCreationScope(trigger.trigger)
-                }
-            }
-        }
-        return result
-    }
-
-    nonisolated private static func listTriggers(
-        tables: [String],
-        schema: String?,
-        using plugin: any PluginDatabaseDriver
-    ) async throws -> [(trigger: PluginTriggerInfo, owningTable: String?)] {
-        guard !plugin.providesBulkTriggerFetch else {
-            return try await plugin.fetchAllTriggers(schema: schema).map { (trigger: $0, owningTable: nil) }
-        }
-        var listed: [(trigger: PluginTriggerInfo, owningTable: String?)] = []
-        for table in tables {
-            try Task.checkCancellation()
-            listed += try await plugin.fetchTriggers(table: table, schema: schema).map { (trigger: $0, owningTable: table) }
-        }
-        return listed
-    }
-
-    /// A listing that fails leaves every object it would have matched unreadable.
-    nonisolated private static func creationListing<Listed>(
-        of selections: [ObjectCopySelection],
-        into result: inout ObjectCopyCreationScopes,
-        _ list: () async throws -> [Listed]
-    ) async throws -> [Listed] {
-        do {
-            return try await list()
-        } catch {
-            try rethrowCancellation(error)
-            result.unreadable.formUnion(selections.map(\.id))
-            return []
-        }
-    }
-
-    nonisolated private static func record(
-        _ selection: ObjectCopySelection,
-        into result: inout ObjectCopyCreationScopes,
-        _ fetch: () async throws -> PluginStatementScope?
-    ) async throws {
-        guard !result.unreadable.contains(selection.id) else { return }
-        do {
-            result.scopes[selection.id] = try await fetch()
-        } catch {
-            try rethrowCancellation(error)
-            creationLogger.warning(
-                "Creation settings read failed for \(selection.kind.rawValue, privacy: .public): \(error.publicLogShape, privacy: .public)"
-            )
-            result.unreadable.insert(selection.id)
-        }
-    }
-
-    nonisolated private static func rethrowCancellation(_ error: Error) throws {
-        guard !(error is CancellationError), !Task.isCancelled else { throw CancellationError() }
     }
 
     nonisolated private static func listingFailure(

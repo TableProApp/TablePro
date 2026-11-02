@@ -129,6 +129,20 @@ struct MSSQLSchemaQueriesTests {
         #expect(sql.contains("AS IS_SERVER_GENERATED"))
     }
 
+    // INFORMATION_SCHEMA.COLUMNS.COLUMN_DEFAULT stops at 4,000 characters and can leave a literal open.
+    @Test func testColumnReadsTakeTheWholeDefaultFromItsConstraint() {
+        let reads = [
+            MSSQLSchemaQueries.columns(schema: "dbo", table: "notes"),
+            MSSQLSchemaQueries.allColumns(schema: "dbo"),
+            MSSQLSchemaQueries.temporaryColumns(table: "#notes"),
+        ]
+        for sql in reads {
+            #expect(!sql.contains("c.COLUMN_DEFAULT"))
+            #expect(sql.contains("dc.definition AS COLUMN_DEFAULT"))
+            #expect(sql.contains("default_constraints dc ON dc.object_id = sc.default_object_id"))
+        }
+    }
+
     @Test func testAllColumnsQueryCarriesTheTableNameAfterTheParsedColumns() {
         let sql = MSSQLSchemaQueries.allColumns(schema: "dbo")
         #expect(sql.contains("AS IS_SERVER_GENERATED,\n    c.TABLE_NAME"))

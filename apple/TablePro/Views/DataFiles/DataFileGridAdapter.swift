@@ -35,9 +35,9 @@ final class DataFileGridAdapter {
     nonisolated private static func copiedField(_ cell: PluginCellValue) -> String {
         guard case .text(let text) = cell else { return "" }
         return text
-            .replacingOccurrences(of: "\t", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\t", with: " ", options: .literal)
+            .replacingOccurrences(of: "\r", with: " ", options: .literal)
+            .replacingOccurrences(of: "\n", with: " ", options: .literal)
     }
 }
 

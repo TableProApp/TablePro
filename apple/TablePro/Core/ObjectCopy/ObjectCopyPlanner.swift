@@ -231,18 +231,7 @@ internal struct ObjectCopyPlanner {
         }
     }
 
-    /// The schemas a duplicated database needs before its first `CREATE TABLE` names one.
-    ///
-    /// `CREATE DATABASE` gives the new database whatever schema its engine gives it, and a
-    /// duplicate keeps every source schema name, so a PostgreSQL database with a `sales` schema
-    /// produced `CREATE TABLE "sales"."invoices"` against a database that had only `public`. The
-    /// structure phase then rolled back with the database already created, leaving a duplicate that
-    /// held nothing and could not be retried without deleting it first.
-    ///
-    /// Only for a run that creates the database: copying into one the user chose means its schemas
-    /// are the user's to make, and creating one silently would put objects somewhere they did not
-    /// ask for. A driver with no single statement for it answers nil and the copy is left as it
-    /// was, rather than being handed DDL the server would reject.
+    // Only for a database the run creates: a duplicate keeps the source's schema names, which it does not have yet.
     private func buildSchemaStatements(
         _ request: ObjectCopyRequest,
         namespaces: [String]
@@ -258,10 +247,13 @@ internal struct ObjectCopyPlanner {
                     for: driver.connection.type, session: driver.sessionLexicalState
                 ).execution
             )
-            return namespaces.flatMap { name -> [SyncStatement] in
+            return try namespaces.flatMap { name -> [SyncStatement] in
                 guard let sql = plugin.createSchemaStatement(name: name) else { return [] }
                 let summary = String(format: String(localized: "Create schema %@"), name)
-                return scriptText.sendableStatements(sql).map { statement in
+                guard let statements = scriptText.sendableStatements(ofForeignText: sql) else {
+                    throw CompareSyncError.severalStatements(in: name)
+                }
+                return statements.map { statement in
                     SyncStatement(sql: statement, objectName: name, summary: summary)
                 }
             }
@@ -799,7 +791,7 @@ internal struct ObjectCopyPlanner {
                     )
                 }
                 if input.emptiesFirst {
-                    ddl.truncate = Self.emptyStatements(
+                    ddl.truncate = try Self.emptyStatements(
                         table: input.snapshot.name,
                         schema: input.targetSchema,
                         prefersDelete: input.clearsWithDelete,
@@ -910,18 +902,14 @@ internal struct ObjectCopyPlanner {
         return checks
     }
 
-    /// What empties a table before its rows are written.
-    ///
-    /// DELETE whenever the run promises to roll the table back. TRUNCATE commits implicitly on the
-    /// engines that offer it without transactional DDL, so a copy that failed afterwards rolled the
-    /// new rows back and left the target's own gone for good.
+    // DELETE where the run promises a rollback: TRUNCATE commits implicitly where DDL is not transactional.
     nonisolated static func emptyStatements(
         table: String,
         schema: String?,
         prefersDelete: Bool,
         driver: any PluginDatabaseDriver,
         databaseType: DatabaseType
-    ) -> [SyncStatement] {
+    ) throws -> [SyncStatement] {
         let qualified = SchemaQualifiedName.render(
             name: table, schema: schema, databaseType: databaseType, quote: driver.quoteIdentifier
         )
@@ -938,7 +926,10 @@ internal struct ObjectCopyPlanner {
             )
         )]
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
-        return SQLScriptText(databaseType: databaseType, grammar: grammar).sendableStatements(sql).map { statement in
+        guard let statements = SQLScriptText(databaseType: databaseType, grammar: grammar)
+            .sendableStatements(ofForeignText: sql)
+        else { throw CompareSyncError.severalStatements(in: table) }
+        return statements.map { statement in
             SyncStatement(sql: statement, objectName: table, summary: summary, hazards: hazards)
         }
     }
@@ -993,7 +984,7 @@ internal struct ObjectCopyPlanner {
             return []
         }
 
-        let (definitionReads, creationScopes) = try await sourceDefinitions(
+        let definitionReads = try await sourceDefinitions(
             sourceEndpoint: sourceEndpoint,
             selections: selections,
             sourceReads: sourceReads,
@@ -1087,13 +1078,12 @@ internal struct ObjectCopyPlanner {
             case .refused(let reason)?:
                 skipped.append(ObjectCopySkip(selection: item.selection, reason: reason))
             case .built(let drop, let create, let note)? where !create.isEmpty:
-                let settingsNote = creationScopes.unreadable.contains(item.selection.id)
-                    ? Self.creationSettingsUnreadable : nil
+                let settingsNote = item.read.creationScopeUnreadable ? Self.creationSettingsUnreadable : nil
                 steps.append(ObjectCopyDefinitionStep(
                     selection: item.selection,
                     dropStatements: drop,
                     createStatements: create,
-                    creationScope: creationScopes.scopes[item.selection.id],
+                    creationScope: item.read.creationScope,
                     note: [note, settingsNote].compactMap { $0 }.joined(separator: " ").nilIfEmpty
                 ))
             case .built?, nil:
@@ -1108,7 +1098,7 @@ internal struct ObjectCopyPlanner {
         selections: [ObjectCopySelection],
         sourceReads: [TableStructureRead],
         connection: DatabaseConnection
-    ) async throws -> (reads: [String: RoutineSourceRead], creationScopes: ObjectCopyCreationScopes) {
+    ) async throws -> [String: RoutineSourceRead] {
         let views = sourceReads.filter { read in
             selections.contains { selection in
                 (selection.kind == .view || selection.kind == .materializedView)
@@ -1122,9 +1112,9 @@ internal struct ObjectCopyPlanner {
         try await manager.ensureConnected(connection)
         return try await manager.withMetadataDriver(scope: sourceEndpoint.scope) { driver in
             guard let plugin = CompareMetadataService.pluginDriver(from: driver) else {
-                return ([:], ObjectCopyCreationScopes())
+                return [:]
             }
-            let reads = try await Self.sourceDefinitionReads(
+            return try await Self.sourceDefinitionReads(
                 for: selections,
                 views: views,
                 triggerTables: Array(triggerTables),
@@ -1132,10 +1122,6 @@ internal struct ObjectCopyPlanner {
                 endpointName: endpointName,
                 using: plugin
             )
-            let creationScopes = try await Self.creationScopes(
-                for: selections, triggerTables: Array(triggerTables), schema: schema, using: plugin
-            )
-            return (reads, creationScopes)
         }
     }
 

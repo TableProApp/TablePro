@@ -18,13 +18,15 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 internal enum CompareSQLLiteral {
     internal static func literal(
         for value: PluginCellValue,
         columnType: ColumnType?,
         databaseType: DatabaseType,
-        driver: any PluginDatabaseDriver
+        driver: any PluginDatabaseDriver,
+        keptInScript: Bool = true
     ) -> String {
         switch value {
         case .null:
@@ -32,7 +34,9 @@ internal enum CompareSQLLiteral {
         case .bytes(let data):
             return binaryLiteral(for: data, databaseType: databaseType) ?? driver.sqlLiteral(for: value)
         case .text(let text):
-            return textLiteral(text, columnType: columnType, databaseType: databaseType, driver: driver)
+            return textLiteral(
+                text, columnType: columnType, databaseType: databaseType, driver: driver, keptInScript: keptInScript
+            )
         }
     }
 
@@ -40,29 +44,23 @@ internal enum CompareSQLLiteral {
         _ text: String,
         columnType: ColumnType?,
         databaseType: DatabaseType,
-        driver: any PluginDatabaseDriver
+        driver: any PluginDatabaseDriver,
+        keptInScript: Bool = true
     ) -> String {
         if let columnType, ColumnTypeSQLQuoting.isNumericLiteral(text, for: columnType) {
             return text
         }
-        // ClickHouse reads backslash escapes in every literal. The default left them single, so `C:\new` synced as a
-        // newline and a value ending in `\'` closed the literal early (#3777).
-        if databaseType == .clickhouse {
-            return "'\(driver.escapeStringLiteral(text))'"
-        }
-        let rendered = driver.sqlLiteral(for: .text(text))
-        /// A driver that passed the value through unquoted answered for a number, so the value holds
-        /// no quote to escape. Escaping anyway is what keeps that true if a driver ever renders a
-        /// quoted literal some other way.
-        let quoted = rendered.unicodeScalars.first == "'"
-            ? rendered
-            : "'\(text.replacingOccurrences(of: "'", with: "''", options: .literal))'"
-        return prefixed(quoted, databaseType: databaseType)
+        // ClickHouse and MySQL read a backslash as one, so a value ending in `\'` left single closed the literal early
+        // (#3777). The script is also copied and saved with no mode declared, so there MySQL gets its own set; a lookup
+        // that only runs takes the session's escapes, so it finds a key holding a backslash.
+        let session = driver.sessionLexicalState
+        let escapes = keptInScript
+            ? SQLLexicalResolver.keptTextStringEscapes(for: databaseType, session: session)
+            : SQLLexicalResolver.stringEscapes(for: databaseType, session: session)
+        return prefixed(SQLQuoting.stringLiteral(text, escapes: escapes), databaseType: databaseType)
     }
 
-    /// The prefix belongs to a quoted literal and to nothing else. `sqlLiteral(for:)` answers
-    /// `NULL` for a null and passes a number through unquoted, and `N` in front of either is a
-    /// syntax error, so the opening quote is what decides.
+    // `N` in front of `NULL` or a bare number is a syntax error, so the opening quote decides.
     internal static func prefixed(_ literal: String, databaseType: DatabaseType) -> String {
         guard literal.unicodeScalars.first == "'" else { return literal }
         return SQLStringLiteralPrefix.forDatabaseType(databaseType) + literal

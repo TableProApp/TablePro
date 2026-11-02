@@ -9,21 +9,23 @@ struct PluginParameterBindingError: PluginDriverError {
     let pluginErrorMessage: String
 }
 
-// A placeholder counts only in code, as the server lexes it; a count mismatch means the text was read differently
-// from how it was written, so it is refused.
-enum PluginParameterBinder {
+// A placeholder counts only in code, as the server lexes it with `features`; a count mismatch means the text was
+// read differently from how it was written, so it is refused. `literals` are already written for the engine.
+public enum PluginParameterBinder {
     private static let questionMark: UInt16 = 0x3F
     private static let dollar: UInt16 = 0x24
+    private static let minus: UInt16 = 0x2D
+    private static let space: UInt16 = 0x20
 
-    static func bind(
+    // The host's reading of the connection, set around a statement it hands to a driver.
+    @TaskLocal static var hostFeatures: SQLLexicalFeatures?
+
+    public static func bind(
         _ template: String,
-        parameters: [String],
+        literals parameters: [String],
         style: ParameterStyle,
-        backslashEscapes: Bool
+        features: SQLLexicalFeatures
     ) throws -> String {
-        let features: SQLLexicalFeatures = backslashEscapes
-            ? [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes]
-            : []
         let lexer = SQLFeatureLexer(template, features: features)
         var bound: [UInt16] = []
         bound.reserveCapacity(lexer.count)
@@ -41,7 +43,7 @@ enum PluginParameterBinder {
             switch style {
             case .questionMark where unit == questionMark:
                 guard nextParameter < parameters.count else { throw mismatch(parameters.count) }
-                bound.append(contentsOf: parameters[nextParameter].utf16)
+                append(parameters[nextParameter], to: &bound)
                 nextParameter += 1
                 referenced.insert(nextParameter)
                 index += 1
@@ -49,7 +51,7 @@ enum PluginParameterBinder {
             case .dollar where unit == dollar:
                 if let (number, end) = dollarPlaceholder(in: lexer.units, at: index) {
                     guard number >= 1, number <= parameters.count else { throw mismatch(parameters.count) }
-                    bound.append(contentsOf: parameters[number - 1].utf16)
+                    append(parameters[number - 1], to: &bound)
                     referenced.insert(number)
                     index = end
                     continue
@@ -62,6 +64,14 @@ enum PluginParameterBinder {
         }
         guard referenced.count == parameters.count else { throw mismatch(parameters.count) }
         return String(decoding: bound, as: UTF16.self)
+    }
+
+    // `a-?` bound to `-5` would read `a--5`, a line comment to the end of the line.
+    private static func append(_ literal: String, to bound: inout [UInt16]) {
+        if bound.last == minus, literal.utf16.first == minus {
+            bound.append(space)
+        }
+        bound.append(contentsOf: literal.utf16)
     }
 
     private static func dollarPlaceholder(in units: [UInt16], at index: Int) -> (Int, Int)? {

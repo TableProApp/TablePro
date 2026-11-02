@@ -313,8 +313,10 @@ final class SQLServerShowplanReader: NSObject, XMLParserDelegate {
         return Int(rounded)
     }
 
+    // By scalar: a bracket a combining mark follows is one Character.
     private static func unbracketed(_ name: String) -> String {
-        guard name.hasPrefix("["), name.hasSuffix("]"), name.count >= 2 else { return name }
-        return String(name.dropFirst().dropLast()).replacingOccurrences(of: "]]", with: "]")
+        let scalars = name.unicodeScalars
+        guard scalars.count >= 2, scalars.first == "[", scalars.last == "]" else { return name }
+        return String(scalars.dropFirst().dropLast()).replacingOccurrences(of: "]]", with: "]", options: .literal)
     }
 }

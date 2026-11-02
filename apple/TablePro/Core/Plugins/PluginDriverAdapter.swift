@@ -9,6 +9,7 @@ import os
 import TableProConnectionLibrary
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProUtilities
 
 final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseReporting {
@@ -420,6 +421,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try StatementTextValidator.validate(query)
         var context = PluginStatementContext()
         context.readOnly = true
+        context.lexicalFeatures = sessionLexicalFeatures
         return mapQueryResult(try await pluginDriver.execute(query: query, context: context))
     }
 
@@ -439,7 +441,20 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     private func statementContext(_ query: String) -> PluginStatementContext {
-        .statement(query, databaseType: connection.type)
+        var context = PluginStatementContext.statement(query, databaseType: connection.type)
+        context.lexicalFeatures = sessionLexicalFeatures
+        return context
+    }
+
+    // How this session lexes text, so the driver binds and quotes the way the server reads it. Nil for an engine
+    // nobody described, whose own backslash answer is safer than the host's ANSI guess.
+    fileprivate var sessionLexicalFeatures: SQLLexicalFeatures? {
+        let typeId = connection.type.rawValue
+        guard SQLLexicalProfile.curated(forDatabaseTypeId: typeId) != nil
+            || PluginMetadataRegistry.shared.snapshot(for: connection.type)?.editor.sqlDialect?.lexicalFeatures != nil
+        else { return nil }
+        return SQLLexicalResolver.readings(for: connection.type, session: pluginDriver.sessionLexicalState)
+            .execution.pluginFeatures
     }
 
 
@@ -1445,7 +1460,9 @@ extension PluginDriverAdapter {
     }
 
     fileprivate func statementContext(_ query: String, approvedAs caller: PluginStatementContext) -> PluginStatementContext {
-        .statement(query, databaseType: connection.type, approvedAs: caller)
+        var context = PluginStatementContext.statement(query, databaseType: connection.type, approvedAs: caller)
+        context.lexicalFeatures = sessionLexicalFeatures
+        return context
     }
 
     // A driver built before `.statementPolicy` would run an external write the approval did not cover.

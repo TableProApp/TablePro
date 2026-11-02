@@ -10,6 +10,7 @@ import OSLog
 import SQLite3
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProSQLQuoting
 
 enum BeancountDriverError: LocalizedError {
     case notConnected
@@ -300,11 +301,11 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        SQLQuoting.identifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''", options: .literal)
+        SQLQuoting.stringLiteralBody(value)
     }
 
     func execute(query: String) async throws -> PluginQueryResult {

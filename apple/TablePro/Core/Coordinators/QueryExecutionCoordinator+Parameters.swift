@@ -49,6 +49,42 @@ private struct PreparedStatement: @unchecked Sendable {
     let isCommitPoint: Bool
 }
 
+// What a run sends: the rest is cut again from the script once a statement changes how the session reads literals.
+@MainActor
+private final class RunningStatements {
+    private(set) var prepared: [PreparedStatement]
+    private var grammar: SQLLexicalGrammar
+    private let script: String?
+    private let end: Int
+    private let prepare: @MainActor (SQLStatementScanner.ExecutableStatement, SQLLexicalGrammar) -> PreparedStatement
+
+    init(
+        prepared: [PreparedStatement],
+        grammar: SQLLexicalGrammar,
+        script: String?,
+        end: Int,
+        prepare: @escaping @MainActor (SQLStatementScanner.ExecutableStatement, SQLLexicalGrammar) -> PreparedStatement
+    ) {
+        self.prepared = prepared
+        self.grammar = grammar
+        self.script = script
+        self.end = end
+        self.prepare = prepare
+    }
+
+    func replanned(after ran: Int, session: SQLLexicalGrammar) -> [PreparedStatement]? {
+        guard session != grammar, let script, prepared.indices.contains(ran - 1),
+              let last = prepared[ran - 1].anchor
+        else { return nil }
+        let rest = QueryExecutionCoordinator.remainingStatements(
+            in: script, after: last.range, through: end, grammar: session
+        ).map { prepare($0, session) }
+        grammar = session
+        prepared = Array(prepared.prefix(ran)) + rest
+        return rest
+    }
+}
+
 /// What a run has to write into query history, held together so the recording can happen below the
 /// settle gate rather than beside the result sets.
 ///
@@ -271,9 +307,7 @@ extension QueryExecutionCoordinator {
         parent.installQueryTask(parameterizedTask, owner: .claim(claim), lease: lease)
     }
 
-    /// Every statement of the run shares one lease on the tab's database, so the
-    /// transaction and its rollback reach the same handle. Result sets, history and the
-    /// error sheet are produced afterwards, outside the lease.
+    // One lease for every statement, so the transaction and its rollback reach the same handle.
     func executeMultipleStatementsWithParameters(
         _ statements: [SQLStatementScanner.ExecutableStatement],
         parameters: [QueryParameter],
@@ -314,7 +348,6 @@ extension QueryExecutionCoordinator {
         let conn = parent.connection
         let tabId = parent.tabManager.tabs[index].id
         let (claim, lease) = parent.beginTabExecution(for: tabId)
-        let totalCount = statements.count
         let tabType = parent.tabManager.tabs[index].tabType
 
         let statementTexts = statements.map(\.sql)
@@ -334,12 +367,29 @@ extension QueryExecutionCoordinator {
         let asksEndState = SucceededStatements.runNeedsEndState(
             prepared.map(\.sentSQL), databaseType: conn.type, grammar: grammar
         )
+        let script = parent.tabManager.tabs[index].content.query
+        let running = RunningStatements(
+            prepared: prepared,
+            grammar: grammar,
+            script: Self.scriptHolds(statements, in: script) ? script : nil,
+            end: statements.last.map { NSMaxRange($0.range) } ?? 0
+        ) { statement, grammar in
+            self.prepareStatement(
+                statement: statement,
+                parameters: parameters,
+                style: style,
+                tabType: tabType,
+                bypassRowLimit: bypassRowLimit,
+                grammar: grammar
+            )
+        }
 
         let multiStatementTask = Task { [weak self, parent] in
             guard let self else { return }
 
             let run = await runMultiStatementTransaction(
                 prepared: prepared,
+                running: running,
                 scope: scope,
                 mode: transactionKind.transactionAccessMode,
                 plan: plan,
@@ -348,17 +398,18 @@ extension QueryExecutionCoordinator {
                 lease: lease
             )
             let outcome = run.outcome
+            let sent = running.prepared
             let sessionNotice = run.plan == .sessionTransaction ? run.sessionState.openTransactionNotice : nil
 
             let ranStatements: [String]
             switch outcome {
             case .completed:
-                ranStatements = prepared.map(\.sentSQL)
+                ranStatements = sent.map(\.sentSQL)
             case .failed(let results, let failure, _):
-                let ranCount = failure.ranStatementCount(executedCount: results.count, totalCount: prepared.count)
-                ranStatements = prepared.prefix(ranCount).map(\.sentSQL)
+                let ranCount = failure.ranStatementCount(executedCount: results.count, totalCount: sent.count)
+                ranStatements = sent.prefix(ranCount).map(\.sentSQL)
             case .cancelled:
-                ranStatements = prepared.map(\.sentSQL)
+                ranStatements = sent.map(\.sentSQL)
             }
             CatalogChangeService.post(
                 .statementsRan(connectionId: conn.id, statements: ranStatements, databaseType: conn.type)
@@ -366,7 +417,7 @@ extension QueryExecutionCoordinator {
             CatalogChangeService.post(.statementsSucceeded(SucceededStatements(
                 scope: scope,
                 databaseType: conn.type,
-                statements: prepared.prefix(outcome.succeededCount).map(\.sentSQL),
+                statements: sent.prefix(outcome.succeededCount).map(\.sentSQL),
                 commit: .run(
                     startedIn: run.startState, endedIn: run.endState, plan: run.plan, completed: outcome.isCompleted
                 )
@@ -378,7 +429,7 @@ extension QueryExecutionCoordinator {
                 parent.retireQueryTask(.claim(claim))
                 keepStoppedStatements(
                     history: ExecutedStatementHistory(
-                        prepared: prepared, results: results, parameters: parameters, connection: conn
+                        prepared: sent, results: results, parameters: parameters, connection: conn
                     ),
                     tabId: tabId,
                     sessionNotice: sessionNotice
@@ -389,7 +440,7 @@ extension QueryExecutionCoordinator {
             case .completed(let results):
                 applyCompletedStatements(
                     history: ExecutedStatementHistory(
-                        prepared: prepared, results: results, parameters: parameters, connection: conn
+                        prepared: sent, results: results, parameters: parameters, connection: conn
                     ),
                     tabId: tabId,
                     claim: claim,
@@ -401,16 +452,16 @@ extension QueryExecutionCoordinator {
                         failure: failure,
                         errorDescription: errorDescription,
                         executedCount: results.count,
-                        totalCount: totalCount,
+                        totalCount: sent.count,
                         plan: run.plan,
                         sessionState: run.sessionState
                     ),
                     history: ExecutedStatementHistory(
-                        prepared: prepared, results: results, parameters: parameters, connection: conn
+                        prepared: sent, results: results, parameters: parameters, connection: conn
                     ),
                     tabId: tabId,
                     claim: claim,
-                    statements: statements,
+                    anchors: sent.map(\.anchor),
                     timing: PluginQueryTiming.batch(of: results),
                     failureOutput: run.failureOutput
                 )
@@ -447,12 +498,10 @@ extension QueryExecutionCoordinator {
         )
     }
 
-    /// The session's own state is read inside the one lease that runs the batch, so nothing can
-    /// open a transaction between the answer and the first statement, and read again afterwards
-    /// when the run joined one: a failure moves an engine like PostgreSQL from an open transaction
-    /// to an aborted one, and the two are told apart in the banner.
+    // The session state is read inside the lease, so nothing opens a transaction between the answer and the run.
     private func runMultiStatementTransaction(
         prepared: [PreparedStatement],
+        running: RunningStatements,
         scope: DatabaseScope,
         mode: PluginTransactionAccessMode,
         plan: BatchTransactionPlan,
@@ -461,6 +510,7 @@ extension QueryExecutionCoordinator {
         lease: DriverLeaseOwner
     ) async -> MultiStatementRun {
         let failureOutput = ServerOutputBox()
+        let databaseType = parent.connection.type
         do {
             var run = try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
@@ -477,7 +527,15 @@ extension QueryExecutionCoordinator {
                     connectionId: scope.connectionId,
                     gate: self.claimGate(for: claim),
                     failureSQL: \.executableSQL,
-                    isCommitPoint: \.isCommitPoint
+                    isCommitPoint: \.isCommitPoint,
+                    replanned: { ran in
+                        running.replanned(
+                            after: ran,
+                            session: SQLLexicalResolver.readings(
+                                for: databaseType, session: driver.sessionLexicalState
+                            ).execution
+                        )
+                    }
                 ) { statement in
                     try await ServerOutputCapture.running(on: driver, failureOutput: failureOutput) {
                         try await self.executeStatement(
@@ -707,18 +765,13 @@ extension QueryExecutionCoordinator {
         }
     }
 
-    /// The transaction was already rolled back inside the lease that ran it, so this
-    /// only reports the failure: resolving a driver here would reach a released handle.
-    ///
-    /// Every write is below the settle gate, history included. A batch whose claim is gone was
-    /// stopped or superseded, and recording its statements there would put work the tab is not
-    /// showing into the user's history as if it had been kept.
+    // Reports only, below the settle gate: the lease already rolled back, and a superseded batch writes no history.
     private func handleMultiStatementError(
         _ context: MultiStatementFailureContext,
         history: ExecutedStatementHistory,
         tabId: UUID,
         claim: TabExecutionClaim,
-        statements: [SQLStatementScanner.ExecutableStatement],
+        anchors: [StatementAnchor?],
         timing: PluginQueryTiming,
         failureOutput: PluginServerOutput
     ) {
@@ -731,8 +784,7 @@ extension QueryExecutionCoordinator {
         errorRS.errorMessage = contextMsg
         errorRS.failedQuery = report.failedSQL
         errorRS.statementAnchor = report.failedStatementIndex
-            .flatMap { statements.indices.contains($0) ? statements[$0] : nil }
-            .map(StatementAnchor.init)
+            .flatMap { anchors.indices.contains($0) ? anchors[$0] : nil }
 
         let failedStatementSQL = report.failedSQL
         guard parent.tabExecution.settle(claim) else { return }

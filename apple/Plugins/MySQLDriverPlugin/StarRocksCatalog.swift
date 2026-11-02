@@ -112,7 +112,8 @@ nonisolated internal enum StarRocksCatalog {
                 isNullable: isNullable,
                 isPrimaryKey: rowIdentifyingKeys.contains(row[safe: 4]?.asText ?? ""),
                 defaultValue: mysqlColumnDefault(
-                    .bare(row[safe: 5]?.asText), extra: nil, dataType: dataType, isNullable: isNullable
+                    .bare(row[safe: 5]?.asText), extra: nil, dataType: dataType, isNullable: isNullable,
+                    flavor: .starrocks
                 ),
                 comment: row[safe: 6]?.asText?.nilIfEmpty
             ))

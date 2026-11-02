@@ -122,7 +122,8 @@ final class DataTabSQLExporter: DataGridSQLExporting {
             columnIndex: 0,
             columnTypes: [column.type ?? .text(rawType: nil)],
             escapeStringLiteral: driver?.escapeStringLiteral,
-            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType)
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
+            stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, session: driver?.sessionLexicalState)
         )
         return converter.generateInClause(rows: values.map { [$0] })
     }

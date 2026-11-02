@@ -23,6 +23,10 @@ public struct PluginStatementContext: Sendable, Equatable {
     // False when the statement may not run code on the server or reach its files.
     public var allowsServerCode = true
 
+    // How the engine lexes this session's text, so the driver binds and quotes as the server reads. Nil from a host
+    // that does not say.
+    public var lexicalFeatures: SQLLexicalFeatures?
+
     public init() {}
 }
 

@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 public enum MSSQLTableListingScope: Sendable, Equatable {
     case schema(String)
@@ -11,23 +12,20 @@ public enum MSSQLSchemaQueries {
         MSSQLStringLiteral.escaped(value)
     }
 
-    /// By code unit, as ``MSSQLStringLiteral`` escapes a quote: a default replacement matches whole
-    /// grapheme clusters, so a `]` followed by a combining mark was never doubled and closed the
-    /// identifier early.
     public static func escapeBracket(_ value: String) -> String {
-        value.replacingOccurrences(of: "]", with: "]]", options: .literal)
+        var scalars = SQLQuoting.identifier(value, quote: .bracket).unicodeScalars
+        scalars.removeFirst()
+        scalars.removeLast()
+        return String(scalars)
     }
 
     public static func bracketed(schema: String, table: String) -> String {
-        "[\(escapeBracket(schema))].[\(escapeBracket(table))]"
+        SQLQuoting.identifier(schema, quote: .bracket) + "." + SQLQuoting.identifier(table, quote: .bracket)
     }
 
-    /// Both catalog views are scoped to a database, so each is qualified with the one asked about. Read unqualified
-    /// they describe whichever database the connection is using, which reported that database's size and table
-    /// count under every name. `size` counts 8 KB pages and is cast before multiplying: the session runs with
-    /// ANSI_WARNINGS off, so an int overflow past 2 GB comes back as NULL rather than as an error.
+    // Both views are scoped to a database. `size` counts 8 KB pages and with ANSI_WARNINGS off an int overflow reads NULL.
     public static func databaseMetadata(database: String) -> String {
-        let qualified = "[\(escapeBracket(database))]"
+        let qualified = SQLQuoting.identifier(database, quote: .bracket)
         return """
             SELECT
                 (SELECT SUM(CAST(size AS bigint)) * 8192 FROM \(qualified).sys.database_files) AS size_bytes,
@@ -44,19 +42,12 @@ public enum MSSQLSchemaQueries {
         GROUP BY d.name
         """
 
-    /// Renders `CREATE INDEX` for the rows `sys.indexes` joined to `sys.index_columns` returns,
-    /// one statement per index, in the order the rows arrive.
-    ///
-    /// Each row is `name, type_desc, is_unique, filter_definition, column_name,
-    /// is_included_column, is_descending_key`. The kind is written out because a table can hold
-    /// only one clustered index: scripting every index as `CLUSTERED`, which is what the driver
-    /// used to report, makes the server reject the second one. `filter_definition` already arrives
-    /// parenthesised, so it is spliced in as it stands.
+    // Rows are `name, type_desc, is_unique, filter_definition, column_name, is_included_column, is_descending_key`.
     public static func indexStatements(
         rows: [[String?]],
         schema: String,
         table: String
-    ) -> [String] {
+    ) throws -> [String] {
         var order: [String] = []
         var keys: [String: [String]] = [:]
         var included: [String: [String]] = [:]
@@ -70,13 +61,13 @@ public enum MSSQLSchemaQueries {
                 order.append(name)
                 keys[name] = []
                 included[name] = []
-                kind[name] = (row[safe: 1] ?? nil) ?? "NONCLUSTERED"
+                kind[name] = MSSQLDefinitionText.indexKind(row[safe: 1] ?? nil) ?? "NONCLUSTERED"
                 unique[name] = (row[safe: 2] ?? nil) == "1"
                 if let predicate = row[safe: 3] ?? nil, !predicate.isEmpty {
                     filter[name] = predicate
                 }
             }
-            let quoted = "[\(escapeBracket(column))]"
+            let quoted = SQLQuoting.identifier(column, quote: .bracket)
             if (row[safe: 5] ?? nil) == "1" {
                 included[name]?.append(quoted)
             } else {
@@ -85,26 +76,67 @@ public enum MSSQLSchemaQueries {
             }
         }
 
-        return order.compactMap { name -> String? in
+        return try order.compactMap { name -> String? in
             guard let keyColumns = keys[name], !keyColumns.isEmpty else { return nil }
             var statement = "CREATE "
             if unique[name] == true { statement += "UNIQUE " }
-            statement += "\(kind[name] ?? "NONCLUSTERED") INDEX [\(escapeBracket(name))]"
+            statement += "\(kind[name] ?? "NONCLUSTERED") INDEX \(SQLQuoting.identifier(name, quote: .bracket))"
             statement += " ON \(bracketed(schema: schema, table: table))"
             statement += " (\(keyColumns.joined(separator: ", ")))"
             if let includedColumns = included[name], !includedColumns.isEmpty {
                 statement += " INCLUDE (\(includedColumns.joined(separator: ", ")))"
             }
             if let predicate = filter[name] {
-                statement += " WHERE \(predicate)"
+                guard let expression = MSSQLDefinitionText.expression(predicate) else {
+                    throw MSSQLDefinitionRefusal.indexFilter(name)
+                }
+                statement += " WHERE \(expression)"
             }
             return statement + ";"
         }
     }
 
+    public static func createTableStatement(
+        schema: String,
+        table: String,
+        columns: [MSSQLColumnRow],
+        primaryKeyColumns: [String],
+        foreignKeys: [MSSQLForeignKeyRow]
+    ) throws -> String {
+        var parts = try columns.map { column -> String in
+            let type = column.displayType.uppercased()
+            guard MSSQLDefinitionText.isColumnType(type) else {
+                throw MSSQLDefinitionRefusal.columnType(column.name, type)
+            }
+            var definition = "    \(SQLQuoting.identifier(column.name, quote: .bracket)) \(type)"
+            if column.isIdentity { definition += " IDENTITY(1,1)" }
+            definition += column.isNullable ? " NULL" : " NOT NULL"
+            if let value = column.defaultValue {
+                guard let expression = MSSQLDefinitionText.expression(value) else {
+                    throw MSSQLDefinitionRefusal.columnDefault(column.name)
+                }
+                definition += " DEFAULT \(expression)"
+            }
+            return definition
+        }
+        if !primaryKeyColumns.isEmpty {
+            let keys = primaryKeyColumns.map { SQLQuoting.identifier($0, quote: .bracket) }.joined(separator: ", ")
+            parts.append("    CONSTRAINT \(SQLQuoting.identifier("PK_" + table, quote: .bracket)) PRIMARY KEY (\(keys))")
+        }
+        for key in foreignKeys {
+            parts.append(
+                "    CONSTRAINT \(SQLQuoting.identifier(key.constraintName, quote: .bracket))"
+                    + " FOREIGN KEY (\(SQLQuoting.identifier(key.columnName, quote: .bracket)))"
+                    + " REFERENCES \(SQLQuoting.identifier(key.referencedTable, quote: .bracket))"
+                    + " (\(SQLQuoting.identifier(key.referencedColumn, quote: .bracket)))"
+            )
+        }
+        return "CREATE TABLE \(bracketed(schema: schema, table: table)) (\n" + parts.joined(separator: ",\n") + "\n);"
+    }
+
     public static func qualifiedName(schema: String?, table: String) -> String {
         guard let schema, !schema.isEmpty else {
-            return "[\(escapeBracket(table))]"
+            return SQLQuoting.identifier(table, quote: .bracket)
         }
         return bracketed(schema: schema, table: table)
     }
@@ -197,10 +229,7 @@ public enum MSSQLSchemaQueries {
             """
     }
 
-    /// One column per row, in the order `parseColumnRow` reads.
-    ///
-    /// The catalog names are quoted before `OBJECT_ID` sees them: unquoted, a table named `a.b` or a schema named
-    /// `x.y` resolves to nothing and every column reads as neither identity nor computed.
+    // One column per row, in the order `parseColumnRow` reads.
     public static func columns(schema: String, table: String) -> String {
         let s = MSSQLStringLiteral.quoted(schema)
         let t = MSSQLStringLiteral.quoted(table)
@@ -208,6 +237,7 @@ public enum MSSQLSchemaQueries {
             SELECT
             \(columnSelectList)
             FROM INFORMATION_SCHEMA.COLUMNS c
+            \(columnDefaultJoin)
             LEFT JOIN (
                 SELECT kcu.COLUMN_NAME
                 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
@@ -224,8 +254,7 @@ public enum MSSQLSchemaQueries {
             """
     }
 
-    /// Every column of every table in the schema, each row carrying its table name after the columns
-    /// `parseColumnRow` reads, at `allColumnsTableNameIndex`.
+    // Each row carries its table name after the columns `parseColumnRow` reads, at `allColumnsTableNameIndex`.
     public static func allColumns(schema: String) -> String {
         let s = MSSQLStringLiteral.quoted(schema)
         return """
@@ -233,6 +262,7 @@ public enum MSSQLSchemaQueries {
             \(columnSelectList),
                 c.TABLE_NAME
             FROM INFORMATION_SCHEMA.COLUMNS c
+            \(columnDefaultJoin)
             LEFT JOIN (
                 SELECT kcu.TABLE_NAME, kcu.COLUMN_NAME
                 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
@@ -259,7 +289,7 @@ public enum MSSQLSchemaQueries {
                 c.NUMERIC_PRECISION,
                 c.NUMERIC_SCALE,
                 c.IS_NULLABLE,
-                c.COLUMN_DEFAULT,
+                dc.definition AS COLUMN_DEFAULT,
                 COLUMNPROPERTY(\(columnObjectID), c.COLUMN_NAME, 'IsIdentity') AS IS_IDENTITY,
                 CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS IS_PK,
                 COLUMNPROPERTY(\(columnObjectID), c.COLUMN_NAME, 'IsComputed') AS IS_COMPUTED,
@@ -271,6 +301,12 @@ public enum MSSQLSchemaQueries {
         """
 
     private static let columnObjectID = "OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME))"
+
+    // `INFORMATION_SCHEMA.COLUMNS.COLUMN_DEFAULT` stops at 4,000 characters, which can leave a literal open.
+    private static let columnDefaultJoin = """
+        LEFT JOIN sys.columns sc ON sc.object_id = \(columnObjectID) AND sc.name = c.COLUMN_NAME
+        LEFT JOIN sys.default_constraints dc ON dc.object_id = sc.default_object_id
+        """
 
     // A `#name` table lives in `tempdb` whatever database the session is on.
     public static func namesTemporaryTable(_ table: String) -> Bool {
@@ -314,7 +350,7 @@ public enum MSSQLSchemaQueries {
                 c.NUMERIC_PRECISION,
                 c.NUMERIC_SCALE,
                 c.IS_NULLABLE,
-                c.COLUMN_DEFAULT,
+                dc.definition AS COLUMN_DEFAULT,
                 CAST(sc.is_identity AS int) AS IS_IDENTITY,
                 CASE WHEN EXISTS (
                     SELECT 1
@@ -330,6 +366,7 @@ public enum MSSQLSchemaQueries {
                 END AS IS_SERVER_GENERATED
             FROM tempdb.INFORMATION_SCHEMA.COLUMNS c
             JOIN tempdb.sys.columns sc ON sc.object_id = \(object) AND sc.name = c.COLUMN_NAME
+            LEFT JOIN tempdb.sys.default_constraints dc ON dc.object_id = sc.default_object_id
             WHERE c.TABLE_NAME = OBJECT_NAME(\(object), DB_ID(N'tempdb'))
             ORDER BY c.ORDINAL_POSITION
             """

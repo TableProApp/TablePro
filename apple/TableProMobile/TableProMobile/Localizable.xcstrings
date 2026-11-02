@@ -1566,6 +1566,10 @@
     "60 seconds" : {
 
     },
+    "A check constraint of %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "_id cannot be renamed, removed or used as a new name. MongoDB keys every document by it." : {
 
     },
@@ -24129,6 +24133,14 @@
         }
       }
     },
+    "The collation of column %@ is not a collation name: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The computed expression of column %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The connection attempt was cancelled." : {
       "localizations" : {
         "ko" : {
@@ -24478,6 +24490,10 @@
     "The database name is longer than the 128 bytes FreeTDS takes." : {
 
     },
+    "The default of column %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The database “%@” has an open transaction. Switching rolls it back and discards its uncommitted changes." : {
 
     },
@@ -24642,6 +24658,10 @@
         }
       }
     },
+    "The filter of index %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The FreeTDS configuration could not be written: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -24689,6 +24709,10 @@
     },
     "The IAM Identity Center sign-in on this device has expired." : {
 
+    },
+    "The identity of column %@ is not a whole-number seed and increment: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The insert stopped at a document larger than MongoDB accepts." : {
 
@@ -26237,6 +26261,10 @@
     },
     "The transaction on this connection is still open. Commit or roll it back." : {
 
+    },
+    "The type of column %@ is not one SQL Server type: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The user name is longer than the 128 bytes FreeTDS takes." : {
 

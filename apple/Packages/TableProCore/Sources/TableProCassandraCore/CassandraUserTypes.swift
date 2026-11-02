@@ -1,11 +1,11 @@
 //
 //  CassandraUserTypes.swift
-//  CassandraDriverPlugin
+//  TableProCassandraCore
 //
 
 import Foundation
 
-// Foundation only, so apple/scripts/probes/check-cassandra-user-types.sh can compile it against a live server.
+// apple/scripts/probes/check-cassandra-user-types.sh compiles this file against a live server.
 public enum CassandraUserTypes {
     public struct Field: Equatable, Sendable {
         public let name: String
@@ -18,7 +18,7 @@ public enum CassandraUserTypes {
     }
 
     // From reserved_keywords.txt in the apache-cassandra 5.0.9 jar.
-    static let reservedKeywords: Set<String> = [
+    public static let reservedKeywords: Set<String> = [
         "ADD", "ALLOW", "ALTER", "AND", "APPLY", "ASC", "AUTHORIZE", "BATCH", "BEGIN", "BY", "COLUMNFAMILY",
         "CREATE", "DELETE", "DESC", "DESCRIBE", "DROP", "ENTRIES", "EXECUTE", "FROM", "FULL", "GRANT", "IF",
         "IN", "INDEX", "INFINITY", "INSERT", "INTO", "IS", "KEYSPACE", "LIMIT", "MATERIALIZED", "MODIFY", "NAN",
@@ -36,9 +36,10 @@ public enum CassandraUserTypes {
         "BITSTRING", "BYTE", "COMPLEX", "ENUM", "INTERVAL", "MACADDR",
     ]
 
+    // The two lists are read through `toJson`, the only form whose elements come back exactly.
     public static func listQuery(keyspace: String) -> String {
         """
-        SELECT type_name, field_names, field_types FROM system_schema.types
+        SELECT type_name, toJson(field_names), toJson(field_types) FROM system_schema.types
         WHERE keyspace_name = '\(CassandraObjectQueries.escapeLiteral(keyspace))'
         """
     }
@@ -47,11 +48,10 @@ public enum CassandraUserTypes {
         listQuery(keyspace: keyspace) + " AND type_name = '\(CassandraObjectQueries.escapeLiteral(name))'"
     }
 
-    // Nil for a field name holding ", ", which no reading of the driver's list text can place.
-    public static func fields(names: String?, types: String?) -> [Field]? {
-        let names = CassandraObjectQueries.names(of: names)
-        let types = CassandraObjectQueries.types(of: types)
-        guard !names.isEmpty, names.count == types.count else { return nil }
+    // Nil when the lists do not pair up or a type is not one CQL type, so the type gets no definition.
+    public static func fields(names: [String], types: [String]) -> [Field]? {
+        guard !names.isEmpty, names.count == types.count,
+              types.allSatisfy(CassandraObjectQueries.isSingleType) else { return nil }
         return zip(names, types).map { Field(name: $0, type: $1) }
     }
 

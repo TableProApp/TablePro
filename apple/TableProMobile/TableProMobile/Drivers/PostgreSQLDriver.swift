@@ -7,6 +7,7 @@ import TableProPluginKit
 import TableProPostgreSQLCore
 import TableProQuery
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro", category: "PostgreSQLDriver")
@@ -22,6 +23,19 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
 
     var supportsSchemas: Bool { true }
     var supportsTransactions: Bool { true }
+
+    private let settledFacts = OSAllocatedUnfairLock<SQLSessionLexicalFacts?>(initialState: nil)
+
+    var settledLexicalFacts: SQLSessionLexicalFacts? {
+        settledFacts.withLock { $0 }
+    }
+
+    func escapeStringLiteral(_ value: String) -> String {
+        let escapes = SQLLexicalReadings.stringEscapes(
+            databaseTypeId: databaseType.rawValue, declared: nil, session: settledLexicalFacts
+        )
+        return SQLQuoting.stringLiteralBody(value, escapes: escapes)
+    }
 
     // Set once during connect()/switchSchema() before the driver is shared — safe for concurrent reads
     nonisolated(unsafe) private(set) var currentSchema: String? = "public"
@@ -62,6 +76,13 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         catalogPresence = await probeCatalogPresence()
         columnReadSupport = PostgreSQLColumnReadSupport()
         await adoptServerSchema()
+        await settleLexicalFacts()
+    }
+
+    // libpq keeps the value the server last reported, so a `SET standard_conforming_strings` is read once it has run.
+    private func settleLexicalFacts() async {
+        let facts = await sessionLexicalFacts()
+        settledFacts.withLock { $0 = facts }
     }
 
     private func probeCatalogPresence() async -> PostgreSQLCatalogPresence {
@@ -95,7 +116,9 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> QueryResult {
-        Self.queryResult(from: try await actor.execute(query))
+        let raw = try await actor.execute(query)
+        await settleLexicalFacts()
+        return Self.queryResult(from: raw)
     }
 
     /// Every statement this driver writes against the catalogs runs here, under `PostgreSQLCatalogSearchPath`, so a
@@ -170,6 +193,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
                             try await actor.endStream(id)
                         }
                     }
+                    await self.settleLexicalFacts()
                     continuation.finish()
                 } catch is CancellationError {
                     try? await actor.endStream(id)
@@ -235,8 +259,7 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func switchSchema(to name: String) async throws {
-        let safe = name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
-        _ = try await actor.execute("SET search_path TO \"\(safe)\"")
+        _ = try await actor.execute("SET search_path TO \(SQLQuoting.identifier(name))")
         currentSchema = name
     }
 
@@ -257,8 +280,10 @@ nonisolated final class PostgreSQLDriver: DatabaseDriver, @unchecked Sendable {
         _ = try await actor.execute("COMMIT")
     }
 
+    // A rollback also undoes a `SET` the transaction made.
     func rollbackTransaction() async throws {
         _ = try await actor.execute("ROLLBACK")
+        await settleLexicalFacts()
     }
 
     func sessionTransactionState() async -> DriverTransactionState {

@@ -21,13 +21,10 @@ struct BeancountSourceDirective {
 /// A ledger reaches this through `BeancountSourceGraph.lines`, which the include resolver already
 /// split while it followed the includes, so nothing here reopens a file.
 enum BeancountSourceScanner {
-    /// `CharacterSet.newlines` treats the `\r` and the `\n` of a CRLF pair as two separators, so a
-    /// CRLF ledger comes back with a phantom empty component between every pair. That shifts every
-    /// line number and reads as a blank line to anything tracking directive context, so the pairs
-    /// are collapsed before the split.
+    // `.newlines` splits a CRLF pair twice, which shifts every line number, so the pairs are collapsed first.
     static func lines(of contents: String) -> [String] {
         contents
-            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r\n", with: "\n", options: .literal)
             .components(separatedBy: .newlines)
     }
 

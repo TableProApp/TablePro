@@ -84,6 +84,13 @@ struct MySQLLiteralSpellingTests {
         #expect(session.respelled("5--1 'a\\\\b'") == "5--1 'a\\b'")
     }
 
+    // MySQL 8.4 under NO_BACKSLASH_ESCAPES read `"\"` as closed, so the raw `'a\'` after it ended early and dropped `secret`.
+    @Test("A backslash inside double quotes escapes nothing, so the literal after it is re-spelled")
+    func backslashInDoubleQuotesEscapesNothing() {
+        #expect(session.respelled(#"DEFAULT ("\" 'a\' ), DROP COLUMN secret -- '\"")"#)
+            == #"DEFAULT ("\" 'a'' ), DROP COLUMN secret -- '\"")"#)
+    }
+
     @Test("A literal that never closes is left as it was")
     func unterminatedLiteral() {
         #expect(session.respelled(#"DEFAULT 'a\\b"#) == #"DEFAULT 'a\\b"#)

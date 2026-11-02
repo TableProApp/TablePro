@@ -2861,6 +2861,9 @@
         }
       }
     },
+    "%@ cannot be scripted, because its SQL holds more than one statement." : {
+
+    },
     "%@ cannot be the primary key. MongoDB keys every document by _id." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -15069,6 +15072,10 @@
           }
         }
       }
+    },
+    "A check constraint of %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A check needs an expression." : {
 
@@ -43550,6 +43557,10 @@
           }
         }
       }
+    },
+    "Column %@ has a type, default, generation expression or check that is not one SQL expression." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Column %@ is a generated column, which needs PostgreSQL 12 or later." : {
       "extractionState" : "manual",
@@ -93609,6 +93620,10 @@
           }
         }
       }
+    },
+    "Index %@ has a key part that is not one SQL expression." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Index %@ has a WHERE clause, an expression, included columns or a prefix length. MongoDB indexes take none of these." : {
       "extractionState" : "manual",
@@ -179598,6 +179613,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro cannot rebuild the definition of %@ from what the server reported." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro cannot sign an RDS token for \"%@\". Enter the RDS Endpoint (for example mydb.abc123.us-east-1.rds.amazonaws.com:5432) when you connect through a port forward or bastion." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -183682,6 +183701,10 @@
         }
       }
     },
+    "The action of foreign key %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The action that completed" : {
       "localizations" : {
         "fr" : {
@@ -185136,6 +185159,10 @@
         }
       }
     },
+    "The collation of column %@ is not a collation name: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The color marks this connection in the connection list and its window." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -185229,6 +185256,14 @@
           }
         }
       }
+    },
+    "The computed expression of column %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The condition of index %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The connection closed." : {
 
@@ -186342,6 +186377,14 @@
         }
       }
     },
+    "The default of column %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The default of column %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The descriptor set names an unknown field type %llu." : {
 
     },
@@ -186913,6 +186956,10 @@
         }
       }
     },
+    "The expression of generated column %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The extension failed to start: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -187207,6 +187254,10 @@
         }
       }
     },
+    "The filter of index %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The filter on %@ is not one expression. Remove the semicolon." : {
       "localizations" : {
         "fr" : {
@@ -187484,6 +187535,10 @@
     },
     "The icon and color mark this connection in the connection list and its window." : {
 
+    },
+    "The identity of column %@ is not a whole-number seed and increment: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "the IdentityAgent line for this host in ~/.ssh/config" : {
       "localizations" : {
@@ -191903,6 +191958,9 @@
         }
       }
     },
+    "The source's definition holds more than one statement." : {
+
+    },
     "The source's indexes could not be read: %@" : {
       "localizations" : {
         "fr" : {
@@ -193242,6 +193300,9 @@
         }
       }
     },
+    "The target's definition holds more than one statement." : {
+
+    },
     "The target's indexes could not be read: %@" : {
       "localizations" : {
         "fr" : {
@@ -193727,6 +193788,18 @@
     },
     "The type changed on the server since it was read. Reload it, then save again." : {
 
+    },
+    "The type of column %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The type of column %@ does not read as one type: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The type of column %@ is not one SQL Server type: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The type's shape, such as enum, composite, domain, range, aliasType, tableType or clrType" : {
       "localizations" : {

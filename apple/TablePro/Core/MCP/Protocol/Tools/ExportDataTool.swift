@@ -125,7 +125,8 @@ public struct ExportDataTool: MCPToolImplementation {
 
         var sqlDialect: MCPSqlExportDialect?
         if format == .sql {
-            guard let dialect = MCPSqlExportDialect.resolve(for: meta.databaseType) else {
+            let session = await SQLLexicalResolver.sessionState(for: connectionId)
+            guard let dialect = MCPSqlExportDialect.resolve(for: meta.databaseType, session: session) else {
                 throw MCPToolExecutionError.unsupported(
                     String(localized: "This engine has no SQL dialect, so it cannot produce SQL output.")
                 )
@@ -284,7 +285,7 @@ public struct ExportDataTool: MCPToolImplementation {
                 String(localized: "This engine has no SQL dialect, so tables cannot be selected generically.")
             )
         }
-        let quoter = quoteIdentifierFromDialect(dialect)
+        let quoter = quoteIdentifierFromDialect(dialect, databaseType: meta.databaseType)
         return try tables.map { table in
             try validateTableName(table)
             let quoted = table

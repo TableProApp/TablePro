@@ -216,7 +216,7 @@ extension GlobalStateSuites {
             #expect(installed.driver.contexts.last?.readOnly == true)
         }
 
-        @Test("A statement the app runs for itself keeps the default context")
+        @Test("A statement the app runs for itself keeps the default policy and carries the session's lexing")
         func inAppRunKeepsTheDefaultContext() async throws {
             let driver = ContextRecordingDriver()
             let adapter = PluginDriverAdapter(
@@ -227,7 +227,12 @@ extension GlobalStateSuites {
             _ = try await adapter.executeUserQuery(query: "DELETE FROM orders WHERE id = 1", rowCap: nil, parameters: nil)
             _ = try await adapter.executeParameterized(query: "DELETE FROM orders WHERE id = ?", parameters: [1])
 
-            #expect(driver.contexts == [PluginStatementContext(), PluginStatementContext()])
+            let features = try #require(driver.contexts.first?.lexicalFeatures)
+            #expect(features.contains(.taggedDollarQuotes))
+            #expect(!features.contains(.backslashEscapesInSingleQuotes))
+            var expected = PluginStatementContext()
+            expected.lexicalFeatures = features
+            #expect(driver.contexts == [expected, expected])
         }
     }
 }

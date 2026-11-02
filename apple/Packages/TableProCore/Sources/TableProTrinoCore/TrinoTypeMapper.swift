@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLGrammar
 
 public enum TrinoTypeCategory: Sendable, Equatable {
     case scalar
@@ -20,6 +21,11 @@ public enum TrinoTypeMapper {
             return trimmed
         }
         return String(trimmed[..<parenIndex]).trimmingCharacters(in: .whitespaces)
+    }
+
+    // A copy and a grid edit take the type from a server, which reports a row field name bare whatever it holds.
+    public static func isWritable(_ type: String) -> Bool {
+        SQLExpressionFragment.isSingleType(type, databaseTypeId: "Trino")
     }
 
     public static func category(forRawType rawType: String) -> TrinoTypeCategory {

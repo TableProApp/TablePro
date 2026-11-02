@@ -6,6 +6,7 @@
 import Foundation
 import TableProMSSQLCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// The INSERT, UPDATE and DELETE statements a grid save sends to SQL Server, with `?` placeholders.
 ///
@@ -208,6 +209,6 @@ struct MSSQLStatementGenerator {
     }
 
     static func quote(_ name: String) -> String {
-        "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
+        SQLQuoting.identifier(name, quote: .bracket)
     }
 }

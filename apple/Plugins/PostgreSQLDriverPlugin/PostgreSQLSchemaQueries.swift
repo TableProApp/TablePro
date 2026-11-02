@@ -9,6 +9,7 @@
 import Foundation
 import TableProPluginKit
 import TableProPostgreSQLCore
+import TableProSQLQuoting
 
 enum PostgreSQLSchemaProbe: Equatable {
     case schema(String)
@@ -206,7 +207,7 @@ enum PostgreSQLSchemaQueries {
     }
 
     private static func quotedSchemaIdentifier(_ schema: String) -> String {
-        "\"\(schema.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        SQLQuoting.identifier(schema)
     }
 
     static func collationList(capabilities: PostgreSQLCapabilities) -> String {

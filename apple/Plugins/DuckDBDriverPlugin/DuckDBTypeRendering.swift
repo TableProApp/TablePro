@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 enum DuckDBLogicalType: String, CaseIterable, Sendable {
     case boolean = "BOOLEAN"
@@ -86,13 +87,9 @@ enum DuckDBProjectedQuery {
         "c\(index + 1)"
     }
 
-    static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
-    }
-
     static func projection(for type: DuckDBLogicalType?, at index: Int, column: String) -> String {
         let source = sourceAlias(at: index)
-        let alias = quoteIdentifier(column)
+        let alias = SQLQuoting.identifier(column)
         guard DuckDBLogicalType.requiresTextProjection(type) else {
             return "\(source) AS \(alias)"
         }

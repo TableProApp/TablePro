@@ -213,4 +213,11 @@ internal enum CompareSyncError: LocalizedError {
         case .objectsChangedSinceComparison(let message): return message
         }
     }
+
+    internal static func severalStatements(in objectName: String) -> CompareSyncError {
+        .unsupportedOperation(String(
+            format: String(localized: "%@ cannot be scripted, because its SQL holds more than one statement."),
+            objectName
+        ))
+    }
 }

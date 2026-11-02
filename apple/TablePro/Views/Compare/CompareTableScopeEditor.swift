@@ -68,7 +68,10 @@ internal struct CompareTableScopeEditor: View {
                 )
             }
 
-            if let error = plan.scope.filterValidationError {
+            if let error = plan.scope.filterValidationError(
+                source: session.source?.databaseType,
+                target: session.target?.databaseType
+            ) {
                 Label {
                     Text(error)
                 } icon: {

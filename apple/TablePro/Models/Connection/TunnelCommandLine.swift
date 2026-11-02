@@ -71,8 +71,7 @@ enum TunnelCommandLine {
         return tokens.map(expandingTilde)
     }
 
-    /// Runs after tokenization, never before, so a substituted value carrying a space stays one
-    /// argument instead of splitting into two.
+    // After tokenization, so a value carrying a space stays one argument. By code unit, as the check below finds it.
     static func substitutePlaceholders(
         in tokens: [String],
         localPort: Int,
@@ -81,14 +80,14 @@ enum TunnelCommandLine {
     ) -> [String] {
         tokens.map { token in
             token
-                .replacingOccurrences(of: localPortPlaceholder, with: String(localPort))
-                .replacingOccurrences(of: hostPlaceholder, with: remoteHost)
-                .replacingOccurrences(of: remotePortPlaceholder, with: String(remotePort))
+                .replacingOccurrences(of: localPortPlaceholder, with: String(localPort), options: .literal)
+                .replacingOccurrences(of: hostPlaceholder, with: remoteHost, options: .literal)
+                .replacingOccurrences(of: remotePortPlaceholder, with: String(remotePort), options: .literal)
         }
     }
 
     static func containsLocalPortPlaceholder(_ commandLine: String) -> Bool {
-        commandLine.contains(localPortPlaceholder)
+        commandLine.range(of: localPortPlaceholder, options: .literal) != nil
     }
 
     private static func expandingTilde(_ token: String) -> String {

@@ -187,8 +187,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         flavor.isDatabend ? DatabendCatalog.quoteIdentifier(name) : mysqlQuoteIdentifier(name)
     }
 
+    // The backslash form under every session: the host also writes dumps and copied INSERTs with this, and a dump
+    // declares a mode without NO_BACKSLASH_ESCAPES, so the single-quote form would end early on restore.
     func escapeStringLiteral(_ value: String) -> String {
-        mysqlEscapeStringLiteral(value)
+        flavor.isDatabend ? DatabendLiteral.escapeString(value) : mysqlEscapeStringLiteral(value)
     }
 
     init(config: DriverConnectionConfig) {
@@ -1360,7 +1362,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         guard !flavor.isDatabend else { return nil }
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD \(mysqlIndexDefinitionSQL(index))"
+        return mysqlAddIndexSQL(table: table, index: index, spelling: literalSpelling)
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -1369,14 +1371,23 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String? {
-        mysqlModifyIndexSQL(table: table, oldIndexName: oldIndexName, newIndex: newIndex, flavor: flavor)
+        mysqlModifyIndexSQL(
+            table: table, oldIndexName: oldIndexName, newIndex: newIndex, flavor: flavor, spelling: literalSpelling
+        )
     }
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
-        guard case .addIndex(let index) = operation else { return nil }
         let identity = serverIdentity
-        return mysqlReservedIndexNameRefusal(for: index)
-            ?? MySQLFunctionalKeyParts.refusal(for: index, banner: identity.banner, flavor: identity.flavor)
+        switch operation {
+        case .addIndex(let index):
+            return mysqlReservedIndexNameRefusal(for: index)
+                ?? MySQLFunctionalKeyParts.refusal(for: index, banner: identity.banner, flavor: identity.flavor)
+                ?? mysqlIndexExpressionRefusal(for: index, flavor: identity.flavor)
+        case .addColumn(let column), .modifyColumn(_, let column):
+            return mysqlColumnTextRefusal(for: column, flavor: identity.flavor)
+        default:
+            return nil
+        }
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
@@ -1395,7 +1406,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return nil
         }
         let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        guard !expression.isEmpty, !constraint.name.isEmpty,
+              mysqlIsSingleExpression(expression, flavor: identity.flavor)
+        else { return nil }
         return literalSpelling.respelled(
             "ALTER TABLE \(quoteIdentifier(table)) ADD CONSTRAINT \(quoteIdentifier(constraint.name)) CHECK (\(expression))"
         )
@@ -1445,22 +1458,26 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return literalSpelling.respelled("ALTER TABLE \(tableName) MODIFY COLUMN \(definition) \(position)")
     }
 
-    /// `MODIFY COLUMN` replaces the whole definition, so every move restates the column in full.
-    /// Restating only the type is what drops charset, collation and `ON UPDATE`.
+    // `MODIFY COLUMN` replaces the whole definition, so every move restates the column in full.
     func generateColumnReorderPlan(
         table: String,
         schema: String?,
         columns: [PluginColumnDefinition],
         desiredOrder: [String]
     ) async throws -> PluginColumnReorderPlan? {
+        let flavor = self.flavor
         guard !flavor.isDatabend else { return nil }
         let byName = Dictionary(columns.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        let statements = PluginColumnReorderPlanner
+        let moved = PluginColumnReorderPlanner
             .moves(from: columns.map(\.name), to: desiredOrder)
-            .compactMap { move -> String? in
-                guard let column = byName[move.column] else { return nil }
-                return generateMoveColumnSQL(table: table, column: column, afterColumn: move.afterColumn)
-            }
+            .compactMap { move in byName[move.column].map { (column: $0, afterColumn: move.afterColumn) } }
+        // Only a moved column is restated, so only its text has to pass.
+        if let refusal = moved.lazy.compactMap({ mysqlColumnTextRefusal(for: $0.column, flavor: flavor) }).first {
+            throw MariaDBPluginError(code: 0, message: refusal, sqlState: nil)
+        }
+        let statements = moved.compactMap { move in
+            generateMoveColumnSQL(table: table, column: move.column, afterColumn: move.afterColumn)
+        }
         guard !statements.isEmpty else { return nil }
         return PluginColumnReorderPlan(statements: statements, cost: .metadataOnly)
     }

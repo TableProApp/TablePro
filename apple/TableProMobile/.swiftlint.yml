@@ -4,3 +4,4 @@ only_rules:
   - date_formatter_locale
   - count_before_inflected_span
   - sync_record_id_construction
+  - literal_quote_search

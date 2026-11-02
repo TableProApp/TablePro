@@ -9,6 +9,7 @@ import TableProCoreTypes
 import TableProKerberos
 import TableProMSSQLCore
 import TableProPluginKit
+import TableProSQLQuoting
 import TableProSQLVocabulary
 
 // MARK: - Core ↔ Plugin Bridges
@@ -323,7 +324,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        "[\(MSSQLSchemaQueries.escapeBracket(name))]"
+        SQLQuoting.identifier(name, quote: .bracket)
     }
 
     // MARK: - View Templates
@@ -958,6 +959,12 @@ enum MSSQLPluginError: Error {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)
+}
+
+extension MSSQLPluginError {
+    init(_ refusal: MSSQLDefinitionRefusal) {
+        self = .queryFailed(refusal.reason)
+    }
 }
 
 extension MSSQLPluginError: PluginDriverError {

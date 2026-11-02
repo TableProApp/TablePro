@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import os
 import TableProPluginKit
 import TableProSQLGrammar
 import Testing
@@ -470,6 +471,42 @@ struct SQLFileParserTests {
         #expect(try await Self.parse(Self.cqlScript, grammar: grammar) == Self.cqlStatements)
         let edited = SQLStatementScanner.executableStatements(in: Self.cqlScript, grammar: grammar).map { $0.sql }
         #expect(edited == Self.cqlStatements)
+    }
+
+    // The provider flips the way the server's NO_BACKSLASH_ESCAPES flag does once each SET has run.
+    @Test("Each statement is cut with the grammar the session has once the one before it ran")
+    func dumpFollowsTheSessionsSQLMode() async throws {
+        let dump = """
+        /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+        /*!50003 SET sql_mode              = 'NO_BACKSLASH_ESCAPES' */ ;
+        DELIMITER ;;
+        CREATE DEFINER=`mallory`@`%` PROCEDURE `audit_tick`()
+        SET @x = '\\' # ' ;; GRANT ALL PRIVILEGES ON *.* TO `mallory`@`%` WITH GRANT OPTION ;; SET @z = 0 #
+        , @y = 1 ;;
+        DELIMITER ;
+        /*!50003 SET sql_mode              = @saved_sql_mode */ ;
+        INSERT INTO t VALUES ('it\\'s; one row');
+        """
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sql")
+        try dump.write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let noEscapes = SQLLexicalResolver.readings(for: .mysql, session: PluginSessionLexicalState(
+            determined: [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes], enabled: []
+        )).execution
+        let escapesOff = OSAllocatedUnfairLock(initialState: false)
+
+        var statements: [String] = []
+        let parsed = SQLFileParser().parseFile(url: url, encoding: .utf8) {
+            escapesOff.withLock { $0 } ? noEscapes : TestGrammar.mysql
+        }
+        for try await (statement, _) in parsed {
+            statements.append(statement)
+            if statement.contains("= 'NO_BACKSLASH_ESCAPES'") { escapesOff.withLock { $0 = true } }
+            if statement.contains("= @saved_sql_mode") { escapesOff.withLock { $0 = false } }
+        }
+
+        #expect(!statements.contains { $0.hasPrefix("GRANT") })
+        #expect(statements.last == #"INSERT INTO t VALUES ('it\'s; one row')"#)
     }
 
     @Test("A chunk boundary anywhere in a CQL batch changes nothing")

@@ -85,9 +85,9 @@ enum TunnelCommandBuilder {
             }
             let substituted = tokens.map { token in
                 token
-                    .replacingOccurrences(of: TunnelCommandLine.localPortPlaceholder, with: localPortToken)
-                    .replacingOccurrences(of: TunnelCommandLine.hostPlaceholder, with: remoteHost)
-                    .replacingOccurrences(of: TunnelCommandLine.remotePortPlaceholder, with: String(remotePort))
+                    .replacingOccurrences(of: TunnelCommandLine.localPortPlaceholder, with: localPortToken, options: .literal)
+                    .replacingOccurrences(of: TunnelCommandLine.hostPlaceholder, with: remoteHost, options: .literal)
+                    .replacingOccurrences(of: TunnelCommandLine.remotePortPlaceholder, with: String(remotePort), options: .literal)
             }
             return Invocation(executable: substituted[0], arguments: Array(substituted.dropFirst()))
         case .kubectl:

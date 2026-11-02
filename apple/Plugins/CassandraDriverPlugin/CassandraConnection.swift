@@ -10,6 +10,7 @@ import Foundation
 import os
 import TableProCassandraCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 actor CassandraConnectionActor {
     private static let logger = Logger(subsystem: "com.TablePro.CassandraDriver", category: "Connection")
@@ -559,7 +560,7 @@ actor CassandraConnectionActor {
     }
 
     func switchKeyspace(_ keyspace: String) throws {
-        _ = try executeQuery("USE \"\(escapeIdentifier(keyspace))\"", consistency: nil)
+        _ = try executeQuery("USE \(SQLQuoting.identifier(keyspace))", consistency: nil)
         currentKeyspace = keyspace
     }
 
@@ -1070,10 +1071,6 @@ actor CassandraConnectionActor {
                 estimatedRowCount: nil
             )))
         }
-    }
-
-    private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
     }
 
     private static func apply(_ consistency: CassandraConsistency?, to statement: OpaquePointer) throws {

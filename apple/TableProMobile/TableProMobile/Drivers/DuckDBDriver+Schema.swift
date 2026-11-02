@@ -1,6 +1,8 @@
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProPluginKit
+import TableProSQLQuoting
 
 nonisolated extension DuckDBDriver {
     func fetchTables(schema: String?) async throws -> [TableInfo] {
@@ -128,7 +130,7 @@ nonisolated extension DuckDBDriver {
     }
 
     func switchSchema(to name: String) async throws {
-        _ = try await actor.query("SET schema = \"\(escapeIdentifier(name))\"")
+        _ = try await actor.query("SET schema = \(SQLQuoting.identifier(name))")
         setCurrentSchema(name)
     }
 
@@ -150,28 +152,21 @@ nonisolated extension DuckDBDriver {
     }
 
     private func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''", options: .literal)
+        SQLQuoting.stringLiteralBody(value)
     }
 
-    private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
-    }
+    // DuckDBLexicalFeatures in the DuckDB plugin, which this app does not compile.
+    private static let lexicalFeatures: SQLLexicalFeatures = [
+        .taggedDollarQuotes, .nestedBlockComments, .escapeStringPrefix, .carriageReturnEndsLineComments,
+    ]
 
-    private static let indexColumnsRegex = try? NSRegularExpression(
-        pattern: #"ON\s+(?:(?:"[^"]*"|[^\s(]+)\s*\.\s*)*(?:"[^"]*"|[^\s(]+)\s*\(([^)]+)\)"#,
-        options: .caseInsensitive
-    )
-
-    private static func extractIndexColumns(from sql: String?) -> [String] {
-        guard let sql, let regex = indexColumnsRegex else { return [] }
-        let range = NSRange(sql.startIndex..., in: sql)
-        guard let match = regex.firstMatch(in: sql, range: range),
-              match.numberOfRanges > 1,
-              let columnsRange = Range(match.range(at: 1), in: sql) else {
-            return []
-        }
-        return String(sql[columnsRange]).split(separator: ",").map {
-            $0.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "\"", with: "")
+    // The key list as the plugin reads it: a quoted name unquoted, an expression as written.
+    static func extractIndexColumns(from sql: String?) -> [String] {
+        guard let sql, let statement = SQLIndexKeyList.statement(sql, lexicalFeatures: lexicalFeatures) else { return [] }
+        return statement.keyParts.map { part in
+            SQLIndexKeyList.unwrapped(part, lexicalFeatures: lexicalFeatures)
+                ?? SQLIndexKeyList.quotedIdentifier(part, lexicalFeatures: lexicalFeatures)
+                ?? part
         }
     }
 }

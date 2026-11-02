@@ -26,6 +26,19 @@ struct SessionLocalStatementsTests {
         #expect(postgres.temporaryTables == ["scratch pad"])
     }
 
+    @Test("A quoted name whose quote a combining mark follows is still unquoted and un-doubled")
+    func combiningMarkAfterAQuote() {
+        let mysql = SessionLocalStatements.effect(
+            of: ["CREATE TEMPORARY TABLE `\u{301}x` (id int)"], databaseType: .mysql
+        )
+        let postgres = SessionLocalStatements.effect(
+            of: ["CREATE TEMP TABLE \"a\"\"\u{301}b\" (id int)"], databaseType: .postgresql
+        )
+
+        #expect(mysql.temporaryTables.map { Array($0.unicodeScalars) } == [Array("\u{301}x".unicodeScalars)])
+        #expect(postgres.temporaryTables.map { Array($0.unicodeScalars) } == [Array("a\"\u{301}b".unicodeScalars)])
+    }
+
     @Test("A dropped temporary table stays noted, since a failed script may never have reached the DROP")
     func droppedTableStaysNoted() {
         let effect = SessionLocalStatements.effect(

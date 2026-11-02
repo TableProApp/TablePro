@@ -127,11 +127,12 @@ public enum MySQLGrantParser {
     }
 
     public static func unquoteIdentifier(_ value: String) -> String {
-        guard let first = value.first, let last = value.last, value.count >= 2 else { return value }
-        guard first == last, first == "`" || first == "'" || first == "\"" else { return value }
-
-        let inner = String(value.dropFirst().dropLast())
-        return inner.replacingOccurrences(of: String(repeating: String(first), count: 2), with: String(first))
+        let scalars = value.unicodeScalars
+        guard scalars.count >= 2, let first = scalars.first, first == scalars.last,
+              first == "`" || first == "'" || first == "\"" else { return value }
+        let inner = String(String.UnicodeScalarView(scalars.dropFirst().dropLast()))
+        let quote = String(first)
+        return inner.replacingOccurrences(of: quote + quote, with: quote, options: .literal)
     }
 
     private static func dropKeyword(_ keyword: String, from text: String) -> String? {

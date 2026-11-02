@@ -206,22 +206,20 @@ final class TeradataPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
-        try await execute(query: query)
+        guard let parameters else { return try await execute(query: query) }
+        return try await executeParameterized(query: query, parameters: parameters)
     }
 
+    // Teradata reads quotes, names and comments the ANSI way, which is no lexical feature.
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         guard !parameters.isEmpty else { return try await execute(query: query) }
-        var rendered = ""
-        var index = 0
-        for character in query {
-            if character == "?", index < parameters.count {
-                rendered += sqlLiteral(parameters[index])
-                index += 1
-            } else {
-                rendered.append(character)
-            }
-        }
-        return try await execute(query: rendered)
+        let bound = try PluginParameterBinder.bind(
+            query,
+            literals: parameters.map(TeradataRowEditSQL.literal),
+            style: .questionMark,
+            features: []
+        )
+        return try await execute(query: bound)
     }
 
     func cancelQuery() throws {

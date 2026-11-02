@@ -31,7 +31,6 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     private let driver: DatabaseDriver
     private let databaseType: DatabaseType
-    private let grammar: SQLLexicalGrammar
     private let exactMapping: [String: String]
     private let foldedMapping: [String: String]
     private let sourceFields: Set<String>
@@ -97,7 +96,6 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         self.joinsTransaction = joinsTransaction
         self.driver = driver
         self.databaseType = databaseType
-        self.grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
         self.tableEditDialect = TableEditDialect.of(databaseType)
         self.databaseTypeId = databaseType.rawValue
         self.targetTable = targetTable
@@ -157,8 +155,8 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         nameHazards.withLock { $0 }
     }
 
-    /// Read before the statement runs, because one that fails part way can already have made a temporary table.
-    private func noteNameHazards(in text: String) {
+    // Read before the statement runs: one that fails part way can already have made a temporary table.
+    private func noteNameHazards(in text: String, grammar: SQLLexicalGrammar) {
         guard let tableEditDialect else { return }
         let statements = grammar.contains(.batchSeparatorLines)
             ? SQLStatementScanner.executableStatements(in: text, grammar: grammar).map(\.sql)
@@ -171,16 +169,15 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func execute(statement: String, line: Int) async throws {
-        noteNameHazards(in: statement)
-        try await send(statement, line: line)
-        await noteTransactionEnd(after: statement)
+        // The file's own statements change how the session reads the next one.
+        let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+        noteNameHazards(in: statement, grammar: grammar)
+        try await send(statement, line: line, grammar: grammar)
+        await noteTransactionEnd(after: statement, grammar: grammar)
     }
 
-    /// A SQL Server file arrives a batch at a time, as sqlcmd reads it, or a statement at a time when it holds no `GO`
-    /// line, and each goes to the server whole: T-SQL scopes a variable, a table variable and a `TRY...CATCH` to one
-    /// batch, and a routine's body runs to the end of its batch. A driver that cannot send a batch whole runs its
-    /// statements one by one, as the editor does.
-    private func send(_ statement: String, line: Int) async throws {
+    // T-SQL scopes a variable and a TRY...CATCH to its batch, so a batch goes whole where the driver can send it so.
+    private func send(_ statement: String, line: Int, grammar: SQLLexicalGrammar) async throws {
         guard grammar.contains(.batchSeparatorLines) else {
             _ = try await driver.execute(query: statement)
             return
@@ -575,14 +572,10 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         transactionRecord.withLock { $0.ending = .rolledBack }
     }
 
-    /// Only a statement that succeeded can show a commit: a failure that ends the transaction may have rolled it back.
-    /// The file's own `COMMIT` or `ROLLBACK` is read from its text on every engine, since the session reads the same
-    /// after either. The state is read after each other statement, because under `autocommit = 0` the statement
-    /// after a DDL opens a new transaction, and only where DDL commits: SQL Server reads its state with a query, which
-    /// per statement would double the round trips.
-    private func noteTransactionEnd(after statement: String) async {
+    // After a success only; the session state is asked only where DDL commits, since SQL Server answers with a query.
+    private func noteTransactionEnd(after statement: String, grammar: SQLLexicalGrammar) async {
         guard ownsTransaction.withLock({ $0 }) else { return }
-        switch fileTransactionEnd(of: statement) {
+        switch fileTransactionEnd(of: statement, grammar: grammar) {
         case .commit:
             transactionRecord.withLock { $0.hasCommittedEarly = true }
         case .rollback:
@@ -598,8 +591,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         case rollback
     }
 
-    /// `ROLLBACK TO SAVEPOINT` keeps the transaction, and the classifier already reads it as not ending one.
-    private func fileTransactionEnd(of statement: String) -> FileTransactionEnd? {
+    private func fileTransactionEnd(of statement: String, grammar: SQLLexicalGrammar) -> FileTransactionEnd? {
         let effect = CatalogChangeClassifier.effect(of: statement, databaseType: databaseType, grammar: grammar)
         guard effect.endsTransaction else { return nil }
         let keyword = QueryClassifier.leadingKeyword(of: statement, grammar: grammar)

@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 public enum MSSQLSecurable: Hashable, Sendable {
     case server
@@ -295,7 +296,7 @@ public struct MSSQLPrincipalStatements: Sendable {
     }
 
     public static func bracketed(_ name: String) -> String {
-        "[\(MSSQLSchemaQueries.escapeBracket(name))]"
+        SQLQuoting.identifier(name, quote: .bracket)
     }
 
     // A login reaches a database only through a user. A same-named user with another SID makes CREATE USER fail

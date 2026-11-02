@@ -6,12 +6,25 @@
 import Foundation
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 // The statement as a person approving it reads it, with each bound value written in. Display only: what runs keeps
-// its placeholders and binds the values.
+// its placeholders and binds the values. Copy All takes this text away with no mode declared, so the MySQL family
+// spells a value in MySQL's own set, which no backslash rule ends early.
 struct SQLParameterInliner {
-    static func inline(_ statement: ParameterizedStatement, databaseType: DatabaseType, unbound: String? = nil) -> String {
+    static func inline(
+        _ statement: ParameterizedStatement,
+        databaseType: DatabaseType,
+        session: PluginSessionLexicalState? = nil,
+        unbound: String? = nil
+    ) -> String {
         let style = PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle ?? .questionMark
+        // Shown, never run: without the session's answer the engine's usual reading spells it as the server reads it.
+        let escapes = session.map { SQLLexicalResolver.keptTextStringEscapes(for: databaseType, session: $0) }
+            ?? SQLLexicalResolver.driverEscapes(
+                SQLLexicalResolver.readings(for: databaseType).execution.stringEscapes,
+                for: databaseType
+            )
         let sql = statement.sql as NSString
         // A `?` in a comment, a literal or a quoted name such as "x?" is text, never a placeholder, so placeholders
         // are found where the engine's own lexer finds code.
@@ -22,22 +35,38 @@ struct SQLParameterInliner {
         ) as NSString
         switch style {
         case .dollar:
-            return inlineDollarPlaceholders(sql, code: code, parameters: statement.parameters)
+            return inlineDollarPlaceholders(sql, code: code, parameters: statement.parameters, escapes: escapes)
         case .questionMark:
-            return inlineQuestionMarkPlaceholders(sql, code: code, parameters: statement.parameters, unbound: unbound)
+            return inlineQuestionMarkPlaceholders(
+                sql, code: code, parameters: statement.parameters, unbound: unbound, escapes: escapes
+            )
         }
     }
 
-    static func inline(_ statement: OperationStatement, databaseType: DatabaseType) -> String {
-        inline(ParameterizedStatement(sql: statement.sql, parameters: statement.boundValues), databaseType: databaseType)
+    static func inline(
+        _ statement: OperationStatement,
+        databaseType: DatabaseType,
+        session: PluginSessionLexicalState? = nil
+    ) -> String {
+        inline(
+            ParameterizedStatement(sql: statement.sql, parameters: statement.boundValues),
+            databaseType: databaseType,
+            session: session
+        )
     }
 
     // A write pinned by its lookup is shown after the lookup, with the values it binds at save time named.
-    static func inline(_ step: DataWriteStep, databaseType: DatabaseType) -> [String] {
-        guard let lookup = step.lookup, lookup.pinsRows else { return [inline(step.statement, databaseType: databaseType)] }
+    static func inline(
+        _ step: DataWriteStep,
+        databaseType: DatabaseType,
+        session: PluginSessionLexicalState? = nil
+    ) -> [String] {
+        guard let lookup = step.lookup, lookup.pinsRows else {
+            return [inline(step.statement, databaseType: databaseType, session: session)]
+        }
         return [
-            inline(lookup.query, databaseType: databaseType),
-            inline(step.statement, databaseType: databaseType, unbound: "/* found by the query above */"),
+            inline(lookup.query, databaseType: databaseType, session: session),
+            inline(step.statement, databaseType: databaseType, session: session, unbound: "/* found by the query above */"),
         ]
     }
 
@@ -50,7 +79,8 @@ struct SQLParameterInliner {
         _ sql: NSString,
         code: NSString,
         parameters: [Any?],
-        unbound: String?
+        unbound: String?,
+        escapes: SQLStringEscapes
     ) -> String {
         var result = ""
         var paramIndex = 0
@@ -59,14 +89,19 @@ struct SQLParameterInliner {
         for index in 0..<length where code.character(at: index) == questionMark {
             guard paramIndex < parameters.count || unbound != nil else { break }
             result += sql.substring(with: NSRange(location: rangeStart, length: index - rangeStart))
-            result += paramIndex < parameters.count ? formatValue(parameters[paramIndex]) : (unbound ?? "?")
+            result += paramIndex < parameters.count ? formatValue(parameters[paramIndex], escapes: escapes) : (unbound ?? "?")
             paramIndex += 1
             rangeStart = index + 1
         }
         return result + sql.substring(from: rangeStart)
     }
 
-    private static func inlineDollarPlaceholders(_ sql: NSString, code: NSString, parameters: [Any?]) -> String {
+    private static func inlineDollarPlaceholders(
+        _ sql: NSString,
+        code: NSString,
+        parameters: [Any?],
+        escapes: SQLStringEscapes
+    ) -> String {
         var result = ""
         var rangeStart = 0
         let length = min(sql.length, code.length)
@@ -91,14 +126,14 @@ struct SQLParameterInliner {
                 continue
             }
             result += sql.substring(with: NSRange(location: rangeStart, length: index - rangeStart))
-            result += formatValue(parameters[number - 1])
+            result += formatValue(parameters[number - 1], escapes: escapes)
             index = end
             rangeStart = end
         }
         return result + sql.substring(from: rangeStart)
     }
 
-    private static func formatValue(_ value: Any?) -> String {
+    private static func formatValue(_ value: Any?, escapes: SQLStringEscapes) -> String {
         guard let value else {
             return "NULL"
         }
@@ -131,13 +166,9 @@ struct SQLParameterInliner {
         case let doubleVal as Double:
             return String(doubleVal)
         case let stringVal as String:
-            return "'\(escapeString(stringVal))'"
+            return SQLQuoting.stringLiteral(stringVal, escapes: escapes)
         default:
-            return "'\(escapeString(String(describing: value)))'"
+            return SQLQuoting.stringLiteral(String(describing: value), escapes: escapes)
         }
-    }
-
-    private static func escapeString(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 }
