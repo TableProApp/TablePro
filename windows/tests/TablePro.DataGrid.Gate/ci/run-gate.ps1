@@ -23,6 +23,10 @@ if ($LASTEXITCODE -ne 0) { throw 'gate publish failed' }
 dotnet publish "$windows\tests\TablePro.DataGrid.Gate.Uia\TablePro.DataGrid.Gate.Uia.csproj" -c Release -r $rid -o "$env:RUNNER_TEMP\gate-uia" | Out-Host
 if ($LASTEXITCODE -ne 0) { throw 'uia publish failed' }
 $build.publish_s = [math]::Round($sw.Elapsed.TotalSeconds, 1)
+
+# Other processes took whole cores from the Arm64 runner in the middle of steps (decision 0003, Gate).
+Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+$build.defender_realtime = (Get-MpComputerStatus -ErrorAction SilentlyContinue).RealTimeProtectionEnabled
 $build | ConvertTo-Json | Set-Content "$Out\build-$Arch.json"
 
 $uia = Start-Process "$env:RUNNER_TEMP\gate-uia\TablePro.DataGrid.Gate.Uia.exe" -ArgumentList "serve `"$Out`" 5400" -PassThru `
@@ -41,8 +45,18 @@ function Wait-Idle([int]$seconds = 300) {
     Write-Host "== idle after $([int]$clock.Elapsed.TotalSeconds) s, load $load%"
 }
 
+# CPU time per process in 100 ns units; the perf counters read protected processes such as Defender's too.
+function Get-ProcessCpu {
+    $cpu = @{}
+    foreach ($p in Get-CimInstance Win32_PerfRawData_PerfProc_Process) {
+        if ($p.Name -notin '_Total', 'Idle') { $cpu["$($p.Name) ($($p.IDProcess))"] = [double]$p.PercentProcessorTime }
+    }
+    $cpu
+}
+
 function Run-Gate([string]$name, [string]$arguments, [int]$timeout) {
     Wait-Idle
+    $before = Get-ProcessCpu
     $clock = [Diagnostics.Stopwatch]::StartNew()
     $p = Start-Process "$env:RUNNER_TEMP\gate-app\TablePro.DataGrid.Gate.exe" -ArgumentList "$arguments --name $name --out `"$Out`"" -PassThru
     if (-not $p.WaitForExit($timeout * 1000)) {
@@ -51,6 +65,11 @@ function Run-Gate([string]$name, [string]$arguments, [int]$timeout) {
         'timeout' | Set-Content "$Out\$name.timeout"
     }
     Write-Host "== $name exit=$($p.ExitCode) in $([int]$clock.Elapsed.TotalSeconds) s"
+    $after = Get-ProcessCpu
+    $busiest = $after.Keys | Where-Object { $_ -notlike 'TablePro.DataGrid.Gate*' } |
+        ForEach-Object { [pscustomobject]@{ Name = $_; Ms = [int](($after[$_] - [double]$before[$_]) / 10000) } } |
+        Sort-Object Ms -Descending | Select-Object -First 6
+    Write-Host "== $name other processes' CPU: $(($busiest | ForEach-Object { "$($_.Name) $($_.Ms) ms" }) -join ', ')"
 }
 
 # The first process on a fresh runner pays any first-use cost, such as loading fallback fonts; the repeat shows drift.
