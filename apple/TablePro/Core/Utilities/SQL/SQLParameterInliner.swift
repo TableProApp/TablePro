@@ -2,29 +2,34 @@
 //  SQLParameterInliner.swift
 //  TablePro
 //
-//  Utility for inlining parameter values into parameterized SQL strings.
-//  Used for display/preview purposes only — actual execution uses prepared statements.
-//
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
+// The statement as a person approving it reads it, with each bound value written in. Display only: what runs keeps
+// its placeholders and binds the values.
 struct SQLParameterInliner {
-    // MARK: - Public API
-
-    /// Inlines parameter values into a parameterized SQL string for display purposes.
-    ///
-    /// - Parameters:
-    ///   - statement: The parameterized statement containing SQL with placeholders and bound values.
-    ///   - databaseType: The database type, which determines placeholder style (`?` vs `$N`).
-    /// - Returns: A SQL string with placeholders replaced by formatted literal values.
     static func inline(_ statement: ParameterizedStatement, databaseType: DatabaseType, unbound: String? = nil) -> String {
         let style = PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle ?? .questionMark
-        if style == .dollar {
-            return inlineDollarPlaceholders(statement.sql, parameters: statement.parameters)
-        } else {
-            return inlineQuestionMarkPlaceholders(statement.sql, parameters: statement.parameters, unbound: unbound)
+        let sql = statement.sql as NSString
+        // A `?` in a comment, a literal or a quoted name such as "x?" is text, never a placeholder, so placeholders
+        // are found where the engine's own lexer finds code.
+        let code = SQLCodeProjection.code(
+            of: statement.sql,
+            grammar: databaseType.lexicalGrammar,
+            revealingExecutableComments: true
+        ) as NSString
+        switch style {
+        case .dollar:
+            return inlineDollarPlaceholders(sql, code: code, parameters: statement.parameters)
+        case .questionMark:
+            return inlineQuestionMarkPlaceholders(sql, code: code, parameters: statement.parameters, unbound: unbound)
         }
+    }
+
+    static func inline(_ statement: OperationStatement, databaseType: DatabaseType) -> String {
+        inline(ParameterizedStatement(sql: statement.sql, parameters: statement.boundValues), databaseType: databaseType)
     }
 
     // A write pinned by its lookup is shown after the lookup, with the values it binds at save time named.
@@ -36,141 +41,63 @@ struct SQLParameterInliner {
         ]
     }
 
-    // MARK: - Private Helpers
+    private static let questionMark = UInt16(UnicodeScalar("?").value)
+    private static let dollar = UInt16(UnicodeScalar("$").value)
+    private static let zero = UInt16(UnicodeScalar("0").value)
+    private static let nine = UInt16(UnicodeScalar("9").value)
 
-    /// Replaces `?` placeholders sequentially with formatted parameter values.
-    /// Skips `?` characters inside single-quoted SQL string literals.
-    private static func inlineQuestionMarkPlaceholders(_ sql: String, parameters: [Any?], unbound: String? = nil) -> String {
+    private static func inlineQuestionMarkPlaceholders(
+        _ sql: NSString,
+        code: NSString,
+        parameters: [Any?],
+        unbound: String?
+    ) -> String {
         var result = ""
         var paramIndex = 0
-        var inString = false
-        var previousWasQuote = false
-        let nsSQL = sql as NSString
-        let length = nsSQL.length
-        var i = 0
         var rangeStart = 0
-
-        let questionMark = UInt16(UnicodeScalar("?").value)
-        let singleQuote = UInt16(UnicodeScalar("'").value)
-
-        while i < length {
-            let ch = nsSQL.character(at: i)
-
-            if ch == singleQuote {
-                if inString {
-                    if previousWasQuote {
-                        previousWasQuote = false
-                    } else {
-                        previousWasQuote = true
-                    }
-                } else {
-                    inString = true
-                    previousWasQuote = false
-                }
-                i += 1
-            } else {
-                if previousWasQuote {
-                    inString = false
-                    previousWasQuote = false
-                }
-                if ch == questionMark && !inString && (paramIndex < parameters.count || unbound != nil) {
-                    // Flush accumulated characters before the placeholder
-                    if rangeStart < i {
-                        result += nsSQL.substring(with: NSRange(location: rangeStart, length: i - rangeStart))
-                    }
-                    result += paramIndex < parameters.count ? formatValue(parameters[paramIndex]) : (unbound ?? "?")
-                    paramIndex += 1
-                    i += 1
-                    rangeStart = i
-                } else {
-                    i += 1
-                }
-            }
+        let length = min(sql.length, code.length)
+        for index in 0..<length where code.character(at: index) == questionMark {
+            guard paramIndex < parameters.count || unbound != nil else { break }
+            result += sql.substring(with: NSRange(location: rangeStart, length: index - rangeStart))
+            result += paramIndex < parameters.count ? formatValue(parameters[paramIndex]) : (unbound ?? "?")
+            paramIndex += 1
+            rangeStart = index + 1
         }
-
-        // Flush remaining characters
-        if rangeStart < length {
-            result += nsSQL.substring(with: NSRange(location: rangeStart, length: length - rangeStart))
-        }
-
-        return result
+        return result + sql.substring(from: rangeStart)
     }
 
-    /// Replaces `$1`, `$2`, ... placeholders with formatted parameter values.
-    /// Skips `$N` sequences inside single-quoted SQL string literals.
-    private static func inlineDollarPlaceholders(_ sql: String, parameters: [Any?]) -> String {
+    private static func inlineDollarPlaceholders(_ sql: NSString, code: NSString, parameters: [Any?]) -> String {
         var result = ""
-        var inString = false
-        var previousWasQuote = false
-        let nsSQL = sql as NSString
-        let length = nsSQL.length
-        var i = 0
         var rangeStart = 0
-
-        let dollarChar = UInt16(UnicodeScalar("$").value)
-        let singleQuote = UInt16(UnicodeScalar("'").value)
-
-        while i < length {
-            let ch = nsSQL.character(at: i)
-
-            if ch == singleQuote {
-                if inString {
-                    if previousWasQuote {
-                        previousWasQuote = false
-                    } else {
-                        previousWasQuote = true
-                    }
-                } else {
-                    inString = true
-                    previousWasQuote = false
-                }
-                i += 1
-            } else {
-                if previousWasQuote {
-                    inString = false
-                    previousWasQuote = false
-                }
-
-                if ch == dollarChar && !inString {
-                    // Try to parse a number after $
-                    var numEnd = i + 1
-                    while numEnd < length {
-                        let digit = nsSQL.character(at: numEnd)
-                        if digit >= UInt16(UnicodeScalar("0").value) && digit <= UInt16(UnicodeScalar("9").value) {
-                            numEnd += 1
-                        } else {
-                            break
-                        }
-                    }
-
-                    if numEnd > i + 1,
-                       let paramNumber = Int(nsSQL.substring(with: NSRange(location: i + 1, length: numEnd - i - 1))),
-                       paramNumber >= 1 && paramNumber <= parameters.count {
-                        // Flush accumulated characters before the placeholder
-                        if rangeStart < i {
-                            result += nsSQL.substring(with: NSRange(location: rangeStart, length: i - rangeStart))
-                        }
-                        result += formatValue(parameters[paramNumber - 1])
-                        i = numEnd
-                        rangeStart = i
-                    } else {
-                        i += 1
-                    }
-                } else {
-                    i += 1
-                }
+        let length = min(sql.length, code.length)
+        var index = 0
+        while index < length {
+            // `$1` starts a token; inside a name such as `price$1` it is part of the name.
+            guard code.character(at: index) == dollar,
+                  index == 0 || !SQLNonCodeSpan.isWordUnit(code.character(at: index - 1))
+            else {
+                index += 1
+                continue
             }
+            var end = index + 1
+            while end < length, (zero...nine).contains(code.character(at: end)) {
+                end += 1
+            }
+            guard end > index + 1,
+                  let number = Int(sql.substring(with: NSRange(location: index + 1, length: end - index - 1))),
+                  number >= 1, number <= parameters.count
+            else {
+                index += 1
+                continue
+            }
+            result += sql.substring(with: NSRange(location: rangeStart, length: index - rangeStart))
+            result += formatValue(parameters[number - 1])
+            index = end
+            rangeStart = end
         }
-
-        // Flush remaining characters
-        if rangeStart < length {
-            result += nsSQL.substring(with: NSRange(location: rangeStart, length: length - rangeStart))
-        }
-
-        return result
+        return result + sql.substring(from: rangeStart)
     }
 
-    /// Formats a parameter value as a SQL literal string.
     private static func formatValue(_ value: Any?) -> String {
         guard let value else {
             return "NULL"
@@ -210,7 +137,6 @@ struct SQLParameterInliner {
         }
     }
 
-    /// Escapes single quotes by doubling them for SQL string literals.
     private static func escapeString(_ value: String) -> String {
         value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }

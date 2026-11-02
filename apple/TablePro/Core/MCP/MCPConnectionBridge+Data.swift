@@ -29,55 +29,8 @@ extension MCPConnectionBridge {
         }
     }
 
-    func countRows(
-        scope: DatabaseScope,
-        table: String,
-        filters: [TableFilter],
-        logicMode: FilterLogicMode,
-        exact: Bool
-    ) async throws -> JsonValue {
-        try await ensureConnected(scope.connectionId)
-        let outcome = try await DatabaseManager.shared.withMetadataDriver(scope: scope) { driver
-            -> (count: Int?, isApproximate: Bool) in
-            if exact {
-                let value = try await driver.fetchExactRowCount(
-                    table: table,
-                    filters: filters,
-                    logicMode: logicMode
-                )
-                return (value, false)
-            }
-            if !filters.isEmpty {
-                let value = try await driver.fetchFilteredRowCount(
-                    table: table,
-                    filters: filters,
-                    logicMode: logicMode
-                )
-                return (value, false)
-            }
-            let value = try await driver.fetchApproximateRowCount(table: table)
-            return (value, true)
-        }
-
-        guard let count = outcome.count else {
-            throw DatabaseAccessError.dataSourceError(
-                String(localized: "This engine cannot count rows for that table.")
-            )
-        }
-        return .object([
-            "table": .string(table),
-            "row_count": .int(count),
-            "is_approximate": .bool(outcome.isApproximate),
-            "filter_count": .int(filters.count)
-        ])
-    }
-
-    func browseTable(
-        scope: DatabaseScope,
-        request: MCPBrowseRequest,
-        timeoutSeconds: Int,
-        cancellation: MCPCancellationToken?
-    ) async throws -> JsonValue {
+    // The SELECT a browse runs, built on the metadata driver before anyone approves it, and the rows it may return.
+    func browseStatement(scope: DatabaseScope, request: MCPBrowseRequest) async throws -> (statement: OperationStatement, limit: Int) {
         let databaseType = try await ensureConnected(scope.connectionId)
         let schema = scope.schema
         let dialect = try? resolveSQLDialect(for: databaseType)
@@ -104,11 +57,8 @@ extension MCPConnectionBridge {
             let sortState = try MCPConnectionBridge.sortState(from: request.sort, columns: names)
             let requested = try MCPConnectionBridge.validatedSelection(request.columns, available: names)
             let sortColumnNames = sortState?.columns.compactMap(\.columnName) ?? []
-            /// A projection that leaves out the sorted column drops the sort with it on any driver
-            /// that resolves its order against the list it is handed, and the caller is still told
-            /// the rows are sorted. The missing sort columns are appended rather than merged, so
-            /// every column the caller asked for keeps the position it asked for: `browse_table`
-            /// returns positional rows and reordering them would break a client silently.
+            // A projection that leaves out the sorted column drops the sort with it, so the missing sort columns are
+            // appended: every column the caller asked for keeps its position in the positional rows.
             let selected = requested.map { projection in
                 projection + sortColumnNames.filter { !projection.contains($0) && names.contains($0) }
             }
@@ -141,10 +91,18 @@ extension MCPConnectionBridge {
             }
             return query
         }
+        return (try await plannedStatement(scope: scope, query: sql, maxRows: limit), limit)
+    }
 
+    func browseTable(
+        _ operation: ApprovedOperation,
+        request: MCPBrowseRequest,
+        limit: Int,
+        timeoutSeconds: Int,
+        cancellation: MCPCancellationToken?
+    ) async throws -> JsonValue {
         var payload = try await executeQuery(
-            scope: scope,
-            query: sql,
+            operation,
             maxRows: limit,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
@@ -235,46 +193,26 @@ extension MCPConnectionBridge {
         value.map(JsonValue.string) ?? .null
     }
 
-    func insertRows(
+    // One INSERT per row in the engine's quoting and placeholder style, each with its values, before any approval.
+    func insertStatements(
         scope: DatabaseScope,
         table: String,
         columns: [String],
         rows: [[JsonValue]]
-    ) async throws -> JsonValue {
-        let databaseType = try await ensureConnected(scope.connectionId)
+    ) async throws -> [OperationStatement] {
+        let (driver, databaseType) = try await resolveDriver(scope.connectionId)
         let style = await MainActor.run {
             PluginMetadataRegistry.shared.snapshot(for: databaseType)?.parameterStyle
                 ?? ParameterStyle.questionMark
         }
-        /// No cancel handler: the insert runs under a `.protectedWrite` lease, which nothing may
-        /// abort, so a request here could only ever have reached another owner's read.
-        let route = await MainActor.run { DatabaseManager.shared.executionRoute(for: scope) }
-        let schema = scope.schema
-        let inserted = try await DatabaseManager.shared.withScopedDriver(
-            scope: scope,
-            route: route,
-            cancellation: .protectedWrite
-        ) { driver -> Int in
-            let quotedTable = MCPConnectionBridge.qualified(table, schema: schema, driver: driver)
-            let quotedColumns = columns.map { driver.quoteIdentifier($0) }.joined(separator: ", ")
-            var affected = 0
-            for row in rows {
-                let placeholders = MCPConnectionBridge.placeholders(count: row.count, style: style)
-                let sql = "INSERT INTO \(quotedTable) (\(quotedColumns)) VALUES (\(placeholders))"
-                let result = try await driver.executeParameterized(
-                    query: sql,
-                    parameters: row.map(MCPConnectionBridge.parameterValue)
-                )
-                affected += max(result.rowsAffected, 0)
-            }
-            return affected
+        let quotedTable = MCPConnectionBridge.qualified(table, schema: scope.schema, driver: driver)
+        let quotedColumns = columns.map { driver.quoteIdentifier($0) }.joined(separator: ", ")
+        return rows.map { row in
+            OperationStatement(
+                sql: "INSERT INTO \(quotedTable) (\(quotedColumns)) VALUES (\(MCPConnectionBridge.placeholders(count: row.count, style: style)))",
+                parameters: row.map { PluginDriverAdapter.cellValue(for: MCPConnectionBridge.parameterValue($0)) }
+            )
         }
-
-        return .object([
-            "table": .string(table),
-            "rows_submitted": .int(rows.count),
-            "rows_affected": .int(inserted)
-        ])
     }
 
     static func qualified(_ table: String, schema: String?, driver: DatabaseDriver) -> String {
@@ -350,18 +288,17 @@ struct MCPExplainRequest: Equatable {
 
 extension MCPConnectionBridge {
     func explainQuery(
-        scope: DatabaseScope,
+        _ operation: ApprovedOperation,
         request: MCPExplainRequest,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?
     ) async throws -> JsonValue {
-        let databaseType = try await ensureConnected(scope.connectionId)
+        let databaseType = operation.databaseType
         let outcome: (result: QueryResult, executionTimeMs: Double)
         let routed: ExplainResultRouter.RoutedPlan?
         if let step = request.driverStep {
             outcome = try await runExplainPlan(
-                scope: scope,
-                statement: request.subjectSQL,
+                operation,
                 step: step,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation
@@ -375,9 +312,8 @@ extension MCPConnectionBridge {
             )
         } else {
             outcome = try await runStatement(
-                scope: scope,
-                query: request.statement,
-                maxRows: 5_000,
+                operation,
+                maxRows: Self.explainRowLimit,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation
             )
@@ -404,6 +340,8 @@ extension MCPConnectionBridge {
         }
         return .object(payload)
     }
+
+    static let explainRowLimit = 5_000
 
     static func explainStatement(
         for query: String,

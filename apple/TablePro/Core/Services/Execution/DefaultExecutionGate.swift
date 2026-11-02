@@ -96,7 +96,9 @@ internal actor DefaultExecutionGate: ExecutionGate {
                     connectionName: await connectionNameResolver(request.connectionId),
                     databaseType: request.databaseType,
                     caller: request.caller,
-                    isDestructive: isDestructive
+                    isDestructive: isDestructive,
+                    scope: request.scope,
+                    statements: request.statements
                 )
             )
             guard confirmed else {

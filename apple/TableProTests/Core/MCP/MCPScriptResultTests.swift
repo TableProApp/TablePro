@@ -113,14 +113,21 @@ struct MCPScriptResultTests {
             )
         )
 
+        let scope = DatabaseScope(connectionId: driver.connection.id, database: "warehouse", schema: nil)
+        let planned = try await services.connectionBridge.plannedScript(
+            scope: scope, query: "DECLARE @n INT = 1;\nSELECT @n AS a;\nSELECT 2 AS b", maxRows: 10
+        )
+        #expect(planned.unit == .script)
+        let operation = try await ApprovedOperationFixture.approve(
+            [planned.statement], scope: scope, databaseType: .mssql, unit: planned.unit
+        )
+
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
-            query: "DECLARE @n INT = 1;\nSELECT @n AS a;\nSELECT 2 AS b",
-            scope: DatabaseScope(connectionId: driver.connection.id, database: "warehouse", schema: nil),
+            operation: operation,
             maxRows: 10,
             timeoutSeconds: 30,
-            principal: MCPToolTestHarness.principal(),
-            unit: .script
+            principal: MCPToolTestHarness.principal()
         )
 
         #expect(driver.sentBatches.map(\.rowCap) == [10])
@@ -195,6 +202,83 @@ struct MCPScriptResultTests {
         #expect(!driver.sentBatches.isEmpty)
     }
 
+    // MARK: - The assistant's destructive tool
+
+    nonisolated private static let serverCode: [(DatabaseType, String)] = [
+        (.mssql, "DROP TABLE IF EXISTS dbo.scratch EXEC xp_cmdshell 'whoami'"),
+        (.postgresql, "ALTER TABLE app.notes DROP COLUMN IF EXISTS scratch, ALTER COLUMN body TYPE text USING pg_read_file('/etc/passwd')")
+    ]
+
+    private func assistantSession(_ type: DatabaseType) -> ScriptAnsweringDriver {
+        var connection = TestFixtures.makeConnection(database: "warehouse", type: type)
+        connection.aiPolicy = .alwaysAllow
+        let driver = ScriptAnsweringDriver(connection: connection) { _ in .empty }
+        var session = ConnectionSession(connection: connection)
+        session.driver = driver
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        return driver
+    }
+
+    private func assistantContext(_ driver: ScriptAnsweringDriver, gate: any ExecutionGate, sessionId: UUID) -> ChatToolContext {
+        ChatToolContext(
+            connectionId: driver.connection.id,
+            bridge: MCPConnectionBridge(),
+            authPolicy: MCPAuthPolicy(
+                connectionResolver: { _ in nil },
+                connectionIdsProvider: { [] },
+                historyRecorder: DiscardingHistory(),
+                executionGate: gate
+            ),
+            sessionId: sessionId,
+            approvalWasExplicit: true,
+            policyLookup: { _ in .alwaysAllow }
+        )
+    }
+
+    private func destructiveInput(_ query: String) -> JsonValue {
+        .object([
+            "query": .string(query),
+            "confirmation_phrase": .string(ConfirmDestructiveOperationChatTool.requiredPhrase)
+        ])
+    }
+
+    @Test("The assistant's confirm_destructive_operation refuses what reaches files or runs code", arguments: serverCode)
+    func assistantDestructiveToolRefusesServerCode(type: DatabaseType, query: String) async throws {
+        let driver = assistantSession(type)
+        defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
+        let gate = RequestRecordingGate(allows: true)
+
+        let result = try await ConfirmDestructiveOperationChatTool().execute(
+            input: destructiveInput(query),
+            context: assistantContext(driver, gate: gate, sessionId: UUID())
+        )
+
+        #expect(result.isError)
+        #expect(await gate.requests.isEmpty)
+        #expect(driver.sentStatements.isEmpty && driver.sentBatches.isEmpty)
+    }
+
+    @Test("The assistant reaches Safe Mode as the assistant, with the scope it runs in")
+    func assistantIsTheCaller() async throws {
+        let driver = assistantSession(.mssql)
+        defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
+        let gate = RequestRecordingGate(allows: false)
+        let sessionId = UUID()
+
+        await #expect(throws: (any Error).self) {
+            _ = try await ConfirmDestructiveOperationChatTool().execute(
+                input: destructiveInput("DROP TABLE dbo.scratch"),
+                context: assistantContext(driver, gate: gate, sessionId: sessionId)
+            )
+        }
+
+        let request = try #require(await gate.requests.first)
+        #expect(request.caller == .aiAssistant(sessionId: sessionId.uuidString))
+        #expect(request.scope?.connectionId == driver.connection.id)
+        #expect(request.statements == ["DROP TABLE dbo.scratch"])
+        #expect(driver.sentStatements.isEmpty && driver.sentBatches.isEmpty)
+    }
+
     /// Measured on Azure SQL Edge 15: `GO\nDROP TABLE dbo.stale` sent whole answers Msg 2812, "Could not find stored
     /// procedure 'GO'", and still drops the table, so the tool reports a failure for a statement that ran.
     @Test("A GO line ahead of the one statement a tool sends never reaches the driver")
@@ -202,10 +286,17 @@ struct MCPScriptResultTests {
         let driver = sqlServerSession()
         defer { DatabaseManager.shared.removeSession(for: driver.connection.id) }
 
+        let services = MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: authPolicy())
+        let scope = DatabaseScope(connectionId: driver.connection.id, database: "warehouse", schema: nil)
+        let statement = try await services.connectionBridge.plannedStatement(
+            scope: scope, query: "GO\nDROP TABLE dbo.stale", maxRows: 0
+        )
+        #expect(statement.sql == "DROP TABLE dbo.stale")
+        let operation = try await ApprovedOperationFixture.approve([statement], scope: scope, databaseType: .mssql)
+
         _ = try await ToolQueryExecutor.executeAndLog(
-            services: MCPToolServices(connectionBridge: MCPConnectionBridge(), authPolicy: authPolicy()),
-            query: "GO\nDROP TABLE dbo.stale",
-            scope: DatabaseScope(connectionId: driver.connection.id, database: "warehouse", schema: nil),
+            services: services,
+            operation: operation,
             maxRows: 0,
             timeoutSeconds: 30,
             principal: MCPToolTestHarness.principal()

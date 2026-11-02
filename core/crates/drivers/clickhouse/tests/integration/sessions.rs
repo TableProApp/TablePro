@@ -6,8 +6,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tablepro_core::value::Temporal;
 use tablepro_core::{
-    Connection, DriverError, ReadStatement, ResultEvent, ResultSink, RowLimit, RunEnd, RunOptions, SinkFlow,
-    Truncation, UserSql, Value,
+    Connection, DriverError, ReadOnlyRefusal, ReadStatement, ResultEvent, ResultSink, RowLimit, RunEnd, RunOptions,
+    ServerCode, SinkFlow, Truncation, UserSql, Value,
 };
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -255,6 +255,49 @@ async fn a_session_set_to_iso_still_reads_timestamps_in_their_own_zone() {
         .and_then(|date| date.and_hms_opt(8, 30, 0))
         .expect("a timestamp");
     assert_eq!(rows.rows(), vec![vec![Value::Timestamp(Temporal::Finite(stamp))]]);
+    editor.close().await;
+    connection.close().await.expect("a close");
+}
+
+fn file_write(marker: &str) -> String {
+    format!("INSERT INTO FUNCTION file('{marker}.csv', 'CSV', 'a Int32') VALUES (1)")
+}
+
+fn refused_as_read_only(error: &DriverError) -> bool {
+    matches!(
+        error,
+        DriverError::ReadOnly(ReadOnlyRefusal::ServerRejected(diagnostics))
+            if diagnostics.code == Some(ServerCode::ClickHouse { code: 164 })
+    )
+}
+
+// `readonly=2` lets INSERT INTO FUNCTION file() write a file on the server; `readonly=1` refuses it.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn user_sql_read_cannot_write_a_file_through_a_table_function() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    let read = ReadStatement::User(UserSql::new(file_write(&unique("read"))));
+
+    let outcome = connection.stream_read(&read, Box::new(Discard), within(CALL)).await;
+
+    assert!(outcome.as_ref().is_err_and(refused_as_read_only), "{outcome:?}");
+    connection.close().await.expect("a close");
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn a_read_only_session_cannot_write_a_file_through_a_table_function() {
+    let fixture = start().await;
+    let connection = connect(&fixture, true).await;
+    let editor = session(connection.as_ref()).await;
+
+    let (summary, _) = run(editor.as_ref(), &file_write(&unique("session"))).await;
+
+    let RunEnd::Failed(error) = &summary.end else {
+        panic!("a file write on a read-only session ended {:?}", summary.end);
+    };
+    assert!(refused_as_read_only(error), "{error:?}");
     editor.close().await;
     connection.close().await.expect("a close");
 }

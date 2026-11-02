@@ -12,6 +12,7 @@ public enum KafkaError: LocalizedError {
     case decompressionFailed(codec: String, reason: String)
     case decompressionExceeded(codec: String)
     case syntax(String)
+    case refused(String)
     case unknownTopic(String)
     case unknownGroup(String)
     case producedToUnknownPartition(topic: String, partition: Int32)
@@ -75,7 +76,7 @@ public enum KafkaError: LocalizedError {
                 format: String(localized: "A %@ batch decompresses to far more data than the broker sent, so it was not read."),
                 codec
             )
-        case .syntax(let detail):
+        case .syntax(let detail), .refused(let detail):
             return detail
         case .unknownTopic(let name):
             return String(format: String(localized: "No topic named %@ on this cluster."), name)

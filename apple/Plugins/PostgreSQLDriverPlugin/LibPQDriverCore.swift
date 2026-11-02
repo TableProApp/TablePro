@@ -272,6 +272,20 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    func executeReadOnly(query: String, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated
+        )
+    }
+
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         let pqConn = try connection()
         let startTime = Date()
@@ -289,11 +303,11 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    func streamRows(query: String, readOnly: Bool = false) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let pqConn = libpqConnection else {
             return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
         }
-        return pqConn.streamQuery(query)
+        return pqConn.streamQuery(query, readOnly: readOnly)
     }
 
     func cancelQuery() {
@@ -460,6 +474,40 @@ extension LibPQBackedDriver {
         } else {
             raw = try await core.executeSingleStatement(query: query)
         }
+        return Self.capped(raw, rowCap: rowCap)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else {
+            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+        return Self.capped(try await core.executeReadOnly(query: query, parameters: parameters), rowCap: rowCap)
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else { return try await execute(query: query) }
+        return try await core.executeReadOnly(query: query, parameters: nil)
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else { return try await executeParameterized(query: query, parameters: parameters) }
+        return try await core.executeReadOnly(query: query, parameters: parameters)
+    }
+
+    private func runsReadOnly(_ context: PluginStatementContext) -> Bool {
+        LibPQReadOnlyTransaction.applies(to: context, capabilities: capabilities)
+    }
+
+    private static func capped(_ raw: PluginQueryResult, rowCap: Int?) -> PluginQueryResult {
         guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
         return PluginQueryResult(
             columns: raw.columns,
@@ -477,6 +525,11 @@ extension LibPQBackedDriver {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         core.streamRows(query: query)
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard runsReadOnly(context) else { return streamRows(query: query) }
+        return core.streamRows(query: query, readOnly: true)
     }
 
     func cancelQuery() throws {

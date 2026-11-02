@@ -234,6 +234,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .cancelQuery,
             .schemaCompare,
             .dataCompare,
+            .readOnlyStatements,
         ]
     }
 
@@ -640,23 +641,53 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        let rawResult = try await connectionActor.executeQuery(query)
-        return PluginQueryResult(
-            columns: rawResult.columns,
-            columnTypeNames: rawResult.columnTypeNames,
-            rows: rawResult.rows,
-            rowsAffected: rawResult.rowsAffected,
-            executionTime: rawResult.executionTime,
-            isTruncated: rawResult.isTruncated
-        )
+        Self.queryResult(try await connectionActor.executeQuery(query))
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        guard context.readOnly, context.origin == .external else { return try await execute(query: query) }
+        return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: []))
     }
 
     func executeParameterized(
         query: String,
         parameters: [PluginCellValue]
     ) async throws -> PluginQueryResult {
-        let rawResult = try await connectionActor.executePrepared(query, parameters: parameters)
+        Self.queryResult(try await connectionActor.executePrepared(query, parameters: parameters))
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard context.readOnly, context.origin == .external else { return try await executeParameterized(query: query, parameters: parameters) }
+        return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters))
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard context.readOnly, context.origin == .external else {
+            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+        let raw = Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters ?? []))
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
         return PluginQueryResult(
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            executionTime: raw.executionTime,
+            isTruncated: true
+        )
+    }
+
+    private static func queryResult(_ rawResult: DuckDBRawResult) -> PluginQueryResult {
+        PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
             rows: rawResult.rows,
@@ -679,6 +710,20 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             Task {
                 do {
                     try await actor.streamQuery(query, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard context.readOnly, context.origin == .external else { return streamRows(query: query) }
+        let actor = connectionActor
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            Task {
+                do {
+                    try await actor.streamReadOnly(query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }

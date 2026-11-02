@@ -401,37 +401,6 @@ extension MCPConnectionBridge {
         return .object(["contexts": .array(payload), "is_supported": .bool(true)])
     }
 
-    func transactionControl(scope: DatabaseScope, action: String) async throws -> JsonValue {
-        try await ensureConnected(scope.connectionId)
-        let supported = await MainActor.run {
-            DatabaseManager.shared.driver(for: scope.connectionId)?.supportsTransactions ?? false
-        }
-        guard supported else {
-            throw DatabaseAccessError.dataSourceError(
-                String(localized: "This engine does not support transactions.")
-            )
-        }
-        try await DatabaseManager.shared.withScopedDriver(
-            scope: scope,
-            route: .sessionDriver,
-            cancellation: .protectedWrite
-        ) { driver in
-            switch action {
-            case "begin": try await driver.beginTransaction(mode: .readWrite)
-            case "commit": try await driver.commitTransaction()
-            case "rollback": try await driver.rollbackTransaction()
-            default:
-                throw DatabaseAccessError.invalidArgument(
-                    String(localized: "Transaction action must be begin, commit, or rollback.")
-                )
-            }
-        }
-        if action == "commit" || action == "rollback" {
-            CatalogChangeService.post(.transactionEnded(connectionId: scope.connectionId))
-        }
-        return .object(["status": .string(action), "connection_id": .string(scope.connectionId.uuidString)])
-    }
-
     func fetchSchemaResource(connectionId: UUID) async throws -> JsonValue {
         try await ensureConnected(connectionId)
         let scope = await MainActor.run { DatabaseManager.shared.browseScope(for: connectionId) }
@@ -544,37 +513,6 @@ extension MCPConnectionBridge {
 }
 
 extension MCPConnectionBridge {
-    func createDatabase(connectionId: UUID, name: String, options: [String: String]) async throws -> JsonValue {
-        let (driver, _) = try await resolveDriver(connectionId)
-        try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
-            try await driver.createDatabase(CreateDatabaseRequest(name: name, values: options))
-        }
-        CatalogChangeService.post(.changed(CatalogChange(connectionId: connectionId, kinds: .databases)))
-        return .object(["status": .string("created"), "database": .string(name)])
-    }
-
-    func dropDatabase(connectionId: UUID, name: String) async throws -> JsonValue {
-        await MainActor.run {
-            MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: name)
-            DatabaseManager.shared.sessionLanes.close(database: name, for: connectionId)
-        }
-        let (driver, _) = try await resolveDriver(connectionId)
-        try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
-            try await driver.dropDatabase(name: name)
-        }
-        CatalogChangeService.post(.containerDropped(.database(name), connectionId: connectionId))
-        return .object(["status": .string("dropped"), "database": .string(name)])
-    }
-
-    func dropSchema(connectionId: UUID, name: String) async throws -> JsonValue {
-        let (driver, _) = try await resolveDriver(connectionId)
-        try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
-            try await driver.dropSchema(name: name)
-        }
-        CatalogChangeService.post(.containerDropped(.schema(database: nil, schema: name), connectionId: connectionId))
-        return .object(["status": .string("dropped"), "schema": .string(name)])
-    }
-
     func createDatabaseFormSpec(connectionId: UUID) async throws -> JsonValue {
         let (driver, _) = try await resolveDriver(connectionId)
         guard let spec = try await driver.createDatabaseFormSpec() else {

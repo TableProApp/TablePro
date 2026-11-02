@@ -55,23 +55,31 @@ struct ExecuteQueryChatTool: ChatTool {
         )
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
-
-        if let refusal = ExternalStatementGate.privateRequestRefusal(sql: query) {
-            return ChatToolResult(content: refusal, isError: true)
-        }
-
         let capabilities = ExternalStatementGate.capabilities(
             context.writeCapabilities,
             takingScriptsOn: meta.databaseType
         )
 
-        guard capabilities.contains(.mayRunMultiStatement)
-            || !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType)
-        else {
-            return ChatToolResult(
-                content: "Multi-statement queries are not supported. Send one statement at a time.",
-                isError: true
+        // The refusals MCP makes, from the same gate. AI Policy, checked above, governs the assistant, so the
+        // External Clients level is not asked.
+        let classification: QueryClassification
+        do {
+            classification = try ExternalStatementGate.classify(
+                ExternalStatementGate.Statement(
+                    sql: query,
+                    connectionId: connectionId,
+                    databaseType: meta.databaseType,
+                    externalAccess: .readWrite,
+                    loadsExtensions: meta.loadsExtensions,
+                    allowsDestructive: false,
+                    allowsMultiStatement: capabilities.contains(.mayRunMultiStatement),
+                    destructiveAlternative: String(
+                        localized: "Use confirm_destructive_operation with the explicit confirmation phrase."
+                    )
+                )
             )
+        } catch let refusal as ExternalStatementGateError {
+            return ChatToolResult(content: refusal.errorDescription ?? "", isError: true)
         }
 
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
@@ -84,58 +92,32 @@ struct ExecuteQueryChatTool: ChatTool {
             settings: mcpSettings
         )
 
-        let classification = QueryClassifier.classify(query, databaseType: meta.databaseType)
-
-        /// The same refusal MCP makes through `ExternalStatementGate`: a statement that reads or
-        /// writes files, or runs server-side code, is a strictly larger capability than reading and
-        /// writing data, and larger still on a connection whose transport executes on an SSH server.
-        /// The MCP tool routes through the gate; this path did not, so it added the reach that a
-        /// remote-execution connection turns into running code on the server.
-        if classification.reachesFilesystemOrExecutesCode {
-            return ChatToolResult(
-                content: "Statements that read or write files, or run server-side code (ATTACH, LOAD, COPY, VACUUM INTO), "
-                    + "can't be sent from the assistant. Run this one in TablePro instead.",
-                isError: true
-            )
-        }
-
-        if let refusal = ExternalStatementGate.extensionCallRefusal(
-            sql: query,
-            databaseType: meta.databaseType,
-            loadsExtensions: meta.loadsExtensions
-        ) {
-            return ChatToolResult(content: refusal, isError: true)
-        }
-
-        if classification.tier == .destructive {
-            return ChatToolResult(
-                content: "Destructive queries (DROP, TRUNCATE, ALTER...DROP) are blocked here. Use confirm_destructive_operation with the explicit confirmation phrase.",
-                isError: true
-            )
-        }
-
         let scope = try await context.bridge.resolveScope(
             connectionId: connectionId,
             database: database,
             schema: schema
         )
-
-        try await context.authPolicy.checkSafeModeDialog(
-            sql: query,
-            connectionId: connectionId,
-            databaseType: meta.databaseType,
-            capabilities: capabilities
+        let planned = try await context.bridge.plannedScript(scope: scope, query: query, maxRows: maxRows)
+        let operation = try await context.authPolicy.checkSafeModeDialog(
+            operation: PendingOperation(
+                scope: scope,
+                databaseType: meta.databaseType,
+                statements: [planned.statement],
+                kind: OperationKind.from(classification.tier),
+                unit: planned.unit,
+                caller: .aiAssistant(sessionId: context.sessionId?.uuidString),
+                capabilities: capabilities,
+                operationDescription: MCPAuthPolicy.operationDescription(for: String(localized: "a query"))
+            )
         )
 
         let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
-            query: query,
-            scope: scope,
+            operation: operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
-            principal: .inAppAssistant,
-            unit: .script
+            principal: .inAppAssistant
         )
         return ChatToolResult(content: payload.jsonString(prettyPrinted: true))
     }

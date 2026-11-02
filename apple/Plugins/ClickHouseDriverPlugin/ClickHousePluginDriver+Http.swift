@@ -17,19 +17,32 @@ nonisolated extension ClickHousePluginDriver {
     func executeRaw(
         _ query: String,
         queryId: String? = nil,
-        requestTimeout: TimeInterval? = nil
+        requestTimeout: TimeInterval? = nil,
+        readOnly: Bool = false
     ) async throws -> CHQueryResult {
         try await sendStatement(
             query,
             queryId: queryId,
             params: nil,
             executionTimeLimit: executionTimeLimit,
-            requestTimeout: requestTimeout
+            requestTimeout: requestTimeout,
+            readOnly: readOnly
         )
     }
 
-    func executeRawWithParams(_ query: String, params: [String: String?], queryId: String? = nil) async throws -> CHQueryResult {
-        try await sendStatement(query, queryId: queryId, params: params, executionTimeLimit: executionTimeLimit)
+    func executeRawWithParams(
+        _ query: String,
+        params: [String: String?],
+        queryId: String? = nil,
+        readOnly: Bool = false
+    ) async throws -> CHQueryResult {
+        try await sendStatement(
+            query,
+            queryId: queryId,
+            params: params,
+            executionTimeLimit: executionTimeLimit,
+            readOnly: readOnly
+        )
     }
 
     func sendStatement(
@@ -37,7 +50,8 @@ nonisolated extension ClickHousePluginDriver {
         queryId: String?,
         params: [String: String?]?,
         executionTimeLimit: Int?,
-        requestTimeout: TimeInterval? = nil
+        requestTimeout: TimeInterval? = nil,
+        readOnly: Bool = false
     ) async throws -> CHQueryResult {
         let (session, database) = try lock.withLock { () throws -> (URLSession, String) in
             guard let session = self.session else { throw ClickHouseError.notConnected }
@@ -53,12 +67,27 @@ nonisolated extension ClickHousePluginDriver {
             database: database,
             queryId: queryId,
             executionTimeLimit: executionTimeLimit,
-            shape: .buffered(parameters: params)
+            shape: .buffered(parameters: params),
+            readOnly: readOnly
         )
         request.timeoutInterval = requestTimeout ?? _queryTimeout.requestTimeoutInterval
         return try await killingOnCancel(queryId: queryId) {
-            try await perform(request: request, session: session)
+            do {
+                return try await perform(request: request, session: session)
+            } catch {
+                throw readOnly ? Self.readOnlyRefusal(error) : error
+            }
         }
+    }
+
+    // 164 is READONLY: the request's own `readonly` refused the statement.
+    static func readOnlyRefusal(_ error: Error) -> Error {
+        guard let failure = error as? ClickHouseError, failure.exceptionCode == 164 else { return error }
+        return ClickHouseError(
+            message: String(localized: "This request is read only, and the statement is not a read."),
+            exceptionCode: failure.exceptionCode,
+            detail: failure.message
+        )
     }
 
     // Two callers can share this driver, so a cancelled statement stops its own query, never the one sent last.
@@ -81,7 +110,11 @@ nonisolated extension ClickHousePluginDriver {
             let body = String(decoding: data, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
             let exceptionCode = httpResponse.value(forHTTPHeaderField: Self.exceptionCodeHeader) ?? "none"
             Self.logger.error("ClickHouse HTTP \(httpResponse.statusCode) exception \(exceptionCode): \(body)")
-            throw ClickHouseError.httpFailure(statusCode: httpResponse.statusCode, body: body)
+            throw ClickHouseError.httpFailure(
+                statusCode: httpResponse.statusCode,
+                body: body,
+                exceptionCode: httpResponse.value(forHTTPHeaderField: Self.exceptionCodeHeader)
+            )
         }
 
         let headers = Self.headerFields(httpResponse)
@@ -156,7 +189,8 @@ nonisolated extension ClickHousePluginDriver {
         database: String,
         queryId: String?,
         executionTimeLimit: Int?,
-        shape: ClickHouseResponseShape
+        shape: ClickHouseResponseShape,
+        readOnly: Bool = false
     ) throws -> URLRequest {
         let body = Data(Self.withoutTrailingSemicolons(query).utf8)
         var components = URLComponents()
@@ -170,7 +204,8 @@ nonisolated extension ClickHousePluginDriver {
             executionTimeLimit: executionTimeLimit,
             shape: shape,
             profile: serverProfile,
-            statementBytes: body.count
+            statementBytes: body.count,
+            readOnly: readOnly
         ).map { URLQueryItem(name: Self.percentEncoded($0.name), value: $0.value.map(Self.percentEncoded)) }
 
         guard let url = components.url else {
@@ -202,7 +237,8 @@ nonisolated extension ClickHousePluginDriver {
         executionTimeLimit: Int?,
         shape: ClickHouseResponseShape,
         profile: ClickHouseServerProfile,
-        statementBytes: Int = 0
+        statementBytes: Int = 0,
+        readOnly: Bool = false
     ) -> [URLQueryItem] {
         var items = [URLQueryItem]()
         if !database.isEmpty {
@@ -249,7 +285,15 @@ nonisolated extension ClickHousePluginDriver {
         if statementBytes > profile.maxQuerySize, let item = profile.queryItem(.maxQuerySize, String(statementBytes)) {
             items.append(item)
         }
-        return items
+        return readOnly ? readOnlyItems(items, profile: profile) : items
+    }
+
+    // The server applies URL settings in order and the last one wins: `readonly=2&readonly=0` ran an INSERT, so
+    // `readonly` goes last and once. `readonly=2` still let `INSERT INTO FUNCTION file` write; 1 refused it (26.8).
+    static func readOnlyItems(_ items: [URLQueryItem], profile: ClickHouseServerProfile) -> [URLQueryItem] {
+        let others = items.filter { $0.name != "readonly" }
+        guard let item = profile.readOnlyItem else { return others }
+        return others + [item]
     }
 
     // URLComponents leaves `+` as it is, and the server's form decoding reads it as a space: `a+b` arrived as `a b`.

@@ -156,6 +156,8 @@ public struct MongoStatementParser {
     }
 
     private mutating func step(from receiver: Receiver, member: String, isCall: Bool) throws -> Receiver {
+        // The prelude's plumbing (`__reply`, `__delete`, `__configure`) takes the host op and `multi` as plain arguments.
+        guard !member.hasPrefix("__") else { throw Rejected() }
         switch receiver {
         case .database:
             guard isCall else {

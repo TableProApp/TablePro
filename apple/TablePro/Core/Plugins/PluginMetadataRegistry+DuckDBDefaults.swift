@@ -44,7 +44,8 @@ extension PluginMetadataRegistry {
                     supportsRenameColumn: true,
                     supportsConnectionPooling: false,
                     localFilePathField: .additionalField("duckdbFilePath"),
-                    newDatabaseFileExtensions: ["duckdb", "ddb"]
+                    newDatabaseFileExtensions: ["duckdb", "ddb"],
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "main",

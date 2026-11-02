@@ -165,10 +165,15 @@ enum MCPToolTestHarness {
         )
     }
 
-    static func authPolicy(connections: [UUID: MCPConnectionAuthSnapshot] = [:]) -> MCPAuthPolicy {
+    // A test that reaches a confirmation passes a stub gate: the default is the real alert gate.
+    static func authPolicy(
+        connections: [UUID: MCPConnectionAuthSnapshot] = [:],
+        executionGate: any ExecutionGate = ExecutionGateProvider.shared
+    ) -> MCPAuthPolicy {
         MCPAuthPolicy(
             connectionResolver: { id in connections[id] },
-            connectionIdsProvider: { Set(connections.keys) }
+            connectionIdsProvider: { Set(connections.keys) },
+            executionGate: executionGate
         )
     }
 

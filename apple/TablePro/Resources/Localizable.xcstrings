@@ -4880,6 +4880,9 @@
         }
       }
     },
+    "%@ refuses changes from external clients on this connection." : {
+
+    },
     "%@ requires a Pro license" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -23164,6 +23167,12 @@
           }
         }
       }
+    },
+    "Allow %1$@ on '%2$@', database '%3$@', schema '%4$@'?" : {
+
+    },
+    "Allow %1$@ on '%2$@', database '%3$@'?" : {
+
     },
     "Allow AI Access" : {
       "localizations" : {
@@ -55096,6 +55105,9 @@
         }
       }
     },
+    "counting rows in '%@'" : {
+
+    },
     "Counting values…" : {
       "localizations" : {
         "fr" : {
@@ -56075,6 +56087,9 @@
           }
         }
       }
+    },
+    "creating database '%@'" : {
+
     },
     "Creating…" : {
       "extractionState" : "stale",
@@ -59939,6 +59954,9 @@
           }
         }
       }
+    },
+    "Database: %1$@, schema: %2$@" : {
+
     },
     "Databases" : {
       "localizations" : {
@@ -142580,6 +142598,12 @@
         }
       }
     },
+    "Read Only depends on the login: %@ has no read-only mode, and TablePro refuses commands that write. Use a user that can only read." : {
+
+    },
+    "Read Only depends on the login: %@ has no read-only mode. Use a login that can only read." : {
+
+    },
     "Read Preference" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -143125,6 +143149,9 @@
           }
         }
       }
+    },
+    "reading rows from '%@'" : {
+
     },
     "Reading Tables" : {
       "localizations" : {
@@ -145014,7 +145041,19 @@
     "Refuse the statement unless it only reads, even where the connection allows writes." : {
 
     },
+    "Refused %@: deleting data was not approved for this statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Refused %@: this statement ran as a read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Refused %@: this statement was not approved to drop or delete data." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Refused %@: this statement was not approved to run server-side code, $out or $merge." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -173296,6 +173335,9 @@
         }
       }
     },
+    "Statements from external clients run in a read-only transaction, but %@ still allows some changes. Use a login that can only read." : {
+
+    },
     "Statements run on the SSH server, so reads and writes act on the live database. The server needs python3." : {
       "localizations" : {
         "fr" : {
@@ -188269,6 +188311,9 @@
         }
       }
     },
+    "The MCP server could not prepare its private socket folder" : {
+
+    },
     "The MCP server is turned off. Turn it on in Settings > MCP." : {
 
     },
@@ -192503,6 +192548,10 @@
         }
       }
     },
+    "The statement's placeholders do not match the %d values given." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The statements may or may not be saved. Check the table before running them again." : {
       "localizations" : {
         "fr" : {
@@ -195168,6 +195217,10 @@
         }
       }
     },
+    "This connection has a transaction open. Commit or roll it back in TablePro, then try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This connection has an open transaction. Commit or roll it back first." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -195359,6 +195412,10 @@
           }
         }
       }
+    },
+    "This connection is read only for external clients, and the database refused the statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection is read only for external clients." : {
       "localizations" : {
@@ -198792,6 +198849,9 @@
         }
       }
     },
+    "This operation is not the one that was approved." : {
+
+    },
     "This Oracle server is older than release 11.1, which the database driver does not support." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -199330,7 +199390,8 @@
       }
     },
     "This request is read only, and the statement is not a read." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This request is too large for Apple Intelligence, even with only the columns the statement uses. Select a smaller part of the statement." : {
 
@@ -207945,6 +208006,9 @@
         }
       }
     },
+    "Update the %@ driver in Settings > Extensions to run this from an external client." : {
+
+    },
     "Update the database driver in Settings > Extensions to run a batch more than once with GO." : {
 
     },
@@ -208834,6 +208898,9 @@
           }
         }
       }
+    },
+    "Use confirm_destructive_operation with the explicit confirmation phrase." : {
+
     },
     "Use Default" : {
       "localizations" : {

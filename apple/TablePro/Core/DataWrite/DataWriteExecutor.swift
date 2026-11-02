@@ -98,16 +98,13 @@ struct DataWritePartialCommitError: LocalizedError {
 enum DataWriteExecutor {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DataWriteExecutor")
 
-    /// Runs every step of the plan against one driver, and returns what each one actually did.
-    ///
-    /// The prologue runs before the transaction opens and the epilogue after it closes, on both
-    /// the commit and the rollback path. The rollback and the epilogue are part of the same lease
-    /// as the statements: resolving a driver again afterwards can reach a handle that has already
-    /// been released, or one sitting on another database.
+    // The rollback and the epilogue share the statements' lease: resolving a driver again can reach a released
+    // handle or another database. `context` is what an external caller's approval covered.
     nonisolated static func run(
         _ plan: DataWritePlan,
         mode: PluginTransactionAccessMode = .readWrite,
-        on driver: DatabaseDriver
+        on driver: DatabaseDriver,
+        context: PluginStatementContext? = nil
     ) async throws -> DataWriteRun {
         let steps = plan.steps.filter { !$0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !steps.isEmpty || !plan.prologue.isEmpty else { return DataWriteRun(results: [], sideStatements: []) }
@@ -183,12 +180,21 @@ enum DataWriteExecutor {
                     }
                 }
                 let result: QueryResult
-                if statement.parameters.isEmpty {
+                switch (statement.parameters.isEmpty, context) {
+                case (true, nil):
                     result = try await driver.execute(query: statement.sql)
-                } else {
+                case (true, let context?):
+                    result = try await driver.execute(query: statement.sql, context: context)
+                case (false, nil):
                     result = try await driver.executeParameterized(
                         query: statement.sql,
                         parameters: statement.parameters
+                    )
+                case (false, let context?):
+                    result = try await driver.executeParameterized(
+                        query: statement.sql,
+                        parameters: statement.parameters,
+                        context: context
                     )
                 }
 

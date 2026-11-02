@@ -13,16 +13,6 @@ public struct KafkaAbortedTransaction: Sendable {
     }
 }
 
-public struct KafkaRecordHeader: Sendable {
-    public let key: String
-    public let value: Data?
-
-    public init(key: String, value: Data?) {
-        self.key = key
-        self.value = value
-    }
-}
-
 public struct KafkaRecord: Sendable {
     public let offset: Int64
     public let timestamp: Int64

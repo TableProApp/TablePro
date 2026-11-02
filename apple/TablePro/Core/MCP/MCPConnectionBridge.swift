@@ -108,17 +108,23 @@ public actor MCPConnectionBridge {
         ])
     }
 
+    func plannedStatement(scope: DatabaseScope, query: String, maxRows: Int) async throws -> OperationStatement {
+        try await access.plannedStatement(scope: scope, query: query, maxRows: maxRows)
+    }
+
+    func plannedScript(scope: DatabaseScope, query: String, maxRows: Int) async throws -> DatabaseAccessBridge.PlannedText {
+        try await access.plannedScript(scope: scope, query: query, maxRows: maxRows)
+    }
+
     func executeQuery(
-        scope: DatabaseScope,
-        query: String,
+        _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?,
         maskingTable: String? = nil
     ) async throws -> JsonValue {
         let outcome = try await runStatement(
-            scope: scope,
-            query: query,
+            operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
@@ -126,39 +132,35 @@ public actor MCPConnectionBridge {
         )
         return Self.encode(
             result: outcome.result,
-            scope: scope,
+            scope: operation.scope,
             executionTimeMs: outcome.executionTimeMs
         )
     }
 
     func executeScript(
-        scope: DatabaseScope,
-        query: String,
+        _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?
     ) async throws -> (payload: JsonValue, rowsReturned: Int) {
         let outcome = try await access.runScript(
-            scope: scope,
-            query: query,
+            operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation
         )
-        return (Self.encode(script: outcome, scope: scope), outcome.rowsReturned)
+        return (Self.encode(script: outcome, scope: operation.scope), outcome.rowsReturned)
     }
 
     func runStatement(
-        scope: DatabaseScope,
-        query: String,
+        _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?,
         maskingTable: String? = nil
     ) async throws -> (result: QueryResult, executionTimeMs: Double) {
         let outcome = try await access.runStatement(
-            scope: scope,
-            query: query,
+            operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation,
@@ -168,20 +170,73 @@ public actor MCPConnectionBridge {
     }
 
     func runExplainPlan(
-        scope: DatabaseScope,
-        statement: String,
+        _ operation: ApprovedOperation,
         step: ExplainRequest.DriverStep,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?
     ) async throws -> (result: QueryResult, executionTimeMs: Double) {
         let outcome = try await access.runExplainPlan(
-            scope: scope,
-            statement: statement,
+            operation,
             step: step,
             timeoutSeconds: timeoutSeconds,
             cancellation: cancellation
         )
         return (outcome.result, outcome.executionTimeMs)
+    }
+
+    func countRows(
+        _ operation: ApprovedOperation,
+        table: String,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode,
+        exact: Bool
+    ) async throws -> JsonValue {
+        let outcome = try await access.countRows(
+            operation, table: table, filters: filters, logicMode: logicMode, exact: exact
+        )
+        guard let count = outcome.count else {
+            throw DatabaseAccessError.dataSourceError(
+                String(localized: "This engine cannot count rows for that table.")
+            )
+        }
+        return .object([
+            "table": .string(table),
+            "row_count": .int(count),
+            "is_approximate": .bool(outcome.isApproximate),
+            "filter_count": .int(filters.count)
+        ])
+    }
+
+    func insertRows(_ operation: ApprovedOperation, table: String) async throws -> JsonValue {
+        let inserted = try await access.runInserts(operation)
+        return .object([
+            "table": .string(table),
+            "rows_submitted": .int(operation.statements.count),
+            "rows_affected": .int(inserted)
+        ])
+    }
+
+    func transactionControl(_ operation: ApprovedOperation, action: String) async throws -> JsonValue {
+        try await access.transactionControl(operation, action: action)
+        return .object([
+            "status": .string(action),
+            "connection_id": .string(operation.scope.connectionId.uuidString)
+        ])
+    }
+
+    func createDatabase(_ operation: ApprovedOperation, name: String, options: [String: String]) async throws -> JsonValue {
+        try await access.createDatabase(operation, name: name, options: options)
+        return .object(["status": .string("created"), "database": .string(name)])
+    }
+
+    func dropDatabase(_ operation: ApprovedOperation, name: String) async throws -> JsonValue {
+        try await access.dropDatabase(operation, name: name)
+        return .object(["status": .string("dropped"), "database": .string(name)])
+    }
+
+    func dropSchema(_ operation: ApprovedOperation, name: String) async throws -> JsonValue {
+        try await access.dropSchema(operation, name: name)
+        return .object(["status": .string("dropped"), "schema": .string(name)])
     }
 
     static func encode(result: QueryResult, scope: DatabaseScope, executionTimeMs: Double) -> JsonValue {
@@ -240,6 +295,7 @@ public actor MCPConnectionBridge {
 
     static let iso8601 = OSAllocatedUnfairLock(uncheckedState: ISO8601DateFormatter())
 
+    // For metadata only: listing databases, the create-database form, quoting names. Statements go through `access`.
     func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
         try await access.resolveDriver(connectionId)
     }

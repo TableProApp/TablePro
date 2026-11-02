@@ -1,5 +1,6 @@
 import Foundation
 import TableProMCP
+import TableProSQLGrammar
 
 public struct ListMaintenanceOperationsTool: MCPToolImplementation {
     public static let name = "list_maintenance_operations"
@@ -81,6 +82,7 @@ public struct ListMaintenanceOperationsTool: MCPToolImplementation {
 
 public struct RunMaintenanceTool: MCPToolImplementation {
     public static let name = "run_maintenance"
+    static let rowLimit = 1_000
     public static let title: String? = String(localized: "Run Maintenance")
     public static let description = String(
         localized: """
@@ -177,10 +179,26 @@ public struct RunMaintenanceTool: MCPToolImplementation {
         let settings = await services.settingsProvider()
         let timeoutSeconds = try MCPLimitResolver.resolveTimeoutSeconds(arguments, settings: settings)
 
+        let classifications = try statements.map { statement in
+            try MCPStatementGate.classify(sql: statement, meta: meta, allowsDestructive: true, context: context)
+        }
+
         var results: [JsonValue] = []
-        for statement in statements {
-            try await MCPStatementGate.authorize(
-                sql: statement,
+        for (statement, classification) in zip(statements, classifications) {
+            let planned: OperationStatement
+            do {
+                planned = try await services.connectionBridge.plannedStatement(
+                    scope: scope,
+                    query: statement,
+                    maxRows: Self.rowLimit
+                )
+            } catch {
+                throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+            }
+            let approved = try await MCPStatementGate.approve(
+                [planned],
+                kind: OperationKind.from(classification.tier),
+                scope: scope,
                 meta: meta,
                 allowsDestructive: true,
                 forcesUserConsent: true,
@@ -193,9 +211,8 @@ public struct RunMaintenanceTool: MCPToolImplementation {
             )
             let result = try await ToolQueryExecutor.executeAndLog(
                 services: services,
-                query: statement,
-                scope: scope,
-                maxRows: 1_000,
+                operation: approved,
+                maxRows: Self.rowLimit,
                 timeoutSeconds: timeoutSeconds,
                 context: context,
                 secrets: meta.redactionSecrets
@@ -271,8 +288,18 @@ public struct TransactionControlTool: MCPToolImplementation {
         let action = try MCPArgumentDecoder.requireEnum(arguments, key: "action", allowed: Self.actions)
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
-        try await MCPStatementGate.authorize(
-            sql: action.uppercased(),
+        // No statement to grade: BEGIN means JavaScript to a MongoDB classifier, so the kind decides.
+        try MCPStatementGate.classify(kind: .writeQuery, meta: meta, allowsDestructive: false, context: context)
+
+        let scope = try await MCPScopeArguments.resolve(
+            arguments,
+            connectionId: connectionId,
+            services: services
+        )
+        let operation = try await MCPStatementGate.approve(
+            [],
+            kind: .writeQuery,
+            scope: scope,
             meta: meta,
             allowsDestructive: false,
             operationLabel: String(
@@ -282,17 +309,8 @@ public struct TransactionControlTool: MCPToolImplementation {
             context: context,
             services: services
         )
-
-        let scope = try await MCPScopeArguments.resolve(
-            arguments,
-            connectionId: connectionId,
-            services: services
-        )
         do {
-            let payload = try await services.connectionBridge.transactionControl(
-                scope: scope,
-                action: action
-            )
+            let payload = try await services.connectionBridge.transactionControl(operation, action: action)
             return .structured(payload)
         } catch {
             throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)

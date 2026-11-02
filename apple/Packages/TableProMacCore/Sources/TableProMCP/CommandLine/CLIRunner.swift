@@ -28,11 +28,11 @@ public struct CLITerminal: Sendable, Equatable {
 
 // `appPath` is the bundle of the process serving MCP, which a pairing link has to reach.
 public struct CLIServerEndpoint: Sendable, Equatable {
-    public let port: Int
+    public let socketPath: String
     public let appPath: String?
 
-    public init(port: Int, appPath: String?) {
-        self.port = port
+    public init(socketPath: String, appPath: String?) {
+        self.socketPath = socketPath
         self.appPath = appPath
     }
 }
@@ -161,7 +161,7 @@ public struct CLIRunner: Sendable {
     private func connect() async throws -> CLIServerClient {
         let server = try await openServer()
         if let token = try tokenStore.read() {
-            return CLIServerClient(port: server.port, token: token)
+            return CLIServerClient(socketPath: server.socketPath, token: token)
         }
         guard terminal.standardError else {
             throw CLIFailure(
@@ -172,7 +172,7 @@ public struct CLIRunner: Sendable {
         console.err("tablepro: approve the tablepro command in TablePro to pair it.\n")
         let token = try await pair(server)
         try tokenStore.save(token)
-        return CLIServerClient(port: server.port, token: token)
+        return CLIServerClient(socketPath: server.socketPath, token: token)
     }
 
     private func call(_ client: CLIServerClient, _ tool: String, _ arguments: [String: JsonValue]) async throws -> JsonValue {
@@ -253,7 +253,7 @@ public extension CLIRunner {
         )
     }
 
-    // The server must prove it wrote the handshake before any token goes to its port.
+    // The server must prove it wrote the handshake before any token goes to its socket.
     private static func openLiveServer() async throws -> CLIServerEndpoint {
         let logger = MCPOSBridgeLogger(category: "CLI")
         let handshake: MCPHandshakePayload
@@ -267,13 +267,10 @@ public extension CLIRunner {
         } catch {
             throw CLIFailure(.failure, "TablePro did not start its MCP server: \(error.localizedDescription)")
         }
-        guard let credentials = handshake.credentials() else {
-            throw CLIFailure(.failure, "TablePro's MCP handshake names no usable port.")
-        }
         do {
             _ = try await BridgeUpstreamHandshake.verifiedDiscovery(
                 handshake: handshake,
-                credentials: credentials,
+                credentials: handshake.credentials(),
                 logger: logger
             )
         } catch {
@@ -281,7 +278,7 @@ public extension CLIRunner {
         }
         let appPath = MCPHandshakeTrust.executablePath(forPid: handshake.pid)
             .flatMap(MCPHandshakeTrust.appBundleRoot(forExecutable:))
-        return CLIServerEndpoint(port: handshake.port, appPath: appPath)
+        return CLIServerEndpoint(socketPath: handshake.socketPath, appPath: appPath)
     }
 
     private static func pairLive(server: CLIServerEndpoint) async throws -> String {
@@ -302,7 +299,7 @@ public extension CLIRunner {
 
         switch await listener.waitForCallback(timeout: pairingTimeout) {
         case .approved(let code):
-            return try await CLIServerClient.exchange(code: code, verifier: request.verifier, port: server.port)
+            return try await CLIServerClient.exchange(code: code, verifier: request.verifier, socketPath: server.socketPath)
         case .denied:
             throw CLIFailure(.refused, "Pairing was declined in TablePro.")
         case .ignored, nil:

@@ -747,6 +747,39 @@ final class LibPQPluginConnection: @unchecked Sendable {
         return result
     }
 
+    // One dispatch for the state check, the transaction and the statement, as `executeTransactionScopedRead` does.
+    func executeReadOnlyStatement(
+        _ statement: String,
+        parameters: [PluginCellValue]?
+    ) async throws -> LibPQPluginQueryResult {
+        let statementToRun = String(statement)
+        let params = parameters
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let conn = connectionHandle else { throw LibPQPluginError.notConnected }
+            if let ended = sessionEndedBeforeSending(conn) { throw ended }
+            return try LibPQReadOnlyTransaction.run(
+                state: transactionStateOnQueue().sessionTransactionState,
+                send: { try runReadOnlyControl($0, on: conn) }
+            ) {
+                guard let params else { return try executeQuerySync(statementToRun, singleStatement: true) }
+                return try executeParameterizedQuerySync(statementToRun, parameters: params)
+            }
+        }
+    }
+
+    private func runReadOnlyControl(_ statement: String, on conn: OpaquePointer) throws {
+        guard let result = statement.withCString({ PQexec(conn, $0) }) else {
+            throw lostConnection(getError(from: conn), on: conn, sent: true)
+        }
+        defer { PQclear(result) }
+        recordTransactionState(of: conn)
+        let status = PQresultStatus(result)
+        guard status == PGRES_COMMAND_OK || status == PGRES_TUPLES_OK else {
+            throw lostConnection(getResultError(from: result), on: conn, sent: true)
+        }
+    }
+
     private static let scopedReadSavepoint = "SAVEPOINT tablepro_scoped_read"
     private static let scopedReadRollback = "ROLLBACK TO SAVEPOINT tablepro_scoped_read; RELEASE SAVEPOINT tablepro_scoped_read"
 
@@ -1302,7 +1335,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     /// The abort is polled by the producer rather than acted on from `onTermination`, because both
     /// run on one serial queue: a drain enqueued from the handler sits behind the producer and runs
     /// only once the whole result has been read, which is no abort at all.
-    func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    func streamQuery(_ query: String, readOnly: Bool = false) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
 
         return PluginRowStream.make { continuation, abort in
@@ -1328,125 +1361,158 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 /// Read before the query goes out: once it is in flight the status is
                 /// PQTRANS_ACTIVE, and the transaction this guard exists for is invisible.
                 let cancelsOutput = cancelsAbandonedOutput(conn)
-                let suppressCancel = !cancelsOutput
                 _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
                 if let ended = sessionEndedBeforeSending(conn) {
                     continuation.finish(throwing: ended)
                     return
                 }
 
-                let sendOk = queryToRun.withCString { queryPtr in
-                    PQsendQuery(conn, queryPtr)
-                }
-
-                if sendOk == 0 {
-                    continuation.finish(throwing: lostConnection(getError(from: conn), on: conn, sent: false))
-                    return
-                }
-
-                if PQsetSingleRowMode(conn) == 0 {
-                    _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
-                    continuation.finish(throwing: LibPQPluginError(
-                        message: "Failed to enter single-row mode", sqlState: nil, detail: nil))
-                    return
-                }
-
-                var headerSent = false
-                var columnOids: [UInt32] = []
-                var lastCommandTag: String?
-                let batchSize = 5_000
-                var batch: [PluginRow] = []
-                batch.reserveCapacity(batchSize)
-
-                while let result = PQgetResult(conn) {
-                    let status = PQresultStatus(result)
-
-                    if status == PGRES_SINGLE_TUPLE {
-                        if !headerSent {
-                            let metadata = readColumnMetadata(from: result)
-                            columnOids = metadata.columnOids
-
-                            continuation.yield(.header(PluginStreamHeader(
-                                columns: metadata.columns,
-                                columnTypeNames: metadata.columnTypeNames,
-                                estimatedRowCount: nil
-                            )))
-                            headerSent = true
+                let stream = StreamRun(
+                    query: queryToRun,
+                    conn: conn,
+                    continuation: continuation,
+                    abort: abort,
+                    generation: generation,
+                    cancelsOutput: cancelsOutput
+                )
+                do {
+                    if readOnly {
+                        // The extended protocol takes one statement, so no `COMMIT; INSERT` can follow the read.
+                        try LibPQReadOnlyTransaction.run(
+                            state: transactionStateOnQueue().sessionTransactionState,
+                            send: { try runReadOnlyControl($0, on: conn) }
+                        ) {
+                            try streamResults(stream, singleStatement: true)
                         }
-
-                        let numFields = Int(PQnfields(result))
-                        var row: [PluginCellValue] = []
-                        row.reserveCapacity(numFields)
-
-                        for colIndex in 0..<numFields {
-                            row.append(Self.decodeCell(
-                                from: result,
-                                row: 0,
-                                column: Int32(colIndex),
-                                oid: columnOids[colIndex]
-                            ))
-                        }
-
-                        PQclear(result)
-                        batch.append(row)
-                        if batch.count >= batchSize {
-                            continuation.yield(.rows(batch))
-                            batch.removeAll(keepingCapacity: true)
-                        }
-
-                        if abort.isAborted || cancellationGate.isCancelled(generation) {
-                            if !batch.isEmpty {
-                                continuation.yield(.rows(batch))
-                            }
-                            _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
-                            continuation.finish(throwing: CancellationError())
-                            return
-                        }
-                    } else if status == PGRES_TUPLES_OK {
-                        PQclear(result)
-                        break
-                    } else if status == PGRES_COMMAND_OK {
-                        lastCommandTag = getCommandTag(from: result)
-                        PQclear(result)
-                        break
-                    } else if let copy = LibPQCopyState.copy(of: result) {
-                        PQclear(result)
-                        continuation.finish(throwing: abandonedCopyError(
-                            copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation))
-                        return
                     } else {
-                        let error = getResultError(from: result)
-                        PQclear(result)
-                        _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
-                        recordTransactionState(of: conn)
-                        if cancellationGate.isCancelled(generation) {
-                            continuation.finish(throwing: CancellationError())
-                            return
-                        }
-                        continuation.finish(throwing: lostConnection(error, on: conn, sent: true))
-                        return
+                        try streamResults(stream, singleStatement: false)
                     }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
                 }
-
-                if !batch.isEmpty {
-                    continuation.yield(.rows(batch))
-                }
-
-                let outcome = finishPendingResults(conn, cancellingOutput: cancelsOutput)
-                recordTransactionState(of: conn)
-                /// The header went out with the first row, so this stream keeps what it said;
-                /// the lookup is for the results that follow.
-                let missing = typeNames.unresolvedOids(in: columnOids)
-                if !missing.isEmpty {
-                    learnTypeNames(for: missing, conn: conn)
-                }
-                noteCommandTag(lastCommandTag, conn: conn)
-                if let abandoned = abandonedCopyError(outcome, generation: generation) {
-                    continuation.finish(throwing: abandoned)
-                    return
-                }
-                continuation.finish()
             }
+        }
+    }
+
+    private struct StreamRun {
+        let query: String
+        let conn: OpaquePointer
+        let continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        let abort: PluginStreamAbort
+        let generation: Int
+        let cancelsOutput: Bool
+    }
+
+    private func streamResults(_ run: StreamRun, singleStatement: Bool) throws {
+        let conn = run.conn
+        let continuation = run.continuation
+        let generation = run.generation
+        let cancelsOutput = run.cancelsOutput
+        let suppressCancel = !cancelsOutput
+
+        let sendOk = run.query.withCString { queryPtr in
+            singleStatement
+                ? PQsendQueryParams(conn, queryPtr, 0, nil, nil, nil, nil, 0)
+                : PQsendQuery(conn, queryPtr)
+        }
+
+        if sendOk == 0 {
+            throw lostConnection(getError(from: conn), on: conn, sent: false)
+        }
+
+        if PQsetSingleRowMode(conn) == 0 {
+            _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
+            throw LibPQPluginError(message: "Failed to enter single-row mode", sqlState: nil, detail: nil)
+        }
+
+        var headerSent = false
+        var columnOids: [UInt32] = []
+        var lastCommandTag: String?
+        let batchSize = 5_000
+        var batch: [PluginRow] = []
+        batch.reserveCapacity(batchSize)
+
+        while let result = PQgetResult(conn) {
+            let status = PQresultStatus(result)
+
+            if status == PGRES_SINGLE_TUPLE {
+                if !headerSent {
+                    let metadata = readColumnMetadata(from: result)
+                    columnOids = metadata.columnOids
+
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: metadata.columns,
+                        columnTypeNames: metadata.columnTypeNames,
+                        estimatedRowCount: nil
+                    )))
+                    headerSent = true
+                }
+
+                let numFields = Int(PQnfields(result))
+                var row: [PluginCellValue] = []
+                row.reserveCapacity(numFields)
+
+                for colIndex in 0..<numFields {
+                    row.append(Self.decodeCell(
+                        from: result,
+                        row: 0,
+                        column: Int32(colIndex),
+                        oid: columnOids[colIndex]
+                    ))
+                }
+
+                PQclear(result)
+                batch.append(row)
+                if batch.count >= batchSize {
+                    continuation.yield(.rows(batch))
+                    batch.removeAll(keepingCapacity: true)
+                }
+
+                if run.abort.isAborted || cancellationGate.isCancelled(generation) {
+                    if !batch.isEmpty {
+                        continuation.yield(.rows(batch))
+                    }
+                    _ = cancelAndDrain(conn, suppressCancel: suppressCancel)
+                    throw CancellationError()
+                }
+            } else if status == PGRES_TUPLES_OK {
+                PQclear(result)
+                break
+            } else if status == PGRES_COMMAND_OK {
+                lastCommandTag = getCommandTag(from: result)
+                PQclear(result)
+                break
+            } else if let copy = LibPQCopyState.copy(of: result) {
+                PQclear(result)
+                throw abandonedCopyError(copy, conn: conn, cancellingOutput: cancelsOutput, generation: generation)
+            } else {
+                let error = getResultError(from: result)
+                PQclear(result)
+                _ = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+                recordTransactionState(of: conn)
+                if cancellationGate.isCancelled(generation) {
+                    throw CancellationError()
+                }
+                throw lostConnection(error, on: conn, sent: true)
+            }
+        }
+
+        if !batch.isEmpty {
+            continuation.yield(.rows(batch))
+        }
+
+        let outcome = finishPendingResults(conn, cancellingOutput: cancelsOutput)
+        recordTransactionState(of: conn)
+        /// The header went out with the first row, so this stream keeps what it said;
+        /// the lookup is for the results that follow.
+        let missing = typeNames.unresolvedOids(in: columnOids)
+        if !missing.isEmpty {
+            learnTypeNames(for: missing, conn: conn)
+        }
+        noteCommandTag(lastCommandTag, conn: conn)
+        if let abandoned = abandonedCopyError(outcome, generation: generation) {
+            throw abandoned
         }
     }
 

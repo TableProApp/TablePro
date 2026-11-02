@@ -16,10 +16,8 @@ import TableProSQLGrammar
 /// manager on its own terms. Everything here is typed: JSON is a wire format that belongs to the
 /// MCP transport, and `MCPConnectionBridge` is the layer that encodes these results into it.
 ///
-/// Authorization is deliberately not here. A caller runs `ExternalStatementGate.authorize` first,
-/// which is where safe mode, the connection's external-access level and the destructive-statement
-/// confirmation live. This type would otherwise be the second place that decides, and two places
-/// that decide are one place that drifts.
+/// Nothing here runs without an `ApprovedOperation`, which only `ExternalStatementGate.approve` makes, so
+/// every statement it sends is the one Safe Mode showed, in the scope it showed.
 internal actor DatabaseAccessBridge {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseAccess")
 
@@ -209,6 +207,87 @@ internal actor DatabaseAccessBridge {
         try await manager.switchSchema(to: schema, for: connectionId)
     }
 
+    // MARK: - Plan
+
+    // The exact text a statement reaches the driver as, decided before anyone approves it: trailing separators off,
+    // and on an engine that returns only its leading rows, the limit it is sent with.
+    internal func plannedStatement(scope: DatabaseScope, query: String, maxRows: Int) async throws -> OperationStatement {
+        guard !Self.statementText(query, grammar: .ansi).isEmpty else { throw Self.emptyQuery }
+        let (sessionDriver, databaseType) = try await resolveDriver(scope.connectionId)
+        let grammar = SQLLexicalResolver.readings(
+            for: databaseType, session: sessionDriver.sessionLexicalState
+        ).execution
+        let normalized = Self.statementText(query, databaseType: databaseType, grammar: grammar)
+        guard !normalized.isEmpty else { throw Self.emptyQuery }
+        guard Self.capsRows(normalized, databaseType: databaseType) else { return OperationStatement(sql: normalized) }
+        let limited = await MainActor.run {
+            LeadingRowsStatement.resolve(normalized, rowCap: maxRows, databaseType: databaseType)
+        }
+        return OperationStatement(sql: limited.sql)
+    }
+
+    internal struct PlannedText: Sendable {
+        internal let statement: OperationStatement
+        internal let unit: OperationUnit
+    }
+
+    // A text that runs as a SQL Server script stays whole, to be cut at its GO lines; anything else is one statement.
+    internal func plannedScript(scope: DatabaseScope, query: String, maxRows: Int) async throws -> PlannedText {
+        guard !Self.statementText(query, grammar: .ansi).isEmpty else { throw Self.emptyQuery }
+        let (driver, databaseType) = try await resolveDriver(scope.connectionId)
+        switch await scriptRoute(query, scope: scope, databaseType: databaseType, driver: driver) {
+        case .single(let statement):
+            return PlannedText(
+                statement: try await plannedStatement(scope: scope, query: statement.sql, maxRows: maxRows),
+                unit: .statement
+            )
+        case .batches:
+            return PlannedText(statement: OperationStatement(sql: query), unit: .script)
+        case .statements:
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "Update the database driver in Settings > Extensions to run several statements in one call.")
+            )
+        case .needsBatchDriver:
+            throw DatabaseAccessError.invalidArgument(
+                String(localized: "Update the database driver in Settings > Extensions to run a batch more than once with GO.")
+            )
+        case nil:
+            throw Self.emptyQuery
+        }
+    }
+
+    internal func scriptRoute(
+        _ text: String,
+        scope: DatabaseScope,
+        databaseType: DatabaseType,
+        driver: DatabaseDriver
+    ) async -> QueryExecutionRoute? {
+        await MainActor.run {
+            QueryExecutionRoute.resolve(
+                QueryBatchPlanner.batches(
+                    in: text,
+                    model: QueryStatementModel.forDatabaseType(databaseType),
+                    grammar: SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: scope.connectionId)
+                ),
+                databaseType: databaseType,
+                sendsBatchesWhole: driver.supportsResultSetBatches
+            )
+        }
+    }
+
+    private static func capsRows(_ sql: String, databaseType: DatabaseType) -> Bool {
+        QueryClassifier.classify(sql, databaseType: databaseType).tier == .safe
+            || sql.range(of: #"\bRETURNING\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    private static var emptyQuery: DatabaseAccessError {
+        .invalidArgument(String(localized: "The query is empty."))
+    }
+
+    static var notApproved: DatabaseAccessError {
+        .forbidden(String(localized: "This operation is not the one that was approved."))
+    }
+
     // MARK: - Run
 
     internal struct StatementOutcome: Sendable {
@@ -216,44 +295,34 @@ internal actor DatabaseAccessBridge {
         internal let executionTimeMs: Double
     }
 
-    /// `maskingTable` names the table the rows come from when the caller built the query for one, so a
-    /// `table.column` rule matches by table; without it a rule matches by column name alone.
+    // Runs the one approved statement as it was approved. `maskingTable` names the table the rows come from when
+    // the caller built the query for one, so a `table.column` rule matches by table.
     internal func runStatement(
-        scope: DatabaseScope,
-        query: String,
+        _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?,
         maskingTable: String? = nil
     ) async throws -> StatementOutcome {
-        guard !Self.statementText(query, grammar: .ansi).isEmpty else {
-            throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
-        }
+        guard operation.unit == .statement, operation.statements.count == 1, let statement = operation.statements.first
+        else { throw Self.notApproved }
+        let scope = operation.scope
         let (sessionDriver, databaseType) = try await resolveDriver(scope.connectionId)
+        guard databaseType == operation.databaseType else { throw Self.notApproved }
         let grammar = SQLLexicalResolver.readings(
             for: databaseType, session: sessionDriver.sessionLexicalState
         ).execution
-        let normalizedQuery = Self.statementText(query, databaseType: databaseType, grammar: grammar)
-        guard !normalizedQuery.isEmpty else {
-            throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
+        let sql = statement.sql
+        let classification = QueryClassifier.classify(sql, databaseType: databaseType)
+        var rowCap: Int?
+        if Self.capsRows(sql, databaseType: databaseType) {
+            let ceiling = await MainActor.run { PluginManager.shared.paginationCapability(for: databaseType).maximumRows }
+            rowCap = ceiling.map { min(maxRows, $0) } ?? maxRows
         }
-        let classification = QueryClassifier.classify(normalizedQuery, databaseType: databaseType)
-        let hasReturning = normalizedQuery.range(
-            of: #"\bRETURNING\b"#,
-            options: [.regularExpression, .caseInsensitive]
-        ) != nil
-        let shouldCap = classification.tier == .safe || hasReturning
-        let statement: LeadingRowsStatement
-        if shouldCap {
-            statement = await MainActor.run {
-                LeadingRowsStatement.resolve(normalizedQuery, rowCap: maxRows, databaseType: databaseType)
-            }
-        } else {
-            statement = LeadingRowsStatement(sql: normalizedQuery, rowCap: nil)
-        }
+        let context = operation.context
+        let fetchCap = rowCap
         let connectionId = scope.connectionId
-        /// One owner per statement, so a cancel or a timeout reaches this statement's lease and not
-        /// whatever a query tab or another client has running on the same connection.
+        // One owner per statement, so a cancel or a timeout reaches this statement's lease only.
         let owner = DriverLeaseOwner()
         let policy: DriverCancellationPolicy = classification.tier == .safe
             ? .cancellableRead(owner)
@@ -265,12 +334,10 @@ internal actor DatabaseAccessBridge {
         let route = await MainActor.run { manager.executionRoute(for: scope) }
         let startTime = CFAbsoluteTimeGetCurrent()
         let statementRan = CatalogEvent.statementsRan(
-            connectionId: connectionId, statements: [normalizedQuery], databaseType: databaseType
+            connectionId: connectionId, statements: [sql], databaseType: databaseType
         )
 
-        /// A write that timed out or failed may still have committed: a group only returns once
-        /// every child has, so by the time the error arrives the driver call has finished one way or
-        /// the other, and a catalog that might have changed is refreshed rather than trusted.
+        // A write that timed out or failed may still have committed, so the catalog is refreshed rather than trusted.
         let result: QueryResult
         let tableEdits: SucceededStatements?
         do {
@@ -281,19 +348,14 @@ internal actor DatabaseAccessBridge {
                 owner: owner,
                 timeoutSeconds: timeoutSeconds
             ) { driver in
-                let answer: QueryResult
-                // A user statement, so a driver with a one-statement API sends it through that.
-                if shouldCap {
-                    answer = try await driver.executeUserQuery(
-                        query: statement.sql,
-                        rowCap: statement.rowCap ?? maxRows,
-                        parameters: nil
-                    )
-                } else {
-                    answer = try await driver.executeUserQuery(query: normalizedQuery, rowCap: nil, parameters: nil)
-                }
+                let answer = try await driver.executeUserQuery(
+                    query: sql,
+                    rowCap: fetchCap,
+                    parameters: statement.parameters.isEmpty ? nil : statement.boundValues,
+                    context: context
+                )
                 let edits = await SucceededStatements.single(
-                    normalizedQuery, scope: scope, databaseType: databaseType, grammar: grammar, ranOn: driver
+                    sql, scope: scope, databaseType: databaseType, grammar: grammar, ranOn: driver
                 )
                 return (answer, edits)
             }
@@ -313,14 +375,19 @@ internal actor DatabaseAccessBridge {
         return StatementOutcome(result: result.masked(by: masking, table: maskingTable), executionTimeMs: executionTimeMs)
     }
 
+    // A plan the driver builds for the approved statement.
     internal func runExplainPlan(
-        scope: DatabaseScope,
-        statement: String,
+        _ operation: ApprovedOperation,
         step: ExplainRequest.DriverStep,
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?
     ) async throws -> StatementOutcome {
+        guard operation.unit == .statement, operation.statements.count == 1, let approved = operation.statements.first
+        else { throw Self.notApproved }
+        let scope = operation.scope
+        let statement = approved.sql
         let databaseType = try await ensureConnected(scope.connectionId)
+        guard databaseType == operation.databaseType else { throw Self.notApproved }
         let writes = step.runsStatement
             && QueryClassifier.classify(statement, databaseType: databaseType).tier != .safe
         let connectionId = scope.connectionId
@@ -357,6 +424,158 @@ internal actor DatabaseAccessBridge {
             CatalogChangeService.post(statementRan)
         }
         return StatementOutcome(result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
+    }
+
+    // One approved INSERT per row, on one write lease, each with the values it was approved with.
+    internal func runInserts(_ operation: ApprovedOperation) async throws -> Int {
+        guard operation.kind == .writeQuery, operation.unit == .statement, !operation.statements.isEmpty
+        else { throw Self.notApproved }
+        let scope = operation.scope
+        let databaseType = try await ensureConnected(scope.connectionId)
+        guard databaseType == operation.databaseType else { throw Self.notApproved }
+        let manager = await databaseManager
+        // No cancel handler: the inserts run under a `.protectedWrite` lease, which nothing may abort.
+        let route = await MainActor.run { manager.executionRoute(for: scope) }
+        let statements = operation.statements
+        let context = operation.context
+        return try await manager.withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .protectedWrite
+        ) { driver -> Int in
+            var affected = 0
+            for statement in statements {
+                let result = try await driver.executeParameterized(
+                    query: statement.sql,
+                    parameters: statement.boundValues,
+                    context: context
+                )
+                affected += max(result.rowsAffected, 0)
+            }
+            return affected
+        }
+    }
+
+    // The driver writes its count statement itself, so the approval is the read, with no text.
+    internal func countRows(
+        _ operation: ApprovedOperation,
+        table: String,
+        filters: [TableFilter],
+        logicMode: FilterLogicMode,
+        exact: Bool
+    ) async throws -> (count: Int?, isApproximate: Bool) {
+        guard operation.kind == .readQuery, operation.statements.isEmpty else { throw Self.notApproved }
+        let scope = operation.scope
+        try await ensureConnected(scope.connectionId)
+        let manager = await databaseManager
+        return try await manager.withMetadataDriver(scope: scope) { driver -> (count: Int?, isApproximate: Bool) in
+            if exact {
+                let value = try await driver.fetchExactRowCount(table: table, filters: filters, logicMode: logicMode)
+                return (value, false)
+            }
+            if !filters.isEmpty {
+                let value = try await driver.fetchFilteredRowCount(table: table, filters: filters, logicMode: logicMode)
+                return (value, false)
+            }
+            return (try await driver.fetchApproximateRowCount(table: table), true)
+        }
+    }
+
+    internal func transactionControl(_ operation: ApprovedOperation, action: String) async throws {
+        guard operation.kind == .writeQuery, operation.statements.isEmpty else { throw Self.notApproved }
+        let scope = operation.scope
+        try await ensureConnected(scope.connectionId)
+        let manager = await databaseManager
+        let supported = await MainActor.run {
+            manager.driver(for: scope.connectionId)?.supportsTransactions ?? false
+        }
+        guard supported else {
+            throw DatabaseAccessError.dataSourceError(String(localized: "This engine does not support transactions."))
+        }
+        try await manager.withScopedDriver(
+            scope: scope,
+            route: .sessionDriver,
+            cancellation: .protectedWrite
+        ) { driver in
+            switch action {
+            case "begin": try await driver.beginTransaction(mode: .readWrite)
+            case "commit": try await driver.commitTransaction()
+            case "rollback": try await driver.rollbackTransaction()
+            default:
+                throw DatabaseAccessError.invalidArgument(
+                    String(localized: "Transaction action must be begin, commit, or rollback.")
+                )
+            }
+        }
+        if action == "commit" || action == "rollback" {
+            CatalogChangeService.post(.transactionEnded(connectionId: scope.connectionId))
+        }
+    }
+
+    internal func createDatabase(_ operation: ApprovedOperation, name: String, options: [String: String]) async throws {
+        guard operation.kind == .schemaMutation, operation.statements.isEmpty else { throw Self.notApproved }
+        let connectionId = operation.scope.connectionId
+        let (driver, _) = try await resolveDriver(connectionId)
+        let manager = await databaseManager
+        try await manager.trackOperation(sessionId: connectionId) {
+            try await driver.createDatabase(CreateDatabaseRequest(name: name, values: options))
+        }
+        CatalogChangeService.post(.changed(CatalogChange(connectionId: connectionId, kinds: .databases)))
+    }
+
+    internal func dropDatabase(_ operation: ApprovedOperation, name: String) async throws {
+        guard operation.kind == .destructiveQuery, operation.statements.isEmpty else { throw Self.notApproved }
+        let connectionId = operation.scope.connectionId
+        let manager = await databaseManager
+        await MainActor.run {
+            MetadataConnectionPool.shared.closeAll(connectionId: connectionId, database: name)
+            manager.sessionLanes.close(database: name, for: connectionId)
+        }
+        let (driver, _) = try await resolveDriver(connectionId)
+        try await manager.trackOperation(sessionId: connectionId) {
+            try await driver.dropDatabase(name: name)
+        }
+        CatalogChangeService.post(.containerDropped(.database(name), connectionId: connectionId))
+    }
+
+    internal func dropSchema(_ operation: ApprovedOperation, name: String) async throws {
+        guard operation.kind == .destructiveQuery, operation.statements.isEmpty else { throw Self.notApproved }
+        let scope = operation.scope
+        try await ensureConnected(scope.connectionId)
+        let manager = await databaseManager
+        // Pinned to the approved database, so a switch while the dialog was open cannot move the drop.
+        let route = await MainActor.run { manager.schemaChangeRoute(for: scope) }
+        try await manager.withScopedDriver(scope: scope, route: route, cancellation: .protectedWrite) { driver in
+            try await driver.dropSchema(name: name)
+        }
+        CatalogChangeService.post(
+            .containerDropped(.schema(database: nil, schema: name), connectionId: scope.connectionId)
+        )
+    }
+
+    // A grid save's plan, run only when it is the plan that was approved.
+    internal func runRowWrites(
+        _ operation: ApprovedOperation,
+        plan: DataWritePlan,
+        before: @Sendable @escaping (DatabaseDriver, _ ownsConnection: Bool) async throws -> Void
+    ) async throws -> DataWriteRun {
+        guard operation.kind == .writeQuery,
+              operation.scope == plan.scope,
+              operation.statements == plan.statements.map(OperationStatement.init(bound:))
+        else { throw Self.notApproved }
+        let scope = operation.scope
+        let manager = await databaseManager
+        let route = await MainActor.run { manager.schemaChangeRoute(for: scope) }
+        let ownsConnection = route.isPooled
+        let context = operation.context
+        return try await manager.withScopedDriver(
+            scope: scope,
+            route: route,
+            cancellation: .protectedWrite
+        ) { driver in
+            try await before(driver, ownsConnection)
+            return try await DataWriteExecutor.run(plan, on: driver, context: context)
+        }
     }
 
     internal func forwardCancellation(

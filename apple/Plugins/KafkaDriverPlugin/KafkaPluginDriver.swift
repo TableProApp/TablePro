@@ -16,7 +16,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var liveCluster: KafkaCluster { cluster }
 
-    var capabilities: PluginCapabilities { [] }
+    var capabilities: PluginCapabilities { [.statementPolicy] }
 
     /// The config is read here and not retained. It carries the password, and nothing after
     /// this point needs it: the cluster holds only what it must to reconnect.
@@ -172,24 +172,75 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        try await run(KafkaQL.parse(query))
+        try await execute(query: query, context: PluginStatementContext())
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        try await run(Self.parse(query), context: context)
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
-        var statement = try KafkaQL.parse(query)
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters, context: PluginStatementContext())
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        var statement = try Self.parse(query)
         if let rowCap, case .consume(var consume) = statement {
             consume.limit = min(consume.limit, rowCap)
             statement = .consume(consume)
         }
-        return try await run(statement)
+        return try await run(statement, context: context)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await execute(query: query)
     }
 
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await execute(query: query, context: context)
+    }
+
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         try await executeUserQuery(query: query, rowCap: rowCap, parameters: nil)
+    }
+
+    // The default stream runs the context-free `execute`, which would drop a read-only context.
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let result = try await self.execute(query: query, context: context)
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: result.columns,
+                        columnTypeNames: result.columnTypeNames
+                    )))
+                    if !result.rows.isEmpty {
+                        continuation.yield(.rows(result.rows))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private static func parse(_ query: String) throws -> KafkaStatement {
+        do {
+            return try KafkaQL.parse(query)
+        } catch let error as KafkaQLSyntaxError {
+            throw KafkaError.syntax(error.message)
+        }
     }
 
     /// `Task.cancel()` propagates through every await in this driver, so there is nothing
@@ -333,7 +384,10 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Statement dispatch
 
-    private func run(_ statement: KafkaStatement) async throws -> PluginQueryResult {
+    private func run(_ statement: KafkaStatement, context: PluginStatementContext) async throws -> PluginQueryResult {
+        if let refusal = statement.refusal(readOnly: context.readOnly, allowsDestructive: context.allowsDestructive) {
+            throw KafkaError.refused(refusal.message)
+        }
         switch statement {
         case .consume(let query):
             return try await runConsume(query)

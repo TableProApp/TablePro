@@ -177,6 +177,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if listsTemporaryTables {
             capabilities.insert(.temporaryTables)
         }
+        if flavor.enforcesReadOnlyTransactions {
+            capabilities.insert(.readOnlyStatements)
+        }
         return capabilities
     }
 
@@ -397,6 +400,95 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await retryingAfterStop {
             try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: nil)
+        }
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else {
+            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        return try await retryingAfterStop {
+            try await self.executeReadOnly(query: query, parameters: parameters, rowCap: cap, isRetry: false)
+        }
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else { return try await execute(query: query) }
+        return try await retryingAfterStop {
+            try await self.executeReadOnly(query: query, parameters: nil, rowCap: nil, isRetry: false)
+        }
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else { return try await executeParameterized(query: query, parameters: parameters) }
+        return try await retryingAfterStop {
+            try await self.executeReadOnly(query: query, parameters: parameters, rowCap: nil, isRetry: false)
+        }
+    }
+
+    private func runsReadOnly(_ context: PluginStatementContext) -> Bool {
+        MySQLReadOnlyTransaction.applies(to: context, flavor: flavor)
+    }
+
+    // The lock comes from the footprint, because the status flags never show it.
+    private var readOnlySessionState: @Sendable (Bool) -> PluginSessionTransactionState {
+        { isInTransaction in
+            self.sessionLock.withLock { self.footprint.transactionState(isInTransaction: isInTransaction) }
+        }
+    }
+
+    // Replays on a lost connection exactly when `executeWithReconnect` would.
+    private func executeReadOnly(
+        query: String,
+        parameters: [PluginCellValue]?,
+        rowCap: Int?,
+        isRetry: Bool
+    ) async throws -> PluginQueryResult {
+        let startTime = Date()
+
+        let conn = try await requireConnection()
+        defer { endOperation(on: conn) }
+        noteActivity(query)
+
+        do {
+            let result = try await conn.executeReadOnly(
+                query,
+                parameters: parameters,
+                rowCap: rowCap,
+                sessionState: readOnlySessionState
+            )
+            return PluginQueryResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                rowsAffected: Int(result.affectedRows),
+                timing: PluginQueryTiming(
+                    total: Date().timeIntervalSince(startTime),
+                    firstRow: result.firstRowTime
+                ),
+                isTruncated: result.isTruncated,
+                columnMeta: result.columnMeta
+            )
+        } catch let error as MariaDBPluginError where !isRetry
+            && parameters == nil
+            && mysqlConnectionLossMayReplay(code: error.code, outlastedSocketTimeout: error.outlastedSocketTimeout)
+            && mayReplay(query) {
+            try await reconnect()
+            return try await executeReadOnly(query: query, parameters: nil, rowCap: rowCap, isRetry: true)
+        } catch {
+            noteFailure(query)
+            await refreshTransactionFlag(after: error, on: conn)
+            throw error
         }
     }
 
@@ -1003,11 +1095,23 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        streamRows(query: query, readOnlySessionState: nil)
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard runsReadOnly(context) else { return streamRows(query: query) }
+        return streamRows(query: query, readOnlySessionState: readOnlySessionState)
+    }
+
     /// The bridge task is retained and cancelled from `onTermination`. Without that, a consumer
     /// that stops reading, which an export or a copy does on cancel, leaves this task draining the
     /// whole result and holding the connection open: the inner stream's abort never fires because
     /// nothing ever cancels the task awaiting it.
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    private func streamRows(
+        query: String,
+        readOnlySessionState: (@Sendable (Bool) -> PluginSessionTransactionState)?
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -1015,7 +1119,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         let conn = try await requireConnection()
                         defer { self.endOperation(on: conn) }
                         noteActivity(query)
-                        for try await element in conn.streamQuery(query) {
+                        for try await element in conn.streamQuery(query, readOnlySessionState: readOnlySessionState) {
                             continuation.yield(element)
                         }
                     }

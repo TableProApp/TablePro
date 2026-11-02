@@ -31,6 +31,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .materializedViews,
             .schemaCompare,
             .dataCompare,
+            .readOnlyStatements,
         ]
     }
 

@@ -424,31 +424,11 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
-        let cellParams: [PluginCellValue] = parameters.map(Self.cellValue(for:))
-        let pluginResult = try await pluginDriver.executeParameterized(
-            query: query,
-            parameters: cellParams,
-            context: statementContext(query)
-        )
-        return mapQueryResult(pluginResult)
+        try await executeParameterized(query: query, parameters: parameters, context: PluginStatementContext())
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult {
-        try StatementTextValidator.validate(query)
-        let cellParams: [PluginCellValue]?
-        if let parameters {
-            cellParams = parameters.map(Self.cellValue(for:))
-        } else {
-            cellParams = nil
-        }
-        let pluginResult = try await pluginDriver.executeUserQuery(
-            query: query,
-            rowCap: rowCap,
-            parameters: cellParams,
-            context: statementContext(query)
-        )
-        return mapQueryResult(pluginResult)
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters, context: PluginStatementContext())
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -461,6 +441,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     private func statementContext(_ query: String) -> PluginStatementContext {
         .statement(query, databaseType: connection.type)
     }
+
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> QueryResult? {
         try StatementTextValidator.validate(query)
@@ -1414,5 +1395,71 @@ private extension PluginDriverAdapter {
 
     func mapVisibility(_ visibility: PluginCreateDatabaseFormSpec.Visibility) -> CreateDatabaseFormSpec.Visibility {
         CreateDatabaseFormSpec.Visibility(fieldId: visibility.fieldId, equals: visibility.equals)
+    }
+}
+
+// MARK: - Statements an external caller approved
+
+extension PluginDriverAdapter {
+    func execute(query: String, context: PluginStatementContext) async throws -> QueryResult {
+        try StatementTextValidator.validate(query)
+        try refuseUnenforcedPolicy(context)
+        let pluginResult = try await pluginDriver.execute(query: query, context: statementContext(query, approvedAs: context))
+        return mapQueryResult(pluginResult)
+    }
+
+    var runsReadOnlyStatements: Bool {
+        pluginDriver.capabilities.contains(.readOnlyStatements)
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [Any?],
+        context: PluginStatementContext
+    ) async throws -> QueryResult {
+        try StatementTextValidator.validate(query)
+        try refuseUnenforcedPolicy(context)
+        let pluginResult = try await pluginDriver.executeParameterized(
+            query: query,
+            parameters: parameters.map(Self.cellValue(for:)),
+            context: statementContext(query, approvedAs: context)
+        )
+        return mapQueryResult(pluginResult)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [Any?]?,
+        context: PluginStatementContext
+    ) async throws -> QueryResult {
+        try StatementTextValidator.validate(query)
+        try refuseUnenforcedPolicy(context)
+        let pluginResult = try await pluginDriver.executeUserQuery(
+            query: query,
+            rowCap: rowCap,
+            parameters: parameters?.map(Self.cellValue(for:)),
+            context: statementContext(query, approvedAs: context)
+        )
+        return mapQueryResult(pluginResult)
+    }
+
+    fileprivate func statementContext(_ query: String, approvedAs caller: PluginStatementContext) -> PluginStatementContext {
+        .statement(query, databaseType: connection.type, approvedAs: caller)
+    }
+
+    // A driver built before `.statementPolicy` would run an external write the approval did not cover.
+    fileprivate func refuseUnenforcedPolicy(_ context: PluginStatementContext) throws {
+        guard context.origin == .external, !context.readOnly,
+              !context.allowsDestructive || !context.allowsServerCode,
+              PluginMetadataRegistry.shared.snapshot(for: connection.type)?.capabilities.statementPolicyInDriver == true,
+              !pluginDriver.capabilities.contains(.statementPolicy)
+        else { return }
+        throw ExternalStatementGateError.denied(
+            String(
+                format: String(localized: "Update the %@ driver in Settings > Extensions to run this from an external client."),
+                connection.type.rawValue
+            )
+        )
     }
 }

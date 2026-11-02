@@ -1,5 +1,4 @@
 import Foundation
-import Network
 import os
 
 public actor HttpConnectionContext {
@@ -22,7 +21,7 @@ public actor HttpConnectionContext {
 
     nonisolated public let id: UUID
 
-    private let connection: NWConnection
+    private let stream: any MCPByteStream
     private let limits: MCPHttpServerLimits
 
     private var parser: HttpRequestStreamParser
@@ -42,9 +41,9 @@ public actor HttpConnectionContext {
     private var handlerTask: Task<Void, Never>?
     private var idleTask: Task<Void, Never>?
 
-    public init(id: UUID, connection: NWConnection, limits: MCPHttpServerLimits) {
+    public init(id: UUID, stream: any MCPByteStream, limits: MCPHttpServerLimits) {
         self.id = id
-        self.connection = connection
+        self.stream = stream
         self.limits = limits
         parser = HttpRequestStreamParser(limits: limits.parserLimits)
     }
@@ -54,16 +53,14 @@ public actor HttpConnectionContext {
         started = true
         requestHandler = onRequest
         closedHandler = onClosed
-        observeState()
-        connection.start(queue: .global(qos: .userInitiated))
+        startStream()
     }
 
     public func rejectOverCapacity() {
         guard !started else { return }
         started = true
         mode = .reject
-        observeState()
-        connection.start(queue: .global(qos: .userInitiated))
+        startStream()
         Task {
             try? await Task.sleep(for: Self.rejectionGrace)
             self.closeAfterRejection()
@@ -83,36 +80,19 @@ public actor HttpConnectionContext {
     }
 
     public func clientAddress() -> MCPClientAddress {
-        guard let endpoint = connection.currentPath?.remoteEndpoint else {
-            return .remote("unknown")
-        }
-        guard case .hostPort(let host, _) = endpoint else {
-            return .remote(String(describing: endpoint))
-        }
-        switch host {
-        case .ipv4(let address):
-            return address.isLoopback ? .loopback : .remote(String(describing: address))
-        case .ipv6(let address):
-            return address.isLoopback ? .loopback : .remote(String(describing: address))
-        case .name(let name, _):
-            return name.lowercased() == "localhost" ? .loopback : .remote(name)
-        @unknown default:
-            return .remote("unknown")
-        }
+        stream.clientAddress
     }
 
-    private func observeState() {
-        connection.stateUpdateHandler = { [weak self] state in
+    private func startStream() {
+        stream.start { [weak self] state in
             guard let self else { return }
             switch state {
             case .ready:
                 Task { await self.handleReady() }
-            case .failed(let error):
-                Task { await self.handleTransportFailure(error.localizedDescription) }
+            case .failed(let reason):
+                Task { await self.handleTransportFailure(reason) }
             case .cancelled:
                 Task { await self.handlePeerClosed() }
-            default:
-                break
             }
         }
     }
@@ -161,12 +141,9 @@ public actor HttpConnectionContext {
 
     private func receiveChunk() async -> ReceiveOutcome {
         await withCheckedContinuation { (continuation: CheckedContinuation<ReceiveOutcome, Never>) in
-            connection.receive(
-                minimumIncompleteLength: 1,
-                maximumLength: Self.receiveChunkSize
-            ) { content, _, isComplete, error in
-                if let error {
-                    continuation.resume(returning: .failure(error.localizedDescription))
+            stream.receive(maximumLength: Self.receiveChunkSize) { content, isComplete, failure in
+                if let failure {
+                    continuation.resume(returning: .failure(failure))
                     return
                 }
                 continuation.resume(returning: .chunk(content, isComplete: isComplete))
@@ -251,7 +228,7 @@ public actor HttpConnectionContext {
         readTask = nil
         stopSseWriter()
         handlerTask?.cancel()
-        connection.cancel()
+        stream.cancel()
     }
 
     private func handleTransportFailure(_ reason: String) async {
@@ -445,9 +422,9 @@ public actor HttpConnectionContext {
     private func send(_ data: Data) async {
         guard !closed else { return }
         let failed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-            connection.send(content: data, completion: .contentProcessed { error in
-                continuation.resume(returning: error != nil)
-            })
+            stream.send(data) { failure in
+                continuation.resume(returning: failure != nil)
+            }
         }
         guard failed else { return }
         Self.logger.debug("Send failed on connection \(self.id, privacy: .public); closing")

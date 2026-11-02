@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProMCP
 import TableProPluginKit
+import TableProSQLGrammar
 
 public struct ExportDataTool: MCPToolImplementation {
     public static let name = "export_data"
@@ -152,6 +153,10 @@ public struct ExportDataTool: MCPToolImplementation {
             meta: meta
         )
 
+        let classifications = try statements.map { statement in
+            try MCPStatementGate.classify(sql: statement.sql, meta: meta, allowsDestructive: false, context: context)
+        }
+
         let scope = try await MCPScopeArguments.resolve(
             arguments,
             connectionId: connectionId,
@@ -163,9 +168,21 @@ public struct ExportDataTool: MCPToolImplementation {
         var totalRows = 0
         var anyTruncated = false
 
-        for statement in statements {
-            try await MCPStatementGate.authorize(
-                sql: statement.sql,
+        for (statement, classification) in zip(statements, classifications) {
+            let planned: OperationStatement
+            do {
+                planned = try await services.connectionBridge.plannedStatement(
+                    scope: scope,
+                    query: statement.sql,
+                    maxRows: maxRows + 1
+                )
+            } catch {
+                throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+            }
+            let operation = try await MCPStatementGate.approve(
+                [planned],
+                kind: OperationKind.from(classification.tier),
+                scope: scope,
                 meta: meta,
                 allowsDestructive: false,
                 operationLabel: String(localized: "an export"),
@@ -175,8 +192,7 @@ public struct ExportDataTool: MCPToolImplementation {
 
             let result = try await ToolQueryExecutor.executeResultAndLog(
                 services: services,
-                query: statement.sql,
-                scope: scope,
+                operation: operation,
                 maxRows: maxRows + 1,
                 timeoutSeconds: timeoutSeconds,
                 context: context,

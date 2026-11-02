@@ -256,6 +256,7 @@ targets:
     platform: iOS
     sources:
       - TableProMobileTests
+      - ../Plugins/DuckDBDriverPlugin/DuckDBReadOnlyStatement.swift
     dependencies:
       - target: TableProMobile
       - package: TableProCore

@@ -4,10 +4,10 @@ import os
 import TableProLogRedaction
 
 public struct MCPHandshakePayload: Codable, Sendable, Equatable {
-    public static let currentVersion = 2
+    public static let currentVersion = 3
 
     public let version: Int
-    public let port: Int
+    public let socketPath: String
     public let token: String
     public let pid: Int32
     public let instanceId: String
@@ -15,7 +15,7 @@ public struct MCPHandshakePayload: Codable, Sendable, Equatable {
     public let expiresAt: Date
 
     public init(
-        port: Int,
+        socketPath: String,
         token: String,
         pid: Int32,
         instanceId: String,
@@ -23,7 +23,7 @@ public struct MCPHandshakePayload: Codable, Sendable, Equatable {
         expiresAt: Date
     ) {
         self.version = Self.currentVersion
-        self.port = port
+        self.socketPath = socketPath
         self.token = token
         self.pid = pid
         self.instanceId = instanceId
@@ -34,16 +34,12 @@ public struct MCPHandshakePayload: Codable, Sendable, Equatable {
     public func isExpired(now: Date) -> Bool {
         now >= expiresAt
     }
-
-    public var endpoint: URL? {
-        URL(string: "http://127.0.0.1:\(port)/mcp")
-    }
 }
 
 public struct MCPStartRefusal: Codable, Sendable, Equatable {
     public let pid: Int32
-    /// Seconds since 1970 with the fraction kept: an ISO 8601 date drops it, and a refusal from
-    /// earlier in the same second would then answer a launch it never saw.
+    // Seconds since 1970 with the fraction kept: an ISO 8601 date drops it, and a refusal from
+    // earlier in the same second would then answer a launch it never saw.
     public let refusedAt: TimeInterval
 
     public init(pid: Int32, refusedAt: Date) {
@@ -51,8 +47,8 @@ public struct MCPStartRefusal: Codable, Sendable, Equatable {
         self.refusedAt = refusedAt.timeIntervalSince1970
     }
 
-    /// Only a refusal written after the launch answers it, so one left from an earlier run cannot
-    /// turn a client away once MCP is on again.
+    // Only a refusal written after the launch answers it, so one left from an earlier run cannot
+    // turn a client away once MCP is on again.
     public func answers(launchRequestedAt: Date) -> Bool {
         refusedAt >= launchRequestedAt.timeIntervalSince1970
     }
@@ -113,6 +109,10 @@ public enum MCPHandshakeTrustFailure: Error, LocalizedError, Equatable {
     case expired
     case hostNotRunning(pid: Int32)
     case hostIsNotTablePro(path: String)
+    case socketOutsidePrivateFolder
+    case socketFolderNotPrivate
+    case notASocket
+    case foreignSocket
 
     public var errorDescription: String? {
         switch self {
@@ -136,31 +136,57 @@ public enum MCPHandshakeTrustFailure: Error, LocalizedError, Equatable {
             return "TablePro process \(pid) is not running"
         case .hostIsNotTablePro(let path):
             return "Handshake points at a process that is not TablePro: \(path)"
+        case .socketOutsidePrivateFolder:
+            return "Handshake socket is not in TablePro's private folder"
+        case .socketFolderNotPrivate:
+            return "Handshake socket folder is open to other users"
+        case .notASocket:
+            return "Handshake socket is missing or is not a socket"
+        case .foreignSocket:
+            return "Handshake socket belongs to another user"
+        }
+    }
+}
+
+public enum MCPSocketFolderError: Error, Equatable, LocalizedError {
+    case notPrivate(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .notPrivate(let path):
+            return "The MCP socket folder is not private to this user: \(path)"
         }
     }
 }
 
 public enum MCPHandshakeTrust {
+    private struct VersionProbe: Decodable {
+        let version: Int
+    }
+
     public static func load(
         at url: URL,
         now: Date = Date(),
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        temporaryDirectory: URL = MCPSocketLocation.userTemporaryDirectory()
     ) throws -> MCPHandshakePayload {
-        try verifyDirectory(url.deletingLastPathComponent(), fileManager: fileManager)
+        let directory = url.deletingLastPathComponent()
+        try verifyDirectory(directory, fileManager: fileManager)
         try verifyFileMode(url, fileManager: fileManager)
 
         guard let data = try? Data(contentsOf: url) else {
             throw MCPHandshakeTrustFailure.missing
         }
+        guard let probe = try? MCPHandshakeCoding.decoder().decode(VersionProbe.self, from: data) else {
+            throw MCPHandshakeTrustFailure.malformed
+        }
+        guard probe.version == MCPHandshakePayload.currentVersion else {
+            throw MCPHandshakeTrustFailure.unsupportedVersion(probe.version)
+        }
         guard let payload = try? MCPHandshakeCoding.decoder().decode(MCPHandshakePayload.self, from: data) else {
             throw MCPHandshakeTrustFailure.malformed
         }
-        guard payload.version == MCPHandshakePayload.currentVersion else {
-            throw MCPHandshakeTrustFailure.unsupportedVersion(payload.version)
-        }
-        guard !payload.token.isEmpty,
-              !payload.instanceId.isEmpty,
-              (1...65_535).contains(payload.port) else {
+        guard !payload.token.isEmpty, !payload.instanceId.isEmpty else {
             throw MCPHandshakeTrustFailure.malformed
         }
         guard !payload.isExpired(now: now) else {
@@ -170,7 +196,36 @@ public enum MCPHandshakeTrust {
             throw MCPHandshakeTrustFailure.hostNotRunning(pid: payload.pid)
         }
         try verifyHostExecutable(pid: payload.pid)
+        try verifySocket(payload.socketPath, supportDirectory: directory, temporaryDirectory: temporaryDirectory)
         return payload
+    }
+
+    // The bridge sends its token to whatever listens here, so no other account may enter the folder.
+    public static func verifySocket(_ socketPath: String, supportDirectory: URL, temporaryDirectory: URL) throws {
+        let socket = URL(fileURLWithPath: socketPath, isDirectory: false)
+        guard MCPSocketLocation.fits(socketPath),
+              socketPath.hasPrefix("/"),
+              socket.standardizedFileURL.path == socketPath else {
+            throw MCPHandshakeTrustFailure.socketOutsidePrivateFolder
+        }
+        let folder = socket.deletingLastPathComponent().standardizedFileURL.path
+        let allowed = [
+            supportDirectory.standardizedFileURL.path,
+            MCPSocketLocation.fallbackFolder(temporaryDirectory: temporaryDirectory).standardizedFileURL.path
+        ]
+        guard allowed.contains(folder) else {
+            throw MCPHandshakeTrustFailure.socketOutsidePrivateFolder
+        }
+        guard MCPSocketLocation.isPrivateFolder(URL(fileURLWithPath: folder, isDirectory: true)) else {
+            throw MCPHandshakeTrustFailure.socketFolderNotPrivate
+        }
+        var info = stat()
+        guard lstat(socketPath, &info) == 0, info.st_mode & S_IFMT == S_IFSOCK else {
+            throw MCPHandshakeTrustFailure.notASocket
+        }
+        guard info.st_uid == getuid() else {
+            throw MCPHandshakeTrustFailure.foreignSocket
+        }
     }
 
     public static func isRunning(pid: Int32) -> Bool {
@@ -271,10 +326,37 @@ public final class MCPHandshakeFile {
 
     private let directory: URL
     private let fileManager: FileManager
+    private let temporaryDirectory: URL
 
-    public init(directory: URL, fileManager: FileManager = .default) {
+    public init(
+        directory: URL,
+        fileManager: FileManager = .default,
+        temporaryDirectory: URL = MCPSocketLocation.userTemporaryDirectory()
+    ) {
         self.directory = directory
         self.fileManager = fileManager
+        self.temporaryDirectory = temporaryDirectory
+    }
+
+    // The support folder when the path fits in sun_path, else the temporary fallback the bridge also trusts.
+    public func prepareSocketPath() throws -> String {
+        let primary = MCPSocketLocation.primarySocket(in: directory)
+        if MCPSocketLocation.fits(primary.path) {
+            try prepareDirectory()
+            if MCPSocketLocation.isPrivateFolder(directory) {
+                return primary.path
+            }
+        }
+        let fallback = MCPSocketLocation.fallbackSocket(
+            forSupportDirectory: directory,
+            temporaryDirectory: temporaryDirectory
+        )
+        let folder = fallback.deletingLastPathComponent()
+        try preparePrivateFolder(folder)
+        guard MCPSocketLocation.fits(fallback.path), MCPSocketLocation.isPrivateFolder(folder) else {
+            throw MCPSocketFolderError.notPrivate(folder.path)
+        }
+        return fallback.path
     }
 
     internal var url: URL {
@@ -361,6 +443,21 @@ public final class MCPHandshakeFile {
     private func readWithoutTrustChecks() -> MCPHandshakePayload? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return try? MCPHandshakeCoding.decoder().decode(MCPHandshakePayload.self, from: data)
+    }
+
+    private func preparePrivateFolder(_ folder: URL) throws {
+        if !fileManager.fileExists(atPath: folder.path) {
+            try fileManager.createDirectory(
+                at: folder,
+                withIntermediateDirectories: false,
+                attributes: [.posixPermissions: 0o700]
+            )
+        }
+        var info = stat()
+        guard lstat(folder.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR, info.st_uid == getuid() else {
+            throw MCPSocketFolderError.notPrivate(folder.path)
+        }
+        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
     }
 
     private func prepareDirectory() throws {

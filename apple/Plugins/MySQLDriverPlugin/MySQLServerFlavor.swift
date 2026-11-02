@@ -142,6 +142,16 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         }
     }
 
+    // TiDB parses READ ONLY and still writes; the other three send no status flags to prove the session idle.
+    var enforcesReadOnlyTransactions: Bool {
+        switch self {
+        case .mysql, .mariadb:
+            return true
+        case .tidb, .databend, .oceanbase, .starrocks:
+            return false
+        }
+    }
+
     var listsSequencesAsTables: Bool { !isTiDB }
 
     var dropsIdleSessionOnKillQuery: Bool { isTiDB }

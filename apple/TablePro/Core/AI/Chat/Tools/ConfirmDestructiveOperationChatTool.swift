@@ -45,51 +45,55 @@ struct ConfirmDestructiveOperationChatTool: ChatTool {
         )
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
-        if let refusal = ExternalStatementGate.privateRequestRefusal(sql: query) {
-            return ChatToolResult(content: refusal, isError: true)
-        }
-
-        guard !QueryClassifier.isMultiStatement(query, databaseType: meta.databaseType) else {
-            return ChatToolResult(
-                content: "Multi-statement queries are not supported. Send one statement at a time.",
-                isError: true
+        // The refusals MCP makes, from the same gate, the file and server-code one first among them. AI Policy,
+        // checked above, governs the assistant, so the External Clients level is not asked.
+        let classification: QueryClassification
+        do {
+            classification = try ExternalStatementGate.classify(
+                ExternalStatementGate.Statement(
+                    sql: query,
+                    connectionId: connectionId,
+                    databaseType: meta.databaseType,
+                    externalAccess: .readWrite,
+                    loadsExtensions: meta.loadsExtensions,
+                    allowsDestructive: true
+                )
             )
+        } catch let refusal as ExternalStatementGateError {
+            return ChatToolResult(content: refusal.errorDescription ?? "", isError: true)
         }
-
-        if let refusal = ExternalStatementGate.extensionCallRefusal(
-            sql: query,
-            databaseType: meta.databaseType,
-            loadsExtensions: meta.loadsExtensions
-        ) {
-            return ChatToolResult(content: refusal, isError: true)
-        }
-
-        let tier = QueryClassifier.classifyTier(query, databaseType: meta.databaseType)
-        guard tier == .destructive else {
+        guard classification.tier == .destructive else {
             return ChatToolResult(
                 content: "This tool only accepts destructive queries (DROP, TRUNCATE, ALTER...DROP). Use execute_query for other queries.",
                 isError: true
             )
         }
 
-        try await context.authPolicy.checkSafeModeDialog(
-            sql: query,
-            connectionId: connectionId,
-            databaseType: meta.databaseType,
-            capabilities: context.writeCapabilities
-        )
-
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
-        let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let scope = try await context.bridge.resolveScope(
             connectionId: connectionId,
             database: nil,
             schema: nil
         )
+        let statement = try await context.bridge.plannedStatement(scope: scope, query: query, maxRows: 0)
+        let operation = try await context.authPolicy.checkSafeModeDialog(
+            operation: PendingOperation(
+                scope: scope,
+                databaseType: meta.databaseType,
+                statements: [statement],
+                kind: OperationKind.from(classification.tier),
+                caller: .aiAssistant(sessionId: context.sessionId?.uuidString),
+                capabilities: context.writeCapabilities,
+                operationDescription: MCPAuthPolicy.operationDescription(
+                    for: String(localized: "a destructive statement")
+                )
+            )
+        )
+
+        let services = MCPToolServices(connectionBridge: context.bridge, authPolicy: context.authPolicy)
         let payload = try await ToolQueryExecutor.executeAndLog(
             services: services,
-            query: query,
-            scope: scope,
+            operation: operation,
             maxRows: 0,
             timeoutSeconds: MCPLimitResolver.resolveTimeoutSeconds(requested: nil, settings: mcpSettings),
             principal: .inAppAssistant

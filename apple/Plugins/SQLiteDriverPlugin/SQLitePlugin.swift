@@ -7,6 +7,7 @@ import CSQLite
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLiteCore
 import TableProSQLVocabulary
 
 final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -149,6 +150,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .schemaCompare,
             .dataCompare,
             .temporaryTables,
+            .readOnlyStatements,
         ]
     }
 
@@ -219,20 +221,31 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        let rawResult = try await backend.executeQuery(query)
-        return PluginQueryResult(
-            columns: rawResult.columns,
-            columnTypeNames: rawResult.columnTypeNames,
-            rows: rawResult.rows,
-            rowsAffected: rawResult.rowsAffected,
-            executionTime: rawResult.executionTime,
-            isTruncated: rawResult.isTruncated
-        )
+        Self.queryResult(try await backend.executeQuery(query))
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        let scope = SQLiteStatementScope(context)
+        guard scope != .unrestricted else { return try await execute(query: query) }
+        return Self.queryResult(try await backend.executeQuery(query, parameters: nil, scope: scope))
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        let rawResult = try await backend.executeParameterizedQuery(query, parameters: parameters)
-        return PluginQueryResult(
+        Self.queryResult(try await backend.executeParameterizedQuery(query, parameters: parameters))
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        let scope = SQLiteStatementScope(context)
+        guard scope != .unrestricted else { return try await executeParameterized(query: query, parameters: parameters) }
+        return Self.queryResult(try await backend.executeQuery(query, parameters: parameters, scope: scope))
+    }
+
+    private static func queryResult(_ rawResult: SQLiteRawResult) -> PluginQueryResult {
+        PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
             rows: rawResult.rows,
@@ -322,6 +335,35 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } else {
             raw = try await execute(query: query)
         }
+        return Self.capped(raw, to: rowCap)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard SQLiteStatementScope(context) != .unrestricted else {
+            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+        if parameters == nil, let cap = rowCap, cap > 0, Self.returnsRows(query) {
+            return try await PluginBoundedStream.collect(
+                streamRows(query: query, context: context),
+                rowCap: cap,
+                startedAt: Date()
+            )
+        }
+        let raw: PluginQueryResult
+        if let parameters {
+            raw = try await executeParameterized(query: query, parameters: parameters, context: context)
+        } else {
+            raw = try await execute(query: query, context: context)
+        }
+        return Self.capped(raw, to: rowCap)
+    }
+
+    private static func capped(_ raw: PluginQueryResult, to rowCap: Int?) -> PluginQueryResult {
         guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
         return PluginQueryResult(
             columns: raw.columns,
@@ -637,11 +679,19 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        stream(query, scope: .unrestricted)
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        stream(query, scope: SQLiteStatementScope(context))
+    }
+
+    private func stream(_ query: String, scope: SQLiteStatementScope) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
-                    try await self.backend.streamQuery(queryToRun, continuation: continuation)
+                    try await self.backend.streamQuery(queryToRun, scope: scope, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -829,6 +879,18 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 }
 
+extension SQLiteStatementScope {
+    init(_ context: PluginStatementContext) {
+        if context.readOnly, context.origin == .external {
+            self = .readOnly
+        } else if !context.allowsServerCode {
+            self = .noServerCode
+        } else {
+            self = .unrestricted
+        }
+    }
+}
+
 // MARK: - Errors
 
 enum SQLitePluginError: Error {
@@ -837,6 +899,7 @@ enum SQLitePluginError: Error {
     case queryFailed(String)
     case unsupportedOperation
     case attachedDatabaseStructure
+    case readOnlyStatement
 }
 
 extension SQLitePluginError: PluginDriverError {
@@ -848,6 +911,8 @@ extension SQLitePluginError: PluginDriverError {
         case .unsupportedOperation: return String(localized: "Operation not supported")
         case .attachedDatabaseStructure:
             return String(localized: "The structure of a table in an attached database cannot be changed here.")
+        case .readOnlyStatement:
+            return String(localized: "This request is read only, and the statement is not a read.")
         }
     }
 }

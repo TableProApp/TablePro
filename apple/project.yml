@@ -1156,6 +1156,8 @@ targets:
       - package: TableProCore
         product: TableProLogRedaction
       - package: TableProCore
+        product: TableProSQLGrammar
+      - package: TableProCore
         product: TableProNumberFormatting
     settings:
       base:

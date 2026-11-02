@@ -56,6 +56,19 @@
     "The row's loaded values are missing, so it cannot be found again." : {
 
     },
+    "The statement's placeholders do not match the %d values given." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Refused %@: this statement was not approved to drop or delete data." : {
+
+    },
+    "Refused %@: this statement was not approved to run server-side code, $out or $merge." : {
+
+    },
+    "This request is read only, and the statement is not a read." : {
+
+    },
     "The SSH host %@ contains characters ssh does not allow in a host name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false

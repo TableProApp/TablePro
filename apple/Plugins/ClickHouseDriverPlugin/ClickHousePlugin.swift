@@ -126,8 +126,12 @@ nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin
 
 nonisolated struct ClickHouseError: Error, PluginDriverError {
     let message: String
+    // The server's `X-ClickHouse-Exception-Code`, when it sent one.
+    var exceptionCode: Int?
+    var detail: String?
 
     var pluginErrorMessage: String { message }
+    var pluginErrorDetail: String? { detail }
 
     static let notConnected = ClickHouseError(message: String(localized: "Not connected to database"))
     static let verifyCaNeedsCertificate = ClickHouseError(message: String(localized: """
@@ -146,13 +150,14 @@ nonisolated struct ClickHouseError: Error, PluginDriverError {
         ))
     }
 
-    static func httpFailure(statusCode: Int, body: String) -> ClickHouseError {
+    static func httpFailure(statusCode: Int, body: String, exceptionCode: String? = nil) -> ClickHouseError {
+        let code = exceptionCode.flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         let serverText = ClickHouseServerException.message(inFailureBody: body)
-        guard serverText.isEmpty else { return ClickHouseError(message: serverText) }
-        return ClickHouseError(message: String(
-            format: String(localized: "ClickHouse returned HTTP %lld."),
-            Int64(statusCode)
-        ))
+        guard serverText.isEmpty else { return ClickHouseError(message: serverText, exceptionCode: code) }
+        return ClickHouseError(
+            message: String(format: String(localized: "ClickHouse returned HTTP %lld."), Int64(statusCode)),
+            exceptionCode: code
+        )
     }
 }
 
@@ -213,6 +218,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             .cellExpressions,
             .uuidCellText,
             .repeatingPrimaryKey,
+            .readOnlyStatements,
         ]
     }
 
@@ -354,30 +360,56 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        let startTime = Date()
-        let queryId = UUID().uuidString
-        let result = try await executeRaw(query, queryId: queryId)
-        let executionTime = Date().timeIntervalSince(startTime)
+        try await runStatement(query, parameters: [], readOnly: false)
+    }
 
-        return PluginQueryResult(
-            columns: result.columns,
-            columnTypeNames: result.columnTypeNames,
-            rows: result.rows,
-            rowsAffected: result.affectedRows,
-            timing: PluginQueryTiming(total: executionTime, server: result.serverElapsed),
-            isTruncated: result.isTruncated
-        )
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        try await runStatement(query, parameters: [], readOnly: context.readOnly && context.origin == .external)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        guard !parameters.isEmpty else {
-            return try await execute(query: query)
-        }
+        try await runStatement(query, parameters: parameters, readOnly: false)
+    }
 
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await runStatement(query, parameters: parameters, readOnly: context.readOnly && context.origin == .external)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard context.readOnly, context.origin == .external else {
+            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+        let raw = try await runStatement(query, parameters: parameters ?? [], readOnly: true)
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
+        return PluginQueryResult(
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            timing: raw.timing,
+            isTruncated: true
+        )
+    }
+
+    private func runStatement(_ query: String, parameters: [PluginCellValue], readOnly: Bool) async throws -> PluginQueryResult {
         let startTime = Date()
         let queryId = UUID().uuidString
-        let bound = ClickHouseParameterBinding.bind(query: query, parameters: parameters)
-        let result = try await executeRawWithParams(bound.query, params: bound.params, queryId: queryId)
+        let result: CHQueryResult
+        if parameters.isEmpty {
+            result = try await executeRaw(query, queryId: queryId, readOnly: readOnly)
+        } else {
+            let bound = ClickHouseParameterBinding.bind(query: query, parameters: parameters)
+            result = try await executeRawWithParams(bound.query, params: bound.params, queryId: queryId, readOnly: readOnly)
+        }
         let executionTime = Date().timeIntervalSince(startTime)
 
         return PluginQueryResult(
@@ -728,10 +760,18 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
     private struct OtherFormatBodyFull: Error {}
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+        stream(query, readOnly: false)
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        stream(query, readOnly: context.readOnly && context.origin == .external)
+    }
+
+    private func stream(_ query: String, readOnly: Bool) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
-                    try await self.performStreamRows(query: query, continuation: continuation)
+                    try await self.performStreamRows(query: query, readOnly: readOnly, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -744,6 +784,7 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
 
     private func performStreamRows(
         query: String,
+        readOnly: Bool,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         let queryId = UUID().uuidString
@@ -753,16 +794,21 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
             database: database,
             queryId: queryId,
             executionTimeLimit: executionTimeLimit,
-            shape: .streamed(rowCap: nil)
+            shape: .streamed(rowCap: nil),
+            readOnly: readOnly
         )
         request.timeoutInterval = _queryTimeout.requestTimeoutInterval
         try await killingOnCancel(queryId: queryId) {
-            try await streamTabSeparatedRows(
-                request: request,
-                session: session,
-                batchSize: 5_000,
-                continuation: continuation
-            )
+            do {
+                try await streamTabSeparatedRows(
+                    request: request,
+                    session: session,
+                    batchSize: 5_000,
+                    continuation: continuation
+                )
+            } catch {
+                throw readOnly ? Self.readOnlyRefusal(error) : error
+            }
         }
     }
 
