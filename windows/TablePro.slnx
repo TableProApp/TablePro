@@ -1,10 +1,12 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TablePro.App.Model/TablePro.App.Model.csproj" />
     <Project Path="src/TablePro.Editor/TablePro.Editor.csproj" />
     <Project Path="src/TablePro.Editor.Model/TablePro.Editor.Model.csproj" />
     <Project Path="src/TablePro.Interop/TablePro.Interop.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TablePro.App.Model.Tests/TablePro.App.Model.Tests.csproj" />
     <Project Path="tests/TablePro.Editor.Model.Tests/TablePro.Editor.Model.Tests.csproj" />
     <Project Path="tests/TablePro.Interop.Tests/TablePro.Interop.Tests.csproj" />
   </Folder>
