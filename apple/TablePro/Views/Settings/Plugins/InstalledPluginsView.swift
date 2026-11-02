@@ -10,6 +10,7 @@ struct InstalledPluginsView: View {
     @ObservedObject private var installTracker = PluginInstallTracker.shared
     @ObservedObject private var navigation = PluginsSettingsNavigation.shared
     @ObservedObject private var modules = AppModuleSettings.shared
+    @ObservedObject private var updates = UpdateCenter.shared
 
     @State private var selectedPluginId: String?
     @State private var searchText = ""
@@ -81,10 +82,10 @@ struct InstalledPluginsView: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundStyle(.yellow)
-            Text("Restart TablePro to fully unload removed plugins.")
+            Text("Relaunch TablePro to finish removing plugins.")
                 .font(.callout)
             Spacer()
-            Button("Quit & Reopen") { relaunchApp() }
+            Button(String(localized: "Relaunch")) { updates.relaunch() }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             Button("Dismiss") { dismissedRestartBanner = true }
@@ -192,11 +193,12 @@ struct InstalledPluginsView: View {
             .controlSize(.small)
             .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
         case .requiresAppUpdate:
-            Button(String(localized: "Update TablePro")) {
-                SoftwareUpdater.shared.checkForUpdates()
+            Button(updates.status.appUpdateTitle) {
+                updates.performAppUpdateAction()
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .disabled(!updates.isAppUpdateActionEnabled)
             .help(String(localized: "A newer TablePro is required to load this plugin."))
         case .awaitingCompatibleBuild, .notInRegistry:
             EmptyView()
@@ -217,24 +219,6 @@ struct InstalledPluginsView: View {
             }
         }
         pluginManager.removeFromRejected(url: plugin.url)
-    }
-
-    private func relaunchApp() {
-        let bundleURL = Bundle.main.bundleURL
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { newApp, error in
-            DispatchQueue.main.async {
-                guard newApp != nil else {
-                    errorAlertTitle = String(localized: "Relaunch Failed")
-                    errorAlertMessage = error?.localizedDescription
-                        ?? String(localized: "Could not start a new TablePro instance. Quit and reopen manually.")
-                    showErrorAlert = true
-                    return
-                }
-                NSApp.terminate(nil)
-            }
-        }
     }
 
     // MARK: - Plugin List
@@ -346,7 +330,7 @@ struct InstalledPluginsView: View {
                 .foregroundStyle(.secondary)
 
                 if pluginManager.stagedPluginIds.contains(plugin.id) {
-                    Text("Updates when TablePro restarts")
+                    Text("Updates when TablePro relaunches")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

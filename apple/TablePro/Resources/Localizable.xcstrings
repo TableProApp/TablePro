@@ -5496,6 +5496,9 @@
         }
       }
     },
+    "%@ updates when TablePro relaunches." : {
+
+    },
     "%@ used" : {
       "localizations" : {
         "fr" : {
@@ -11240,6 +11243,9 @@
           }
         }
       }
+    },
+    "%lld plugins update when TablePro relaunches." : {
+
     },
     "%lld privileges" : {
       "localizations" : {
@@ -23551,6 +23557,9 @@
     "Also include global saved queries" : {
 
     },
+    "Also updating:" : {
+
+    },
     "Alternate Row" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -31255,6 +31264,12 @@
     "Beside the keyword" : {
 
     },
+    "Beta" : {
+
+    },
+    "Betas get new features first. Switching back to Stable keeps the beta you have until a newer release ships." : {
+
+    },
     "Betas get new features first. Turning this off keeps the beta you have until a newer release ships." : {
 
     },
@@ -36961,6 +36976,9 @@
           }
         }
       }
+    },
+    "Check Now" : {
+
     },
     "Check that the Client Key path points to a valid PEM private key." : {
       "extractionState" : "manual",
@@ -95405,6 +95423,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Install Update…" : {
+
+    },
     "Installed" : {
       "localizations" : {
         "fr" : {
@@ -100433,6 +100454,9 @@
           }
         }
       }
+    },
+    "Later" : {
+
     },
     "Latest" : {
       "localizations" : {
@@ -134725,6 +134749,9 @@
         }
       }
     },
+    "Plugin updates are ready" : {
+
+    },
     "Plugin was built for PluginKit version %d; this release of TablePro needs version %d." : {
       "localizations" : {
         "en" : {
@@ -145170,6 +145197,9 @@
         }
       }
     },
+    "Relaunch" : {
+
+    },
     "Relaunch Failed" : {
       "localizations" : {
         "fr" : {
@@ -145209,6 +145239,18 @@
           }
         }
       }
+    },
+    "Relaunch Now" : {
+
+    },
+    "Relaunch TablePro to finish removing plugins." : {
+
+    },
+    "Relaunch TablePro to finish updating." : {
+
+    },
+    "Relaunch to Update" : {
+
     },
     "Release" : {
       "localizations" : {
@@ -145261,6 +145303,9 @@
           }
         }
       }
+    },
+    "Release Notes" : {
+
     },
     "Release notes are on the changelog." : {
       "localizations" : {
@@ -172308,6 +172353,9 @@
         }
       }
     },
+    "Stable" : {
+
+    },
     "Stable Hash" : {
 
     },
@@ -179540,6 +179588,18 @@
         }
       }
     },
+    "TablePro %@" : {
+
+    },
+    "TablePro %@ is available" : {
+
+    },
+    "TablePro %@ is available." : {
+
+    },
+    "TablePro %@ is ready to install" : {
+
+    },
     "TablePro and the SSH server could not agree on how to encrypt the connection." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -180487,6 +180547,12 @@
           }
         }
       }
+    },
+    "TablePro relaunches to install it and reopens your connections." : {
+
+    },
+    "TablePro relaunches to load them and reopens your connections." : {
+
     },
     "TablePro runs a small query on each open connection so it can notice a dropped one and reconnect before you hit it. Only when I use the connection stops that background traffic, which is what a database that sleeps when idle, or bills per query, needs; TablePro then checks the connection the first time you use it after a pause." : {
       "localizations" : {
@@ -207704,6 +207770,9 @@
         }
       }
     },
+    "Update Available" : {
+
+    },
     "Update Available…" : {
       "localizations" : {
         "fr" : {
@@ -207715,6 +207784,9 @@
       }
     },
     "Update changes the rows whose key is in the file. Insert or Update also adds the rest, and Insert, Skip Existing adds only rows whose key is not in the table. Columns not mapped keep their values." : {
+
+    },
+    "Update channel:" : {
 
     },
     "Update existing" : {
@@ -208157,6 +208229,9 @@
 
     },
     "Updates" : {
+
+    },
+    "Updates when TablePro relaunches" : {
 
     },
     "Updates when TablePro restarts" : {

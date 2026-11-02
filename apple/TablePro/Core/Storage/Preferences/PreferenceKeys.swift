@@ -22,6 +22,8 @@ enum PreferenceKeys {
     static let recentConnections = DefaultsKey<Data>("com.TablePro.connectionList.recentConnections")
     /// Device-local, and in the standard domain so a configuration profile can pin it.
     static let receivesBetaUpdates = DefaultsKey<Bool>("com.TablePro.updates.receivesBetaUpdates")
+    /// Set by Relaunch to Update and cleared by the next launch, which reopens the last session once.
+    static let reopenSessionAfterRelaunch = DefaultsKey<Bool>("com.TablePro.updates.reopenSessionAfterRelaunch")
 
     static let registeredKeyNames: [String] = [
         connectionListSortMode.name,
@@ -40,6 +42,7 @@ enum PreferenceKeys {
         lastSeenAppBuild.name,
         lastSeenAppVersion.name,
         receivesBetaUpdates.name,
+        reopenSessionAfterRelaunch.name,
     ]
 
     static let columnDisplayFormatsPrefix = "com.TablePro.columns.displayFormat."
