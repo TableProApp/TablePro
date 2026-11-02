@@ -16,6 +16,7 @@ internal sealed partial class Gate
         await KeyboardAsync();
         await SelectionAsync();
         await LargeCopyAsync();
+        await HeaderAsync();
         await UiaAsync();
         await ThemeAsync();
         await HighContrastAsync();
@@ -197,6 +198,64 @@ internal sealed partial class Gate
         _report.Line("large_copy.summary", string.Create(CultureInfo.InvariantCulture,
             $"cells={(long)Rows * Columns} finished={finished} ms={ms:F0} chars={clip.Length} lines={clip.Split("\r\n").Length - 1} matches={clip == expected}"));
         _report.Stats("large_copy.heartbeat_wait_ms", block);
+    }
+
+    // Real pointer input on the header: a drag on a column's right edge, a double-click there, a click to sort.
+    private async Task HeaderAsync()
+    {
+        _status.Text = "header";
+        _grid.ScrollTo(0, 0);
+        await Task.Delay(400);
+        await Driver.EnsureForegroundAsync(ctx, _status);
+        var column = _grid.ColumnWindow.First + 1;
+        var header = _grid.HeaderCell(column)!;
+        var before = _grid.Columns.Width(column);
+        var (x, y) = Native.ToScreen(ctx.Window, header, new Windows.Foundation.Point(header.ActualWidth - 3, header.ActualHeight / 2));
+        Native.MoveTo(x, y);
+        await Task.Delay(150);
+        Native.LeftDown(x, y);
+        for (var step = 1; step <= 6; step++)
+        {
+            await Task.Delay(40);
+            Native.MoveTo(x + (step * 10), y);
+        }
+        await Task.Delay(80);
+        Native.LeftUp(x + 60, y);
+        await Task.Delay(400);
+        var dragged = _grid.Columns.Width(column);
+        _report.Line("header.resize_drag", string.Create(CultureInfo.InvariantCulture,
+            $"column={column} before={before} after={dragged} ok={Math.Abs(dragged - before - 60) <= 2}"));
+        await Native.SaveScreenAsync(ctx.Shot("header-resized"));
+
+        var fitColumn = column + 1;
+        var fitHeader = _grid.HeaderCell(fitColumn)!;
+        var (fx, fy) = Native.ToScreen(ctx.Window, fitHeader, new Windows.Foundation.Point(fitHeader.ActualWidth - 3, fitHeader.ActualHeight / 2));
+        var widest = 0.0;
+        for (var row = _grid.RowWindow.First; row <= _grid.RowWindow.Last; row++)
+        {
+            var cell = _grid.Cell(row, fitColumn);
+            widest = Math.Max(widest, cell.IsNull ? _grid.Painter.Measure("NULL", placeholder: true) : _grid.Painter.Measure(cell.Text));
+        }
+        Native.Click(fx, fy);
+        Native.Click(fx, fy);
+        await Task.Delay(500);
+        var fitted = _grid.Columns.Width(fitColumn);
+        _report.Line("header.fit_double_click", string.Create(CultureInfo.InvariantCulture,
+            $"column={fitColumn} width={fitted} widest_text={widest:F1} ok={fitted >= widest + 24 && fitted <= Math.Max(widest, 24) + 40}"));
+
+        var sortHeader = _grid.HeaderCell(column)!;
+        var requested = new List<Model.GridSort>();
+        void OnSort(object? sender, Model.GridSort sort) => requested.Add(sort);
+        _grid.SortRequested += OnSort;
+        var (sx, sy) = Native.ToScreen(ctx.Window, sortHeader, new Windows.Foundation.Point(20, sortHeader.ActualHeight / 2));
+        Native.Click(sx, sy);
+        await Task.Delay(900);
+        Native.Click(sx, sy);
+        await Task.Delay(900);
+        _grid.SortRequested -= OnSort;
+        _report.Line("header.sort_clicks", $"requests={string.Join(' ', requested)} indicator={_grid.HeaderCell(column)?.SortDirection} " +
+            $"ok={requested.Count == 2 && requested[0].Direction == Model.SortDirection.Ascending && requested[1].Direction == Model.SortDirection.Descending}");
+        await Native.SaveScreenAsync(ctx.Shot("header-sorted"));
     }
 
     private async Task UiaAsync()

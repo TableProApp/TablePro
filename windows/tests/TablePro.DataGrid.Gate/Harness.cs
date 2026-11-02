@@ -456,6 +456,12 @@ internal static partial class Native
         Send(Mouse(x, y, MouseLeftDown), Mouse(x, y, MouseLeftUp));
     }
 
+    public static void MoveTo(int x, int y) => Send(Mouse(x, y, 0));
+
+    public static void LeftDown(int x, int y) => Send(Mouse(x, y, MouseLeftDown));
+
+    public static void LeftUp(int x, int y) => Send(Mouse(x, y, MouseLeftUp));
+
     public static IntPtr Hwnd(Window window) => WinRT.Interop.WindowNative.GetWindowHandle(window);
 
     public static bool IsForeground(Window window) => GetForegroundWindow() == Hwnd(window);
