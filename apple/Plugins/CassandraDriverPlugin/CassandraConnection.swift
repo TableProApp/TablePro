@@ -65,8 +65,7 @@ actor CassandraConnectionActor {
 
         cass_cluster_set_contact_points(cluster, host)
         cass_cluster_set_port(cluster, Int32(port))
-        // Behind a tunnel the peers system.peers names sit outside it, and the tunnel already turned certificate
-        // checks off, so they would get the password unverified.
+        // Behind a tunnel the peers system.peers names sit outside it, so the driver would dial them around it.
         if pinnedToContactPoint {
             cass_cluster_set_whitelist_filtering(cluster, host)
         }

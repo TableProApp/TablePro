@@ -84,6 +84,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private var activity: NSUserActivity?
 
     private let windowBackdrop: ThemeWindowBackdrop
+    private let updateIndicator: UpdateIndicatorAccessory
 
     /// `adopting` carries a connection that is moving here from another window, whole. Everything
     /// the user has in it lives on that object, so the window takes it rather than building a
@@ -116,6 +117,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.representedURL = splitVC.windowRepresentedURL
         splitVC.installTabStripAccessory(on: window)
         windowBackdrop = ThemeWindowBackdrop(window: window)
+        updateIndicator = UpdateIndicatorAccessory(window: window)
 
         super.init(window: window)
 

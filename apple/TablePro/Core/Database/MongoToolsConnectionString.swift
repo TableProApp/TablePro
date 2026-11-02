@@ -43,8 +43,14 @@ internal enum MongoToolsConnectionString {
         let ssl = connection.sslConfig
         guard ssl.isEnabled || connection.usesMongoSrv else { return [] }
         var parameters = ["tls=true"]
-        if ssl.mode == .preferred || ssl.mode == .required {
+        switch ssl.mode {
+        case .preferred, .required:
             parameters.append("tlsInsecure=true")
+        // As in the driver: the chain is checked and the name is not, which also keeps it working through a tunnel.
+        case .verifyCa:
+            parameters.append("tlsAllowInvalidHostnames=true")
+        case .disabled, .verifyIdentity:
+            break
         }
         if ssl.verifiesCertificate, !ssl.caCertificatePath.isEmpty {
             parameters.append("tlsCAFile=\(encodedValue(ssl.caCertificatePath))")

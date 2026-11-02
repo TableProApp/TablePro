@@ -47,12 +47,12 @@ extension EnvVarReferenceConsentError: LocalizedError {
 internal final class EnvVarReferenceConsent {
     internal typealias Ask = @MainActor (EnvVarReferenceQuestion) async -> ConsentAnswer
 
-    private let approvals: EnvVarReferenceApprovalStore
+    private let approvals: ConnectionApprovalStore
     private let isFeatureAvailable: @MainActor () -> Bool
     private let ask: Ask
 
     internal init(
-        approvals: EnvVarReferenceApprovalStore = .shared,
+        approvals: ConnectionApprovalStore = .envVarReferences,
         isFeatureAvailable: @escaping @MainActor () -> Bool = {
             LicenseManager.shared.isFeatureAvailable(.envVarReferences)
         },
@@ -70,7 +70,7 @@ internal final class EnvVarReferenceConsent {
     internal func confirm(_ connection: DatabaseConnection) async -> Bool {
         guard requiresApproval(connection) else { return true }
         guard await ask(Self.question(for: connection)) == .approved else { return false }
-        approvals.approveReferences(of: connection)
+        approvals.approve(connection)
         return true
     }
 
@@ -82,7 +82,7 @@ internal final class EnvVarReferenceConsent {
         guard trigger == .request else { throw EnvVarReferenceConsentError.needsPerson }
         switch await ask(Self.question(for: connection)) {
         case .approved:
-            approvals.approveReferences(of: connection)
+            approvals.approve(connection)
             return EnvVarResolver.resolveConnection(connection)
         case .declined:
             throw EnvVarReferenceConsentError.declined

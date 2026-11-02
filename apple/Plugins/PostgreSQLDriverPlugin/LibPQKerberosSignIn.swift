@@ -8,9 +8,6 @@ struct LibPQKerberosSignIn: Equatable, Sendable {
     // A private cache holding the ticket a principal and password requested; nil uses the
     // default cache.
     let cachePath: String?
-    // The server's own name behind a tunnel: the service principal is registered under it, not
-    // under the loopback address the tunnel listens on.
-    var serviceHost: String?
 
     static func gssEncryptionMode(in additionalFields: [String: String]) -> String {
         let value = additionalFields[KerberosAuthFields.gssEncryptionFieldId] ?? ""
@@ -23,12 +20,11 @@ struct LibPQKerberosSignIn: Equatable, Sendable {
     ) async throws -> LibPQKerberosSignIn? {
         guard KerberosAuthFields.isSelected(in: additionalFields) else { return nil }
         let mode = gssEncryptionMode(in: additionalFields)
-        let serviceHost = additionalFields["preTunnelHost"].flatMap { $0.isEmpty ? nil : $0 }
         let principal = (additionalFields[KerberosAuthFields.principalFieldId] ?? "")
             .trimmingCharacters(in: .whitespaces)
         let password = additionalFields[KerberosAuthFields.passwordFieldId] ?? ""
         guard !principal.isEmpty, !password.isEmpty else {
-            return LibPQKerberosSignIn(gssEncryptionMode: mode, cachePath: nil, serviceHost: serviceHost)
+            return LibPQKerberosSignIn(gssEncryptionMode: mode, cachePath: nil)
         }
         do {
             let cachePath = try await KerberosTicket.acquire(
@@ -37,7 +33,7 @@ struct LibPQKerberosSignIn: Equatable, Sendable {
                 timeoutMilliseconds: timeoutMilliseconds,
                 timeoutError: { LibPQPluginError.connectionTimedOut }
             )
-            return LibPQKerberosSignIn(gssEncryptionMode: mode, cachePath: cachePath, serviceHost: serviceHost)
+            return LibPQKerberosSignIn(gssEncryptionMode: mode, cachePath: cachePath)
         } catch KerberosTicketError.rejected(let kind, let message) {
             throw failure(kind: kind, serverMessage: message)
         }

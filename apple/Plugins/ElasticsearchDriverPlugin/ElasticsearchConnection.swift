@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import Security
 import TableProPluginKit
 
 internal enum ElasticsearchError: Error, LocalizedError {
@@ -60,6 +61,9 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
     private var _cancelGeneration = 0
     private let authHeader: String?
     private let skipTLSVerify: Bool
+    // Behind a tunnel the URL names its loopback forward, so URLSession's own check would test 127.0.0.1.
+    private let tunneledTrustPolicy: SecPolicy?
+    private var _trustRefusal: SSLHandshakeError?
     private let connectTimeoutMilliseconds: Int
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ElasticsearchConnection")
@@ -77,6 +81,7 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         self.authHeader = Self.resolveAuthHeader(config: config)
         self.skipTLSVerify = (config.additionalFields["esSkipTLSVerify"] == "true")
             || (config.ssl.isEnabled && !config.ssl.verifiesCertificate)
+        self.tunneledTrustPolicy = Self.tunneledTrustPolicy(for: config, skipTLSVerify: skipTLSVerify)
         self.connectTimeoutMilliseconds = PluginConnectTimeout.milliseconds(
             in: config.additionalFields,
             default: Int(HttpQueryTimeout.sessionBootstrapRequestTimeout * 1_000)
@@ -333,6 +338,7 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         // A console path such as `//other.example/x` resolves to another host, which would get the
         // Authorization header.
         guard let url = URL(string: path, relativeTo: node.baseURL),
+              url.scheme?.lowercased() == node.baseURL.scheme?.lowercased(),
               url.host == node.baseURL.host, url.port == node.baseURL.port
         else {
             throw ElasticsearchError.connectionFailed("Invalid path: \(path)")
@@ -381,10 +387,11 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
                 taskBox?.finish()
                 self?.lock.withLock { self?._currentTask = nil }
                 if let error {
-                    if let urlError = error as? URLError {
-                        continuation.resume(
-                            throwing: urlError.code == .cancelled ? ElasticsearchError.requestCancelled : urlError
-                        )
+                    if let urlError = error as? URLError, urlError.code == .cancelled {
+                        let refusal: Error? = self?.takeTrustRefusal()
+                        continuation.resume(throwing: refusal ?? ElasticsearchError.requestCancelled)
+                    } else if let urlError = error as? URLError {
+                        continuation.resume(throwing: urlError)
                     } else {
                         continuation.resume(throwing: ElasticsearchError.connectionFailed(error.localizedDescription))
                     }
@@ -444,6 +451,13 @@ internal final class ElasticsearchConnection: NSObject, @unchecked Sendable {
         return (upper == "GET" || upper == "HEAD") ? "POST" : method
     }
 
+    private static func tunneledTrustPolicy(for config: DriverConnectionConfig, skipTLSVerify: Bool) -> SecPolicy? {
+        guard !skipTLSVerify, config.ssl.verifiesCertificate, let serverName = config.tunneledServerName else {
+            return nil
+        }
+        return SecPolicyCreateSSL(true, config.ssl.verifiesHostname ? serverName as CFString : nil)
+    }
+
     private static func resolveAuthHeader(config: DriverConnectionConfig) -> String? {
         switch config.additionalFields["esAuthMethod"] {
         case "apiKey":
@@ -465,14 +479,43 @@ extension ElasticsearchConnection: URLSessionTaskDelegate {
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        guard skipTLSVerify,
-              challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust
         else {
             completionHandler(.performDefaultHandling, nil)
             return
         }
+        if skipTLSVerify {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+            return
+        }
+        guard let tunneledTrustPolicy else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        var evaluationError: CFError?
+        guard SecTrustSetPolicies(trust, tunneledTrustPolicy) == errSecSuccess,
+              SecTrustEvaluateWithError(trust, &evaluationError) else {
+            lock.withLock { _trustRefusal = Self.refusal(for: evaluationError) }
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
         completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+
+    private func takeTrustRefusal() -> SSLHandshakeError? {
+        lock.withLock {
+            defer { _trustRefusal = nil }
+            return _trustRefusal
+        }
+    }
+
+    private static func refusal(for error: CFError?) -> SSLHandshakeError {
+        let message = error.map { CFErrorCopyDescription($0) as String } ?? ""
+        guard let error, CFErrorGetCode(error) == Int(errSecHostNameMismatch) else {
+            return .untrustedCertificate(serverMessage: message)
+        }
+        return .hostnameMismatch(serverMessage: message)
     }
 
     // A redirect would carry the credentials to wherever it points.

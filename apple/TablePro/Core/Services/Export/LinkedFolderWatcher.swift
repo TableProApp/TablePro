@@ -101,9 +101,9 @@ final class LinkedFolderWatcher: ObservableObject {
 
                 if ConnectionBundleCodec.isEncrypted(data) { continue }
 
-                let bundle: ConnectionBundle
+                let linkedInFile: [LinkedConnection]
                 do {
-                    bundle = try ConnectionBundleCodec.decode(data)
+                    linkedInFile = try linkedConnections(in: data, folderId: folder.id, sourceFileURL: fileURL)
                 } catch {
                     logger.warning(
                         "Skipped linked file \(filename, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)"
@@ -111,8 +111,7 @@ final class LinkedFolderWatcher: ObservableObject {
                     continue
                 }
 
-                for exportable in bundle.connections.map(\.settings) {
-                    let linked = linkedConnection(folderId: folder.id, sourceFileURL: fileURL, exportable: exportable)
+                for linked in linkedInFile {
                     guard seenIds.insert(linked.id).inserted else { continue }
                     results.append(linked)
                 }
@@ -161,6 +160,18 @@ final class LinkedFolderWatcher: ObservableObject {
             source.cancel()
         }
         watchSources.removeAll()
+    }
+
+    // A linked row is never saved and asks before it signs in with a credential this Mac holds, so it keeps the
+    // selectors a saved import drops.
+    nonisolated static func linkedConnections(
+        in data: Data,
+        folderId: UUID,
+        sourceFileURL: URL
+    ) throws -> [LinkedConnection] {
+        try ConnectionBundleCodec.decode(data, keepingLocalCredentials: true).connections.map {
+            linkedConnection(folderId: folderId, sourceFileURL: sourceFileURL, exportable: $0.settings)
+        }
     }
 
     // MARK: - Stable IDs (SHA-256 based, deterministic across launches)

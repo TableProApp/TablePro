@@ -62,6 +62,8 @@ internal actor DatabaseAccessBridge {
                 throw Self.accessError(for: refusal)
             } catch let refusal as EnvVarReferenceConsentError {
                 throw Self.accessError(for: refusal)
+            } catch let refusal as LocalCredentialConsentError {
+                throw Self.accessError(for: refusal)
             }
         }
 
@@ -151,6 +153,8 @@ internal actor DatabaseAccessBridge {
                 throw Self.accessError(for: refusal)
             } catch let refusal as EnvVarReferenceConsentError {
                 throw Self.accessError(for: refusal)
+            } catch let refusal as LocalCredentialConsentError {
+                throw Self.accessError(for: refusal)
             }
         }
         /// An automation client is the likeliest thing to reach a connection nobody has touched
@@ -185,6 +189,16 @@ internal actor DatabaseAccessBridge {
     }
 
     private static func accessError(for refusal: EnvVarReferenceConsentError) -> DatabaseAccessError {
+        let detail = refusal.errorDescription ?? ""
+        switch refusal {
+        case .unanswered:
+            return .timeout(detail)
+        case .declined, .needsPerson:
+            return .forbidden(detail)
+        }
+    }
+
+    private static func accessError(for refusal: LocalCredentialConsentError) -> DatabaseAccessError {
         let detail = refusal.errorDescription ?? ""
         switch refusal {
         case .unanswered:

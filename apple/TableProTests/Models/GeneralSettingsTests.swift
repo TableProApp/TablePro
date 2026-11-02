@@ -70,7 +70,6 @@ struct GeneralSettingsBoolSettingTests {
         BoolSetting(key: "showSystemContainers", defaultValue: false),
         BoolSetting(key: "showPartitions", defaultValue: true),
         BoolSetting(key: "showWorkspaceRail", defaultValue: true),
-        BoolSetting(key: "showWelcomeVersionInfo", defaultValue: true)
     ]
 
     private static func encoded(_ settings: GeneralSettings) throws -> [String: Any] {
@@ -92,6 +91,18 @@ struct GeneralSettingsBoolSettingTests {
     func decodesMissingKeyAsDefault(_ setting: BoolSetting) throws {
         let decoded = try Self.decoded(["startupBehavior": "showWelcome"])
         #expect(try Self.encoded(decoded)[setting.key] as? Bool == setting.defaultValue)
+    }
+
+    @Test("Settings saved with the retired Welcome version switch still decode, and drop it")
+    func decodesTheRetiredWelcomeVersionSwitch() throws {
+        var object = try Self.encoded(.default)
+        object["showWelcomeVersionInfo"] = false
+        object["showRecentTables"] = true
+
+        let decoded = try Self.decoded(object)
+
+        #expect(decoded.showRecentTables)
+        #expect(try Self.encoded(decoded)["showWelcomeVersionInfo"] == nil)
     }
 
     @Test("Round-trips the other value and leaves every other setting alone", arguments: settings)

@@ -40,6 +40,8 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Teradata"
     static let iconName = "teradata-icon"
     static let defaultPort = 1_025
+    // TLS goes to the HTTPS port, which a tunnel does not forward; Preferred falls back to plaintext.
+    static let sslModesThroughTunnel: [SSLMode] = [.disabled, .preferred]
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: "teradataLogMech", label: "Logon Mechanism", placeholder: "TD2", defaultValue: "TD2"),

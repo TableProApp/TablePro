@@ -27,6 +27,9 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin, Pl
     static let databaseDisplayName = "Cassandra / ScyllaDB"
     static let iconName = "cassandra-icon"
     static let defaultPort = 9_042
+    // The C driver checks the identity only against the address it dials, so Verify Identity cannot pass through
+    // a forward.
+    static let sslModesThroughTunnel: [SSLMode] = [.disabled, .preferred, .required, .verifyCa]
     static let additionalConnectionFields: [ConnectionField] =
         AWSAuthFields.standard() + CassandraConsistency.connectionFields
     static let additionalDatabaseTypeIds: [String] = ["ScyllaDB"]
@@ -230,7 +233,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             sslClientCertPath: clientCertPath,
             sslClientKeyPath: clientKeyPath,
             sslClientKeyPassphrase: clientKeyPassphrase,
-            pinnedToContactPoint: config.additionalFields["preTunnelHost"]?.isEmpty == false,
+            pinnedToContactPoint: config.tunneledServerName != nil,
             awsCredentials: awsCredentials,
             awsRegion: awsRegion,
             connectTimeout: CassandraConnectTimeout(milliseconds: Int(remainingConnectMilliseconds))

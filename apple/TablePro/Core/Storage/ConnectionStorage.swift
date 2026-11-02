@@ -188,6 +188,11 @@ final class ConnectionStorage {
             }
             // A file carries no route, and readers drop the stored one once it no longer describes the tunnel.
             updated.sshRoute = stored.sshRoute
+            // A saved import brings no sign-in with this Mac's credentials, scripts or fields this build does not know, so
+            // the row keeps its own.
+            for (key, value) in stored.additionalFields where ConnectionFieldCatalog.survivesReplace(key) {
+                updated.additionalFields[key] = value
+            }
             updated.sortOrder = stored.groupId == updated.groupId
                 ? stored.sortOrder
                 : Self.nextSortOrder(in: connections, groupId: updated.groupId)
@@ -605,7 +610,9 @@ final class ConnectionStorage {
             }
         }
         LoadableExtensionApprovalStore.shared.copyApprovals(from: connection.id, to: newId)
-        EnvVarReferenceApprovalStore.shared.copyApprovals(from: connection.id, to: newId)
+        for store in ConnectionApprovalStore.all {
+            store.copyApprovals(from: connection.id, to: newId)
+        }
 
         appEventsProvider().connectionUpdated.send(nil)
         return placedDuplicate

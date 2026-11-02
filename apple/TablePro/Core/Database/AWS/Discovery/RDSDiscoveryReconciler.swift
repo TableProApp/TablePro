@@ -67,6 +67,19 @@ enum RDSDiscoveryReconciler {
         )
     }
 
+    // The rows came from the person's own AWS account on this Mac, so its profile is theirs to sign in with.
+    @MainActor
+    static func approveLocalCredentials(
+        of connectionIds: [UUID],
+        saved: [DatabaseConnection],
+        approvals: ConnectionApprovalStore = .localCredentials
+    ) {
+        let written = Set(connectionIds)
+        for connection in saved where written.contains(connection.id) {
+            approvals.approve(connection)
+        }
+    }
+
     private static func endpointKey(host: String, port: Int) -> String {
         "\(normalizedHost(host))|\(port)"
     }

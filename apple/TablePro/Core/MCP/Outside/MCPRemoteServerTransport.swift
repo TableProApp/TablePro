@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProHTTP
 import TableProMCP
 
 /// Streamable HTTP to an MCP server somebody else runs.
@@ -30,7 +31,6 @@ internal actor MCPRemoteServerTransport {
     private let endpoint: URL
     private let bearerToken: String
     private let urlSession: URLSession
-    private let redirectGuard: SameOriginRedirectGuard
     private let timeout: Duration
 
     private var negotiatedSessionId: String?
@@ -48,7 +48,6 @@ internal actor MCPRemoteServerTransport {
         self.endpoint = endpoint
         self.bearerToken = bearerToken
         self.timeout = timeout
-        self.redirectGuard = SameOriginRedirectGuard(origin: endpoint)
         if let urlSession {
             self.urlSession = urlSession
         } else {
@@ -102,7 +101,7 @@ internal actor MCPRemoteServerTransport {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "DELETE"
         applyCommonHeaders(to: &request)
-        _ = try? await urlSession.data(for: request, delegate: redirectGuard)
+        _ = try? await urlSession.data(for: request, delegate: SameOriginRedirects.shared)
     }
 
     // MARK: - HTTP
@@ -127,7 +126,7 @@ internal actor MCPRemoteServerTransport {
         let bytes: URLSession.AsyncBytes
         let response: URLResponse
         do {
-            (bytes, response) = try await urlSession.bytes(for: request, delegate: redirectGuard)
+            (bytes, response) = try await urlSession.bytes(for: request, delegate: SameOriginRedirects.shared)
         } catch let error as URLError where error.code == .timedOut {
             throw MCPClientError.timedOut
         } catch {

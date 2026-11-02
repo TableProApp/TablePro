@@ -45,7 +45,8 @@ internal final class WeaviatePluginDriver: PluginDatabaseDriver, @unchecked Send
         let timeout = queryTimeout
         let transport = URLSessionWeaviateTransport(
             resourceTimeout: HttpQueryTimeout.sessionResourceTimeout,
-            skipTLSVerify: skipTLS
+            skipTLSVerify: skipTLS,
+            tunneledTrust: tunneledTrust(skippingVerification: skipTLS)
         )
         let client = WeaviateClient(
             settings: settings,
@@ -57,6 +58,13 @@ internal final class WeaviatePluginDriver: PluginDatabaseDriver, @unchecked Send
             self.client = client
             cachedCollections.removeAll()
         }
+    }
+
+    private func tunneledTrust(skippingVerification: Bool) -> WeaviateTunneledTrust? {
+        guard !skippingVerification, config.ssl.verifiesCertificate, let serverName = config.tunneledServerName else {
+            return nil
+        }
+        return WeaviateTunneledTrust(serverName: serverName, checksServerName: config.ssl.verifiesHostname)
     }
 
     func disconnect() {

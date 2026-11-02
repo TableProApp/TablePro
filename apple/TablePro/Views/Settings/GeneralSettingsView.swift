@@ -13,38 +13,6 @@ struct GeneralSettingsView: View {
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
 
-    // The updater owns these, so `GeneralSettings` holds no copy for settings sync to overwrite.
-    private var automaticallyChecksForUpdates: Binding<Bool> {
-        Binding(
-            get: { updater.automaticallyChecksForUpdates },
-            set: { updater.setAutomaticallyChecksForUpdates($0) }
-        )
-    }
-
-    private var automaticallyDownloadsUpdates: Binding<Bool> {
-        Binding(
-            get: { updater.automaticallyDownloadsUpdates },
-            set: { updater.setAutomaticallyDownloadsUpdates($0) }
-        )
-    }
-
-    private var receivesBetaUpdates: Binding<Bool> {
-        Binding(
-            get: { updater.receivesBetaUpdates },
-            set: { updater.setReceivesBetaUpdates($0) }
-        )
-    }
-
-    private var lastUpdateCheckDescription: String {
-        guard let date = updater.lastUpdateCheckDate else {
-            return String(localized: "Last checked: never")
-        }
-        return String(
-            format: String(localized: "Last checked: %@"),
-            date.formatted(date: .abbreviated, time: .shortened)
-        )
-    }
-
     private var queryTimeoutOptions: [Int] {
         let current = settings.queryTimeoutSeconds
         if current > 0, !Self.standardTimeouts.contains(current) {
@@ -72,10 +40,6 @@ struct GeneralSettingsView: View {
                     Text(behavior.displayName).tag(behavior)
                 }
             }
-
-            Toggle("Show version and updates on the Welcome window", isOn: $settings.showWelcomeVersionInfo)
-                .accessibilityIdentifier("welcome-version-info-toggle")
-                .help("Shows the version and Check for Updates under the app icon. An available update is shown either way.")
 
             Section("Tabs") {
                 Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
@@ -151,43 +115,7 @@ struct GeneralSettingsView: View {
 
             TrustedExternalConnectionsSection()
 
-            Section {
-                Toggle("Automatically check for updates", isOn: automaticallyChecksForUpdates)
-                    .accessibilityIdentifier("automatic-update-check-toggle")
-
-                Toggle("Download and install updates automatically", isOn: automaticallyDownloadsUpdates)
-                    .disabled(!updater.allowsAutomaticUpdates)
-                    .accessibilityIdentifier("automatic-update-install-toggle")
-                    .help(String(localized: "A new version downloads in the background and installs the next time you quit TablePro."))
-
-                Toggle("Get beta updates", isOn: receivesBetaUpdates)
-                    .accessibilityIdentifier("beta-updates-toggle")
-
-                LabeledContent {
-                    Button(updater.checkForUpdatesTitle) {
-                        updater.checkForUpdates()
-                    }
-                    .disabled(!updater.canCheckForUpdates)
-                    .accessibilityIdentifier("check-for-updates-button")
-                } label: {
-                    Text(lastUpdateCheckDescription)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("last-update-check-label")
-                }
-                .accessibilityElement(children: .contain)
-
-                Button {
-                    NSApp.sendAction(#selector(AppDelegate.openChangelog(_:)), to: nil, from: nil)
-                } label: {
-                    Text(String(localized: "What's New"))
-                }
-                .buttonStyle(.link)
-                .accessibilityIdentifier("whats-new-link")
-            } header: {
-                Text("Software Update")
-            } footer: {
-                Text("Betas get new features first. Turning this off keeps the beta you have until a newer release ships.")
-            }
+            SoftwareUpdateSection(updater: updater, updates: .shared)
 
             Section {
                 Toggle("Share usage data", isOn: $settings.shareAnalytics)

@@ -22,6 +22,7 @@ final class DatabaseManager: ObservableObject {
     internal let aiAccessApprovals: AIAccessApprovals
     internal let preConnectScriptConsent: PreConnectScriptConsent
     internal let envVarReferenceConsent: EnvVarReferenceConsent
+    internal let localCredentialConsent: LocalCredentialConsent
     internal let postDisconnectScripts: PostDisconnectScripts
     internal let localNetworkProbe: any LocalNetworkAccessProbing
     internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
@@ -188,6 +189,7 @@ final class DatabaseManager: ObservableObject {
         aiAccessApprovals: AIAccessApprovals = .shared,
         preConnectScriptConsent: PreConnectScriptConsent = PreConnectScriptConsent(),
         envVarReferenceConsent: EnvVarReferenceConsent = EnvVarReferenceConsent(),
+        localCredentialConsent: LocalCredentialConsent = LocalCredentialConsent(),
         postDisconnectScripts: PostDisconnectScripts = PostDisconnectScripts(),
         localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe()
     ) {
@@ -197,6 +199,7 @@ final class DatabaseManager: ObservableObject {
         self.aiAccessApprovals = aiAccessApprovals
         self.preConnectScriptConsent = preConnectScriptConsent
         self.envVarReferenceConsent = envVarReferenceConsent
+        self.localCredentialConsent = localCredentialConsent
         self.postDisconnectScripts = postDisconnectScripts
         self.localNetworkProbe = localNetworkProbe
         sessionLanes.onClose = { [weak self] connectionId in

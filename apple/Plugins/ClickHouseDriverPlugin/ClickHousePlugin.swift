@@ -20,6 +20,8 @@ nonisolated final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin
     static let databaseDisplayName = "ClickHouse"
     static let iconName = "clickhouse-icon"
     static let defaultPort = 8123
+    // The trust delegate evaluates the pre-tunnel host through a forward.
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
 
     // MARK: - UI/Capability Metadata
 
@@ -252,18 +254,8 @@ nonisolated final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked
         try await connect(reportingStage: { _ in })
     }
 
-    // A tunnel dials its local end, so the certificate names the host behind it. Any other dial is checked against
-    // its own host, whatever a stored or imported field says.
-    static func tunnelServerName(dialing host: String, fields: [String: String]) -> String? {
-        guard ["127.0.0.1", "::1", "localhost"].contains(host.lowercased()) else { return nil }
-        return fields["preTunnelHost"]?.nilIfEmpty
-    }
-
     func connect(reportingStage report: @escaping ConnectionStageReporter) async throws {
-        let tlsDelegate = try ClickHouseTLSDelegate.make(
-            for: config.ssl,
-            serverName: Self.tunnelServerName(dialing: config.host, fields: config.additionalFields)
-        )
+        let tlsDelegate = try ClickHouseTLSDelegate.make(for: config.ssl, serverName: config.tunneledServerName)
         let connectTimeout = PluginConnectTimeout.milliseconds(
             in: config.additionalFields,
             default: Int(HttpQueryTimeout().requestTimeoutInterval * 1_000)

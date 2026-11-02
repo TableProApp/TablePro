@@ -9,6 +9,7 @@
 
 import Foundation
 import os
+import TableProHTTP
 
 final class LiveTeamLibraryAPIClient: TeamLibraryAPIClient, Sendable {
     static let shared = LiveTeamLibraryAPIClient()
@@ -75,7 +76,7 @@ final class LiveTeamLibraryAPIClient: TeamLibraryAPIClient, Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         } catch {
             throw LicenseError.networkError(error)
         }

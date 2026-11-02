@@ -25,7 +25,7 @@ public struct AWSQueryRequest: Sendable, Equatable {
     }
 
     public func signedURLRequest(credentials: AWSCredentials, now: Date = Date()) throws -> URLRequest {
-        guard let url = URL(string: "https://\(host)/") else {
+        guard AWSPartition.isValidRegion(region), let url = URL(string: "https://\(host)/") else {
             throw AWSAuthError.missingConfiguration(
                 String(
                     format: String(localized: "Could not build the %1$@ endpoint for the AWS region \"%2$@\"."),

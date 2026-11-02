@@ -559,10 +559,12 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
     }
 
-    // A save here is the person's word that the environment references go where the form shows.
+    // A save here is the person's word that the environment references and this Mac's sign-in go where the form shows.
     private func approveSavedDefinition(_ connection: DatabaseConnection) {
         approveEditedExtensions(for: connection.id)
-        EnvVarReferenceApprovalStore.shared.approveReferences(of: connection)
+        for store in ConnectionApprovalStore.all {
+            store.approve(connection)
+        }
     }
 
     private static var unreadableLibraryMessage: String {
@@ -710,6 +712,7 @@ final class ConnectionFormCoordinator: ObservableObject {
                     return
                 }
 
+                // No sign-in consent: the person is looking at the settings Test signs in with.
                 let result = try await services.databaseManager.testConnection(
                     testConn,
                     sshPassword: sshPasswordForTest,

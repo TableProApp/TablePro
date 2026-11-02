@@ -226,14 +226,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         // A StarRocks handshake database is read in default_catalog, so the scope is entered after connecting.
         let entersStarRocksScope = Self.initialFlavor(for: config).isStarRocks
+        let transport = MySQLTransport(host: config.host, port: config.port, additionalFields: config.additionalFields)
         let conn = MariaDBPluginConnection(
-            transport: MySQLTransport(host: config.host, port: config.port, additionalFields: config.additionalFields),
+            transport: transport,
             user: config.username,
             password: kerberos == nil ? password : nil,
             database: entersStarRocksScope ? "" : activeDatabaseName,
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
             tunnelSecuresTransport: config.additionalFields["tunnelSecuresTransport"] == "true",
+            tlsServerName: MariaDBTLSMode.serverName(for: config, transport: transport),
             queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0,
             connectionEncoding: MySQLConnectionEncoding(additionalFields: config.additionalFields),
             connectTimeoutMilliseconds: connectTimeout.milliseconds,

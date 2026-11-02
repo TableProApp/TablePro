@@ -140,6 +140,34 @@ struct OracleTLSMapperTests {
         #expect(OracleTLSMapper.serverName(for: OracleTLSDescription(mode: .required, serverName: "db.example.com")) == "db.example.com")
     }
 
+    @Test func testVerifyIdentityThroughATunnelRefusesAnAddressBeforeDialing() {
+        for address in ["10.0.0.5", "fe80::1"] {
+            let options = OracleConnectionOptions(
+                host: "127.0.0.1",
+                port: 49_152,
+                user: "scott",
+                password: "tiger",
+                tls: OracleTLSDescription(mode: .verifyIdentity, serverName: address)
+            )
+            if let error = #expect(throws: (any Error).self, performing: { try OracleCoreConnection.configuration(for: options) }) {
+                #expect(error as? OracleCoreError == .verifyIdentityNeedsHostName(address: address), "\(address)")
+            }
+        }
+    }
+
+    @Test func testAnAddressBehindATunnelStillConnectsWhenTheNameIsNotChecked() throws {
+        let configuration = try OracleCoreConnection.configuration(for: OracleConnectionOptions(
+            host: "127.0.0.1",
+            port: 49_152,
+            user: "scott",
+            password: "tiger",
+            tls: OracleTLSDescription(mode: .required, serverName: "10.0.0.5")
+        ))
+        #expect(configuration.tls.sslContext != nil)
+        #expect(configuration.options.tlsServerName == nil)
+        #expect(configuration.serverNameForTLS == nil)
+    }
+
     private func assertCertificateUnavailable(
         for description: OracleTLSDescription,
         field: OracleCertificateField,

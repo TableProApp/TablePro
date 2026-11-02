@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProHTTP
 import TableProPluginKit
 
 struct RDSDiscoveryClient: Sendable {
@@ -78,7 +79,7 @@ struct RDSDiscoveryClient: Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         } catch {

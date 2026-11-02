@@ -22,15 +22,16 @@ final class SoftwareUpdater: ObservableObject {
     private let defaults = AppStorageEnvironment.shared.defaults
     private var observations: [NSKeyValueObservation] = []
     private var hasStarted = false
+    private var installOnQuitNow: (() -> Void)?
 
+    @Published private(set) var phase: AppUpdatePhase = .idle
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var automaticallyChecksForUpdates = true
     @Published private(set) var automaticallyDownloadsUpdates = true
     @Published private(set) var allowsAutomaticUpdates = true
     @Published private(set) var updateCheckInterval: TimeInterval = 0
     @Published private(set) var lastUpdateCheckDate: Date?
-    @Published private(set) var receivesBetaUpdates = false
-    @Published private(set) var hasPendingUpdate = false
+    @Published private(set) var channel: UpdateChannel = .stable
 
     private init() {
         controller = SPUStandardUpdaterController(
@@ -55,18 +56,16 @@ final class SoftwareUpdater: ObservableObject {
         controller.updater
     }
 
-    var checkForUpdatesTitle: String {
-        Self.checkForUpdatesTitle(hasPendingUpdate: hasPendingUpdate)
-    }
-
-    static func checkForUpdatesTitle(hasPendingUpdate: Bool) -> String {
-        hasPendingUpdate
-            ? String(localized: "Update Available…")
-            : String(localized: "Check for Updates…")
-    }
-
+    // Brings a deferred update forward in Sparkle's own window, or starts a check when none is waiting.
     func checkForUpdates() {
         controller.checkForUpdates(nil)
+    }
+
+    // Sparkle quits through the normal terminate path; a quit the user cancels leaves the handler usable again.
+    func installAndRelaunch() -> Bool {
+        guard let installOnQuitNow else { return false }
+        installOnQuitNow()
+        return true
     }
 
     func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
@@ -79,8 +78,8 @@ final class SoftwareUpdater: ObservableObject {
         refreshFromUpdater()
     }
 
-    func setReceivesBetaUpdates(_ enabled: Bool) {
-        UpdateChannel.select(enabled ? .beta : .stable, in: defaults)
+    func setChannel(_ channel: UpdateChannel) {
+        UpdateChannel.select(channel, in: defaults)
         if hasStarted {
             updater.resetUpdateCycleAfterShortDelay()
         }
@@ -99,12 +98,16 @@ final class SoftwareUpdater: ObservableObject {
         UpdateChannel.selected(in: defaults).sparkleChannels
     }
 
-    fileprivate func recordDeferredUpdate() {
-        hasPendingUpdate = true
+    fileprivate func apply(_ event: AppUpdateEvent) {
+        let next = phase.applying(event)
+        guard next != phase else { return }
+        phase = next
     }
 
-    fileprivate func clearDeferredUpdate() {
-        hasPendingUpdate = false
+    fileprivate func recordReadyToInstallOnQuit(_ release: UpdateRelease, install: @escaping () -> Void) {
+        installOnQuitNow = install
+        apply(.readyToInstallOnQuit(release))
+        Self.logger.info("Update \(release.version, privacy: .public) installs on quit")
     }
 
     fileprivate func recordUpdateCycleFinished(error: Error?) {
@@ -115,9 +118,12 @@ final class SoftwareUpdater: ObservableObject {
         Self.logger.error("Update check failed: \(nsError.domain, privacy: .public) \(nsError.code, privacy: .public)")
     }
 
+    // Sparkle holds the driver behind the install block weakly, so after an abort the block does nothing.
     fileprivate func recordUpdateAborted(error: Error) {
         let nsError = error as NSError
         guard nsError.code != Int(SUError.noUpdateError.rawValue) else { return }
+        installOnQuitNow = nil
+        apply(.updateAborted)
         Self.logger.error("Update driver aborted: \(nsError.domain, privacy: .public) \(nsError.code, privacy: .public)")
     }
 
@@ -147,7 +153,13 @@ final class SoftwareUpdater: ObservableObject {
         updateCheckInterval = updater.updateCheckInterval
         // Not KVO-compliant, so it is read here and on the update-cycle callback.
         lastUpdateCheckDate = updater.lastUpdateCheckDate
-        receivesBetaUpdates = UpdateChannel.selected(in: defaults) == .beta
+        channel = UpdateChannel.selected(in: defaults)
+    }
+}
+
+private extension UpdateRelease {
+    init(_ item: SUAppcastItem) {
+        self.init(version: item.displayVersionString, releaseNotesURL: item.fullReleaseNotesURL ?? item.releaseNotesURL)
     }
 }
 
@@ -168,27 +180,44 @@ extension SoftwareUpdaterDelegate: SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
         owner?.recordUpdateAborted(error: error)
     }
+
+    // The update Sparkle downloaded on its own; returning true keeps the handler for Relaunch to Update.
+    func updater(
+        _ updater: SPUUpdater,
+        willInstallUpdateOnQuit item: SUAppcastItem,
+        immediateInstallationBlock immediateInstallHandler: @escaping () -> Void
+    ) -> Bool {
+        guard let owner else { return false }
+        owner.recordReadyToInstallOnQuit(UpdateRelease(item), install: immediateInstallHandler)
+        return true
+    }
 }
 
 extension SoftwareUpdaterDelegate: @preconcurrency SPUStandardUserDriverDelegate {
     var supportsGentleScheduledUpdateReminders: Bool { true }
 
+    // Sparkle asks for no side effects here; the reminder is recorded in the call that follows.
     func standardUserDriverShouldHandleShowingScheduledUpdate(
         _ update: SUAppcastItem,
         andInImmediateFocus immediateFocus: Bool
     ) -> Bool {
-        guard immediateFocus else {
-            owner?.recordDeferredUpdate()
-            return false
-        }
-        return true
+        immediateFocus
+    }
+
+    func standardUserDriverWillHandleShowingUpdate(
+        _ handleShowingUpdate: Bool,
+        forUpdate update: SUAppcastItem,
+        state: SPUUserUpdateState
+    ) {
+        guard !handleShowingUpdate else { return }
+        owner?.apply(.scheduledUpdateDeferred(UpdateRelease(update)))
     }
 
     func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
-        owner?.clearDeferredUpdate()
+        owner?.apply(.updateReceivedAttention)
     }
 
     func standardUserDriverWillFinishUpdateSession() {
-        owner?.clearDeferredUpdate()
+        owner?.apply(.updateSessionFinished)
     }
 }

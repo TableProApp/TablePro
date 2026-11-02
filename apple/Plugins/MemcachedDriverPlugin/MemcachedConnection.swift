@@ -108,6 +108,8 @@ struct MemcachedEndpoint: Sendable {
     let host: String
     let port: Int
     let ssl: SSLConfiguration
+    // Behind a tunnel the dial goes to its loopback forward, so the certificate is checked against the host behind it.
+    let tlsServerName: String
     let username: String
     let password: String
     let connectTimeout: TimeAmount
@@ -135,7 +137,7 @@ actor MemcachedConnection {
     func open() async throws {
         guard channel == nil else { return }
         let sslContext = try Self.makeSSLContext(endpoint.ssl)
-        let serverHostname = endpoint.ssl.verifiesHostname ? endpoint.host : nil
+        let serverHostname = endpoint.ssl.verifiesHostname ? endpoint.tlsServerName : nil
         let replyHandler = MemcachedReplyHandler()
         let bootstrap = ClientBootstrap(group: NIOSingletons.posixEventLoopGroup)
             .connectTimeout(endpoint.connectTimeout)

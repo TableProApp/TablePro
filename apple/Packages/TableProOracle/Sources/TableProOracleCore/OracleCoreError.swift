@@ -33,6 +33,7 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
     case tlsHandshakeFailed(kind: OracleTLSFailureKind, serverMessage: String)
     case certificateUnavailable(field: OracleCertificateField, path: String)
     case certificateAuthorityRequired
+    case verifyIdentityNeedsHostName(address: String)
 
     public var errorDescription: String? {
         switch self {
@@ -87,6 +88,14 @@ public enum OracleCoreError: LocalizedError, Sendable, Equatable {
             return String(format: Self.certificateUnavailableFormat(for: field), path)
         case .certificateAuthorityRequired:
             return String(localized: "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate.")
+        case .verifyIdentityNeedsHostName(let address):
+            return String(
+                format: String(localized: """
+                    Verify Identity through a tunnel checks the certificate against the server's host name, and %@ \
+                    is an IP address. Enter the server's host name, or set SSL Mode to Verify CA.
+                    """),
+                address
+            )
         }
     }
 

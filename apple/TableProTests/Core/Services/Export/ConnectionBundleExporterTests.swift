@@ -70,6 +70,23 @@ struct ConnectionBundleExporterTests {
         #expect(imported.iconName == "server.rack")
     }
 
+    @Test("A file keeps the AWS sign-in choice and region, and a saved import keeps only the region")
+    func fileKeepsTheAWSSignInChoice() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        var connection = makeConnection(name: "Analytics")
+        connection.additionalFields = ["awsAuth": "profile", "awsRegion": "eu-west-1", "preConnectScript": "echo hi"]
+
+        let data = try await library.exporter.fileData(for: [connection], options: .connectionsOnly, passphrase: nil)
+
+        let shared = try #require(
+            try ConnectionBundleCodec.decode(data, keepingLocalCredentials: true).connections.first
+        ).settings
+        #expect(shared.additionalFields == ["awsAuth": "profile", "awsRegion": "eu-west-1"])
+        let saved = try #require(try ConnectionBundleCodec.decode(data).connections.first).settings
+        #expect(saved.additionalFields == ["awsRegion": "eu-west-1"])
+    }
+
     @Test("An encrypted file decrypts with the right passphrase and carries the password")
     func encryptedRoundTrip() async throws {
         let library = try ImportLibraryFixture()

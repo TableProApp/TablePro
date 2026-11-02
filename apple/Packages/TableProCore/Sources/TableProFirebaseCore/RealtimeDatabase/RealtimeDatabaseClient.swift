@@ -202,11 +202,17 @@ public struct RealtimeDatabaseInstanceLister: Sendable {
         guard response.isSuccess else {
             throw FirebaseError.from(status: response.statusCode, body: response.body, operation: String(localized: "list database instances"))
         }
-        let instances = try response.json()["instances"]?.arrayValue ?? []
+        let listing = try response.json()
+        return Self.instanceURLs(in: listing)
+    }
+
+    // The project's token goes to each instance, so a databaseUrl passes the same check as a typed Database URL.
+    static func instanceURLs(in listing: FirebaseJSON) -> [URL] {
+        let instances = listing["instances"]?.arrayValue ?? []
         return instances.compactMap { instance -> URL? in
             guard instance["state"]?.stringValue != "DISABLED",
                   let text = instance["databaseUrl"]?.stringValue else { return nil }
-            return URL(string: text.hasSuffix("/") ? text : text + "/")
+            return try? FirebaseConnectionSettings.parseDatabaseURL(text, emulator: false)
         }.sorted { RealtimeDatabaseClient.instanceName(of: $0) < RealtimeDatabaseClient.instanceName(of: $1) }
     }
 
