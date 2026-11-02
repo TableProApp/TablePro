@@ -75,7 +75,7 @@ internal sealed class AppSession : IDisposable
                 throwOnTimeout: false).Result
             ?? throw new InvalidOperationException($"No element named {name} appeared.");
 
-    public AutomationElement FindByNamePrefix(string prefix, AutomationElement scope) =>
+    public static AutomationElement FindByNamePrefix(string prefix, AutomationElement scope) =>
         Retry.WhileNull(
                 () => scope.FindAllDescendants().FirstOrDefault(element =>
                     element.Properties.Name.TryGetValue(out var name) && name.StartsWith(prefix, StringComparison.Ordinal)),

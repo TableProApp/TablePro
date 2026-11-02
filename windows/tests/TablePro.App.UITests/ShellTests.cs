@@ -106,7 +106,7 @@ public sealed class ShellTests
         app.FindByName("Track", app.Find("ObjectTree"));
         app.Find("HomeItem").AsListBoxItem().Select();
         var tree = app.Find("ConnectionTree");
-        app.FindByNamePrefix("Chinook (Sample),", tree);
+        AppSession.FindByNamePrefix("Chinook (Sample),", tree);
         app.Screenshot("09-home-library");
     }
 
