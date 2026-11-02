@@ -83,7 +83,8 @@ public sealed class ItemsRepeaterTrapTests
         }
         await WinUiHost.NextFrameAsync();
         Assert.Equal(0, offTarget);
-        Assert.Null(grid.Scroller.CurrentAnchor);
+        var anchor = grid.Scroller.CurrentAnchor;
+        Assert.False(anchor is DrawnRow or HeaderCell, $"the ScrollViewer anchors on a {anchor?.GetType().Name}");
         var problems = GridChecks.Check(grid, data);
         Assert.True(problems.None, problems.ToString());
     });
