@@ -1,6 +1,6 @@
 # TablePro for Windows
 
-The Windows app: C# on .NET 10 with WinUI 3, for Windows 10 1809 and later and Windows 11, on x64 and Arm64, over the shared Rust core in `core/` (`core/AGENTS.md`). The app project is not in the tree yet. Today this folder holds the interop library the app will reach the core through, the SQL editor control, and their tests.
+The Windows app: C# on .NET 10 with WinUI 3, for Windows 10 1809 and later and Windows 11, on x64 and Arm64, over the shared Rust core in `core/` (`core/AGENTS.md`). This folder holds the app, the interop library it reaches the core through, the SQL editor control, and their tests.
 
 This is the guide for work under `windows/`. The root `AGENTS.md` holds the rules every app shares. Claude Code loads this file through `windows/CLAUDE.md` once a file under `windows/` is read; Codex reads it when started in `windows/`.
 
@@ -18,6 +18,9 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `tests/TablePro.Interop.Tests`: xunit v3 tests against the real core and real SQLite files.
 - `src/TablePro.Editor.Model`: the editor's text, carets, undo history, find and line-state highlighter. Plain `net10.0` with no WinUI, so `tests/TablePro.Editor.Model.Tests` runs anywhere.
 - `src/TablePro.Editor`: the `SqlEditor` control over that model: Direct2D and DirectWrite in a SwapChainPanel, TSF, the UIA text provider, and the core's lexer through `CoreSqlLexer`.
+- `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw`.
+- `src/TablePro.App.Model`: the app's settings and session files, the library tree, the connection form's fields and the object folders. Plain `net10.0`, so `tests/TablePro.App.Model.Tests` runs anywhere.
+- `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own.
 - `docs/decisions/`: the decisions only the Windows app makes.
 - The core's side of the boundary: `core/crates/ffi` (`core/ARCHITECTURE.md`, Bindings).
 
@@ -40,6 +43,15 @@ dotnet test --solution TablePro.slnx
 ```
 
 On macOS the solution builds `TablePro.Editor` as a compile check only: WinUI's PRI and manifest tools run on Windows.
+
+The app and its UI tests build on Windows only, so they sit outside the solution:
+
+```bash
+dotnet build src/TablePro.App -r win-x64 -p:Platform=x64
+TABLEPRO_APP="$PWD/src/TablePro.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/TablePro.exe" dotnet test --project tests/TablePro.App.UITests
+```
+
+Use `win-arm64` and `ARM64` on Arm64. The build runs unpackaged with the Windows App SDK beside it and keeps its files in `%LOCALAPPDATA%\TablePro`, or in `TABLEPRO_DATA_DIR`; the UI tests give each launch a new folder there. `-p:WindowsPackageType=MSIX -p:GenerateAppxPackageOnBuild=true` with `dotnet publish` makes the MSIX, signed with `-p:PackageCertificateThumbprint=` and a certificate whose subject is `CN=TablePro Development`. `TABLEPRO_UI_SCREENSHOTS` names a folder for the tests' light and dark screenshots.
 
 The build runs `cargo build -p tablepro-ffi` for the runtime identifier, or for the SDK's own platform when none is given, and copies the library next to the assembly. `-r win-x64` or `-r win-arm64` picks the target, `-c Release` builds the core with Cargo's release profile, `CARGO_TARGET_DIR` is honoured, and `-p:SkipCoreBuild=true` leaves cargo out. Building needs the Rust toolchain that `rust-toolchain.toml` names, with the target added, and the .NET 10 SDK; on Windows, MSVC.
 
@@ -66,4 +78,4 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 
 ## CI
 
-`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, and checks the committed bindings on macOS.
+`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, builds the app and runs its UI tests on the Windows runners with their screenshots as an artifact, and checks the committed bindings on macOS.
