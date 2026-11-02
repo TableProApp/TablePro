@@ -166,7 +166,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard QuitApproval.approve() else { return .terminateCancel }
+        guard QuitApproval.approve() else {
+            AppRelauncher.shared.terminationWasCancelled()
+            return .terminateCancel
+        }
 
         Task {
             // First, while the drivers are open: a debug stop rolls back the routine's transaction.
@@ -190,6 +193,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         CloudSQLProxyManager.shared.terminateAllProcessesSync()
         TunnelCommandManager.shared.terminateAllProcessesSync()
         RemoteSQLiteTransportManager.shared.terminateAllProcessesSync()
+        AppRelauncher.shared.applicationWillTerminate()
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {

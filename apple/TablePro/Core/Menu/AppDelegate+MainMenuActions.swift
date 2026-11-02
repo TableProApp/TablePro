@@ -21,7 +21,7 @@ extension AppDelegate: NSMenuItemValidation {
     }
 
     @objc func checkForUpdates(_ sender: Any?) {
-        SoftwareUpdater.shared.checkForUpdates()
+        UpdateCenter.shared.performPrimaryAction()
     }
 
     @objc func openMCPActivity(_ sender: Any?) {
@@ -137,9 +137,9 @@ extension AppDelegate: NSMenuItemValidation {
         case #selector(switchToRecentTab(_:)), #selector(switchToLeastRecentTab(_:)):
             return (NSApp.keyWindow?.tabbedWindows?.count ?? 0) > 1
         case #selector(checkForUpdates(_:)):
-            // A deferred update reaches this title only through menu validation.
-            menuItem.title = SoftwareUpdater.shared.checkForUpdatesTitle
-            return SoftwareUpdater.shared.canCheckForUpdates
+            // The pending state reaches this title only through menu validation.
+            menuItem.title = UpdateCenter.shared.status.menuTitle
+            return UpdateCenter.shared.isPrimaryActionEnabled
         case #selector(reopenClosedTab(_:)):
             return !RecentlyClosedTabStore.shared.entries.isEmpty
         default:

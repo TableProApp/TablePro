@@ -22,6 +22,8 @@ enum PreferenceKeys {
     static let recentConnections = DefaultsKey<Data>("com.TablePro.connectionList.recentConnections")
     /// Device-local, and in the standard domain so a configuration profile can pin it.
     static let receivesBetaUpdates = DefaultsKey<Bool>("com.TablePro.updates.receivesBetaUpdates")
+    /// Set by Relaunch to Update and cleared by the next launch, which reopens the last session once.
+    static let reopenSessionAfterRelaunch = DefaultsKey<Bool>("com.TablePro.updates.reopenSessionAfterRelaunch")
     // Device-local: the highest plugin manifest serial accepted here, so an older signed manifest is refused.
     static let pluginRegistrySerial = DefaultsKey<Int>("com.TablePro.plugins.registrySerial")
 
@@ -42,6 +44,7 @@ enum PreferenceKeys {
         lastSeenAppBuild.name,
         lastSeenAppVersion.name,
         receivesBetaUpdates.name,
+        reopenSessionAfterRelaunch.name,
         pluginRegistrySerial.name,
     ]
 
