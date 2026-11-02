@@ -42,8 +42,8 @@ Kinds: `unit` runs in the Meson unit suite, `gtk` in the gtk suite, `docker` in 
 | F-002 | gtk | `f002_a_connect_beside_the_last_session_adopts_from_the_connecting_page_without_connecting_again` | [crates/app/src/ui/session_window/tests/sessions.rs](../crates/app/src/ui/session_window/tests/sessions.rs) |
 | F-002 | gtk | `f002_stop_connecting_a_dialog_connect_beside_the_sessions_closes_its_late_connection` | [crates/app/src/ui/session_window/tests/sessions.rs](../crates/app/src/ui/session_window/tests/sessions.rs) |
 | F-002 | gtk | `f002_a_late_catalog_commit_after_the_watch_drops_is_not_delivered` | [crates/app/src/ui/workspace/sidebar/catalog_watch.rs](../crates/app/src/ui/workspace/sidebar/catalog_watch.rs) |
-| F-003 | unit | `f003_truncated_file_is_unavailable_and_upsert_leaves_bytes_identical` | [core/crates/storage/src/connections.rs](../../core/crates/storage/src/connections.rs) |
-| F-003 | unit | `f003_a_newer_version_is_never_written` | [core/crates/storage/src/connections.rs](../../core/crates/storage/src/connections.rs) |
+| F-003 | unit | `f003_truncated_file_is_unavailable_and_upsert_leaves_bytes_identical` | [core/crates/storage/src/connections/mod.rs](../../core/crates/storage/src/connections/mod.rs) |
+| F-003 | unit | `f003_a_newer_version_is_never_written` | [core/crates/storage/src/connections/mod.rs](../../core/crates/storage/src/connections/mod.rs) |
 | F-004 | gtk | `f004_edit_after_draft_insert_targets_edited_row` | [crates/app/src/ui/data_grid/edit/tests/mod.rs](../crates/app/src/ui/data_grid/edit/tests/mod.rs) |
 | F-004 | gtk | `f004_menu_set_null_after_draft_removal_targets_clicked_row` | [crates/app/src/ui/data_grid/edit/tests/mod.rs](../crates/app/src/ui/data_grid/edit/tests/mod.rs) |
 | F-004 | gtk | `f004_copy_row_as_insert_uses_row_below_draft` | [crates/app/src/ui/browse_tab/tests/rows.rs](../crates/app/src/ui/browse_tab/tests/rows.rs) |

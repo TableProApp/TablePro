@@ -189,15 +189,26 @@ impl SavedConnectionEditor {
         let entry = copy.clone();
         let written = self
             .tasks
-            .spawn_blocking_task(move || store.upsert_blocking(entry))
+            .spawn_blocking_task(move || {
+                let id = entry.id;
+                store.upsert_blocking(entry)?;
+                // The store gives the copy its place in the group.
+                let stored = store
+                    .load_blocking()
+                    .ok()
+                    .and_then(|list| list.iter().find(|saved| saved.id == id).cloned());
+                Ok::<_, StorageError>(stored)
+            })
             .await
             .map_err(SavedConnectionError::from)
             .and_then(|written| written.map_err(SavedConnectionError::from));
-        if let Err(error) = written {
-            self.forget_secrets(copy.id).await;
-            return Err(error);
+        match written {
+            Ok(stored) => Ok(stored.unwrap_or(copy)),
+            Err(error) => {
+                self.forget_secrets(copy.id).await;
+                Err(error)
+            }
         }
-        Ok(copy)
     }
 
     /// A pick of the group it is already in writes nothing.
