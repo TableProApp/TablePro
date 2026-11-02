@@ -24,7 +24,7 @@ dotnet publish "$windows\tests\TablePro.DataGrid.Gate.Uia\TablePro.DataGrid.Gate
 if ($LASTEXITCODE -ne 0) { throw 'uia publish failed' }
 $build.publish_s = [math]::Round($sw.Elapsed.TotalSeconds, 1)
 
-# Other processes took whole cores from the Arm64 runner in the middle of steps (decision 0003, Gate).
+# Scanning is not the grid's cost. The Arm64 image keeps real-time protection on regardless.
 Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
 $build.defender_realtime = (Get-MpComputerStatus -ErrorAction SilentlyContinue).RealTimeProtectionEnabled
 $build | ConvertTo-Json | Set-Content "$Out\build-$Arch.json"
