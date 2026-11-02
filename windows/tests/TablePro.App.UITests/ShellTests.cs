@@ -5,6 +5,7 @@ using FlaUI.Core.WindowsAPI;
 
 namespace TablePro.App.UITests;
 
+// One class, so xunit runs these one at a time: they share the screen, the mouse and the keyboard.
 public sealed class ShellTests
 {
     public static TheoryData<string> Themes => ["Light", "Dark"];

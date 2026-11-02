@@ -6,8 +6,6 @@ using FlaUI.Core.Definitions;
 using FlaUI.Core.Tools;
 using FlaUI.UIA3;
 
-[assembly: CollectionBehavior(DisableTestParallelization = true)]
-
 namespace TablePro.App.UITests;
 
 // One launch of the app over a data folder of its own. The folder outlives the session when a test relaunches.
