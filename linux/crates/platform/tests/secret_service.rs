@@ -2,7 +2,7 @@ use std::error::Error;
 
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::credentials::{SecretKind, SecretLookup, SecretVault};
-use tablepro_storage::SecretStore;
+use tablepro_linux_platform::SecretStore;
 use uuid::Uuid;
 
 type TestResult = Result<(), Box<dyn Error>>;

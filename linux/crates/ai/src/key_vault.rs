@@ -1,11 +1,9 @@
 use async_trait::async_trait;
 use secrecy::SecretString;
-use tablepro_core::credentials::SecretError;
-use tablepro_storage::SecretStore;
-
 use tablepro_core::AiProvider;
+use tablepro_core::credentials::{SecretError, SecretItem, SecretItems};
 
-/// Where the providers' API keys are kept: the Secret Service, as
+/// Where the providers' API keys are kept: the platform's keyring, as
 /// connection passwords are.
 #[async_trait]
 pub trait ApiKeyVault: Send + Sync {
@@ -17,27 +15,16 @@ pub trait ApiKeyVault: Send + Sync {
 }
 
 #[async_trait]
-impl ApiKeyVault for SecretStore {
+impl<T: SecretItems + ?Sized> ApiKeyVault for T {
     async fn load_key(&self, provider: AiProvider) -> Result<Option<SecretString>, SecretError> {
-        self.load_ai_key(provider.id()).await
+        self.load_item(SecretItem::AiKey(provider)).await
     }
 
     async fn store_key(&self, provider: AiProvider, key: &SecretString) -> Result<(), SecretError> {
-        self.store_ai_key(provider.id(), key, &label(provider)).await
+        self.store_item(SecretItem::AiKey(provider), key).await
     }
 
     async fn delete_key(&self, provider: AiProvider) -> Result<(), SecretError> {
-        self.delete_ai_key(provider.id()).await
+        self.delete_item(SecretItem::AiKey(provider)).await
     }
-}
-
-/// What Seahorse shows for the item, so the user can tell what it is
-/// without TablePro open.
-fn label(provider: AiProvider) -> String {
-    let name = match provider {
-        AiProvider::Anthropic => "Anthropic",
-        AiProvider::OpenAi => "OpenAI",
-        AiProvider::OpenAiCompatible => "an OpenAI-compatible server",
-    };
-    format!("TablePro API key for {name}")
 }

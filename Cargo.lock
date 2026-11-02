@@ -5947,6 +5947,7 @@ dependencies = [
  "tablepro-driver-postgres",
  "tablepro-driver-redis",
  "tablepro-driver-sqlite",
+ "tablepro-linux-platform",
  "tablepro-mcp",
  "tablepro-net",
  "tablepro-session",
@@ -5984,7 +5985,6 @@ dependencies = [
  "sse-stream",
  "tablepro-core",
  "tablepro-net",
- "tablepro-storage",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -6217,6 +6217,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-linux-platform"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "gio",
+ "glib",
+ "oo7",
+ "secrecy",
+ "tablepro-core",
+ "tablepro-storage",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "tablepro-mcp"
 version = "0.0.0"
 dependencies = [
@@ -6321,9 +6338,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "chrono",
- "gio",
  "glib",
- "oo7",
  "secrecy",
  "serde",
  "serde_json",

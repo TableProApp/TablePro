@@ -6,7 +6,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
-use tablepro_storage::AppSettings;
+use tablepro_linux_platform::AppSettings;
 
 use super::ai_page::AiPage;
 use super::editor_page::EditorPage;

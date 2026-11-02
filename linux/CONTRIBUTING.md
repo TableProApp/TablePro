@@ -48,7 +48,7 @@ meson devenv -C _build cargo clippy --locked --workspace --all-targets --no-defa
 meson compile -C _build
 xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
 dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
-  && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
+  && meson devenv -C _build cargo test --locked -p tablepro-linux-platform --test secret_service -- --ignored"
 build-aux/packaging/make-dist.sh _build/dist
 ```
 

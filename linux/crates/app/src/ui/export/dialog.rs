@@ -216,7 +216,7 @@ impl CsvRows {
 
     /// GSettings is the single copy, so two open dialogs converge instead
     /// of overwriting each other.
-    fn save_changes_to(self: &Rc<Self>, settings: &Rc<tablepro_storage::AppSettings>) {
+    fn save_changes_to(self: &Rc<Self>, settings: &Rc<tablepro_linux_platform::AppSettings>) {
         let persist = {
             let rows = self.clone();
             let settings = settings.clone();
@@ -294,7 +294,7 @@ pub(crate) struct ExportDialogInit<'a> {
     pub exports: &'a Rc<ExportLedger>,
     pub offer: ExportOffer,
     pub dialect: Option<Arc<dyn SqlDialect>>,
-    pub settings: &'a Rc<tablepro_storage::AppSettings>,
+    pub settings: &'a Rc<tablepro_linux_platform::AppSettings>,
     /// The tab that offered the rows.
     pub tab: Uuid,
 }
@@ -409,7 +409,7 @@ pub(crate) fn present(init: ExportDialogInit<'_>) {
     dialog.present(Some(parent));
 }
 
-fn reset_button(rows: &Rc<CsvRows>, settings: &Rc<tablepro_storage::AppSettings>) -> gtk::Button {
+fn reset_button(rows: &Rc<CsvRows>, settings: &Rc<tablepro_linux_platform::AppSettings>) -> gtk::Button {
     let button = gtk::Button::builder()
         .label(crate::i18n::gettext("Reset to Defaults"))
         .build();

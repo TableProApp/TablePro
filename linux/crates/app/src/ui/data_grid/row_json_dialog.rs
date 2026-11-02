@@ -8,8 +8,8 @@ use libadwaita::prelude::*;
 use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::export::EncodeError;
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
 
 use crate::services::grid::RowSnapshot;
 use crate::ui::clipboard::{ClipboardFormat, ClipboardPayload};

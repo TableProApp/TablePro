@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{RowIdentity, TableRef};
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
 
 use super::{KeysHandle, LayoutBinding};
 use crate::services::grid::{EditPolicy, GridColumn};

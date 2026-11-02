@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use tablepro_core::AiProvider;
 use tablepro_core::export::{CsvDecimal, CsvDelimiter, CsvLineBreak, CsvOptions, CsvQuote};
-use tablepro_storage::settings::keys;
-use tablepro_storage::{AppSettings, EditorFont, SettingsError, WindowGeometry};
+use tablepro_linux_platform::settings::keys;
+use tablepro_linux_platform::{AppSettings, EditorFont, SettingsError, WindowGeometry};
 
 type TestResult = Result<(), Box<dyn Error>>;
 

@@ -1,0 +1,25 @@
+[package]
+name = "tablepro-linux-platform"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablepro-core.workspace = true
+tablepro-storage.workspace = true
+async-trait.workspace = true
+gio.workspace = true
+glib.workspace = true
+oo7.workspace = true
+secrecy.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+
+[lints]
+workspace = true

@@ -7,8 +7,6 @@
 //! binary of its own with one test, and why they are set before GLib is
 //! asked anything.
 
-use tablepro_storage::StoragePaths;
-
 #[test]
 fn an_unset_runtime_dir_falls_back_to_the_cache_dir() {
     let cache = tempfile::tempdir().expect("a directory");
@@ -19,7 +17,7 @@ fn an_unset_runtime_dir_falls_back_to_the_cache_dir() {
         std::env::set_var("XDG_CACHE_HOME", cache.path());
     }
 
-    let paths = StoragePaths::from_glib("tablepro", "app.tablepro.TablePro");
+    let paths = tablepro_linux_platform::storage_paths("tablepro", "app.tablepro.TablePro");
 
     assert_eq!(paths.runtime, cache.path().join("app").join("app.tablepro.TablePro"));
 }

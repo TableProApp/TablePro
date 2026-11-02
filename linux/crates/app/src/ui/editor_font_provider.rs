@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use gtk4::glib::translate::IntoGlib;
 use gtk4::pango;
-use tablepro_storage::{AppSettings, EditorFont};
+use tablepro_linux_platform::{AppSettings, EditorFont};
 
 thread_local! {
     static PROVIDER: RefCell<Option<(gtk4::CssProvider, String)>> = const { RefCell::new(None) };
@@ -73,7 +73,7 @@ fn escape_css_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_storage::EditorFont;
+    use tablepro_linux_platform::EditorFont;
 
     use crate::test_support::MemorySettings;
 

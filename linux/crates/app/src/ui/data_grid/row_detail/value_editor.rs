@@ -531,11 +531,10 @@ impl RowDetailPane {
         };
         let mut guards = vec![HandlerGuard::new(&style_manager, on_dark)];
         if let Some(settings) = settings {
-            let on_scheme = settings
-                .gio()
-                .connect_changed(Some(tablepro_storage::settings::keys::STYLE_SCHEME), move |_, _| {
-                    paint()
-                });
+            let on_scheme = settings.gio().connect_changed(
+                Some(tablepro_linux_platform::settings::keys::STYLE_SCHEME),
+                move |_, _| paint(),
+            );
             guards.push(HandlerGuard::new(settings.gio(), on_scheme));
         }
         self.imp().guards.borrow_mut().extend(guards);

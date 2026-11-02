@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use oo7::Keyring;
 use secrecy::{ExposeSecret, SecretString};
-use tablepro_core::credentials::{SecretError, SecretKind, SecretLookup, SecretVault};
+use tablepro_core::credentials::{SecretError, SecretItem, SecretItems, SecretKind, SecretLookup, SecretVault};
+use tablepro_storage::{SecretItemLabeler, english_item_label};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -20,6 +21,7 @@ pub struct SecretStore {
     /// Opened on first use and dropped after a wire error, so a service
     /// restart does not leave every later call failing on a dead socket.
     keyring: Mutex<Option<Keyring>>,
+    item_labeler: SecretItemLabeler,
 }
 
 impl SecretStore {
@@ -27,7 +29,13 @@ impl SecretStore {
         Self {
             schema: schema.into(),
             keyring: Mutex::new(None),
+            item_labeler: english_item_label,
         }
+    }
+
+    pub fn with_item_labeler(mut self, labeler: SecretItemLabeler) -> Self {
+        self.item_labeler = labeler;
+        self
     }
 
     pub fn schema(&self) -> &str {
@@ -190,6 +198,35 @@ impl SecretVault for SecretStore {
         let attributes = secret_attributes::for_connection(&self.schema, id);
         self.with_keyring(async |keyring| keyring.delete(&attributes).await)
             .await
+    }
+}
+
+#[async_trait]
+impl SecretItems for SecretStore {
+    async fn load_item(&self, item: SecretItem) -> Result<Option<SecretString>, SecretError> {
+        match item {
+            SecretItem::McpToken => self.load_mcp_token().await,
+            SecretItem::AiKey(provider) => self.load_ai_key(provider.id()).await,
+        }
+    }
+
+    async fn store_item(&self, item: SecretItem, secret: &SecretString) -> Result<(), SecretError> {
+        let label = (self.item_labeler)(item);
+        match item {
+            SecretItem::McpToken => self.store_mcp_token(secret, &label).await,
+            SecretItem::AiKey(provider) => self.store_ai_key(provider.id(), secret, &label).await,
+        }
+    }
+
+    async fn delete_item(&self, item: SecretItem) -> Result<(), SecretError> {
+        match item {
+            SecretItem::McpToken => {
+                let attributes = secret_attributes::for_mcp_token(&self.schema);
+                self.with_keyring(async |keyring| keyring.delete(&attributes).await)
+                    .await
+            }
+            SecretItem::AiKey(provider) => self.delete_ai_key(provider.id()).await,
+        }
     }
 }
 

@@ -53,9 +53,6 @@ pub enum StorageError {
     #[error("export encoding failed: {0}")]
     Encode(#[from] tablepro_core::export::RenderError),
 
-    #[error("settings error: {0}")]
-    Settings(#[from] crate::settings::SettingsError),
-
     #[error("the query history was created by a newer version of TablePro (schema {version})")]
     HistoryNewerThanApp { version: i64 },
 

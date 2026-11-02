@@ -6,8 +6,8 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gdk, gio, glib};
 use sourceview5::prelude::*;
-use tablepro_storage::AppSettings;
-use tablepro_storage::settings::keys;
+use tablepro_linux_platform::AppSettings;
+use tablepro_linux_platform::settings::keys;
 
 use super::SqlEditor;
 use super::editor_file::WriteFailure;

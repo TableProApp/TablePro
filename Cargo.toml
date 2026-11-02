@@ -6,6 +6,7 @@ members = [
     "linux/crates/core",
     "linux/crates/mcp",
     "linux/crates/net",
+    "linux/crates/platform",
     "linux/crates/session",
     "linux/crates/ssh",
     "linux/crates/storage",
@@ -42,6 +43,7 @@ tablepro-driver-redis = { path = "linux/crates/drivers/redis" }
 tablepro-driver-sqlite = { path = "linux/crates/drivers/sqlite" }
 tablepro-mcp = { path = "linux/crates/mcp" }
 tablepro-net = { path = "linux/crates/net" }
+tablepro-linux-platform = { path = "linux/crates/platform" }
 tablepro-session = { path = "linux/crates/session" }
 tablepro-ssh = { path = "linux/crates/ssh" }
 tablepro-storage = { path = "linux/crates/storage" }

@@ -5,7 +5,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind};
-use tablepro_storage::AppSettings;
+use tablepro_linux_platform::AppSettings;
 
 use crate::ui::clipboard::{ClipboardFormat, ClipboardPayload};
 use crate::ui::source_dialog::{SourceText, cut, source_dialog};

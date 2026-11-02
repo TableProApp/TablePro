@@ -15,8 +15,6 @@ mod name_rules;
 mod paths;
 pub mod query_history;
 pub mod saved_queries;
-mod secrets;
-pub mod settings;
 mod tag_name_error;
 mod unix_time;
 
@@ -30,8 +28,8 @@ pub use connections::{
     ImportPreview, ImportReport, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig,
 };
 pub use credentials::{
-    CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretLabeler,
-    english_secret_label,
+    CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretItemLabeler,
+    SecretLabeler, english_item_label, english_secret_label,
 };
 pub use document_problem::{DocumentProblem, DocumentProblemKind};
 pub use drafts::{DraftId, DraftScope, DraftStore};
@@ -40,6 +38,4 @@ pub use group_name_error::GroupNameError;
 pub use paths::StoragePaths;
 pub use query_history::QueryHistory;
 pub use saved_queries::SavedQueries;
-pub use secrets::SecretStore;
-pub use settings::{AppSettings, EditorFont, SettingsError, WindowGeometry};
 pub use tag_name_error::TagNameError;

@@ -4,7 +4,8 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use tablepro_core::DriverRegistry;
-use tablepro_storage::{AppSettings, StoragePaths};
+use tablepro_linux_platform::AppSettings;
+use tablepro_storage::StoragePaths;
 
 pub mod application;
 pub mod config;
@@ -33,7 +34,7 @@ pub enum StartupError {
     #[error("could not register the embedded resources: {0}")]
     Resources(#[source] glib::Error),
     #[error("could not open the settings schema: {0}")]
-    Settings(#[from] tablepro_storage::SettingsError),
+    Settings(#[from] tablepro_linux_platform::SettingsError),
 }
 
 /// Start the application and return its exit code once the last window
@@ -46,7 +47,7 @@ pub fn run() -> Result<glib::ExitCode, StartupError> {
         tracing::warn!(%error, "translations unavailable; falling back to the source strings");
     }
 
-    let paths = StoragePaths::from_glib(config::storage_dir_name(), config::APP_ID);
+    let paths = tablepro_linux_platform::storage_paths(config::storage_dir_name(), config::APP_ID);
     crash_report::install(paths.crashes_dir());
 
     let runtime = runtime::AppRuntime::build().map_err(StartupError::Runtime)?;

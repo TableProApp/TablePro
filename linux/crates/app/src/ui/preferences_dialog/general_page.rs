@@ -5,9 +5,9 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
+use tablepro_linux_platform::AppSettings;
+use tablepro_linux_platform::settings::keys;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
-use tablepro_storage::settings::keys;
 
 use super::data_browser_group::DataBrowserGroup;
 use super::history_group::HistoryGroup;

@@ -6,7 +6,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sourceview5::prelude::*;
-use tablepro_storage::AppSettings;
+use tablepro_linux_platform::AppSettings;
 
 use crate::ui::clipboard::ClipboardPayload;
 use crate::ui::format::{format_thousands, plural_count};
@@ -123,11 +123,10 @@ fn follow_scheme(buffer: &sourceview5::Buffer, settings: Option<&Rc<AppSettings>
     };
     let mut guards = vec![HandlerGuard::new(&style_manager, on_dark)];
     if let Some(settings) = settings {
-        let on_scheme = settings
-            .gio()
-            .connect_changed(Some(tablepro_storage::settings::keys::STYLE_SCHEME), move |_, _| {
-                paint()
-            });
+        let on_scheme = settings.gio().connect_changed(
+            Some(tablepro_linux_platform::settings::keys::STYLE_SCHEME),
+            move |_, _| paint(),
+        );
         guards.push(HandlerGuard::new(settings.gio(), on_scheme));
     }
     guards
@@ -202,7 +201,7 @@ mod tests {
         let window = OwnedWindow::presented(adw::Window::new());
         adw::StyleManager::default().set_color_scheme(adw::ColorScheme::ForceLight);
         let settings = MemorySettings::new();
-        let key = tablepro_storage::settings::keys::STYLE_SCHEME;
+        let key = tablepro_linux_platform::settings::keys::STYLE_SCHEME;
         settings.get().gio().set_string(key, "classic").expect("a writable key");
         let shown = source_dialog(text("SELECT 1"), Some(settings.get()));
         shown.dialog.present(Some(&*window));

@@ -426,7 +426,7 @@ platform_step() {
             ;;
 
         secrets)
-            STEP_DETAIL="tablepro-storage secret_service"
+            STEP_DETAIL="tablepro-linux-platform secret_service"
             prepare
             require_configured
             require_tool dbus-run-session
@@ -443,7 +443,7 @@ platform_step() {
                 dbus-run-session -- bash -c \
                 "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci > /dev/null \
                 && meson devenv -C '$BUILD_DIR' --workdir '$LINUX_DIR' \
-                    cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
+                    cargo test --locked -p tablepro-linux-platform --test secret_service -- --ignored"
             code=$?
             rm -rf "$keyring_home"
             report_tests "$log" 0

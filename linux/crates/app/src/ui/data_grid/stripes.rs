@@ -1,7 +1,7 @@
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{self as gtk, glib};
-use tablepro_storage::settings::keys;
+use tablepro_linux_platform::settings::keys;
 
 use super::DataGrid;
 use super::grid_cell::set_class;

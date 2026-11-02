@@ -56,10 +56,10 @@ use tablepro_core::browse::RowReference;
 use tablepro_core::dialect::{SqlDialect, TablePaging};
 use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{ColumnInfo, FilterSet};
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::operation::DeadlinePolicy;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, Session};
-use tablepro_storage::AppSettings;
 
 use self::browse_actions::BrowseActions;
 pub(crate) use self::browse_command::{BrowseCommand, ColumnsReply};

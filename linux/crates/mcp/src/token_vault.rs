@@ -1,11 +1,8 @@
 use async_trait::async_trait;
 use secrecy::SecretString;
-use tablepro_core::credentials::SecretError;
-use tablepro_storage::SecretStore;
+use tablepro_core::credentials::{SecretError, SecretItem, SecretItems};
 
 use crate::access_token::{AccessToken, TokenError};
-
-const LABEL: &str = "TablePro MCP access token";
 
 #[async_trait]
 pub trait TokenVault: Send + Sync {
@@ -15,13 +12,13 @@ pub trait TokenVault: Send + Sync {
 }
 
 #[async_trait]
-impl TokenVault for SecretStore {
+impl<T: SecretItems + ?Sized> TokenVault for T {
     async fn load_token(&self) -> Result<Option<SecretString>, SecretError> {
-        self.load_mcp_token().await
+        self.load_item(SecretItem::McpToken).await
     }
 
     async fn store_token(&self, token: &SecretString) -> Result<(), SecretError> {
-        self.store_mcp_token(token, LABEL).await
+        self.store_item(SecretItem::McpToken, token).await
     }
 }
 
