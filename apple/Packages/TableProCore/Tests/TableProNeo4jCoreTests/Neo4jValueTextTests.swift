@@ -42,6 +42,52 @@ struct Neo4jValueTextTests {
             == "PT-2562047788015215H-30M-8S")
     }
 
+    @Test("A temporal outside what Neo4j can store reads like any undecodable structure instead of crashing")
+    func temporalsOutOfRange() {
+        let hostile: [(UInt8, [PackStreamValue])] = [
+            (0x44, [.int(.max)]),
+            (0x44, [.int(.min)]),
+            (0x74, [.int(.max)]),
+            (0x54, [.int(0), .int(.min)]),
+            (0x64, [.int(.min), .int(0)]),
+            (0x64, [.int(0), .int(.max)]),
+            (0x49, [.int(.max), .int(0), .int(1)]),
+            (0x46, [.int(0), .int(0), .int(.max)]),
+            (0x69, [.int(.max), .int(0), .string("Asia/Ho_Chi_Minh")])
+        ]
+        for (tag, fields) in hostile {
+            #expect(Neo4jValueText.text(structure(tag, fields)) == "<null>")
+        }
+        #expect(Neo4jValueText.text(structure(0x45, [.int(0), .int(0), .int(0), .int(.min)])) != nil)
+        #expect(Neo4jValueText.text(structure(0x45, [.int(0), .int(0), .int(0), .int(-500_000_000)])) == "PT-0.5S")
+    }
+
+    @Test("A DateTime at either end of the range reads at any offset, since its seconds are UTC")
+    func dateTimesAtTheRangeEnds() {
+        let maxLocal: Int64 = 365_241_780_471 * 86_400 + 86_399
+        let minLocal: Int64 = -365_243_219_162 * 86_400
+        #expect(Neo4jValueText.text(structure(0x49, [.int(maxLocal + 64_800), .int(999_999_999), .int(-64_800)]))
+            == "+999999999-12-31T23:59:59.999999999-18:00")
+        #expect(Neo4jValueText.text(structure(0x49, [.int(minLocal - 64_800), .int(0), .int(64_800)]))
+            == "-999999999-01-01T00:00:00+18:00")
+        #expect(Neo4jValueText.text(structure(0x49, [.int(maxLocal + 64_801), .int(0), .int(-64_800)])) == "<null>")
+        #expect(Neo4jValueText.text(structure(0x49, [.int(minLocal - 64_801), .int(0), .int(64_800)])) == "<null>")
+        #expect(Neo4jValueText.text(structure(0x69, [.int(maxLocal + 43_200), .int(999_999_999), .string("Etc/GMT+12")]))
+            == "+999999999-12-31T23:59:59.999999999-12:00[Etc/GMT+12]")
+        #expect(Neo4jValueText.text(structure(0x69, [.int(minLocal - 50_400), .int(0), .string("Etc/GMT-14")]))
+            == "-999999999-01-01T00:00:00+14:00[Etc/GMT-14]")
+        #expect(Neo4jValueText.text(structure(0x46, [.int(maxLocal + 1), .int(0), .int(-64_800)])) == "<null>")
+        #expect(Neo4jValueText.text(structure(0x66, [.int(minLocal - 1), .int(0), .string("Etc/GMT-14")])) == "<null>")
+    }
+
+    @Test("A path step of Int64.min is refused instead of crashing")
+    func pathStepAtInt64Min() {
+        let node = structure(0x4E, [.int(1), .list([.string("A")]), .map([:]), .string("n1")])
+        let knows = structure(0x72, [.int(9), .string("KNOWS"), .map([:]), .string("r9")])
+        let path = structure(0x50, [.list([node]), .list([knows]), .list([.int(.min), .int(0)])])
+        #expect(Neo4jValueText.text(path) != nil)
+    }
+
     @Test("A path lists its steps in order, with each relationship pointing the way it was walked")
     func pathSteps() throws {
         let first = structure(0x4E, [.int(1), .list([.string("A")]), .map([:]), .string("n1")])
@@ -86,6 +132,11 @@ struct Neo4jValueTextTests {
         #expect(created.counters.map(\.counter) == [.nodesCreated, .relationshipsCreated, .labelsAdded])
 
         #expect(Neo4jUpdateCounts(summary: [:]).counters.isEmpty)
+
+        let huge = Neo4jUpdateCounts(summary: ["stats": .map([
+            "nodes-created": .int(.max), "relationships-created": .int(1)
+        ])])
+        #expect(huge.entitiesChanged == .max)
     }
 
     @Test("Points name their SRID and coordinates")

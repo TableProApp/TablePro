@@ -411,10 +411,12 @@ struct ImportDialog: View {
 
         let urlToRead: URL
         do {
-            urlToRead = try await decompressIfNeeded(url)
+            urlToRead = try await FileDecompressor.decompressIfNeeded(url)
             if urlToRead != url {
                 tempPreviewURL = urlToRead
             }
+        } catch is CancellationError {
+            return
         } catch {
             filePreview = String(format: String(localized: "Failed to decompress file: %@"), error.localizedDescription)
             hasPreviewError = true
@@ -569,13 +571,5 @@ struct ImportDialog: View {
             }
             tempPreviewURL = nil
         }
-    }
-
-    private func fileSystemPath(for url: URL) -> String {
-        url.path()
-    }
-
-    private func decompressIfNeeded(_ url: URL) async throws -> URL {
-        try await FileDecompressor.decompressIfNeeded(url, fileSystemPath: fileSystemPath)
     }
 }

@@ -49,7 +49,9 @@ let package = Package(
             name: "TableProMCP",
             dependencies: [
                 "TableProUtilities",
-                .product(name: "TableProLogRedaction", package: "TableProCore")
+                .product(name: "TableProCoreTypes", package: "TableProCore"),
+                .product(name: "TableProLogRedaction", package: "TableProCore"),
+                .product(name: "TableProWireIO", package: "TableProCore")
             ],
             path: "Sources/TableProMCP",
             swiftSettings: appModuleSettings

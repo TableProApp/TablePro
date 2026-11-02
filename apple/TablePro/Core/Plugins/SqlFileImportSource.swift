@@ -126,7 +126,7 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
             return existing
         }
 
-        let result = try await FileDecompressor.decompressIfNeeded(url) { $0.path() }
+        let result = try await FileDecompressor.decompressIfNeeded(url)
 
         if result != url {
             _decompressedURL.withLock { $0 = result }

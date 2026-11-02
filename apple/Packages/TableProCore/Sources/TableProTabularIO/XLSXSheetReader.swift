@@ -59,7 +59,7 @@ struct XLSXSheetReader {
             reader.consume(buffer, isFinal: isFinal)
         }
         progress?(1)
-        return reader.finish(name: sheet.name, sharedStrings: workbook.sharedStrings)
+        return try reader.finish(name: sheet.name, sharedStrings: workbook.sharedStrings, isCancelled: isCancelled)
     }
 
     mutating func consume(_ buffer: UnsafeBufferPointer<UInt8>, isFinal: Bool) -> Int {
@@ -86,13 +86,10 @@ struct XLSXSheetReader {
         }
     }
 
-    mutating func finish(name: String, sharedStrings: XLSXSharedStrings) -> XLSXSheetSource {
-        for merge in merges {
-            for column in merge.columns where column < builders.count {
-                let kept = column == merge.start.column ? merge.start.row : nil
-                builders[column].clear(rows: merge.rows, keeping: kept)
-            }
-        }
+    mutating func finish(name: String, sharedStrings: XLSXSharedStrings, isCancelled: () -> Bool) throws -> XLSXSheetSource {
+        var seen = Set<XLSXCellRange>()
+        let distinctMerges = merges.filter { seen.insert($0).inserted }
+        try hideMergedCells(distinctMerges, isCancelled: isCancelled)
         var rowBounds: ClosedRange<Int>?
         var columnBounds: ClosedRange<Int>?
         for column in builders.indices {
@@ -104,7 +101,7 @@ struct XLSXSheetReader {
         guard let rowBounds, let columnBounds else {
             return XLSXSheetSource(
                 name: name,
-                layout: XLSXSheetSource.Layout(rowCount: 0, firstRowIndex: 0, firstColumnIndex: 0, mergedRanges: merges),
+                layout: XLSXSheetSource.Layout(rowCount: 0, firstRowIndex: 0, firstColumnIndex: 0, mergedRanges: distinctMerges),
                 columns: [],
                 arena: arenaHeap,
                 sharedStrings: sharedStrings,
@@ -123,13 +120,47 @@ struct XLSXSheetReader {
                 rowCount: rowBounds.count,
                 firstRowIndex: rowBounds.lowerBound,
                 firstColumnIndex: columnBounds.lowerBound,
-                mergedRanges: merges
+                mergedRanges: distinctMerges
             ),
             columns: stores,
             arena: arenaHeap,
             sharedStrings: sharedStrings,
             dateSystem: dateSystem
         )
+    }
+
+    // A merge hides every cell it covers except its top-left one. Sweeping columns with a running count of
+    // the ranges over each row costs each range two updates and each stored cell one lookup, however the
+    // ranges overlap.
+    private mutating func hideMergedCells(_ merges: [XLSXCellRange], isCancelled: () -> Bool) throws {
+        let lastRow = builders.reduce(-1) { max($0, $1.lastRowIndex) }
+        let ranges = merges.filter { $0.start.column < builders.count && $0.start.row <= lastRow }
+        guard !ranges.isEmpty else { return }
+        var topLeftCounts: [XLSXCellReference: Int] = [:]
+        for range in ranges {
+            topLeftCounts[range.start, default: 0] += 1
+        }
+        let byStart = ranges.sorted { $0.start.column < $1.start.column }
+        let byEnd = ranges.sorted { $0.end.column < $1.end.column }
+        var coverage = XLSXRowCoverage(rowCount: lastRow + 1)
+        var nextStart = 0
+        var nextEnd = 0
+        for column in builders.indices {
+            if isCancelled() { throw TabularCancellation() }
+            while nextStart < byStart.count, byStart[nextStart].start.column <= column {
+                coverage.add(1, rows: byStart[nextStart].start.row...min(byStart[nextStart].end.row, lastRow))
+                nextStart += 1
+            }
+            while nextEnd < byEnd.count, byEnd[nextEnd].end.column < column {
+                coverage.add(-1, rows: byEnd[nextEnd].start.row...min(byEnd[nextEnd].end.row, lastRow))
+                nextEnd += 1
+            }
+            guard nextStart > nextEnd else { continue }
+            builders[column].clear { row in
+                let covering = coverage.count(at: row)
+                return covering > 0 && covering > topLeftCounts[XLSXCellReference(row: row, column: column), default: 0]
+            }
+        }
     }
 
     private mutating func beginRow(_ scanner: XMLByteScanner, attributes: Range<Int>) {
@@ -342,5 +373,36 @@ struct XLSXSheetReader {
             builders.append(contentsOf: repeatElement(XLSXColumnBuilder(), count: column + 1 - builders.count))
         }
         builders[column].append(row: position.row, kind: kind, payload: payload)
+    }
+}
+
+private struct XLSXRowCoverage {
+    private var tree: [Int]
+
+    init(rowCount: Int) {
+        tree = [Int](repeating: 0, count: rowCount + 1)
+    }
+
+    mutating func add(_ delta: Int, rows: ClosedRange<Int>) {
+        update(at: rows.lowerBound, by: delta)
+        update(at: rows.upperBound + 1, by: -delta)
+    }
+
+    func count(at row: Int) -> Int {
+        var position = row + 1
+        var total = 0
+        while position > 0 {
+            total += tree[position]
+            position &= position - 1
+        }
+        return total
+    }
+
+    private mutating func update(at row: Int, by delta: Int) {
+        var position = row + 1
+        while position < tree.count {
+            tree[position] += delta
+            position += position & -position
+        }
     }
 }

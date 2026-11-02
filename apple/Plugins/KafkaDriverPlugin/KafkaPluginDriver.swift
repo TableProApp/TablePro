@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 import TableProPluginKit
 
 /// The Kafka driver.
@@ -158,7 +159,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             partitions: topic.partitions.map(\.index),
             cluster: cluster
         )
-        let total = bounds.reduce(Int64(0)) { $0 + $1.messageCount }
+        let total = KafkaOffsetMath.total(bounds.map(\.messageCount))
         return PluginTableMetadata(tableName: table, rowCount: total)
     }
 
@@ -494,8 +495,6 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    /// A group's lag, per partition. This is the number a Kafka debugging session is usually
-    /// after: how far behind the consumers are, and on which partition.
     private func runDescribeGroup(_ group: String) async throws -> PluginQueryResult {
         // Asked first, and only to tell a typo apart from a group with nothing committed. Kafka
         // answers OffsetFetch for a group it has never heard of with an empty topic list and no
@@ -520,7 +519,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 // A group that never committed a partition reports -1, and calling that a lag
                 // of `end + 1` would be a fabricated number.
                 let lag: PluginCellValue = offset.committedOffset >= 0
-                    ? .text(String(max(0, end - offset.committedOffset)))
+                    ? .text(String(KafkaOffsetMath.messageCount(earliest: offset.committedOffset, latest: end)))
                     : .null
                 rows.append([
                     .text(topic),

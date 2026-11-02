@@ -1,17 +1,18 @@
 //
 //  CassandraCellText.swift
-//  CassandraDriverPlugin
+//  TableProCassandraCore
 //
 
 import Foundation
 
-/// The text a cell shows for the CQL types the C driver hands over as raw parts rather than as a string.
-enum CassandraCellText {
+// The text a cell shows for the CQL types the C driver hands over as raw parts rather than as a string.
+public enum CassandraCellText {
     private static let nanosecondsPerSecond: Int64 = 1_000_000_000
+    private static let hexDigits = Array("0123456789abcdef".unicodeScalars)
 
-    /// Cassandra's own spelling of a duration, the form cqlsh prints and CQL accepts back: `1y2mo3d4h5m6s7ms`.
-    /// A duration's parts all carry the same sign, so a negative one is the positive spelling with a leading `-`.
-    static func durationText(months: Int32, days: Int32, nanoseconds: Int64) -> String {
+    // Cassandra's own spelling of a duration, the form cqlsh prints and CQL accepts back: `1y2mo3d4h5m6s7ms`.
+    // A duration's parts all carry the same sign, so a negative one is the positive spelling with a leading `-`.
+    public static func durationText(months: Int32, days: Int32, nanoseconds: Int64) -> String {
         let isNegative = months < 0 || days < 0 || nanoseconds < 0
         let months = Int64(months).magnitude
         let days = Int64(days).magnitude
@@ -27,9 +28,9 @@ enum CassandraCellText {
         return isNegative ? "-" + text : text
     }
 
-    /// A `vector<float, n>` arrives as a custom type whose class name carries the element type, with the values
-    /// packed as big-endian 32-bit floats. Any other custom value is shown as its bytes.
-    static func customText(className: String?, bytes: Data) -> String {
+    // A `vector<float, n>` arrives as a custom type whose class name carries the element type, with the values
+    // packed as big-endian 32-bit floats. Any other custom value is shown as its bytes.
+    public static func customText(className: String?, bytes: Data) -> String {
         guard let className, isFloatVector(className), bytes.count.isMultiple(of: 4) else {
             return hex(bytes)
         }
@@ -41,8 +42,14 @@ enum CassandraCellText {
         return "[" + values.joined(separator: ", ") + "]"
     }
 
-    static func hex(_ bytes: Data) -> String {
-        "0x" + bytes.map { String(format: "%02x", $0) }.joined()
+    public static func hex(_ bytes: Data) -> String {
+        var text = "0x"
+        text.reserveCapacity(2 + bytes.count * 2)
+        for byte in bytes {
+            text.unicodeScalars.append(hexDigits[Int(byte >> 4)])
+            text.unicodeScalars.append(hexDigits[Int(byte & 0x0F)])
+        }
+        return text
     }
 
     private static func isFloatVector(_ className: String) -> Bool {

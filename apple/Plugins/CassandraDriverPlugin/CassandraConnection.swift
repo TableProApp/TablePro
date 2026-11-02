@@ -8,6 +8,7 @@ import CCassandra
 #endif
 import Foundation
 import os
+import TableProCassandraCore
 import TableProPluginKit
 
 actor CassandraConnectionActor {

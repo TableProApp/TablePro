@@ -208,7 +208,9 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         lock.withLock {
-            serverClockOffset = serverTime - Int64(Date().timeIntervalSince1970)
+            serverClockOffset = MemcachedServerClock.offset(
+                serverTime: serverTime, localTime: Int64(Date().timeIntervalSince1970)
+            )
             if shownExpiries.count + page.count > Self.shownExpiryLimit { shownExpiries.removeAll() }
             for entry in page { shownExpiries[entry.key] = MemcachedKnownExpiry(expiresAt: entry.expiresAt) }
         }
@@ -414,7 +416,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let expiries = lock.withLock { shownExpiries }
         let generator = MemcachedStatementGenerator(
             columns: columns,
-            now: { Int64(Date().timeIntervalSince1970) + offset },
+            now: { MemcachedServerClock.serverTime(localTime: Int64(Date().timeIntervalSince1970), offset: offset) },
             knownExpiry: { expiries[$0] }
         )
         return try generator.generateRowWrites(

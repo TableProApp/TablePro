@@ -5,7 +5,7 @@
 
 import Foundation
 import os
-import TableProUtilities
+import TableProGzip
 
 final class DataFileWorkingCopy: @unchecked Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DataFiles")
@@ -36,7 +36,7 @@ final class DataFileWorkingCopy: @unchecked Sendable {
     func snapshot(of url: URL, kind: DataFileKind) async throws -> URL {
         if kind.isCompressed {
             let destination = file(named: "content-\(UUID().uuidString).\(kind.contentExtension)")
-            try await GzipProcess.decompress(source: url, destination: destination)
+            try await GzipFile.decompress(source: url, destination: destination)
             return destination
         }
         let destination = file(named: "content-\(UUID().uuidString).\(kind.contentExtension)")

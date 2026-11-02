@@ -1,35 +1,46 @@
 import Foundation
+import TableProWireIO
 
 /// One entry from a Fetch response's aborted-transaction list. Both halves matter: the
 /// producer owns the run and the offset says where it starts.
-struct KafkaAbortedTransaction: Sendable {
-    let producerId: Int64
-    let firstOffset: Int64
+public struct KafkaAbortedTransaction: Sendable {
+    public let producerId: Int64
+    public let firstOffset: Int64
+
+    public init(producerId: Int64, firstOffset: Int64) {
+        self.producerId = producerId
+        self.firstOffset = firstOffset
+    }
 }
 
-struct KafkaRecordHeader: Sendable {
-    let key: String
-    let value: Data?
+public struct KafkaRecordHeader: Sendable {
+    public let key: String
+    public let value: Data?
+
+    public init(key: String, value: Data?) {
+        self.key = key
+        self.value = value
+    }
 }
 
-struct KafkaRecord: Sendable {
-    let offset: Int64
-    let timestamp: Int64
-    let timestampIsLogAppendTime: Bool
-    let key: Data?
-    let value: Data?
-    let headers: [KafkaRecordHeader]
-    let partition: Int32
+public struct KafkaRecord: Sendable {
+    public let offset: Int64
+    public let timestamp: Int64
+    public let timestampIsLogAppendTime: Bool
+    public let key: Data?
+    public let value: Data?
+    public let headers: [KafkaRecordHeader]
+    public let partition: Int32
 }
 
-enum KafkaCompressionCodec: Int16, Sendable {
+public enum KafkaCompressionCodec: Int16, Sendable {
     case none = 0
     case gzip = 1
     case snappy = 2
     case lz4 = 3
     case zstd = 4
 
-    var name: String {
+    public var name: String {
         switch self {
         case .none: return "none"
         case .gzip: return "gzip"
@@ -43,7 +54,7 @@ enum KafkaCompressionCodec: Int16, Sendable {
 /// Decoder for the v2 record batch (magic byte 2), which is the only format Kafka has written
 /// since 0.11. The older v0/v1 message sets are not read: a broker still storing them is more
 /// than eight years old, and guessing at a half-supported legacy path is worse than saying so.
-enum KafkaRecordBatchDecoder {
+public enum KafkaRecordBatchDecoder {
     /// Fixed bytes from `baseOffset` to the record count, inclusive. Measured against a real
     /// broker's batches, and it is also what Kafka's DefaultRecordBatch documents.
     static let headerLength = 61
@@ -69,18 +80,15 @@ enum KafkaRecordBatchDecoder {
     private static let logAppendTimeMask: Int16 = 0x08
     private static let controlBatchMask: Int16 = 0x20
 
-    /// Decodes every batch in one partition's records blob.
-    ///
-    /// Two shapes here are not optional. The blob is a SEQUENCE of batches, not one batch, and
-    /// the broker truncates it at `partition_max_bytes` mid-batch, so a trailing partial batch
-    /// is normal and must be dropped rather than treated as corruption. And a control batch
-    /// (the transaction commit and abort markers) carries records whose payload is internal
-    /// bookkeeping: surfacing them would put marker rows in the user's grid.
-    static func decode(
+    // The blob is a sequence of batches cut at partition_max_bytes, so a trailing partial batch
+    // is normal. Control batches hold transaction markers, never rows for the grid.
+    // Every batch charges `budget`, so the records kept across the whole blob stay within it.
+    public static func decode(
         blob: Data,
         partition: Int32,
         abortedTransactions: [KafkaAbortedTransaction] = [],
-        skipAborted: Bool
+        skipAborted: Bool,
+        budget: inout DecompressionBudget
     ) throws -> (records: [KafkaRecord], truncated: Bool) {
         let bytes = [UInt8](blob)
         var cursor = 0
@@ -90,6 +98,17 @@ enum KafkaRecordBatchDecoder {
         // producer. Keying this on the offset alone let one producer's commit marker end
         // another's aborted run, and its rolled-back records then reached the grid.
         var abortedProducers = Set<Int64>()
+        // The lowest first offset per producer answers the abort check in one lookup per batch,
+        // where scanning the whole list per batch grew with both counts.
+        var firstAbortedOffset: [Int64: Int64] = [:]
+        if skipAborted {
+            for transaction in abortedTransactions {
+                firstAbortedOffset[transaction.producerId] = min(
+                    transaction.firstOffset,
+                    firstAbortedOffset[transaction.producerId] ?? .max
+                )
+            }
+        }
 
         while cursor + headerLength <= bytes.count {
             // Read the header in place. Re-slicing the remaining blob per batch made decoding
@@ -123,7 +142,7 @@ enum KafkaRecordBatchDecoder {
             }
 
             if skipAborted, isTransactional,
-               abortedTransactions.contains(where: { $0.producerId == producerId && $0.firstOffset <= baseOffset }) {
+               let firstOffset = firstAbortedOffset[producerId], firstOffset <= baseOffset {
                 abortedProducers.insert(producerId)
             }
 
@@ -136,7 +155,7 @@ enum KafkaRecordBatchDecoder {
             }
 
             let payload = Data(bytes[(cursor + headerLength) ..< end])
-            let decoded = try KafkaCompression.decompress(payload, codec: codec)
+            let decoded = try KafkaCompression.decompress(payload, codec: codec, budget: &budget)
             let shouldSkip = skipAborted && abortedProducers.contains(producerId)
             if !shouldSkip {
                 records.append(contentsOf: try decodeRecords(
@@ -202,9 +221,15 @@ enum KafkaRecordBatchDecoder {
                     "record length \(length) disagrees with \(reader.offset - start) decoded bytes"
                 )
             }
+            // Paging steps from the last offset, so one past Int64 is a corrupt reply. Timestamps
+            // wrap the way Kafka's own client adds them, so a batch other clients read still reads.
+            let (offset, offsetOverflows) = baseOffset.addingReportingOverflow(Int64(offsetDelta))
+            guard !offsetOverflows else {
+                throw KafkaError.malformedResponse("record offset does not fit in 64 bits")
+            }
             records.append(KafkaRecord(
-                offset: baseOffset + Int64(offsetDelta),
-                timestamp: baseTimestamp + timestampDelta,
+                offset: offset,
+                timestamp: baseTimestamp &+ timestampDelta,
                 timestampIsLogAppendTime: logAppendTime,
                 key: key,
                 value: value,
@@ -236,8 +261,8 @@ enum KafkaRecordBatchDecoder {
 
 /// Builds the single-record v2 batch that PRODUCE sends. The CRC is mandatory and covers the
 /// batch from the attributes field to the end, not the whole batch.
-enum KafkaRecordBatchEncoder {
-    static func singleRecordBatch(
+public enum KafkaRecordBatchEncoder {
+    public static func singleRecordBatch(
         key: Data?,
         value: Data?,
         headers: [KafkaRecordHeader],
@@ -296,7 +321,7 @@ enum KafkaRecordBatchEncoder {
     }
 }
 
-extension Data {
+public extension Data {
     var hexString: String {
         map { String(format: "%02X", $0) }.joined()
     }

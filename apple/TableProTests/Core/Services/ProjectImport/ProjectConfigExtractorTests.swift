@@ -111,6 +111,110 @@ struct YamlMappingSupportTests {
     func testNonMappingDocument() {
         #expect(YamlMappingSupport.loadMapping("- just\n- a\n- list") == nil)
     }
+
+    private static func aliasChain(levels: Int, width: Int) -> String {
+        var lines = ["l0: &l0 [" + Array(repeating: "x", count: width).joined(separator: ", ") + "]"]
+        for level in 1..<levels {
+            lines.append("l\(level): &l\(level) [" + Array(repeating: "*l\(level - 1)", count: width).joined(separator: ", ") + "]")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    @Test("Nested aliases that would build over a million values are refused before they are built")
+    func testAliasExpansionIsBounded() {
+        let contents = Self.aliasChain(levels: 6, width: 10)
+        #expect(contents.utf8.count < 400)
+        #expect(YamlMappingSupport.loadMapping(contents) == nil)
+        #expect(YamlMappingSupport.loadDocuments(contents).isEmpty)
+    }
+
+    @Test("Aliases within the budget still load, and the budget is spent on what they add")
+    func testSmallAliasExpansionLoads() throws {
+        let budget = ProjectScanExpansionBudget()
+        let root = try #require(YamlMappingSupport.loadMapping(Self.aliasChain(levels: 3, width: 3), budget: budget))
+        let top = try #require(root["l2"] as? [Any])
+        #expect(top.count == 3)
+        #expect((top.first as? [Any])?.count == 3)
+        #expect(budget.remaining == ProjectScanExpansionBudget.standardLimit - 4 * 3 - 13 * 3)
+    }
+
+    @Test("Aliases that nest past the depth limit are refused even when the text itself is shallow")
+    func testAliasNestingIsBounded() {
+        let depth = YamlMappingSupport.maximumNesting / 2 + 10
+        let inner = String(repeating: "[", count: depth) + "x" + String(repeating: "]", count: depth)
+        let outer = String(repeating: "[", count: depth) + "*inner" + String(repeating: "]", count: depth)
+        let contents = "inner: &inner \(inner)\nouter: \(outer)"
+        #expect(YamlMappingSupport.loadMapping(contents) == nil)
+    }
+
+    private static func deepDocument(_ shape: String) -> String {
+        let levels = 990
+        switch shape {
+        case "flow":
+            return "k: " + String(repeating: "[", count: levels) + "x" + String(repeating: "]", count: levels)
+        case "sequence":
+            return "k:\n" + String(repeating: "- ", count: levels) + "x"
+        default:
+            return (0..<levels).map { String(repeating: " ", count: $0) + "k:" }.joined(separator: "\n") + " x"
+        }
+    }
+
+    // A 512 KiB worker stack overflows near 650 levels in a debug build, and libyaml stops at 1,000.
+    @Test("Nesting just under the parser's limit is refused without running out of stack",
+          arguments: ["flow", "sequence", "mapping"])
+    func testDeepNestingIsRefused(shape: String) {
+        let contents = Self.deepDocument(shape)
+        #expect(YamlMappingSupport.loadMapping(contents) == nil)
+        #expect(YamlMappingSupport.loadDocuments(contents).isEmpty)
+    }
+
+    @Test("A key that is a collection is refused instead of crashing the constructor", arguments: [
+        "[a, b]: v", "{a: b}: v", "? [a, b]\n: v"
+    ])
+    func testCollectionKeysAreRefused(keyLine: String) {
+        let contents = "services:\n  db:\n    image: postgres\n" + keyLine
+        #expect(YamlMappingSupport.loadMapping(contents) == nil)
+        #expect(YamlMappingSupport.loadDocuments(contents).isEmpty)
+    }
+
+    @Test("A base-60 integer too large for Int is refused instead of crashing, and a short one still loads",
+          .timeLimit(.minutes(1)))
+    func testSexagesimalOverflowIsRefused() throws {
+        #expect(YamlMappingSupport.loadMapping("x: 1:0:0:0:0:0:0:0:0:0:0") == nil)
+        #expect(YamlMappingSupport.loadMapping("x: !!int 1:9223372036854775807") == nil)
+        let root = try #require(YamlMappingSupport.loadMapping("ports:\n  - 22:22\n  - \"5432:5432\""))
+        #expect((root["ports"] as? [Any])?.count == 2)
+        let long = "x: 1" + String(repeating: ":0", count: 30) + ":99"
+        #expect(YamlMappingSupport.loadMapping(long) != nil)
+    }
+
+    @Test("Brackets, braces and colons inside ordinary values and comments still load")
+    func testOrdinaryBracketsStillLoad() throws {
+        let contents = """
+        x-logging: &logging
+          driver: json-file
+          options: {max-size: "10m"}
+        x-ports: &ports ["${DB_PORT:-5432}:5432", "[::1]:5433:5432"]
+        services:
+          db:
+            <<: [*logging]
+            image: "postgres:${PG_VERSION:-16}"
+            ports: *ports
+            # [host]:[container]
+            healthcheck:
+              test: ["CMD-SHELL", "[ -f /tmp/ready ] && echo ready: yes"]
+            command: ["sh", "-c", "until [ -f /ready ]; do echo waiting: 1; done"]
+            environment:
+              DATABASE_URL: <%= ENV.fetch("DATABASE_URL") { "postgres://localhost:5432/dev" } %>
+        """
+        let root = try #require(YamlMappingSupport.loadMapping(contents))
+        let services = try #require(YamlMappingSupport.mapping(root["services"]))
+        let db = try #require(YamlMappingSupport.mapping(services["db"]))
+        #expect(YamlMappingSupport.string(db["driver"]) == "json-file")
+        #expect(YamlMappingSupport.string(db["image"]) == "postgres:${PG_VERSION:-16}")
+        #expect((db["ports"] as? [Any])?.count == 2)
+        #expect((db["command"] as? [Any])?.count == 3)
+    }
 }
 
 struct WordPressConfigExtractorTests {

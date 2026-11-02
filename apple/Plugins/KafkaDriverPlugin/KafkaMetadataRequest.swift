@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 enum KafkaMetadataRequest {
     /// Metadata, which names the brokers, the topics and each partition's leader.
