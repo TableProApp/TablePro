@@ -49,7 +49,7 @@ meson compile -C _build
 xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
 dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
   && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
-meson dist -C _build --no-tests --formats xztar
+build-aux/packaging/make-dist.sh _build/dist
 ```
 
 Inside a desktop session, `dbus-run-session -- meson test -C _build` runs the same suites without xvfb.

@@ -65,7 +65,7 @@ jobs:
     steps:
       # Before the checkout, not after: actions/checkout falls back to
       # downloading a tarball when git is missing, which leaves no .git
-      # for `meson dist` to read. The workspace is owned by the host's
+      # for make-dist.sh to archive. The workspace is owned by the host's
       # runner user and every step here runs as root, so git also needs
       # to be told the checkout is not a stranger's.
       - name: Install git
@@ -82,7 +82,8 @@ jobs:
         # install, then the meson toolchain, the -dev packages the
         # workspace links, the runtime pieces the test suites need (xvfb,
         # dbus, gnome-keyring for the Secret Service step, openssh-client
-        # for the SSH transport, glycin-loaders for a value's picture).
+        # for the SSH transport, glycin-loaders for a value's picture),
+        # and xz for the source tarball.
         run: |
           apt-get install -y --no-install-recommends \
             build-essential \
@@ -111,7 +112,8 @@ jobs:
             openssh-client \
             xvfb \
             xauth \
-            dbus-daemon
+            dbus-daemon \
+            xz-utils
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
@@ -214,8 +216,8 @@ jobs:
         run: |
           dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
             && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
-      - name: Dist
-        run: meson dist -C _build --no-tests --formats xztar
+      - name: Source tarball
+        run: build-aux/packaging/make-dist.sh _build/dist
 
   # Launchpad builds the PPA package with rustc-X.Y and cargo-X.Y, X.Y being
   # the workspace rust-version, so the workspace is checked with that

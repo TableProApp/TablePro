@@ -1,13 +1,13 @@
 #!/bin/sh
 # Builds the Debian source package for each Ubuntu series named, unsigned,
-# from the two release tarballs: the meson dist tarball is the orig tarball
+# from the two release tarballs: make-dist.sh's tarball is the orig tarball
 # and the vendor tarball its vendor component. release-linux.yml signs the
 # packages with debsign before it uploads them to the PPA.
 #
 # --install-deps first installs, as root in a throwaway ubuntu:26.04, the
 # tools this needs. --revision counts uploads of one upstream version to
 # the PPA, 1 when not given. --debian takes the packaging from that
-# directory instead of the tarball's build-aux/debian, for a packaging fix
+# directory instead of the tarball's linux/build-aux/debian, for a packaging fix
 # to a released version.
 # Usage: build-source.sh [--install-deps] [--revision N] [--debian DIR] <dist tarball> <vendor tarball> <output dir> <series>...
 set -eu
@@ -67,7 +67,7 @@ src="$work/tablepro-$debian_upstream"
 mkdir "$src"
 tar -xf "$dist" -C "$src" --strip-components=1
 tar -xf "$vendor" -C "$src"
-cp -R "${debian:-$src/build-aux/debian}" "$src/debian"
+cp -R "${debian:-$src/linux/build-aux/debian}" "$src/debian"
 maintainer="$(sed -n 's/^Maintainer: //p' "$src/debian/control")"
 if [ "$revision" = 1 ]; then
     message="New upstream release. Notes: https://github.com/TableProApp/TablePro/blob/linux-v$upstream/linux/CHANGELOG.md"

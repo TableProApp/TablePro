@@ -51,6 +51,7 @@
         {
             "name": "tablepro",
             "buildsystem": "meson",
+            "subdir": "linux",
             "run-tests": true,
             "config-opts": [
                 "-Dprofile=development",
@@ -60,6 +61,7 @@
                 {
                     "type": "dir",
                     "path": "../../",
+                    "dest": "linux",
                     "skip": [
                         ".flatpak-builder",
                         "_build",

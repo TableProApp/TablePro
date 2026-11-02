@@ -1,6 +1,6 @@
 #!/bin/sh
 # Writes the two release source tarballs into <output dir>:
-# tablepro-X.Y.Z.tar.xz from meson dist, and tablepro-X.Y.Z-vendor.tar.xz,
+# tablepro-X.Y.Z.tar.xz from make-dist.sh, and tablepro-X.Y.Z-vendor.tar.xz,
 # which holds vendor/ with every crate in Cargo.lock and
 # vendor/cargo-config.toml, so the packages build offline.
 #
@@ -43,11 +43,9 @@ if [ -n "$container" ]; then
     export CARGO_HOME="$work/cargo-home"
 fi
 
-meson setup "$work/build" "$root"
-meson dist -C "$work/build" --no-tests --formats xztar
-version="$(meson introspect --projectinfo "$work/build" \
-    | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
-cp "$work/build/meson-dist/tablepro-$version.tar.xz" "$out/"
+dist="$("$here/make-dist.sh" "$out")"
+version="$(basename "$dist" .tar.xz)"
+version="${version#tablepro-}"
 
 # cargo vendor prints the source replacement on stdout, naming the
 # directory as it was given, and may prune that directory. Run from its

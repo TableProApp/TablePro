@@ -230,8 +230,8 @@ its .deb built offline as Launchpad builds it (checked by lintian), and
 the RPMs (checked by rpmlint) under `_packages`, then installs each
 package in a fresh container and starts it. `deb` or `rpm` in place of
 `all` builds one, and Ubuntu series names after the output directory
-replace the default `resolute`. `meson dist` archives `HEAD`, so commit
-first.
+replace the default `resolute`. The source tarball archives `HEAD`, so
+commit first.
 
 After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
 rewrites `debian/copyright` and the spec's `License` tag along with
