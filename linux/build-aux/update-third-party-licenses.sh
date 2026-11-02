@@ -7,6 +7,8 @@ set -eu
 
 expected_version="cargo-about 0.9.2"
 root="$(cd "$(dirname "$0")/.." && pwd)"
+# The Cargo workspace is the top of the repository.
+workspace="$(cd "$root/.." && pwd)"
 
 # Another version can render the same lock file differently, which CI
 # would report as drift.
@@ -16,7 +18,7 @@ if [ "$version" != "$expected_version" ]; then
     exit 1
 fi
 
-cargo fetch --locked --manifest-path "$root/Cargo.toml"
+cargo fetch --locked --manifest-path "$workspace/Cargo.toml"
 
 # The app manifest, not the workspace, so the test-only crates and their
 # dependencies stay out: tablepro-ssh, which builds the askpass helper,
@@ -55,7 +57,7 @@ python3 "$root/build-aux/packaging/bundled_licenses.py" \
 
 # The NOTICE files the Apache License 2.0 asks to ship, which cargo-about
 # does not read.
-cargo metadata --locked --format-version 1 --manifest-path "$root/Cargo.toml" > "$metadata"
+cargo metadata --locked --format-version 1 --manifest-path "$workspace/Cargo.toml" > "$metadata"
 python3 "$root/build-aux/packaging/crate_notices.py" \
     --licenses "$root/data/licenses/third-party.json" \
     --metadata "$metadata" \

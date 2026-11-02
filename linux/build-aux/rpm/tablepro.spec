@@ -10,6 +10,9 @@
 # DuckDB's C++ build writes and the memory each of its translation units
 # takes; rustc links without -flto, so their GIMPLE half goes unused.
 %global _lto_cflags %{nil}
+# The tarball holds the repository's layout: the Meson project is linux/,
+# and the Cargo workspace is at the top.
+%global _vpath_srcdir linux
 
 %bcond check 1
 
@@ -161,9 +164,9 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 %endif
 
 %files -f %{name}.lang
-%license LICENSE data/licenses/THIRD-PARTY-NOTICE.md data/licenses/NOTICE
+%license linux/LICENSE linux/data/licenses/THIRD-PARTY-NOTICE.md linux/data/licenses/NOTICE
 %license LICENSE.dependencies cargo-vendor.txt
-%doc CHANGELOG.md
+%doc linux/CHANGELOG.md
 %{_bindir}/tablepro
 %{_libexecdir}/tablepro-askpass
 %{_datadir}/applications/app.tablepro.TablePro.desktop

@@ -9,8 +9,8 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use tablepro_core::AiPolicy;
+use tablepro_linux_platform::settings::keys;
 use tablepro_session::SessionKey;
-use tablepro_storage::settings::keys;
 
 use super::tab_index::TabIndex;
 use super::workspace_persistence::WorkspaceTabs;

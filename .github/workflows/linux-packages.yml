@@ -18,8 +18,9 @@ on:
       - "linux/build-aux/debian/**"
       - "linux/build-aux/rpm/**"
       - "linux/build-aux/packaging/**"
-      - "linux/Cargo.toml"
-      - "linux/Cargo.lock"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "core/**"
       - "linux/meson.build"
       - "linux/meson.options"
       - "linux/crates/**/meson.build"
@@ -69,7 +70,7 @@ jobs:
       image: ubuntu:26.04
     steps:
       # Before the checkout: without git, actions/checkout downloads a
-      # tarball, which leaves no .git for meson dist to archive.
+      # tarball, which leaves no .git for make-dist.sh to archive.
       - name: Install git
         run: |
           apt-get update

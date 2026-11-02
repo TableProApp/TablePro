@@ -248,7 +248,7 @@ fn init_gtk() {
 fn remember_window_size(settings: &MemorySettings, (width, height): (i32, i32)) {
     settings
         .get()
-        .set_window_geometry(tablepro_storage::WindowGeometry {
+        .set_window_geometry(tablepro_linux_platform::WindowGeometry {
             width,
             height,
             maximized: false,

@@ -1,6 +1,6 @@
 # MySQL and MariaDB
 
-Driver id `mysql`, crate `crates/drivers/mysql`. One driver serves both servers through sqlx 0.9 (`mysql`, `mysql-rsa`, `tls-rustls-aws-lc-rs`) with a deadpool 0.13 pool. `MySqlFlavour` tells them apart from `VERSION()` (MariaDB says so in it), because they name their timeouts, error numbers and catalogue columns differently. The integration suite runs against MySQL 8.4 and MariaDB 11.4, and CI runs it again on MySQL 8.0 with MariaDB 10.11 and on MySQL 9.7 with MariaDB 12.3 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `mysql`, crate `core/crates/drivers/mysql`. One driver serves both servers through sqlx 0.9 (`mysql`, `mysql-rsa`, `tls-rustls-aws-lc-rs`) with a deadpool 0.13 pool. `MySqlFlavour` tells them apart from `VERSION()` (MariaDB says so in it), because they name their timeouts, error numbers and catalogue columns differently. The integration suite runs against MySQL 8.4 and MariaDB 11.4, and CI runs it again on MySQL 8.0 with MariaDB 10.11 and on MySQL 9.7 with MariaDB 12.3 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 A connection needs a database name (`database_required`).
 
@@ -60,13 +60,13 @@ A save or a schema change runs in the server's own zone, `@@GLOBAL.time_zone`, a
 - In the hour a daylight-saving zone repeats, one wall time names two instants and the server picks one, so a key compared there can match the other row. Before a write sends anything, each instant it binds goes to the server's zone and back; one that changes refuses the batch. A zone written as an offset (`+07:00`) skips the check.
 - A `TIMESTAMP` column's constant default is read from `SHOW CREATE TABLE` and converted to the server's zone, so a `MODIFY` restates the same instant. MySQL's `COLUMN_DEFAULT` keeps the text in the zone of whoever last altered the table, so it is not used for this.
 
-`crates/drivers/mysql/src/server_zone.rs` has the reasoning.
+`core/crates/drivers/mysql/src/server_zone.rs` has the reasoning.
 
 ## TLS
 
 - `Disable` connects without TLS. A server with `require_secure_transport` answers with error 3159, reported as `ServerRequiresTls`. MariaDB before 11.2 answers 1045, Access denied, as it does for a wrong password ([MDEV-30178](https://jira.mariadb.org/browse/MDEV-30178)), so on 10.11 the refusal reads as an authentication failure.
 - `Require` encrypts without checking the certificate. A server that does not offer TLS is reported as `ServerRefusedTls`.
-- `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the system's CA store and the connection's CA file, which sqlx takes only as PEM, so the driver hands it both as one bundle; sqlx adds the Mozilla roots compiled into it ([Trust](../../ARCHITECTURE.md#trust)). `Require` checks no certificate, so it loads neither.
+- `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the system's CA store and the connection's CA file, which sqlx takes only as PEM, so the driver hands it both as one bundle; sqlx adds the Mozilla roots compiled into it ([Trust](../../../core/ARCHITECTURE.md#trust)). `Require` checks no certificate, so it loads neither.
 - The name checked is the host sqlx dials, so a server name override works only through an SSH forward, where the dial goes to a socket path (`ServerNameOverride::SshForwardOnly`).
 - A client certificate and key are sent when set, for `REQUIRE X509` logins.
 - With TLS off, the password is safe only from a passive observer. `caching_sha2_password` encrypts it with an RSA key the server sends in band, which nothing authenticates. sqlx 0.9 also takes the login plugin the first handshake names without checking it against `enable_cleartext_plugin`, which it checks only on an auth switch, so a man in the middle can ask for `mysql_clear_password` and receive the password in clear. The mysql client refuses both by default (`--enable-cleartext-plugin`, `--get-server-public-key`). sqlx has no option to refuse either, so the driver cannot: on a network you do not trust, use TLS.

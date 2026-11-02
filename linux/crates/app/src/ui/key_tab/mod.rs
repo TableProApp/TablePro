@@ -18,9 +18,9 @@ use libadwaita as adw;
 use tablepro_core::column::ResultColumn;
 use tablepro_core::keyspace::{KeyCursor, KeyPage, KeyWindow};
 use tablepro_core::meta::KeyKind;
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::{Tasks, WatchForwarder};
 use tablepro_session::{LinkGeneration, OperationError, OperationKind, Session};
-use tablepro_storage::AppSettings;
 
 use crate::services::grid::grid_columns;
 use crate::ui::data_grid::{DataGrid, GridConfig, GridRequest, GridSorting, RowData};

@@ -1,0 +1,28 @@
+[package]
+name = "tablepro-driver-duckdb"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablepro-core.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+deadpool.workspace = true
+duckdb.workspace = true
+tokio = { workspace = true, features = ["rt", "sync"] }
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# fcntl record locks, the kind DuckDB takes, which std does not offer.
+rustix = { workspace = true, features = ["fs"] }
+
+[dev-dependencies]
+tablepro-test-support.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

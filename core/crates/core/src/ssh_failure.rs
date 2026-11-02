@@ -1,0 +1,339 @@
+use std::io::ErrorKind;
+use std::path::PathBuf;
+
+use thiserror::Error;
+
+use crate::{ErrorCategory, SshAlgorithmKind, SshDestinationProblem, SshRuntimeDirProblem};
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
+pub enum SshFailure {
+    #[error("the OpenSSH client {} was not found", .program.display())]
+    OpenSshClientMissing { program: PathBuf },
+
+    #[error("the askpass helper {} was not found", .program.display())]
+    AskpassHelperMissing { program: PathBuf },
+
+    #[error("{} could not be started: {kind}", .program.display())]
+    LaunchFailed { program: PathBuf, kind: ErrorKind },
+
+    #[error("invalid SSH destination: {problem}")]
+    InvalidDestination { problem: SshDestinationProblem },
+
+    #[error("ssh rejected the configuration: {detail}")]
+    ConfigRejected { detail: String },
+
+    #[error("the ssh_config file {} could not be read: {kind}", .path.display())]
+    ConfigUnreadable { path: PathBuf, kind: ErrorKind },
+
+    #[error("the SSH control socket path {} is too long", .path.display())]
+    ControlPathTooLong { path: PathBuf },
+
+    #[error("the SSH runtime directory {} is unsafe: {problem}", .path.display())]
+    RuntimeDirUnsafe {
+        path: PathBuf,
+        problem: SshRuntimeDirProblem,
+    },
+
+    #[error("the {algorithm} host key {sha256_fingerprint} for {host} is not known")]
+    HostKeyUnknown {
+        host: String,
+        algorithm: String,
+        sha256_fingerprint: String,
+        trust_allowed: bool,
+        declined: bool,
+    },
+
+    #[error(
+        "the {algorithm} host key for {host} changed to {sha256_fingerprint}; the old key is at {}:{line}",
+        .known_hosts.display()
+    )]
+    HostKeyChanged {
+        host: String,
+        algorithm: String,
+        sha256_fingerprint: String,
+        known_hosts: PathBuf,
+        line: usize,
+        /// False when the host's ssh configuration takes only keys already
+        /// in known_hosts, so ssh would refuse the new key without asking
+        /// once the old one is removed.
+        trust_allowed: bool,
+    },
+
+    #[error("the host key for {host} is revoked: {detail}")]
+    HostKeyRevoked { host: String, detail: String },
+
+    #[error("{user}@{host} rejected authentication (tried {})", .methods.join(", "))]
+    AuthenticationRejected {
+        user: String,
+        host: String,
+        methods: Vec<String>,
+    },
+
+    #[error("{host} ended the login after too many authentication failures")]
+    TooManyAuthenticationFailures { host: String },
+
+    #[error("ssh and {host} have no {kind} in common; the server offers {}", .server_offer.join(", "))]
+    NoCommonAlgorithm {
+        host: String,
+        kind: SshAlgorithmKind,
+        server_offer: Vec<String>,
+    },
+
+    #[error("the SSH prompt was cancelled")]
+    InteractionCancelled,
+
+    #[error("the SSH server refused to forward to {target}: {detail}")]
+    ForwardRejected { target: String, detail: String },
+
+    #[error("could not open an SSH channel to {target}: {detail}")]
+    ChannelOpenFailed { target: String, detail: String },
+
+    /// `detail` is ssh's last line, empty when it printed none.
+    #[error("the SSH connection ended: {detail}")]
+    MasterExited { status: Option<i32>, detail: String },
+
+    /// `status` is set when ssh exited with one, and `detail` is the end
+    /// of what it printed.
+    #[error("unexpected output from ssh (exit status {status:?}): {detail}")]
+    Protocol { status: Option<i32>, detail: String },
+
+    /// A step of TablePro's own failed, such as a setup task that
+    /// panicked. Its cause is logged where it happened.
+    #[error("an internal step of the SSH setup failed")]
+    Internal,
+}
+
+impl SshFailure {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::OpenSshClientMissing { .. } => "ssh.open_ssh_client_missing",
+            Self::AskpassHelperMissing { .. } => "ssh.askpass_helper_missing",
+            Self::LaunchFailed { .. } => "ssh.launch_failed",
+            Self::InvalidDestination { .. } => "ssh.invalid_destination",
+            Self::ConfigRejected { .. } => "ssh.config_rejected",
+            Self::ConfigUnreadable { .. } => "ssh.config_unreadable",
+            Self::ControlPathTooLong { .. } => "ssh.control_path_too_long",
+            Self::RuntimeDirUnsafe { .. } => "ssh.runtime_dir_unsafe",
+            Self::HostKeyUnknown { .. } => "ssh.host_key_unknown",
+            Self::HostKeyChanged { .. } => "ssh.host_key_changed",
+            Self::HostKeyRevoked { .. } => "ssh.host_key_revoked",
+            Self::AuthenticationRejected { .. } => "ssh.authentication_rejected",
+            Self::TooManyAuthenticationFailures { .. } => "ssh.too_many_authentication_failures",
+            Self::NoCommonAlgorithm { .. } => "ssh.no_common_algorithm",
+            Self::InteractionCancelled => "ssh.interaction_cancelled",
+            Self::ForwardRejected { .. } => "ssh.forward_rejected",
+            Self::ChannelOpenFailed { .. } => "ssh.channel_open_failed",
+            Self::MasterExited { .. } => "ssh.master_exited",
+            Self::Protocol { .. } => "ssh.protocol",
+            Self::Internal => "ssh.internal",
+        }
+    }
+}
+
+impl SshFailure {
+    pub fn category(&self) -> ErrorCategory {
+        match self {
+            Self::AuthenticationRejected { .. }
+            | Self::TooManyAuthenticationFailures { .. }
+            | Self::InteractionCancelled
+            | Self::HostKeyUnknown { .. }
+            | Self::HostKeyChanged { .. }
+            | Self::HostKeyRevoked { .. } => ErrorCategory::Authentication,
+            Self::OpenSshClientMissing { .. }
+            | Self::AskpassHelperMissing { .. }
+            | Self::LaunchFailed { .. }
+            | Self::InvalidDestination { .. }
+            | Self::ConfigRejected { .. }
+            | Self::ConfigUnreadable { .. }
+            | Self::ControlPathTooLong { .. }
+            | Self::RuntimeDirUnsafe { .. }
+            | Self::NoCommonAlgorithm { .. } => ErrorCategory::Configuration,
+            Self::ForwardRejected { .. } | Self::ChannelOpenFailed { .. } | Self::MasterExited { .. } => {
+                ErrorCategory::Network
+            }
+            Self::Protocol { .. } | Self::Internal => ErrorCategory::Internal,
+        }
+    }
+}
+
+impl From<SshDestinationProblem> for SshFailure {
+    fn from(problem: SshDestinationProblem) -> Self {
+        Self::InvalidDestination { problem }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn detail() -> String {
+        "detail".to_owned()
+    }
+
+    #[test]
+    fn category_matrix() {
+        let cases = [
+            (
+                SshFailure::OpenSshClientMissing {
+                    program: PathBuf::from("/usr/bin/ssh"),
+                },
+                ErrorCategory::Configuration,
+            ),
+            (
+                SshFailure::AskpassHelperMissing {
+                    program: PathBuf::from("/usr/libexec/tablepro-askpass"),
+                },
+                ErrorCategory::Configuration,
+            ),
+            (
+                SshFailure::InvalidDestination {
+                    problem: SshDestinationProblem::PortZero,
+                },
+                ErrorCategory::Configuration,
+            ),
+            (
+                SshFailure::ConfigRejected { detail: detail() },
+                ErrorCategory::Configuration,
+            ),
+            (
+                SshFailure::ControlPathTooLong {
+                    path: PathBuf::from("/run/user/1000/app/control"),
+                },
+                ErrorCategory::Configuration,
+            ),
+            (
+                SshFailure::RuntimeDirUnsafe {
+                    path: PathBuf::from("/run/user/1000/app"),
+                    problem: SshRuntimeDirProblem::OtherOwner,
+                },
+                ErrorCategory::Configuration,
+            ),
+            (
+                SshFailure::HostKeyUnknown {
+                    host: "bastion".to_owned(),
+                    algorithm: "ssh-ed25519".to_owned(),
+                    sha256_fingerprint: "SHA256:abc".to_owned(),
+                    trust_allowed: true,
+                    declined: false,
+                },
+                ErrorCategory::Authentication,
+            ),
+            (
+                SshFailure::HostKeyChanged {
+                    host: "bastion".to_owned(),
+                    algorithm: "ssh-ed25519".to_owned(),
+                    sha256_fingerprint: "SHA256:abc".to_owned(),
+                    known_hosts: PathBuf::from("/home/user/.ssh/known_hosts"),
+                    line: 3,
+                    trust_allowed: true,
+                },
+                ErrorCategory::Authentication,
+            ),
+            (
+                SshFailure::HostKeyRevoked {
+                    host: "bastion".to_owned(),
+                    detail: detail(),
+                },
+                ErrorCategory::Authentication,
+            ),
+            (
+                SshFailure::AuthenticationRejected {
+                    user: "deploy".to_owned(),
+                    host: "bastion".to_owned(),
+                    methods: vec!["publickey".to_owned(), "password".to_owned()],
+                },
+                ErrorCategory::Authentication,
+            ),
+            (SshFailure::InteractionCancelled, ErrorCategory::Authentication),
+            (
+                SshFailure::ForwardRejected {
+                    target: "db:5432".to_owned(),
+                    detail: detail(),
+                },
+                ErrorCategory::Network,
+            ),
+            (
+                SshFailure::ChannelOpenFailed {
+                    target: "db:5432".to_owned(),
+                    detail: detail(),
+                },
+                ErrorCategory::Network,
+            ),
+            (
+                SshFailure::MasterExited {
+                    status: Some(255),
+                    detail: detail(),
+                },
+                ErrorCategory::Network,
+            ),
+        ];
+        for (failure, expected) in cases {
+            assert_eq!(failure.category(), expected, "{failure:?}");
+        }
+    }
+
+    #[test]
+    fn a_login_that_ran_out_of_tries_and_a_failed_negotiation_need_the_user() {
+        let too_many = SshFailure::TooManyAuthenticationFailures {
+            host: "bastion".to_owned(),
+        };
+        let no_common = SshFailure::NoCommonAlgorithm {
+            host: "bastion".to_owned(),
+            kind: SshAlgorithmKind::KeyExchange,
+            server_offer: vec!["mlkem768x25519-sha256".to_owned()],
+        };
+
+        assert_eq!(too_many.category(), ErrorCategory::Authentication);
+        assert_eq!(no_common.category(), ErrorCategory::Configuration);
+    }
+
+    #[test]
+    fn no_common_algorithm_names_the_kind_and_the_offer() {
+        let failure = SshFailure::NoCommonAlgorithm {
+            host: "203.0.113.5".to_owned(),
+            kind: SshAlgorithmKind::HostKey,
+            server_offer: vec!["ssh-rsa".to_owned(), "ssh-dss".to_owned()],
+        };
+        assert_eq!(
+            failure.to_string(),
+            "ssh and 203.0.113.5 have no host key type in common; the server offers ssh-rsa, ssh-dss"
+        );
+    }
+
+    #[test]
+    fn a_program_or_file_ssh_needs_is_configuration_and_the_rest_internal() {
+        let launch = SshFailure::LaunchFailed {
+            program: PathBuf::from("ssh"),
+            kind: ErrorKind::PermissionDenied,
+        };
+        let unreadable = SshFailure::ConfigUnreadable {
+            path: PathBuf::from("/home/user/.ssh/tablepro_config"),
+            kind: ErrorKind::NotFound,
+        };
+        let protocol = SshFailure::Protocol {
+            status: Some(255),
+            detail: detail(),
+        };
+
+        assert_eq!(launch.category(), ErrorCategory::Configuration);
+        assert_eq!(unreadable.category(), ErrorCategory::Configuration);
+        assert_eq!(protocol.category(), ErrorCategory::Internal);
+        assert_eq!(SshFailure::Internal.category(), ErrorCategory::Internal);
+    }
+
+    #[test]
+    fn authentication_rejected_lists_the_methods_tried() {
+        let failure = SshFailure::AuthenticationRejected {
+            user: "deploy".to_owned(),
+            host: "bastion".to_owned(),
+            methods: vec!["publickey".to_owned(), "password".to_owned()],
+        };
+        assert_eq!(
+            failure.to_string(),
+            "deploy@bastion rejected authentication (tried publickey, password)"
+        );
+    }
+}

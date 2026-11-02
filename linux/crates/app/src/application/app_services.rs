@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use gtk4::glib::prelude::IsA;
 use tablepro_core::{ConnectEnvironment, DriverRegistry, LivenessPolicy};
+use tablepro_linux_platform::{AppSettings, SecretStore};
 use tablepro_mcp::{McpHost, TokenVault, ToolContext};
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::operation::{DeadlinePolicy, DefaultDeadlines};
 use tablepro_session::runtime::{ProcessHold, Tasks};
 use tablepro_session::{ConnectServices, Connector, DriverConnector, SessionRegistry};
 use tablepro_ssh::SshServices;
-use tablepro_storage::{AppSettings, QueryHistory, SecretStore, StoragePaths};
+use tablepro_storage::{QueryHistory, StoragePaths};
 
 use crate::config;
 use crate::runtime::GioProcessHold;
@@ -126,7 +127,9 @@ impl AppServices {
     /// to the running instance, so what only the primary may do waits
     /// for `start`.
     pub fn production(drivers: DriverRegistry, settings: Rc<AppSettings>, paths: StoragePaths, tasks: Tasks) -> Self {
-        let secrets = Arc::new(SecretStore::new(config::secret_schema()));
+        let secrets = Arc::new(
+            SecretStore::new(config::secret_schema()).with_item_labeler(crate::services::secret_labels::item_label),
+        );
         let mcp_tokens: Arc<dyn TokenVault> = secrets.clone();
         let ai_keys: Arc<dyn tablepro_ai::ApiKeyVault> = secrets.clone();
         let storage = AppStorage::new(paths, secrets, &tasks);
@@ -136,7 +139,7 @@ impl AppServices {
         let connector = DriverConnector::new(
             ConnectServices {
                 environment: ConnectEnvironment::new(config::VERSION),
-                ssh: ssh.clone(),
+                ssh: Arc::new(ssh.clone()),
                 liveness,
             },
             deadlines.clone(),

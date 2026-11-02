@@ -91,7 +91,7 @@ mod tests {
 
         let _storage = AppStorage::new(
             paths,
-            std::sync::Arc::new(tablepro_storage::SecretStore::new(crate::config::secret_schema())),
+            std::sync::Arc::new(tablepro_linux_platform::SecretStore::new(crate::config::secret_schema())),
             &runtime.tasks(),
         );
 

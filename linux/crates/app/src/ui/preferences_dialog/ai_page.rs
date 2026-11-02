@@ -10,7 +10,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use secrecy::SecretString;
 use tablepro_core::AiProvider;
-use tablepro_storage::settings::keys;
+use tablepro_linux_platform::settings::keys;
 
 use crate::services::ai_service::AiService;
 

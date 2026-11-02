@@ -2,8 +2,8 @@ Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: TablePro
 Upstream-Contact: https://github.com/TableProApp/TablePro/issues
 Source: https://github.com/TableProApp/TablePro
-Comment: build-aux/packaging/license_metadata.py writes this file from
- data/licenses/third-party.json. The vendor/ paragraphs cover the crates
+Comment: linux/build-aux/packaging/license_metadata.py writes this file from
+ linux/data/licenses/third-party.json. The vendor/ paragraphs cover the crates
  linked into tablepro and tablepro-askpass. Each names every license
  the crate offers and holds the text of the one TablePro uses, as the
  crate ships it.
@@ -673,7 +673,7 @@ License: AGPL-3.0+
  For more information on this, and how to apply and follow the GNU AGPL, see
  <https://www.gnu.org/licenses/>.
 
-Files: data/app.tablepro.TablePro.metainfo.xml.in.in
+Files: linux/data/app.tablepro.TablePro.metainfo.xml.in.in
 Copyright: TablePro Authors
 License: CC0-1.0
  On Debian systems, the complete text of the CC0 1.0 Universal license

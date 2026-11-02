@@ -46,7 +46,7 @@ pub(super) struct TabFactoryParts {
     pub shell: glib::WeakRef<WorkspaceShell>,
     pub toasts: glib::WeakRef<adw::ToastOverlay>,
     pub context: Rc<SessionContext>,
-    pub settings: Rc<tablepro_storage::AppSettings>,
+    pub settings: Rc<tablepro_linux_platform::AppSettings>,
     pub storage: crate::storage::SharedStorage,
     pub history: Option<HistoryService>,
     pub drafts: Rc<DraftWriter>,

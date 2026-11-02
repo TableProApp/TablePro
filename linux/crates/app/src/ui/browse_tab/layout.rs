@@ -9,9 +9,9 @@ use tablepro_core::FilterSet;
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
 use tablepro_core::sql_syntax::SqlGrammar;
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::Session;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
 
 use super::browse_tab_widgets::BrowseTabWidgets;
 use super::pager_bar::PagerRequest;

@@ -2,8 +2,8 @@ use gio::prelude::SettingsExtManual;
 use gtk4::glib;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
-use tablepro_storage::AppSettings;
-use tablepro_storage::settings::keys;
+use tablepro_linux_platform::AppSettings;
+use tablepro_linux_platform::settings::keys;
 
 mod imp {
     use libadwaita::prelude::*;

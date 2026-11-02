@@ -108,7 +108,7 @@ pub(crate) struct WorkspaceModel {
     this: glib::WeakRef<Workspace>,
     window: glib::WeakRef<adw::ApplicationWindow>,
     shell: glib::WeakRef<WorkspaceShell>,
-    settings: Rc<tablepro_storage::AppSettings>,
+    settings: Rc<tablepro_linux_platform::AppSettings>,
     storage: crate::storage::SharedStorage,
     tasks: tablepro_session::runtime::Tasks,
     history: crate::services::history_service::HistoryService,

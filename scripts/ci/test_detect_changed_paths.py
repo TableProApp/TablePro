@@ -119,6 +119,34 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.commit(["linux/docs/testing.md", "linux/crates/app/src/main.rs"])
         self.assertEqual(self.detect("linux", self.seed), (0, "true"))
 
+    def test_linux_runs_on_the_shared_core(self):
+        for path in [
+            "core/crates/core/src/lib.rs",
+            "core/crates/drivers/postgres/Cargo.toml",
+            ".github/workflows/core.yml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "true")
+                self.assertEqual(self.verdict_after("linux-docs", path), "true")
+                self.assertEqual(self.verdict_after("macos", path), "false")
+        self.assertEqual(self.verdict_after("linux", "core/AGENTS.md"), "false")
+        self.assertEqual(self.verdict_after("linux-docs", "core/docs/decisions/0001-shared-core.md"), "true")
+
+    def test_linux_runs_on_the_workspace_files_at_the_top(self):
+        for path in [
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "rustfmt.toml",
+            "clippy.toml",
+            "deny.toml",
+            ".config/nextest.toml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "true")
+                self.assertEqual(self.verdict_after("macos", path), "false")
+        self.assertEqual(self.verdict_after("linux", "apple/Packages/TableProCore/Package.toml"), "false")
+
     def test_linux_docs_runs_on_every_linux_path(self):
         for path in ["linux/crates/app/src/main.rs", ".github/workflows/build-linux.yml"]:
             with self.subTest(path=path):

@@ -12,7 +12,7 @@
 #   verify.sh [options] l10n                       # POTFILES.in against the tree, and the catalog test
 #   verify.sh [options] docker <package>           # the tests that need a container
 #   verify.sh [options] secrets                    # the Secret Service tests on a private session bus
-#   verify.sh [options] dist                       # meson dist of the last commit
+#   verify.sh [options] dist                       # the source tarball of the last commit
 #
 # Here --offline keeps Cargo off the network. --no-wait changes nothing: Cargo waits for its own lock.
 
@@ -300,7 +300,7 @@ platform_step() {
                     cargo test --locked --no-fail-fast -p "$package" ${filter[@]+"${filter[@]}"}
                 code=$?
                 if grep -q "package ID specification .* did not match any packages" "$log" 2> /dev/null; then
-                    echo "no such package: $package (the names are in each linux/crates/*/Cargo.toml)" >&2
+                    echo "no such package: $package (the names are in each Cargo.toml under core/crates and linux/crates)" >&2
                     exit 3
                 fi
                 if compile_failed "$log"; then
@@ -426,7 +426,7 @@ platform_step() {
             ;;
 
         secrets)
-            STEP_DETAIL="tablepro-storage secret_service"
+            STEP_DETAIL="tablepro-linux-platform secret_service"
             prepare
             require_configured
             require_tool dbus-run-session
@@ -443,7 +443,7 @@ platform_step() {
                 dbus-run-session -- bash -c \
                 "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci > /dev/null \
                 && meson devenv -C '$BUILD_DIR' --workdir '$LINUX_DIR' \
-                    cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
+                    cargo test --locked -p tablepro-linux-platform --test secret_service -- --ignored"
             code=$?
             rm -rf "$keyring_home"
             report_tests "$log" 0
@@ -457,14 +457,14 @@ platform_step() {
             prepare
             require_configured
             log="$(new_log dist)"
-            run_logged "$log" meson dist -C "$BUILD_DIR" --no-tests --formats xztar
+            run_logged "$log" "$LINUX_DIR/build-aux/packaging/make-dist.sh" "$BUILD_DIR/dist"
             code=$?
             if [ $code -eq 0 ]; then
                 STATUS=PASS
-                note "$(grep -E '^Created ' "$log" | sed 's/^/  /')"
-            elif grep -qi 'uncommitted\|not clean\|local changes' "$log"; then
+                note "$(grep -E '\.tar\.xz$' "$log" | sed 's/^/  /')"
+            elif grep -q 'commit or stash' "$log"; then
                 STATUS=INCONCLUSIVE
-                note "cause: meson dist packs the last commit and refuses a tree with uncommitted changes. Commit first."
+                note "cause: make-dist.sh packs the last commit and refuses a tree with uncommitted changes. Commit first."
             else
                 STATUS=FAIL
                 note "$(tail -8 "$log" | sed 's/^/  /')"
