@@ -91,8 +91,13 @@ internal sealed class AppSession : IDisposable
         Retry.WhileNull(() => OpenWindow(title), Wait, throwOnTimeout: false).Result
             ?? throw Failure($"No window {title} opened.");
 
-    public bool WindowClosed(string title) =>
-        !Retry.WhileTrue(() => OpenWindow(title) is not null, Wait, throwOnTimeout: false).Result;
+    public void WaitForClose(string title)
+    {
+        if (Retry.WhileTrue(() => OpenWindow(title) is not null, Wait, throwOnTimeout: false).Result)
+        {
+            throw Failure($"The window {title} stayed open.", screen: true);
+        }
+    }
 
     private Window? OpenWindow(string title) =>
         _application.GetAllTopLevelWindows(_automation).FirstOrDefault(window => window.Title == title)
@@ -100,9 +105,9 @@ internal sealed class AppSession : IDisposable
             ?.AsWindow();
 
     // A failure says what the screen showed and what the app logged before it ended.
-    private InvalidOperationException Failure(string message)
+    private InvalidOperationException Failure(string message, bool screen = false)
     {
-        Screenshot("failure-" + DateTime.UtcNow.ToString("HHmmssfff", System.Globalization.CultureInfo.InvariantCulture));
+        Screenshot("failure-" + DateTime.UtcNow.ToString("HHmmssfff", System.Globalization.CultureInfo.InvariantCulture), screen: screen);
         var crash = Path.Combine(DataFolder, "crash.log");
         var log = File.Exists(crash) ? Environment.NewLine + File.ReadAllText(crash) : string.Empty;
         var exited = _application.HasExited ? " The app has exited." : string.Empty;
@@ -124,7 +129,7 @@ internal sealed class AppSession : IDisposable
     }
 
     // Saved under TABLEPRO_UI_SCREENSHOTS/<theme>/ when the variable is set, for the pull request.
-    public void Screenshot(string name, Window? window = null)
+    public void Screenshot(string name, Window? window = null, bool screen = false)
     {
         var root = Environment.GetEnvironmentVariable("TABLEPRO_UI_SCREENSHOTS");
         if (string.IsNullOrEmpty(root))
@@ -135,7 +140,7 @@ internal sealed class AppSession : IDisposable
         Thread.Sleep(500);
         var folder = Path.Combine(root, Theme.ToLowerInvariant());
         Directory.CreateDirectory(folder);
-        if (_application.HasExited)
+        if (screen || _application.HasExited)
         {
             Capture.Screen().ToFile(Path.Combine(folder, name + ".png"));
             return;

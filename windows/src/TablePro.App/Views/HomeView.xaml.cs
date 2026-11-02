@@ -87,6 +87,7 @@ public sealed partial class HomeView : UserControl
         }
 
         NoResultsText.Visibility = searching && Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ApplyExpansion(Items);
     }
 
     private LibraryItem ToItem(LibraryNode node, bool searching)
@@ -100,17 +101,6 @@ public sealed partial class HomeView : UserControl
             _ => (node.Title, Describe(node.Connection!), Symbol.Library),
         };
         var item = new LibraryItem(node, title, detail, icon, searching || !_collapsed.Contains(node.Key));
-        item.PropertyChanged += (_, _) =>
-        {
-            if (item.IsExpanded)
-            {
-                _collapsed.Remove(node.Key);
-            }
-            else
-            {
-                _collapsed.Add(node.Key);
-            }
-        };
         foreach (var child in node.Children)
         {
             item.Children.Add(ToItem(child, searching));
@@ -136,9 +126,47 @@ public sealed partial class HomeView : UserControl
 
     private static void OnLibraryItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
-        if (args.InvokedItem is LibraryItem { Node.Kind: not LibraryNodeKind.Connection } item)
+        if (args.InvokedItem is LibraryItem { Node.Kind: not LibraryNodeKind.Connection } item
+            && sender.ContainerFromItem(item) is TreeViewItem container)
         {
-            item.IsExpanded = !item.IsExpanded;
+            container.IsExpanded = !container.IsExpanded;
+        }
+    }
+
+    private void OnLibraryExpanding(TreeView sender, TreeViewExpandingEventArgs args)
+    {
+        if (args.Item is LibraryItem item)
+        {
+            _collapsed.Remove(item.Node.Key);
+        }
+    }
+
+    private void OnLibraryCollapsed(TreeView sender, TreeViewCollapsedEventArgs args)
+    {
+        if (args.Item is LibraryItem item)
+        {
+            _collapsed.Add(item.Node.Key);
+        }
+    }
+
+    // Expands the rows that start expanded, a level at a time, since a row's children get containers only once it
+    // is expanded and laid out.
+    private void ApplyExpansion(IEnumerable<LibraryItem> items)
+    {
+        ConnectionTree.UpdateLayout();
+        var expanded = new List<LibraryItem>();
+        foreach (var item in items.Where(item => item.StartsExpanded && item.Children.Count > 0))
+        {
+            if (ConnectionTree.ContainerFromItem(item) is TreeViewItem container)
+            {
+                container.IsExpanded = true;
+                expanded.Add(item);
+            }
+        }
+
+        if (expanded.Count > 0)
+        {
+            ApplyExpansion(expanded.SelectMany(item => item.Children));
         }
     }
 

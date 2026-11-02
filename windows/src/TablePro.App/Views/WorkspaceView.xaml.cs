@@ -312,7 +312,7 @@ public sealed partial class WorkspaceView : UserControl
                 foreach (var folder in Objects.Where(node => node.Folder?.Kind == FolderKind.Tables))
                 {
                     RealizeFolder(folder);
-                    folder.IsExpanded = true;
+                    Expand(folder);
                 }
 
                 return;
@@ -330,13 +330,23 @@ public sealed partial class WorkspaceView : UserControl
                 if (schema.IsDefault)
                 {
                     await RealizeSchemaAsync(node, refresh).ConfigureAwait(true);
-                    node.IsExpanded = true;
+                    Expand(node);
                 }
             }
         }
         catch (TableProException exception)
         {
             ShowListMessage(Strings.Error(exception.Error));
+        }
+    }
+
+    // TreeViewItem.IsExpanded does not take a binding's first value, so a row opens through its container.
+    private void Expand(ObjectNode node)
+    {
+        ObjectTree.UpdateLayout();
+        if (ObjectTree.ContainerFromItem(node) is TreeViewItem container)
+        {
+            container.IsExpanded = true;
         }
     }
 

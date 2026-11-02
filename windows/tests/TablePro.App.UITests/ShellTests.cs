@@ -64,7 +64,7 @@ public sealed class ShellTests
             app.Find("NameBox", form).AsTextBox().Text = "Chinook copy";
             app.Screenshot("03-form-details", form);
             app.Find("ConnectButton", form).AsButton().Invoke();
-            Assert.True(app.WindowClosed("New connection"));
+            app.WaitForClose("New connection");
 
             var tree = app.Find("ObjectTree");
             var album = app.FindByName("Album", tree);
@@ -123,7 +123,7 @@ public sealed class ShellTests
         app.Find("PortBox", form).AsTextBox().Text = "1";
         app.Find("UserBox", form).AsTextBox().Text = "nobody";
         app.Find("ConnectButton", form).AsButton().Invoke();
-        Assert.True(app.WindowClosed("New connection"));
+        app.WaitForClose("New connection");
 
         app.Find("FailureBar");
         Assert.True(app.Find("RetryButton").IsEnabled);
@@ -150,7 +150,7 @@ public sealed class ShellTests
         app.Find("HostBox", form).AsTextBox().Text = "192.0.2.1";
         app.Find("NameBox", form).AsTextBox().Text = "Unreachable";
         app.Find("ConnectButton", form).AsButton().Invoke();
-        Assert.True(app.WindowClosed("New connection"));
+        app.WaitForClose("New connection");
 
         var cancel = app.Find("CancelConnectButton");
         Assert.StartsWith("Connecting to Unreachable", app.Find("ConnectingText").Name, StringComparison.Ordinal);

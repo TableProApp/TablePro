@@ -89,6 +89,8 @@
             AutomationProperties.AutomationId="ConnectionTree"
             CanDragItems="False"
             CanReorderItems="False"
+            Collapsed="OnLibraryCollapsed"
+            Expanding="OnLibraryExpanding"
             ItemsSource="{x:Bind Items}"
             PreviewKeyDown="OnLibraryKeyDown"
             SelectionMode="Single"
@@ -99,7 +101,6 @@
                         AutomationProperties.Name="{x:Bind AccessibleName}"
                         ContextRequested="OnLibraryContextRequested"
                         DoubleTapped="OnLibraryDoubleTapped"
-                        IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
                         ItemsSource="{x:Bind Children}">
                         <StackPanel Orientation="Horizontal" Spacing="12" Padding="0,4">
                             <Viewbox Width="16" Height="16">

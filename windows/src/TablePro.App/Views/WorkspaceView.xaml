@@ -107,7 +107,6 @@
                             <TreeViewItem
                                 AutomationProperties.Name="{x:Bind AccessibleName}"
                                 HasUnrealizedChildren="{x:Bind HasUnrealizedChildren, Mode=OneWay}"
-                                IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
                                 ItemsSource="{x:Bind Children}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <Viewbox Width="16" Height="16">

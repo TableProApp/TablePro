@@ -20,7 +20,6 @@ public enum ObjectNodeKind
 public sealed partial class ObjectNode : INotifyPropertyChanged
 {
     private bool _hasUnrealizedChildren;
-    private bool _isExpanded;
 
     public ObjectNode(ObjectNodeKind kind, string title)
     {
@@ -52,12 +51,6 @@ public sealed partial class ObjectNode : INotifyPropertyChanged
     {
         get => _hasUnrealizedChildren;
         set => Set(ref _hasUnrealizedChildren, value);
-    }
-
-    public bool IsExpanded
-    {
-        get => _isExpanded;
-        set => Set(ref _isExpanded, value);
     }
 
     private void Set(ref bool field, bool value, [CallerMemberName] string? name = null)
