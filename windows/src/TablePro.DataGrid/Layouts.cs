@@ -175,6 +175,8 @@ internal sealed partial class ElementPool(Func<UIElement> create) : IElementFact
 
     public int DuplicateRecycles { get; private set; }
 
+    public IEnumerable<UIElement> Pooled => _pool;
+
     public UIElement GetElement(ElementFactoryGetArgs args)
     {
         if (_pool.TryPop(out var element))

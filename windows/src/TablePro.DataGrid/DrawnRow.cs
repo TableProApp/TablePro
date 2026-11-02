@@ -95,9 +95,12 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         return false;
     }
 
+    // Its text layouts and surface, which are native; the row draws again when measured.
     public void Release()
     {
         ReleaseCells();
+        DrawnRowIndex = -1;
+        _brush.Surface = null;
         _surface?.Dispose();
         _surface = null;
     }

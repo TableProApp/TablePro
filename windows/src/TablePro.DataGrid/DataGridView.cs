@@ -464,6 +464,13 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        foreach (var rows in new[] { _rowsLayout.Realized.Values, _frozenRowsLayout.Realized.Values, _rowPool.Pooled, _frozenRowPool.Pooled })
+        {
+            foreach (var row in rows)
+            {
+                ((DrawnRow)row).Release();
+            }
+        }
         _settings.TextScaleFactorChanged -= OnTextScaleChanged;
         _settings.ColorValuesChanged -= OnColorsChanged;
         if (XamlRoot is not null)
