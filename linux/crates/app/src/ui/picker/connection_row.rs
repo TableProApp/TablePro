@@ -326,6 +326,7 @@ mod tests {
         let group = row_actions(
             &adw::ActionRow::new(),
             &saved,
+            None,
             &[acme.clone(), production.clone()],
             &gtk::MenuButton::new(),
         );

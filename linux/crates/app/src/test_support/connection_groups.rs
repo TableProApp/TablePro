@@ -13,7 +13,7 @@ static NAMES: LazyLock<Mutex<HashMap<Uuid, String>>> = LazyLock::new(Mutex::defa
 
 /// The top-level group `name`, with the id a list from before group ids
 /// gives it.
-pub(crate) fn group_named(name: &str) -> ConnectionGroup {
+fn group_named(name: &str) -> ConnectionGroup {
     let group = ConnectionGroup::legacy(ConnectionGroupName::new(name).expect("a group name"));
     NAMES.lock().expect("the group names").insert(group.id, name.to_owned());
     group
