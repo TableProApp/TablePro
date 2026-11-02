@@ -4,6 +4,7 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="FlaUI.UIA3" Version="5.0.0" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
     <PackageVersion Include="TerraFX.Interop.Windows" Version="10.0.26100.6" />
