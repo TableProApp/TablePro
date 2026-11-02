@@ -31518,6 +31518,16 @@
     "Binary values limit must be between 1 and 1,048,576 KB." : {
 
     },
+    "Black Friday: %lld%% off Pro until %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Black Friday: %1$lld%% off Pro until %2$@"
+          }
+        }
+      }
+    },
     "Bloated Tables" : {
 
     },
