@@ -57,12 +57,21 @@ impl CallClient {
 
 /// A read as the server runs it: never a write, and stopped by the
 /// server itself once its bound passes. `None` leaves it unbounded.
-pub(crate) fn reading(client: &clickhouse::Client, bound: Option<Duration>) -> clickhouse::Client {
-    client
+/// `readonly` is the level `ClickHouseEndpoint::read_level` chose; none
+/// leaves the login's own.
+pub(crate) fn reading(
+    client: &clickhouse::Client,
+    bound: Option<Duration>,
+    readonly: Option<&str>,
+) -> clickhouse::Client {
+    let client = client
         .clone()
-        .with_setting("readonly", "2")
         .with_setting("timeout_overflow_mode", "throw")
-        .with_setting("max_execution_time", whole_seconds(bound).to_string())
+        .with_setting("max_execution_time", whole_seconds(bound).to_string());
+    match readonly {
+        Some(level) => client.with_setting("readonly", level),
+        None => client,
+    }
 }
 
 /// The nearer of the call's deadline and the configured timeout.

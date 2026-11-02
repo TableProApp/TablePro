@@ -20,6 +20,19 @@ struct SSHMatchExecutorTests {
         #expect(!SSHMatchExecutor.evaluate(command: "   "))
     }
 
+    // Process hands U+037E over as `;`, so the shell would have run the touch.
+    @Test("A command the launcher refuses never runs and does not match")
+    func refusedCommandDoesNotRun() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("match-exec-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let marker = folder.appendingPathComponent("ran")
+
+        #expect(!SSHMatchExecutor.evaluate(command: "true\u{37E}touch \(marker.path)"))
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+        #expect(!SSHMatchExecutor.evaluate(command: "true\u{0}"))
+    }
+
     @Test("Slow command times out and does not match")
     func timeoutDoesNotMatch() {
         #expect(SSHMatchExecutor.timeoutSeconds > 0)

@@ -123,15 +123,12 @@ public enum MySQLLiteralSpelling: Equatable, Sendable {
         }
     }
 
+    // Only a NO_BACKSLASH_ESCAPES session reads respelled text, and there a backslash escapes nothing in `"` either.
     private static func endOfQuoted(in scalars: [Unicode.Scalar], openingAt start: Int) -> Int {
         let quote = scalars[start]
         var index = start + 1
         while index < scalars.count {
             let scalar = scalars[index]
-            if scalar == "\\", quote != "`" {
-                index += 2
-                continue
-            }
             index += 1
             guard scalar == quote else { continue }
             guard index < scalars.count, scalars[index] == quote else { return index }

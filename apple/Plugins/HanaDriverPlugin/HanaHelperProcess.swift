@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import os
+import TableProProcess
 
 final class HanaHelperProcess: @unchecked Sendable {
     static let shutdownGrace: TimeInterval = 2
@@ -48,20 +49,22 @@ final class HanaHelperProcess: @unchecked Sendable {
     }
 
     private init(executable: URL) throws {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = []
-        process.environment = [:]
-        process.qualityOfService = .userInitiated
         let inputPipe = Pipe()
         let outputPipe = Pipe()
         let errorPipe = Pipe()
-        process.standardInput = inputPipe
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
         let exited = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in exited.signal() }
+        let process: Process
         do {
+            // `url(forAuxiliaryExecutable:)` answers relative to the bundle folder, which the launcher refuses.
+            process = try ProcessLauncher.process(for: ProcessCommand(
+                executable: executable.absoluteURL,
+                environment: [:]
+            ))
+            process.qualityOfService = .userInitiated
+            process.standardInput = inputPipe
+            process.standardOutput = outputPipe
+            process.standardError = errorPipe
+            process.terminationHandler = { _ in exited.signal() }
             try HanaHelperPipe.suppressBrokenPipeSignal(on: inputPipe.fileHandleForWriting.fileDescriptor)
             try process.run()
         } catch {

@@ -46,7 +46,7 @@ internal enum ConnectionFailureClassifier {
     }
 
     internal static func recoveryAction(for error: Error, canEditConnection: Bool = true) -> ConnectionRecoveryAction? {
-        if error is LoadableExtensionError {
+        if error is LoadableExtensionError || error is SSLModeNotSupportedError {
             return canEditConnection ? .editConnection : nil
         }
         if error is LocalNetworkAccessError {
@@ -71,6 +71,7 @@ internal enum ConnectionFailureClassifier {
         if error is CancellationError { return true }
         if case TabRouterError.userCancelled = error { return true }
         if case PreConnectScriptConsentError.declined = error { return true }
+        if case EnvVarReferenceConsentError.declined = error { return true }
         let nsError = error as NSError
         return nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError
     }

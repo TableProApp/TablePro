@@ -267,7 +267,7 @@ actor MCPTokenStore {
         save()
         notifyRevocationObservers(tokenId: tokenId, wasBridgeCredential: wasBridge)
 
-        Self.logger.info("Revoked MCP token '\(revokedName, privacy: .public)'")
+        Self.logger.info("Revoked MCP token '\(revokedName, privacy: .private(mask: .hash))'")
         MCPAuditLogger.logTokenRevoked(tokenId: tokenId, tokenName: revokedName)
     }
 

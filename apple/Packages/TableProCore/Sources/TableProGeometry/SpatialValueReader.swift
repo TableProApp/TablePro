@@ -3,8 +3,8 @@ import Foundation
 /// Chooses a reader for one cell.
 ///
 /// There is no single wire format, and the engine's own type name does not settle it: a PostGIS
-/// column reports `geometry` whether the value arrived as EWKT or, when the `ST_AsEWKT` rewrite
-/// failed, as raw EWKB hex. So the value is sniffed, cheaply, and the sniff is ordered by how
+/// column reports `geometry` whether the value arrived as EWKT or, when the driver could not write
+/// it as EWKT, as raw EWKB hex. So the value is sniffed, cheaply, and the sniff is ordered by how
 /// exclusive each shape is: hex digits only, then a leading brace, then a geometry keyword.
 public enum SpatialValueReader {
     public static func read(_ text: String) -> Result<SpatialValue, SpatialReadFailure> {

@@ -12,13 +12,19 @@ struct EntityQuerySuggestionsTests {
         type: .sqlite,
         database: "/private/var/tablepro-tests/\(UUID().uuidString)/Gone.sqlite"
     )
+    private let lock: AppLockState
+
+    init() throws {
+        let defaults = try #require(UserDefaults(suiteName: "com.TablePro.tests.EntityQuerySuggestions.\(UUID().uuidString)"))
+        lock = AppLockState(auth: StubDeviceOwnerAuthenticator(answer: false), defaults: defaults)
+    }
 
     @Test("the table picker names a deleted connection instead of listing nothing")
     func tablesOfDeletedConnectionThrow() async {
         let scope = TableListingScope(connectionId: UUID(), namespace: nil)
 
         await #expect(throws: IntentDataError.connectionNotFound) {
-            try await TableEntityQuery.tables(in: scope, savedConnection: { _ in nil })
+            try await TableEntityQuery.tables(in: scope, lock: lock, savedConnection: { _ in nil })
         }
     }
 
@@ -28,7 +34,7 @@ struct EntityQuerySuggestionsTests {
         let scope = TableListingScope(connectionId: connection.id, namespace: nil)
 
         await #expect(throws: IntentDataError.unsupportedDatabaseType("Redis")) {
-            try await TableEntityQuery.tables(in: scope, savedConnection: { _ in connection })
+            try await TableEntityQuery.tables(in: scope, lock: lock, savedConnection: { _ in connection })
         }
     }
 
@@ -38,7 +44,7 @@ struct EntityQuerySuggestionsTests {
         let scope = TableListingScope(connectionId: connection.id, namespace: nil)
 
         let error = await #expect(throws: IntentDataError.self) {
-            try await TableEntityQuery.tables(in: scope, savedConnection: { _ in connection })
+            try await TableEntityQuery.tables(in: scope, lock: lock, savedConnection: { _ in connection })
         }
         guard case .connectionFailed = error else {
             Issue.record("expected connectionFailed, got \(String(describing: error))")
@@ -48,7 +54,7 @@ struct EntityQuerySuggestionsTests {
 
     @Test("the table picker stays empty until a connection is picked")
     func tablesWithoutConnectionListNothing() async throws {
-        let tables = try await TableEntityQuery.tables(in: nil, savedConnection: { _ in
+        let tables = try await TableEntityQuery.tables(in: nil, lock: lock, savedConnection: { _ in
             Issue.record("looked up a connection before one was picked")
             return nil
         })
@@ -59,7 +65,7 @@ struct EntityQuerySuggestionsTests {
     @Test("the database picker names a deleted connection instead of listing nothing")
     func namespacesOfDeletedConnectionThrow() async {
         await #expect(throws: IntentDataError.connectionNotFound) {
-            try await DatabaseEntityQuery.namespaces(of: UUID(), savedConnection: { _ in nil })
+            try await DatabaseEntityQuery.namespaces(of: UUID(), lock: lock, savedConnection: { _ in nil })
         }
     }
 
@@ -68,13 +74,13 @@ struct EntityQuerySuggestionsTests {
         let connection = redis
 
         await #expect(throws: IntentDataError.unsupportedDatabaseType("Redis")) {
-            try await DatabaseEntityQuery.namespaces(of: connection.id, savedConnection: { _ in connection })
+            try await DatabaseEntityQuery.namespaces(of: connection.id, lock: lock, savedConnection: { _ in connection })
         }
     }
 
     @Test("the database picker stays empty until a connection is picked")
     func namespacesWithoutConnectionListNothing() async throws {
-        let namespaces = try await DatabaseEntityQuery.namespaces(of: nil, savedConnection: { _ in
+        let namespaces = try await DatabaseEntityQuery.namespaces(of: nil, lock: lock, savedConnection: { _ in
             Issue.record("looked up a connection before one was picked")
             return nil
         })

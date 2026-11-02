@@ -1,6 +1,7 @@
 import ActivityKit
 import Foundation
 import os
+import TableProLogRedaction
 import UIKit
 
 @MainActor
@@ -101,7 +102,7 @@ final class QueryActivityController {
             executions[token] = Execution(connectionId: connectionId, handle: handle, lastUpdatedAt: startedAt)
             return token
         } catch {
-            Self.logger.warning("Could not start the query Live Activity: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Could not start the query Live Activity: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return nil
         }
     }

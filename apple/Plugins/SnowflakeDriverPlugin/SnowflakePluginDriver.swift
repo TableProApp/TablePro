@@ -295,7 +295,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             result = try await rawQuery(SnowflakeSchemaQueries.showObjects(database: database, schema: targetSchema))
         } catch let error as SnowflakeError where error.indicatesInaccessibleObject {
-            Self.logger.debug("Schema \(targetSchema, privacy: .public) is visible but not enumerable; showing it empty")
+            Self.logger.debug("Schema \(targetSchema, privacy: .private(mask: .hash)) is visible but not enumerable; showing it empty")
             return []
         }
         guard let nameIndex = columnIndex(of: "name", in: result) else { return [] }
@@ -370,7 +370,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             targetSchema = await resolveSchema(for: table, database: database)
         }
         Self.logger.debug(
-            "fetchColumns table=\(table, privacy: .public) schemaParam=\(schema ?? "nil", privacy: .public) currentSchema=\(self.connection?.currentSchema ?? "nil", privacy: .public) currentDatabase=\(database ?? "nil", privacy: .public)"
+            "fetchColumns table=\(table, privacy: .private(mask: .hash)) schemaParam=\(schema ?? "nil", privacy: .private(mask: .hash)) currentSchema=\(self.connection?.currentSchema ?? "nil", privacy: .private(mask: .hash)) currentDatabase=\(database ?? "nil", privacy: .private(mask: .hash))"
         )
         guard let database, let targetSchema else { return [] }
 
@@ -386,7 +386,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             """
         let result = try await rawQuery(sql)
         Self.logger.debug(
-            "fetchColumns table=\(table, privacy: .public) schema=\(targetSchema, privacy: .public) database=\(database, privacy: .public) rows=\(result.rows.count, privacy: .public)"
+            "fetchColumns table=\(table, privacy: .private(mask: .hash)) schema=\(targetSchema, privacy: .private(mask: .hash)) database=\(database, privacy: .private(mask: .hash)) rows=\(result.rows.count, privacy: .public)"
         )
         let columns = result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = Self.text(row, 0) else { return nil }
@@ -715,7 +715,7 @@ final class SnowflakePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             : (schemas.first { $0 == "PUBLIC" } ?? schemas.first)
         if let resolved {
             lock.withLock { resolvedSchemaCache[cacheKey] = resolved }
-            Self.logger.debug("resolveSchema table=\(table, privacy: .public) -> \(resolved, privacy: .public) (candidates=\(schemas.count, privacy: .public))")
+            Self.logger.debug("resolveSchema table=\(table, privacy: .private(mask: .hash)) -> \(resolved, privacy: .private(mask: .hash)) (candidates=\(schemas.count, privacy: .public))")
         }
         return resolved
     }

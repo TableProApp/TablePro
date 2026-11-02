@@ -10,10 +10,39 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
+
+private final class NoBackslashEscapesDriver: PluginDriverStub, @unchecked Sendable {
+    var supportsSchemas: Bool { false }
+    var supportsTransactions: Bool { false }
+    var currentSchema: String? { nil }
+    var serverVersion: String? { nil }
+    var sessionLexicalState: PluginSessionLexicalState? {
+        PluginSessionLexicalState(determined: [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes], enabled: [])
+    }
+}
 
 struct CompareSQLLiteralTests {
     private let png = Data([0x89, 0x50, 0x4E, 0x47])
+
+    // The script is also copied and saved with no mode declared: spelled for the session, `x\` would end its literal
+    // when it runs in the default mode.
+    @Test
+    func mysqlTextKeepsItsOwnSetUnderNoBackslashEscapes() {
+        let literal = CompareSQLLiteral.textLiteral(
+            "x\\", columnType: nil, databaseType: .mysql, driver: NoBackslashEscapesDriver()
+        )
+        #expect(literal == #"'x\\'"#)
+    }
+
+    @Test
+    func mysqlKeyLookupUsesTheSessionsEscapes() {
+        let literal = CompareSQLLiteral.textLiteral(
+            "x\\", columnType: nil, databaseType: .mysql, driver: NoBackslashEscapesDriver(), keptInScript: false
+        )
+        #expect(literal == #"'x\'"#)
+    }
 
     @Test
     func bitStringEnginesKeepTheDefaultSpelling() throws {

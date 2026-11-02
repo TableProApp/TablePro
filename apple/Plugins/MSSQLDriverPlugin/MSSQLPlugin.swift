@@ -9,6 +9,7 @@ import TableProCoreTypes
 import TableProKerberos
 import TableProMSSQLCore
 import TableProPluginKit
+import TableProSQLQuoting
 import TableProSQLVocabulary
 
 // MARK: - Core ↔ Plugin Bridges
@@ -323,7 +324,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        "[\(MSSQLSchemaQueries.escapeBracket(name))]"
+        SQLQuoting.identifier(name, quote: .bracket)
     }
 
     // MARK: - View Templates
@@ -419,7 +420,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
            !serverSchema.isEmpty {
             currentSchemaName = serverSchema
         } else {
-            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self.currentSchemaName, privacy: .public)")
+            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self.currentSchemaName, privacy: .private(mask: .hash))")
         }
 
         let formSchema = config.additionalFields["mssqlSchema"]
@@ -958,6 +959,12 @@ enum MSSQLPluginError: Error {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)
+}
+
+extension MSSQLPluginError {
+    init(_ refusal: MSSQLDefinitionRefusal) {
+        self = .queryFailed(refusal.reason)
+    }
 }
 
 extension MSSQLPluginError: PluginDriverError {

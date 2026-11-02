@@ -349,6 +349,49 @@ struct SSHTunnelFactoryTests {
         #expect(stages.connectCount == 0)
     }
 
+    @Test(
+        "A host or user ssh would refuse is refused before anything is looked up or dialed",
+        arguments: ["hop host", "hop user", "server host", "server user"]
+    )
+    func invalidNameIsRefusedBeforeDialing(target: String) async {
+        let stages = SpyTunnelStages()
+        let localNetwork = LocalNetworkRecorder()
+        var hop = Self.bastion
+        var config = Self.config(authMethod: .password)
+        let problem: SSHDestinationName.Problem
+        switch target {
+        case "hop host":
+            hop.host = "bastion\u{37E}id.internal"
+            problem = .host(hop.host)
+        case "hop user":
+            hop.username = "jump #"
+            problem = .user(hop.username)
+        case "server host":
+            config.host = "#corp.example"
+            problem = .host(config.host)
+        default:
+            config.username = "deploy\u{1FEF}id\u{1FEF}"
+            problem = .user(config.username)
+        }
+        config.jumpHosts = [hop]
+
+        await #expect(throws: SSHTunnelError.connectionFailed(problem.explanation)) {
+            try await SSHTunnelFactory.create(
+                config: config,
+                destination: .tcp(host: "db.internal", port: 5_432),
+                credentials: Self.credentials(for: .password),
+                jumpHostCredentials: [hop.id: .privateKey(key: "HOP KEY", passphrase: nil)],
+                prompter: StubPrompter(answer: true),
+                hostKeyStore: Self.temporaryHostKeyStore(),
+                ensureLocalNetworkAccess: { localNetwork.probe($0) },
+                makeStages: { stages }
+            )
+        }
+
+        #expect(stages.connectCount == 0)
+        #expect(localNetwork.probed.isEmpty)
+    }
+
     @Test("Local Network is checked for the first host the device dials", arguments: [true, false])
     func localNetworkProbesTheFirstHost(throughAHop: Bool) async throws {
         let localNetwork = LocalNetworkRecorder()

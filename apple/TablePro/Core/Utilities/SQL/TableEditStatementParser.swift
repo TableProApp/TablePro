@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProSQLQuoting
 import TableProUtilities
 
 /// One dot-separated part of a name, as the statement wrote it.
@@ -309,17 +310,16 @@ private struct Reader {
         return lookahead.accept("NOT") && lookahead.accept("ATOMIC")
     }
 
-    /// A procedure call, which is unseen code, unless it is SQL Server's only table rename,
-    /// `EXEC sp_rename 'schema.old', 'new'`, optionally typed `'OBJECT'`. The old name is itself a
-    /// multipart name inside a string. The new one is taken exactly as written, because the
-    /// procedure names the object with the literal text.
+    // Unseen code, unless it is SQL Server's only table rename, `EXEC sp_rename 'schema.old', 'new'`: the new name is
+    // taken as written, since the procedure names the object with the literal's text.
     mutating func storedProcedureCall(grammar: SQLLexicalGrammar) -> TableEditStatement {
         guard let procedure = name(), Self.isRenameProcedure(procedure) else { return .runsUnseenCode }
-        guard let source = stringLiteral().flatMap({ Self.multipartName(in: $0, grammar: grammar) }),
+        let escapes = grammar.stringEscapes
+        guard let source = stringLiteral(escapes: escapes).flatMap({ Self.multipartName(in: $0, grammar: grammar) }),
               acceptSymbol(SQLTokenCursor.comma),
-              let target = stringLiteral(), !target.isEmpty else { return .other }
+              let target = stringLiteral(escapes: escapes), !target.isEmpty else { return .other }
         if acceptSymbol(SQLTokenCursor.comma) {
-            guard stringLiteral()?.uppercased() == "OBJECT" else { return .other }
+            guard stringLiteral(escapes: escapes)?.uppercased() == "OBJECT" else { return .other }
         }
         guard isAtEnd else { return .other }
         let renamed = SQLObjectName(parts: [SQLNamePart(text: target, isQuoted: true)])
@@ -337,18 +337,17 @@ private struct Reader {
         return name
     }
 
-    /// A `'...'` or `N'...'` literal's text, with doubled quotes undone.
-    private mutating func stringLiteral() -> String? {
+    // A `'...'` or `N'...'` literal's text, read by scalar: a quote a combining mark follows is one Character.
+    private mutating func stringLiteral(escapes: SQLStringEscapes) -> String? {
         if peekWord() == "N" {
             var lookahead = self
             _ = lookahead.cursor.next()
             if case .literal = lookahead.cursor.peek() { self = lookahead }
         }
         guard case .literal = cursor.next() else { return nil }
-        var text = cursor.lastTokenText
-        if text.first == "N" || text.first == "n" { text.removeFirst() }
-        guard text.count >= 2, text.hasPrefix("'"), text.hasSuffix("'") else { return nil }
-        return String(text.dropFirst().dropLast()).replacingOccurrences(of: "''", with: "'")
+        var text = cursor.lastTokenText.unicodeScalars[...]
+        if text.first == "N" || text.first == "n" { text = text.dropFirst() }
+        return SQLQuoting.decodedStringLiteral(String(text), escapes: escapes)
     }
 
     // MARK: - Transactions and context

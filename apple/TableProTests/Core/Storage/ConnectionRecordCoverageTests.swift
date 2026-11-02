@@ -83,6 +83,7 @@ enum ConnectionCoverageFixture {
             hops: [PublishedSSHRoute.Hop(id: UUID(), alias: "jump", host: "10.0.0.2", port: 22, username: "hop")],
             target: PublishedSSHRoute.Target(alias: "bastion", host: "10.0.0.3", port: 2_222, username: "deploy")
         )
+        connection.origin = .imported
         return connection
     }
 }

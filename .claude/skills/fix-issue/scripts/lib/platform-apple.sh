@@ -141,8 +141,10 @@ test_targets_table() {
     printf '%s' "$table"
 }
 
+# Reads to the end: an early `exit` lets printf hit SIGPIPE once the table outgrows one write, and pipefail then
+# fails the lookup.
 route_of() {
-    printf '%s' "$TEST_TARGETS" | awk -F'\t' -v t="$1" '$1 == t { print $2; exit }'
+    printf '%s' "$TEST_TARGETS" | awk -F'\t' -v t="$1" '$1 == t && !found { print $2; found = 1 }'
 }
 
 # The test targets that declare a type named $1, one per line. A file outside every known target

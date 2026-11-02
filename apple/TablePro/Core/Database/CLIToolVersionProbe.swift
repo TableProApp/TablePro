@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProProcess
 import TableProUtilities
 
 enum CLIToolVersionProbe {
@@ -15,10 +16,19 @@ enum CLIToolVersionProbe {
     static let outputCap = 64 * 1_024
 
     static func versionOutput(of path: String, timeout: TimeInterval = defaultTimeout) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = ["--version"]
-        process.environment = CLIToolEnvironment.augmented()
+        let process: Process
+        do {
+            process = try ProcessLauncher.process(
+                for: ProcessCommand(
+                    executable: URL(fileURLWithPath: path),
+                    arguments: ["--version"],
+                    environment: ProcessEnvironment.addingToolSearchPaths(to: ProcessEnvironment.minimal())
+                )
+            )
+        } catch {
+            logger.warning("Could not run \(path, privacy: .private(mask: .hash)) --version: \(error.publicLogShape, privacy: .public)")
+            return nil
+        }
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice

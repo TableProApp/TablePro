@@ -6,6 +6,7 @@
 import AppKit
 import os
 import TableProPluginKit
+import TableProSQLQuoting
 
 private let copyLogger = Logger(subsystem: "com.TablePro", category: "DataGridCopy")
 
@@ -208,15 +209,16 @@ extension DataGridCommands {
         let tableRows = model.rows
         let values = ids.compactMap { tableRows.row(withID: $0)?[column.dataIndex] }
         guard !values.isEmpty else { return }
-        // Without an owner's driver the engine's dialect escapes: MySQL and ClickHouse read a backslash as one.
+        // Without an owner's driver the engine's grammar escapes: MySQL and ClickHouse read a backslash as one.
+        let traits = configuration.traits
+        let session = traits.connectionScope.flatMap { DatabaseManager.shared.sessionDriver(holding: $0) }?.sessionLexicalState
         let text = model.actions?.gridSQLExporter?.inClause(values: values, column: column)
             ?? InClauseConverter(
                 columnIndex: 0,
                 columnTypes: [column.type ?? .text(rawType: nil)],
-                escapeStringLiteral: configuration.traits.databaseType
-                    .flatMap { try? resolveSQLDialect(for: $0) }
-                    .map { escapeStringLiteralFromDialect($0) },
-                stringLiteralPrefix: configuration.traits.stringLiteralPrefix
+                escapeStringLiteral: nil,
+                stringLiteralPrefix: traits.stringLiteralPrefix,
+                stringEscapes: traits.databaseType.map { SQLLexicalResolver.keptTextStringEscapes(for: $0, session: session) } ?? .standard
             ).generateInClause(rows: values.map { [$0] })
         guard !text.isEmpty else { return }
         ClipboardService.shared.writeText(text)

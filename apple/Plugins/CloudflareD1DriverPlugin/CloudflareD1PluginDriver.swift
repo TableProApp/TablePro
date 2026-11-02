@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 // MARK: - Error
 
@@ -372,8 +373,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         }
 
         guard firstRow[safe: 0]?.asText != "view" else { return ddl }
-        let formatted = formatDDL(ddl)
-        return formatted.hasSuffix(";") ? formatted : formatted + ";"
+        return ddl.hasSuffix(";") ? ddl : ddl + ";"
     }
 
     /// `sqlite_master` stores each index's own `CREATE INDEX` text, which is what `sqlite3 .dump`
@@ -579,7 +579,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     // MARK: - DDL Generation
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        guard !definition.columns.isEmpty else { return nil }
+        guard !definition.columns.isEmpty, definition.columns.allSatisfy({ Self.columnRefusal($0) == nil }) else { return nil }
 
         let tableName = quoteIdentifier(definition.tableName)
         let pkColumns = definition.columns.filter { $0.isPrimaryKey }
@@ -603,6 +603,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        guard Self.columnRefusal(column) == nil else { return nil }
         var def = "\(quoteIdentifier(column.name)) \(column.dataType)"
         if !column.isNullable { def += " NOT NULL" }
         if let defaultValue = column.defaultValue, !defaultValue.isEmpty {
@@ -634,14 +635,13 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         )
     }
 
-    /// Also never run by TablePro, for the same reason: no SQLite `ALTER TABLE` can add or drop a
-    /// foreign key, so the table has to be recreated, and D1 cannot hold that rebuild's transaction
-    /// open across its per-statement HTTP requests. The script is handed to the user instead.
+    // Handed to the user, never run: D1 cannot hold the rebuild's transaction across its per-statement requests.
     func generateTableRebuildPlan(
         table: String,
         schema: String?,
         respecification: PluginTableRespecification
     ) async throws -> PluginColumnReorderPlan? {
+        if let refusal = Self.respecificationRefusal(respecification) { throw CloudflareD1Error(message: refusal) }
         guard !respecification.isEmpty,
               let context = try await SQLiteTableRebuildPlanner.context(
                   tableName: table,
@@ -665,7 +665,19 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        SQLiteIndexCatalog.createStatement(for: index, table: table, quote: quoteIdentifier)
+        guard Self.indexRefusal(index) == nil else { return nil }
+        return SQLiteIndexCatalog.createStatement(for: index, table: table, quote: quoteIdentifier)
+    }
+
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        switch operation {
+        case .addColumn(let column):
+            return Self.columnRefusal(column)
+        case .addIndex(let index):
+            return Self.indexRefusal(index)
+        default:
+            return nil
+        }
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -673,10 +685,12 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
-        d1ColumnDefinition(column, inlinePK: column.isPrimaryKey)
+        guard Self.columnRefusal(column) == nil else { return nil }
+        return d1ColumnDefinition(column, inlinePK: column.isPrimaryKey)
     }
 
     func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
+        guard Self.indexRefusal(index) == nil else { return nil }
         guard let tableName else {
             let unique = index.isUnique ? "UNIQUE " : ""
             let keys = SQLiteIndexCatalog.keyList(for: index, quote: quoteIdentifier)
@@ -690,6 +704,43 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
     }
 
     // MARK: - Private Helpers
+
+    // Type and default text, from the catalog or the user, goes into DDL only as one type or expression.
+    private static func columnRefusal(name: String, type: String?, defaultValue: String?) -> String? {
+        let typeId = CloudflareD1Plugin.databaseTypeId
+        if let type, !type.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !SQLExpressionFragment.isSingleType(type, databaseTypeId: typeId) {
+            return String(format: String(localized: "The type of column %@ cannot be written as SQL."), name)
+        }
+        if let defaultValue, !defaultValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !SQLExpressionFragment.isSingleExpression(defaultValue, databaseTypeId: typeId) {
+            return String(format: String(localized: "The default of column %@ cannot be written as SQL."), name)
+        }
+        return nil
+    }
+
+    private static func columnRefusal(_ column: PluginColumnDefinition) -> String? {
+        columnRefusal(name: column.name, type: column.dataType, defaultValue: column.defaultValue)
+    }
+
+    private static func respecificationRefusal(_ respecification: PluginTableRespecification) -> String? {
+        respecification.addedColumns.lazy.compactMap { columnRefusal($0) }.first
+            ?? respecification.alteredColumns.lazy.compactMap {
+                columnRefusal(name: $0.column, type: $0.type, defaultValue: $0.defaultValue)
+            }.first
+    }
+
+    private static func indexRefusal(_ index: PluginIndexDefinition) -> String? {
+        let typeId = CloudflareD1Plugin.databaseTypeId
+        let keys = index.ddlMethodAndKeys?.nilIfEmpty.map { [$0] } ?? (index.expressions ?? [])
+        guard keys.allSatisfy({ SQLExpressionFragment.isSingleExpression($0, databaseTypeId: typeId) }) else {
+            return String(format: String(localized: "Index %@ has a key part that is not one SQL expression."), index.name)
+        }
+        if let predicate = index.whereClause?.nilIfEmpty, !SQLExpressionFragment.isSingleExpression(predicate, databaseTypeId: typeId) {
+            return String(format: String(localized: "The condition of index %@ cannot be written as SQL."), index.name)
+        }
+        return nil
+    }
 
     private func d1ColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
         var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
@@ -759,57 +810,5 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             executionTime: executionTime,
             isTruncated: truncated
         )
-    }
-
-    private func formatDDL(_ ddl: String) -> String {
-        guard ddl.uppercased().hasPrefix("CREATE TABLE") else {
-            return ddl
-        }
-
-        var formatted = ddl
-
-        if let range = formatted.range(of: "(") {
-            let before = String(formatted[..<range.lowerBound])
-            let after = String(formatted[range.upperBound...])
-            formatted = before + "(\n  " + after.trimmingCharacters(in: .whitespaces)
-        }
-
-        var result = ""
-        var depth = 0
-        var charIndex = 0
-        let chars = Array(formatted)
-
-        while charIndex < chars.count {
-            let char = chars[charIndex]
-
-            if char == "(" {
-                depth += 1
-                result.append(char)
-            } else if char == ")" {
-                depth -= 1
-                result.append(char)
-            } else if char == "," && depth == 1 {
-                result.append(",\n  ")
-                charIndex += 1
-                while charIndex < chars.count && chars[charIndex].isWhitespace {
-                    charIndex += 1
-                }
-                charIndex -= 1
-            } else {
-                result.append(char)
-            }
-
-            charIndex += 1
-        }
-
-        formatted = result
-
-        if let range = formatted.range(of: ")", options: .backwards) {
-            let before = String(formatted[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-            let after = String(formatted[range.lowerBound...])
-            formatted = before + "\n" + after
-        }
-
-        return formatted.isEmpty ? ddl : formatted
     }
 }

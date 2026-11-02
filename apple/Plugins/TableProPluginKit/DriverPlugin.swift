@@ -59,6 +59,7 @@ public protocol DriverPlugin: TableProPlugin {
     static var supportsQueryProgress: Bool { get }
     static var supportsSSH: Bool { get }
     static var supportsSSL: Bool { get }
+    static var supportedSSLModes: [SSLMode] { get }
     static var navigationModel: NavigationModel { get }
     static var explainVariants: [ExplainVariant] { get }
     static var pathFieldRole: PathFieldRole { get }
@@ -175,6 +176,7 @@ public extension DriverPlugin {
     static var supportsQueryProgress: Bool { false }
     static var supportsSSH: Bool { true }
     static var supportsSSL: Bool { true }
+    static var supportedSSLModes: [SSLMode] { SSLMode.allCases }
     static var navigationModel: NavigationModel { .standard }
     static var explainVariants: [ExplainVariant] { [] }
     static var pathFieldRole: PathFieldRole { .database }

@@ -154,6 +154,45 @@ struct DotenvParserTests {
         #expect(document["K"] == nil)
     }
 
+    // MARK: - Expansion budget
+
+    @Test("Lines that each repeat the line before ten times stop growing at the expansion budget")
+    func testInterpolationExpansionIsBounded() {
+        var lines = ["A=" + String(repeating: "x", count: 100)]
+        for (previous, name) in zip(["A", "B", "C", "D", "E"], ["B", "C", "D", "E", "F"]) {
+            lines.append("\(name)=" + String(repeating: "$\(previous)", count: 10))
+        }
+        let source = lines.joined(separator: "\n")
+        let document = DotenvParser.parse(source, processEnvironment: [:])
+        let expanded = document.entries.reduce(0) { $0 + $1.value.utf8.count }
+        #expect(expanded <= source.utf8.count + ProjectScanExpansionBudget.standardLimit)
+        #expect(document.entry(for: "F")?.hasUnresolvedReference == true)
+        #expect(document["F"] == nil)
+    }
+
+    @Test("A reference over the budget stays literal and does not fall back to its default")
+    func testOverBudgetReferenceIsLiteral() {
+        let source = "A=12345\nB=${A:-fallback}\nC=$A"
+        let document = DotenvParser.parse(source, processEnvironment: [:], budget: ProjectScanExpansionBudget(limit: 4))
+        #expect(document.entry(for: "B")?.value == "${A:-fallback}")
+        #expect(document.entry(for: "B")?.hasUnresolvedReference == true)
+        #expect(document.entry(for: "C")?.value == "$A")
+        #expect(document.entry(for: "C")?.hasUnresolvedReference == true)
+
+        let fitting = DotenvParser.parse(source, processEnvironment: [:], budget: ProjectScanExpansionBudget(limit: 5))
+        #expect(fitting.entry(for: "B")?.value == "12345")
+        #expect(fitting.entry(for: "C")?.hasUnresolvedReference == true)
+    }
+
+    @Test("Files parsed with one budget share it, so a later file cannot expand once an earlier one spent it")
+    func testBudgetIsShared() {
+        let budget = ProjectScanExpansionBudget(limit: 10)
+        let first = DotenvParser.parse("A=0123456789\nB=$A", processEnvironment: [:], budget: budget)
+        let second = DotenvParser.parse("A=1\nB=$A", processEnvironment: [:], budget: budget)
+        #expect(first["B"] == "0123456789")
+        #expect(second.entry(for: "B")?.hasUnresolvedReference == true)
+    }
+
     // MARK: - Security
 
     @Test("Command substitution is never executed")

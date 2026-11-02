@@ -30,10 +30,11 @@ extension DamengPluginDriver {
         parameters: [PluginCellValue],
         rowCap: Int?,
         replay: DamengReplayPolicy,
+        hostSplit: Bool = false,
         isRetry: Bool = false
     ) async throws -> PluginQueryResult {
         do {
-            return try await executeOnce(query: query, parameters: parameters, rowCap: rowCap)
+            return try await executeOnce(query: query, parameters: parameters, rowCap: rowCap, hostSplit: hostSplit)
         } catch let error as DamengError where error.closedConnection && hasOpenTransaction {
             // Rebuilding here would put the rest of the transaction on a connection that never
             // saw its BEGIN, and the commit would then report success having written nothing.
@@ -53,6 +54,7 @@ extension DamengPluginDriver {
                 parameters: parameters,
                 rowCap: rowCap,
                 replay: replay,
+                hostSplit: hostSplit,
                 isRetry: true
             )
         }

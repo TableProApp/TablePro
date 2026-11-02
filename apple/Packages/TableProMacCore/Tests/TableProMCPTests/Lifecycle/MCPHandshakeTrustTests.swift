@@ -1,19 +1,23 @@
 import Foundation
 @testable import TableProMCP
+import TableProMCPTestSupport
 import XCTest
 
 final class MCPHandshakeTrustTests: XCTestCase {
     private var directory: URL!
+    private var listener: MCPUnixSocketListener?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mcp-handshake-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        directory = try MCPTestSocketFolder.make()
+        let listener = MCPUnixSocketListener(path: socketPath) { $0.cancel() }
+        try listener.start()
+        self.listener = listener
     }
 
     override func tearDownWithError() throws {
+        listener?.stop()
+        listener = nil
         try? FileManager.default.removeItem(at: directory)
         directory = nil
         try super.tearDownWithError()
@@ -22,7 +26,7 @@ final class MCPHandshakeTrustTests: XCTestCase {
     func testLoadsAHandshakeWrittenForThisProcess() throws {
         try write(payload(), permissions: 0o600)
         let loaded = try MCPHandshakeTrust.load(at: url, now: Date())
-        XCTAssertEqual(loaded.port, 23_508)
+        XCTAssertEqual(loaded.socketPath, socketPath)
         XCTAssertEqual(loaded.token, "tp_test")
         XCTAssertEqual(loaded.version, MCPHandshakePayload.currentVersion)
     }
@@ -144,15 +148,6 @@ final class MCPHandshakeTrustTests: XCTestCase {
         }
     }
 
-    func testRejectsAPortOutsideTheValidRange() throws {
-        for port in [0, 65_536, -1] {
-            try write(payload(port: port), permissions: 0o600)
-            XCTAssertThrowsError(try MCPHandshakeTrust.load(at: url, now: Date())) { error in
-                XCTAssertEqual(error as? MCPHandshakeTrustFailure, .malformed)
-            }
-        }
-    }
-
     func testMissingFileReportsMissing() {
         XCTAssertThrowsError(try MCPHandshakeTrust.load(at: url, now: Date())) { error in
             XCTAssertEqual(error as? MCPHandshakeTrustFailure, .missing)
@@ -164,12 +159,7 @@ final class MCPHandshakeTrustTests: XCTestCase {
         let data = try MCPHandshakeCoding.encoder().encode(original)
         let decoded = try MCPHandshakeCoding.decoder().decode(MCPHandshakePayload.self, from: data)
         XCTAssertEqual(decoded, original)
-        XCTAssertEqual(decoded.endpoint?.absoluteString, "http://127.0.0.1:23508/mcp")
-    }
-
-    func testTheEndpointIsAlwaysLoopback() throws {
-        XCTAssertEqual(payload(port: 1).endpoint?.host, "127.0.0.1")
-        XCTAssertEqual(payload(port: 65_535).endpoint?.scheme, "http")
+        XCTAssertEqual(decoded.credentials().socketPath, socketPath)
     }
 
     func testTheSandboxVariableRedirectsTheSupportDirectory() {
@@ -190,15 +180,18 @@ final class MCPHandshakeTrustTests: XCTestCase {
         MCPHandshakeLocation.file(in: directory)
     }
 
+    private var socketPath: String {
+        MCPSocketLocation.primarySocket(in: directory).path
+    }
+
     private func payload(
-        port: Int = 23_508,
         token: String = "tp_test",
         instanceId: String = "instance",
         pid: Int32 = ProcessInfo.processInfo.processIdentifier,
         expiresAt: Date = Date().addingTimeInterval(3_600)
     ) -> MCPHandshakePayload {
         MCPHandshakePayload(
-            port: port,
+            socketPath: socketPath,
             token: token,
             pid: pid,
             instanceId: instanceId,

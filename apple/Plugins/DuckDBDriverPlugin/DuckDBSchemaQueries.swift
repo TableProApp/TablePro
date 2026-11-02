@@ -9,6 +9,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 enum DuckDBTableListingScope: Sendable, Equatable {
     case schema
@@ -283,10 +284,9 @@ enum DuckDBSchemaQueries {
         "CREATE SEQUENCE IF NOT EXISTS \(quoteIdentifier(schema)).\(quoteIdentifier(sequence))"
     }
 
-    /// A schema holding `"` is left out for the same reason, and an unqualified sequence resolves in
-    /// the table's own schema, also after the file is reopened.
+    // A schema holding `"` is left out for the same reason; an unqualified sequence resolves in the table's schema.
     static func nextvalDefault(schema: String, sequence: String) -> String {
-        let name = schema.contains("\"")
+        let name = schema.unicodeScalars.contains("\"")
             ? quoteIdentifier(sequence)
             : "\(quoteIdentifier(schema)).\(quoteIdentifier(sequence))"
         return "nextval(\(quoteLiteral(name)))"
@@ -362,19 +362,10 @@ enum DuckDBSchemaQueries {
     }
 
     static func quoteIdentifier(_ name: String) -> String {
-        "\"\(escapeIdentifier(name))\""
-    }
-
-    /// `.literal` matches by code unit: the default matches grapheme clusters and skips a quote that a
-    /// combining mark follows, which then ends the identifier or literal early.
-    static func escapeIdentifier(_ name: String) -> String {
-        name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
+        SQLQuoting.identifier(name)
     }
 
     static func quoteLiteral(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\0", with: "", options: .literal)
-            .replacingOccurrences(of: "'", with: "''", options: .literal)
-        return "'\(escaped)'"
+        SQLQuoting.stringLiteral(value)
     }
 }

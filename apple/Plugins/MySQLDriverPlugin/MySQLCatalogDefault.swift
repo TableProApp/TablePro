@@ -8,6 +8,8 @@
 import Foundation
 import TableProMySQLCore
 import TableProPluginKit
+import TableProSQLGrammar
+import TableProSQLQuoting
 
 /// A catalog default, tagged with the form the read that produced it uses.
 ///
@@ -57,35 +59,22 @@ nonisolated internal struct MySQLCreateTableDefaults: Equatable, Sendable {
     }
 }
 
-/// The SQL that follows `DEFAULT` for a column, or nil when the column has no default.
-///
-/// A nullable column the catalog gives SQL NULL has `DEFAULT NULL`. MySQL writes that clause itself
-/// for a nullable column declared without one, and MariaDB keeps it through `DROP DEFAULT`. The one
-/// state this cannot see is a MySQL nullable column whose default was removed with `ALTER COLUMN …
-/// DROP DEFAULT`: the catalog reports it the same way, and on `TEXT` so does `SHOW CREATE TABLE`, yet
-/// an `INSERT` that omits it fails with `ERROR 1364`. It reads as `NULL` here and everywhere this
-/// value goes, schema compare and exported DDL included. Nothing this app writes creates that state,
-/// because a `MODIFY` with no `DEFAULT` clause on a nullable column is `DEFAULT NULL` again.
-///
-/// A generated or AUTO_INCREMENT column has no default whatever the catalog says. MariaDB reports a
-/// generated column's as `NULL`, and the server refuses a `DEFAULT` on either.
+// SQL NULL is `DEFAULT NULL` on a nullable column (#3058), and a generated or AUTO_INCREMENT column takes no default.
 nonisolated internal func mysqlColumnDefault(
     _ catalog: MySQLCatalogDefault,
     extra: String?,
     dataType: String,
-    isNullable: Bool
+    isNullable: Bool,
+    banner: String? = nil,
+    flavor: MySQLServerFlavor = .mysql
 ) -> String? {
     guard !mysqlColumnIsGenerated(extra: extra), mysqlIdentityKind(extra: extra) == nil else { return nil }
     guard let value = catalog.value else { return isNullable ? "NULL" : nil }
-    guard case .bare = catalog else { return value }
-    return mysqlBareCatalogDefault(value, extra: extra, dataType: dataType)
+    guard case .bare = catalog else { return mysqlCatalogExpression(value, flavor: flavor) }
+    return mysqlBareCatalogDefault(value, extra: extra, dataType: dataType, banner: banner, flavor: flavor)
 }
 
-/// The default a `SHOW FULL COLUMNS` row stands for, from the most exact source read for its column.
-///
-/// The catalog's quoted form comes first where the server has one, then `SHOW CREATE TABLE`, and the
-/// row's own bare value last. The bare value alone takes a MariaDB expression default for a string,
-/// and leaves a MySQL expression holding non-ASCII text as the catalog encoded it.
+// The quoted catalog first, then `SHOW CREATE TABLE`, then the row's own bare value.
 nonisolated internal func mysqlShowColumnsDefault(
     _ shown: String?,
     catalog: MySQLCatalogDefault?,
@@ -93,29 +82,51 @@ nonisolated internal func mysqlShowColumnsDefault(
     column: String,
     extra: String?,
     dataType: String,
-    isNullable: Bool
+    isNullable: Bool,
+    banner: String? = nil,
+    flavor: MySQLServerFlavor = .mysql
 ) -> String? {
     mysqlColumnDefault(
         catalog ?? createTable?.catalogDefault(forColumn: column, extra: extra) ?? .bare(shown),
         extra: extra,
         dataType: dataType,
-        isNullable: isNullable
+        isNullable: isNullable,
+        banner: banner,
+        flavor: flavor
     )
 }
 
-nonisolated private func mysqlBareCatalogDefault(_ value: String, extra: String?, dataType: String) -> String {
-    // MySQL 8.0.13 marks a plain `DEFAULT CURRENT_TIMESTAMP` DEFAULT_GENERATED like any other
-    // expression, so this has to be answered before the marker is consulted or the one expression
-    // MySQL insists on bare comes back parenthesised.
+nonisolated private func mysqlBareCatalogDefault(
+    _ value: String,
+    extra: String?,
+    dataType: String,
+    banner: String?,
+    flavor: MySQLServerFlavor
+) -> String {
+    // MySQL 8.0.13 marks a plain `DEFAULT CURRENT_TIMESTAMP` DEFAULT_GENERATED, and that one has to stay bare.
     if mysqlTemporalType(dataType), mysqlCurrentTimestampExpression(value, dataType: dataType) != nil {
-        return value
+        return mysqlCatalogExpression(value, flavor: flavor)
     }
     if mysqlIsExpressionDefault(extra: extra) {
         let expression = mysqlUnescapedCatalogExpression(value)
-        return expression.hasPrefix("(") ? expression : "(\(expression))"
+        return mysqlCatalogExpression(expression.hasPrefix("(") ? expression : "(\(expression))", flavor: flavor)
     }
-    return mysqlCatalogReportsLiteralAsSQL(dataType: dataType)
-        ? value : "'\(mysqlEscapeStringLiteral(value))'"
+    return mysqlCatalogReportsLiteralAsSQL(value, dataType: dataType, banner: banner, flavor: flavor)
+        ? value : SQLQuoting.stringLiteral(value, escapes: .mysql)
+}
+
+// Catalog text that is not one expression goes in as the string it holds, which cannot end the clause it lands in.
+nonisolated private func mysqlCatalogExpression(_ text: String, flavor: MySQLServerFlavor) -> String {
+    mysqlIsSingleExpression(text, flavor: flavor) ? text : SQLQuoting.stringLiteral(text, escapes: .mysql)
+}
+
+// The server prints it with backslash escapes whatever the session, and a NO_BACKSLASH_ESCAPES session gets it respelled.
+nonisolated internal func mysqlIsSingleExpression(_ text: String, flavor: MySQLServerFlavor) -> Bool {
+    let printed = SQLLexicalProfile.curated(forDatabaseTypeId: flavor.databaseTypeId)?.readings
+        .filter { $0.contains(.backslashEscapesInSingleQuotes) } ?? []
+    let respelled = printed.map { $0.subtracting([.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes]) }
+    return SQLExpressionFragment.isSingleExpression(text, readings: printed)
+        && SQLExpressionFragment.isSingleExpression(MySQLLiteralSpelling.quoteDoubling.respelled(text), readings: respelled)
 }
 
 /// MySQL's marker for an expression default, in `EXTRA` of both catalog reads.
@@ -179,20 +190,56 @@ nonisolated internal func mysqlUnescapedCatalogExpression(_ value: String) -> St
     return result
 }
 
-/// Whether this column type's catalog default is already the SQL that recreates it.
-///
-/// A string default comes back stripped of its quotes and has to be given them again. A number, a
-/// `BIT` default (`b'1'`) and a binary default (`0x61`) all come back as the literal they are, and
-/// quoting one changes what it means: `0x61` quoted stores the four characters rather than the byte.
-nonisolated internal func mysqlCatalogReportsLiteralAsSQL(dataType: String) -> Bool {
+// A number, `BIT` or binary default is the SQL that recreates it only when the whole value is that type's literal.
+nonisolated internal func mysqlCatalogReportsLiteralAsSQL(
+    _ value: String,
+    dataType: String,
+    banner: String?,
+    flavor: MySQLServerFlavor
+) -> Bool {
     let base = dataType.uppercased().split(separator: "(", maxSplits: 1).first.map(String.init)?
         .trimmingCharacters(in: .whitespaces) ?? dataType.uppercased()
     switch base {
     case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT",
-         "DECIMAL", "DEC", "NUMERIC", "FIXED", "FLOAT", "DOUBLE", "REAL", "YEAR",
-         "BIT", "BINARY", "VARBINARY", "BOOL", "BOOLEAN":
-        return true
+         "DECIMAL", "DEC", "NUMERIC", "FIXED", "FLOAT", "DOUBLE", "REAL", "YEAR", "BOOL", "BOOLEAN":
+        return PluginNumericLiteral.isValid(value)
+    case "BIT":
+        return mysqlIsBitLiteral(value)
+    case "BINARY", "VARBINARY":
+        if flavor.isMariaDB { return mysqlIsQuotedHexLiteral(value) }
+        return MySQLServerVersion.reportsBinaryDefaultAsHex(banner: banner, flavor: flavor) && mysqlIsHexNumber(value)
     default:
         return false
     }
+}
+
+nonisolated internal func mysqlIsBitLiteral(_ value: String) -> Bool {
+    let scalars = Array(value.unicodeScalars)
+    guard scalars.count >= 3, scalars[0] == "b" || scalars[0] == "B", scalars[1] == "'", scalars.last == "'" else {
+        return false
+    }
+    return scalars[2 ..< scalars.count - 1].allSatisfy { $0 == "0" || $0 == "1" }
+}
+
+// MySQL reads `0X1F` as a name.
+nonisolated internal func mysqlIsHexNumber(_ value: String) -> Bool {
+    let scalars = Array(value.unicodeScalars)
+    return scalars.count >= 3 && scalars[0] == "0" && scalars[1] == "x" && scalars[2...].allSatisfy(mysqlIsHexDigit)
+}
+
+nonisolated internal func mysqlIsHexLiteral(_ value: String) -> Bool {
+    mysqlIsQuotedHexLiteral(value) || mysqlIsHexNumber(value)
+}
+
+// MariaDB 13.0.2 prints a binary default this way in SHOW FULL COLUMNS and INFORMATION_SCHEMA alike.
+nonisolated internal func mysqlIsQuotedHexLiteral(_ value: String) -> Bool {
+    let scalars = Array(value.unicodeScalars)
+    guard scalars.count >= 3, scalars[0] == "x" || scalars[0] == "X", scalars[1] == "'", scalars.last == "'" else {
+        return false
+    }
+    return scalars[2 ..< scalars.count - 1].allSatisfy(mysqlIsHexDigit)
+}
+
+nonisolated private func mysqlIsHexDigit(_ scalar: Unicode.Scalar) -> Bool {
+    ("0"..."9").contains(scalar) || ("a"..."f").contains(scalar) || ("A"..."F").contains(scalar)
 }

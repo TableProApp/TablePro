@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// Which engines can dump and restore, and how to drive them.
 ///
@@ -134,12 +135,10 @@ enum NativeDumpRegistry {
         )
     }
 
-    /// `-t` takes a `psql` pattern rather than a name, so every picked table is quoted part by
-    /// part. Measured with pg_dump 17.11: `-t 'app.Orders'` matches nothing and
-    /// `-t '"app"."Orders"'` matches exactly one table.
-    private static func postgresTableFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
-        request.scope.objects.flatMap { object in
-            ["-t", NativeDumpArgumentQuoting.postgresTablePattern(object)]
+    // Measured with pg_dump 17.11: `-t 'app.Orders'` matches nothing and `-t '"app"."Orders"'` exactly one table.
+    private static func postgresTableFlags(_ request: NativeDumpDescriptor.Request) throws -> [String] {
+        try request.scope.objects.flatMap { object in
+            try ["-t", NativeDumpArgumentQuoting.postgresTablePattern(object)]
         }
     }
 
@@ -518,7 +517,7 @@ enum NativeDumpRegistry {
                     // `.shell`, `.system` and writefile() run from a dump read on stdin unless `-safe`
                     // is given. Not `-readonly`: it cannot open a WAL database whose -wal and -shm are gone.
                     backupArguments: { request, _ in
-                        [
+                        try [
                             "-safe",
                             sqlitePath(request),
                             NativeDumpArgumentQuoting.sqliteDumpCommand(
@@ -526,7 +525,7 @@ enum NativeDumpRegistry {
                             )
                         ]
                     },
-                    restoreArguments: { request, _ in ["-safe", "-bail", sqlitePath(request)] }
+                    restoreArguments: { request, _ in try ["-safe", "-bail", sqlitePath(request)] }
                 )
             ),
             archiveFormat: NativeDumpDescriptor.ArchiveFormat(
@@ -539,9 +538,14 @@ enum NativeDumpRegistry {
         )
     }
 
-    private static func sqlitePath(_ request: NativeDumpDescriptor.Request) -> String {
-        let resolved = request.localFilePath ?? request.connection.database
-        return resolved.trimmingCharacters(in: .whitespaces)
+    // Absolute, so a file named like `-cmd` is never read as an option: sqlite3 before 3.42 rejects `--`.
+    private static func sqlitePath(_ request: NativeDumpDescriptor.Request) throws -> String {
+        let resolved = (request.localFilePath ?? request.connection.database).trimmingCharacters(in: .whitespaces)
+        guard !resolved.isEmpty else { throw NativeDumpError.sourceUnreadable }
+        guard !resolved.unicodeScalars.contains("\0") else { throw NativeDumpError.nulInArgument }
+        let path = URL(fileURLWithPath: (resolved as NSString).expandingTildeInPath).standardizedFileURL.path
+        guard path.hasPrefix("/") else { throw NativeDumpError.sourceUnreadable }
+        return path
     }
 
     // MARK: - DuckDB
@@ -574,23 +578,23 @@ enum NativeDumpRegistry {
     private static let duckDBFileStatements = NativeDumpDescriptor.EngineStatements(
         backupStatements: { request, alias in
             guard let source = request.currentCatalog, !source.isEmpty else { return [] }
-            return ["ATTACH \(quotedLiteral(request.fileURL.path)) AS \(quotedIdentifier(alias))"]
+            return ["ATTACH \(SQLQuoting.stringLiteral(request.fileURL.path)) AS \(SQLQuoting.identifier(alias))"]
                 + copyDatabase(from: source, to: alias)
-                + ["DETACH \(quotedIdentifier(alias))"]
+                + ["DETACH \(SQLQuoting.identifier(alias))"]
         },
         restoreStatements: { request, alias in
             guard let target = request.currentCatalog, !target.isEmpty else { return [] }
-            return ["ATTACH \(quotedLiteral(request.fileURL.path)) AS \(quotedIdentifier(alias)) (READ_ONLY)"]
+            return ["ATTACH \(SQLQuoting.stringLiteral(request.fileURL.path)) AS \(SQLQuoting.identifier(alias)) (READ_ONLY)"]
                 + copyDatabase(from: alias, to: target)
-                + ["DETACH \(quotedIdentifier(alias))"]
+                + ["DETACH \(SQLQuoting.identifier(alias))"]
         },
-        cleanupStatements: { alias in ["DETACH \(quotedIdentifier(alias))"] }
+        cleanupStatements: { alias in ["DETACH \(SQLQuoting.identifier(alias))"] }
     )
 
     // Without an option, COPY FROM DATABASE expands to these two statements, and a prepared statement holds only one.
     private static func copyDatabase(from source: String, to target: String) -> [String] {
         ["SCHEMA", "DATA"].map { part in
-            "COPY FROM DATABASE \(quotedIdentifier(source)) TO \(quotedIdentifier(target)) (\(part))"
+            "COPY FROM DATABASE \(SQLQuoting.identifier(source)) TO \(SQLQuoting.identifier(target)) (\(part))"
         }
     }
 
@@ -601,7 +605,7 @@ enum NativeDumpRegistry {
             mechanism: .engineStatements(
                 NativeDumpDescriptor.EngineStatements(
                     backupStatements: { request, _ in
-                        ["EXPORT DATABASE \(quotedLiteral(request.fileURL.path)) (FORMAT PARQUET)"]
+                        ["EXPORT DATABASE \(SQLQuoting.stringLiteral(request.fileURL.path)) (FORMAT PARQUET)"]
                     },
                     restoreStatements: duckDBFileStatements.restoreStatements,
                     cleanupStatements: duckDBFileStatements.cleanupStatements,
@@ -614,13 +618,5 @@ enum NativeDumpRegistry {
             ),
             restoreSemantics: .stopsAtExistingObjects
         )
-    }
-
-    private static func quotedLiteral(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "''", options: .literal))'"
-    }
-
-    private static func quotedIdentifier(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
     }
 }

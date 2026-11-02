@@ -36,4 +36,9 @@ public struct PluginCapabilities: OptionSet, Sendable {
     public static let rowWrites             = PluginCapabilities(rawValue: 1 << 19)
     /// Rows can share the primary key the driver reports, so it does not name one row: ClickHouse's is its sorting key.
     public static let repeatingPrimaryKey   = PluginCapabilities(rawValue: 1 << 20)
+    // A `PluginStatementContext.readOnly` statement runs in the engine's read-only mode or throws.
+    public static let readOnlyStatements    = PluginCapabilities(rawValue: 1 << 21)
+    // The driver refuses what `PluginStatementContext.allowsDestructive` and `allowsServerCode` forbid, for a language
+    // the host cannot read in full.
+    public static let statementPolicy = PluginCapabilities(rawValue: 1 << 22)
 }

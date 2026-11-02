@@ -94,7 +94,7 @@ public actor MCPLegacyEraAdapter {
         )
 
         Self.logger.info(
-            "Legacy initialize: client=\(clientInfo?.name ?? "unknown", privacy: .public) version=\(negotiated.rawValue, privacy: .public)"
+            "Legacy initialize: client=\(clientInfo?.name ?? "unknown", privacy: .private(mask: .hash)) version=\(negotiated.rawValue, privacy: .public)"
         )
         return (InitializeHandler.result(protocolVersion: negotiated), sessionId)
     }

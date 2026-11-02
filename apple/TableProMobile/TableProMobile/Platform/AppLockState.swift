@@ -28,39 +28,45 @@ final class AppLockState {
     private(set) var isLocked: Bool
     private var lastBackgroundedAt: Date?
     private var unlockTask: Task<Bool, Never>?
-    private let auth: BiometricAuthService
+    private let auth: any DeviceOwnerAuthenticating
+    private let defaults: UserDefaults
+    private let now: () -> Date
 
     static let lockEnabledKey = "com.TablePro.settings.lockEnabled"
     static let lockTimeoutKey = "com.TablePro.settings.lockTimeoutSeconds"
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppLockState")
 
-    init() {
-        let auth = BiometricAuthService()
+    init(
+        auth: any DeviceOwnerAuthenticating = BiometricAuthService(),
+        defaults: UserDefaults = .standard,
+        now: @escaping () -> Date = Date.init
+    ) {
         self.auth = auth
-        self.isLocked = Self.shouldLockOnColdLaunch(auth: auth)
+        self.defaults = defaults
+        self.now = now
+        self.isLocked = defaults.bool(forKey: Self.lockEnabledKey) && auth.availability != .unavailable
     }
 
     var biometry: BiometricAuthService.Availability {
         auth.availability
     }
 
-    static var isLockEnabled: Bool {
-        UserDefaults.standard.bool(forKey: lockEnabledKey)
+    var isLockEnabled: Bool {
+        defaults.bool(forKey: Self.lockEnabledKey)
     }
 
-    static var autoLockTimeout: AutoLockTimeout {
-        let stored = UserDefaults.standard.object(forKey: lockTimeoutKey) as? Int ?? AutoLockTimeout.fiveMinutes.rawValue
+    var autoLockTimeout: AutoLockTimeout {
+        let stored = defaults.object(forKey: Self.lockTimeoutKey) as? Int ?? AutoLockTimeout.fiveMinutes.rawValue
         return AutoLockTimeout(rawValue: stored) ?? .fiveMinutes
     }
 
-    private static func shouldLockOnColdLaunch(auth: BiometricAuthService) -> Bool {
-        guard isLockEnabled else { return false }
-        return auth.availability != .unavailable
+    private var canLock: Bool {
+        isLockEnabled && auth.availability != .unavailable
     }
 
     func handleScenePhase(_ phase: ScenePhase) {
-        guard Self.isLockEnabled, auth.availability != .unavailable else {
+        guard canLock else {
             isLocked = false
             return
         }
@@ -68,10 +74,11 @@ final class AppLockState {
         switch phase {
         case .background:
             if lastBackgroundedAt == nil {
-                lastBackgroundedAt = Date()
+                lastBackgroundedAt = now()
             }
         case .active:
-            evaluateIdleLock()
+            evaluateLock()
+            lastBackgroundedAt = nil
         case .inactive:
             break
         @unknown default:
@@ -79,15 +86,22 @@ final class AppLockState {
         }
     }
 
-    private func evaluateIdleLock() {
-        guard let backgrounded = lastBackgroundedAt else { return }
-        let elapsed = Date().timeIntervalSince(backgrounded)
-        let timeout = TimeInterval(Self.autoLockTimeout.rawValue)
-        if elapsed >= timeout {
-            Self.logger.info("Idle timeout exceeded (\(elapsed, format: .fixed(precision: 0))s >= \(timeout, format: .fixed(precision: 0))s), locking")
-            isLocked = true
+    // Shortcuts run with no scene, so the idle timeout is evaluated when they ask.
+    @discardableResult
+    func evaluateLock() -> Bool {
+        guard canLock else {
+            isLocked = false
+            return false
         }
-        lastBackgroundedAt = nil
+        if !isLocked, let backgrounded = lastBackgroundedAt {
+            let elapsed = now().timeIntervalSince(backgrounded)
+            let timeout = TimeInterval(autoLockTimeout.rawValue)
+            if elapsed >= timeout {
+                Self.logger.info("Idle timeout exceeded (\(elapsed, format: .fixed(precision: 0))s >= \(timeout, format: .fixed(precision: 0))s), locking")
+                isLocked = true
+            }
+        }
+        return isLocked
     }
 
     func unlock() async -> Bool {

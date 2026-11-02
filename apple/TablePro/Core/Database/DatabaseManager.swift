@@ -21,15 +21,14 @@ final class DatabaseManager: ObservableObject {
     internal let pluginManager: PluginManager
     internal let aiAccessApprovals: AIAccessApprovals
     internal let preConnectScriptConsent: PreConnectScriptConsent
+    internal let envVarReferenceConsent: EnvVarReferenceConsent
     internal let postDisconnectScripts: PostDisconnectScripts
     internal let localNetworkProbe: any LocalNetworkAccessProbing
     internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
-    /// Passwords the user has been asked for this launch, keyed by whatever answers for them: the
-    /// credential profile when the connection links to one, the connection otherwise. Held here
-    /// rather than on the session because a profile's answer belongs to every connection using it,
-    /// and one of them being disconnected does not make it wrong for the rest.
-    internal var promptedPasswords: [UUID: String] = [:]
+    // Keyed by the credential profile, or by the connection and where it dials: a linked-folder row keeps its id
+    // when its file changes a host list, the SSH tunnel or TLS, and a team-library row keeps it for any change.
+    internal var promptedPasswords: [PromptedPasswordKey: String] = [:]
 
     /// All active connection sessions
     internal(set) var activeSessions: [UUID: ConnectionSession] = [:] {
@@ -188,6 +187,7 @@ final class DatabaseManager: ObservableObject {
         pluginManager: PluginManager = .shared,
         aiAccessApprovals: AIAccessApprovals = .shared,
         preConnectScriptConsent: PreConnectScriptConsent = PreConnectScriptConsent(),
+        envVarReferenceConsent: EnvVarReferenceConsent = EnvVarReferenceConsent(),
         postDisconnectScripts: PostDisconnectScripts = PostDisconnectScripts(),
         localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe()
     ) {
@@ -196,6 +196,7 @@ final class DatabaseManager: ObservableObject {
         self.pluginManager = pluginManager
         self.aiAccessApprovals = aiAccessApprovals
         self.preConnectScriptConsent = preConnectScriptConsent
+        self.envVarReferenceConsent = envVarReferenceConsent
         self.postDisconnectScripts = postDisconnectScripts
         self.localNetworkProbe = localNetworkProbe
         sessionLanes.onClose = { [weak self] connectionId in
@@ -205,4 +206,9 @@ final class DatabaseManager: ObservableObject {
         observeHealthCheckSetting()
         observeCredentialLeases()
     }
+}
+
+internal struct PromptedPasswordKey: Hashable, Sendable {
+    let owner: UUID
+    let destination: String
 }

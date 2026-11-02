@@ -55,6 +55,14 @@ struct DamengScriptSplitterTests {
     func commentOnlyPieceDropped() {
         #expect(DamengScriptSplitter.statements(in: "SELECT 1; -- done\n", backslashEscapes: false) == ["SELECT 1"])
     }
+
+    // The host approved this text as one statement; a cut here would run a piece Safe Mode never graded.
+    @Test("A host-split text is sent whole, and text from the editor is still cut", arguments: [false, true])
+    func hostSplitTextStaysWhole(backslashEscapes: Bool) {
+        let sql = "SELECT 1 FROM DUAL; DROP TABLE accounts"
+        #expect(DamengScriptSplitter.statements(in: sql, backslashEscapes: backslashEscapes, hostSplit: true) == [sql])
+        #expect(DamengScriptSplitter.statements(in: sql, backslashEscapes: backslashEscapes, hostSplit: false).count == 2)
+    }
 }
 
 struct DamengPlaceholdersTests {

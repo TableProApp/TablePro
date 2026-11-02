@@ -304,4 +304,43 @@ struct PhpSerializeParserDepthTests {
         #expect(!PhpSerializeParser.looksLikePhpSerialized("a quick brown fox"))
         #expect(!PhpSerializeParser.looksLikePhpSerialized("some text"))
     }
+
+    private static func nested(_ inner: String, wrappers: Int, padding: Int = 0) -> String {
+        String(repeating: "a:1:{i:0;", count: wrappers) + inner + String(repeating: "}", count: wrappers)
+            + String(repeating: " ", count: padding)
+    }
+
+    @Test("A value nested to the depth cap parses, one level deeper is refused")
+    func nestingAtTheCap() {
+        let cap = PhpSerializeParser.depthCap
+        #expect(PhpSerializeParser.parse(Self.nested("i:1;", wrappers: cap)) != nil)
+        #expect(PhpSerializeParser.parse(Self.nested("i:1;", wrappers: cap + 1)) == nil)
+    }
+
+    @Test("An array at the depth cap that declares entries it does not carry is refused")
+    func forgedCountAtTheCap() {
+        let value = Self.nested("a:60000:{}", wrappers: PhpSerializeParser.depthCap, padding: 60_000)
+        #expect(PhpSerializeParser.parse(value) == nil)
+    }
+
+    @Test("Sibling arrays at the depth cap cannot each claim the trailing padding")
+    func forgedSiblingCountsAtTheCap() {
+        let siblings = (0..<50).map { "i:\($0);a:5000:{}" }.joined()
+        let value = Self.nested("a:50:{\(siblings)}", wrappers: PhpSerializeParser.depthCap - 1, padding: 5_000)
+        #expect(PhpSerializeParser.parse(value) == nil)
+    }
+
+    @Test("A parse in a cancelled task stops and returns nil")
+    func cancelledParse() async {
+        let value = "a:5000:{" + (0..<5_000).map { "i:\($0);i:\($0);" }.joined() + "}"
+        #expect(PhpSerializeParser.parse(value) != nil)
+        let stopped = await Task.detached { () -> Bool in
+            withUnsafeCurrentTask { task in
+                guard let task else { return }
+                task.cancel()
+            }
+            return PhpSerializeParser.parse(value) == nil
+        }.value
+        #expect(stopped)
+    }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import TableProDamengCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 enum DamengParameterBindingError: PluginDriverError, Equatable {
     case embeddedNull
@@ -66,21 +67,18 @@ enum DamengParameterBinder {
         }
     }
 
-    /// Escapes by Unicode scalar. `String.replacingOccurrences` matches whole grapheme clusters, so a quote
-    /// carrying a combining mark is not doubled and the value escapes its own literal.
+    // With the mode unknown, text without a backslash is written the way both modes read it.
     static func escapedText(_ text: String, escaping: DamengTextEscaping) throws -> String {
-        if escaping == .unknown, text.unicodeScalars.contains("\\") {
-            throw DamengParameterBindingError.unknownBackslashHandling
-        }
-        var escaped = String.UnicodeScalarView()
-        for scalar in text.unicodeScalars {
-            if scalar == "\\", escaping == .backslashEscape {
-                escaped.append(scalar)
-            } else if scalar == "'" {
-                escaped.append(scalar)
+        switch escaping {
+        case .backslashEscape:
+            return SQLQuoting.stringLiteralBody(text, escapes: .backslash)
+        case .backslashLiteral:
+            return SQLQuoting.stringLiteralBody(text)
+        case .unknown:
+            guard !text.unicodeScalars.contains("\\") else {
+                throw DamengParameterBindingError.unknownBackslashHandling
             }
-            escaped.append(scalar)
+            return SQLQuoting.stringLiteralBody(text)
         }
-        return String(escaped)
     }
 }

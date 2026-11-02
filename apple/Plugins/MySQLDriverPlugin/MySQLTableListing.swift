@@ -117,8 +117,7 @@ enum MySQLTableStatusRow {
             ?? rows.first { $0[safe: 0]?.asText?.caseInsensitiveCompare(table) == .orderedSame }
     }
 
-    /// The positions `SHOW TABLE STATUS` documents, read in one place so the per-table and
-    /// whole-schema reads cannot index the same row differently.
+    // One place reads these positions, so the per-table and whole-schema reads cannot index a row differently.
     static func metadata(
         from row: [PluginCellValue],
         tableName: String,
@@ -131,7 +130,11 @@ enum MySQLTableStatusRow {
         let totalSize: Int64? = {
             guard let data = dataSize else { return nil }
             guard reportsIndexLength else { return data }
-            return indexSize.map { data + $0 }
+            // The lengths are the server's own numbers, so a total past Int64 pins to its end.
+            return indexSize.map { index in
+                let (sum, overflow) = data.addingReportingOverflow(index)
+                return overflow ? .max : sum
+            }
         }()
 
         return PluginTableMetadata(

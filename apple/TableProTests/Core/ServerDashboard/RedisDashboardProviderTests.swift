@@ -145,6 +145,14 @@ struct RedisDashboardProviderTests {
         #expect(slow.last?.duration == DurationFormatting.string(microseconds: 626))
     }
 
+    @Test("A slow log duration at the top of the integer range is listed instead of crashing the refresh")
+    func slowLogDurationAtIntMax() async throws {
+        let rows: [[String?]] = [["1", "1792537100", String(Int64.max), "GET a", "127.0.0.1:59713", ""]]
+        let slow = try await provider.fetchSlowQueries { _ in Self.result(RedisSlowLogGrid.columns, rows) }
+        #expect(slow.count == 1)
+        #expect(slow.first?.duration == DurationFormatting.string(seconds: Double(Int.max) / 1_000_000))
+    }
+
     @Test("Terminate is CLIENT KILL ID and Cancel is CLIENT UNBLOCK, for a numeric id only", arguments: [
         ("21", true),
         ("21 SKIPME no", false),

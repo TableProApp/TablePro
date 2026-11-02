@@ -30,7 +30,7 @@ extension AIChatViewModel {
 
     func runCustomSlashCommand(_ command: CustomSlashCommand, body: String = "") async {
         guard command.isValid else {
-            Self.logger.warning("runCustomSlashCommand called with invalid command: name=\(command.name, privacy: .public)")
+            Self.logger.warning("runCustomSlashCommand called with invalid command: name=\(command.name, privacy: .private(mask: .hash))")
             return
         }
         guard !isStreaming else { return }

@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 /// One partition's answer inside a reply that carries several.
 ///

@@ -165,7 +165,7 @@ final class SQLFileParser: Sendable {
     }
 
     private struct ParserContext {
-        let grammar: SQLLexicalGrammar
+        var grammar: SQLLexicalGrammar
         var state: ParserState = .normal
         let currentStatement: NSMutableString?
         var hasStatementContent = false
@@ -191,10 +191,6 @@ final class SQLFileParser: Sendable {
         /// and read as one batch it fails on its first view with Msg 111, having run none of it.
         let readsBatches: Bool
         let batchCutLength: Int
-
-        /// A SQL Server statement goes to the server as a batch of its own, so it keeps the comments written inside it
-        /// for the same reasons a batch keeps all of its own. The ones before its first code stay out of it.
-        let keepsStatementComments: Bool
 
         /// Set once a `GO` line has ended a batch, which is what settles whether a file is read in batches.
         var sawBatchSeparator = false
@@ -244,15 +240,23 @@ final class SQLFileParser: Sendable {
             self.currentStatement = currentStatement
             self.readsBatches = readsBatches
             self.batchCutLength = batchCutLength
-            self.keepsStatementComments = grammar.contains(.batchSeparatorLines)
             self.boundaries = !readsBatches && SQLStatementBoundaries.statementsCanOwnSemicolons(in: grammar)
                 ? SQLStatementBoundaries.makeTracker(for: grammar)
                 : nil
         }
 
-        /// Whether the comment being read goes into the text sent.
+        // Only between statements, where nothing of the next one has been lexed yet.
+        mutating func adopt(_ next: SQLLexicalGrammar) {
+            guard state == .normal, !hasStatementContent, next != grammar else { return }
+            grammar = next
+            boundaries = !readsBatches && SQLStatementBoundaries.statementsCanOwnSemicolons(in: next)
+                ? SQLStatementBoundaries.makeTracker(for: next)
+                : nil
+        }
+
+        // A SQL Server statement is a batch of its own and keeps the comments inside it, not the ones before it.
         var keepsComments: Bool {
-            readsBatches || (keepsStatementComments && hasStatementContent) || insideConditionalComment
+            readsBatches || (grammar.contains(.batchSeparatorLines) && hasStatementContent) || insideConditionalComment
         }
     }
 
@@ -1044,12 +1048,15 @@ final class SQLFileParser: Sendable {
         return StepResult(advanced: true, deferred: false)
     }
 
-    /// The file's statements in order, each as many times as the script runs it: a batch ended by `GO 5` comes five
-    /// times, one run each, handed out one at a time rather than copied.
+    func parseFile(url: URL, encoding: String.Encoding, grammar: SQLLexicalGrammar) -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
+        parseFile(url: url, encoding: encoding, grammar: { grammar })
+    }
+
+    // Asked before each statement is cut, once the one before it ran: `SET sql_mode` changes how the next is read.
     func parseFile(
         url: URL,
         encoding: String.Encoding,
-        grammar: SQLLexicalGrammar
+        grammar: @escaping @Sendable () -> SQLLexicalGrammar
     ) -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
         let session = ParseSession(
             url: url, encoding: encoding, grammar: grammar, countOnly: false, batchCutLength: batchCutLength
@@ -1059,15 +1066,14 @@ final class SQLFileParser: Sendable {
         })
     }
 
-    /// How many statements the import runs, a batch ended by `GO 5` counting five times. The runs are added up rather
-    /// than walked, because a count can reach `Int32.max`.
+    // Runs are added up rather than walked: a `GO n` count can reach `Int32.max`.
     func countStatements(
         url: URL,
         encoding: String.Encoding,
         grammar: SQLLexicalGrammar
     ) async throws -> Int {
         let session = ParseSession(
-            url: url, encoding: encoding, grammar: grammar, countOnly: true, batchCutLength: batchCutLength
+            url: url, encoding: encoding, grammar: { grammar }, countOnly: true, batchCutLength: batchCutLength
         )
         var count = 0
 
@@ -1093,13 +1099,15 @@ extension SQLFileParser {
     private final class ParseSession: @unchecked Sendable {
         private let url: URL
         private let encoding: String.Encoding
-        private let grammar: SQLLexicalGrammar
+        private let grammar: @Sendable () -> SQLLexicalGrammar
         private let batchCutLength: Int
         private let chunkSize = 65_536
 
         private var fileHandle: FileHandle?
         private var ctx: ParserContext
         private let nsBuffer = NSMutableString()
+        // Text before it is lexed; it is deleted when the next chunk is read, not once per statement.
+        private var readOffset = 0
         private var decoder: SQLChunkDecoder
         private var emitIndex = 0
         private var finished = false
@@ -1110,7 +1118,7 @@ extension SQLFileParser {
         init(
             url: URL,
             encoding: String.Encoding,
-            grammar: SQLLexicalGrammar,
+            grammar: @escaping @Sendable () -> SQLLexicalGrammar,
             countOnly: Bool,
             batchCutLength: Int,
             reading: Reading = .fromFile
@@ -1122,7 +1130,7 @@ extension SQLFileParser {
             self.decoder = SQLChunkDecoder(encoding: encoding)
             self.readingSettled = reading == .batches
             self.ctx = ParserContext(
-                grammar: grammar,
+                grammar: grammar(),
                 currentStatement: countOnly ? nil : NSMutableString(),
                 batchCutLength: batchCutLength,
                 readsBatches: reading == .batches
@@ -1165,7 +1173,8 @@ extension SQLFileParser {
                         closeFile()
                         return nil
                     }
-                    try advanceOneChunk()
+                    ctx.adopt(grammar())
+                    try readNextStatement()
                 } catch {
                     finished = true
                     closeFile()
@@ -1175,16 +1184,16 @@ extension SQLFileParser {
             }
         }
 
-        /// Reads the file for a `GO` line before any of it is handed out, because a batch cannot be put back together
-        /// from statements already sent.
+        // A batch cannot be put back together from statements already sent.
         private func settleReading() throws {
             guard !readingSettled else { return }
             readingSettled = true
+            let grammar = ctx.grammar
             guard grammar.contains(.batchSeparatorLines) else { return }
             let scan = ParseSession(
                 url: url,
                 encoding: encoding,
-                grammar: grammar,
+                grammar: { grammar },
                 countOnly: true,
                 batchCutLength: batchCutLength,
                 reading: .batches
@@ -1198,27 +1207,29 @@ extension SQLFileParser {
             )
         }
 
-        /// Whether the file holds a `GO` line, read the way a script is cut into batches, so one inside a literal or a
-        /// comment does not count. Reading stops at the first.
         func findsBatchSeparator() throws -> Bool {
             defer { closeFile() }
             while !finished, !ctx.sawBatchSeparator, !Task.isCancelled {
-                try advanceOneChunk()
+                try readNextStatement()
                 ctx.collected.removeAll(keepingCapacity: true)
             }
             return ctx.sawBatchSeparator
         }
 
-        private func advanceOneChunk() throws {
+        private func readNextStatement() throws {
+            processBuffer()
+            guard ctx.collected.isEmpty else { return }
+            guard !ctx.atEndOfInput else {
+                emitTrailingStatement()
+                finished = true
+                closeFile()
+                return
+            }
             let handle = try openFileIfNeeded()
             let rawData = handle.readData(ofLength: chunkSize)
 
             if rawData.isEmpty && !decoder.hasPendingBytes {
                 ctx.atEndOfInput = true
-                processBuffer()
-                emitTrailingStatement()
-                finished = true
-                closeFile()
                 return
             }
 
@@ -1235,13 +1246,18 @@ extension SQLFileParser {
                 )
             }
 
+            if readOffset > 0 {
+                nsBuffer.deleteCharacters(in: NSRange(location: 0, length: readOffset))
+                ctx.unitsBeforeBuffer += readOffset
+                readOffset = 0
+            }
             nsBuffer.append(chunk)
-            processBuffer()
         }
 
+        // Stops after the first statement it ends, so the next is cut with the grammar the session has then.
         private func processBuffer() {
             let bufLen = nsBuffer.length
-            var i = 0
+            var i = readOffset
 
             while i < bufLen {
                 let stepStart = i
@@ -1251,7 +1267,7 @@ extension SQLFileParser {
                 if nextChar == nil && !ctx.atEndOfInput && SQLFileParser.needsLookahead(
                     char,
                     state: ctx.state,
-                    grammar: grammar,
+                    grammar: ctx.grammar,
                     delimiter: ctx.currentDelimiter,
                     isSingleCharDelimiter: ctx.isSingleCharDelimiter
                 ) {
@@ -1259,16 +1275,12 @@ extension SQLFileParser {
                 }
 
                 if char == SQLFileParser.kNewline { ctx.currentLine += 1 }
-                var didManuallyAdvance = false
-                var shouldDefer = false
+                let step: StepResult
 
                 switch ctx.state {
                 case .normal:
-                    let result = SQLFileParser.processNormalChar(
-                        &ctx, char: char, nextChar: nextChar,
-                        i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
-                    didManuallyAdvance = result.advanced
-                    shouldDefer = result.deferred
+                    step = SQLFileParser.processNormalChar(
+                        &ctx, char: char, nextChar: nextChar, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
 
                 case .inSingleLineComment:
                     if ctx.keepsComments {
@@ -1276,70 +1288,48 @@ extension SQLFileParser {
                     }
                     if char == SQLFileParser.kNewline
                         || (char == SQLFileParser.kCarriageReturn
-                            && grammar.contains(.carriageReturnEndsLineComments))
-                        || (char == SqlLexer.formFeed && grammar.contains(.formFeedEndsLineComments)) {
+                            && ctx.grammar.contains(.carriageReturnEndsLineComments))
+                        || (char == SqlLexer.formFeed && ctx.grammar.contains(.formFeedEndsLineComments)) {
                         ctx.state = .normal
                     }
+                    step = StepResult(advanced: false, deferred: false)
 
                 case .inMultiLineComment:
-                    didManuallyAdvance = SQLFileParser.processMultiLineComment(
-                        &ctx, char: char, nextChar: nextChar, i: &i)
+                    let advanced = SQLFileParser.processMultiLineComment(&ctx, char: char, nextChar: nextChar, i: &i)
+                    step = StepResult(advanced: advanced, deferred: false)
 
                 case .inSingleQuotedString:
-                    let result = SQLFileParser.processQuotedString(
-                        &ctx, quoteChar: SQLFileParser.kSingleQuote,
-                        i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
-                    didManuallyAdvance = result.advanced
-                    shouldDefer = result.deferred
+                    step = SQLFileParser.processQuotedString(
+                        &ctx, quoteChar: SQLFileParser.kSingleQuote, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
 
                 case .inDoubleQuotedString:
-                    let result = SQLFileParser.processQuotedString(
-                        &ctx, quoteChar: SQLFileParser.kDoubleQuote,
-                        i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
-                    didManuallyAdvance = result.advanced
-                    shouldDefer = result.deferred
+                    step = SQLFileParser.processQuotedString(
+                        &ctx, quoteChar: SQLFileParser.kDoubleQuote, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
 
                 case .inBacktickQuotedString:
-                    let result = SQLFileParser.processQuotedString(
-                        &ctx, quoteChar: SQLFileParser.kBacktick,
-                        i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
-                    didManuallyAdvance = result.advanced
-                    shouldDefer = result.deferred
+                    step = SQLFileParser.processQuotedString(
+                        &ctx, quoteChar: SQLFileParser.kBacktick, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
 
                 case .inTripleQuotedString:
-                    let result = SQLFileParser.processTripleQuotedString(
-                        &ctx, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
-                    didManuallyAdvance = result.advanced
-                    shouldDefer = result.deferred
+                    step = SQLFileParser.processTripleQuotedString(&ctx, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
 
                 case .inBracketedIdentifier:
-                    let result = SQLFileParser.processBracketedIdentifier(
-                        &ctx, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
-                    didManuallyAdvance = result.advanced
-                    shouldDefer = result.deferred
+                    step = SQLFileParser.processBracketedIdentifier(&ctx, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
 
                 case .inDollarQuote:
-                    let result = SQLFileParser.processDollarQuote(
-                        &ctx, i: &i,
-                        nsBuffer: nsBuffer, bufLen: bufLen)
-                    didManuallyAdvance = result.advanced
-                    shouldDefer = result.deferred
+                    step = SQLFileParser.processDollarQuote(&ctx, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
 
                 case .inAlternativeQuote:
-                    let result = SQLFileParser.processAlternativeQuote(
-                        &ctx, i: &i,
-                        nsBuffer: nsBuffer, bufLen: bufLen)
-                    didManuallyAdvance = result.advanced
-                    shouldDefer = result.deferred
+                    step = SQLFileParser.processAlternativeQuote(&ctx, i: &i, nsBuffer: nsBuffer, bufLen: bufLen)
                 }
 
-                if shouldDefer { break }
+                if step.deferred { break }
                 if char == SQLFileParser.kNewline {
                     ctx.lineHasCode = false
                 } else if !SQLFileParser.isLineBlank(char) && !ctx.pendingSlashLine {
                     ctx.lineHasCode = true
                 }
-                if !didManuallyAdvance { i += 1 }
+                if !step.advanced { i += 1 }
                 if i > 0, i <= bufLen {
                     ctx.previousUnit = nsBuffer.character(at: i - 1)
                 }
@@ -1351,21 +1341,17 @@ extension SQLFileParser {
                         nsBuffer, from: stepStart, to: min(i, bufLen), before: ctx.lineHoldsOnlyBlanks
                     )
                 }
+                if !ctx.collected.isEmpty { break }
             }
 
-            ctx.unitsBeforeBuffer += min(i, bufLen)
-            if i < bufLen {
-                nsBuffer.deleteCharacters(in: NSRange(location: 0, length: i))
-            } else {
-                nsBuffer.setString("")
-            }
+            readOffset = min(i, bufLen)
         }
 
         private func emitTrailingStatement() {
             ctx.pendingSlashLine = false
             ctx.pendingSlashTrailing.removeAll()
             if ctx.readsBatches {
-                SQLFileParser.yieldBatch(&ctx, repeatCount: 1, nextBatchStart: ctx.unitsBeforeBuffer)
+                SQLFileParser.yieldBatch(&ctx, repeatCount: 1, nextBatchStart: ctx.unitsBeforeBuffer + readOffset)
                 return
             }
             guard ctx.hasStatementContent else { return }

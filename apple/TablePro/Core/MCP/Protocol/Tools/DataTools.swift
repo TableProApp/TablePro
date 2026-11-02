@@ -90,11 +90,30 @@ public struct BrowseTableTool: MCPToolImplementation {
             connectionId: connectionId,
             services: services
         )
+        let built: (statement: OperationStatement, limit: Int)
+        do {
+            built = try await services.connectionBridge.browseStatement(scope: scope, request: request)
+        } catch {
+            throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+        }
+
+        // A read like any other, so the Safe Mode levels that confirm every query ask about it too.
+        let operation = try await MCPStatementGate.approve(
+            [built.statement],
+            kind: .readQuery,
+            scope: scope,
+            meta: meta,
+            allowsDestructive: false,
+            operationLabel: String(format: String(localized: "reading rows from '%@'"), table),
+            context: context,
+            services: services
+        )
 
         do {
             let payload = try await services.connectionBridge.browseTable(
-                scope: scope,
+                operation,
                 request: request,
+                limit: built.limit,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: context.cancellation
             )
@@ -163,19 +182,37 @@ public struct CountRowsTool: MCPToolImplementation {
             arguments,
             allowed: MCPScopeArguments.keys.union(["table", "exact", "filters", "logic"])
         )
+        let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let table = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "table")
         let exact = try MCPArgumentDecoder.optionalBool(arguments, key: "exact", default: false)
         let filters = try MCPFilterArguments.filters(arguments)
         let logicMode = try MCPFilterArguments.logicMode(arguments)
-        let scope = try await MCPScopeArguments.resolve(arguments, services: services)
-        let payload = try await services.connectionBridge.countRows(
+        let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+        let scope = try await MCPScopeArguments.resolve(arguments, connectionId: connectionId, services: services)
+
+        // The driver writes the count itself, so the approval is a read with no statement to show.
+        let operation = try await MCPStatementGate.approve(
+            [],
+            kind: .readQuery,
             scope: scope,
-            table: table,
-            filters: filters,
-            logicMode: logicMode,
-            exact: exact
+            meta: meta,
+            allowsDestructive: false,
+            operationLabel: String(format: String(localized: "counting rows in '%@'"), table),
+            context: context,
+            services: services
         )
-        return .structured(payload)
+        do {
+            let payload = try await services.connectionBridge.countRows(
+                operation,
+                table: table,
+                filters: filters,
+                logicMode: logicMode,
+                exact: exact
+            )
+            return .structured(payload)
+        } catch {
+            throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+        }
     }
 }
 
@@ -355,9 +392,41 @@ public struct InsertRowsTool: MCPToolImplementation {
         }
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
-        let preview = "INSERT INTO \(table) (\(columns.joined(separator: ", "))) VALUES (…)"
-        try await MCPStatementGate.authorize(
-            sql: preview,
+        // Before anything connects: every statement this builds is an INSERT.
+        try MCPStatementGate.classify(kind: .writeQuery, meta: meta, allowsDestructive: false, context: context)
+
+        let scope = try await MCPScopeArguments.resolve(
+            arguments,
+            connectionId: connectionId,
+            services: services
+        )
+        let statements: [OperationStatement]
+        do {
+            statements = try await services.connectionBridge.insertStatements(
+                scope: scope,
+                table: table,
+                columns: columns,
+                rows: rows
+            )
+        } catch {
+            throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+        }
+        // Every row shares one statement shape, quoted names and placeholders, so one reading grades them all.
+        if let shape = statements.first?.sql {
+            try MCPStatementGate.classify(sql: shape, meta: meta, allowsDestructive: false, context: context)
+        }
+
+        let operation = try await MCPStatementGate.approve(
+            statements,
+            kind: .writeQuery,
+            gradedSQL: statements.first?.sql,
+            displayStatements: zip(statements, rows).map { statement, row in
+                SQLParameterInliner.inline(
+                    ParameterizedStatement(sql: statement.sql, parameters: row.map(MCPConnectionBridge.parameterValue)),
+                    databaseType: meta.databaseType
+                )
+            },
+            scope: scope,
             meta: meta,
             allowsDestructive: false,
             operationLabel: String(
@@ -368,19 +437,8 @@ public struct InsertRowsTool: MCPToolImplementation {
             services: services
         )
 
-        let scope = try await MCPScopeArguments.resolve(
-            arguments,
-            connectionId: connectionId,
-            services: services
-        )
-
         do {
-            let payload = try await services.connectionBridge.insertRows(
-                scope: scope,
-                table: table,
-                columns: columns,
-                rows: rows
-            )
+            let payload = try await services.connectionBridge.insertRows(operation, table: table)
             return .structured(payload)
         } catch {
             throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)

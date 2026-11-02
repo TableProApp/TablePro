@@ -209,6 +209,7 @@ struct ConnectionStorageImportTests {
         #expect(replaced.passwordSource == .command(shell: "pass show db"))
         #expect(replaced.externalAccess == .blocked)
         #expect(replaced.sortOrder == storedOrder)
+        #expect(replaced.origin == .imported)
     }
 
     @Test("A replace keeps the SSH route this Mac dialed, which a file never carries")

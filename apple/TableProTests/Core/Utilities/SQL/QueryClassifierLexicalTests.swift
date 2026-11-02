@@ -9,6 +9,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
 struct QueryClassifierLexicalTests {
@@ -163,11 +164,11 @@ struct QueryClassifierLexicalTests {
         #expect(QueryClassifier.isDangerousQuery(sql, databaseType: .sqlite))
     }
 
-    @Test("A REMOVE hidden after a backtick that a backslash escapes is a second statement and a write on SurrealDB")
-    func hiddenRemoveAfterEscapedBacktickIsAWrite() {
+    @Test("A REMOVE hidden after a backtick that a backslash escapes is a second statement and destructive on SurrealDB")
+    func hiddenRemoveAfterEscapedBacktickIsDestructive() {
         let sql = "SELECT `\\`` FROM person; REMOVE TABLE person; -- `"
         #expect(QueryClassifier.isMultiStatement(sql, databaseType: .surrealdb))
-        #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) == .write)
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) == .destructive)
     }
 
     @Test(

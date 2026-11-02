@@ -53,6 +53,30 @@ struct CloudflareTunnelPaneViewModelTests {
         #expect(viewModel.validationIssues.isEmpty)
     }
 
+    @Test("Browser sign-in refuses a hostname cloudflared would read as an option or split", arguments: [
+        "-h", "--help", "db.example.com --url x", "db\texample.com", "db.example.com\u{202E}",
+    ])
+    func signInRefusesFlagLikeHostname(hostname: String) {
+        let viewModel = CloudflareTunnelPaneViewModel()
+        viewModel.state.binaryPath = "/usr/bin/true"
+        viewModel.state.accessHostname = hostname
+
+        viewModel.signInWithBrowser()
+
+        #expect(viewModel.signInError != nil)
+    }
+
+    @Test("Browser sign-in starts for a plain hostname")
+    func signInStartsForPlainHostname() {
+        let viewModel = CloudflareTunnelPaneViewModel()
+        viewModel.state.binaryPath = "/usr/bin/true"
+        viewModel.state.accessHostname = "db.example.com"
+
+        viewModel.signInWithBrowser()
+
+        #expect(viewModel.signInError == nil)
+    }
+
     @Test("The not-found caption is plain text that names the install command")
     func binaryNotFoundMessageIsPlainText() {
         let message = CloudflareTunnelPaneViewModel().binaryNotFoundMessage

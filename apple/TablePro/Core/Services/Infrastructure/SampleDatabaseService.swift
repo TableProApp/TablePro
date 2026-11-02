@@ -132,7 +132,7 @@ internal final class SampleDatabaseService {
             } catch {
                 throw SampleDatabaseError.copyFailed(message: error.localizedDescription)
             }
-            Self.logger.info("Removed sample database file \(url.lastPathComponent, privacy: .public)")
+            Self.logger.info("Removed sample database file \(url.lastPathComponent, privacy: .private(mask: .hash))")
         }
     }
 

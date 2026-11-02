@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 public enum MSSQLPrincipalQueries {
     public static let currentDatabase = "SELECT DB_NAME()"
@@ -153,7 +154,7 @@ public enum MSSQLPrincipalQueries {
     }
 
     private static func view(_ name: String, in database: String) -> String {
-        "[\(MSSQLSchemaQueries.escapeBracket(database))].sys.\(name)"
+        SQLQuoting.identifier(database, quote: .bracket) + ".sys." + name
     }
 
     // MARK: - Rows

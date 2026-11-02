@@ -96,6 +96,25 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// - Returns: Query result with `isTruncated` set when the cap clipped rows
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult
 
+    // The same calls for a statement an external caller had approved; `context` says what the approval covered.
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [Any?]?,
+        context: PluginStatementContext
+    ) async throws -> QueryResult
+
+    func executeParameterized(
+        query: String,
+        parameters: [Any?],
+        context: PluginStatementContext
+    ) async throws -> QueryResult
+
+    func execute(query: String, context: PluginStatementContext) async throws -> QueryResult
+
+    // Whether this driver runs a statement marked read-only in the engine's read-only mode.
+    var runsReadOnlyStatements: Bool { get }
+
     /// Run a read that stops once `rowCap` rows are known to be exceeded, rather than fetching the
     /// whole result and discarding the tail. Returns nil when the driver cannot bound its own fetch.
     ///
@@ -535,6 +554,38 @@ extension DatabaseDriver {
     func executeRead(query: String) async throws -> QueryResult {
         try await execute(query: query)
     }
+
+    // A read the app wrote against the engine's own catalogs. PostgreSQL, KingbaseES and PGlite pin it to pg_catalog, so
+    // a lookalike in the browsed schema never runs as the reader; Redshift and CockroachDB rely on qualified calls.
+    func executeCatalogRead(query: String) async throws -> QueryResult {
+        var context = PluginStatementContext()
+        context.readOnly = true
+        context.readsCatalog = true
+        return try await execute(query: query, context: context)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [Any?]?,
+        context: PluginStatementContext
+    ) async throws -> QueryResult {
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [Any?],
+        context: PluginStatementContext
+    ) async throws -> QueryResult {
+        try await executeParameterized(query: query, parameters: parameters)
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> QueryResult {
+        try await execute(query: query)
+    }
+
+    var runsReadOnlyStatements: Bool { false }
 
     var supportsResultSetBatches: Bool { false }
 
@@ -1033,6 +1084,9 @@ enum DatabaseDriverFactory {
         try await PluginManager.shared.prepareForConnecting(to: connection.type)
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             throw PluginManager.shared.driverUnavailableError(for: connection.type)
+        }
+        if let refusal = SSLModeNotSupportedError.refusal(for: connection, pluginType: type(of: plugin)) {
+            throw refusal
         }
 
         var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)

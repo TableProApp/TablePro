@@ -20,9 +20,10 @@ public enum SQLUnfilteredWrite: Sendable, Equatable {
 
     private static let servedStatements: Set<String> = ["SELECT", "INSERT", "UPDATE", "DELETE", "MERGE"]
 
-    // `:where` and `$where` are bind parameters on SQLite.
+    // `:where`, `$where`, `@where` and `#where` are bind parameters on SQLite, and `@where` a user variable on MySQL.
     private static let parameterPrefixes: Set<UInt16> = [
-        UInt16(UnicodeScalar(":").value), UInt16(UnicodeScalar("$").value),
+        UInt16(UnicodeScalar(":").value), UInt16(UnicodeScalar("$").value), UInt16(UnicodeScalar("@").value),
+        SqlLexer.hash,
     ]
 
     private static func writes(inStatement source: NSString, grammar: SQLLexicalGrammar) -> [SQLUnfilteredWrite] {

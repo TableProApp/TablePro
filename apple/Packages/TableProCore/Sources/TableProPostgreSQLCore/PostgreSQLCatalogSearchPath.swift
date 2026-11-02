@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 /// The `search_path` a driver-authored catalog statement runs under, set with `SET LOCAL` in the same query string so it
 /// lasts only as long as the read.
@@ -17,12 +18,8 @@ import Foundation
 nonisolated public enum PostgreSQLCatalogSearchPath {
     public static let pinned = "SET LOCAL search_path = pg_catalog, pg_temp; "
 
-    /// For a read whose output the server deparses: `format_type`, `pg_get_expr` and the `pg_get_*def` functions leave
-    /// out the schema of a name the path resolves, so this writes the schema's own names bare. The schema is on the
-    /// path, so a statement run under it calls only `pg_catalog`-qualified functions and compares only operands a
-    /// `pg_catalog` operator takes exactly.
+    // For a read the server deparses: `format_type` and the `pg_get_*def` functions write a name on the path bare.
     public static func relative(to schema: String) -> String {
-        let quoted = "\"\(schema.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
-        return "SET LOCAL search_path = pg_catalog, \(quoted), pg_temp; "
+        "SET LOCAL search_path = pg_catalog, \(SQLQuoting.identifier(schema)), pg_temp; "
     }
 }

@@ -282,16 +282,17 @@ struct SSHConfigResolverTokenTests {
         #expect(resolved.proxyJump.first?.host == "jump-127.0.0.1-tok-2222")
     }
 
-    /// ssh splits the hops before expanding them. Expanding first let a username carrying a comma
-    /// turn one configured hop into two and route the session through a host nothing named.
+    // ssh splits the hops before expanding them. The form now refuses a comma in a user, so the
+    // comma comes from the config's own `User`.
     @Test("A comma inside an expanded token does not add a jump host")
     func proxyJumpCommaDoesNotSplitIntoAnExtraHop() {
         let resolved = SSHConfigResolver.resolve(
-            makeConfig(host: "tok", username: "bob,evil.example.net"),
+            makeConfig(host: "tok"),
             document: SSHConfigParser.parseDocumentContent(
                 """
                 Host tok
                     Hostname 127.0.0.1
+                    User bob,evil.example.net
                     ProxyJump %r@gw.example.com
                 """
             ),

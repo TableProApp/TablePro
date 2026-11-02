@@ -6,6 +6,7 @@
 import Combine
 import Foundation
 import os
+import TableProProcess
 
 @MainActor
 final class CloudflareTunnelPaneViewModel: ObservableObject {
@@ -81,6 +82,14 @@ final class CloudflareTunnelPaneViewModel: ObservableObject {
 
         let hostname = state.accessHostname.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !hostname.isEmpty else { return }
+        // A bare operand: cloudflared would read a dash-led hostname as an option.
+        let refused = CharacterSet.whitespacesAndNewlines.union(.controlCharacters)
+        guard !hostname.hasPrefix("-"), !hostname.unicodeScalars.contains(where: { refused.contains($0) }) else {
+            signInError = String(
+                localized: "The Cloudflare hostname cannot start with a dash or contain spaces or control characters."
+            )
+            return
+        }
 
         let rawPath = state.binaryPath.isEmpty ? resolvedBinaryPath : state.binaryPath
         guard let resolvedPath = rawPath.map({ ($0 as NSString).expandingTildeInPath }),
@@ -89,13 +98,21 @@ final class CloudflareTunnelPaneViewModel: ObservableObject {
             return
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: resolvedPath)
-        process.arguments = ["access", "login", hostname]
+        let process: Process
+        do {
+            process = try ProcessLauncher.process(for: ProcessCommand(
+                executable: URL(fileURLWithPath: resolvedPath),
+                arguments: ["access", "login", hostname],
+                environment: ProcessEnvironment.inherited()
+            ))
+        } catch {
+            signInError = error.localizedDescription
+            return
+        }
         do {
             try process.run()
             loginProcess = process
-            Self.logger.info("Started cloudflared access login for \(hostname, privacy: .public)")
+            Self.logger.info("Started cloudflared access login for \(hostname, privacy: .private(mask: .hash))")
         } catch {
             signInError = error.localizedDescription
             Self.logger.error("cloudflared access login failed to start: \(error.publicLogShape, privacy: .public)")

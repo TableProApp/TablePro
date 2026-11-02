@@ -5,6 +5,7 @@
 
 import Darwin
 import Foundation
+import TableProProcess
 import TableProUtilities
 
 enum ConnectionScriptOutcome: Equatable, Sendable {
@@ -27,11 +28,12 @@ enum ConnectionScriptRunner {
     ) async throws -> ConnectionScriptOutcome {
         try Task.checkCancellation()
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-c", script]
-        process.environment = CLIToolEnvironment.augmented().merging(environment) { _, connection in connection }
-        process.standardInput = FileHandle.nullDevice
+        let inherited = ProcessEnvironment.addingToolSearchPaths(to: ProcessEnvironment.inherited())
+        let process = try ProcessLauncher.process(for: .userShell(
+            script,
+            shell: .bash,
+            environment: inherited.merging(environment) { _, connection in connection }
+        ))
         process.standardOutput = FileHandle.nullDevice
         let stderrPipe = Pipe()
         process.standardError = stderrPipe

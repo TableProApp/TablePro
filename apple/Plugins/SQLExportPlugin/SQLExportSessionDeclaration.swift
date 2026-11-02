@@ -16,16 +16,14 @@ internal struct SQLExportSessionDeclaration: Equatable {
         "PostgreSQL", "Greenplum", "AlloyDB", "Citus", "CockroachDB", "PGlite", "KingbaseES"
     ]
 
-    /// `readTimeZone` is the zone the rows were read in, from the export's read scope. Only a MySQL dump declares
-    /// it, and only when given: declaring a zone the rows were not read in shifts every TIMESTAMP on reload.
-    ///
-    /// `readsWithANSIQuotes` means the server spelled the DDL under `ANSI_QUOTES`, with `"` around identifiers, so
-    /// the dump's mode keeps it or the CREATE does not parse on reload. What the dump spells itself uses backticks and
-    /// single quotes, which read the same either way.
+    // Declares what the rows were read and written with: a MySQL dump the zone they were read in and ANSI_QUOTES
+    // when the server spelled the DDL with it, a PostgreSQL dump the `standard_conforming_strings` its literals need,
+    // as pg_dump does, because a server set the other way reads `\'` as a quote.
     static func forDatabaseType(
         _ databaseTypeId: String,
         readTimeZone: String? = nil,
-        readsWithANSIQuotes: Bool = false
+        readsWithANSIQuotes: Bool = false,
+        literalsEscapeBackslash: Bool = false
     ) -> SQLExportSessionDeclaration {
         switch SqlDialect.from(databaseTypeId: databaseTypeId) {
         case .mysql:
@@ -33,7 +31,7 @@ internal struct SQLExportSessionDeclaration: Equatable {
                 readTimeZone: readTimeZone.flatMap(plainTimeZone),
                 sqlMode: readsWithANSIQuotes ? "NO_AUTO_VALUE_ON_ZERO,ANSI_QUOTES" : "NO_AUTO_VALUE_ON_ZERO")
         case .postgres where typesAcceptingSetClientEncoding.contains(databaseTypeId):
-            return postgres
+            return postgres(literalsEscapeBackslash: literalsEscapeBackslash)
         default:
             return .empty
         }
@@ -80,12 +78,15 @@ internal struct SQLExportSessionDeclaration: Equatable {
         return isPlain ? value : nil
     }
 
-    private static let postgres = SQLExportSessionDeclaration(
-        prologue: """
-        SET client_encoding = 'UTF8';
+    private static func postgres(literalsEscapeBackslash: Bool) -> SQLExportSessionDeclaration {
+        SQLExportSessionDeclaration(
+            prologue: """
+            SET client_encoding = 'UTF8';
+            SET standard_conforming_strings = \(literalsEscapeBackslash ? "off" : "on");
 
 
-        """,
-        epilogue: ""
-    )
+            """,
+            epilogue: ""
+        )
+    }
 }

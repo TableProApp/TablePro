@@ -93,16 +93,7 @@ public enum PluginExportUtilities {
     }
 
     public static func sanitizeForSQLComment(_ name: String) -> String {
-        var line = String.UnicodeScalarView()
-        for scalar in name.unicodeScalars {
-            switch scalar {
-            case "\n", "\r", "\u{85}", "\u{2028}", "\u{2029}":
-                line.append(" ")
-            default:
-                line.append(scalar)
-            }
-        }
-        return String(line)
+        PluginSQLQuoting.lineCommentText(name)
             .replacingOccurrences(of: "/*", with: "", options: .literal)
             .replacingOccurrences(of: "*/", with: "", options: .literal)
             .replacingOccurrences(of: "--", with: "", options: .literal)

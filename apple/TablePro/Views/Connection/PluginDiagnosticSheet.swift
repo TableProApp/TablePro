@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProHTTP
 import TableProPluginKit
 
 struct PluginDiagnosticItem: Identifiable, Equatable {
@@ -62,9 +63,9 @@ struct PluginDiagnosticSheet: View {
                 }
                 if item.diagnostic.supportURL != nil || Self.issuesURL != nil {
                     Button(String(localized: "Open Issue Tracker")) {
-                        let url = item.diagnostic.supportURL ?? Self.issuesURL
-                        if let url {
-                            NSWorkspace.shared.open(url)
+                        let supportPage = item.diagnostic.supportURL.flatMap { WebPageOpener.page($0.absoluteString, scope: .https) }
+                        if let url = supportPage ?? Self.issuesURL {
+                            WebPageOpener.open(url, scope: .https)
                         }
                     }
                 }

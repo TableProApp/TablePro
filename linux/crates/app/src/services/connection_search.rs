@@ -28,9 +28,10 @@ impl ConnectionSearch {
     }
 
     /// Whether every word is in the connection's name, where it
-    /// connects, its driver, its group or one of its tags' names, in any
-    /// case. `tags` is the list's, to read the names of `saved`'s from.
-    pub(crate) fn matches(&self, saved: &SavedConnection, tags: &[ConnectionTag]) -> bool {
+    /// connects, its driver, its group's label or one of its tags' names,
+    /// in any case. `tags` is the list's, to read the names of `saved`'s
+    /// from.
+    pub(crate) fn matches(&self, saved: &SavedConnection, group: Option<&str>, tags: &[ConnectionTag]) -> bool {
         if self.terms.is_empty() {
             return true;
         }
@@ -40,7 +41,7 @@ impl ConnectionSearch {
             Some(saved.database.as_str()),
             Some(saved.username.as_str()),
             Some(saved.driver_id.as_str()),
-            saved.group.as_ref().map(|group| group.as_str()),
+            group,
         ]
         .into_iter()
         .flatten()
@@ -59,10 +60,22 @@ impl ConnectionSearch {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTagName};
+    use tablepro_storage::{ConnectionColor, ConnectionTagName};
     use uuid::Uuid;
 
     use super::*;
+
+    const CLIENTS: Option<&str> = Some("Clients");
+
+    #[test]
+    fn a_word_of_a_nested_groups_path_finds_its_connections() {
+        let acme = saved("acme-prod", &[]);
+        let path = Some("Clients / Acme");
+
+        assert!(ConnectionSearch::new("acme clients").matches(&acme, path, &[]));
+        assert!(ConnectionSearch::new("clients").matches(&acme, path, &[]));
+        assert!(!ConnectionSearch::new("clients").matches(&acme, None, &[]));
+    }
 
     fn tag(name: &str) -> ConnectionTag {
         ConnectionTag::new(ConnectionTagName::new(name).expect("a tag name"), ConnectionColor::Red)
@@ -86,7 +99,8 @@ mod tests {
             ssh: None,
             last_opened_at: None,
             color: None,
-            group: Some(ConnectionGroupName::new("Clients").expect("a group name")),
+            group_id: None,
+            order: 0,
             tags: tags.iter().map(|tag| tag.id).collect(),
             icon: None,
             options: Default::default(),
@@ -103,9 +117,9 @@ mod tests {
 
         let search = ConnectionSearch::new("Production");
 
-        assert!(search.matches(&acme, &tags));
-        assert!(search.matches(&globex, &tags));
-        assert!(!search.matches(&dev, &tags));
+        assert!(search.matches(&acme, CLIENTS, &tags));
+        assert!(search.matches(&globex, CLIENTS, &tags));
+        assert!(!search.matches(&dev, CLIENTS, &tags));
     }
 
     #[test]
@@ -113,7 +127,7 @@ mod tests {
         let production = tag("production");
         let untagged = saved("acme", &[]);
 
-        assert!(!ConnectionSearch::new("production").matches(&untagged, &[production]));
+        assert!(!ConnectionSearch::new("production").matches(&untagged, CLIENTS, &[production]));
     }
 
     #[test]
@@ -131,7 +145,11 @@ mod tests {
             ("", true),
             ("   ", true),
         ] {
-            assert_eq!(ConnectionSearch::new(text).matches(&acme, &tags), shown, "{text:?}");
+            assert_eq!(
+                ConnectionSearch::new(text).matches(&acme, CLIENTS, &tags),
+                shown,
+                "{text:?}"
+            );
         }
         assert!(ConnectionSearch::new(" \t ").is_empty());
         assert!(ConnectionSearch::new("SALES db").matches_name("sales.db"));

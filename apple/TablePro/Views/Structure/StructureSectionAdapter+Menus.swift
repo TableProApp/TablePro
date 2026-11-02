@@ -5,6 +5,7 @@
 
 import AppKit
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension StructureSectionAdapter {
     // The grid adds Copy, Duplicate, Delete and Undo Delete from its commands; these are the schema's own.
@@ -136,11 +137,19 @@ extension StructureSectionAdapter {
             case .checkConstraints:
                 guard manager.workingCheckConstraints.indices.contains(index) else { continue }
                 let constraint = manager.workingCheckConstraints[index]
+                // Catalog text is copied as SQL only when it cannot close the CHECK's parentheses and run on.
+                guard Self.isCheckExpression(constraint.expression, databaseType: context.databaseType) else { continue }
                 definitions.append("CONSTRAINT \(driver.quoteIdentifier(constraint.name)) CHECK (\(constraint.expression))")
             }
         }
         guard !definitions.isEmpty else { return }
         ClipboardService.shared.writeText(definitions.joined(separator: "\n"))
+    }
+
+    // The CHECK's own parentheses are the one group T-SQL asks for.
+    static func isCheckExpression(_ expression: String, databaseType: DatabaseType) -> Bool {
+        let readings = databaseType.lexicalReadings.all.map { $0.subtracting(.unterminatedStatements) }
+        return SQLExpressionFragment.isSingleExpression(expression, readings: readings)
     }
 
     func copyAsCSV(_ indices: [Int]) {

@@ -79,6 +79,11 @@ struct RemoteSQLiteAgentPipeTests {
         static func execute(_ sql: String, parameters: [Value]) -> Data {
             frame(0x02, string(sql) + uint32(UInt32(parameters.count)) + parameters.flatMap(value) + uint32(0))
         }
+
+        // The execute payload, then the scope: 1 may not reach server code, 2 is read-only.
+        static func executeScoped(_ sql: String, scope: UInt8) -> Data {
+            frame(0x06, string(sql) + uint32(0) + uint32(0) + [scope])
+        }
     }
 
     private struct Cursor {
@@ -206,7 +211,15 @@ struct RemoteSQLiteAgentPipeTests {
 
         /// Reads a full EXEC response: header, then rows, then done or error.
         func runExecute(_ sql: String, parameters: [Value] = []) throws -> ExecuteResult {
-            send(Wire.execute(sql, parameters: parameters))
+            try run(Wire.execute(sql, parameters: parameters))
+        }
+
+        func runScoped(_ sql: String, scope: UInt8) throws -> ExecuteResult {
+            try run(Wire.executeScoped(sql, scope: scope))
+        }
+
+        private func run(_ frame: Data) throws -> ExecuteResult {
+            send(frame)
             var columns: [Column] = []
             var rows: [[Value]] = []
             while true {
@@ -322,6 +335,122 @@ struct RemoteSQLiteAgentPipeTests {
         try withEmptyDatabase { _, agent in
             guard case .error = try agent.runExecute("SELECT load_extension('x')") else {
                 Issue.record("load_extension was not blocked")
+                return
+            }
+        }
+    }
+
+    private static let noServerCode: UInt8 = 1
+    private static let readOnly: UInt8 = 2
+
+    private func scratchPath(_ name: String) -> String {
+        FileManager.default.temporaryDirectory.appendingPathComponent("agent-\(name)-\(UUID().uuidString).db").path
+    }
+
+    private func firstValue(_ result: Agent.ExecuteResult) -> Value? {
+        guard case .ok(_, let rows, _, _) = result else { return nil }
+        return rows.first?.first
+    }
+
+    private func isRefused(_ result: Agent.ExecuteResult) -> Bool {
+        if case .error = result { return true }
+        return false
+    }
+
+    @Test(.enabled(if: RemoteSQLiteAgentPipeTests.hasPython3))
+    func readOnlyFrameRefusesEveryWrite() throws {
+        let attached = scratchPath("attached")
+        let copy = scratchPath("copy")
+        defer {
+            try? FileManager.default.removeItem(atPath: attached)
+            try? FileManager.default.removeItem(atPath: copy)
+        }
+        try withEmptyDatabase { _, agent in
+            _ = try agent.runExecute("CREATE TABLE t(a INTEGER)")
+            _ = try agent.runExecute("INSERT INTO t VALUES(1)")
+
+            for sql in [
+                "INSERT INTO t VALUES(2)", "CREATE TABLE u(a)", "ATTACH DATABASE '\(attached)' AS other",
+                "VACUUM INTO '\(copy)'", "BEGIN", "PRAGMA query_only = 0", "PRAGMA journal_mode = WAL",
+            ] {
+                #expect(isRefused(try agent.runScoped(sql, scope: Self.readOnly)), "\(sql)")
+            }
+
+            #expect(firstValue(try agent.runScoped("SELECT count(*) FROM t", scope: Self.readOnly)) == .text(Data("1".utf8)))
+            #expect(firstValue(try agent.runExecute("SELECT count(*) FROM t")) == .text(Data("1".utf8)))
+            #expect(!FileManager.default.fileExists(atPath: attached))
+            #expect(!FileManager.default.fileExists(atPath: copy))
+        }
+    }
+
+    @Test(.enabled(if: RemoteSQLiteAgentPipeTests.hasPython3))
+    func readOnlyFrameResolvesNamesAsTheSessionDoes() throws {
+        let aux = scratchPath("aux")
+        FileManager.default.createFile(atPath: aux, contents: Data())
+        defer { try? FileManager.default.removeItem(atPath: aux) }
+        try withEmptyDatabase { _, agent in
+            _ = try agent.runExecute("ATTACH DATABASE '\(aux)' AS aux")
+            _ = try agent.runExecute("CREATE TABLE aux.album(a INTEGER)")
+            _ = try agent.runExecute("INSERT INTO aux.album VALUES(1), (2)")
+
+            #expect(firstValue(try agent.runScoped("SELECT count(*) FROM aux.album", scope: Self.readOnly)) == .text(Data("2".utf8)))
+            #expect(isRefused(try agent.runScoped("INSERT INTO aux.album VALUES(3)", scope: Self.readOnly)))
+
+            _ = try agent.runExecute("CREATE TABLE main.shadow(v TEXT)")
+            _ = try agent.runExecute("INSERT INTO main.shadow VALUES('main')")
+            _ = try agent.runExecute("CREATE TEMP TABLE shadow(v TEXT)")
+            _ = try agent.runExecute("INSERT INTO temp.shadow VALUES('temp')")
+
+            #expect(firstValue(try agent.runScoped("SELECT v FROM shadow", scope: Self.readOnly)) == .text(Data("temp".utf8)))
+            #expect(firstValue(try agent.runScoped("SELECT count(*) FROM aux.album", scope: Self.readOnly)) == .text(Data("2".utf8)))
+            for sql in ["INSERT INTO shadow VALUES('x')", "BEGIN", "PRAGMA query_only = 0", "ATTACH DATABASE '\(aux)' AS again"] {
+                #expect(isRefused(try agent.runScoped(sql, scope: Self.readOnly)), "\(sql)")
+            }
+            #expect(firstValue(try agent.runExecute("PRAGMA query_only")) == .text(Data("0".utf8)))
+            #expect(firstValue(try agent.runExecute("SELECT count(*) FROM temp.shadow")) == .text(Data("1".utf8)))
+        }
+    }
+
+    @Test(.enabled(if: RemoteSQLiteAgentPipeTests.hasPython3))
+    func readOnlyFrameReadsTheSessionsConnectionState() throws {
+        try withEmptyDatabase { _, agent in
+            _ = try agent.runExecute("CREATE TABLE t(a INTEGER)")
+            _ = try agent.runExecute("INSERT INTO t VALUES(1), (2)")
+
+            let state = try agent.runScoped("SELECT last_insert_rowid(), changes()", scope: Self.readOnly)
+            guard case .ok(_, let rows, _, _) = state else {
+                Issue.record("the read was refused")
+                return
+            }
+            #expect(rows == [[.text(Data("2".utf8)), .text(Data("2".utf8))]])
+        }
+    }
+
+    // The agent loads no extensions, so the no-server-code frame refuses only what reaches the server's files.
+    @Test(.enabled(if: RemoteSQLiteAgentPipeTests.hasPython3))
+    func noServerCodeFrameRefusesAttachAndStillWrites() throws {
+        let attached = scratchPath("attached")
+        let copy = scratchPath("copy")
+        FileManager.default.createFile(atPath: attached, contents: Data())
+        defer {
+            try? FileManager.default.removeItem(atPath: attached)
+            try? FileManager.default.removeItem(atPath: copy)
+        }
+        try withEmptyDatabase { _, agent in
+            _ = try agent.runExecute("CREATE TABLE t(a INTEGER)")
+
+            #expect(isRefused(try agent.runScoped("ATTACH DATABASE '\(attached)' AS other", scope: Self.noServerCode)))
+            #expect(isRefused(try agent.runScoped("VACUUM INTO '\(copy)'", scope: Self.noServerCode)))
+            #expect(isRefused(try agent.runScoped("SELECT load_extension('x')", scope: Self.noServerCode)))
+            guard case .ok(_, _, let changes, _) = try agent.runScoped("INSERT INTO t VALUES(upper('a'))", scope: Self.noServerCode) else {
+                Issue.record("the insert was refused")
+                return
+            }
+            #expect(changes == 1)
+            #expect(!isRefused(try agent.runScoped("VACUUM", scope: Self.noServerCode)))
+            #expect(!FileManager.default.fileExists(atPath: copy))
+            guard case .ok = try agent.runExecute("ATTACH DATABASE '\(attached)' AS other") else {
+                Issue.record("the plain frame lost ATTACH")
                 return
             }
         }

@@ -131,15 +131,15 @@ enum QueryTokenScanner {
             let body = source.substring(with: NSRange(location: bodyStart, length: bodyLength))
             switch opener {
             case SqlLexer.doubleQuote:
-                return .quotedIdentifier(body.replacingOccurrences(of: "\"\"", with: "\""))
+                return .quotedIdentifier(body.replacingOccurrences(of: "\"\"", with: "\"", options: .literal))
             case SqlLexer.backtick:
-                return .quotedIdentifier(body.replacingOccurrences(of: "``", with: "`"))
+                return .quotedIdentifier(body.replacingOccurrences(of: "``", with: "`", options: .literal))
             case openBracket:
-                return .quotedIdentifier(body.replacingOccurrences(of: "]]", with: "]"))
+                return .quotedIdentifier(body.replacingOccurrences(of: "]]", with: "]", options: .literal))
             case SqlLexer.openAngleQuote:
                 return .quotedIdentifier(body)
             case SqlLexer.singleQuote where literalsAsIdentifiers:
-                return .quotedIdentifier(body.replacingOccurrences(of: "''", with: "'"))
+                return .quotedIdentifier(body.replacingOccurrences(of: "''", with: "'", options: .literal))
             default:
                 return .literal
             }

@@ -2,34 +2,23 @@ import Foundation
 import TableProMCP
 
 enum ToolQueryExecutor {
-    /// What one call sends: a statement, or a text that runs as a script where the engine takes one, whose every
-    /// result set comes back.
-    enum Unit: Sendable {
-        case statement
-        case script
-    }
-
     static func executeAndLog(
         services: MCPToolServices,
-        query: String,
-        scope: DatabaseScope,
+        operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         context: MCPRequestContext,
-        secrets: [String],
-        unit: Unit = .statement
+        secrets: [String]
     ) async throws -> JsonValue {
         try await context.cancellation.throwIfCancelled()
         return try await executeAndLog(
             services: services,
-            query: query,
-            scope: scope,
+            operation: operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             principal: context.principal,
             cancellation: context.cancellation,
             secrets: secrets,
-            unit: unit,
             source: historySource(for: context)
         )
     }
@@ -41,29 +30,24 @@ enum ToolQueryExecutor {
 
     static func executeAndLog(
         services: MCPToolServices,
-        query: String,
-        scope: DatabaseScope,
+        operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         principal: MCPPrincipal,
         cancellation: MCPCancellationToken? = nil,
         secrets: [String] = [],
-        unit: Unit = .statement,
         source: QueryHistorySource = .mcp
     ) async throws -> JsonValue {
         try await logged(
             services: services,
-            query: query,
-            scope: scope,
+            approved: operation,
             principal: principal,
             secrets: secrets,
             source: source
         ) {
             try await run(
-                unit,
+                operation,
                 services: services,
-                query: query,
-                scope: scope,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation
@@ -73,8 +57,7 @@ enum ToolQueryExecutor {
 
     static func executeResultAndLog(
         services: MCPToolServices,
-        query: String,
-        scope: DatabaseScope,
+        operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         context: MCPRequestContext,
@@ -83,15 +66,13 @@ enum ToolQueryExecutor {
         try await context.cancellation.throwIfCancelled()
         return try await logged(
             services: services,
-            query: query,
-            scope: scope,
+            approved: operation,
             principal: context.principal,
             secrets: secrets,
             source: historySource(for: context)
         ) {
             let outcome = try await services.connectionBridge.runStatement(
-                scope: scope,
-                query: query,
+                operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: context.cancellation
@@ -102,13 +83,14 @@ enum ToolQueryExecutor {
 
     private static func logged<Output>(
         services: MCPToolServices,
-        query: String,
-        scope: DatabaseScope,
+        approved: ApprovedOperation,
         principal: MCPPrincipal,
         secrets: [String],
         source: QueryHistorySource,
         operation: () async throws -> (Output, Int)
     ) async throws -> Output {
+        let scope = approved.scope
+        let query = approved.statements.map(\.sql).joined(separator: "\n")
         let connectionId = scope.connectionId
         let databaseName = scope.database
         let startTime = Date()
@@ -175,22 +157,18 @@ enum ToolQueryExecutor {
         }
     }
 
-    /// The call's payload, and the rows it returned across every result set, which the history and the audit log
-    /// record.
+    // The call's payload, and the rows it returned across every result set, which the history and audit log record.
     private static func run(
-        _ unit: Unit,
+        _ operation: ApprovedOperation,
         services: MCPToolServices,
-        query: String,
-        scope: DatabaseScope,
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: MCPCancellationToken?
     ) async throws -> (payload: JsonValue, rowsReturned: Int) {
-        switch unit {
+        switch operation.unit {
         case .statement:
             let payload = try await services.connectionBridge.executeQuery(
-                scope: scope,
-                query: query,
+                operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation
@@ -198,8 +176,7 @@ enum ToolQueryExecutor {
             return (payload, payload["row_count"]?.intValue ?? 0)
         case .script:
             return try await services.connectionBridge.executeScript(
-                scope: scope,
-                query: query,
+                operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation

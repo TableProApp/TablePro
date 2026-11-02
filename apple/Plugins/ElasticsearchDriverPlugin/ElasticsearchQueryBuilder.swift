@@ -274,7 +274,7 @@ struct ElasticsearchQueryBuilder {
         for filter in filters {
             let info = fields[filter.column]
             if filter.column != rawColumn, info?.type == ElasticsearchMappingFlattener.nestedTypeName {
-                logger.warning("Dropping filter on nested parent column \(filter.column, privacy: .public)")
+                logger.warning("Dropping filter on nested parent column \(filter.column, privacy: .private(mask: .hash))")
                 continue
             }
             let paths = info?.nestedPaths ?? []

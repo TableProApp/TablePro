@@ -6,6 +6,7 @@
 import Darwin
 import Foundation
 import os
+import TableProProcess
 
 /// Runs the process that forwards a local port to the database, and holds it for the life of the
 /// connection.
@@ -63,7 +64,7 @@ actor TunnelCommandManager: TunnelManaging {
             try await closeTunnel(connectionId: connectionId)
         }
 
-        let environment = CLIToolEnvironment.augmented()
+        let environment = ProcessEnvironment.addingToolSearchPaths(to: ProcessEnvironment.inherited())
         var lastError: Error = TunnelCommandError.noAvailablePort
 
         for _ in 0..<Self.portRetryCount {
@@ -78,14 +79,17 @@ actor TunnelCommandManager: TunnelManaging {
                 remotePort: remotePort
             )
             let binaryPath = try resolveExecutablePath(invocation.executable)
+            let executable = URL(fileURLWithPath: binaryPath)
+            let arguments = invocation.arguments
+            let command = config.method == .custom
+                ? ProcessCommand.userAuthored(executable: executable, arguments: arguments, environment: environment)
+                : ProcessCommand(executable: executable, arguments: arguments, environment: environment)
             let runner = runnerFactory()
 
             do {
-                try runner.start(
-                    binaryPath: binaryPath,
-                    arguments: invocation.arguments,
-                    environment: environment
-                )
+                try runner.start(command)
+            } catch let refusal as ProcessLaunchError {
+                throw refusal
             } catch {
                 throw TunnelCommandError.executableNotFound(invocation.executable)
             }

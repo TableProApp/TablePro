@@ -41,7 +41,7 @@ struct ClickHouseTableOperationsTests {
     @Test("Backticks in the name are escaped")
     func escapesBackticks() {
         let stmt = clickHouseDropObjectStatement(name: "weird`name", objectType: "MATERIALIZED VIEW")
-        #expect(stmt == "DROP VIEW `weird``name`")
+        #expect(stmt == #"DROP VIEW `weird\`name`"#)
     }
 
     @Test("Other object types fall through to the default statement")
@@ -65,7 +65,7 @@ struct ClickHouseTableOperationsTests {
     func tableCommentQualifiesTheDatabase() {
         #expect(clickHouseCommentStatement(
             name: "or`ders", database: "sh`op", objectType: "TABLE", comment: "x", profile: commentCapable
-        ) == "ALTER TABLE `sh``op`.`or``ders` MODIFY COMMENT 'x'")
+        ) == #"ALTER TABLE `sh\`op`.`or\`ders` MODIFY COMMENT 'x'"#)
         #expect(clickHouseCommentStatement(
             name: "orders", database: "", objectType: "TABLE", comment: "x", profile: commentCapable
         ) == "ALTER TABLE `orders` MODIFY COMMENT 'x'")
@@ -82,7 +82,7 @@ struct ClickHouseTableOperationsTests {
     func commentIsEscaped() {
         #expect(clickHouseCommentStatement(
             name: "t", database: nil, objectType: "TABLE", comment: "it's C:\\tmp\nnext", profile: commentCapable
-        ) == #"ALTER TABLE `t` MODIFY COMMENT 'it''s C:\\tmp\nnext'"#)
+        ) == #"ALTER TABLE `t` MODIFY COMMENT 'it''s C:\\tmp"# + "\nnext'")
     }
 
     @Test("Views and materialized views get no comment statement", arguments: ["VIEW", "MATERIALIZED VIEW", "SYSTEM TABLE"])
@@ -99,17 +99,17 @@ struct ClickHouseTableOperationsTests {
         ) == nil)
     }
 
-    @Test("A backslash in a name is doubled before the backquote, so it cannot end the name early")
+    @Test("A backslash and a backquote in a name are escaped with a backslash, so neither can end the name early")
     func quotedIdentifierEscapesBackslash() {
         #expect(clickHouseQuotedIdentifier("orders") == "`orders`")
-        #expect(clickHouseQuotedIdentifier("a`b") == "`a``b`")
-        #expect(clickHouseQuotedIdentifier("x\\`; DROP TABLE t; --") == "`x\\\\``; DROP TABLE t; --`")
+        #expect(clickHouseQuotedIdentifier("a`b") == #"`a\`b`"#)
+        #expect(clickHouseQuotedIdentifier("x\\`; DROP TABLE t; --") == #"`x\\\`; DROP TABLE t; --`"#)
     }
 
-    @Test("A backquote followed by a combining mark is still doubled")
+    @Test("A backquote followed by a combining mark is still escaped")
     func quotedIdentifierSeesBackquoteBeforeCombiningMark() {
         let quoted = clickHouseQuotedIdentifier("a`\u{0301}b")
-        #expect(quoted.unicodeScalars.filter { $0 == "`" }.count == 4)
+        #expect(Array(quoted.unicodeScalars) == Array("`a\\`\u{0301}b`".unicodeScalars))
     }
 
     @Test("The comment statement quotes the table with the escaping quoter")
@@ -118,6 +118,6 @@ struct ClickHouseTableOperationsTests {
             name: "x\\`y", database: "db", objectType: "TABLE", comment: "c",
             profile: ClickHouseServerProfile.testing(version: "24.3.1")
         )
-        #expect(statement == "ALTER TABLE `db`.`x\\\\``y` MODIFY COMMENT 'c'")
+        #expect(statement == #"ALTER TABLE `db`.`x\\\`y` MODIFY COMMENT 'c'"#)
     }
 }

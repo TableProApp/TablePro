@@ -26,7 +26,8 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     username: connection.username,
                     redisDatabase: ConnectionMatchKey.redisDatabase(in: connection.additionalFields),
                     socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
-                )
+                ),
+                settings: IOSConnectionExportService.portableSettings(for: connection)
             )
         }, savedQueries: appState.savedQueries.ledgerEntries() ?? [])
     }

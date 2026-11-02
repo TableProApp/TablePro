@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// The list behind the foreign key value picker: keys from the referenced table, with a label
 /// column beside them, narrowed by what the user typed.
@@ -18,11 +19,7 @@ import TableProPluginKit
 enum ForeignKeyLookupQuery {
     static let rowLimit = 50
 
-    /// Nil when the term names nothing this table can be searched on, which is not the same as a
-    /// term that matches no row. There is no query to send, and the caller has to say which of the
-    /// two happened: reporting it as an empty result made a picker on a numeric key with a numeric
-    /// label answer "No matching rows" to every word while still answering a number, so the search
-    /// read as intermittently broken rather than as having nothing to match against.
+    // Nil when the term names nothing this table can be searched on, which the caller reports apart from no match.
     static func rows(
         quotedTable: String,
         key: ForeignKeyLookupColumn,
@@ -31,6 +28,7 @@ enum ForeignKeyLookupQuery {
         dialect: SQLDialectDescriptor,
         stringLiteralPrefix: String,
         databaseType: DatabaseType? = nil,
+        stringEscapes: SQLStringEscapes? = nil,
         quoteIdentifier: @escaping (String) -> String
     ) -> String? {
         let selected = selectedColumns(key: key, labels: labels)
@@ -41,7 +39,8 @@ enum ForeignKeyLookupQuery {
             columnTypes: selected.map(\.type),
             quoteIdentifier: quoteIdentifier,
             stringLiteralPrefix: stringLiteralPrefix,
-            databaseType: databaseType
+            databaseType: databaseType,
+            stringEscapes: stringEscapes
         )
 
         /// A referenced column may be a nullable `UNIQUE` one, and ascending order puts its NULLs

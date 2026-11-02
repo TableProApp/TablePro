@@ -68,7 +68,7 @@ struct PostgreSQLCatalogQualificationTests {
             )),
             ("indexList", PostgreSQLIndexQueries.indexList(schema: schema, table: table, capabilities: capabilities)),
             ("standaloneIndexQuery", PostgreSQLIndexQueries.standaloneIndexQuery(schema: schema, table: table)),
-            ("postGISProbe", PostGISSpatialRewrite.probeQuery),
+            ("postGISProbe", PostGISTypes.probeQuery),
             ("schemaOwnerAndComment", PostgreSQLSchemaManagementQueries.ownerAndComment(schema: schema)),
             ("schemaGrants", PostgreSQLSchemaManagementQueries.grants(schema: schema)),
             ("pgvectorProbe", PgvectorTypes.probeQuery),
@@ -123,10 +123,20 @@ struct PostgreSQLCatalogQualificationTests {
             PostgreSQLRoutineDebugProtocol.backendCountStatement(process: 42),
             PostgreSQLRoutineDebugProtocol.routineSourceStatement(oid: 16_385),
             try #require(PostgreSQLRoutineDebugProtocol.targetDefaultsStatement(oid: 16_385, argumentCount: 2)),
-            try #require(PostGISSpatialRewrite.conversionQuery(for: PostGISType(name: "geometry", schema: Self.schema)))
+            try #require(PostgreSQLSequenceStatements.nextValue(
+                PluginSequenceDetails(
+                    name: "orders_id_seq", schema: Self.schema, dataType: "integer", startValue: 1, increment: 1,
+                    minValue: 1, maxValue: 2_147_483_647, cacheSize: 1, cycles: false, lastValue: 3, nextValue: 4,
+                    ownedByTable: Self.table, ownedByColumn: "id"
+                ),
+                schema: Self.schema,
+                nextValue: .afterOwnedColumn,
+                hasRowSecurity: false
+            ))
         ]
         for sql in statements {
             #expect(!sql.contains(" = ") && !sql.contains(" <> ") && !sql.contains(" IN ("), "\(sql)")
+            #expect(!sql.contains(" + ") && !sql.contains(" - "), "\(sql)")
             #expect(Self.unqualifiedCalls(in: sql).isEmpty, "\(sql)")
         }
     }

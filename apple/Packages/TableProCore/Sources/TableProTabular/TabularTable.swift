@@ -19,6 +19,7 @@ public struct TabularTable: Sendable {
     public private(set) var rowOrder: TabularRowOrder
     public private(set) var headerRowKey: Int?
     public private(set) var generation: Int
+    private var columnIndexByID: [TabularColumnID: Int]
     private var nextRowKey: Int
     private var nextColumnID: Int
 
@@ -41,6 +42,7 @@ public struct TabularTable: Sendable {
             built.append(TabularColumn(id: TabularColumnID(rawValue: column), name: name, values: ColumnValues(base: .source(column))))
         }
         columns = built
+        columnIndexByID = Self.indexByID(of: built)
         headerRowKey = hasHeader ? 0 : nil
         rowOrder = .range((hasHeader ? 1 : 0)..<source.rowCount)
         generation = 0
@@ -53,11 +55,11 @@ public struct TabularTable: Sendable {
     public var columnIDs: [TabularColumnID] { columns.map(\.id) }
 
     public func columnIndex(of id: TabularColumnID) -> Int? {
-        columns.firstIndex { $0.id == id }
+        columnIndexByID[id]
     }
 
     public func column(_ id: TabularColumnID) -> TabularColumn? {
-        columns.first { $0.id == id }
+        columnIndexByID[id].map { columns[$0] }
     }
 
     public func key(atRow logicalRow: Int) -> Int {
@@ -117,12 +119,8 @@ public struct TabularTable: Sendable {
 
     public mutating func setCells(_ updates: [(key: Int, columnID: TabularColumnID, cell: TabularCell)]) {
         guard !updates.isEmpty else { return }
-        var indexByID: [TabularColumnID: Int] = [:]
-        for (index, column) in columns.enumerated() {
-            indexByID[column.id] = index
-        }
         for update in updates {
-            guard let index = indexByID[update.columnID] else { continue }
+            guard let index = columnIndexByID[update.columnID] else { continue }
             columns[index].values.edits[update.key] = update.cell
         }
         generation += 1
@@ -172,6 +170,7 @@ public struct TabularTable: Sendable {
         nextColumnID += 1
         let column = TabularColumn(id: id, name: name, values: ColumnValues(base: .constant(fill ?? source.absentCell)))
         columns.insert(column, at: min(max(0, index), columns.count))
+        reindexColumns()
         generation += 1
         return id
     }
@@ -181,6 +180,7 @@ public struct TabularTable: Sendable {
         let id = TabularColumnID(rawValue: nextColumnID)
         nextColumnID += 1
         columns.insert(TabularColumn(id: id, name: name, values: values), at: min(max(0, index), columns.count))
+        reindexColumns()
         generation += 1
         return id
     }
@@ -188,6 +188,7 @@ public struct TabularTable: Sendable {
     public mutating func deleteColumns(_ ids: Set<TabularColumnID>) {
         guard !ids.isEmpty else { return }
         columns.removeAll { ids.contains($0.id) }
+        reindexColumns()
         generation += 1
     }
 
@@ -201,6 +202,7 @@ public struct TabularTable: Sendable {
         guard let index = columnIndex(of: id) else { return }
         let column = columns.remove(at: index)
         columns.insert(column, at: min(max(0, destination), columns.count))
+        reindexColumns()
         generation += 1
     }
 
@@ -233,5 +235,18 @@ public struct TabularTable: Sendable {
             headerRowKey = nil
         }
         generation += 1
+    }
+
+    private mutating func reindexColumns() {
+        columnIndexByID = Self.indexByID(of: columns)
+    }
+
+    private static func indexByID(of columns: [TabularColumn]) -> [TabularColumnID: Int] {
+        var index: [TabularColumnID: Int] = [:]
+        index.reserveCapacity(columns.count)
+        for (position, column) in columns.enumerated() {
+            index[column.id] = position
+        }
+        return index
     }
 }

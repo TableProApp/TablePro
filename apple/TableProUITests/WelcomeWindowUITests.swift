@@ -51,21 +51,20 @@ final class WelcomeWindowUITests: UITestCase {
         XCTAssertFalse(welcome.exists, "Opening the sample takes the place of the welcome window")
     }
 
-    func testTheVersionSettingHidesTheVersionAndTheUpdateCheckOnTheOpenWindow() throws {
+    func testTheVersionShowsAndAnUpdateLinkWaitsForAPendingUpdate() throws {
         let app = try launchApp()
         let welcome = welcomeWindow(in: app)
         XCTAssertTrue(welcome.waitToExist(timeout: 10))
 
         let versionLine = welcome.descendants(matching: .any).matching(identifier: "welcome-version-line").firstMatch
-        let updateCheck = welcome.descendants(matching: .any)
-            .matching(identifier: "welcome-check-for-updates-link").firstMatch
-        XCTAssertTrue(versionLine.waitToExist(timeout: 10), "The welcome window must show the version by default")
+        XCTAssertTrue(versionLine.waitToExist(timeout: 10), "The welcome window must show the version")
         let versionText = (versionLine.value as? String).flatMap { $0.isEmpty ? nil : $0 } ?? versionLine.label
         XCTAssertNotNil(
             versionText.range(of: #"^Version \S+ \(\d+\)$"#, options: .regularExpression),
             "The version line must end with the build number, it reads '\(versionText)'"
         )
-        XCTAssertTrue(updateCheck.exists, "The welcome window must offer the update check by default")
+        let updateLink = welcome.descendants(matching: .any).matching(identifier: "welcome-update-link").firstMatch
+        XCTAssertFalse(updateLink.exists, "With nothing pending the welcome window offers no update link")
 
         app.typeShortcut(.settings)
         let settings = window("settings", in: app)
@@ -74,21 +73,16 @@ final class WelcomeWindowUITests: UITestCase {
         XCTAssertTrue(generalPaneButton.waitToExist(timeout: 10))
         generalPaneButton.click()
 
-        let toggle = settings.descendants(matching: .any)
-            .matching(identifier: "welcome-version-info-toggle").firstMatch
-        XCTAssertTrue(waitUntilHittable(toggle, timeout: 10), "The General pane must offer the setting")
-        XCTAssertTrue(isOn(toggle), "The setting must start on")
+        // The Form builds every row, so the row reads without scrolling to it.
+        let action = settings.descendants(matching: .any).matching(identifier: "software-update-action").firstMatch
+        XCTAssertTrue(action.waitToExist(timeout: 10), "General must show the Software Update row")
+        XCTAssertEqual(action.label, "Check Now")
 
-        toggle.click()
-        XCTAssertTrue(
-            waitForPredicate(timeout: 10) { !versionLine.exists && !updateCheck.exists },
-            "Turning the setting off must hide the version and the update check on the open welcome window"
-        )
+        let headline = settings.descendants(matching: .any).matching(identifier: "software-update-headline").firstMatch
+        let headlineText = (headline.value as? String).flatMap { $0.isEmpty ? nil : $0 } ?? headline.label
+        XCTAssertTrue(headlineText.hasPrefix("TablePro "), "The row names the running version, it reads '\(headlineText)'")
 
-        toggle.click()
-        XCTAssertTrue(
-            waitForPredicate(timeout: 10) { versionLine.exists && updateCheck.exists },
-            "Turning the setting back on must restore both"
-        )
+        let retiredToggle = settings.descendants(matching: .any).matching(identifier: "welcome-version-info-toggle").firstMatch
+        XCTAssertFalse(retiredToggle.exists, "The Welcome version switch is gone")
     }
 }

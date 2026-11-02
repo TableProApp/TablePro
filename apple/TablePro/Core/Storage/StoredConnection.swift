@@ -90,6 +90,9 @@ struct StoredConnection: Codable {
 
     let passwordSource: PasswordSource?
 
+    // Absent means thisMac, so a file the previous build wrote reads the same.
+    let origin: String?
+
     init(from connection: DatabaseConnection) {
         self.id = connection.id
         self.name = connection.name
@@ -178,6 +181,8 @@ struct StoredConnection: Codable {
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
 
         self.passwordSource = connection.passwordSource
+
+        self.origin = connection.origin == .thisMac ? nil : connection.origin.rawValue
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -207,6 +212,7 @@ struct StoredConnection: Codable {
         case isSample
         case isFavorite
         case passwordSource
+        case origin
     }
 
     func encode(to encoder: Encoder) throws {
@@ -259,6 +265,7 @@ struct StoredConnection: Codable {
         try container.encode(isSample, forKey: .isSample)
         try container.encode(isFavorite, forKey: .isFavorite)
         try container.encodeIfPresent(passwordSource, forKey: .passwordSource)
+        try container.encodeIfPresent(origin, forKey: .origin)
     }
 
     init(from decoder: Decoder) throws {
@@ -334,6 +341,7 @@ struct StoredConnection: Codable {
         localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        origin = try? container.decodeIfPresent(String.self, forKey: .origin)
     }
 
     func toConnection() -> DatabaseConnection {
@@ -480,6 +488,7 @@ struct StoredConnection: Codable {
             additionalFields: mergedFields
         )
         connection.sshRoute = sshRouteJson.flatMap(PublishedSSHRoute.decoded(from:))
+        connection.origin = origin.flatMap(ConnectionOrigin.init(rawValue:)) ?? .thisMac
         return connection
     }
 }

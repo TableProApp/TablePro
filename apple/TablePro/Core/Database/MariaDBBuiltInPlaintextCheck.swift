@@ -6,6 +6,7 @@
 import Darwin
 import Foundation
 import os
+import TableProProcess
 import TableProUtilities
 
 // A MariaDB client built with mysql_clear_password or dialog inside it finds them before it looks at the plugin folder,
@@ -70,17 +71,20 @@ enum MariaDBBuiltInPlaintextCheck {
         defer { close(listener.descriptor) }
 
         let token = "tablepro-check-\(UUID().uuidString)"
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: toolPath)
-        process.arguments = [
-            "--no-defaults", "--protocol=TCP", "-h", "127.0.0.1", "-P", String(listener.port), "-u", "tablepro",
-            "--skip-ssl", "--plugin-dir=\(folder.path)", "--", "tablepro"
-        ]
-        process.environment = ["MYSQL_PWD": token]
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let process: Process
         do {
+            process = try ProcessLauncher.process(
+                for: ProcessCommand(
+                    executable: URL(fileURLWithPath: toolPath),
+                    arguments: [
+                        "--no-defaults", "--protocol=TCP", "-h", "127.0.0.1", "-P", String(listener.port), "-u", "tablepro",
+                        "--skip-ssl", "--plugin-dir=\(folder.path)", "--", "tablepro"
+                    ],
+                    environment: ["MYSQL_PWD": token]
+                )
+            )
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
             try process.run()
         } catch {
             logger.notice("Could not run the client to check its plugins: \(error.publicLogShape, privacy: .public)")

@@ -278,7 +278,7 @@ struct QueryTab: Identifiable, Equatable {
                 pluginDriver: nil,
                 dialect: dialect,
                 pagination: pagination,
-                dialectQuote: quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
+                dialectQuote: quoteIdentifier ?? quoteIdentifierFromDialect(dialect, databaseType: databaseType)
             )
             return builder.buildBaseQuery(
                 tableName: tableName,

@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import TableProSQLGrammar
 
 extension MainContentCoordinator {
     var maskingPolicy: MaskingPolicy {

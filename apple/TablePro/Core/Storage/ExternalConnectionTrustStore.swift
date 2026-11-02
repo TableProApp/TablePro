@@ -45,7 +45,7 @@ internal final class ExternalConnectionTrustStore: ExternalConnectionTrustChecki
         var updated = entries().filter { $0.key != key }
         updated.append(TrustedExternalConnection(key: key, trustedAt: Date()))
         save(updated)
-        Self.logger.info("Trusted external connection \(key.displayDescription, privacy: .public)")
+        Self.logger.info("Trusted external connection \(key.displayDescription, privacy: .private(mask: .hash))")
     }
 
     internal func revoke(_ key: ExternalConnectionTrustKey) {

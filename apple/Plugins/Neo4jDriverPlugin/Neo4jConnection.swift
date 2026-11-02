@@ -242,7 +242,7 @@ actor Neo4jConnection {
                     try await dial(ssl: ssl, timeout: timeout)
                 } catch let error where !(error is CancellationError) && !timedOut {
                     let reason = error.localizedDescription
-                    Self.logger.info("TLS failed under SSL Preferred, retrying without it: \(reason, privacy: .public)")
+                    Self.logger.info("TLS failed under SSL Preferred, retrying without it: \(reason, privacy: .private)")
                     var plain = ssl
                     plain.mode = .disabled
                     try await dial(ssl: plain, timeout: timeout)

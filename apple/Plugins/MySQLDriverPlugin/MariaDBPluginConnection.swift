@@ -672,7 +672,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     /// plaintext fallback and every kill after it repeats the attempt that already failed.
     private func deliverKill(_ killQuery: String) -> Bool {
         guard let killConn = openKillConnection() else {
-            logger.warning("\(killQuery, privacy: .public) could not open a connection")
+            logger.warning("\(killQuery, privacy: .private) could not open a connection")
             return false
         }
         defer { mysql_close(killConn) }
@@ -761,7 +761,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_real_query(killConn, queryPtr, UInt(killQuery.utf8.count))
         }
         guard killStatus == 0 else {
-            logger.warning("\(killQuery, privacy: .public) rejected: \(self.errorMessage(from: killConn))")
+            logger.warning("\(killQuery, privacy: .private) rejected: \(self.errorMessage(from: killConn))")
             return false
         }
         return true
@@ -896,6 +896,29 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return try await pluginDispatchAsync(on: queue) { [self] in
             guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
             return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap)
+        }
+    }
+
+    // `sessionState` runs in this same block, so nothing queued behind it can open a transaction before the wrap.
+    func executeReadOnly(
+        _ query: String,
+        parameters: [PluginCellValue]?,
+        rowCap: Int?,
+        sessionState: @escaping @Sendable (Bool) -> PluginSessionTransactionState
+    ) async throws -> MariaDBPluginQueryResult {
+        let queryToRun = String(query)
+        let params = parameters
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
+            return try MySQLReadOnlyTransaction.run(
+                state: sessionState(isInTransaction),
+                send: { _ = try executeQuerySync($0) },
+                statement: {
+                    guard let params else { return try executeQuerySync(queryToRun, rowCap: rowCap) }
+                    return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap)
+                }
+            )
         }
     }
 
@@ -1383,7 +1406,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Streaming Query
 
-    func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    // With `readOnlySessionState` the whole stream runs inside `executeReadOnly`'s transaction.
+    func streamQuery(
+        _ query: String,
+        readOnlySessionState: (@Sendable (Bool) -> PluginSessionTransactionState)? = nil
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
 
         /// The drain belongs to the producer. Enqueued from `onTermination` it would sit behind the
@@ -1392,12 +1419,27 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return PluginRowStream.make { continuation, abort in
             self.queue.async { [self] in
                 do {
-                    try runStatement(queryToRun) {
-                        try self.runCancellableStatement { mysql, generation in
-                            try self.streamStatement(
-                                queryToRun, continuation: continuation, abort: abort, on: mysql, generation: generation
-                            )
+                    let stream = {
+                        try self.runStatement(queryToRun) {
+                            try self.runCancellableStatement { mysql, generation in
+                                try self.streamStatement(
+                                    queryToRun, continuation: continuation, abort: abort, on: mysql, generation: generation
+                                )
+                            }
                         }
+                    }
+                    if let readOnlySessionState {
+                        guard !abort.isAborted else {
+                            continuation.finish()
+                            return
+                        }
+                        try MySQLReadOnlyTransaction.run(
+                            state: readOnlySessionState(isInTransaction),
+                            send: { _ = try executeQuerySync($0) },
+                            statement: stream
+                        )
+                    } else {
+                        try stream()
                     }
                     continuation.finish()
                 } catch {

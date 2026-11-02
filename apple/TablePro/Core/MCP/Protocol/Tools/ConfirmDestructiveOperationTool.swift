@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProMCP
+import TableProSQLGrammar
 
 public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
     public static let name = "confirm_destructive_operation"
@@ -52,15 +53,12 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
         let query = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "query")
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
-        let classification = try await MCPStatementGate.authorize(
+        let classification = try MCPStatementGate.classify(
             sql: query,
             meta: meta,
             allowsDestructive: true,
-            operationLabel: String(localized: "a destructive statement"),
-            context: context,
-            services: services
+            context: context
         )
-
         guard classification.tier == .destructive else {
             throw MCPToolExecutionError.invalidArgument(
                 String(
@@ -78,13 +76,28 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             connectionId: connectionId,
             services: services
         )
+        let statement: OperationStatement
+        do {
+            statement = try await services.connectionBridge.plannedStatement(scope: scope, query: query, maxRows: 0)
+        } catch {
+            throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+        }
+        let operation = try await MCPStatementGate.approve(
+            [statement],
+            kind: OperationKind.from(classification.tier),
+            scope: scope,
+            meta: meta,
+            allowsDestructive: true,
+            operationLabel: String(localized: "a destructive statement"),
+            context: context,
+            services: services
+        )
 
         Self.logger.debug("confirm_destructive_operation on \(connectionId.uuidString, privacy: .public)")
 
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,
-            query: query,
-            scope: scope,
+            operation: operation,
             maxRows: 0,
             timeoutSeconds: timeoutSeconds,
             context: context,

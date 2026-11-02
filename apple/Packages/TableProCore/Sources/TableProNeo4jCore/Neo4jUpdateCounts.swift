@@ -32,7 +32,10 @@ public struct Neo4jUpdateCounts: Equatable, Sendable {
 
     // A property or label counter counts values, not entities.
     public var entitiesChanged: Int {
-        [.nodesCreated, .nodesDeleted, .relationshipsCreated, .relationshipsDeleted].reduce(0) { $0 + count($1) }
+        [Counter.nodesCreated, .nodesDeleted, .relationshipsCreated, .relationshipsDeleted].reduce(0) { total, counter in
+            let (sum, overflow) = total.addingReportingOverflow(count(counter))
+            return overflow ? .max : sum
+        }
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {

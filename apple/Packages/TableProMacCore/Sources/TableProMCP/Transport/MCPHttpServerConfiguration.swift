@@ -30,19 +30,23 @@ public struct MCPHttpServerLimits: Sendable, Equatable {
     }
 }
 
+// `socketPath` serves the bridge and the tablepro command; external HTTP clients keep the port.
 public struct MCPHttpServerConfiguration: Sendable, Equatable {
     public let port: UInt16
+    public let socketPath: String?
     public let limits: MCPHttpServerLimits
 
-    public init(port: UInt16, limits: MCPHttpServerLimits = .standard) {
+    public init(port: UInt16, socketPath: String? = nil, limits: MCPHttpServerLimits = .standard) {
         self.port = port
+        self.socketPath = socketPath
         self.limits = limits
     }
 
     public static func loopback(
         port: UInt16,
+        socketPath: String? = nil,
         limits: MCPHttpServerLimits = .standard
     ) -> Self {
-        Self(port: port, limits: limits)
+        Self(port: port, socketPath: socketPath, limits: limits)
     }
 }

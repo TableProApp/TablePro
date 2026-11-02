@@ -83,6 +83,47 @@ struct SSHHostnameCanonicalizerTests {
         #expect(canonicalize(host, permittedCNAMEs: "*", fallbackLocal: false) { _ in "elsewhere.example" } == host)
     }
 
+    // ssh -G 10.3 calls these an unrecognised address and keeps them, even under fallback no.
+    @Test("An address that does not parse is kept and never searched for", arguments: ["::ffff:zz", "1.2.3.4.5"])
+    func unparseableAddressIsNotSearched(host: String) {
+        var asked: [String] = []
+        let options = SSHCanonicalizationOptions(
+            mode: .yes,
+            domains: ["corp.example"],
+            fallbackLocal: false,
+            maxDots: 9,
+            permittedCNAMEs: nil
+        )
+        let found = SSHHostnameCanonicalizer.canonicalize(host: host, options: options) { name in
+            asked.append(name)
+            return name
+        }
+        #expect(found == host)
+        #expect(asked.isEmpty)
+    }
+
+    // Measured with ssh -G 10.3: `none` first leaves no domain, and a later line does not add one.
+    @Test("CanonicalDomains none searches no domain, even where a later line names one")
+    func canonicalDomainsNoneSearchesNothing() {
+        let env = ResolverEnvironment(
+            runShell: { _ in true },
+            canonicalize: { host, options in
+                SSHHostnameCanonicalizer.canonicalize(host: host, options: options) { $0 }
+            },
+            currentLocalUser: { "tester" }
+        )
+        let document = SSHConfigParser.parseDocumentContent("""
+        CanonicalizeHostname yes
+        CanonicalDomains none
+        CanonicalizeFallbackLocal no
+        Host *
+            CanonicalDomains corp.example
+        """)
+        let resolved = SSHConfigResolver.resolve(SSHConfiguration(enabled: true, host: "db"), document: document, env: env)
+        #expect(resolved.expansionFailure == .hostNotInCanonicalDomains(host: "db"))
+        #expect(resolved.host == "db")
+    }
+
     @Test("An anchored name is looked up as it is, before MaxDots and the domains")
     func anchoredNameIsLookedUpDirectly() {
         var asked: [String] = []

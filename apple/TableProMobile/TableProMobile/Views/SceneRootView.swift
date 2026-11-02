@@ -12,9 +12,7 @@ struct SceneRootView: View {
     @State private var presenter: ScenePresenter
     @State private var menuState = SceneMenuState()
 
-    /// The launch lock arrives through the initializer rather than the environment because the
-    /// restore binding's getter runs before any `.task`, so the hold has to exist before the first
-    /// body. Only the hold is seeded here; every later question about the lock reads `lockState`.
+    // The restore binding's getter runs before any .task, so the launch hold comes through init, not the environment.
     init(connectionManager: ConnectionManager, isLockedAtLaunch: Bool) {
         _coordinatorStore = State(
             initialValue: ConnectionCoordinatorStore(connectionManager: connectionManager)
@@ -77,7 +75,7 @@ struct SceneRootView: View {
         if lockState.isLocked {
             return .locked
         }
-        guard scenePhase != .active, AppLockState.isLockEnabled, lockState.biometry != .unavailable else {
+        guard scenePhase != .active, lockState.isLockEnabled, lockState.biometry != .unavailable else {
             return nil
         }
         return .obscured

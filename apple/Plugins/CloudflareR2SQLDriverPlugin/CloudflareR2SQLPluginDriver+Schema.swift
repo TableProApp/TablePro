@@ -6,6 +6,7 @@
 import Foundation
 import TableProPluginKit
 import TableProR2SQLCore
+import TableProSQLGrammar
 
 extension CloudflareR2SQLPluginDriver {
     func fetchDatabases() async throws -> [String] {
@@ -54,8 +55,15 @@ extension CloudflareR2SQLPluginDriver {
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let described = try await describe(table: table, schema: schema)
-        let body = described.columns
+        let body = try described.columns
             .map { column in
+                guard SQLExpressionFragment.isSingleType(
+                    column.typeName, databaseTypeId: CloudflareR2SQLPlugin.databaseTypeId
+                ) else {
+                    throw R2SQLError.unsupported(
+                        String(format: String(localized: "The type of column %@ cannot be written as SQL."), column.name)
+                    )
+                }
                 let quoted = R2SQLIntrospectionSQL.quoteIdentifier(column.name)
                 return "    \(quoted) \(column.typeName)\(column.isNullable ? "" : " NOT NULL")"
             }

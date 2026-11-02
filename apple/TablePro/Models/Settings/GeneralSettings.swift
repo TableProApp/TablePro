@@ -66,7 +66,6 @@ struct GeneralSettings: Codable, Equatable {
     var showSystemContainers: Bool
     var showPartitions: Bool
     var showWorkspaceRail: Bool
-    var showWelcomeVersionInfo: Bool
     var sidebarRowSize: SidebarRowSizePreference
     var connectionHealthCheck: ConnectionHealthCheck
 
@@ -81,7 +80,6 @@ struct GeneralSettings: Codable, Equatable {
         showSystemContainers: false,
         showPartitions: true,
         showWorkspaceRail: true,
-        showWelcomeVersionInfo: true,
         sidebarRowSize: .matchSystem,
         connectionHealthCheck: .every30Seconds
     )
@@ -97,7 +95,6 @@ struct GeneralSettings: Codable, Equatable {
         showSystemContainers: Bool = false,
         showPartitions: Bool = true,
         showWorkspaceRail: Bool = true,
-        showWelcomeVersionInfo: Bool = true,
         sidebarRowSize: SidebarRowSizePreference = .matchSystem,
         connectionHealthCheck: ConnectionHealthCheck = .every30Seconds
     ) {
@@ -111,7 +108,6 @@ struct GeneralSettings: Codable, Equatable {
         self.showSystemContainers = showSystemContainers
         self.showPartitions = showPartitions
         self.showWorkspaceRail = showWorkspaceRail
-        self.showWelcomeVersionInfo = showWelcomeVersionInfo
         self.sidebarRowSize = sidebarRowSize
         self.connectionHealthCheck = connectionHealthCheck
     }
@@ -129,7 +125,6 @@ struct GeneralSettings: Codable, Equatable {
         showSystemContainers = container.decodeSetting(.showSystemContainers, default: fallback.showSystemContainers)
         showPartitions = container.decodeSetting(.showPartitions, default: fallback.showPartitions)
         showWorkspaceRail = container.decodeSetting(.showWorkspaceRail, default: fallback.showWorkspaceRail)
-        showWelcomeVersionInfo = container.decodeSetting(.showWelcomeVersionInfo, default: fallback.showWelcomeVersionInfo)
         sidebarRowSize = container.decodeSetting(.sidebarRowSize, default: fallback.sidebarRowSize)
         connectionHealthCheck = container.decodeSetting(.connectionHealthCheck, default: fallback.connectionHealthCheck)
     }

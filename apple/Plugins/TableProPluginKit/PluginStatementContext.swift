@@ -5,16 +5,37 @@
 
 import Foundation
 
-/// What the host decided about a statement before handing it to a driver.
-///
-/// Deliberately not `@frozen`, and every field is a `var` with a default set through `init()`, so a later field is
-/// one more property rather than a second initializer every already-built plugin would have to find.
+// Not `@frozen`, and every field is a `var` with a default, so a later field is additive.
 public struct PluginStatementContext: Sendable, Equatable {
-    /// The host proved from the statement's text that it only reads, and ran it on that basis: Safe Mode skipped its
-    /// write confirmation, or a read-only client was allowed to send it. A driver whose statements can do more than
-    /// their text shows, such as one that evaluates them in a scripting engine with state, refuses every write while
-    /// running a statement marked this way.
+    // From an external origin, a driver that declares `PluginCapabilities.readOnlyStatements` runs the statement in
+    // the engine's read-only mode and throws when the session state does not allow it. A scripting driver refuses
+    // every write whatever the origin.
     public var readOnly = false
 
+    public var origin: PluginStatementOrigin = .app
+
+    // The host already cut the text into the statement it approved, so the driver must not split it again.
+    public var hostSplit = false
+
+    // False when the approval did not cover dropping or emptying data.
+    public var allowsDestructive = true
+
+    // False when the statement may not run code on the server or reach its files.
+    public var allowsServerCode = true
+
+    // The host wrote it against the engine's own catalogs, so `execute(query:context:)` may run it where only built-in
+    // functions, operators and relations resolve. Honoured for the app's own statements only.
+    public var readsCatalog = false
+
+    // How the engine lexes this session's text, so the driver binds and quotes as the server reads. Nil from a host
+    // that does not say.
+    public var lexicalFeatures: SQLLexicalFeatures?
+
     public init() {}
+}
+
+public enum PluginStatementOrigin: Sendable, Equatable {
+    case app
+    // An MCP client, the AI assistant, AppleScript or Shortcuts.
+    case external
 }

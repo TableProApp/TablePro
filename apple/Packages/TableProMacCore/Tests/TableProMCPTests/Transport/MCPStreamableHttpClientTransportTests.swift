@@ -256,11 +256,11 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
 
     func testUnauthorizedRefreshesCredentialsAndRetriesExactlyOnce() async throws {
         let refreshed = MCPUpstreamCredentials(
-            endpoint: try endpoint(),
+            socketPath: server.socketPath,
             bearerToken: "refreshed-token"
         )
         let provider = QueuedCredentialsProvider(
-            initial: MCPUpstreamCredentials(endpoint: try endpoint(), bearerToken: "stale-token"),
+            initial: MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "stale-token"),
             queued: [refreshed]
         )
         await server.setResponses([
@@ -293,8 +293,8 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
 
     func testASecondUnauthorizedIsReportedRatherThanRetriedAgain() async throws {
         let provider = QueuedCredentialsProvider(
-            initial: MCPUpstreamCredentials(endpoint: try endpoint(), bearerToken: "stale-token"),
-            queued: [MCPUpstreamCredentials(endpoint: try endpoint(), bearerToken: "still-stale")]
+            initial: MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "stale-token"),
+            queued: [MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "still-stale")]
         )
         await server.setResponse(MockHttpResponse(
             status: 401,
@@ -321,7 +321,7 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
 
     func testAFailedRefreshSurfacesAnErrorRatherThanHanging() async throws {
         let provider = QueuedCredentialsProvider(
-            initial: MCPUpstreamCredentials(endpoint: try endpoint(), bearerToken: "stale-token"),
+            initial: MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "stale-token"),
             queued: []
         )
         await server.setResponse(MockHttpResponse(
@@ -344,7 +344,7 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
 
     func testAnUnreachableEndpointTellsTheUserToStartTablePro() async throws {
         let credentials = MCPUpstreamCredentials(
-            endpoint: try XCTUnwrap(URL(string: "http://127.0.0.1:1/mcp")),
+            socketPath: MCPSocketLocation.primarySocket(in: MCPTestSocketFolder.url()).path,
             bearerToken: "token"
         )
         let transport = MCPStreamableHttpClientTransport(
@@ -367,20 +367,14 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
     func testClosingSendsNoDeleteAndNoFurtherRequest() async throws {
         await server.respondWithJson(try Self.successBody(id: .number(1)))
 
-        let watcher = SessionTaskWatcher()
-        let session = URLSession(configuration: .ephemeral, delegate: watcher, delegateQueue: nil)
-        let transport = makeTransport(urlSession: session)
+        let transport = makeTransport()
         try await transport.send(frame(method: "tools/list", requestId: .number(1)))
         _ = try await firstInbound(transport: transport)
 
         await transport.close()
-        // A session reports itself invalid only after every task it ran has finished.
-        await watcher.invalidated.wait()
 
-        XCTAssertEqual(watcher.createdMethods, ["POST"])
-        let requests = await server.requests
-        XCTAssertEqual(requests.count, 1)
-        XCTAssertFalse(requests.contains { $0.method == "DELETE" })
+        let methods = await server.requests.map { $0.method }
+        XCTAssertEqual(methods, ["POST"])
     }
 
     func testClosingIsIdempotentAndSendingAfterwardsThrows() async throws {
@@ -438,25 +432,16 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
         return MCPUpstreamFrame(body: body, method: method, name: name, requestId: requestId)
     }
 
-    private func endpoint() throws -> URL {
-        try XCTUnwrap(URL(string: "http://127.0.0.1:\(server.port)/mcp"))
-    }
-
     private func makeTransport(
         credentialsProvider: (any MCPUpstreamCredentialsProviding)? = nil,
-        urlSession: URLSession? = nil,
         errorLogger: (any MCPBridgeLogger)? = nil
     ) -> MCPStreamableHttpClientTransport {
-        let credentials = MCPUpstreamCredentials(
-            endpoint: URL(string: "http://127.0.0.1:\(server.port)/mcp") ?? URL(fileURLWithPath: "/"),
-            bearerToken: "test-token"
-        )
+        let credentials = MCPUpstreamCredentials(socketPath: server.socketPath, bearerToken: "test-token")
         let provider = credentialsProvider
             ?? MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials }
         return MCPStreamableHttpClientTransport(
             configuration: MCPStreamableHttpClientConfiguration(requestTimeout: .seconds(5)),
             credentialsProvider: provider,
-            urlSession: urlSession,
             errorLogger: errorLogger
         )
     }
@@ -519,25 +504,6 @@ final class MCPStreamableHttpClientTransportTests: XCTestCase {
             group.cancelAll()
             return value
         }
-    }
-}
-
-private final class SessionTaskWatcher: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    let invalidated = AsyncGate()
-    private let lock = NSLock()
-    private var methods: [String] = []
-
-    var createdMethods: [String] {
-        lock.withLock { methods }
-    }
-
-    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
-        lock.withLock { methods.append(task.originalRequest?.httpMethod ?? "") }
-    }
-
-    func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
-        let invalidated = invalidated
-        Task { await invalidated.open() }
     }
 }
 

@@ -209,6 +209,37 @@ actor DuckDBConnectionActor {
         try Self.streamResultRows(&resolved.result, schema: resolved.schema, continuation: continuation)
     }
 
+    // The state check, the BEGIN, the statement and the ROLLBACK share one actor turn, so nothing lands in between.
+    // The statement text is not tracked: the ROLLBACK leaves the session as idle as it was found.
+    func executeReadOnly(_ query: String, parameters: [PluginCellValue]) throws -> DuckDBRawResult {
+        let conn = try readOnlyConnection()
+        let startTime = Date()
+        return try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState()) {
+            var resolved = try Self.resolvedResult(query: query, parameters: parameters, connection: conn)
+            defer { duckdb_destroy_result(&resolved.result) }
+            return Self.extractResult(from: &resolved.result, schema: resolved.schema, startTime: startTime)
+        }
+    }
+
+    func streamReadOnly(
+        _ query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) throws {
+        let conn = try readOnlyConnection()
+        try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState()) {
+            var resolved = try Self.resolvedResult(query: query, parameters: [], connection: conn)
+            defer { duckdb_destroy_result(&resolved.result) }
+            try Self.streamResultRows(&resolved.result, schema: resolved.schema, continuation: continuation)
+        }
+    }
+
+    private func readOnlyConnection() throws -> duckdb_connection {
+        try ensureOpen()
+        guard let conn = connection else { throw DuckDBPluginError.notConnected }
+        lastActivity = ContinuousClock.now
+        return conn
+    }
+
     // MARK: - Handle lifecycle
 
     private func openHandle(spec: DuckDBOpenSpec) throws {

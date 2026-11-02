@@ -193,6 +193,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var isSample: Bool = false
     var isFavorite: Bool = false
     var passwordSource: PasswordSource?
+    var origin: ConnectionOrigin = .thisMac
     // What a Mac last dialed for this tunnel, for devices without its ~/.ssh/config. Never dialed here.
     var sshRoute: PublishedSSHRoute?
 
@@ -505,6 +506,7 @@ internal extension DatabaseConnection {
         adopted.cloudSQLProxyMode = local.cloudSQLProxyMode
         adopted.socksProxyMode = local.socksProxyMode
         adopted.tunnelCommandMode = local.tunnelCommandMode
+        adopted.origin = local.origin
         return adopted
     }
 }
@@ -521,6 +523,7 @@ extension DatabaseConnection: Codable {
         case redisDatabase, startupCommands, sortOrder, localOnly, isSample, isFavorite
         case passwordSource
         case sshRoute
+        case origin
     }
 
     init(from decoder: Decoder) throws {
@@ -559,6 +562,8 @@ extension DatabaseConnection: Codable {
         isSample = try container.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         passwordSource = PasswordSource.resilientlyDecoded(from: container, forKey: .passwordSource)
+        origin = (try? container.decodeIfPresent(String.self, forKey: .origin))
+            .flatMap(ConnectionOrigin.init(rawValue:)) ?? .thisMac
         cloudflareTunnelMode = try container.decodeIfPresent(CloudflareTunnelMode.self, forKey: .cloudflareTunnelMode) ?? .disabled
         cloudSQLProxyMode = try container.decodeIfPresent(CloudSQLProxyMode.self, forKey: .cloudSQLProxyMode) ?? .disabled
         socksProxyMode = try container.decodeIfPresent(SOCKSProxyMode.self, forKey: .socksProxyMode) ?? .disabled
@@ -628,6 +633,9 @@ extension DatabaseConnection: Codable {
         try container.encode(isSample, forKey: .isSample)
         try container.encode(isFavorite, forKey: .isFavorite)
         try container.encodeIfPresent(passwordSource, forKey: .passwordSource)
+        if origin != .thisMac {
+            try container.encode(origin, forKey: .origin)
+        }
     }
 }
 

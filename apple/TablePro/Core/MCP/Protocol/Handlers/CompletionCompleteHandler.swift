@@ -45,7 +45,7 @@ public struct CompletionCompleteHandler: MCPMethodHandler {
 
         Self.logger.debug(
             """
-            completion/complete ref=\(reference.describedReference, privacy: .public) \
+            completion/complete ref=\(reference.describedReference, privacy: .private) \
             argument=\(argumentName, privacy: .public) values=\(result.values.count, privacy: .public)
             """
         )

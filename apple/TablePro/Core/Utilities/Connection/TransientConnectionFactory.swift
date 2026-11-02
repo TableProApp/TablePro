@@ -63,6 +63,7 @@ internal enum TransientConnectionFactory {
             oracleServiceName: parsed.oracleServiceName
         )
 
+        connection.origin = .link
         connection.additionalFields.merge(parsed.additionalFields) { _, imported in imported }
 
         // The same field mapping as Import from URL, so an opened link reads legacy UUIDs the way its sender set and

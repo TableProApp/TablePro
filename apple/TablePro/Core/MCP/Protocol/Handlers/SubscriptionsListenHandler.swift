@@ -37,7 +37,7 @@ public struct SubscriptionsListenHandler: MCPMethodHandler {
         Self.logger.debug(
             """
             subscriptions/listen id=\(subscriptionId.description, privacy: .public) \
-            honoured=\(acknowledged.asJsonValue.jsonString(), privacy: .public)
+            honoured=\(acknowledged.asJsonValue.jsonString(), privacy: .private)
             """
         )
 

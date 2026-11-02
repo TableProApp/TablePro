@@ -66,7 +66,7 @@ internal enum PhpSerializeWriter {
             output += "r:\(id);"
         case .unsupported(let token):
             output += token
-        case .depthExceeded, .tooLarge:
+        case .tooLarge:
             output += "…"
         }
     }

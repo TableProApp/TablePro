@@ -13,7 +13,7 @@ struct QueryTabBaseQueryTests {
     func editorQueryMatchesExecutedQuery() throws {
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
         let dialect = PluginManager.shared.sqlDialect(for: .mssql)
-        let quote = dialect.map(quoteIdentifierFromDialect)
+        let quote = dialect.map { quoteIdentifierFromDialect($0, databaseType: .mssql) }
 
         let editorQuery = try QueryTab.buildBaseTableQuery(
             tableName: "users",
@@ -40,7 +40,7 @@ struct QueryTabBaseQueryTests {
             tableName: "users",
             databaseType: .mssql,
             schemaName: nil,
-            quoteIdentifier: dialect.map(quoteIdentifierFromDialect)
+            quoteIdentifier: dialect.map { quoteIdentifierFromDialect($0, databaseType: .mssql) }
         )
 
         #expect(query.contains("SELECT * FROM"))

@@ -197,7 +197,7 @@ public extension SQLiteColumnDeclaration {
     }
 
     private var isIntegerTyped: Bool {
-        declaredType?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("INTEGER") == .orderedSame
+        declaredType?.caseInsensitiveCompare("INTEGER") == .orderedSame
     }
 
     /// Where a constraint the declaration does not have is written: after the type, or after the
@@ -207,13 +207,7 @@ public extension SQLiteColumnDeclaration {
         declaration.typeRange?.upperBound ?? declaration.nameRange.upperBound
     }
 
-    /// Applies the replacements last-first so an earlier edit never moves the indices a later one
-    /// was measured from.
-    ///
-    /// Two insertions can land on the same index, which happens whenever a save adds both a
-    /// nullability and a default to a column that had neither. Ordering by position alone leaves
-    /// their relative order to the sort, so the position is paired with the order they were
-    /// collected in and the result is the same every time.
+    // Last-first, so no edit moves the indices of one still to come; two insertions at one index keep the order they were collected in.
     private static func apply(_ replacements: [(Range<String.Index>, String)], to text: String) -> String {
         var result = text
         let ordered = replacements.enumerated().sorted {
@@ -228,7 +222,7 @@ public extension SQLiteColumnDeclaration {
                 result.replaceSubrange(range, with: value)
             }
         }
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        return SQLiteTableDDL.trimmed(result)
     }
 }
 

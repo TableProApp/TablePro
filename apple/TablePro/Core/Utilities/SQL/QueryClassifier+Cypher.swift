@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 extension QueryClassifier {
     static func cypherClassification(_ text: String) -> QueryClassification {

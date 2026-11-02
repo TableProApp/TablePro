@@ -1,4 +1,5 @@
 mod connection_color;
+mod connection_group;
 mod connection_group_name;
 mod connection_icon;
 mod connection_tag;
@@ -10,7 +11,9 @@ mod document_problem;
 pub mod drafts;
 mod error;
 pub mod fs;
+mod group_icon;
 mod group_name_error;
+mod group_tree;
 mod name_rules;
 mod paths;
 pub mod query_history;
@@ -19,6 +22,7 @@ mod tag_name_error;
 mod unix_time;
 
 pub use connection_color::ConnectionColor;
+pub use connection_group::ConnectionGroup;
 pub use connection_group_name::ConnectionGroupName;
 pub use connection_icon::ConnectionIcon;
 pub use connection_tag::ConnectionTag;
@@ -34,7 +38,9 @@ pub use credentials::{
 pub use document_problem::{DocumentProblem, DocumentProblemKind};
 pub use drafts::{DraftId, DraftScope, DraftStore};
 pub use error::StorageError;
+pub use group_icon::{GroupIcon, SymbolName};
 pub use group_name_error::GroupNameError;
+pub use group_tree::GroupTree;
 pub use paths::StoragePaths;
 pub use query_history::QueryHistory;
 pub use saved_queries::SavedQueries;

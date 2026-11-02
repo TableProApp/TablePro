@@ -3,22 +3,30 @@ import TableProCoreTypes
 import TableProModels
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 public struct FilterSQLGenerator: Sendable {
     private let dialect: SQLDialectDescriptor
     private let databaseType: DatabaseType?
     private let identifierQuoter: (@Sendable (String) -> String)?
+    private let literalEscapes: SQLStringEscapes
 
     // A dialect names its quote character only; ClickHouse also reads backslash escapes inside backticks, so a caller
-    // that quotes per engine passes its own quoter.
+    // that quotes per engine passes its own quoter. `session` is what the connection reported, such as MySQL's
+    // NO_BACKSLASH_ESCAPES; without it a literal is written so that every reading of the engine ends it in place.
     public init(
         dialect: SQLDialectDescriptor,
         databaseType: DatabaseType? = nil,
-        quoteIdentifier: (@Sendable (String) -> String)? = nil
+        quoteIdentifier: (@Sendable (String) -> String)? = nil,
+        session: SQLSessionLexicalFacts? = nil
     ) {
         self.dialect = dialect
         self.databaseType = databaseType
         self.identifierQuoter = quoteIdentifier
+        let declared: SQLLexicalGrammar = dialect.requiresBackslashEscaping ? .backslashEscapesInSingleQuotes : []
+        self.literalEscapes = SQLLexicalReadings.stringEscapes(
+            databaseTypeId: databaseType?.rawValue ?? "", declared: declared, session: session
+        )
     }
 
     public func generateWhereClause(
@@ -182,6 +190,9 @@ public struct FilterSQLGenerator: Sendable {
         switch dialect.likeEscapeStyle {
         case .explicit:
             return " ESCAPE '!'"
+        // MySQL's implicit `\` LIKE escape is gone under NO_BACKSLASH_ESCAPES, so it is named.
+        case .implicit where dialect.requiresBackslashEscaping && !literalEscapes.backslashEscapes:
+            return " ESCAPE '\\'"
         case .implicit:
             return ""
         }
@@ -189,21 +200,22 @@ public struct FilterSQLGenerator: Sendable {
 
     // The LIKE layer first, with the escape `likeEscapeClause` names, then the literal rule over the whole pattern.
     public func likePatternBody(_ value: String) -> String {
-        let escape = dialect.likeEscapeStyle == .implicit ? "\\" : "!"
+        let escape: Unicode.Scalar = dialect.likeEscapeStyle == .implicit ? "\\" : "!"
         // `[` opens a character class in a SQL Server LIKE pattern.
-        let metacharacters = [escape, "%", "_"] + (databaseType == .mssql ? ["["] : [])
-        let pattern = metacharacters.reduce(value) { pattern, metacharacter in
-            pattern.replacingOccurrences(of: metacharacter, with: escape + metacharacter, options: .literal)
-        }
-        return literalBody(pattern)
+        let metacharacters: Set<Unicode.Scalar> = databaseType == .mssql ? ["%", "_", "["] : ["%", "_"]
+        return literalBody(SQLQuoting.likePattern(value, escape: escape, metacharacters: metacharacters))
     }
 
     private func quoteIdentifier(_ name: String) -> String {
         if let identifierQuoter { return identifierQuoter(name) }
-        let open = dialect.identifierQuote
-        let close = open == "[" ? "]" : open
-        let escaped = name.replacingOccurrences(of: close, with: "\(close)\(close)", options: .literal)
-        return "\(open)\(escaped)\(close)"
+        switch dialect.identifierQuote {
+        case "`":
+            return SQLQuoting.identifier(name, quote: .backtick)
+        case "[":
+            return SQLQuoting.identifier(name, quote: .bracket)
+        default:
+            return SQLQuoting.identifier(name)
+        }
     }
 
     private func escapeValue(_ value: String, kind: PluginColumnKind?) -> String {
@@ -213,12 +225,7 @@ public struct FilterSQLGenerator: Sendable {
         return "'\(literalBody(value))'"
     }
 
-    // `.literal` compares code units: the default compares grapheme clusters and skips a quote a combining mark follows.
     private func literalBody(_ value: String) -> String {
-        var body = value.replacingOccurrences(of: "\0", with: "", options: .literal)
-        if dialect.requiresBackslashEscaping {
-            body = body.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-        }
-        return body.replacingOccurrences(of: "'", with: "''", options: .literal)
+        SQLQuoting.stringLiteralBody(value, escapes: literalEscapes)
     }
 }

@@ -107,10 +107,9 @@ public enum MSSQLParameterBatch {
         return batchLeadingObjects.contains(words[objectIndex])
     }
 
-    /// Whether `query` opens with a procedure name rather than a statement, as `sp_help 't'` does, which the server runs
-    /// as an `EXECUTE` only while it is the first statement of the batch. A quoted identifier there is one too.
+    // `sp_help 't'` runs as an `EXECUTE` only as the first statement of its batch, and a quoted name there is one too.
     public static func callsProcedureWithoutExec(_ query: String) -> Bool {
-        if let first = firstCodeCharacter(of: query), first == "[" || first == "\"" {
+        if let first = firstCodeScalar(of: query), first == "[" || first == "\"" {
             return true
         }
         guard let word = leadingWords(of: query, count: 1).first else { return false }
@@ -121,24 +120,24 @@ public enum MSSQLParameterBatch {
         "PROCEDURE", "PROC", "FUNCTION", "VIEW", "TRIGGER", "SCHEMA", "DEFAULT", "RULE",
     ]
 
-    private static func firstCodeCharacter(of query: String) -> Character? {
+    private static func firstCodeScalar(of query: String) -> Unicode.Scalar? {
         var state = ScanState.code
-        let characters = Array(query)
+        let scalars = Array(query.unicodeScalars)
         var index = 0
-        while index < characters.count {
-            let character = characters[index]
-            let next = index + 1 < characters.count ? characters[index + 1] : nil
-            if let pair = next, let entered = state.enteringComment(character, pair) {
+        while index < scalars.count {
+            let scalar = scalars[index]
+            let next = index + 1 < scalars.count ? scalars[index + 1] : nil
+            if let pair = next, let entered = state.enteringComment(scalar, pair) {
                 state = entered
                 index += 2
                 continue
             }
             guard state == .code else {
-                state = state.after(character)
+                state = state.after(scalar)
                 index += 1
                 continue
             }
-            guard character.isWhitespace else { return character }
+            guard scalar.properties.isWhitespace else { return scalar }
             index += 1
         }
         return nil
@@ -146,38 +145,38 @@ public enum MSSQLParameterBatch {
 
     private static func leadingWords(of query: String, count: Int) -> [String] {
         var words: [String] = []
-        var current = ""
+        var current = String.UnicodeScalarView()
         var state = ScanState.code
-        let characters = Array(query)
+        let scalars = Array(query.unicodeScalars)
         var index = 0
-        while index < characters.count, words.count < count {
-            let character = characters[index]
-            let next = index + 1 < characters.count ? characters[index + 1] : nil
-            if let pair = next, let entered = state.enteringComment(character, pair) {
+        while index < scalars.count, words.count < count {
+            let scalar = scalars[index]
+            let next = index + 1 < scalars.count ? scalars[index + 1] : nil
+            if let pair = next, let entered = state.enteringComment(scalar, pair) {
                 state = entered
                 index += 2
                 continue
             }
             guard state == .code else {
-                state = state.after(character)
+                state = state.after(scalar)
                 index += 1
                 continue
             }
-            if character.isLetter || character == "_" || (!current.isEmpty && continuesIdentifier(character)) {
-                current.append(character)
+            if scalar.properties.isAlphabetic || scalar == "_" || (!current.isEmpty && continuesIdentifier(scalar)) {
+                current.append(scalar)
             } else {
-                if !current.isEmpty { words.append(current.uppercased()) }
-                current = ""
-                guard character.isWhitespace else { break }
+                if !current.isEmpty { words.append(String(current).uppercased()) }
+                current = String.UnicodeScalarView()
+                guard scalar.properties.isWhitespace else { break }
             }
             index += 1
         }
-        if !current.isEmpty, words.count < count { words.append(current.uppercased()) }
+        if !current.isEmpty, words.count < count { words.append(String(current).uppercased()) }
         return words
     }
 
-    private static func continuesIdentifier(_ character: Character) -> Bool {
-        character.isNumber || character == "@" || character == "#" || character == "$"
+    private static func continuesIdentifier(_ scalar: Unicode.Scalar) -> Bool {
+        scalar.properties.numericType != nil || scalar == "@" || scalar == "#" || scalar == "$"
     }
 
     private static func parameterName(_ offset: Int) -> String {
@@ -215,57 +214,45 @@ public enum MSSQLParameterBatch {
         return literal
     }
 
-    /// A `?` inside a string literal, a quoted identifier or a comment is not a placeholder, and the doubled `''`, `""`
-    /// and `]]` that carry a delimiter have to be stepped over rather than read as the end of the literal.
-    ///
-    /// The bracket is the one T-SQL spells differently from everything else, and it was missing: a column named
-    /// `[we?ird]` took the first parameter, which shifted every parameter after it by one and sent the values to the
-    /// wrong placeholders. Comments were missing too: an apostrophe in `-- customer's orders` opened a string that
-    /// hid every real placeholder after it, and a `?` in `-- why?` took a value meant for the query.
-    ///
-    /// The `?` marks and their values come from the app's parameter scanner, which turned each `:name` it read as code
-    /// into one, so this has to read comments exactly as that scanner does or the k-th value lands on the wrong mark.
-    /// It ends a block comment at the first `*/`, although SQL Server nests them: in `/* a /* b */ ? */ ... = ?` it
-    /// wrote both marks and sent a value for each, and the server ignoring the first one is harmless where binding the
-    /// second one's value to the first is not.
+    // Comments end where the app's scanner, which wrote the `?` marks, ends them: a block comment at its first `*/`.
     private static func replacePlaceholders(in query: String, limit: Int) -> (query: String, placeholderCount: Int) {
-        var converted = ""
+        var converted = String.UnicodeScalarView()
         var count = 0
         var state = ScanState.code
-        let characters = Array(query)
+        let scalars = Array(query.unicodeScalars)
 
         var index = 0
-        while index < characters.count {
-            let character = characters[index]
-            let next = index + 1 < characters.count ? characters[index + 1] : nil
+        while index < scalars.count {
+            let scalar = scalars[index]
+            let next = index + 1 < scalars.count ? scalars[index + 1] : nil
 
-            if let doubled = state.doubledDelimiter, character == doubled, next == doubled {
+            if let doubled = state.doubledDelimiter, scalar == doubled, next == doubled {
                 converted.append(doubled)
                 converted.append(doubled)
                 index += 2
                 continue
             }
 
-            if let pair = next, let entered = state.enteringComment(character, pair) {
-                converted.append(character)
+            if let pair = next, let entered = state.enteringComment(scalar, pair) {
+                converted.append(scalar)
                 converted.append(pair)
                 state = entered
                 index += 2
                 continue
             }
 
-            state = state.after(character)
+            state = state.after(scalar)
 
-            if character == "?", state == .code, count < limit {
+            if scalar == "?", state == .code, count < limit {
                 count += 1
-                converted.append(parameterName(count - 1))
+                converted.append(contentsOf: parameterName(count - 1).unicodeScalars)
             } else {
-                converted.append(character)
+                converted.append(scalar)
             }
             index += 1
         }
 
-        return (converted, count)
+        return (String(converted), count)
     }
 
     private enum ScanState: Equatable {
@@ -276,9 +263,8 @@ public enum MSSQLParameterBatch {
         case lineComment
         case blockComment
 
-        /// What a doubled occurrence of this state's own delimiter escapes. A bracket identifier
-        /// escapes its closing `]`, not the `[` that opened it.
-        var doubledDelimiter: Character? {
+        // A bracket identifier escapes its closing `]`, not the `[` that opened it.
+        var doubledDelimiter: Unicode.Scalar? {
             switch self {
             case .singleQuote: return "'"
             case .doubleQuote: return "\""
@@ -287,8 +273,7 @@ public enum MSSQLParameterBatch {
             }
         }
 
-        /// The state two characters move to when they open or close a comment, or nil when they do neither.
-        func enteringComment(_ first: Character, _ second: Character) -> ScanState? {
+        func enteringComment(_ first: Unicode.Scalar, _ second: Unicode.Scalar) -> ScanState? {
             switch self {
             case .code:
                 if first == "-", second == "-" { return .lineComment }
@@ -301,29 +286,24 @@ public enum MSSQLParameterBatch {
             }
         }
 
-        /// A line comment ends where the app's scanner ends one, at a line feed and nowhere else, so a CRLF ends it
-        /// and a lone carriage return, U+2028 or U+0085 does not. `"\r\n"` is one `Character` equal to neither `"\n"`
-        /// nor `"\r"`, so the test is whether the character holds a line feed.
-        ///
-        /// Brackets still read differently: this treats `[...]` as a quoted identifier and the app's scanner does not, so
-        /// a `:name` inside brackets is a placeholder to one and not the other. That predates batches.
-        func after(_ character: Character) -> ScanState {
+        // A line comment ends at a line feed and nowhere else, where the app's scanner ends one.
+        func after(_ scalar: Unicode.Scalar) -> ScanState {
             switch self {
             case .code:
-                switch character {
+                switch scalar {
                 case "'": return .singleQuote
                 case "\"": return .doubleQuote
                 case "[": return .bracket
                 default: return .code
                 }
             case .singleQuote:
-                return character == "'" ? .code : self
+                return scalar == "'" ? .code : self
             case .doubleQuote:
-                return character == "\"" ? .code : self
+                return scalar == "\"" ? .code : self
             case .bracket:
-                return character == "]" ? .code : self
+                return scalar == "]" ? .code : self
             case .lineComment:
-                return character.unicodeScalars.contains("\n") ? .code : self
+                return scalar == "\n" ? .code : self
             case .blockComment:
                 return self
             }

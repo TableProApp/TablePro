@@ -57,6 +57,29 @@ struct TabularTableTests {
         #expect(seen == [["1", "x"], ["new", ""], ["2", ""]])
     }
 
+    @Test func testColumnLookupsFollowInsertsMovesAndDeletes() async throws {
+        let source = try await Self.delimitedSource("a,b,c\n1,2,3\n")
+        var table = TabularTable(source: source, usesFirstRowAsHeader: true)
+        let inserted = table.insertColumn(named: "d", at: 1, fill: .text("4"))
+        table.moveColumn(table.columns[3].id, to: 0)
+        let removed = table.columns[1].id
+        table.deleteColumns([removed])
+        #expect(table.columns.map(\.name) == ["c", "d", "b"])
+        for (index, column) in table.columns.enumerated() {
+            #expect(table.columnIndex(of: column.id) == index)
+            #expect(table.column(column.id)?.name == column.name)
+        }
+        #expect(table.columnIndex(of: removed) == nil)
+        #expect(table.column(removed) == nil)
+        #expect(table.columnIndex(of: inserted) == 1)
+        var seen: [[String]] = []
+        table.scan(columns: table.columnIDs, rows: 0..<table.rowCount) { _, cells in
+            seen.append((0..<cells.count).map { cells.string(at: $0) })
+            return true
+        }
+        #expect(seen == [["3", "4", "2"]])
+    }
+
     @Test func testTogglingTheHeaderRowKeepsRenamedNames() async throws {
         let source = try await Self.delimitedSource("a,b\n1,2\n")
         var table = TabularTable(source: source, usesFirstRowAsHeader: true)

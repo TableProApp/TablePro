@@ -26,8 +26,7 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
 
     private static let batchSize = 500
 
-    /// How many rows are read to guess a column's type in the mapping sheet. The whole sheet is
-    /// already in memory by then, so this only bounds the inference work.
+    // The whole sheet is already in memory, so this bounds only the type guess for the mapping sheet.
     private static let detectionSampleRows = 200
 
     @Published var settings = XLSXImportOptions() {
@@ -60,9 +59,9 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     }
 
     func detectSourceFields(at url: URL, targetTable: String?) throws -> [PluginImportField] {
-        let sheet = try readSheet(at: url)
+        let sheet = try XLSXImportSheet.read(at: url, hasHeaderRow: settings.hasHeaderRow, isCancelled: { Task.isCancelled })
         guard let header = sheet.header else { return [] }
-        let sample = Array(sheet.rows.prefix(Self.detectionSampleRows))
+        let sample = sheet.rows(0 ..< Self.detectionSampleRows).map(\.values)
         return header.enumerated().map { index, name in
             let values = sample.compactMap { $0[safe: index] ?? nil }
             return PluginImportField(
@@ -79,27 +78,37 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
         progress: PluginImportProgress
     ) async throws -> PluginImportResult {
         let started = Date()
-        let sheet = try readSheet(at: source.fileURL())
+        let sheet: XLSXImportSheet
+        do {
+            sheet = try XLSXImportSheet.read(
+                at: source.fileURL(),
+                hasHeaderRow: settings.hasHeaderRow,
+                isCancelled: { progress.isCancelled }
+            )
+        } catch is TabularCancellation {
+            throw PluginImportCancellationError()
+        }
         guard let header = sheet.header else {
             throw PluginImportError.importFailed(
                 String(localized: "The first sheet has no header row to map columns from."))
         }
 
-        progress.setEstimatedTotal(max(1, sheet.rows.count))
+        progress.setEstimatedTotal(max(1, sheet.rowCount))
         var cursor = 0
         let outcome = try await RowImportRunner.run(
             configuration: runConfiguration,
             sink: sink,
             progress: progress
         ) {
-            guard cursor < sheet.rows.count else { return nil }
-            let end = min(cursor + Self.batchSize, sheet.rows.count)
-            let batch = (cursor ..< end).map { index -> RowImportRunner.Entry in
-                /// The line number counts the header, so it matches what the user sees in Excel.
-                (line: index + 2, row: self.row(sheet.rows[index], header: header))
-            }
+            guard cursor < sheet.rowCount else { return nil }
+            let end = min(cursor + Self.batchSize, sheet.rowCount)
+            let rows = sheet.rows(cursor ..< end)
             cursor = end
-            return batch
+            let filled = rows.filter { $0.values.contains { $0 != nil } }
+            if filled.count < rows.count {
+                progress.incrementStatement(by: rows.count - filled.count)
+            }
+            return filled.map { (line: $0.line, row: self.row($0.values, header: header)) }
         }
 
         return PluginImportResult(
@@ -111,11 +120,6 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
     }
 
     // MARK: - Private
-
-    private struct Sheet {
-        let header: [String]?
-        let rows: [[String?]]
-    }
 
     private func row(_ values: [String?], header: [String]) -> [String: PluginCellValue] {
         var mapped: [String: PluginCellValue] = [:]
@@ -137,41 +141,7 @@ final class XLSXImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlug
         return mapped
     }
 
-    /// The workbook is read whole. A sheet's rows are interleaved with the shared string table it
-    /// refers to, so a streaming read would have to hold that table anyway, and the format has no
-    /// way to say how large it is before parsing.
-    private func readSheet(at url: URL) throws -> Sheet {
-        let archive = try ZipArchive(contentsOf: url)
-
-        guard let worksheetPath = XLSXSheetParser.firstWorksheetPath(in: archive.paths),
-              let worksheet = archive.entry(named: worksheetPath) else {
-            throw XLSXSheetParser.ParseError.noWorksheet
-        }
-
-        var strings: [String] = []
-        if let sharedEntry = archive.entry(named: "xl/sharedStrings.xml") {
-            strings = XLSXSheetParser.sharedStrings(from: try archive.data(for: sharedEntry, limit: .max))
-        }
-
-        var rows = XLSXSheetParser.rows(
-            from: try archive.data(for: worksheet, limit: .max),
-            sharedStrings: strings
-        )
-
-        guard settings.hasHeaderRow else {
-            let width = rows.first?.count ?? 0
-            return Sheet(
-                header: (0 ..< width).map(XLSXSheetParser.placeholderName),
-                rows: rows
-            )
-        }
-        guard !rows.isEmpty else { return Sheet(header: nil, rows: []) }
-        let headerRow = rows.removeFirst()
-        return Sheet(header: XLSXSheetParser.headerNames(from: headerRow), rows: rows)
-    }
-
-    /// Every value arrives as text, so the type is inferred from what the values look like. The
-    /// sink casts on the way in, so this only drives what the mapping sheet shows.
+    // The sink casts on the way in, so the guess only drives what the mapping sheet shows.
     static func inferType(from values: [String]) -> PluginImportFieldType {
         let candidates = values.filter { !$0.isEmpty }
         guard !candidates.isEmpty else { return .text }

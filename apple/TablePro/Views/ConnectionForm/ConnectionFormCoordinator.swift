@@ -221,7 +221,7 @@ final class ConnectionFormCoordinator: ObservableObject {
            let existing = storage.loadConnections().first(where: { $0.id == id })
         {
             Self.logger.debug(
-                "[trace] load found existing id=\(existing.id.uuidString, privacy: .public) name='\(existing.name, privacy: .public)' promptForPassword=\(existing.promptForPassword)"
+                "[trace] load found existing id=\(existing.id.uuidString, privacy: .public) name='\(existing.name, privacy: .private(mask: .hash))' promptForPassword=\(existing.promptForPassword)"
             )
             originalConnection = existing
             network.load(from: existing)
@@ -524,7 +524,7 @@ final class ConnectionFormCoordinator: ObservableObject {
                 return
             }
             clearedSecrets.forEach { $0() }
-            approveEditedExtensions(for: connectionToSave.id)
+            approveSavedDefinition(connectionToSave)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -550,13 +550,19 @@ final class ConnectionFormCoordinator: ObservableObject {
                 return
             }
             clearedSecrets.forEach { $0() }
-            approveEditedExtensions(for: connectionToSave.id)
+            approveSavedDefinition(connectionToSave)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
             services.appEvents.connectionUpdated.send(connectionToSave.id)
         }
+    }
+
+    // A save here is the person's word that the environment references go where the form shows.
+    private func approveSavedDefinition(_ connection: DatabaseConnection) {
+        approveEditedExtensions(for: connection.id)
+        EnvVarReferenceApprovalStore.shared.approveReferences(of: connection)
     }
 
     private static var unreadableLibraryMessage: String {
@@ -580,7 +586,7 @@ final class ConnectionFormCoordinator: ObservableObject {
 
     func handleConnectError(_ error: Error, connection: DatabaseConnection) {
         if error is CancellationError {
-            Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .public)")
+            Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .private(mask: .hash))")
             return
         }
 

@@ -2,6 +2,7 @@ import Foundation
 import TableProModels
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 public protocol DatabaseDriver: AnyObject, Sendable {
     func connect() async throws
@@ -44,6 +45,9 @@ public protocol DatabaseDriver: AnyObject, Sendable {
     // The database the session is on, for a driver that moves it itself: a MongoDB `use`, or a connection naming none.
     var currentDatabase: String? { get }
 
+    // What `sessionLexicalFacts()` last answered, for a literal built without awaiting the session.
+    var settledLexicalFacts: SQLSessionLexicalFacts? { get }
+
     func escapeStringLiteral(_ value: String) -> String
 }
 
@@ -62,8 +66,10 @@ public extension DatabaseDriver {
 
     var currentDatabase: String? { nil }
 
+    var settledLexicalFacts: SQLSessionLexicalFacts? { nil }
+
     func escapeStringLiteral(_ value: String) -> String {
-        SQLEscaping.ansiStringLiteral(value)
+        SQLQuoting.stringLiteralBody(value)
     }
 
     func executeStreaming(query: String, options: StreamOptions = .default) -> AsyncThrowingStream<StreamElement, Error> {

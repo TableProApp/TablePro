@@ -325,9 +325,11 @@ enum PostgreSQLSequenceStatements {
             let source = PostgreSQLObjectQueries.qualifiedName(schema: schema, name: table)
             let relation = PostgreSQLObjectQueries.qualifiedName(schema: schema, name: sequence.name)
             let quotedColumn = PostgreSQLObjectQueries.quoteIdentifier(column)
-            let afterColumn = "COALESCE(pg_catalog.\(descending ? "min" : "max")(\(quotedColumn))::bigint + \(increment), \(start))"
+            // Sent on the session's own path, where a database owner's default can list a schema before pg_catalog.
+            let plus = "OPERATOR(pg_catalog.+)"
+            let afterColumn = "COALESCE(pg_catalog.\(descending ? "min" : "max")(\(quotedColumn))::bigint \(plus) \(increment), \(start))"
             // Never behind where the sequence already is: another session may hold values cached past it.
-            let current = "(SELECT CASE WHEN is_called THEN last_value + \(increment) ELSE last_value END FROM \(relation))"
+            let current = "(SELECT CASE WHEN is_called THEN last_value \(plus) \(increment) ELSE last_value END FROM \(relation))"
             let value = "\(descending ? "LEAST" : "GREATEST")(\(afterColumn), \(current))"
             // One query string is one implicit transaction: the lock holds writers off until setval lands,
             // and with row security off a policy that would hide rows fails the read instead.

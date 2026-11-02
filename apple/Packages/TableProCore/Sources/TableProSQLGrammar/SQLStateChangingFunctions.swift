@@ -10,15 +10,11 @@ public enum SQLStateChangingFunctions {
 
     // SQLite runs a table-valued pragma named as a table source too, so `SELECT * FROM main.pragma_optimize` runs
     // ANALYZE. A call is the call scanner's; a column or alias of that name runs nothing.
-    public static func namesStateChangingTable(in statement: String, grammar: SQLLexicalGrammar) -> Bool {
-        guard tableFunctions.contains(where: { statement.range(of: $0, options: .caseInsensitive) != nil }) else {
-            return false
-        }
-        let text = statement as NSString
+    static func namesStateChangingTable(in text: NSString, tokens: [TSQLTokens.Token], grammar: SQLLexicalGrammar) -> Bool {
         var listsTables: [Int: Bool] = [:]
         var expectsTable = false
         var namesTable = false
-        for token in TSQLTokens.read(text, grammar: grammar) {
+        for token in tokens {
             let expected = expectsTable
             let qualifies = namesTable
             expectsTable = false
@@ -121,7 +117,6 @@ public enum SQLStateChangingFunctions {
         "lo_create", "lo_creat", "lo_unlink", "lo_from_bytea", "lo_put", "lowrite", "lo_truncate", "lo_truncate64"
     ]
 
-    // The Mac flags these through its file markers too; iOS has only this list.
     private static let filesAndExtensions: Set<String> = [
         "lo_import", "lo_export", "pg_file_write", "writefile", "load_extension"
     ]

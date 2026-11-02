@@ -15,6 +15,7 @@ private final class HealthServer: @unchecked Sendable {
     private var _tablesWithoutKey = ["logs"]
     private var _failsMissingKeyCheck = false
     private var _queries: [String] = []
+    private var _catalogReadFlags: [Bool] = []
 
     var tablesWithoutKey: [String] {
         get { lock.withLock { _tablesWithoutKey } }
@@ -27,6 +28,12 @@ private final class HealthServer: @unchecked Sendable {
     }
 
     var queries: [String] { lock.withLock { _queries } }
+
+    var catalogReadFlags: [Bool] { lock.withLock { _catalogReadFlags } }
+
+    func noteContext(_ context: PluginStatementContext) {
+        lock.withLock { _catalogReadFlags.append(context.readsCatalog) }
+    }
 
     func answer(_ query: String) throws -> PluginQueryResult {
         let (tables, fails) = lock.withLock { () -> ([String], Bool) in
@@ -56,6 +63,11 @@ private final class HealthPluginDriver: PluginDriverStub, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         try server.answer(query)
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        server.noteContext(context)
+        return try server.answer(query)
     }
 }
 
@@ -130,6 +142,18 @@ struct TableHealthViewModelTests {
         #expect(metadata.server.queries.contains(PostgreSQLTableHealthProvider.missingPrimaryKeyQuery))
         #expect(viewModel.report?.database == "shop")
         #expect(viewModel.report?.findingCount == 1)
+    }
+
+    // A planted @>(int2[], int2[]) in the browsed schema ran as the reader while these went out as plain reads.
+    @Test("Every check reaches the driver as a catalog read")
+    func everyCheckIsACatalogRead() async {
+        let metadata = HealthMetadata()
+        let viewModel = makeViewModel(metadata)
+
+        await viewModel.refresh()
+
+        #expect(!metadata.server.catalogReadFlags.isEmpty)
+        #expect(metadata.server.catalogReadFlags.allSatisfy { $0 })
     }
 
     @Test("The first appearance loads and a second appearance does not reload")

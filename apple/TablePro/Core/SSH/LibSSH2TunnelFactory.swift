@@ -8,6 +8,7 @@ import os
 
 import CLibSSH2
 
+import TableProProcess
 import TableProSSHConfig
 import TableProSSHTransport
 
@@ -858,6 +859,18 @@ internal enum LibSSH2TunnelFactory {
         )
     }
 
+    // `--apple-use-keychain` reads the passphrase from the Keychain, since a GUI app has no TTY.
+    static func sshAddCommand(
+        keyPath: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> ProcessCommand {
+        ProcessCommand(
+            executable: URL(fileURLWithPath: "/usr/bin/ssh-add"),
+            arguments: ["--apple-use-keychain", "--", keyPath],
+            environment: ProcessEnvironment.minimal(keeping: ["SSH_AUTH_SOCK"], from: environment)
+        )
+    }
+
     // Resolves the passphrase at sign-in, not when the chain is built, and saves it or adds the key
     // to the agent only once the server accepts the key.
     private struct KeyFileAuthenticator: SSHAuthenticator {
@@ -931,15 +944,17 @@ internal enum LibSSH2TunnelFactory {
         private func addToAgentIfNeeded(path: String) {
             guard addKeysToAgent else { return }
             DispatchQueue.global(qos: .utility).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-add")
-                // Use --apple-use-keychain so ssh-add reads the passphrase from
-                // Keychain for encrypted keys (no TTY available in GUI apps)
-                process.arguments = ["--apple-use-keychain", path]
-                process.standardOutput = FileHandle.nullDevice
-                process.standardError = FileHandle.nullDevice
-                try? process.run()
-                process.waitUntilExit()
+                do {
+                    let process = try ProcessLauncher.process(for: LibSSH2TunnelFactory.sshAddCommand(keyPath: path))
+                    process.standardOutput = FileHandle.nullDevice
+                    process.standardError = FileHandle.nullDevice
+                    try process.run()
+                    process.waitUntilExit()
+                } catch {
+                    LibSSH2TunnelFactory.logger.warning(
+                        "ssh-add did not start: \(error.publicLogShape, privacy: .public)"
+                    )
+                }
             }
         }
     }

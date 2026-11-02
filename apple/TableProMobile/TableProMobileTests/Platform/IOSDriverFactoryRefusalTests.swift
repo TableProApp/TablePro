@@ -67,6 +67,68 @@ struct IOSDriverFactoryRefusalTests {
         #expect(MacOnlyConnection.isMacOnly(connection))
     }
 
+    private func tls(_ type: DatabaseType, _ mode: TableProModels.SSLConfiguration.SSLMode) -> DatabaseConnection {
+        DatabaseConnection(
+            type: type,
+            host: "db.corp.example.com",
+            sslEnabled: mode != .disable,
+            sslConfiguration: TableProModels.SSLConfiguration(mode: mode)
+        )
+    }
+
+    @Test(
+        "A verify mode the driver here cannot honour is refused before it dials",
+        arguments: [
+            (DatabaseType.mssql, TableProModels.SSLConfiguration.SSLMode.verifyCa, String(localized: "Verify CA")),
+            (.mssql, .verifyFull, String(localized: "Verify Identity")),
+            (.oracle, .verifyCa, String(localized: "Verify CA"))
+        ]
+    )
+    func unsupportedVerifyModeIsRefused(
+        type: DatabaseType,
+        mode: TableProModels.SSLConfiguration.SSLMode,
+        modeName: String
+    ) async {
+        let connection = tls(type, mode)
+        let refusal = ConnectionError.sslModeNotSupported(mode: modeName, typeName: type.mobileDisplayName)
+
+        #expect(IOSDriverFactory.refusal(for: connection) == refusal)
+        #expect(MacOnlyConnection.isMacOnly(connection))
+        let manager = ConnectionManager(driverFactory: IOSDriverFactory(), secureStore: EphemeralSecureStore())
+        await #expect(throws: refusal) {
+            _ = try await manager.connect(connection)
+        }
+        let error = ErrorClassifier.connectionFailure(refusal)
+        #expect(!error.canRetry)
+        #expect(error.opensEditor)
+    }
+
+    @Test(
+        "Every mode the driver here keeps opens",
+        arguments: [
+            (DatabaseType.mssql, SSLModeChoice.disable), (.mssql, .preferred), (.mssql, .require),
+            (.oracle, .preferred), (.oracle, .verifyFull),
+            (.postgresql, .verifyCa), (.mysql, .verifyFull), (.redis, .verifyCa), (.mongodb, .verifyFull)
+        ]
+    )
+    func supportedModeOpens(type: DatabaseType, choice: SSLModeChoice) {
+        let connection = DatabaseConnection(
+            type: type,
+            host: "db.corp.example.com",
+            sslEnabled: choice != .disable,
+            sslConfiguration: choice.applied(to: TableProModels.SSLConfiguration())
+        )
+
+        #expect(IOSDriverFactory.supportedSSLModes(for: type).contains(choice))
+        #expect(IOSDriverFactory.refusal(for: connection) == nil)
+    }
+
+    @Test("A file engine is never refused for an SSL mode left from another engine")
+    func fileEngineIgnoresSSLMode() {
+        #expect(IOSDriverFactory.refusal(for: tls(.sqlite, .verifyCa)) == nil)
+        #expect(IOSDriverFactory.refusal(for: tls(.duckdb, .verifyFull)) == nil)
+    }
+
     @Test("The connect path gets the device's answer, socket included, not the protocol default")
     func connectPathUsesTheDeviceRule() {
         let factory: any DriverFactory = IOSDriverFactory()

@@ -130,6 +130,7 @@ crates/app/src/test_support/access_keys.rs
 crates/app/src/test_support/accessible_label.rs
 crates/app/src/test_support/alert_response.rs
 crates/app/src/test_support/application_end.rs
+crates/app/src/test_support/connection_groups.rs
 crates/app/src/test_support/fake_clocks.rs
 crates/app/src/test_support/fake_reachability.rs
 crates/app/src/test_support/fake_session.rs

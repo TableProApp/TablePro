@@ -70,8 +70,7 @@ extension HanaPluginDriver {
         return HanaCatalogMapping.integer(result.rows.first?.first)
     }
 
-    /// `SYS.TABLES` has no row for a view, so a view answers with its own definition from `SYS.VIEWS`
-    /// instead of the error a missing table gets.
+    // `SYS.TABLES` has no row for a view, so a view answers with its `SYS.VIEWS` definition.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let owner = try effectiveSchema(schema)
         let store = try await execute(query: HanaCatalogQueries.tableStore(schema: owner, table: table))
@@ -79,7 +78,7 @@ extension HanaPluginDriver {
            let definition = HanaCatalogMapping.nonEmptyText(
                try await execute(query: HanaCatalogQueries.viewDefinition(schema: owner, view: table)).rows.first?.first
            ) {
-            return HanaCatalogMapping.viewDDL(schema: owner, view: table, definition: definition)
+            return try HanaCatalogMapping.viewDDL(schema: owner, view: table, definition: definition)
         }
         let columns = try await catalogColumns(table: table, schema: owner)
         guard let storeRow = store.rows.first, !columns.isEmpty else {
@@ -88,7 +87,7 @@ extension HanaPluginDriver {
                 message: String(localized: "SAP HANA did not return the table definition.")
             )
         }
-        return HanaCatalogMapping.tableDDL(
+        return try HanaCatalogMapping.tableDDL(
             schema: owner,
             table: table,
             isColumnTable: HanaCatalogMapping.isTrue(storeRow.first),
@@ -123,7 +122,7 @@ extension HanaPluginDriver {
                 message: String(localized: "SAP HANA returned no definition for this view.")
             )
         }
-        return HanaCatalogMapping.viewDDL(schema: owner, view: view, definition: definition)
+        return try HanaCatalogMapping.viewDDL(schema: owner, view: view, definition: definition)
     }
 
     private func catalogColumns(table: String, schema: String) async throws -> [HanaCatalogColumn] {

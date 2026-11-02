@@ -271,8 +271,8 @@ struct ObjectCopyPlanTests {
     }
 
     @Test("Emptying a table the engine takes no bare DELETE on uses the driver's own statement")
-    func emptyingUsesDriverDeleteForm() {
-        let statements = ObjectCopyPlanner.emptyStatements(
+    func emptyingUsesDriverDeleteForm() throws {
+        let statements = try ObjectCopyPlanner.emptyStatements(
             table: "orders",
             schema: nil,
             prefersDelete: true,

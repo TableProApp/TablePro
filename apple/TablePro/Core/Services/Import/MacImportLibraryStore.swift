@@ -75,7 +75,7 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         var adding: [DatabaseConnection] = []
         var replacing: [DatabaseConnection] = []
         for connection in resolved {
-            let built = DatabaseConnection(
+            var built = DatabaseConnection(
                 importing: connection.planned.settings,
                 id: connection.planned.id,
                 groupId: connection.groupId,
@@ -83,6 +83,10 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
                 credentialProfileId: connection.credentialProfileId,
                 resolvesSSHProfile: { sshProfiles.profile(for: $0) != nil }
             )
+            // The row syncs to devices that dial its snapshot, so the snapshot is this Mac's profile, never the file's.
+            if case .profile(let profileId, _) = built.sshTunnelMode, let profile = sshProfiles.profile(for: profileId) {
+                built = profile.applied(to: built)
+            }
             switch connection.planned.write {
             case .add: adding.append(built)
             case .replace: replacing.append(built)
@@ -145,6 +149,15 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
             throw ImportStoreError.unreadable
         }
 
+        // Replace is offered only to an entry that connects like the saved connection, compared as an export reads.
+        let exporter = ConnectionBundleExporter(
+            connections: connections,
+            groups: groups,
+            tags: tags,
+            profiles: profiles,
+            sshProfiles: sshProfiles,
+            favorites: favorites
+        )
         let snapshot = ImportLibrarySnapshot(
             connections: stored.map { connection in
                 ImportLibrarySnapshot.Connection(
@@ -158,7 +171,8 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
                         redisDatabase: ConnectionMatchKey.redisDatabase(in: connection.additionalFields)
                             ?? connection.redisDatabase,
                         socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
-                    )
+                    ),
+                    settings: exporter.portableSettings(for: connection)
                 )
             },
             savedQueries: ledger ?? []

@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProProcess
 import TableProTestSupport
 
 /// Fake cloudflared process. Depending on `behavior` it either opens a real
@@ -19,6 +20,7 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
     let behavior: Behavior
     private var startCalls = 0
     private var stopCalls = 0
+    private var startedArgumentList: [String] = []
     private var listenerFd: Int32?
 
     let stderrLines: AsyncStream<String>
@@ -46,12 +48,20 @@ final class FakeCloudflaredRunner: SupervisedProcessRunner, @unchecked Sendable 
         lock.withLock { stopCalls }
     }
 
-    func start(binaryPath: String, arguments: [String], environment: [String: String]) throws {
-        lock.withLock { startCalls += 1 }
+    var startedArguments: [String] {
+        lock.withLock { startedArgumentList }
+    }
+
+    func start(_ command: ProcessCommand) throws {
+        _ = try ProcessLauncher.process(for: command)
+        lock.withLock {
+            startCalls += 1
+            startedArgumentList = command.arguments
+        }
 
         switch behavior {
         case .ready:
-            if let port = Self.parsePort(arguments) {
+            if let port = Self.parsePort(command.arguments) {
                 listenerFd = Self.openListener(port: port)
             }
         case .browserAuth:
@@ -156,6 +166,19 @@ struct CloudflareTunnelManagerTests {
         try await manager.closeTunnel(connectionId: id)
         #expect(fake.stopCallCount >= 1)
         #expect(!(await manager.hasTunnel(connectionId: id)))
+    }
+
+    // cloudflared reads a word after `--` as an origin URL, and `--hostname` already keeps `-h` a value.
+    @Test("A dash-led hostname is passed as the value of --hostname, with no --")
+    func dashLedHostnameStaysTheValue() async throws {
+        let fake = FakeCloudflaredRunner(behavior: .ready)
+        let manager = CloudflareTunnelManager(runnerFactory: { fake })
+        let id = UUID()
+
+        let port = try await manager.createTunnel(connectionId: id, config: config(hostname: "-h"))
+
+        #expect(fake.startedArguments == ["access", "tcp", "--hostname", "-h", "--url", "127.0.0.1:\(port)"])
+        try await manager.closeTunnel(connectionId: id)
     }
 
     @Test("createTunnel surfaces a browser sign-in prompt")

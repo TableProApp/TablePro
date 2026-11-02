@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 internal struct LibPQConnectTimeout: Equatable, Sendable {
     static let defaultMilliseconds = 10_000
@@ -97,7 +98,7 @@ internal enum LibPQConnectionString {
         applicationName: String? = nil,
         connectTimeoutSeconds: Int? = nil,
         kerberos: LibPQKerberosSignIn? = nil
-    ) -> String {
+    ) throws -> String {
         var parameters: [(String, String)] = []
         if let serviceHost = kerberos?.serviceHost, isAddressLiteral(host) {
             // GSS names the service after host, and hostaddr is where the tunnel listens.
@@ -152,9 +153,24 @@ internal enum LibPQConnectionString {
             parameters.append(("options", options))
         }
 
-        return parameters
-            .map { "\($0.0)='\(escape($0.1))'" }
-            .joined(separator: " ")
+        var pairs: [String] = []
+        for (keyword, value) in parameters {
+            let quoted: String
+            do {
+                quoted = try ConnectionStringQuoting.libpqValue(value)
+            } catch {
+                throw LibPQPluginError(
+                    message: String(
+                        format: String(localized: "The %@ setting holds a NUL character, which a PostgreSQL connection cannot carry."),
+                        keyword
+                    ),
+                    sqlState: nil,
+                    detail: nil
+                )
+            }
+            pairs.append("\(keyword)=\(quoted)")
+        }
+        return pairs.joined(separator: " ")
     }
 
     private static func isAddressLiteral(_ host: String) -> Bool {
@@ -205,10 +221,5 @@ internal enum LibPQConnectionString {
     static func isClientEncoding(reportedByServer reported: String?) -> Bool {
         guard let reported else { return false }
         return clientEncodingNames.contains(reported.uppercased())
-    }
-
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "'", with: "\\'", options: .literal)
     }
 }

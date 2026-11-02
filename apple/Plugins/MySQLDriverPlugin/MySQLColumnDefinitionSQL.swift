@@ -6,10 +6,11 @@
 import Foundation
 import TableProMySQLCore
 import TableProPluginKit
+import TableProSQLGrammar
+import TableProSQLQuoting
 
 internal func mysqlQuoteIdentifier(_ name: String) -> String {
-    let escaped = name.replacingOccurrences(of: "`", with: "``", options: .literal)
-    return "`\(escaped)`"
+    SQLQuoting.identifier(name, quote: .backtick)
 }
 
 /// MySQL and MariaDB take a `BLOB`, `TEXT`, `JSON` or `GEOMETRY` default "only if the value is
@@ -22,45 +23,14 @@ internal func mysqlRequiresParenthesisedDefault(dataType: String) -> Bool {
     return base.hasSuffix("BLOB") || base.hasSuffix("TEXT") || base == "JSON" || base == "GEOMETRY"
 }
 
-/// Whether the fragment is a literal rather than an expression.
-///
-/// Under the contract the value already holds the SQL, so the question is answerable by shape: a
-/// quoted string, a number, a bit or hex literal, or NULL. Anything else is an expression, and
-/// MySQL requires parentheses around every expression default. MariaDB accepts them bare.
+// MySQL requires parentheses around every default that is not one whole literal; MariaDB accepts them bare.
 internal func mysqlDefaultIsLiteral(_ value: String) -> Bool {
     let upper = value.uppercased()
     if upper == "NULL" || upper == "TRUE" || upper == "FALSE" { return true }
-    if upper.hasPrefix("B'") || upper.hasPrefix("X'") || upper.hasPrefix("0X") { return true }
-    if Int64(value) != nil || Double(value) != nil { return true }
-    return mysqlWholeStringLiteral(value) != nil
-}
-
-/// Whether the fragment is one whole single-quoted literal rather than an expression that happens
-/// to start with a quote, which `'a' + 'b'` does.
-internal func mysqlWholeStringLiteral(_ value: String) -> String? {
-    guard value.count >= 2, value.hasPrefix("'"), value.hasSuffix("'") else { return nil }
-    let inner = String(value.dropFirst().dropLast())
-    var result = ""
-    var index = inner.startIndex
-    while index < inner.endIndex {
-        let character = inner[index]
-        let next = inner.index(after: index)
-        if character == "\\" {
-            guard next < inner.endIndex else { return nil }
-            result.append(inner[next])
-            index = inner.index(after: next)
-            continue
-        }
-        guard character == "'" else {
-            result.append(character)
-            index = next
-            continue
-        }
-        guard next < inner.endIndex, inner[next] == "'" else { return nil }
-        result.append("'")
-        index = inner.index(after: next)
-    }
-    return result
+    return PluginNumericLiteral.isValid(value)
+        || mysqlIsBitLiteral(value)
+        || mysqlIsHexLiteral(value)
+        || SQLQuoting.decodedStringLiteral(value, escapes: .mysql) != nil
 }
 
 /// The clause the column's `defaultValue` becomes, which is the value itself plus whatever the
@@ -85,6 +55,20 @@ internal func mysqlDefaultValueLiteral(_ value: String, dataType: String, isMari
         || (!isMariaDB && !mysqlDefaultIsLiteral(value))
     guard needsParentheses else { return value }
     return value.hasPrefix("(") ? value : "(\(value))"
+}
+
+// The statement takes these as SQL, whether the catalog or the user wrote them, so each has to be one expression.
+internal func mysqlColumnTextRefusal(for column: PluginColumnDefinition, flavor: MySQLServerFlavor) -> String? {
+    let expressions = [column.defaultValue, column.generationExpression, column.columnCheck].compactMap { $0 }
+    let acceptsAll = SQLExpressionFragment.isSingleType(column.dataType, databaseTypeId: flavor.databaseTypeId)
+        && expressions.allSatisfy { $0.isEmpty || mysqlIsSingleExpression($0, flavor: flavor) }
+    guard !acceptsAll else { return nil }
+    return String(
+        format: String(
+            localized: "Column %@ has a type, default, generation expression or check that is not one SQL expression."
+        ),
+        column.name
+    )
 }
 
 internal func mysqlIsNullLiteral(_ value: String) -> Bool {

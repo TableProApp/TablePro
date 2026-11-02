@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import os
 import TableProImport
+import TableProLogRedaction
 import TableProModels
 
 @MainActor @Observable
@@ -29,7 +30,7 @@ final class SavedQueryLibrary {
         do {
             deferredPurges = try persistence.loadPurges()
         } catch {
-            Self.logger.error("Deferred saved query purges failed to load: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Deferred saved query purges failed to load: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
         load()
     }
@@ -55,7 +56,7 @@ final class SavedQueryLibrary {
             state = .loaded(try persistence.load())
         } catch {
             state = .failed(error)
-            Self.logger.error("Saved queries load failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Saved queries load failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return
         }
         runDeferredPurges()
@@ -186,7 +187,7 @@ final class SavedQueryLibrary {
         do {
             try persistence.savePurges(purges)
         } catch {
-            Self.logger.error("Failed to save deferred saved query purges: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save deferred saved query purges: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -239,7 +240,7 @@ final class SavedQueryLibrary {
         do {
             try persistence.save(updated)
         } catch {
-            Self.logger.error("Failed to save saved queries: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to save saved queries: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return false
         }
         state = .loaded(updated)

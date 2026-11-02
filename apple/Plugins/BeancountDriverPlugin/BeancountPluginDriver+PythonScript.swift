@@ -9,6 +9,7 @@ extension BeancountPluginDriver {
     static let pythonProjectionScript = """
 import json
 import os
+import re
 import sys
 import tempfile
 from collections import defaultdict
@@ -23,21 +24,31 @@ from beancount import loader
 allow_ledger_plugins = os.environ.get("TABLEPRO_BEANCOUNT_RUN_LEDGER_PLUGINS") == "1"
 suppressed_plugins = []
 original_run_transformations = loader.run_transformations
+bundled_plugin_name = re.compile(r"beancount\\.plugins\\.[A-Za-z_][A-Za-z0-9_]*")
 
-def ships_with_beancount(name):
-    return name == "beancount" or name.startswith("beancount.")
+# Importing any other beancount module can import a library not loaded yet, such as csv for
+# beancount.projects.export, and commodity_attr, check_average_cost and check_commodity eval their
+# config, so only a bundled plugin with no config runs without consent.
+def runs_without_consent(plugin):
+    name, config = plugin[0], plugin[1]
+    return config is None and bundled_plugin_name.fullmatch(name) is not None
 
 if not allow_ledger_plugins:
     def run_transformations_without_ledger_plugins(entries, parse_errors, options_map, log_timings):
+        # option "insert_pythonpath" puts the ledger folders first on sys.path while plugins run, where a
+        # planted module would answer an import. The loader restores sys.path afterwards.
+        for folder in options_map.get("pythonpath", []):
+            while folder in sys.path:
+                sys.path.remove(folder)
         declared = options_map.get("plugin", [])
-        bundled = [plugin for plugin in declared if ships_with_beancount(plugin[0])]
+        kept = [plugin for plugin in declared if runs_without_consent(plugin)]
         suppressed_plugins.extend(
-            plugin[0] for plugin in declared if not ships_with_beancount(plugin[0])
+            plugin[0] for plugin in declared if not runs_without_consent(plugin)
         )
-        if len(bundled) == len(declared):
+        if len(kept) == len(declared):
             return original_run_transformations(entries, parse_errors, options_map, log_timings)
         safe_options_map = options_map.copy()
-        safe_options_map["plugin"] = bundled
+        safe_options_map["plugin"] = kept
         return original_run_transformations(entries, parse_errors, safe_options_map, log_timings)
 
     loader.run_transformations = run_transformations_without_ledger_plugins

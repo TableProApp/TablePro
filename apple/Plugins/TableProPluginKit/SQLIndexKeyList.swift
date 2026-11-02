@@ -85,7 +85,7 @@ public enum SQLIndexKeyList {
         let name = text(of: lexer, from: 1, to: lexer.count - 1)
         guard closer != closeBracket else { return name }
         let quote = String(decoding: [closer], as: UTF16.self)
-        return name.replacingOccurrences(of: quote + quote, with: quote)
+        return name.replacingOccurrences(of: quote + quote, with: quote, options: .literal)
     }
 
     private static func identifierCloser(for opener: UInt16, lexicalFeatures: SQLLexicalFeatures) -> UInt16? {

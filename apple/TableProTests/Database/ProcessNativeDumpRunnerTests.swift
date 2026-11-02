@@ -12,19 +12,43 @@ import TableProTestSupport
 @testable import TableProUtilities
 
 struct ProcessNativeDumpRunnerTests {
-    private func command(_ script: String) -> NativeDumpCommand {
+    // A stand-in dump tool: the runner refuses a shell as the executable, as it does for every app-run tool.
+    private func tool(_ script: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-dump-tool-\(UUID().uuidString)")
+        try ("#!/bin/sh\n" + script + "\n").write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        return url
+    }
+
+    private func command(
+        _ executable: URL,
+        arguments: [String] = [],
+        stderrByteCap: Int = 64_000,
+        credentials: URL? = nil
+    ) -> NativeDumpCommand {
         NativeDumpCommand(
-            executable: URL(fileURLWithPath: "/bin/sh"),
-            arguments: ["-c", script],
+            executable: executable,
+            arguments: arguments,
             environment: [:],
-            stderrByteCap: 64_000
+            stderrByteCap: stderrByteCap,
+            temporaryCredentialsFileURL: credentials
         )
+    }
+
+    private func credentialsFile() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-dump-credentials-\(UUID().uuidString).yaml")
+        try Data("password: \"x\"\n".utf8).write(to: url)
+        return url
     }
 
     @Test("A tool that exits at once still has everything it said")
     func stderrSurvivesAnImmediateExit() async throws {
         let message = "/opt/homebrew/bin/mysqldump: unknown variable 'ssl-mode=PREFERRED'"
-        let runner = ProcessNativeDumpRunner(command: command("printf '%s' \"\(message)\" >&2; exit 7"))
+        let script = try tool("printf '%s' \"\(message)\" >&2; exit 7")
+        defer { try? FileManager.default.removeItem(at: script) }
+        let runner = ProcessNativeDumpRunner(command: command(script))
         try runner.start()
         let result = await runner.result
         #expect(result.exitCode == 7)
@@ -34,7 +58,9 @@ struct ProcessNativeDumpRunnerTests {
 
     @Test("A tool that says nothing reports its exit code alone")
     func silentFailure() async throws {
-        let runner = ProcessNativeDumpRunner(command: command("exit 3"))
+        let script = try tool("exit 3")
+        defer { try? FileManager.default.removeItem(at: script) }
+        let runner = ProcessNativeDumpRunner(command: command(script))
         try runner.start()
         let result = await runner.result
         #expect(result.exitCode == 3)
@@ -44,20 +70,14 @@ struct ProcessNativeDumpRunnerTests {
     @Test("Output from a surviving child cannot grow the buffer past its cap", .timeLimit(.minutes(1)))
     func outputAfterExitIsBounded() async throws {
         let cap = 4_096
-        let script = """
+        let script = try tool("""
             (i=0; while [ $i -lt 400 ]; do printf '%s' \
             'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' >&2; i=$((i+1)); done) &
             printf '%s' 'first' >&2
             exit 4
-            """
-        let runner = ProcessNativeDumpRunner(
-            command: NativeDumpCommand(
-                executable: URL(fileURLWithPath: "/bin/sh"),
-                arguments: ["-c", script],
-                environment: [:],
-                stderrByteCap: cap
-            )
-        )
+            """)
+        defer { try? FileManager.default.removeItem(at: script) }
+        let runner = ProcessNativeDumpRunner(command: command(script, stderrByteCap: cap))
         try runner.start()
         let result = await runner.result
         #expect(result.exitCode == 4)
@@ -79,13 +99,14 @@ struct ProcessNativeDumpRunnerTests {
         let survivingWriter = FileHandle(fileDescriptor: survivingDescriptor, closeOnDealloc: true)
         defer { try? survivingWriter.close() }
 
-        let script = """
+        let script = try tool("""
             i=0
             while [ ! -e '\(gate.path)' ] && [ $i -lt 1000 ]; do sleep 0.01; i=$((i+1)); done
             [ -e '\(gate.path)' ] || exit 9
             printf '%s' 'refused' >&2
             exit 5
-            """
+            """)
+        defer { try? FileManager.default.removeItem(at: script) }
         let runner = ProcessNativeDumpRunner(command: command(script), stderrPipe: pipe)
         try runner.start()
         defer { runner.cancel() }
@@ -107,5 +128,47 @@ struct ProcessNativeDumpRunnerTests {
         #expect(fcntl(descriptor, F_GETFL) & O_NONBLOCK == 0)
         try survivingWriter.close()
         #expect(try DescriptorRead.availableBytes(from: descriptor) == Data("late".utf8))
+    }
+
+    @Test("A cancel that arrives before the start never launches the tool and still removes the credentials")
+    func cancelBeforeStartLaunchesNothing() async throws {
+        let marker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-dump-ran-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: marker) }
+        let script = try tool("/usr/bin/touch '\(marker.path)'")
+        defer { try? FileManager.default.removeItem(at: script) }
+        let credentials = try credentialsFile()
+        defer { try? FileManager.default.removeItem(at: credentials) }
+
+        let runner = ProcessNativeDumpRunner(command: command(script, credentials: credentials))
+        runner.cancel()
+        try runner.start()
+        let result = await runner.result
+
+        #expect(result.wasCancelled)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
+        #expect(!FileManager.default.fileExists(atPath: credentials.path))
+    }
+
+    @Test("A NUL in an argument is refused as an error, and the credentials file goes with it")
+    func nulArgumentIsRefused() throws {
+        let script = try tool("exit 0")
+        defer { try? FileManager.default.removeItem(at: script) }
+        let credentials = try credentialsFile()
+        defer { try? FileManager.default.removeItem(at: credentials) }
+
+        let runner = ProcessNativeDumpRunner(
+            command: command(script, arguments: ["-U", "a\u{0}b"], credentials: credentials)
+        )
+        #expect(throws: NativeDumpError.nulInArgument) { try runner.start() }
+        #expect(!FileManager.default.fileExists(atPath: credentials.path))
+    }
+
+    @Test("A shell named as the tool is refused before it runs")
+    func shellIsRefused() throws {
+        let runner = ProcessNativeDumpRunner(
+            command: command(URL(fileURLWithPath: "/bin/sh"), arguments: ["-c", "exit 0"])
+        )
+        #expect(throws: (any Error).self) { try runner.start() }
     }
 }

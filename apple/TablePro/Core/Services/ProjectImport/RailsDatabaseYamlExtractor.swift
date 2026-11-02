@@ -12,9 +12,10 @@ enum RailsDatabaseYamlExtractor {
         contents: String,
         relativePath: String,
         projectRootURL: URL,
-        environment: DotenvDocument?
+        environment: DotenvDocument?,
+        budget: ProjectScanExpansionBudget = ProjectScanExpansionBudget()
     ) -> [ScannedConnectionCandidate] {
-        guard let root = YamlMappingSupport.loadMapping(contents) else {
+        guard let root = YamlMappingSupport.loadMapping(contents, budget: budget) else {
             return []
         }
         guard let selected = selectEnvironment(root) else {
