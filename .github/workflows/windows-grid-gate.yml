@@ -1,7 +1,6 @@
 name: Windows grid gate
 
-# The data grid's performance and behavior gate (windows/docs/decisions/0003-data-grid-control.md, Gate). By
-# dispatch only: it takes most of an hour per runner, and hosted runners' timings vary from job to job.
+# Dispatch only: most of an hour per runner, and hosted timings vary by job (windows/docs/decisions/0003, Gate).
 on:
   workflow_dispatch:
 
