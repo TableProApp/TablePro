@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TablePro.DataGrid.Model.Tests/TablePro.DataGrid.Model.Tests.csproj" />
+    <Project Path="tests/TablePro.DataGrid.Tests/TablePro.DataGrid.Tests.csproj" />
     <Project Path="tests/TablePro.Editor.Model.Tests/TablePro.Editor.Model.Tests.csproj" />
     <Project Path="tests/TablePro.Interop.Tests/TablePro.Interop.Tests.csproj" />
   </Folder>
