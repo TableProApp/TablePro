@@ -68,3 +68,40 @@ foreach ($name in 'first', 'gate', 'repeat') {
     }
 }
 foreach ($file in Get-ChildItem "$Out\uia-*.json") { Write-Host "== $($file.Name)"; Get-Content $file.FullName | Out-Host }
+
+# The bars: a UI-thread block of at most 50 ms in every phase, no stale, missing or misplaced cell, realized cells
+# within the viewport, and the behavior checks of the full process.
+$failures = @()
+foreach ($name in 'first', 'gate', 'repeat') {
+    $file = "$Out\$name.json"
+    if (-not (Test-Path $file)) { if ($name -ne 'gate' -or $Set -eq 'full') { $failures += "${name}: no report" }; continue }
+    $json = Get-Content $file -Raw | ConvertFrom-Json -AsHashtable
+    if ($json.ContainsKey('error')) { $failures += "${name}: $($json['error'])" }
+    foreach ($phase in $phases) {
+        $hb = $json["$phase.heartbeat_wait_ms"]
+        if ($null -ne $hb -and $hb.max -gt 50) { $failures += "$name $phase block max $($hb.max) ms" }
+        $verify = $json["$phase.verify"]
+        foreach ($part in 'right_after_step', 'one_frame_later') {
+            if ($null -ne $verify -and ($verify[$part].stale + $verify[$part].missing + $verify[$part].misplaced + $verify[$part].header_problems) -gt 0) {
+                $failures += "$name $phase $part $($verify[$part] | ConvertTo-Json -Compress)"
+            }
+        }
+        $realized = $json["$phase.realized"]
+        if ($null -ne $realized -and -not $realized.within_bound) { $failures += "$name $phase realized $($realized.cells) of $($realized.bound_cells)" }
+    }
+    if ($name -eq 'gate') {
+        foreach ($check in @{ 'keyboard.summary' = 'wrong_cell=0 not_visible=0 timeouts=0'; 'keyboard.shift_extend' = 'ok=True'; 'keyboard.ctrl_a' = 'ok=True';
+                'selection.shift_click' = 'ok=True'; 'selection.ctrl_c' = 'tsv_matches=True'; 'selection.frozen_click' = 'ok=True';
+                'large_copy.summary' = 'matches=True'; 'content.emoji' = 'in_color=True'; 'content.rtl' = 'right_aligned=True';
+                'content.null' = 'drawn=True'; 'content.two_lines_copy' = 'copied_ok=True' }.GetEnumerator()) {
+            $value = "$($json[$check.Key])"
+            if (-not $value.Contains($check.Value)) { $failures += "gate $($check.Key): $value" }
+        }
+    }
+}
+if ($failures.Count -gt 0) {
+    Write-Host "== FAIL"
+    $failures | ForEach-Object { Write-Host "  $_" }
+    exit 1
+}
+Write-Host "== PASS"
