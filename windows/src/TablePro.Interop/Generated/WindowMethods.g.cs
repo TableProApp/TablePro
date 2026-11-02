@@ -40,6 +40,28 @@ namespace TablePro.Interop.Native
         [DllImport(__DllName, EntryPoint = "tablepro_cursor_free", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void tablepro_cursor_free(TpCursor* cursor);
 
+        /// <summary>
+        ///  Scans `text_len` UTF-16 code units of SQL as `grammar` reads them and
+        ///  writes up to `capacity` tokens, in order and without white space, to
+        ///  `tokens`. Returns how many it wrote. A construct the text leaves open
+        ///  runs to its end. `capacity &gt;= text_len` always suffices, since every
+        ///  token covers at least one unit.
+        ///
+        ///  `grammar` is 0 PostgreSQL, 1 MySQL, 2 SQLite, 3 SQL Server,
+        ///  4 ClickHouse, 5 DuckDB, 6 CQL, 7 Redis, 8 MongoDB; the last two have no
+        ///  tokens. `backslash_escapes` is 0 off, 1 on, anything else the
+        ///  grammar's default. Null pointers, an unknown grammar or a panic
+        ///  write nothing and return 0.
+        ///
+        ///  # Safety
+        ///
+        ///  `text` is null or points at `text_len` readable `u16`s, and `tokens`
+        ///  is null or points at `capacity` writable `TpSyntaxToken`s that do not
+        ///  overlap `text`.
+        /// </summary>
+        [DllImport(__DllName, EntryPoint = "tablepro_syntax_tokens", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern uint tablepro_syntax_tokens(uint grammar, uint backslash_escapes, ushort* text, uint text_len, TpSyntaxToken* tokens, uint capacity);
+
 
     }
 
@@ -85,6 +107,20 @@ namespace TablePro.Interop.Native
     [StructLayout(LayoutKind.Sequential)]
     internal unsafe partial struct TpCursor
     {
+    }
+
+    /// <summary>
+    ///  One token of `tablepro_syntax_tokens`. `start` and `length` are
+    ///  UTF-16 code units from the start of the text scanned. `kind` is 0
+    ///  identifier, 1 keyword, 2 string, 3 quoted identifier, 4 number,
+    ///  5 comment, 6 operator, 7 punctuation.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe partial struct TpSyntaxToken
+    {
+        public uint start;
+        public uint length;
+        public uint kind;
     }
 
 

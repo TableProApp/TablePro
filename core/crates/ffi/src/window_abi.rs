@@ -1,12 +1,15 @@
-//! The grid's hot path as a C ABI: one call packs the display text of
-//! a visible range, which UniFFI would copy through a `RustBuffer`.
-//! csbindgen reads this file to write the C# side, so it holds only the
-//! exported functions and the types they name.
+//! The hot paths as a C ABI, which UniFFI would copy through a
+//! `RustBuffer`: the grid's window fetch, which packs the display text
+//! of a visible range, and the editor's token scan of the lines it
+//! colors. csbindgen reads this file to write the C# side, so it holds
+//! only the exported functions and the types they name.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::null;
+use std::slice;
 
 use crate::results::Cursor;
+use crate::syntax;
 
 /// One window of a result set, valid until the cursor's next fetch or
 /// its free.
@@ -87,5 +90,62 @@ pub unsafe extern "C" fn tablepro_cursor_free(cursor: *mut TpCursor) {
     if !cursor.is_null() {
         // SAFETY: the cursor came from Box::into_raw in open_cursor and is freed once.
         drop(unsafe { Box::from_raw(cursor) });
+    }
+}
+
+/// One token of `tablepro_syntax_tokens`. `start` and `length` are
+/// UTF-16 code units from the start of the text scanned. `kind` is 0
+/// identifier, 1 keyword, 2 string, 3 quoted identifier, 4 number,
+/// 5 comment, 6 operator, 7 punctuation.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TpSyntaxToken {
+    pub start: u32,
+    pub length: u32,
+    pub kind: u32,
+}
+
+/// Scans `text_len` UTF-16 code units of SQL as `grammar` reads them and
+/// writes up to `capacity` tokens, in order and without white space, to
+/// `tokens`. Returns how many it wrote. A construct the text leaves open
+/// runs to its end. `capacity >= text_len` always suffices, since every
+/// token covers at least one unit.
+///
+/// `grammar` is 0 PostgreSQL, 1 MySQL, 2 SQLite, 3 SQL Server,
+/// 4 ClickHouse, 5 DuckDB, 6 CQL, 7 Redis, 8 MongoDB; the last two have no
+/// tokens. `backslash_escapes` is 0 off, 1 on, anything else the
+/// grammar's default. Null pointers, an unknown grammar or a panic
+/// write nothing and return 0.
+///
+/// # Safety
+///
+/// `text` is null or points at `text_len` readable `u16`s, and `tokens`
+/// is null or points at `capacity` writable `TpSyntaxToken`s that do not
+/// overlap `text`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tablepro_syntax_tokens(
+    grammar: u32,
+    backslash_escapes: u32,
+    text: *const u16,
+    text_len: u32,
+    tokens: *mut TpSyntaxToken,
+    capacity: u32,
+) -> u32 {
+    if text.is_null() || tokens.is_null() || text_len == 0 || capacity == 0 {
+        return 0;
+    }
+    let (Ok(text_len), Ok(capacity)) = (usize::try_from(text_len), usize::try_from(capacity)) else {
+        return 0;
+    };
+    // SAFETY: the caller passes `text_len` readable units at `text`.
+    let units = unsafe { slice::from_raw_parts(text, text_len) };
+    // SAFETY: the caller passes `capacity` writable tokens at `tokens`, apart from `text`.
+    let out = unsafe { slice::from_raw_parts_mut(tokens, capacity) };
+    let written = catch_unwind(AssertUnwindSafe(|| {
+        syntax::scan(grammar, backslash_escapes, units, out)
+    }));
+    match written {
+        Ok(Some(written)) => u32::try_from(written).unwrap_or(0),
+        Ok(None) | Err(_) => 0,
     }
 }
