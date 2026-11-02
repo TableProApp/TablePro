@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="TablePro.App.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+            <!-- The spacing the Windows settings guidance gives between setting cards. -->
+            <x:Double x:Key="SettingsCardSpacing">4</x:Double>
+            <Style x:Key="SettingsSectionHeaderStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">
+                <Setter Property="Margin" Value="1,28,0,4" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
