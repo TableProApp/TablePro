@@ -36,6 +36,11 @@ struct ConnectionStatusPresentationTests {
         #expect(presentation.accessibilityStatus == "Reconnecting (3 of 10)")
     }
 
+    @Test("A single redial reads Reconnecting without a count")
+    func singleRedialHasNoCount() {
+        #expect(ConnectionStatusPresentation(.reconnecting(attempt: 1, of: 1)).title == "Reconnecting")
+    }
+
     @Test("A lost session and a failed connect draw different symbols")
     func lostAndFailedDiffer() {
         let lost = ConnectionStatusPresentation(.lost(cause: nil))

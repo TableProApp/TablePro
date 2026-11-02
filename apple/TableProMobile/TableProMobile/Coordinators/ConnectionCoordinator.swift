@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import os
 import SwiftUI
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProLogRedaction
 import TableProModels
@@ -24,6 +25,7 @@ final class ConnectionCoordinator {
     private(set) var isSwitching = false {
         didSet { resumeFollowIfPending() }
     }
+    private(set) var switchTarget: String?
     private(set) var isReconnecting = false {
         didSet { resumeFollowIfPending() }
     }
@@ -53,6 +55,9 @@ final class ConnectionCoordinator {
     @ObservationIgnored private var seenCatalogGeneration: Int
     @ObservationIgnored private var isReloadingCatalog = false
     @ObservationIgnored private var catalogReloadRequested = false
+    // A redial that failed over an open transaction; the user hears about it once a later dial lands.
+    @ObservationIgnored private var unsettledLoss: SessionLoss?
+    private(set) var failureAlertTitle: String?
     var failureAlertMessage: String?
     var showFailureAlert = false
 
@@ -74,9 +79,48 @@ final class ConnectionCoordinator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionCoordinator")
 
     enum ConnectionPhase: Sendable {
+        case notConnected
         case connecting
         case connected
-        case error(AppError)
+        case failed(AppError)
+        // The session dropped and its redial failed; the next trigger or Reconnect dials again.
+        case lost(AppError)
+    }
+
+    var displayStatus: ConnectionDisplayStatus {
+        ConnectionDisplayStatus(phase: phase, isReconnecting: isReconnecting)
+    }
+
+    private var isLost: Bool {
+        if case .lost = phase { return true }
+        return false
+    }
+
+    // A screen opened on an older session writes on this, so a save after a redial reaches the live driver and one
+    // with no session says why rather than fail on a dead driver.
+    var writableSession: Result<ConnectionSession, AppError> {
+        if let session { return .success(session) }
+        switch phase {
+        case .lost(let error):
+            let lost = ConnectionStatusPresentation(.lost(cause: error.message))
+            return .failure(AppError(
+                category: error.category,
+                title: lost.title ?? error.title,
+                message: error.message,
+                recovery: error.recovery,
+                underlying: error.underlying
+            ))
+        case .failed(let error):
+            return .failure(error)
+        case .notConnected, .connecting, .connected:
+            return .failure(AppError(
+                category: .network,
+                title: String(localized: "Not Connected"),
+                message: String(localized: "No active database session."),
+                recovery: nil,
+                underlying: nil
+            ))
+        }
     }
 
     var displayName: String {
@@ -186,17 +230,16 @@ final class ConnectionCoordinator {
         prompts.cancelAll()
         guard connectTask != nil else { return }
         retire()
-        phase = .error(Self.cancelledError)
+        phase = .notConnected
     }
 
-    private static var cancelledError: AppError {
-        AppError(
-            category: .network,
-            title: String(localized: "Connection Cancelled"),
-            message: String(localized: "The connection attempt was cancelled."),
-            recovery: String(localized: "Tap Retry to try again."),
-            underlying: nil
-        )
+    // A lost session redials where this window was, so the screen of a row edit in progress is not rebuilt.
+    func reconnect() async {
+        if isLost {
+            await restoreSession(after: .whileIdle)
+        } else {
+            await connect()
+        }
     }
 
     private func runAttempt(token: UUID) async {
@@ -215,6 +258,7 @@ final class ConnectionCoordinator {
                 guard attemptToken == token else { return }
                 phase = .connected
                 appState.libraryPreferences.recordConnected(connection.id)
+                reportDroppedTransaction(unsettledLoss)
                 return
             } catch {
                 guard attemptToken == token else { return }
@@ -269,6 +313,7 @@ final class ConnectionCoordinator {
             appState.libraryPreferences.recordConnected(connection.id)
             IOSAnalyticsProvider.shared.markConnectionSucceeded()
             navigateToPendingTable()
+            reportDroppedTransaction(unsettledLoss)
         } catch {
             guard attemptToken == token else { return }
             var failure = error
@@ -288,15 +333,18 @@ final class ConnectionCoordinator {
                 }
             }
             guard attemptToken == token else { return }
-            let context = ErrorContext(
-                operation: "connect",
-                databaseType: connection.type,
-                host: connection.host,
-                sshEnabled: connection.sshEnabled,
-                signsInWithIAM: connection.iamSignIn != nil
-            )
-            phase = .error(ErrorClassifier.classify(failure, context: context))
+            phase = .failed(classify(failure, operation: "connect"))
         }
+    }
+
+    private func classify(_ error: any Error, operation: String) -> AppError {
+        ErrorClassifier.classify(error, context: ErrorContext(
+            operation: operation,
+            databaseType: connection.type,
+            host: connection.host,
+            sshEnabled: connection.sshEnabled,
+            signsInWithIAM: connection.iamSignIn != nil
+        ))
     }
 
     func reconnectIfNeeded() async {
@@ -331,17 +379,23 @@ final class ConnectionCoordinator {
     }
 
     private func checkSession(after loss: SessionLoss) async -> Bool {
-        guard let session, !isSwitching, !isReconnecting, connectTask == nil else { return false }
+        let held = session
+        // A failed redial dropped the session, so there is nothing to ping and this trigger dials again.
+        guard held != nil || isLost, !isSwitching, !isReconnecting, connectTask == nil else { return false }
         let token = attemptToken
         var workWasRunning = appState.sessionTransactions.isRunningStatements(connection.id)
 
-        if await takesNewerSession(than: session, token: token) { return false }
-        if appState.connectionManager.session(for: connection.id) != nil, await Self.answersPing(session.driver) {
-            return false
+        if await takesNewerSession(than: held, token: token) {
+            return held == nil && reportDroppedTransaction(unsettledLoss)
         }
-        guard attemptToken == token else { return false }
-        // Another window can finish a whole redial while this ping is out.
-        if await takesNewerSession(than: session, token: token) { return false }
+        if let held {
+            if appState.connectionManager.session(for: connection.id) != nil, await Self.answersPing(held.driver) {
+                return false
+            }
+            guard attemptToken == token else { return false }
+            // Another window can finish a whole redial while this ping is out.
+            if await takesNewerSession(than: held, token: token) { return false }
+        }
 
         workWasRunning = workWasRunning || appState.sessionTransactions.isRunningStatements(connection.id)
         let heldTransaction = transactionHold != nil
@@ -357,35 +411,42 @@ final class ConnectionCoordinator {
             )
             guard attemptToken == token else { return false }
             await takeSession(outcome.session, token: token, dialedHere: outcome.dialedHere)
-            guard attemptToken == token, heldTransaction else { return false }
-            appState.sessionTransactions.noteRolledBack(connection.id)
-            let settledLoss: SessionLoss = workWasRunning || statementFailedDuringCheck ? .duringWork : loss
-            if let message = Self.lostTransactionMessage(settledLoss, connectionName: displayName) {
-                failureAlertMessage = message
-                showFailureAlert = true
-            }
-            return true
+            guard attemptToken == token else { return false }
+            let dropped = heldTransaction ? settledLoss(loss, workWasRunning: workWasRunning) : unsettledLoss
+            return reportDroppedTransaction(dropped)
         } catch {
             guard attemptToken == token else { return false }
-            let context = ErrorContext(
-                operation: "reconnect",
-                databaseType: connection.type,
-                host: connection.host,
-                sshEnabled: connection.sshEnabled,
-                signsInWithIAM: connection.iamSignIn != nil
-            )
-            phase = .error(ErrorClassifier.classify(error, context: context))
+            if heldTransaction {
+                unsettledLoss = settledLoss(loss, workWasRunning: workWasRunning)
+            }
+            phase = .lost(classify(error, operation: "reconnect"))
             self.session = nil
             return false
         }
     }
 
-    private func takesNewerSession(than held: ConnectionSession, token: UUID) async -> Bool {
+    private func settledLoss(_ loss: SessionLoss, workWasRunning: Bool) -> SessionLoss {
+        workWasRunning || statementFailedDuringCheck ? .duringWork : loss
+    }
+
+    // True when the transaction a redial ended is settled for the user.
+    @discardableResult
+    private func reportDroppedTransaction(_ loss: SessionLoss?) -> Bool {
+        unsettledLoss = nil
+        guard let loss else { return false }
+        appState.sessionTransactions.noteRolledBack(connection.id)
+        if let message = Self.lostTransactionMessage(loss, connectionName: displayName) {
+            presentFailure(title: nil, message: message)
+        }
+        return true
+    }
+
+    private func takesNewerSession(than held: ConnectionSession?, token: UUID) async -> Bool {
         // A redial another window started is not ready to share until its schema is back.
         await appState.sessionRedialer.settled(connection.id, consumer: self, prompter: prompts)
         guard attemptToken == token,
               let live = appState.connectionManager.session(for: connection.id),
-              live.driver !== held.driver else {
+              live.driver !== held?.driver else {
             return false
         }
         await takeSession(live, token: token, dialedHere: false)
@@ -431,6 +492,7 @@ final class ConnectionCoordinator {
             if movedPlacement { tables = [] }
         }
         session = newSession
+        phase = .connected
         if dialedHere {
             appState.bumpSessionRevision(connection.id)
         }
@@ -461,6 +523,12 @@ final class ConnectionCoordinator {
 
     // Another window replaced the shared session, or switched its database or schema.
     func followLiveSession() async {
+        // A window whose redial failed takes the session another window dialed.
+        if isLost {
+            guard appState.connectionManager.session(for: connection.id) != nil else { return }
+            await restoreSession(after: .whileIdle)
+            return
+        }
         guard canFollowLiveSession, !isFollowing else {
             followPending = true
             return
@@ -628,17 +696,20 @@ final class ConnectionCoordinator {
         appState.sessionTransactions.token(for: connection.id, on: session?.driver)
     }
 
+    // `reading` work is a read the app built, so a session lost under it cannot have committed anything.
     func track<T>(
+        reading: Bool = false,
         failed: (T) -> Bool = { _ in false },
         rolledBack: (T) -> Bool = { _ in false },
         _ work: () async throws -> T
     ) async rethrows -> T {
         let heldBefore = transactionHold != nil
+        let loss: SessionLoss = reading ? .whileIdle : .duringWork
         do {
-            let value = try await appState.sessionTransactions.track(connection.id, work)
+            let value = try await appState.sessionTransactions.track(connection.id, reading: reading, work)
             var lossSettled = false
             if failed(value) {
-                lossSettled = await restoreSession(after: .duringWork)
+                lossSettled = await restoreSession(after: loss)
             }
             // A typed ROLLBACK leaves what grids and row screens read as stale as the bar's Roll Back does.
             // AND CHAIN, or a script that opens another after its ROLLBACK, ends with a transaction open.
@@ -648,8 +719,24 @@ final class ConnectionCoordinator {
             await reloadMetadataIfReleased()
             return value
         } catch {
-            await restoreSession(after: .duringWork)
+            await restoreSession(after: loss)
             throw error
+        }
+    }
+
+    // A list reload reading the session would end the page with its next statement, so the page waits for it; nothing
+    // suspends between that wait and `track` marking the session busy. A page that fails on a dead session redials,
+    // and the browser reloads on the new one.
+    func trackPageRead(failed: @escaping @MainActor () -> Bool) -> DataBrowserViewModel.SessionReadTracker {
+        let catalogChanges = appState.catalogChanges
+        let connectionId = connection.id
+        return { [weak self] read in
+            await catalogChanges.sessionReadsFinished(for: connectionId)
+            guard let self else {
+                await read()
+                return
+            }
+            await self.track(reading: true, failed: { _ in failed() }) { await read() }
         }
     }
 
@@ -729,8 +816,7 @@ final class ConnectionCoordinator {
                   session?.driver === driver else { return }
             guard !anotherWindowHoldsEditor else {
                 try? await driver.switchDatabase(to: activeDatabase)
-                failureAlertMessage = Self.editorHeldElsewhereMessage
-                showFailureAlert = true
+                presentFailure(title: Self.switchDatabaseFailedTitle, message: Self.editorHeldElsewhereMessage)
                 return
             }
             await switchDatabase(to: used)
@@ -740,33 +826,48 @@ final class ConnectionCoordinator {
     func switchDatabase(to name: String) async {
         guard session != nil, name != activeDatabase, !isSwitching else { return }
         guard !anotherWindowHoldsEditor else {
-            failureAlertMessage = Self.editorHeldElsewhereMessage
-            showFailureAlert = true
+            presentFailure(title: Self.switchDatabaseFailedTitle, message: Self.editorHeldElsewhereMessage)
             return
         }
-        isSwitching = true
-        defer { isSwitching = false }
-
-        if connection.type == .postgresql || connection.type == .redshift {
-            await reconnectWithDatabase(name)
-        } else {
-            do {
-                try await appState.connectionManager.switchDatabase(connection.id, to: name)
-                if let freshSession = appState.connectionManager.session(for: connection.id) {
-                    self.session = freshSession
-                }
-                activeDatabase = name
-                UserDefaults.standard.set(name, forKey: ConnectionDefaultsKey.lastDB.name(for: connection.id))
-                if let current = self.session {
-                    self.tables = try await current.driver.fetchTables(schema: nil)
-                }
-            } catch {
-                failureAlertMessage = String(localized: "Failed to switch database")
-                showFailureAlert = true
+        let failure = await whileSwitching(to: name) {
+            let failure: Failure?
+            if connection.type == .postgresql || connection.type == .redshift {
+                await reconnectWithDatabase(name)
+                failure = nil
+            } else {
+                failure = await useDatabase(name)
             }
+            await refreshTransaction()
+            appState.bumpSessionRevision(connection.id)
+            return failure
         }
-        await refreshTransaction()
-        appState.bumpSessionRevision(connection.id)
+        guard let failure else { return }
+        await report(failure, operation: "switchDatabase")
+    }
+
+    private func useDatabase(_ name: String) async -> Failure? {
+        do {
+            try await appState.connectionManager.switchDatabase(connection.id, to: name)
+        } catch {
+            return Failure(error: error, title: Self.switchDatabaseFailedTitle, redialRepeats: false)
+        }
+        if let freshSession = appState.connectionManager.session(for: connection.id) {
+            self.session = freshSession
+        }
+        UserDefaults.standard.set(name, forKey: ConnectionDefaultsKey.lastDB.name(for: connection.id))
+        do {
+            let fetched = try await session?.driver.fetchTables(schema: nil) ?? []
+            // Placement and tables change in one step, so a row of the old list never pairs with the new database.
+            activeDatabase = name
+            tables = fetched
+            return nil
+        } catch {
+            // The session is on the new database either way, so its list empties until a reload can read it.
+            activeDatabase = name
+            metadataRefused = true
+            tables = []
+            return Failure(error: error, title: Self.refreshTablesFailedTitle, redialRepeats: true)
+        }
     }
 
     // Lets another window's redial land before the teardown that would cancel it, and dials where other windows join.
@@ -775,6 +876,7 @@ final class ConnectionCoordinator {
         await appState.sessionRedialer.settled(connection.id)
         // A window closed during that wait must not tear down the session the other windows now use.
         guard attemptToken == token else { return }
+        let previous = dialTarget
         await appState.connectionManager.disconnect(connection.id)
         self.session = nil
 
@@ -791,38 +893,36 @@ final class ConnectionCoordinator {
                 stillWanted: { [weak self] in self?.attemptToken == token }
             ).session
             guard attemptToken == token else { return }
+            let fetched = try await newSession.driver.fetchTables(schema: nil)
+            guard attemptToken == token else { return }
             self.session = newSession
-            self.tables = try await newSession.driver.fetchTables(schema: nil)
+            self.tables = fetched
             activeDatabase = database
             UserDefaults.standard.set(database, forKey: ConnectionDefaultsKey.lastDB.name(for: connection.id))
             await loadSchemas()
         } catch {
             guard attemptToken == token else { return }
             Self.logger.error("Failed to switch to database \(database, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
+            // Back to the database the picker still shows, not the saved one, so the picker stays true.
             do {
-                let fallbackSession = try await appState.sessionRedialer.redial(
-                    connection,
-                    schema: nil,
+                let fallback = try await appState.sessionRedialer.redial(
+                    previous,
+                    schema: supportsSchemas ? activeSchema : nil,
                     prompter: prompts,
                     joining: false,
                     consumer: self,
                     stillWanted: { [weak self] in self?.attemptToken == token }
-                ).session
+                )
                 guard attemptToken == token else { return }
-                self.session = fallbackSession
-                self.tables = try await fallbackSession.driver.fetchTables(schema: nil)
-                failureAlertMessage = String(localized: "Failed to switch database")
-                showFailureAlert = true
+                await takeSession(fallback.session, token: token, dialedHere: fallback.dialedHere)
+                guard attemptToken == token else { return }
+                presentFailure(
+                    title: Self.switchDatabaseFailedTitle,
+                    message: classify(error, operation: "switchDatabase").message
+                )
             } catch {
                 guard attemptToken == token else { return }
-                let context = ErrorContext(
-                    operation: "switchDatabase",
-                    databaseType: connection.type,
-                    host: connection.host,
-                    sshEnabled: connection.sshEnabled,
-                    signsInWithIAM: connection.iamSignIn != nil
-                )
-                phase = .error(ErrorClassifier.classify(error, context: context))
+                phase = .lost(classify(error, operation: "switchDatabase"))
                 self.session = nil
             }
         }
@@ -830,20 +930,65 @@ final class ConnectionCoordinator {
 
     func switchSchema(to name: String) async {
         guard let session, name != activeSchema, !isSwitching else { return }
-        isSwitching = true
-        defer { isSwitching = false }
-
-        do {
-            try await session.driver.switchSchema(to: name)
-            activeSchema = name
+        let failure = await whileSwitching(to: name) {
+            do {
+                try await session.driver.switchSchema(to: name)
+            } catch {
+                return Failure(error: error, title: Self.switchSchemaFailedTitle, redialRepeats: false)
+            }
             UserDefaults.standard.set(name, forKey: ConnectionDefaultsKey.lastSchema.name(for: connection.id))
             appState.bumpSessionRevision(connection.id)
-            self.tables = try await session.driver.fetchTables(schema: name)
-        } catch {
-            failureAlertMessage = String(localized: "Failed to switch schema")
-            showFailureAlert = true
+            do {
+                let fetched = try await session.driver.fetchTables(schema: name)
+                activeSchema = name
+                tables = fetched
+                return nil
+            } catch {
+                activeSchema = name
+                metadataRefused = true
+                tables = []
+                return Failure(error: error, title: Self.refreshTablesFailedTitle, redialRepeats: true)
+            }
         }
+        guard let failure else { return }
+        await report(failure, operation: "switchSchema")
     }
+
+    private func whileSwitching(to target: String, _ work: () async -> Failure?) async -> Failure? {
+        switchTarget = target
+        isSwitching = true
+        defer {
+            isSwitching = false
+            switchTarget = nil
+        }
+        return await work()
+    }
+
+    private struct Failure {
+        let error: any Error
+        let title: String
+        // A failed read that a redial repeats needs no alert once the redial lands.
+        let redialRepeats: Bool
+    }
+
+    // A failure on a dead session redials first. The alert then says why, unless the session is lost, which its own
+    // screen says.
+    private func report(_ failure: Failure, operation: String) async {
+        let failedOn = session?.driver
+        if await restoreSession(after: .whileIdle) { return }
+        guard !isLost, !failure.redialRepeats || session?.driver === failedOn else { return }
+        presentFailure(title: failure.title, message: classify(failure.error, operation: operation).message)
+    }
+
+    func presentFailure(title: String?, message: String) {
+        failureAlertTitle = title
+        failureAlertMessage = message
+        showFailureAlert = true
+    }
+
+    static var switchDatabaseFailedTitle: String { String(localized: "Failed to switch database") }
+    static var switchSchemaFailedTitle: String { String(localized: "Failed to switch schema") }
+    static var refreshTablesFailedTitle: String { String(localized: "Failed to refresh tables") }
 
     // MARK: - Tables
 
@@ -854,8 +999,7 @@ final class ConnectionCoordinator {
             self.tables = try await session.driver.fetchTables(schema: schema)
         } catch {
             Self.logger.warning("Failed to refresh tables: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
-            failureAlertMessage = String(localized: "Failed to refresh tables")
-            showFailureAlert = true
+            await report(Failure(error: error, title: Self.refreshTablesFailedTitle, redialRepeats: true), operation: "refreshTables")
         }
         // With autocommit off, a MySQL read opens a transaction.
         await refreshTransaction()

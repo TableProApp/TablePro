@@ -38,6 +38,10 @@
     "%1$@ is a collection of type %2$@. Its fields cannot be renamed or removed." : {
 
     },
+    "%1$@: %2$@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ cannot be the primary key. MongoDB keys every document by _id." : {
 
     },
@@ -49,6 +53,34 @@
     },
     "%@ holds values that cannot be compared, so the row cannot be found again." : {
 
+    },
+    "connected" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Connecting" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Connection lost" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Couldn't connect" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "not connected" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Reconnecting" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Reconnecting (%lld of %lld)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The %@ setting holds a NUL character, which a PostgreSQL connection cannot carry." : {
 

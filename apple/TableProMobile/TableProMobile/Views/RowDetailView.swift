@@ -45,7 +45,8 @@ struct RowDetailView: View {
             safeModeLevel: safeModeLevel,
             foreignKeys: foreignKeys,
             onSaved: onSaved,
-            loadFullValue: loadFullValue
+            loadFullValue: loadFullValue,
+            liveSession: coordinator.map { coordinator in { coordinator.writableSession } }
         ))
     }
 
@@ -94,6 +95,8 @@ struct RowDetailView: View {
             JSONValueViewer(route: route)
         }
         .toolbar { rowDetailToolbar }
+        // An unsaved edit keeps this screen up over a lost session, so the state and Reconnect show here.
+        .connectionStatusToolbar(for: connectionCoordinator)
         .sensoryFeedback(.success, trigger: hapticSuccess)
         .sensoryFeedback(.error, trigger: hapticError)
         .sensoryFeedback(.selection, trigger: hapticSelection)

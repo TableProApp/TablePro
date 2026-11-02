@@ -2,114 +2,59 @@
 //  ConnectionHealthMonitor.swift
 //  TablePro
 //
-//  Actor that monitors database connection health with periodic pings
-//  and automatic reconnection with exponential backoff.
-//
 
 import Foundation
 import os
-import TableProUtilities
-
-// MARK: - Health State
 
 extension ConnectionHealthMonitor {
-    /// Represents the current health state of a monitored connection.
     enum HealthState: Sendable, Equatable {
         case healthy
         case checking
-        case reconnecting(attempt: Int, lastFailure: ConnectionFailureInfo?) // 1-based attempt number
-        /// The reconnect handler gave up. A separate case rather than a flag beside `state`, so the
-        /// health check's own `state == .healthy` guard and every future switch see it without a
-        /// second variable to keep in step.
-        case aborted
+        // The session's reconnect loop took the failure over, so this monitor has nothing left to ask.
+        case handedOff
     }
 
-    enum ReconnectOutcome: Sendable, Equatable {
-        case success
-        case retry(ConnectionFailureInfo?)
-        case abort
+    enum FailureHandling: Sendable, Equatable {
+        case handedOff
+        case ignored
     }
 }
 
-// MARK: - ConnectionHealthMonitor
-
-/// Monitors a single database connection's health via periodic pings and
-/// automatically attempts reconnection with exponential backoff on failure.
-///
-/// Uses closure-based dependency injection so it does not directly reference
-/// `DatabaseDriver` (which is not `Sendable`). The caller provides `pingHandler`
-/// and `reconnectHandler` closures.
+// Notices a connection that stopped answering. Redialing belongs to the session's reconnect loop.
 actor ConnectionHealthMonitor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionHealthMonitor")
 
-    // MARK: - Configuration
-
-    private static let maxBackoffDelay: TimeInterval = 120.0
-
-    // MARK: - Dependencies
-
     private let connectionId: UUID
-    /// How long to wait between checks, asked again on every pass rather than captured once.
-    ///
-    /// How often TablePro talks to a database nobody is using is the user's call, not this actor's
-    /// (#2700), and a captured interval makes that call reach only connections opened afterwards.
-    /// Re-reading it also means nothing has to stop and rebuild a monitor to apply a change, which
-    /// is what made a change arriving mid-reconnect able to strand a session or leave a second
-    /// monitor running outside the manager's dictionary. Nil ends the loop: the user asked for no
-    /// scheduled checks at all.
+    // Asked on every pass, so a change to the setting reaches open connections; nil ends the loop (#2700).
     private let pingInterval: @Sendable () async -> Duration?
     private let pingHandler: @Sendable () async -> Bool
-    private let reconnectHandler: @Sendable () async -> ReconnectOutcome
-    private let onStateChanged: @Sendable (UUID, HealthState) async -> Void
-
-    // MARK: - State
+    private let failureHandler: @Sendable () async -> FailureHandling
 
     private var state: HealthState = .healthy
     private var monitoringTask: Task<Void, Never>?
     private var pingCount: Int = 0
     private var lastPingTime: ContinuousClock.Instant?
 
-    // MARK: - Initialization
-
-    /// Creates a new health monitor for a database connection.
-    ///
-    /// - Parameters:
-    ///   - connectionId: The unique identifier of the connection to monitor.
-    ///   - pingInterval: How long to wait between checks, or nil to stop checking.
-    ///   - pingHandler: Closure that executes a lightweight query (e.g., `SELECT 1`)
-    ///     and returns `true` if the connection is alive.
-    ///   - reconnectHandler: Closure that attempts to re-establish the connection
-    ///     and reports whether the monitor should mark success, retry later, or stop.
-    ///   - onStateChanged: Closure invoked whenever the health state transitions.
     init(
         connectionId: UUID,
         pingInterval: @escaping @Sendable () async -> Duration?,
         pingHandler: @escaping @Sendable () async -> Bool,
-        reconnectHandler: @escaping @Sendable () async -> ReconnectOutcome,
-        onStateChanged: @escaping @Sendable (UUID, HealthState) async -> Void
+        onPingFailed: @escaping @Sendable () async -> FailureHandling
     ) {
         self.connectionId = connectionId
         self.pingInterval = pingInterval
         self.pingHandler = pingHandler
-        self.reconnectHandler = reconnectHandler
-        self.onStateChanged = onStateChanged
+        self.failureHandler = onPingFailed
     }
 
-    // MARK: - Public API
-
-    /// The current health state of the monitored connection.
     var currentState: HealthState {
         state
     }
 
-    var hasAborted: Bool {
-        state == .aborted
+    var hasHandedOff: Bool {
+        state == .handedOff
     }
 
-    /// Starts periodic health monitoring.
-    ///
-    /// Creates a long-running task that pings the connection on `pingInterval`.
-    /// If monitoring is already active, this method does nothing.
     func startMonitoring() {
         guard monitoringTask == nil else {
             Self.logger.trace("Monitoring already active for connection \(self.connectionId)")
@@ -128,29 +73,20 @@ actor ConnectionHealthMonitor {
 
             while !Task.isCancelled {
                 guard let interval = await intervalForPass() else { break }
-                /// A tolerance lets the system coalesce the pings of every open connection into one
-                /// wake instead of N. A quarter of the interval keeps a 30s ping meaningful; the
-                /// monitor's own late-fire warning reads a 5s floor and is unaffected.
+                // The tolerance lets the system coalesce every open connection's ping into one wake.
                 try? await Task.sleep(for: interval, tolerance: interval / 4)
                 guard !Task.isCancelled else { break }
-                /// Asked again after the sleep as well, so turning scheduled checks off during a
-                /// long interval stops the next one rather than the one after it.
+                // Asked again after the sleep, so turning checks off stops the next one.
                 guard await intervalForPass() != nil else { break }
                 await self.performHealthCheck()
-                /// A monitor that has given up has nothing left to ask. Without this it woke on
-                /// every interval for the life of the app to fail its own healthy-state guard and
-                /// return, and only a fresh connect ever replaced it.
-                guard await !self.hasAborted else { break }
+                guard await !self.hasHandedOff else { break }
             }
 
             Self.logger.trace("Monitoring loop exited for connection \(self.connectionId)")
         }
     }
 
-    /// Stops periodic health monitoring and cancels any in-flight reconnect attempts.
-    ///
-    /// Awaits the monitoring task's completion to ensure no orphaned tasks
-    /// continue pinging after a new monitor is started.
+    // Awaits the task, so no orphaned ping runs after a new monitor starts.
     func stopMonitoring() async {
         Self.logger.trace("Stopping health monitoring for connection \(self.connectionId)")
         let task = monitoringTask
@@ -159,15 +95,9 @@ actor ConnectionHealthMonitor {
         await task?.value
     }
 
-    // MARK: - Health Check
-
-    /// Performs a single health check cycle.
-    ///
-    /// Skips the check if the monitor is already in a non-healthy state
-    /// (e.g., mid-reconnect). On ping failure, triggers the reconnect sequence.
     internal func performHealthCheck() async {
         guard state == .healthy else {
-            Self.logger.debug("Skipping health check — state is \(String(describing: self.state)) for connection \(self.connectionId)")
+            Self.logger.debug("Skipping health check, state is \(String(describing: self.state)) for connection \(self.connectionId)")
             return
         }
 
@@ -187,103 +117,18 @@ actor ConnectionHealthMonitor {
         }
         lastPingTime = now
 
-        await transitionTo(.checking)
-
-        let isAlive = await pingHandler()
-
-        if isAlive {
-            await transitionTo(.healthy)
-        } else {
-            Self.logger.warning("Ping failed for connection \(self.connectionId), starting reconnect sequence")
-            await attemptReconnect()
-        }
-    }
-
-    // MARK: - Reconnection
-
-    /// Attempts to reconnect with exponential backoff.
-    ///
-    /// Uses initial delays of 2s, 4s, 8s, then continues doubling up to a
-    /// 120-second cap. Loops indefinitely until either a reconnect succeeds
-    /// (transitions to `.healthy` and returns) or the monitoring task is
-    /// cancelled (returns without a state transition, since cancellation is
-    /// clean teardown initiated by `stopMonitoring`).
-    private func attemptReconnect() async {
-        var attempt = 0
-        var lastFailure: ConnectionFailureInfo?
-
-        while !Task.isCancelled {
-            attempt += 1
-
-            let delay = backoffDelay(for: attempt)
-
-            Self.logger.warning("Reconnect attempt \(attempt) for connection \(self.connectionId), waiting \(delay)s")
-            await transitionTo(.reconnecting(attempt: attempt, lastFailure: lastFailure))
-
-            try? await Task.sleep(for: .seconds(delay))
-
-            guard !Task.isCancelled else {
-                Self.logger.debug("Reconnect cancelled during backoff for connection \(self.connectionId)")
-                return
-            }
-
-            switch await reconnectHandler() {
-            case .success:
-                Self.logger.info("Reconnect succeeded on attempt \(attempt) for connection \(self.connectionId)")
-                await transitionTo(.healthy)
-                return
-            case .abort:
-                Self.logger.info("Reconnect aborted for connection \(self.connectionId)")
-                await transitionTo(.aborted)
-                return
-            case .retry(let failure):
-                lastFailure = failure
-                Self.logger.warning("Reconnect attempt \(attempt) failed for connection \(self.connectionId)")
-            }
+        state = .checking
+        if await pingHandler() {
+            state = .healthy
+            return
         }
 
-        Self.logger.debug("Reconnect loop cancelled after \(attempt) attempts for connection \(self.connectionId)")
-    }
-
-    /// Computes the backoff delay for a given attempt number (1-based).
-    ///
-    /// Uses the initial delay table for the first few attempts, then doubles
-    /// the previous delay for subsequent attempts, capped at `maxBackoffDelay`.
-    private func backoffDelay(for attempt: Int) -> TimeInterval {
-        ExponentialBackoff.delay(for: attempt, maxDelay: Self.maxBackoffDelay)
-    }
-
-    // MARK: - State Transitions
-
-    /// Transitions to a new health state, logging the change and notifying observers.
-    private func transitionTo(_ newState: HealthState) async {
-        let oldState = state
-        state = newState
-
-        if oldState != newState {
-            // Skip logging and callback for routine healthy ↔ checking ping cycles.
-            // These produce no meaningful state change for the UI.
-            let isRoutineCycle = (oldState == .healthy && newState == .checking)
-                || (oldState == .checking && newState == .healthy)
-            if !isRoutineCycle {
-                Self.logger.log(
-                    level: logLevel(for: newState),
-                    "Connection \(self.connectionId) health state: \(String(describing: oldState)) -> \(String(describing: newState))"
-                )
-                await onStateChanged(connectionId, newState)
-            }
-        }
-    }
-
-    /// Returns the appropriate log level for a given health state.
-    private func logLevel(for state: HealthState) -> OSLogType {
-        switch state {
-        case .healthy, .checking:
-            return .debug
-        case .reconnecting:
-            return .default
-        case .aborted:
-            return .error
+        Self.logger.warning("Ping failed for connection \(self.connectionId)")
+        switch await failureHandler() {
+        case .handedOff:
+            state = .handedOff
+        case .ignored:
+            state = .healthy
         }
     }
 }

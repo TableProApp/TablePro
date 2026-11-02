@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProConnectionLibrary
 
 /// What the connection the window is on is carrying, under the list of connections it could switch
 /// to. Totals first with the rate parenthetical beside the direction it belongs to, which is the
@@ -15,6 +16,8 @@ import SwiftUI
 /// transport already had in hand.
 struct ConnectionActivityFooter: View {
     let connection: DatabaseConnection?
+    // While it dials, redials or is lost, the state replaces the byte figures, which would read as live traffic.
+    var status: ConnectionDisplayStatus = .connected
 
     @State private var sampler = TransportRateSampler()
     @State private var activity: ConnectionTransportActivity?
@@ -33,11 +36,42 @@ struct ConnectionActivityFooter: View {
 
     @ViewBuilder
     private var content: some View {
-        if let activity {
+        let presentation = ConnectionStatusPresentation(status)
+        if let activity, let title = presentation.title {
+            statusRow(activity, presentation: presentation, title: title)
+        } else if let activity {
             row(activity)
         } else {
             Color.clear.frame(height: 0)
         }
+    }
+
+    private func statusRow(
+        _ activity: ConnectionTransportActivity,
+        presentation: ConnectionStatusPresentation,
+        title: String
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(activity.transportName)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .accessibilityIdentifier("connection-activity-transport")
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 4) {
+                ConnectionStatusMark(presentation: presentation)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(presentation.accessibilityStatus)
+        }
+        .font(.caption)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .help(presentation.help ?? title)
     }
 
     private func row(_ activity: ConnectionTransportActivity) -> some View {

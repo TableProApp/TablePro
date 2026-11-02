@@ -1,7 +1,9 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 @testable import TablePro
+import TableProConnectionLibrary
 import Testing
 
 @MainActor
@@ -43,11 +45,15 @@ struct WorkspaceRailStoreTests {
         closing: [UUID: String] = [:],
         visible: [UUID: Set<String>] = [:],
         openedAt: [UUID: Date] = [:],
-        storedOrder: [WorkspaceID] = []
+        storedOrder: [WorkspaceID] = [],
+        phases: [UUID: [ConnectionWindowPhase]] = [:],
+        endReasons: [UUID: ConnectionEndReason] = [:]
     ) -> [WorkspaceRailEntry] {
         WorkspaceRailStore.resolveEntries(
             openConnectionIds: openConnectionIds,
             sessions: sessions,
+            phases: phases,
+            endReasons: endReasons,
             hostedConnections: hostedConnections,
             storedConnections: storedConnections,
             containerTarget: { _ in target },
@@ -106,7 +112,7 @@ struct WorkspaceRailStoreTests {
         #expect(entry.status == .connected)
     }
 
-    @Test("A window whose session has gone falls back to the saved connection and reads disconnected")
+    @Test("A window whose session has gone falls back to the saved connection and reads not connected")
     func sessionlessWindowFallsBackToStoredConnection() throws {
         let connection = TestFixtures.makeConnection(database: "app")
         let entries = resolve(
@@ -117,7 +123,8 @@ struct WorkspaceRailStoreTests {
         let entry = try #require(entries.first)
         #expect(entry.connection.id == connection.id)
         #expect(entry.container == "app")
-        #expect(entry.status == .disconnected)
+        #expect(entry.status == .notConnected)
+        #expect(!entry.holdsSession)
     }
 
     @Test("An id with neither a session nor a saved connection is dropped")
@@ -251,7 +258,7 @@ struct WorkspaceRailStoreTests {
         let entry = try #require(entries.first)
         #expect(entry.connection.id == connection.id)
         #expect(entry.container == "/tmp/sales.sqlite")
-        #expect(entry.status == .disconnected)
+        #expect(entry.status == .notConnected)
     }
 
     @Test("Every workspace of one connection carries that connection")
@@ -406,6 +413,92 @@ struct WorkspaceRailStoreTests {
         #expect(entry.status == .connecting)
     }
 
+    /// The rail used to read the session alone, so a failed connect, whose entry is removed, read
+    /// as a plain disconnect, and a dial waiting on consent before any entry existed read the same.
+    @Test("The hosting window's phase decides the status", arguments: [
+        (ConnectionWindowPhase.connecting, ConnectionDisplayStatus.connecting),
+        (.unavailable(.failed(ConnectionFailureInfo(message: "refused"))), .failed(cause: "refused")),
+        (.unavailable(.disconnected(ConnectionFailureInfo(message: "closed"))), .lost(cause: "closed")),
+        (.unavailable(.cancelled), .notConnected),
+        (.unavailable(.disconnectedByUser), .notConnected),
+    ])
+    func phaseDecidesTheStatus(_ phase: ConnectionWindowPhase, _ expected: ConnectionDisplayStatus) throws {
+        let connection = TestFixtures.makeConnection(database: "app")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [:],
+            storedConnections: [connection.id: connection],
+            phases: [connection.id: [phase]]
+        )
+        #expect(try #require(entries.first).status == expected)
+    }
+
+    @Test("A connected window whose session is redialing reads reconnecting with the attempt")
+    func recoveringSessionReadsReconnecting() throws {
+        let connection = TestFixtures.makeConnection(database: "app")
+        var session = makeSession(connection)
+        session.recovery = ConnectionRecoveryProgress(attempt: 3, cause: "The SSH tunnel closed.")
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: session],
+            phases: [connection.id: [.connected]]
+        )
+        #expect(try #require(entries.first).status == .reconnecting(attempt: 3, of: 10))
+    }
+
+    @Test("An unreachable session is lost, never failed, and keeps Disconnect")
+    func unreachableSessionIsLost() throws {
+        let connection = TestFixtures.makeConnection(database: "app")
+        var session = makeSession(connection)
+        session.liveness = .unreachable(ConnectionFailureInfo(message: "timed out"))
+        let entries = resolve(
+            openConnectionIds: [connection.id],
+            sessions: [connection.id: session],
+            phases: [connection.id: [.unavailable(.disconnected(ConnectionFailureInfo(message: "timed out")))]]
+        )
+        let entry = try #require(entries.first)
+        #expect(entry.status == .lost(cause: "timed out"))
+        #expect(entry.holdsSession)
+        #expect(ConnectionMenuPolicy.showsDisconnect(status: entry.status, holdsSession: entry.holdsSession))
+    }
+
+    /// A phase event reloaded every rail and re-reported its count to its window, which re-ran the
+    /// strip's visibility rule mid-reveal. A phase moves a status, never which rows are listed.
+    @Test("A phase change reaches the rail as a status repaint, never as a full reload")
+    func phaseChangeIsAStatusRepaint() {
+        let connectionId = UUID()
+        var reloads = 0
+        var repainted: [UUID] = []
+        let reload = WorkspaceRailStore.changes.sink { reloads += 1 }
+        let repaint = WorkspaceRailStore.statusChanges.sink { repainted.append($0) }
+        defer {
+            reload.cancel()
+            repaint.cancel()
+        }
+
+        AppEvents.shared.connectionPhaseChanged.send(connectionId)
+
+        #expect(reloads == 0)
+        #expect(repainted == [connectionId])
+    }
+
+    @Test("A transaction's state reaches its entry")
+    func transactionStateReachesTheEntry() {
+        let connection = TestFixtures.makeConnection(database: "sales", type: .mysql)
+        let entries = WorkspaceRailStore.resolveEntries(
+            openConnectionIds: [connection.id],
+            sessions: [:],
+            storedConnections: [connection.id: connection],
+            containerTarget: { _ in .database },
+            tabs: { _ in [] },
+            openedContainers: { _ in ["sales", "hr"] },
+            storedOrder: [],
+            transaction: { $0.container == "sales" ? .aborted : nil }
+        )
+        #expect(entries.first { $0.container == "sales" }?.transaction == .aborted)
+        #expect(entries.first { $0.container == "hr" }?.transaction == nil)
+    }
+
     /// Leaving a container is a reconnect and a schema reload on the engines that cannot change
     /// database on a live connection, and the browse cursor earns a row the whole time. Waiting for
     /// it left the entry the user had just closed on screen for seconds, so a close names the
@@ -442,19 +535,23 @@ struct WorkspaceRailCellTextTests {
         name: String = "staging",
         host: String = "db.internal",
         container: String = "app",
-        status: ConnectionStatus = .connected,
+        status: ConnectionDisplayStatus = .connected,
         containerTarget: ContainerSwitchTarget? = .database,
-        iconName: String? = nil
+        iconName: String? = nil,
+        color: ConnectionColor = .none,
+        transaction: SessionTransactionTracker.State? = nil
     ) -> WorkspaceRailEntry {
         var connection = TestFixtures.makeConnection(database: container)
         connection.name = name
         connection.host = host
         connection.iconName = iconName
+        connection.color = color
         return WorkspaceRailEntry(
             workspace: WorkspaceID(connectionId: connection.id, container: container),
             connection: connection,
             status: status,
-            containerTarget: containerTarget
+            containerTarget: containerTarget,
+            transaction: transaction
         )
     }
 
@@ -560,59 +657,115 @@ struct WorkspaceRailCellTextTests {
         #expect(label.allowsExpansionToolTips)
     }
 
-    /// The regression this exists to stop: the glyph used to take the engine's brand colour in
-    /// every state, so a failed PostgreSQL connection's warning triangle rendered PostgreSQL blue.
-    @Test("A failed connection's glyph is not the engine's brand colour")
-    func failedGlyphIsNotBrandColoured() {
-        let failed = WorkspaceRailCellView.glyphTint(for: makeEntry(status: .error("boom")))
-        let connected = WorkspaceRailCellView.glyphTint(for: makeEntry(status: .connected))
-
-        #expect(failed == .systemRed)
-        #expect(failed != connected)
+    private func configuredCell(for entry: WorkspaceRailEntry) -> WorkspaceRailCellView {
+        let cell = WorkspaceRailCellView(frame: NSRect(
+            x: 0,
+            y: 0,
+            width: WorkspaceRailMetrics.medium.minimumWidth,
+            height: WorkspaceRailCellView.rowHeight(for: WorkspaceRailMetrics.medium)
+        ))
+        cell.configure(entry: entry, layout: WorkspaceRailMetrics.medium)
+        cell.layoutSubtreeIfNeeded()
+        return cell
     }
 
-    @Test("A disconnected connection's glyph recedes rather than wearing a brand colour")
-    func disconnectedGlyphRecedes() {
-        let disconnected = WorkspaceRailCellView.glyphTint(for: makeEntry(status: .disconnected))
-        let connected = WorkspaceRailCellView.glyphTint(for: makeEntry(status: .connected))
+    /// The pair the audit found swapped: a lost session drew the failed-connect triangle in red and
+    /// a failed connect drew the disconnected plug in grey, the opposite of what the pane said.
+    @Test("A lost session and a failed connect draw their own marks in their own colours")
+    func lostAndFailedMarksDiffer() throws {
+        let lost = try #require(configuredCell(for: makeEntry(status: .lost(cause: "closed"))).renderedStatusMark)
+        let failed = try #require(configuredCell(for: makeEntry(status: .failed(cause: "refused"))).renderedStatusMark)
 
-        #expect(disconnected == .secondaryLabelColor)
-        #expect(disconnected != connected)
+        #expect(lost.displayedSymbolName == "bolt.slash.fill")
+        #expect(failed.displayedSymbolName == "exclamationmark.triangle.fill")
+        #expect(lost.renderedTint == .systemOrange)
+        #expect(failed.renderedTint == .systemRed)
     }
 
-    /// Identity never reaches the glyph, so naming a connection Red cannot make a healthy
-    /// connection look like a failed one.
-    @Test("The identity colour never reaches the glyph tint")
-    func identityStaysOffTheGlyph() {
-        var connection = TestFixtures.makeConnection(database: "app")
-        connection.color = .red
-        let entry = WorkspaceRailEntry(
-            workspace: WorkspaceID(connectionId: connection.id, container: "app"),
-            connection: connection,
-            status: .connected,
-            containerTarget: .database
-        )
-
-        #expect(WorkspaceRailCellView.glyphTint(for: entry) == NSColor(connection.brandColor))
+    @Test("Connected and not connected carry no mark", arguments: [
+        ConnectionDisplayStatus.connected,
+        .notConnected,
+    ])
+    func restingStatesCarryNoMark(_ status: ConnectionDisplayStatus) throws {
+        let mark = try #require(configuredCell(for: makeEntry(status: status)).renderedStatusMark)
+        #expect(!mark.showsMark)
+        #expect(mark.isHidden)
     }
 
-    /// The dot sits between the 8pt one the welcome list draws and the 12.5pt one measured on a
-    /// Finder tag, and scales with the sidebar icon size rather than being fixed.
+    /// Connecting used to share the connected glyph and its brand tint, so a dial looked done.
+    @Test("Connecting and reconnecting spin instead of looking connected", arguments: [
+        ConnectionDisplayStatus.connecting,
+        .reconnecting(attempt: 2, of: 10),
+    ])
+    func busyStatesSpin(_ status: ConnectionDisplayStatus) throws {
+        let mark = try #require(configuredCell(for: makeEntry(status: status)).renderedStatusMark)
+        #expect(mark.showsMark)
+        #expect(mark.isSpinning)
+        #expect(mark.displayedSymbolName == nil)
+    }
+
+    @Test("The mark sits before the name and leaves the label's text alone")
+    func markSitsBeforeTheName() throws {
+        let cell = configuredCell(for: makeEntry(status: .failed(cause: "refused")))
+        let mark = try #require(cell.renderedStatusMark)
+        let label = try #require(cell.renderedLabel)
+
+        #expect(label.stringValue == "staging\napp")
+        #expect(mark.frame.maxX <= label.frame.minX)
+        #expect(cell.bounds.contains(mark.frame))
+        #expect(!mark.frame.intersects(label.frame))
+    }
+
+    /// The rail now draws the tile Welcome and the switcher draw, filled with the identity colour,
+    /// in place of the dot it used to put on a state-tinted glyph.
+    @Test("The tile carries the identity colour and the engine glyph keeps its shape")
+    func tileCarriesTheIdentity() throws {
+        let coloured = try #require(configuredCell(for: makeEntry(color: .red)).renderedTile)
+        let plain = try #require(configuredCell(for: makeEntry()).renderedTile)
+
+        #expect(coloured.fillsWithIdentity)
+        #expect(!plain.fillsWithIdentity)
+        #expect(plain.glyphTint == NSColor(makeEntry().connection.brandColor))
+    }
+
+    @Test("A failed connection's tile keeps the engine glyph, the mark carries the state")
+    func failedTileKeepsTheEngine() throws {
+        let failed = try #require(configuredCell(for: makeEntry(status: .failed(cause: nil))).renderedTile)
+        let connected = try #require(configuredCell(for: makeEntry()).renderedTile)
+        #expect(pixels(failed.image) == pixels(connected.image))
+        #expect(failed.glyphTint == connected.glyphTint)
+    }
+
     private static let railLayouts: [WorkspaceRailMetrics.Layout] = [
         WorkspaceRailMetrics.small,
         WorkspaceRailMetrics.medium,
         WorkspaceRailMetrics.large,
     ]
 
-    @Test("The identity dot scales with the icon and stays in the shipped size range")
-    func identityDotScalesWithIcon() {
+    @Test("The transaction badge scales with the tile")
+    func transactionBadgeScalesWithIcon() {
         let sizes = Self.railLayouts
             .map(\.iconSize)
-            .map(WorkspaceRailCellView.identityDotSize(forIcon:))
+            .map(WorkspaceRailCellView.badgeSize(forIcon:))
 
         #expect(sizes == sizes.sorted())
         #expect(sizes.allSatisfy { $0 >= 7 && $0 <= 12.5 })
-        #expect(WorkspaceRailCellView.identityDotSize(forIcon: 24) == 9)
+        #expect(WorkspaceRailCellView.badgeSize(forIcon: 24) == 9)
+    }
+
+    /// The badge said "Transaction open" over a transaction the bar called failed.
+    @Test("The transaction badge tells an open transaction from a failed one")
+    func transactionBadgeTellsOpenFromAborted() {
+        #expect(WorkspaceRailCellView.transactionSymbolName(for: .open) == "hourglass")
+        #expect(WorkspaceRailCellView.transactionSymbolName(for: .aborted) == "exclamationmark.triangle.fill")
+        #expect(WorkspaceRailCellView.transactionTint(for: .open) == .systemOrange)
+        #expect(WorkspaceRailCellView.transactionTint(for: .aborted) == .systemRed)
+
+        let open = WorkspaceRailCellView.voiceOverLabel(for: makeEntry(transaction: .open))
+        let aborted = WorkspaceRailCellView.voiceOverLabel(for: makeEntry(transaction: .aborted))
+        #expect(open.contains("transaction open"))
+        #expect(aborted.contains("transaction failed"))
+        #expect(WorkspaceRailCellView.tooltipText(for: makeEntry(transaction: .aborted)).contains("Transaction failed"))
     }
 
     /// The engine is named in words because a custom icon replaces the engine's logo.
@@ -644,37 +797,18 @@ struct WorkspaceRailCellTextTests {
         image?.tiffRepresentation
     }
 
-    @Test("A live entry draws the connection's own icon as a template")
-    func liveGlyphIsTheConnectionIcon() throws {
+    @Test("A tile draws the connection's own icon as a template")
+    func tileDrawsTheConnectionIcon() throws {
         let rack = try #require(NSImage(systemSymbolName: Self.customIcon, accessibilityDescription: nil))
 
-        for status in [ConnectionStatus.connected, .connecting] {
-            let glyph = try #require(WorkspaceRailCellView.glyph(for: makeEntry(status: status, iconName: Self.customIcon)))
+        for status in [ConnectionDisplayStatus.connected, .connecting, .failed(cause: nil), .notConnected] {
+            let tile = try #require(configuredCell(for: makeEntry(status: status, iconName: Self.customIcon)).renderedTile)
+            let glyph = try #require(tile.image)
             #expect(pixels(glyph) == pixels(rack), "\(status)")
             #expect(glyph.isTemplate, "\(status)")
         }
-        let engine = WorkspaceRailCellView.glyph(for: makeEntry())
-        #expect(pixels(engine) != pixels(rack))
-    }
-
-    /// Shape carries the state, so a connection that failed must not look like a healthy one
-    /// because it has an icon of its own.
-    @Test("A failed or disconnected entry keeps its state glyph over the connection's icon")
-    func stateGlyphWinsOverIcon() {
-        let failed = WorkspaceRailCellView.glyph(for: makeEntry(status: .error("boom"), iconName: Self.customIcon))
-        let disconnected = WorkspaceRailCellView.glyph(for: makeEntry(status: .disconnected, iconName: Self.customIcon))
-
-        #expect(pixels(failed) == pixels(NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)))
-        #expect(pixels(disconnected) == pixels(NSImage(systemSymbolName: "bolt.horizontal.circle", accessibilityDescription: nil)))
-    }
-
-    @Test("A custom icon changes the glyph's shape and never its tint")
-    func iconKeepsTint() {
-        for status in [ConnectionStatus.connected, .connecting, .error("boom"), .disconnected] {
-            let custom = WorkspaceRailCellView.glyphTint(for: makeEntry(status: status, iconName: Self.customIcon))
-            let plain = WorkspaceRailCellView.glyphTint(for: makeEntry(status: status))
-            #expect(custom == plain, "\(status)")
-        }
+        let engine = try #require(configuredCell(for: makeEntry()).renderedTile)
+        #expect(pixels(engine.image) != pixels(rack))
     }
 
     /// The rail reloads its cells from `session.connection`, which takes a stored icon edit without
@@ -690,11 +824,11 @@ struct WorkspaceRailCellTextTests {
         let rack = try #require(NSImage(systemSymbolName: Self.customIcon, accessibilityDescription: nil))
 
         cell.configure(entry: makeEntry(), layout: WorkspaceRailMetrics.medium)
-        let engine = pixels(cell.imageView?.image)
+        let engine = pixels(cell.renderedTile?.image)
         cell.configure(entry: makeEntry(iconName: Self.customIcon), layout: WorkspaceRailMetrics.medium)
 
-        #expect(pixels(cell.imageView?.image) == pixels(rack))
-        #expect(pixels(cell.imageView?.image) != engine)
+        #expect(pixels(cell.renderedTile?.image) == pixels(rack))
+        #expect(pixels(cell.renderedTile?.image) != engine)
     }
 
     /// `NSImage(named:)` hands every caller the one cached instance, so marking it a template here
@@ -706,7 +840,7 @@ struct WorkspaceRailCellTextTests {
         defer { cached.isTemplate = original }
         cached.isTemplate = false
 
-        let glyph = try #require(WorkspaceRailCellView.glyph(for: makeEntry()))
+        let glyph = try #require(configuredCell(for: makeEntry()).renderedTile?.image)
 
         #expect(glyph !== cached)
         #expect(glyph.isTemplate)
@@ -716,8 +850,19 @@ struct WorkspaceRailCellTextTests {
     @Test("VoiceOver distinguishes a failed connection from a healthy one")
     func voiceOverLabelDistinguishesFailure() {
         let healthy = WorkspaceRailCellView.voiceOverLabel(for: makeEntry(status: .connected))
-        let failed = WorkspaceRailCellView.voiceOverLabel(for: makeEntry(status: .error("boom")))
+        let failed = WorkspaceRailCellView.voiceOverLabel(for: makeEntry(status: .failed(cause: "boom")))
         #expect(healthy != failed)
+    }
+
+    @Test("The tooltip and VoiceOver name the cause")
+    func causeReachesTooltipAndVoiceOver() {
+        let entry = makeEntry(status: .lost(cause: "The SSH tunnel closed."))
+        let tooltip = WorkspaceRailCellView.tooltipText(for: entry)
+        let spoken = WorkspaceRailCellView.voiceOverLabel(for: entry)
+
+        #expect(tooltip.contains("Connection lost: The SSH tunnel closed."))
+        #expect(spoken.contains("Connection lost: The SSH tunnel closed."))
+        #expect(spoken.hasPrefix("staging"))
     }
 
     @Test("VoiceOver skips the database clause when there is no container")

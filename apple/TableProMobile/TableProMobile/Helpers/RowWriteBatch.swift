@@ -74,3 +74,49 @@ nonisolated enum RowWriteBatch: Sendable {
         return .sql([sql], driver)
     }
 }
+
+// Escaping is a session fact (MySQL's NO_BACKSLASH_ESCAPES), which a redial can reset, so a write keeps its inputs and
+// is built on the driver that runs it: SQL text built for one session never runs on another.
+nonisolated struct PlannedRowWrite: Sendable {
+    private let build: @Sendable (any DatabaseDriver) throws -> RowWriteBatch?
+
+    init(_ build: @escaping @Sendable (any DatabaseDriver) throws -> RowWriteBatch?) {
+        self.build = build
+    }
+
+    func batch(on driver: any DatabaseDriver) throws -> RowWriteBatch? {
+        try build(driver)
+    }
+
+    static func update(
+        table: String,
+        schema: String?,
+        type: DatabaseType,
+        columns: [String],
+        columnDetails: [ColumnInfo],
+        locator: RowLocator,
+        changes: [(column: String, value: String?)]
+    ) -> PlannedRowWrite {
+        PlannedRowWrite { driver in
+            try RowWriteBatch.update(
+                table: table, schema: schema, type: type, driver: driver, columns: columns,
+                columnDetails: columnDetails, locator: locator, changes: changes
+            )
+        }
+    }
+
+    static func insert(
+        table: String,
+        schema: String?,
+        type: DatabaseType,
+        columns: [ColumnInfo],
+        values: [String: PayloadValue]
+    ) -> PlannedRowWrite {
+        PlannedRowWrite { driver in
+            try RowInsertPlanner.batch(
+                table: table, schema: schema, type: type, driver: driver, columns: columns,
+                rows: [PayloadRow(values: values)], allowAllDefaults: true, dropsEmptyPrimaryKey: false
+            )
+        }
+    }
+}

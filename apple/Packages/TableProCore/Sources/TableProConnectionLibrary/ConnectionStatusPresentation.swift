@@ -67,8 +67,10 @@ public struct ConnectionStatusPresentation: Equatable, Sendable {
             nil
         case .connecting:
             String(localized: "Connecting")
-        case .reconnecting(let attempt, let total):
+        case .reconnecting(let attempt, let total) where total > 1:
             String(format: String(localized: "Reconnecting (%lld of %lld)"), attempt, total)
+        case .reconnecting:
+            String(localized: "Reconnecting")
         case .lost:
             String(localized: "Connection lost")
         case .failed:

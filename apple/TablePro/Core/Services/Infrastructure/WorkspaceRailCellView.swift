@@ -5,53 +5,29 @@
 
 import AppKit
 import SwiftUI
+import TableProConnectionLibrary
 
-/// One workspace: a glyph above its connection and container, with the connection's own colour as
-/// a dot on the glyph's corner.
-///
-/// Three channels share this cell and each owns a different property of the same glyph. Its SHAPE
-/// is the connection's state, because a colour-only difference between failed and disconnected is
-/// invisible to anyone who cannot tell red from grey. Its COLOUR is the engine when connected and
-/// the state's own colour when not. The user's identity colour is a separate dot, so it never has
-/// to win an argument with either.
-///
-/// The dot is what Finder puts on a tag row and what this app already puts beside a connection in
-/// the welcome list and the connection switcher, measured at 12.5pt and 8pt respectively. It
-/// replaced a full-width filled band behind the label, which was the loudest element in the window,
-/// stacked on top of the selection fill, and read as destructive rather than as a label (#2398).
-///
-/// Unlike the glyph tint, the dot stays lit on the selected row: the HIG's sidebar guidance is that
-/// a fixed colour set to clarify an icon is not overridden by the system, and the selected row is
-/// the one whose identity the user most needs to confirm. A rim in the selection's own label colour
-/// is what keeps it legible against the accent fill, which seven of the eight palette colours
-/// otherwise fail 3:1 against.
-///
-/// Connection and container occupy explicit lines rather than wrapping one name. Each semantic
-/// value keeps one line and its own middle truncation, and the full identity stays in the tooltip
-/// and accessibility label.
+// AppKit because the rail is an `NSTableView`. The tile is `ConnectionTile`'s twin, so a connection looks the
+// same in every list; the status mark is its own view so the label stays plain text for type select and tests.
 @MainActor
 internal final class WorkspaceRailCellView: NSTableCellView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("WorkspaceRailCell")
 
-    private let icon = NSImageView()
+    private let tile = ConnectionTileView()
     private let label = WorkspaceRailCellView.makeLabel()
-    private let identityDot = NSView()
-    /// The connection holds a transaction behind this entry. A symbol, not a colour, on the corner
-    /// opposite the identity dot, so neither has to share a channel with the other.
+    private let statusMark = ConnectionStatusMarkView()
+    // A symbol on the tile's corner, so a held transaction never shares a channel with the identity fill.
     private let transactionBadge = NSImageView()
     private let content = NSLayoutGuide()
-    private var iconWidthConstraint: NSLayoutConstraint?
-    private var iconHeightConstraint: NSLayoutConstraint?
-    private var dotWidthConstraint: NSLayoutConstraint?
-    private var dotHeightConstraint: NSLayoutConstraint?
+    private var tileWidthConstraint: NSLayoutConstraint?
+    private var tileHeightConstraint: NSLayoutConstraint?
     private var badgeWidthConstraint: NSLayoutConstraint?
     private var badgeHeightConstraint: NSLayoutConstraint?
-    private var appliedTint: NSColor?
-    /// Held as the palette entry rather than a resolved colour, because `systemRed` and the rest
-    /// differ between light and dark: resolving at configure time would freeze the dot at the
-    /// appearance the row was built in and `viewDidChangeEffectiveAppearance` would repaint it with
-    /// the stale value.
-    private var identityColor: ConnectionColor?
+    private var markSizeConstraint: NSLayoutConstraint?
+    private var markCenterYConstraint: NSLayoutConstraint?
+    private var labelCenterXConstraint: NSLayoutConstraint?
+    private var labelLeadingConstraint: NSLayoutConstraint?
+    private var entry: WorkspaceRailEntry?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -78,81 +54,82 @@ internal final class WorkspaceRailCellView: NSTableCellView {
     private func buildHierarchy() {
         identifier = Self.reuseIdentifier
 
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.imageScaling = .scaleProportionallyUpOrDown
-
-        identityDot.translatesAutoresizingMaskIntoConstraints = false
-        identityDot.wantsLayer = true
-        identityDot.layer?.borderWidth = Self.identityDotRimWidth
+        tile.translatesAutoresizingMaskIntoConstraints = false
+        statusMark.translatesAutoresizingMaskIntoConstraints = false
 
         transactionBadge.translatesAutoresizingMaskIntoConstraints = false
         transactionBadge.imageScaling = .scaleProportionallyUpOrDown
-        transactionBadge.image = NSImage(
-            systemSymbolName: ConnectionTransactionBarContent.openSymbolName,
-            accessibilityDescription: nil
-        )
         transactionBadge.isHidden = true
 
-        addSubview(icon)
+        // Hugging keeps the mark beside the name rather than at the cell's edge.
+        label.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        addSubview(tile)
         addSubview(label)
-        addSubview(identityDot)
+        addSubview(statusMark)
         addSubview(transactionBadge)
         addLayoutGuide(content)
-        /// Not `textField`. In a source list AppKit rewrites that outlet's value on every layout pass
-        /// to one 13pt run, which drops the per-size fonts and the secondary colour and needs 32pt for
-        /// two lines, so the container line was laid out and never drawn ("1…", #3244). NSTableView.h
-        /// says to leave the outlets alone to control the metrics yourself; the selected-row colour
-        /// still arrives, because the cell forwards `backgroundStyle` to every control it contains.
-        imageView = icon
+        // Neither outlet is set. A source list rewrites `textField` to one 13pt run on every layout pass, which
+        // clipped the container line (#3244), and the tile is a view of its own that the drag image adds below.
 
-        let width = icon.widthAnchor.constraint(equalToConstant: 24)
-        let height = icon.heightAnchor.constraint(equalToConstant: 24)
-        iconWidthConstraint = width
-        iconHeightConstraint = height
+        let width = tile.widthAnchor.constraint(equalToConstant: 24)
+        let height = tile.heightAnchor.constraint(equalToConstant: 24)
+        tileWidthConstraint = width
+        tileHeightConstraint = height
 
-        let dotWidth = identityDot.widthAnchor.constraint(equalToConstant: Self.identityDotSize(forIcon: 24))
-        let dotHeight = identityDot.heightAnchor.constraint(equalToConstant: Self.identityDotSize(forIcon: 24))
-        dotWidthConstraint = dotWidth
-        dotHeightConstraint = dotHeight
-
-        let badgeWidth = transactionBadge.widthAnchor.constraint(equalToConstant: Self.identityDotSize(forIcon: 24))
-        let badgeHeight = transactionBadge.heightAnchor.constraint(equalToConstant: Self.identityDotSize(forIcon: 24))
+        let badgeWidth = transactionBadge.widthAnchor.constraint(equalToConstant: Self.badgeSize(forIcon: 24))
+        let badgeHeight = transactionBadge.heightAnchor.constraint(equalToConstant: Self.badgeSize(forIcon: 24))
         badgeWidthConstraint = badgeWidth
         badgeHeightConstraint = badgeHeight
+
+        let markSize = statusMark.widthAnchor.constraint(equalToConstant: Self.markSize(forFont: 11))
+        markSizeConstraint = markSize
+        let markCenterY = statusMark.centerYAnchor.constraint(equalTo: label.topAnchor)
+        markCenterYConstraint = markCenterY
+        let labelCenterX = label.centerXAnchor.constraint(equalTo: content.centerXAnchor)
+        labelCenterXConstraint = labelCenterX
+        let labelLeading = label.leadingAnchor.constraint(greaterThanOrEqualTo: content.leadingAnchor, constant: 2)
+        labelLeadingConstraint = labelLeading
 
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: leadingAnchor),
             content.trailingAnchor.constraint(equalTo: trailingAnchor),
             content.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            icon.topAnchor.constraint(equalTo: content.topAnchor),
-            icon.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            tile.topAnchor.constraint(equalTo: content.topAnchor),
+            tile.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             width,
             height,
 
-            label.topAnchor.constraint(equalTo: icon.bottomAnchor, constant: WorkspaceRailMetrics.iconLabelGap),
-            label.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 2),
-            label.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -2),
+            label.topAnchor.constraint(equalTo: tile.bottomAnchor, constant: WorkspaceRailMetrics.iconLabelGap),
+            labelLeading,
+            label.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -2),
+            labelCenterX,
             label.bottomAnchor.constraint(equalTo: content.bottomAnchor),
 
-            dotWidth,
-            dotHeight,
-            identityDot.centerXAnchor.constraint(equalTo: icon.trailingAnchor),
-            identityDot.bottomAnchor.constraint(equalTo: icon.bottomAnchor),
+            markSize,
+            statusMark.heightAnchor.constraint(equalTo: statusMark.widthAnchor),
+            statusMark.trailingAnchor.constraint(equalTo: label.leadingAnchor, constant: -Self.markGap),
+            markCenterY,
 
             badgeWidth,
             badgeHeight,
-            transactionBadge.centerXAnchor.constraint(equalTo: icon.trailingAnchor),
-            transactionBadge.topAnchor.constraint(equalTo: icon.topAnchor),
+            transactionBadge.centerXAnchor.constraint(equalTo: tile.trailingAnchor),
+            transactionBadge.centerYAnchor.constraint(equalTo: tile.topAnchor),
         ])
     }
 
-    /// Sized against the glyph rather than fixed, so it keeps the same proportion at every
-    /// System Settings sidebar icon size. At the medium rail this is 9pt, between the 8pt dot the
-    /// welcome list already draws and the 12.5pt one measured on a Finder tag.
-    internal static func identityDotSize(forIcon iconSize: CGFloat) -> CGFloat {
+    // Proportional to the tile, so it holds at every sidebar icon size: 9pt at the medium rail.
+    internal static func badgeSize(forIcon iconSize: CGFloat) -> CGFloat {
         (iconSize * 0.375).rounded()
     }
+
+    internal static func markSize(forFont fontSize: CGFloat) -> CGFloat {
+        fontSize.rounded()
+    }
+
+    private static let markGap: CGFloat = 3
 
     internal static func secondaryFontSize(for primaryFontSize: CGFloat) -> CGFloat {
         max(10, primaryFontSize - 1)
@@ -170,51 +147,79 @@ internal final class WorkspaceRailCellView: NSTableCellView {
             + ceil(label.intrinsicContentSize.height)
     }
 
-    private static let identityDotRimWidth: CGFloat = 1.5
-
     internal func configure(entry: WorkspaceRailEntry, layout: WorkspaceRailMetrics.Layout) {
-        iconWidthConstraint?.constant = layout.iconSize
-        iconHeightConstraint?.constant = layout.iconSize
+        self.entry = entry
+        tileWidthConstraint?.constant = layout.iconSize
+        tileHeightConstraint?.constant = layout.iconSize
+        tile.configure(connection: entry.connection, size: layout.iconSize)
 
-        let dotSize = Self.identityDotSize(forIcon: layout.iconSize)
-        dotWidthConstraint?.constant = dotSize
-        dotHeightConstraint?.constant = dotSize
-        identityDot.layer?.cornerRadius = dotSize / 2
-        badgeWidthConstraint?.constant = dotSize
-        badgeHeightConstraint?.constant = dotSize
-        transactionBadge.isHidden = !entry.holdsTransaction
+        let badgeSize = Self.badgeSize(forIcon: layout.iconSize)
+        badgeWidthConstraint?.constant = badgeSize
+        badgeHeightConstraint?.constant = badgeSize
+        transactionBadge.image = entry.transaction.flatMap {
+            NSImage(systemSymbolName: Self.transactionSymbolName(for: $0), accessibilityDescription: nil)
+        }
+        transactionBadge.isHidden = entry.transaction == nil
 
         label.attributedStringValue = Self.labelValue(lines: Self.labelLines(for: entry), layout: layout)
 
-        appliedTint = Self.glyphTint(for: entry)
-        identityColor = entry.connection.identityColor
-        icon.image = Self.glyph(for: entry)
-        identityDot.isHidden = identityColor == nil
+        let presentation = entry.presentation
+        let markSize = Self.markSize(forFont: layout.fontSize)
+        markSizeConstraint?.constant = markSize
+        markCenterYConstraint?.constant = Self.firstLineHeight(for: layout) / 2
+        let markWidth = presentation.symbol == nil ? 0 : markSize + Self.markGap
+        labelCenterXConstraint?.constant = markWidth / 2
+        labelLeadingConstraint?.constant = 2 + markWidth
         applyTint()
 
         toolTip = Self.tooltipText(for: entry)
         setAccessibilityLabel(Self.voiceOverLabel(for: entry))
     }
 
-    /// The outlet the default implementation takes the label from is the one this cell leaves
-    /// empty, so without this the drag image would be a bare glyph. It is drawn in the normal style
-    /// even from the selected row, as AppKit draws its own: the image floats over the window, not
-    /// over the accent fill, and selected-row white would vanish against a light window.
+    private static func firstLineHeight(for layout: WorkspaceRailMetrics.Layout) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: layout.fontSize)
+        return ceil(font.ascender - font.descender + font.leading)
+    }
+
+    internal static func transactionSymbolName(for state: SessionTransactionTracker.State) -> String {
+        switch state {
+        case .open: ConnectionTransactionBarContent.openSymbolName
+        case .aborted: ConnectionTransactionBarContent.abortedSymbolName
+        }
+    }
+
+    internal static func transactionTint(for state: SessionTransactionTracker.State) -> NSColor {
+        switch state {
+        case .open: .systemOrange
+        case .aborted: .systemRed
+        }
+    }
+
+    // The icon and label outlets are empty, so both are drawn here, in the normal style as AppKit draws its own:
+    // the image floats over the window, where selected-row white would vanish.
     override var draggingImageComponents: [NSDraggingImageComponent] {
         var components = super.draggingImageComponents
-        guard let cell = label.cell,
-              let rep = label.bitmapImageRepForCachingDisplay(in: label.bounds) else { return components }
+        let wasEmphasized = tile.isEmphasized
+        tile.isEmphasized = false
+        if let icon = snapshot(of: tile, key: .icon) { components.append(icon) }
+        tile.isEmphasized = wasEmphasized
+        guard let cell = label.cell else { return components }
         let style = cell.backgroundStyle
         cell.backgroundStyle = .normal
-        label.cacheDisplay(in: label.bounds, to: rep)
+        if let text = snapshot(of: label, key: .label) { components.append(text) }
         cell.backgroundStyle = style
-        let image = NSImage(size: label.bounds.size)
-        image.addRepresentation(rep)
-        let component = NSDraggingImageComponent(key: .label)
-        component.contents = image
-        component.frame = convert(label.bounds, from: label)
-        components.append(component)
         return components
+    }
+
+    private func snapshot(of view: NSView, key: NSDraggingItem.ImageComponentKey) -> NSDraggingImageComponent? {
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        let image = NSImage(size: view.bounds.size)
+        image.addRepresentation(rep)
+        let component = NSDraggingImageComponent(key: key)
+        component.contents = image
+        component.frame = convert(view.bounds, from: view)
+        return component
     }
 
     private static func labelValue(
@@ -263,10 +268,7 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         value.components(separatedBy: .newlines).joined(separator: " ")
     }
 
-    /// On the selected row `NSTableCellView` already tints the image view for contrast, so the
-    /// glyph steps aside rather than competing with the selection fill, which it loses against at
-    /// every accent colour. The identity dot does not step aside with it: it is the one thing on
-    /// the row the selection cannot restate, and its rim is what carries it over the accent fill.
+    // The identity fill stays lit on the selected row: it is the one thing there the selection cannot restate.
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet { applyTint() }
     }
@@ -278,62 +280,13 @@ internal final class WorkspaceRailCellView: NSTableCellView {
 
     private func applyTint() {
         let isEmphasized = backgroundStyle == .emphasized
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            icon.contentTintColor = isEmphasized ? nil : appliedTint
-            transactionBadge.contentTintColor = isEmphasized ? nil : .systemOrange
-
-            guard let hue = identityColor?.indicatorColor else { return }
-            identityDot.layer?.backgroundColor = NSColor(hue).cgColor
-            /// The rim punches the dot out of whatever sits behind it. On the selected row that is
-            /// the accent fill, which red, blue, purple, pink and grey all fail 3:1 against, so the
-            /// rim takes the colour AppKit itself uses for content on a selection.
-            identityDot.layer?.borderColor = isEmphasized
-                ? NSColor.alternateSelectedControlTextColor.cgColor
-                : NSColor.windowBackgroundColor.cgColor
+        tile.isEmphasized = isEmphasized
+        if let entry {
+            statusMark.configure(entry.presentation, isEmphasized: isEmphasized)
         }
-    }
-
-    /// The glyph's colour follows what its shape is saying. Tinting every state with the engine's
-    /// brand colour, which is what this used to do, painted a failed PostgreSQL connection's
-    /// warning triangle PostgreSQL blue: the one glyph that exists to raise an alarm wore the
-    /// calmest colour on the row. Identity never reaches here, so a connection the user named Red
-    /// and a connection that failed stay distinguishable.
-    internal static func glyphTint(for entry: WorkspaceRailEntry) -> NSColor {
-        switch entry.status {
-        case .error:
-            return .systemRed
-        case .disconnected:
-            return .secondaryLabelColor
-        case .connecting, .connected:
-            return NSColor(entry.connection.brandColor)
-        }
-    }
-
-    /// Shape carries the state. A colour-only difference between a failed connection and a
-    /// disconnected one is invisible to anyone who cannot tell red from grey, so the state glyphs
-    /// win over the connection's own icon.
-    internal static func glyph(for entry: WorkspaceRailEntry) -> NSImage? {
-        switch entry.status {
-        case .error:
-            return symbol("exclamationmark.triangle.fill", label: String(localized: "connection failed"))
-        case .disconnected:
-            return symbol("bolt.horizontal.circle", label: String(localized: "disconnected"))
-        case .connecting, .connected:
-            let connection = entry.connection
-            return LibraryGlyph.connectionNSImage(
-                type: connection.type,
-                iconName: connection.iconName,
-                accessibilityDescription: connection.type.displayName
-            )
-        }
-    }
-
-    private static func symbol(_ name: String, label: String) -> NSImage? {
-        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: label) else {
-            return nil
-        }
-        image.isTemplate = true
-        return image
+        transactionBadge.contentTintColor = isEmphasized
+            ? nil
+            : entry?.transaction.map(Self.transactionTint(for:))
     }
 
     internal static func tooltipText(for entry: WorkspaceRailEntry) -> String {
@@ -348,8 +301,11 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         if let identity = connection.identityColor {
             parts.append(String(format: String(localized: "Color: %@"), identity.displayName))
         }
-        if entry.holdsTransaction {
-            parts.append(String(localized: "Transaction open"))
+        if let help = entry.presentation.help {
+            parts.append(help)
+        }
+        if let transaction = entry.transaction {
+            parts.append(transactionTooltip(for: transaction))
         }
         return parts.joined(separator: ", ")
     }
@@ -359,14 +315,28 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         if !entry.container.isEmpty {
             parts.append(String(format: containerFormat(for: entry.containerTarget), entry.container))
         }
-        parts.append(statusDescription(for: entry.status))
-        if entry.holdsTransaction {
-            parts.append(String(localized: "transaction open"))
+        parts.append(entry.presentation.accessibilityStatus)
+        if let transaction = entry.transaction {
+            parts.append(transactionSpoken(for: transaction))
         }
         if let identity = entry.connection.identityColor {
             parts.append(String(format: String(localized: "color %@"), identity.displayName))
         }
         return parts.joined(separator: ", ")
+    }
+
+    private static func transactionTooltip(for state: SessionTransactionTracker.State) -> String {
+        switch state {
+        case .open: String(localized: "Transaction open")
+        case .aborted: String(localized: "Transaction failed")
+        }
+    }
+
+    private static func transactionSpoken(for state: SessionTransactionTracker.State) -> String {
+        switch state {
+        case .open: String(localized: "transaction open")
+        case .aborted: String(localized: "transaction failed")
+        }
     }
 
     private static func containerFormat(for target: ContainerSwitchTarget?) -> String {
@@ -375,19 +345,6 @@ internal final class WorkspaceRailCellView: NSTableCellView {
             return String(localized: "schema %@")
         case .database, nil:
             return String(localized: "database %@")
-        }
-    }
-
-    private static func statusDescription(for status: ConnectionStatus) -> String {
-        switch status {
-        case .connected:
-            return String(localized: "connected")
-        case .connecting:
-            return String(localized: "connecting")
-        case .disconnected:
-            return String(localized: "disconnected")
-        case .error:
-            return String(localized: "connection failed")
         }
     }
 }

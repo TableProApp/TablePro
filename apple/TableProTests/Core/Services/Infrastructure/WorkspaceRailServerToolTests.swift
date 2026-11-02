@@ -5,6 +5,7 @@
 
 import AppKit
 @testable import TablePro
+import TableProConnectionLibrary
 import Testing
 
 @MainActor
@@ -54,11 +55,15 @@ struct WorkspaceRailServerToolTests {
         ])
     }
 
-    private static func entry() -> WorkspaceRailEntry {
+    private static func entry(
+        status: ConnectionDisplayStatus = .connected,
+        holdsSession: Bool = true
+    ) -> WorkspaceRailEntry {
         WorkspaceRailEntry(
             workspace: WorkspaceID(connectionId: UUID(), container: ""),
             connection: TestFixtures.makeConnection(name: "Primary", type: .postgresql),
-            status: .connected
+            status: status,
+            holdsSession: holdsSession
         )
     }
 
@@ -97,5 +102,28 @@ struct WorkspaceRailServerToolTests {
 
         let close = String(format: String(localized: "Close Connection “%@”"), entry.connection.name)
         #expect(Self.layout(of: menu) == [String(localized: "Disconnect"), "---", close])
+    }
+
+    /// The rail had no way to dial: its menu offered Disconnect on a live row and nothing else.
+    @Test("A row offers the command its state calls for, and Disconnect only while a driver is held", arguments: [
+        (ConnectionDisplayStatus.notConnected, true, ["Connect", "---"]),
+        (.failed(cause: "refused"), false, ["Connect", "---"]),
+        (.connecting, true, ["Stop Connecting", "---"]),
+        (.reconnecting(attempt: 2, of: 10), true, ["Stop Reconnecting", "---", "Disconnect", "---"]),
+        (.lost(cause: "closed"), true, ["Reconnect", "---", "Disconnect", "---"]),
+        (.lost(cause: "closed"), false, ["Reconnect", "---"]),
+    ])
+    func rowMenuFollowsTheState(_ status: ConnectionDisplayStatus, _ holdsSession: Bool, _ leading: [String]) {
+        let entry = Self.entry(status: status, holdsSession: holdsSession)
+        let rail = WorkspaceRailViewController()
+        let menu = NSMenu()
+
+        rail.populate(menu, for: entry, serverTools: [])
+
+        let close = String(format: String(localized: "Close Connection “%@”"), entry.connection.name)
+        #expect(Self.layout(of: menu) == leading + [close])
+        let primary = menu.items.first
+        #expect(primary?.target === rail)
+        #expect(primary?.representedObject as? WorkspaceID == entry.workspace)
     }
 }

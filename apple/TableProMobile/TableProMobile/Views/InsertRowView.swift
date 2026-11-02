@@ -14,15 +14,15 @@ struct InsertRowView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ConnectionCoordinator.self) private var coordinator
 
-    /// A column absent from this dictionary is left out of the `INSERT` so the database applies
-    /// its own default. Keying by name rather than by position is what keeps the state from
-    /// drifting when `columnDetails` arrives or changes while the sheet is open.
+    // A column absent from this dictionary is left out of the `INSERT` so the database applies
+    // its own default. Keying by name rather than by position is what keeps the state from
+    // drifting when `columnDetails` arrives or changes while the sheet is open.
     @State private var fields: [String: PayloadValue] = [:]
     @State private var isSaving = false
     @State private var operationError: AppError?
     @State private var showOperationError = false
     @State private var showInsertConfirmation = false
-    @State private var writeGate = ConfirmedWriteGate<RowWriteBatch>()
+    @State private var writeGate = ConfirmedWriteGate<PlannedRowWrite>()
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var jsonEditorColumn: IndexedRow<ColumnInfo>?
@@ -32,7 +32,11 @@ struct InsertRowView: View {
 
     private var canSave: Bool {
         guard let driver = session?.driver else { return false }
-        return insertBatch(driver: driver) != nil
+        return (try? insertWrite.batch(on: driver)) != nil
+    }
+
+    private var insertWrite: PlannedRowWrite {
+        PlannedRowWrite.insert(table: table.name, schema: schema, type: databaseType, columns: columnDetails, values: fields)
     }
 
     var body: some View {
@@ -74,6 +78,7 @@ struct InsertRowView: View {
                     .disabled(isSaving || !canSave)
                 }
             }
+            .connectionStatusToolbar(for: coordinator)
             .onChange(of: columnNames) { _, newNames in
                 let known = Set(newNames)
                 fields = fields.filter { known.contains($0.key) }
@@ -285,17 +290,15 @@ struct InsertRowView: View {
     // MARK: - Insert
 
     private func insertRow() async {
-        guard let session else { return }
+        guard canSave else { return }
 
-        guard let batch = insertBatch(driver: session.driver) else { return }
-
-        switch writeGate.submit(batch, under: safeModeLevel()) {
+        switch writeGate.submit(insertWrite, under: safeModeLevel()) {
         case .blocked:
             return
         case .awaitConfirmation:
             showInsertConfirmation = true
-        case .run(let batch):
-            await executeInsert(batch)
+        case .run(let write):
+            await executeInsert(write)
         }
     }
 
@@ -304,28 +307,23 @@ struct InsertRowView: View {
         await executeInsert(confirmed)
     }
 
-    private func insertBatch(driver: any DatabaseDriver) -> RowWriteBatch? {
-        try? RowInsertPlanner.batch(
-            table: table.name,
-            schema: schema,
-            type: databaseType,
-            driver: driver,
-            columns: columnDetails,
-            rows: [PayloadRow(values: fields)],
-            allowAllDefaults: true,
-            dropsEmptyPrimaryKey: false
-        )
-    }
-
-    private func executeInsert(_ batch: RowWriteBatch) async {
+    private func executeInsert(_ write: PlannedRowWrite) async {
         isSaving = true
         defer { isSaving = false }
 
         do {
-            _ = try await coordinator.track { try await batch.run() }
+            _ = try await coordinator.track {
+                // Built on the live session: a redial since the sheet opened replaced its driver, and a lost one fails with why.
+                guard let batch = try write.batch(on: coordinator.writableSession.get().driver) else { return 0 }
+                return try await batch.run()
+            }
             hapticSuccess.toggle()
             onInserted?()
             dismiss()
+        } catch let unavailable as AppError {
+            operationError = unavailable
+            showOperationError = true
+            hapticError.toggle()
         } catch {
             let context = ErrorContext(operation: "insertRow", databaseType: databaseType)
             operationError = ErrorClassifier.classify(error, context: context)

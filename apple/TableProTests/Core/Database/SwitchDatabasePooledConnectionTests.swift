@@ -17,7 +17,6 @@ import Testing
 @MainActor
 struct SwitchDatabasePooledConnectionTests {
     // No driver plugin and no plugin load in the test host, so every switch's reconnect fails at once, with no network.
-    /// A type of its own per case, so one case's cleanup never unregisters another's.
     private func registerType() -> String {
         let typeId = "PooledSwitchReconnectFake-\(UUID().uuidString)"
         let defaults = PluginMetadataSnapshot.CapabilityFlags.defaults
@@ -34,8 +33,6 @@ struct SwitchDatabasePooledConnectionTests {
             requiresReconnectForDatabaseSwitch: true,
             supportsDropDatabase: defaults.supportsDropDatabase
         )
-        /// No second connection, so a switch still takes the reconnect this suite is about rather
-        /// than opening a connection of its own for the database.
         capabilities.supportsConnectionPooling = false
         let snapshot = PluginMetadataSnapshot(
             displayName: typeId, iconName: "cylinder", defaultPort: 1_234,
@@ -51,7 +48,6 @@ struct SwitchDatabasePooledConnectionTests {
         return typeId
     }
 
-    /// A direct connection, with no tunnel of any kind, browsing `app`.
     private func makeSession(stoppedAnswering: Bool = false) -> DatabaseConnection {
         var connection = TestFixtures.makeConnection(database: "app")
         connection.type = DatabaseType(rawValue: registerType())
@@ -65,7 +61,6 @@ struct SwitchDatabasePooledConnectionTests {
         return connection
     }
 
-    /// Stands in for the pooled connection a table tab on `reports` opened.
     private func seedPooledConnection(for connectionId: UUID) -> MockDatabaseDriver {
         let pooled = MockDatabaseDriver()
         MetadataConnectionPool.shared.injectEntry(
@@ -92,16 +87,12 @@ struct SwitchDatabasePooledConnectionTests {
 
         try? await DatabaseManager.shared.switchDatabase(to: "unreachable", for: connection.id, persist: false)
 
-        /// Only the reconnect branch moves the session off `.connected`, so this proves it ran.
         #expect(DatabaseManager.shared.session(for: connection.id)?.status != .connected)
         #expect(MetadataConnectionPool.shared.pooledDriverCount(for: connection.id) == 1)
         #expect(pooled.disconnectCallCount == 0)
         #expect(!MetadataConnectionPool.shared.isReplacingTransport(for: connection.id))
     }
 
-    /// A session that had stopped answering has most likely lost its pooled connections too, so a
-    /// switch that reconnects it is a recovery and still clears them, and releases the pool again when
-    /// the reconnect fails.
     @Test("A switch that reconnects a connection that stopped answering closes its pooled connections")
     func recoveringSwitchClosesThePool() async {
         let connection = makeSession(stoppedAnswering: true)
@@ -121,12 +112,13 @@ struct SwitchDatabasePooledConnectionTests {
         FakeMSSQLPluginRegistration.registerIfNeeded()
         var connection = TestFixtures.makeConnection(name: "Prod")
         connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
-        var session = ConnectionSession(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
         session.status = .connected
         DatabaseManager.shared.injectSession(session, for: connection.id)
         let pooled = seedPooledConnection(for: connection.id)
 
         _ = await DatabaseManager.shared.performHealthMonitorReconnect(connectionId: connection.id)
+        await DatabaseManager.shared.stopHealthMonitor(for: connection.id)
 
         #expect(MetadataConnectionPool.shared.pooledDriverCount(for: connection.id) == 0)
         #expect(pooled.disconnectCallCount == 1)
