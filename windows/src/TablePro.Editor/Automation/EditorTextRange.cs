@@ -26,6 +26,7 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
     public int CompareEndpoints(TextPatternRangeEndpoint endpoint, ITextRangeProvider textRangeProvider,
         TextPatternRangeEndpoint targetEndpoint)
     {
+        Clamp();
         var other = (EditorTextRange)textRangeProvider;
         return Position(endpoint).CompareTo(other.Position(targetEndpoint));
     }
@@ -40,6 +41,7 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
 
     public ITextRangeProvider? FindText(string text, bool backward, bool ignoreCase)
     {
+        Clamp();
         if (string.IsNullOrEmpty(text))
         {
             return null;
@@ -59,6 +61,7 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
 
     public void GetBoundingRectangles(out double[] returnValue)
     {
+        Clamp();
         var rects = peer.Editor.RangeRects(_start, _end);
         returnValue = new double[rects.Count * 4];
         for (var i = 0; i < rects.Count; i++)
@@ -124,12 +127,22 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
         return moved;
     }
 
-    public void Select() => peer.Editor.Model.SetSelection(_start, _end);
+    // A client may hold a range across edits, so every call that reads the document clamps it first.
+    public void Select()
+    {
+        Clamp();
+        peer.Editor.Model.SetSelection(_start, _end);
+    }
 
-    public void AddToSelection() => peer.Editor.Model.AddSelection(new Selection(_start, _end));
+    public void AddToSelection()
+    {
+        Clamp();
+        peer.Editor.Model.AddSelection(new Selection(_start, _end));
+    }
 
     public void RemoveFromSelection()
     {
+        Clamp();
         var remaining = peer.Editor.Model.Selections.Where(s => s.Start != _start || s.End != _end).ToList();
         if (remaining.Count > 0)
         {
@@ -139,6 +152,7 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
 
     public void ScrollIntoView(bool alignToTop)
     {
+        Clamp();
         var line = Document.GetLineFromOffset(alignToTop ? _start : _end);
         var (first, last) = peer.Editor.VisibleLines();
         if (alignToTop || line < first || line > last)

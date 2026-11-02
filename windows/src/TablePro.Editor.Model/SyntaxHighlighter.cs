@@ -108,9 +108,13 @@ public sealed class SyntaxHighlighter : IDisposable
     // False once every line is known.
     public bool AdvanceIdle(int windows)
     {
+        var window = Window;
         for (var i = 0; i < windows && _frontier < _document.LineCount; i++)
         {
-            AdvanceOnce(Window);
+            var before = _frontier;
+            AdvanceOnce(window);
+            // A line or token longer than the window needs a longer one, as EnsureStates finds it.
+            window = _frontier == before ? window * 2 : Window;
         }
         return _frontier < _document.LineCount;
     }

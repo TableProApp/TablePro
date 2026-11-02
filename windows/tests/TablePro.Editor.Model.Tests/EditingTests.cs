@@ -174,6 +174,14 @@ public sealed class EditingTests
     }
 
     [Fact]
+    public void ACaretAtTheLineStartStaysACaretWhenCommented()
+    {
+        var model = Carets.Model("|select 1;");
+        model.ToggleLineComment();
+        Assert.Equal("--|select 1;", Carets.Show(model));
+    }
+
+    [Fact]
     public void IndentAndOutdentEverySelectedLine()
     {
         var model = Carets.Model("a\nb\nc");

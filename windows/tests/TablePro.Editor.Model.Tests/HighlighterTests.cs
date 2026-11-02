@@ -102,6 +102,21 @@ public sealed class HighlighterTests
         }
     }
 
+    [Fact]
+    public void IdlePassesGetPastALineLongerThanAWindow()
+    {
+        var document = new TextDocument(new string('x', 200_000) + "\n" + Script(100));
+        var highlighter = new SyntaxHighlighter(document, new FakeLexer());
+
+        var passes = 0;
+        while (highlighter.AdvanceIdle(4) && passes < 50)
+        {
+            passes++;
+        }
+
+        Assert.Equal(document.LineCount, highlighter.Frontier);
+    }
+
     private static string Script(int lines)
     {
         var text = new StringBuilder();

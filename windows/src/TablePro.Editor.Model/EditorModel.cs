@@ -226,6 +226,10 @@ public sealed partial class EditorModel
     // added at its edge, as indenting a selected block expects.
     private static Selection MapKeepingStart(Selection selection, TextChange change)
     {
+        if (selection.IsEmpty)
+        {
+            return selection.Map(change);
+        }
         int Map(int offset, bool isStart) =>
             isStart && offset == change.Offset && change.RemovedLength == 0 ? offset : Selection.MapOffset(offset, change);
 
