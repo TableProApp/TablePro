@@ -1,0 +1,95 @@
+name: Windows
+
+# The .NET interop library over the core's FFI crate, tested against the real library on each
+# platform it builds for. CI calls it when the windows suite changed.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  UNIFFI_BINDGEN_CS_TAG: v0.11.1+v0.31.0
+
+jobs:
+  test:
+    name: Windows (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - name: Arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+          # Also checks that the committed bindings match the library.
+          - name: macOS
+            runner: macos-15
+            target: aarch64-apple-darwin
+            bindings: true
+    runs-on: ${{ matrix.runner }}
+    # DuckDB's C++ takes most of it, and MSVC builds it slowly.
+    timeout-minutes: 150
+    env:
+      RUSTFLAGS: -D warnings
+      # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks;
+      # its prebuilt objects stand in.
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: windows-${{ matrix.target }}
+      # windows/global.json takes the newest 10.0 SDK.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+      - name: Test the interop library
+        # The test build runs cargo for the core first (windows/AGENTS.md, Commands).
+        working-directory: windows
+        run: dotnet test --solution TablePro.slnx
+
+      - name: Restore uniffi-bindgen-cs
+        if: matrix.bindings
+        id: bindgen-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.uniffi-bindgen-cs
+          key: uniffi-bindgen-cs-${{ env.UNIFFI_BINDGEN_CS_TAG }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Install uniffi-bindgen-cs
+        if: matrix.bindings && steps.bindgen-cache.outputs.cache-hit != 'true'
+        env:
+          RUSTFLAGS: ""
+        run: |
+          cargo install uniffi-bindgen-cs --locked --root ~/.uniffi-bindgen-cs \
+            --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag "$UNIFFI_BINDGEN_CS_TAG"
+      - name: Save uniffi-bindgen-cs
+        if: matrix.bindings && steps.bindgen-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.uniffi-bindgen-cs
+          key: ${{ steps.bindgen-cache.outputs.cache-primary-key }}
+      - name: The committed bindings match the library
+        if: matrix.bindings
+        working-directory: windows
+        run: |
+          dotnet msbuild src/TablePro.Interop -t:GenerateBindings -p:UniffiBindgenCs="$HOME/.uniffi-bindgen-cs/bin/uniffi-bindgen-cs"
+          if [ -n "$(git status --porcelain -- src/TablePro.Interop/Generated)" ]; then
+            git status --short -- src/TablePro.Interop/Generated
+            echo "::error::the bindings in windows/src/TablePro.Interop/Generated are stale: run the GenerateBindings target and commit the result (windows/AGENTS.md, Bindings)"
+            exit 1
+          fi
