@@ -76,11 +76,11 @@ A `cfg` split inside a crate:
 | What | Linux | macOS | Windows |
 |---|---|---|---|
 | `FileIdentity` and the descriptors that hold a file (`tablepro-core`) | device and inode, `/proc/self/fd` | device and inode, `/dev/fd` read with fstat | volume and file index; a claim alone holds the file |
-| The private safe write (`tablepro-storage`) | temporary 0600 file, fsync, rename, directory fsync | the same | temporary file, flush, rename |
+| The private safe write (`tablepro-storage`) | temporary 0600 file, fsync, rename, directory fsync | the same | temporary file, fsync, rename |
 | `TCP_USER_TIMEOUT` (`tablepro-net`) | set | not set | not set |
 | SQLite | the distribution's | bundled | bundled |
 | DuckDB's file lock while a file is replaced | fcntl | fcntl | LockFileEx |
-| SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | MIT Kerberos, behind the `kerberos` feature | SSPI |
+| SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | the `kerberos` feature, which CI does not build | SSPI |
 | OpenSSH transport, askpass helper | yes | yes | not built |
 | MongoDB's relay for an SSH route | yes | yes | not built |
 | Cassandra's loopback relay | serves this user, from `/proc/net/tcp` | serves no one | serves no one |

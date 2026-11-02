@@ -160,10 +160,19 @@ mod tests {
         }
     }
 
+    /// A path from the root as an absolute one on this platform: Windows
+    /// needs a drive.
+    fn absolute(path: &str) -> PathBuf {
+        match cfg!(windows) && path.starts_with('/') {
+            true => PathBuf::from(format!("C:{path}")),
+            false => PathBuf::from(path),
+        }
+    }
+
     fn with_ca_file(mode: TlsMode, path: &str) -> TlsConfig {
         TlsConfig {
             mode,
-            ca_file: Some(PathBuf::from(path)),
+            ca_file: Some(absolute(path)),
             client_identity: None,
             server_name: None,
         }
@@ -172,8 +181,8 @@ mod tests {
     fn with_identity(certificate: &str, key: &str) -> TlsConfig {
         TlsConfig {
             client_identity: Some(ClientIdentity {
-                certificate: PathBuf::from(certificate),
-                key: PathBuf::from(key),
+                certificate: absolute(certificate),
+                key: absolute(key),
             }),
             ..TlsConfig::verify_full()
         }
@@ -343,9 +352,11 @@ mod tests {
 
     #[test]
     fn a_stored_ca_file_with_require_is_read_as_verify_full() {
-        let stored: TlsConfig =
-            serde_json::from_str(r#"{"mode":"require","ca_file":"/etc/tls/ca.pem","server_name":"db.internal"}"#)
-                .unwrap();
+        let stored: TlsConfig = serde_json::from_str(&format!(
+            r#"{{"mode":"require","ca_file":"{}","server_name":"db.internal"}}"#,
+            absolute("/etc/tls/ca.pem").display()
+        ))
+        .unwrap();
 
         assert_eq!(
             stored,

@@ -44,6 +44,15 @@ impl FileEndpoint {
 mod tests {
     use super::*;
 
+    /// A path from the root as an absolute one on this platform: Windows
+    /// needs a drive.
+    fn absolute(path: &str) -> PathBuf {
+        match cfg!(windows) && path.starts_with('/') {
+            true => PathBuf::from(format!("C:{path}")),
+            false => PathBuf::from(path),
+        }
+    }
+
     #[test]
     fn requires_absolute_non_empty_path() {
         assert_eq!(
@@ -55,17 +64,17 @@ mod tests {
             Err(ConfigError::RelativePath)
         );
 
-        let existing = FileEndpoint::open_existing(PathBuf::from("/srv/app.sqlite")).unwrap();
-        assert_eq!(existing.path(), Path::new("/srv/app.sqlite"));
+        let existing = FileEndpoint::open_existing(absolute("/srv/app.sqlite")).unwrap();
+        assert_eq!(existing.path(), absolute("/srv/app.sqlite"));
         assert_eq!(existing.mode(), FileOpenMode::OpenExisting);
 
-        let created = FileEndpoint::create_new(PathBuf::from("/srv/new.sqlite")).unwrap();
+        let created = FileEndpoint::create_new(absolute("/srv/new.sqlite")).unwrap();
         assert_eq!(created.mode(), FileOpenMode::CreateNew);
     }
 
     #[test]
     fn for_reopen_is_open_existing_for_the_same_path() {
-        let created = FileEndpoint::create_new(PathBuf::from("/srv/new.sqlite")).unwrap();
+        let created = FileEndpoint::create_new(absolute("/srv/new.sqlite")).unwrap();
         let reopened = created.for_reopen();
         assert_eq!(reopened.path(), created.path());
         assert_eq!(reopened.mode(), FileOpenMode::OpenExisting);
