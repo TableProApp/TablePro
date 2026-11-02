@@ -139,7 +139,7 @@ impl AppServices {
         let connector = DriverConnector::new(
             ConnectServices {
                 environment: ConnectEnvironment::new(config::VERSION),
-                ssh: ssh.clone(),
+                ssh: Arc::new(ssh.clone()),
                 liveness,
             },
             deadlines.clone(),

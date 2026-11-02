@@ -2,7 +2,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use tablepro_core::Connection;
-use tablepro_ssh::SshSession;
+
+use crate::connect::SshTunnel;
 
 /// A connection and the SSH session it runs through, if any.
 ///
@@ -11,7 +12,7 @@ use tablepro_ssh::SshSession;
 /// the driver.
 pub struct EstablishedConnection {
     pub connection: Arc<dyn Connection>,
-    pub ssh_session: Option<Arc<SshSession>>,
+    pub ssh_session: Option<Arc<dyn SshTunnel>>,
 }
 
 impl fmt::Debug for EstablishedConnection {

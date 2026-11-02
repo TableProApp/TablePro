@@ -17,11 +17,14 @@ mod credential_source;
 mod driver_connector;
 mod keyring_source;
 mod no_stored_credentials;
+#[cfg(unix)]
+mod openssh_tunnels;
 mod pending_save;
 mod pending_session;
 mod persist_pending_save;
 mod request_target;
 mod resolve_saved;
+mod ssh_tunnels;
 
 pub use attempt_generation::AttemptGeneration;
 pub use attempt_outcome::AttemptOutcome;
@@ -43,3 +46,4 @@ pub use pending_session::PendingSession;
 pub use persist_pending_save::{PersistReport, persist_pending_save};
 pub use request_target::RequestTarget;
 pub use resolve_saved::{resolve_saved, ssh_config};
+pub use ssh_tunnels::{SshTunnel, SshTunnels};

@@ -94,7 +94,7 @@ async fn keys_list_and_commands_run_through_openssh() {
     let connector = Arc::new(DriverConnector::new(
         ConnectServices {
             environment: ConnectEnvironment::new("test"),
-            ssh,
+            ssh: Arc::new(ssh),
             liveness: LivenessPolicy::DESKTOP,
         },
         Arc::new(DefaultDeadlines::new(LivenessPolicy::DESKTOP)),

@@ -606,7 +606,7 @@ fn connect(request: &ConnectRequest, tasks: &Tasks) -> Arc<Session> {
     let connector = Arc::new(DriverConnector::new(
         ConnectServices {
             environment: ConnectEnvironment::new("test"),
-            ssh: unused_ssh(),
+            ssh: Arc::new(unused_ssh()),
             liveness,
         },
         deadlines.clone(),

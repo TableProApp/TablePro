@@ -110,7 +110,7 @@ fn connector(ssh: SshServices) -> Arc<DriverConnector> {
     Arc::new(DriverConnector::new(
         ConnectServices {
             environment: ConnectEnvironment::new("test"),
-            ssh,
+            ssh: Arc::new(ssh),
             liveness: LivenessPolicy::DESKTOP,
         },
         Arc::new(DefaultDeadlines::new(LivenessPolicy::DESKTOP)),
@@ -396,7 +396,7 @@ async fn session_through_openssh_reconnects_after_the_master_dies() {
         .established()
         .ssh_session
         .as_ref()
-        .and_then(|session| session.master_pid())
+        .and_then(|session| session.process_id())
         .expect("an ssh master");
     let session = start(connector, pending);
     assert_eq!(

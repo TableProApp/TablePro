@@ -1,6 +1,8 @@
 //! A system trust store with no certificate authority in it. The case
 //! has a binary of its own because it points the whole process's trust
 //! store at an empty file.
+//! The platform verifier reads `SSL_CERT_FILE` on Linux alone.
+#![cfg(target_os = "linux")]
 
 use tablepro_core::TlsConfig;
 use tablepro_net::tls::{TlsSetupError, build_client_config};

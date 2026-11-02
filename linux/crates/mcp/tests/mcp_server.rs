@@ -127,13 +127,13 @@ async fn open_session(dir: &Path, file: &Path, id: Uuid, read_only: bool, create
     let connector = Arc::new(DriverConnector::new(
         ConnectServices {
             environment: ConnectEnvironment::new("test"),
-            ssh: SshServices {
+            ssh: Arc::new(SshServices {
                 runtime: Arc::new(SshRuntimeCell::new(dir.join("runtime"))),
                 ssh_program: "ssh".into(),
                 ssh_keygen_program: "ssh-keygen".into(),
                 askpass_program: "/nonexistent/tablepro-askpass".into(),
                 config_file: None,
-            },
+            }),
             liveness: LivenessPolicy::DESKTOP,
         },
         Arc::new(DefaultDeadlines::new(LivenessPolicy::DESKTOP)),

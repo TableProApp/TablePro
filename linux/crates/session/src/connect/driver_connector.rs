@@ -9,7 +9,6 @@ use tablepro_core::{
     Transport, UnsupportedFeature,
 };
 use tablepro_net::DirectTcpTransport;
-use tablepro_ssh::SshSession;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -85,15 +84,17 @@ async fn establish(
         } => {
             let (transport, ssh_session): (Arc<dyn Transport>, _) = match ssh {
                 Some(config) => {
-                    let session =
-                        SshSession::connect(config, &services.ssh, &liveness, interaction, cancel.child_token())
-                            .await
-                            .map_err(|error| stage_error(&cancel, error.into()))?;
+                    let session = services
+                        .ssh
+                        .open(config, liveness, interaction, cancel.child_token())
+                        .await
+                        .map_err(|error| stage_error(&cancel, error.into()))?;
                     if cancel.is_cancelled() {
                         return Err(ConnectError::Cancelled);
                     }
                     let transport = session
-                        .forward(endpoint.clone(), &liveness)
+                        .clone()
+                        .forward(endpoint.clone(), liveness)
                         .await
                         .map_err(|error| stage_error(&cancel, error.into()))?;
                     (transport, Some(session))
@@ -249,13 +250,13 @@ mod tests {
     fn connector() -> DriverConnector {
         let services = ConnectServices {
             environment: ConnectEnvironment::new("test"),
-            ssh: SshServices {
+            ssh: Arc::new(SshServices {
                 runtime: Arc::new(SshRuntimeCell::new(PathBuf::from("/nonexistent"))),
                 ssh_program: PathBuf::from("/nonexistent/ssh"),
                 ssh_keygen_program: PathBuf::from("/nonexistent/ssh-keygen"),
                 askpass_program: PathBuf::from("/nonexistent/tablepro-askpass"),
                 config_file: None,
-            },
+            }),
             liveness: LivenessPolicy::DESKTOP,
         };
         DriverConnector::new(services, Arc::new(DefaultDeadlines::new(LivenessPolicy::DESKTOP)))

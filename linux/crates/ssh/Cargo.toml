@@ -9,8 +9,6 @@ publish.workspace = true
 tablepro-core.workspace = true
 async-trait.workspace = true
 futures.workspace = true
-# mkdirat and openat with O_NOFOLLOW, and the effective uid, none of which std has.
-rustix = { workspace = true, features = ["fs", "process"] }
 secrecy.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "fs"] }
@@ -18,6 +16,10 @@ tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# mkdirat and openat with O_NOFOLLOW, and the effective uid, none of which std has.
+rustix = { workspace = true, features = ["fs", "process"] }
 
 [dev-dependencies]
 tablepro-test-fixtures.workspace = true
