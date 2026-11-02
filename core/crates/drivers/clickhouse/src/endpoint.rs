@@ -125,11 +125,12 @@ impl ClickHouseEndpoint {
     /// refused password or a failed handshake shows up.
     pub(crate) async fn identify(&mut self) -> Result<(ServerInfo, String), DriverError> {
         let bound = self.liveness.connect_timeout + self.liveness.login_timeout;
+        // The analyzer types a scalar subquery Nullable, which a `u8` cannot read.
         let asking = self
             .control
             .query_raw(
                 "SELECT version() AS version, currentDatabase() AS database, \
-                 toUInt8OrZero((SELECT value FROM system.settings WHERE name = 'readonly')) AS readonly",
+                 ifNull(toUInt8OrZero((SELECT value FROM system.settings WHERE name = 'readonly')), 0) AS readonly",
             )
             .fetch_one::<Identity>();
         let identity = match tokio::time::timeout(bound, asking).await {
