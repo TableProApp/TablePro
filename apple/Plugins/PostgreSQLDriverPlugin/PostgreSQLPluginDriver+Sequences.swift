@@ -36,7 +36,7 @@ extension PostgreSQLPluginDriver {
             return PostgreSQLSequencePosition(row: try await catalogRead(query).rows.first)
         } catch {
             Self.sequenceLogger.debug(
-                "Sequence position unavailable for \(sequence, privacy: .public): \(error.localizedDescription)"
+                "Sequence position unavailable for \(sequence, privacy: .private(mask: .hash)): \(error.localizedDescription)"
             )
             return nil
         }
@@ -96,7 +96,7 @@ extension PostgreSQLPluginDriver {
             return try await catalogRead(query).rows.first?[safe: 0]?.asText
         } catch {
             Self.sequenceLogger.debug(
-                "Sequence last value unavailable for \(sequence, privacy: .public): \(error.localizedDescription)"
+                "Sequence last value unavailable for \(sequence, privacy: .private(mask: .hash)): \(error.localizedDescription)"
             )
             return nil
         }

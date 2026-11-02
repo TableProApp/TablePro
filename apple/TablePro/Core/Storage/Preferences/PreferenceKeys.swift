@@ -24,6 +24,8 @@ enum PreferenceKeys {
     static let receivesBetaUpdates = DefaultsKey<Bool>("com.TablePro.updates.receivesBetaUpdates")
     /// Set by Relaunch to Update and cleared by the next launch, which reopens the last session once.
     static let reopenSessionAfterRelaunch = DefaultsKey<Bool>("com.TablePro.updates.reopenSessionAfterRelaunch")
+    // Device-local: the highest plugin manifest serial accepted here, so an older signed manifest is refused.
+    static let pluginRegistrySerial = DefaultsKey<Int>("com.TablePro.plugins.registrySerial")
 
     static let registeredKeyNames: [String] = [
         connectionListSortMode.name,
@@ -43,6 +45,7 @@ enum PreferenceKeys {
         lastSeenAppVersion.name,
         receivesBetaUpdates.name,
         reopenSessionAfterRelaunch.name,
+        pluginRegistrySerial.name,
     ]
 
     static let columnDisplayFormatsPrefix = "com.TablePro.columns.displayFormat."

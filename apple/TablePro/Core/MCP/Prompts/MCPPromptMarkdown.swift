@@ -126,7 +126,7 @@ enum MCPPromptMarkdown {
     private static func escaped(_ text: String?) -> String {
         guard let text, !text.isEmpty else { return "" }
         return text
-            .replacingOccurrences(of: "|", with: "\\|")
-            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "|", with: "\\|", options: .literal)
+            .replacingOccurrences(of: "\n", with: " ", options: .literal)
     }
 }

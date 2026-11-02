@@ -3,6 +3,7 @@ import Dispatch
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProSQLQuoting
 
 nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     let actor = DuckDBActor()
@@ -373,7 +374,7 @@ actor DuckDBActor {
     }
 
     static func quoteIdentifier(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        SQLQuoting.identifier(identifier)
     }
 
     static func stripTrailingSemicolon(_ query: String) -> String {

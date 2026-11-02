@@ -183,6 +183,12 @@ nonisolated enum MongoScriptCommandBuilder {
         return "{\(fields.joined(separator: ", "))}"
     }
 
+    static func bulkStatements(operations: String?, collection: String, writeConcern: String?) throws -> [BulkStatement] {
+        try MongoScriptJson.topLevelElements(operations ?? "[]").map {
+            try bulkOperation($0, collection: collection, writeConcern: writeConcern)
+        }
+    }
+
     static func bulkOperation(_ operation: String, collection: String, writeConcern: String?) throws -> BulkStatement {
         if let document = MongoScriptJson.member(of: operation, key: "insertOne") {
             let payload = MongoScriptJson.member(of: document, key: "document") ?? "{}"

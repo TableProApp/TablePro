@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 struct KafkaEndpoint: Hashable, Sendable {
     let host: String

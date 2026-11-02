@@ -54,14 +54,12 @@ struct LibPQTypeNameRegistryTests {
     @Test("Setting the PostGIS types replaces the previous map rather than merging into it")
     func postgisTypesAreReplaced() {
         let registry = LibPQTypeNameRegistry()
-        let geometry = PostGISType(name: "geometry", schema: "public")
-        let geography = PostGISType(name: "geography", schema: "gis")
         #expect(registry.postgisTypes.isEmpty)
 
-        registry.setPostgisTypes([17_000: geometry])
-        registry.setPostgisTypes([17_001: geography])
+        registry.setPostgisTypes([17_000: "geometry"])
+        registry.setPostgisTypes([17_001: "geography"])
 
-        #expect(registry.postgisTypes == [17_001: geography])
+        #expect(registry.postgisTypes == [17_001: "geography"])
         #expect(registry.name(for: 17_001) == PostgreSQLCatalogTypeNames.unresolved)
     }
 

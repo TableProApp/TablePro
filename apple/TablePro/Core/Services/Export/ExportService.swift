@@ -488,10 +488,7 @@ final class ExportService: ObservableObject {
         )
     }
 
-    /// The non-SQL count goes through the data source, which knows the container each object was
-    /// listed under. Asking the driver directly answers about whichever one it is leased to, so an
-    /// export spanning two databases counted one of them twice and reported a total no progress bar
-    /// could reach.
+    // The non-SQL count asks the data source: the driver answers for whichever database it is leased to.
     private func fetchTotalRowCount(
         for tables: [ExportObjectItem],
         driver: DatabaseDriver,
@@ -510,7 +507,7 @@ final class ExportService: ObservableObject {
                         table: table.name, databaseName: table.databaseName
                     )
                     if let count {
-                        total += count
+                        total = Self.saturatingSum(total, count)
                     }
                 } catch {
                     failedCount += 1
@@ -540,7 +537,7 @@ final class ExportService: ObservableObject {
                 let result = try await driver.execute(query: batchQuery)
                 for row in result.rows {
                     if let cell = row.first, let count = Int(cell.asText ?? "0") {
-                        total += count
+                        total = Self.saturatingSum(total, count)
                     }
                 }
             } catch {
@@ -549,7 +546,7 @@ final class ExportService: ObservableObject {
                         let tableRef = qualifiedTableRef(for: table, driver: driver, databaseType: databaseType)
                         let result = try await driver.execute(query: "SELECT COUNT(*) FROM \(tableRef)")
                         if let cell = result.rows.first?.first, let count = Int(cell.asText ?? "0") {
-                            total += count
+                            total = Self.saturatingSum(total, count)
                         }
                     } catch {
                         failedCount += 1
@@ -564,6 +561,11 @@ final class ExportService: ObservableObject {
             state.statusMessage = Self.estimatedProgressMessage(uncountedTables: failedCount)
         }
         return total
+    }
+
+    private static func saturatingSum(_ total: Int, _ count: Int) -> Int {
+        let (sum, overflow) = total.addingReportingOverflow(count)
+        return overflow ? (count < 0 ? .min : .max) : sum
     }
 
     /// Counts pick between an explicit singular and plural key. Automatic grammar agreement is a

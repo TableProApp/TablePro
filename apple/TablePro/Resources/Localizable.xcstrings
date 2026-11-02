@@ -936,6 +936,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "\"%@\" is not a Snowflake account. Enter an identifier such as myorg-myaccount or xy12345.us-east-2.aws." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "\"%@\" is not a TextMate theme." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -2861,6 +2865,9 @@
         }
       }
     },
+    "%@ cannot be scripted, because its SQL holds more than one statement." : {
+
+    },
     "%@ cannot be the primary key. MongoDB keys every document by _id." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -3564,6 +3571,10 @@
     "%@ has no recorded reads." : {
 
     },
+    "%@ holds a character macOS would turn into command line punctuation." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -4085,10 +4096,18 @@
         }
       }
     },
+    "%@ is not a valid environment variable name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ is not a Vault address. Use a URL such as https://vault.example.com:8200." : {
 
     },
     "%@ is not available on this server. It accepts %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "%@ is not on the server this connection uses, so TablePro did not send the credentials there." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -4879,6 +4898,9 @@
           }
         }
       }
+    },
+    "%@ refuses changes from external clients on this connection." : {
+
     },
     "%@ requires a Pro license" : {
       "extractionState" : "stale",
@@ -7409,6 +7431,9 @@
 
     },
     "%1$@ takes %2$lld dimensions, and the value has %3$lld." : {
+
+    },
+    "%1$@ through the SSH server %2$@" : {
 
     },
     "%1$@ to %2$@: %3$@" : {
@@ -14959,6 +14984,10 @@
         }
       }
     },
+    "A %@ batch decompresses to far more data than the broker sent, so it was not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A %@ index has no equivalent on this engine." : {
       "localizations" : {
         "fr" : {
@@ -15068,6 +15097,10 @@
           }
         }
       }
+    },
+    "A check constraint of %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A check needs an expression." : {
 
@@ -17322,6 +17355,9 @@
         }
       }
     },
+    "A type name is too long." : {
+
+    },
     "A user or role with this name already exists." : {
       "localizations" : {
         "fr" : {
@@ -17378,6 +17414,10 @@
           }
         }
       }
+    },
+    "A value holds a NUL character, which a command line cannot carry." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A value was too large to keep." : {
       "localizations" : {
@@ -23163,6 +23203,12 @@
           }
         }
       }
+    },
+    "Allow %1$@ on '%2$@', database '%3$@', schema '%4$@'?" : {
+
+    },
+    "Allow %1$@ on '%2$@', database '%3$@'?" : {
+
     },
     "Allow AI Access" : {
       "localizations" : {
@@ -43553,6 +43599,10 @@
         }
       }
     },
+    "Column %@ has a type, default, generation expression or check that is not one SQL expression." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Column %@ is a generated column, which needs PostgreSQL 12 or later." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -46902,6 +46952,9 @@
     "Connect again to review the script and run it." : {
 
     },
+    "Connect again to review the variables and send them." : {
+
+    },
     "Connect Anyway" : {
       "localizations" : {
         "fr" : {
@@ -47765,6 +47818,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La connexion « %@ » charge des extensions SQLite qui n’ont pas été ajoutées sur ce Mac :"
+          }
+        }
+      }
+    },
+    "Connection “%@” reads %@ from TablePro's environment and sends the values to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Connection “%1$@” reads %2$@ from TablePro's environment and sends the values to %3$@."
           }
         }
       }
@@ -55107,6 +55170,9 @@
         }
       }
     },
+    "counting rows in '%@'" : {
+
+    },
     "Counting values…" : {
       "localizations" : {
         "fr" : {
@@ -56086,6 +56152,9 @@
           }
         }
       }
+    },
+    "creating database '%@'" : {
+
     },
     "Creating…" : {
       "extractionState" : "stale",
@@ -59950,6 +60019,9 @@
           }
         }
       }
+    },
+    "Database: %1$@, schema: %2$@" : {
+
     },
     "Databases" : {
       "localizations" : {
@@ -93603,6 +93675,10 @@
         }
       }
     },
+    "Index %@ has a key part that is not one SQL expression." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Index %@ has a WHERE clause, an expression, included columns or a prefix length. MongoDB indexes take none of these." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -121022,6 +121098,9 @@
         }
       }
     },
+    "Nobody answered the environment variable prompt in time." : {
+
+    },
     "Nobody answered the pre-connect script prompt in time." : {
 
     },
@@ -142600,6 +142679,12 @@
         }
       }
     },
+    "Read Only depends on the login: %@ has no read-only mode, and TablePro refuses commands that write. Use a user that can only read." : {
+
+    },
+    "Read Only depends on the login: %@ has no read-only mode. Use a login that can only read." : {
+
+    },
     "Read Preference" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -143145,6 +143230,9 @@
           }
         }
       }
+    },
+    "reading rows from '%@'" : {
+
     },
     "Reading Tables" : {
       "localizations" : {
@@ -145034,7 +145122,19 @@
     "Refuse the statement unless it only reads, even where the connection allows writes." : {
 
     },
+    "Refused %@: deleting data was not approved for this statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Refused %@: this statement ran as a read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Refused %@: this statement was not approved to drop or delete data." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Refused %@: this statement was not approved to run server-side code, $out or $merge." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -148267,6 +148367,10 @@
           }
         }
       }
+    },
+    "Reply nested too deeply to show" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Report" : {
       "extractionState" : "manual",
@@ -161417,6 +161521,9 @@
     "Send" : {
 
     },
+    "Send Environment Variables?" : {
+
+    },
     "Send Message" : {
       "localizations" : {
         "fr" : {
@@ -161540,6 +161647,12 @@
       }
     },
     "Send to %@" : {
+
+    },
+    "Send Values" : {
+
+    },
+    "Sending this Mac's environment variables to the server was not approved." : {
 
     },
     "Sends the code to %@" : {
@@ -168829,6 +168942,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Snowflake returned a result chunk address that is not https." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Snowflake returned a sign-in page that is not an https address, so TablePro did not open it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Socket" : {
 
     },
@@ -173332,6 +173453,9 @@
           }
         }
       }
+    },
+    "Statements from external clients run in a read-only transaction, but %@ still allows some changes. Use a login that can only read." : {
+
     },
     "Statements run on the SSH server, so reads and writes act on the live database. The server needs python3." : {
       "localizations" : {
@@ -179605,6 +179729,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro cannot rebuild the definition of %@ from what the server reported." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro cannot sign an RDS token for \"%@\". Enter the RDS Endpoint (for example mydb.abc123.us-east-1.rds.amazonaws.com:5432) when you connect through a port forward or bastion." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -180029,7 +180157,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro does not pass values through the shell %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro does not run a pre-connect script on its own." : {
+
+    },
+    "TablePro does not send environment variables to a new server on its own." : {
 
     },
     "TablePro does not use these theme keys: %@." : {
@@ -180453,6 +180588,10 @@
         }
       }
     },
+    "TablePro on iPhone and iPad can't connect to %1$@ with the SSL mode %2$@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro on iPhone and iPad can't open %@ connections." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -180522,6 +180661,10 @@
           }
         }
       }
+    },
+    "TablePro runs a tool only by its full path, not %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro runs Anthropic's claude tool in headless mode. Claude Code is built for you to use directly, not as a backend for other apps, so this path can break with any Claude Code release." : {
       "localizations" : {
@@ -183573,6 +183716,10 @@
         }
       }
     },
+    "The %@ setting holds a NUL character, which a PostgreSQL connection cannot carry." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The %1$@ plugin could not be installed: %2$@" : {
       "localizations" : {
         "fr" : {
@@ -183694,6 +183841,10 @@
           }
         }
       }
+    },
+    "The action of foreign key %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The action that completed" : {
       "localizations" : {
@@ -183901,6 +184052,12 @@
       }
     },
     "The Apple Intelligence model is still downloading." : {
+
+    },
+    "The archive holds build %1$ld, not build %2$ld." : {
+
+    },
+    "The archive holds the plugin %1$@, not %2$@." : {
 
     },
     "The assistant answers once the connection is up" : {
@@ -184877,6 +185034,9 @@
         }
       }
     },
+    "The Cloudflare hostname cannot start with a dash or contain spaces or control characters." : {
+
+    },
     "The Cloudflare tunnel did not become ready in time: %@" : {
       "localizations" : {
         "fr" : {
@@ -185149,6 +185309,10 @@
         }
       }
     },
+    "The collation of column %@ is not a collation name: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The color marks this connection in the connection list and its window." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -185227,6 +185391,10 @@
         }
       }
     },
+    "The compressed data expands to far more than it holds, so it was not read." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the compressed data is corrupt or was cut short" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185238,6 +185406,14 @@
           }
         }
       }
+    },
+    "The computed expression of column %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The condition of index %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The connection closed." : {
 
@@ -185707,6 +185883,9 @@
           }
         }
       }
+    },
+    "The connection's environment variables, pre-connect script or SQLite extensions were not approved." : {
+
     },
     "The connection's pre-connect script was not approved." : {
       "extractionState" : "stale",
@@ -186337,6 +186516,10 @@
         }
       }
     },
+    "The decompressed file needs more free disk space than this Mac has." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The default %@ is not written in a form this engine shares." : {
       "localizations" : {
         "fr" : {
@@ -186346,6 +186529,14 @@
           }
         }
       }
+    },
+    "The default of column %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The default of column %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The descriptor set names an unknown field type %llu." : {
 
@@ -186557,6 +186748,9 @@
           }
         }
       }
+    },
+    "The downloaded plugin is not newer than the installed one." : {
+
     },
     "The Downloads folder is not available." : {
       "localizations" : {
@@ -186918,6 +187112,10 @@
         }
       }
     },
+    "The expression of generated column %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The extension failed to start: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -187046,6 +187244,9 @@
           }
         }
       }
+    },
+    "The file holds build %1$ld of this plugin, older than build %2$ld on this Mac. To install an older build, uninstall or remove the installed plugin first, then open the file." : {
+
     },
     "The file holds one object, not a list of rows. Open a JSON array of objects or a JSON Lines file." : {
       "localizations" : {
@@ -187211,6 +187412,10 @@
           }
         }
       }
+    },
+    "The filter of index %@ is not one SQL expression, so it cannot be written." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The filter on %@ is not one expression. Remove the semicolon." : {
       "localizations" : {
@@ -187452,6 +187657,14 @@
     "The group end at byte %lld matches no group start." : {
 
     },
+    "The gzip data ends before its last block." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The gzip data is corrupt." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The header names version %lld, which this format does not have." : {
 
     },
@@ -187481,6 +187694,10 @@
     },
     "The icon and color mark this connection in the connection list and its window." : {
 
+    },
+    "The identity of column %@ is not a whole-number seed and increment: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "the IdentityAgent line for this host in ~/.ssh/config" : {
       "localizations" : {
@@ -188308,6 +188525,9 @@
         }
       }
     },
+    "The MCP server could not prepare its private socket folder" : {
+
+    },
     "The MCP server is turned off. Turn it on in Settings > MCP." : {
 
     },
@@ -188781,6 +189001,9 @@
           }
         }
       }
+    },
+    "The package name has too many parts." : {
+
     },
     "The pad directive carries no date, so its accounts were not projected." : {
       "extractionState" : "manual",
@@ -190127,6 +190350,10 @@
         }
       }
     },
+    "the result has far more columns than its rows fill" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
 
     },
@@ -190919,6 +191146,10 @@
           }
         }
       }
+    },
+    "The server answered HTTP %lld with a redirect to %@, which is not the server this connection uses. TablePro did not follow it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The server answered with HTTP %d." : {
       "localizations" : {
@@ -191890,6 +192121,9 @@
         }
       }
     },
+    "The source's definition holds more than one statement." : {
+
+    },
     "The source's indexes could not be read: %@" : {
       "localizations" : {
         "fr" : {
@@ -192003,29 +192237,37 @@
         }
       }
     },
-    "The SSH host %@ contains characters ssh does not allow in a host name." : {
+    "The SSH host %@ contains characters TablePro does not allow in a host name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’hôte SSH %@ contient des caractères que ssh n’accepte pas dans un nom d’hôte."
+            "value" : "L’hôte SSH %@ contient des caractères que TablePro n’accepte pas dans un nom d’hôte."
           }
         }
       }
     },
-    "the SSH host or user of “%@” contains characters ssh does not allow" : {
+    "The SSH host is empty." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "the SSH host, user or port of “%@” is not one TablePro allows" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "l’hôte ou l’utilisateur SSH de « %@ » contient des caractères que ssh n’accepte pas"
+            "value" : "l’hôte, l’utilisateur ou le port SSH de « %@ » n’est pas accepté par TablePro"
           }
         }
       }
+    },
+    "The SSH port %lld is not between 1 and 65535." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The SSH server closed the connection during the handshake." : {
 
@@ -192311,14 +192553,14 @@
         }
       }
     },
-    "The SSH user %@ contains characters ssh does not allow in a user name." : {
+    "The SSH user %@ contains characters TablePro does not allow in a user name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’utilisateur SSH %@ contient des caractères que ssh n’accepte pas dans un nom d’utilisateur."
+            "value" : "L’utilisateur SSH %@ contient des caractères que TablePro n’accepte pas dans un nom d’utilisateur."
           }
         }
       }
@@ -192534,6 +192776,10 @@
           }
         }
       }
+    },
+    "The statement's placeholders do not match the %d values given." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The statements may or may not be saved. Check the table before running them again." : {
       "localizations" : {
@@ -193225,6 +193471,9 @@
         }
       }
     },
+    "The target's definition holds more than one statement." : {
+
+    },
     "The target's indexes could not be read: %@" : {
       "localizations" : {
         "fr" : {
@@ -193705,11 +193954,26 @@
         }
       }
     },
+    "The tunnel was not started: the host %@ is not a DNS name or an IP address." : {
+
+    },
     "The two results share no column name, so there is nothing to compare." : {
 
     },
     "The type changed on the server since it was read. Reload it, then save again." : {
 
+    },
+    "The type of column %@ cannot be written as SQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The type of column %@ does not read as one type: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The type of column %@ is not one SQL Server type: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The type's shape, such as enum, composite, domain, range, aliasType, tableType or clrType" : {
       "localizations" : {
@@ -195134,6 +195398,9 @@
         }
       }
     },
+    "This connection arrived through iCloud from another device." : {
+
+    },
     "This connection asks for TLS, which the Dameng driver does not support. Add the connection again without an SSL mode, and use an SSH, SOCKS or Cloudflare tunnel on a network you do not trust." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -195159,6 +195426,12 @@
     "This connection can't run the PL/pgSQL debugger." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This connection comes from a file in a linked folder, so its author chose the server and the variables." : {
+
+    },
+    "This connection comes from your team library, so a teammate chose the server and the variables." : {
+
     },
     "This connection does not support user and role management." : {
       "localizations" : {
@@ -195199,6 +195472,10 @@
           }
         }
       }
+    },
+    "This connection has a transaction open. Commit or roll it back in TablePro, then try again." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This connection has an open transaction. Commit or roll it back first." : {
       "extractionState" : "manual",
@@ -195392,6 +195669,10 @@
         }
       }
     },
+    "This connection is read only for external clients, and the database refused the statement." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This connection is read only for external clients." : {
       "localizations" : {
         "fr" : {
@@ -195527,6 +195808,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection uses SSL Mode %2$@, which the %1$@ driver does not support. It supports %3$@." : {
+
+    },
     "This connection was deleted on another device or window. Your changes were not saved." : {
       "localizations" : {
         "fr" : {
@@ -195566,6 +195850,12 @@
           }
         }
       }
+    },
+    "This connection was imported, so someone else may have chosen the server and the variables." : {
+
+    },
+    "This connection was opened from a link, so its sender chose the server and the variables." : {
+
     },
     "This connection won't sync to other devices via iCloud." : {
       "localizations" : {
@@ -198824,6 +199114,9 @@
         }
       }
     },
+    "This operation is not the one that was approved." : {
+
+    },
     "This Oracle server is older than release 11.1, which the database driver does not support." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -199362,7 +199655,8 @@
       }
     },
     "This request is read only, and the statement is not a read." : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This request is too large for Apple Intelligence, even with only the columns the statement uses. Select a smaller part of the statement." : {
 
@@ -207983,6 +208277,9 @@
         }
       }
     },
+    "Update the %@ driver in Settings > Extensions to run this from an external client." : {
+
+    },
     "Update the database driver in Settings > Extensions to run a batch more than once with GO." : {
 
     },
@@ -208875,6 +209172,9 @@
           }
         }
       }
+    },
+    "Use confirm_destructive_operation with the explicit confirmation phrase." : {
+
     },
     "Use Default" : {
       "localizations" : {
@@ -211144,6 +211444,9 @@
       }
     },
     "Vault returned a response TablePro could not read." : {
+
+    },
+    "Vault returned a sign-in page that is not an https address, so TablePro did not open it." : {
 
     },
     "Vault returned no sign-in page. The OIDC role must allow the redirect URI http://localhost:8250/oidc/callback." : {

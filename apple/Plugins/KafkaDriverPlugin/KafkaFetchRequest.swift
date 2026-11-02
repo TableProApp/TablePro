@@ -1,4 +1,6 @@
 import Foundation
+import TableProKafkaCore
+import TableProWireIO
 
 struct KafkaFetchResult: Sendable {
     let records: [KafkaRecord]
@@ -18,13 +20,7 @@ enum KafkaFetchRequest {
     private static let defaultPartitionBudget: Int32 = 1 * 1_024 * 1_024
     private static let maximumPartitionBudget: Int32 = 64 * 1_024 * 1_024
 
-    /// Fetches forward from `startOffset` in one partition.
-    ///
-    /// The byte budget is escalated rather than fixed. Kafka's per-partition limit guarantees
-    /// progress only for a message that is FIRST in the requested range (KIP-74): a 10 MB
-    /// message sitting behind a 1 MB budget returns zero records forever, and a fixed budget
-    /// turns that into a page that stops early with no explanation. Doubling on an empty
-    /// reply that the high watermark says should not be empty is what breaks the stall.
+    // Kafka guarantees progress only for the first message in range (KIP-74), so the byte budget grows on an empty reply.
     static func fetch(
         topic: String,
         partition: Int32,
@@ -37,16 +33,20 @@ enum KafkaFetchRequest {
         var highWatermark: Int64 = startOffset
         var offset = startOffset
         var sawTruncation = false
+        var decompression: DecompressionBudget?
 
         while collected.count < maximumRecords {
             try Task.checkCancellation()
-            let page = try await fetchOnce(
+            let allowance = try KafkaCompression.fetchBudget(requesting: budget, after: decompression)
+            let (page, spent) = try await fetchOnce(
                 topic: topic,
                 partition: partition,
                 startOffset: offset,
                 budget: budget,
+                decompression: allowance,
                 cluster: cluster
             )
+            decompression = spent
             highWatermark = page.highWatermark
 
             if page.records.isEmpty {
@@ -62,8 +62,8 @@ enum KafkaFetchRequest {
             }
 
             collected.append(contentsOf: page.records)
-            guard let last = page.records.last else { break }
-            offset = last.offset + 1
+            guard let last = page.records.last, let next = KafkaOffsetMath.offset(after: last.offset) else { break }
+            offset = next
             budget = defaultPartitionBudget
             if offset >= page.highWatermark { break }
         }
@@ -75,13 +75,15 @@ enum KafkaFetchRequest {
         return KafkaFetchResult(records: collected, highWatermark: highWatermark, truncated: sawTruncation)
     }
 
+    // Returns the decompression budget as the reply left it, so the next page continues from it.
     private static func fetchOnce(
         topic: String,
         partition: Int32,
         startOffset: Int64,
         budget: Int32,
+        decompression: DecompressionBudget,
         cluster: KafkaCluster
-    ) async throws -> KafkaFetchResult {
+    ) async throws -> (KafkaFetchResult, DecompressionBudget) {
         try await cluster.withLeader(of: partition, topic: topic, api: "Fetch") { connection in
             let version = try await connection.negotiatedVersion(for: .fetch)
             let flexible = KafkaApiKey.fetch.isFlexible(version: version)
@@ -133,6 +135,7 @@ enum KafkaFetchRequest {
             }
 
             var body = try await connection.send(request)
+            var spent = decompression
             if version >= 1 { _ = try body.int32() }              // throttleTimeMs
             if version >= 7 {
                 let errorCode = try body.int16()
@@ -173,7 +176,8 @@ enum KafkaFetchRequest {
                         blob: blob,
                         partition: index,
                         abortedTransactions: abortedTransactions,
-                        skipAborted: true
+                        skipAborted: true,
+                        budget: &spent
                     )
                     // A batch can start before the offset asked for, because the broker returns
                     // whole batches. Dropping the head here is what keeps paging exact.
@@ -188,8 +192,9 @@ enum KafkaFetchRequest {
                 return partitions
             }
             // One topic and one partition were requested, so there is one answer.
-            return topics.flatMap { $0 }.first
+            let result = topics.flatMap { $0 }.first
                 ?? KafkaFetchResult(records: [], highWatermark: startOffset, truncated: false)
+            return (result, spent)
         }
     }
 }

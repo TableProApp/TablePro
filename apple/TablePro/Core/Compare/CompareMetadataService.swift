@@ -180,21 +180,25 @@ internal struct CompareMetadataService {
 
     internal func routineReads(
         for endpoint: DatabaseEndpoint,
-        connection: DatabaseConnection
+        connection: DatabaseConnection,
+        readsCreationScopes: Bool = false
     ) async throws -> [RoutineSourceRead] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
         let endpointName = endpoint.qualifiedDescription
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
-            return try await Self.readRoutineDefinitions(schema: schema, endpointName: endpointName, using: plugin)
+            return try await Self.readRoutineDefinitions(
+                schema: schema, endpointName: endpointName, readsCreationScopes: readsCreationScopes, using: plugin
+            )
         }
     }
 
     internal func triggerReads(
         for endpoint: DatabaseEndpoint,
         connection: DatabaseConnection,
-        tables: [String]
+        tables: [String],
+        readsCreationScopes: Bool = false
     ) async throws -> [RoutineSourceRead] {
         try await manager.ensureConnected(connection)
         let schema = endpoint.schema
@@ -202,7 +206,11 @@ internal struct CompareMetadataService {
         return try await manager.withMetadataDriver(scope: endpoint.scope) { driver in
             guard let plugin = Self.pluginDriver(from: driver) else { return [] }
             return try await Self.readTriggerDefinitions(
-                tables: tables, schema: schema, endpointName: endpointName, using: plugin
+                tables: tables,
+                schema: schema,
+                endpointName: endpointName,
+                readsCreationScopes: readsCreationScopes,
+                using: plugin
             )
         }
     }

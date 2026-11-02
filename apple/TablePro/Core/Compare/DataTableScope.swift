@@ -62,11 +62,18 @@ internal struct DataTableScope: Codable, Hashable, Sendable {
     }
 
     internal var filterValidationError: String? {
-        if let error = CompareRowFilter.validationError(for: sourceFilter) {
+        filterValidationError(source: nil, target: nil)
+    }
+
+    // Each filter is read the way the engine that runs it lexes, as a `$$` body on PostgreSQL.
+    internal func filterValidationError(source: DatabaseType?, target: DatabaseType?) -> String? {
+        let sourceTypes = [source].compactMap { $0 }
+        let shared = targetFilter == nil ? sourceTypes + [target].compactMap { $0 } : sourceTypes
+        if let error = CompareRowFilter.validationError(for: sourceFilter, databaseTypes: shared) {
             return error
         }
         guard let targetFilter else { return nil }
-        return CompareRowFilter.validationError(for: targetFilter)
+        return CompareRowFilter.validationError(for: targetFilter, databaseTypes: [target].compactMap { $0 })
     }
 
     internal func isKeyColumn(_ column: String) -> Bool {

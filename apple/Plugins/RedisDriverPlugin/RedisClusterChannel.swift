@@ -115,7 +115,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
                 return
             } catch {
                 lastError = error
-                logger.debug("Seed \(seed.identifier, privacy: .public) did not answer: \(error.localizedDescription)")
+                logger.debug("Seed \(seed.identifier, privacy: .private(mask: .hash)) did not answer: \(error.localizedDescription)")
             }
         }
         throw lastError ?? RedisPluginError.connectionFailed
@@ -467,7 +467,7 @@ final class RedisClusterChannel: RedisCommandChannel, @unchecked Sendable {
             guard let message = reply.errorMessage else { continue }
             let errorClass = RedisConnectProbe.errorClass(of: message)
             let part = "\(node.identifier), part \(position + 1) of \(nodes.count)"
-            logger.notice("\(command, privacy: .public) failed on \(part, privacy: .public): \(errorClass, privacy: .public)")
+            logger.notice("\(command, privacy: .public) failed on \(part, privacy: .private(mask: .hash)): \(errorClass, privacy: .public)")
         }
     }
 

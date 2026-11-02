@@ -1,6 +1,7 @@
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProSQLQuoting
 
 /// The columns `SHOW FULL COLUMNS` lists, each default read the way the Mac app reads it.
 nonisolated internal enum MySQLColumnListing {
@@ -26,13 +27,15 @@ nonisolated internal enum MySQLColumnListing {
     }
 
     // Its rows are matched to SHOW FULL COLUMNS by column name alone, so both read the same database.
-    static func catalogDefaultsQuery(table: String, database: String?, source: DefaultSource) -> String? {
+    static func catalogDefaultsQuery(
+        table: String, database: String?, source: DefaultSource, escapes: SQLStringEscapes = .mysql
+    ) -> String? {
         switch source {
         case .quotedCatalog, .oceanBaseCatalog:
             return """
                 SELECT COLUMN_NAME, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_SCHEMA = \(MySQLDriver.databaseLiteral(database))
-                    AND TABLE_NAME = '\(SQLEscaping.backslashStringLiteral(table))'
+                WHERE TABLE_SCHEMA = \(MySQLDriver.databaseLiteral(database, escapes: escapes))
+                    AND TABLE_NAME = \(SQLQuoting.stringLiteral(table, escapes: escapes))
                 """
         case .showFullColumns, .asReported:
             return nil
@@ -104,7 +107,9 @@ nonisolated internal enum MySQLColumnListing {
                 column: column,
                 extra: extra,
                 dataType: dataType,
-                isNullable: isNullable
+                isNullable: isNullable,
+                // Only a MariaDB from 10.2.7 has the quoted catalog.
+                flavor: source == .quotedCatalog ? .mariadb : .mysql
             )
         }
     }

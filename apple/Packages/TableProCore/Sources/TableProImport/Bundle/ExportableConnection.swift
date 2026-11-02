@@ -204,6 +204,34 @@ public extension ExportableConnection {
         return copy
     }
 
+    // The Linux app's connects_like: only how the connection is shown, its timeouts and the startup commands
+    // (asked about at import) are cleared, so a field added later counts until it is listed here. Safe Mode and
+    // the AI policy count. The match key already compared host, port, database and user.
+    func connectsLike(_ other: ExportableConnection) -> Bool {
+        connectionOnly == other.connectionOnly
+    }
+
+    private var connectionOnly: ExportableConnection {
+        var copy = self
+        copy.name = ""
+        copy.host = ""
+        copy.port = 0
+        copy.database = ""
+        copy.username = ""
+        copy.color = nil
+        copy.iconName = nil
+        copy.connectTimeoutSeconds = nil
+        copy.queryTimeoutSeconds = nil
+        copy.startupCommands = nil
+        copy.localOnly = nil
+        copy.redisDatabase = nil
+        // The Mac keeps the Redis index outside the fields and iOS inside them; the key reads both.
+        var fields = additionalFields ?? [:]
+        fields.removeValue(forKey: ConnectionMatchKey.redisDatabaseFieldKey)
+        copy.additionalFields = fields.isEmpty ? nil : fields
+        return copy
+    }
+
     /// An explicit timeout that is out of range is dropped, not replaced by a legacy additional field.
     func sanitizedForImport() -> ExportableConnection {
         var allowed = (additionalFields ?? [:]).filter { !Self.isImportBlockedAdditionalField(key: $0.key, value: $0.value) }
@@ -259,11 +287,11 @@ public struct ExportableTunnelCommand: Codable, Sendable, Equatable {
 }
 
 public extension ExportableConnection {
-    // Match exec hands the host and user to /bin/sh, and the host key store is one entry per line.
+    // Match exec hands the host, user and port to /bin/sh, and the host key store is one entry per line.
     var refusedSSHDestination: SSHDestinationName.Problem? {
         guard let ssh = sshConfig, ssh.enabled else { return nil }
-        let hops = [(ssh.host, ssh.username)] + (ssh.jumpHosts ?? []).map { ($0.host, $0.username) }
-        return hops.lazy.compactMap { SSHDestinationName.problem(host: $0.0, user: $0.1) }.first
+        let hops = [(ssh.host, ssh.username, ssh.port)] + (ssh.jumpHosts ?? []).map { ($0.host, $0.username, $0.port) }
+        return hops.lazy.compactMap { SSHDestinationName.problem(host: $0.0, user: $0.1, port: $0.2) }.first
     }
 }
 

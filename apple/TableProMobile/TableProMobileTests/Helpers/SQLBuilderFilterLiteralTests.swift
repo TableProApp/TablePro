@@ -1,6 +1,7 @@
 import Foundation
 import TableProModels
 import TableProQuery
+import TableProSQLGrammar
 import Testing
 @testable import TableProMobile
 
@@ -68,6 +69,24 @@ struct SQLBuilderFilterLiteralTests {
         #expect(SQLBuilder.buildFilteredCount(
             table: "files", schema: nil, type: .mysql, filters: filters, logicMode: .and
         ) == "SELECT COUNT(*) FROM `files` WHERE `path` = 'C:\\\\temp\\\\'")
+    }
+
+    @Test("A filter follows the backslash rule the session reported")
+    func filterFollowsTheSession() {
+        let filters = [TableFilter(columnName: "path", filterOperator: .equal, value: #"C:\temp\"#)]
+        let literal = SQLSessionLexicalFacts(determined: .backslashEscapesInSingleQuotes, enabled: [])
+        let escaping = SQLSessionLexicalFacts(
+            determined: .backslashEscapesInSingleQuotes, enabled: .backslashEscapesInSingleQuotes
+        )
+        let count = { (type: DatabaseType, session: SQLSessionLexicalFacts) in
+            SQLBuilder.buildFilteredCount(
+                table: "files", schema: nil, type: type, filters: filters, logicMode: .and, session: session
+            )
+        }
+
+        #expect(count(.mysql, literal) == #"SELECT COUNT(*) FROM `files` WHERE `path` = 'C:\temp\'"#)
+        #expect(count(.postgresql, escaping).contains(#"'C:\\temp\\'"#))
+        #expect(count(.postgresql, literal).contains(#"'C:\temp\'"#))
     }
 
     private func search(_ type: DatabaseType, _ text: String) -> String {

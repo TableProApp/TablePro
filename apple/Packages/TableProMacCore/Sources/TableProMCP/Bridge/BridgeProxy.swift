@@ -25,15 +25,12 @@ public struct BridgeDiscovery: Sendable {
 }
 
 public enum MCPBridgeStartupError: Error, LocalizedError {
-    case invalidEndpoint
     case discoveryFailed(String)
     case unverifiedInstance
     case unsupportedUpstreamVersion([String])
 
     public var errorDescription: String? {
         switch self {
-        case .invalidEndpoint:
-            return "The MCP handshake does not describe a usable endpoint"
         case .discoveryFailed(let detail):
             return "server/discover failed: \(detail)"
         case .unverifiedInstance:
@@ -45,9 +42,39 @@ public enum MCPBridgeStartupError: Error, LocalizedError {
     }
 }
 
+public struct MCPVerifiedUpstream: Sendable {
+    public let handshake: MCPHandshakePayload
+    public let credentials: MCPUpstreamCredentials
+    public let discovery: BridgeDiscovery
+}
+
 public enum BridgeUpstreamHandshake {
     private static let probeTimeout: Duration = .seconds(10)
     private static let probeRequestId = JsonRpcId.string("tablepro-bridge-discover")
+
+    public static func acquireVerified(
+        acquirer: MCPHandshakeAcquirer,
+        logger: any MCPBridgeLogger,
+        launchingApp: Bool = true
+    ) async throws -> MCPVerifiedUpstream {
+        let handshake = try await launchingApp ? acquirer.acquire() : acquirer.acquireWithoutLaunching()
+        let credentials = handshake.credentials()
+        let discovery = try await verifiedDiscovery(handshake: handshake, credentials: credentials, logger: logger)
+        return MCPVerifiedUpstream(handshake: handshake, credentials: credentials, discovery: discovery)
+    }
+
+    // Re-acquires and proves the listener before any resend; only bridge startup launches TablePro.
+    public static func credentialsProvider(
+        opening: MCPVerifiedUpstream,
+        acquirer: MCPHandshakeAcquirer,
+        logger: any MCPBridgeLogger
+    ) -> MCPCachedUpstreamCredentialsProvider {
+        MCPCachedUpstreamCredentialsProvider(initial: opening.credentials) {
+            let refreshed = try await acquireVerified(acquirer: acquirer, logger: logger, launchingApp: false)
+            logger.log(.info, "Re-acquired and verified the MCP handshake")
+            return refreshed.credentials
+        }
+    }
 
     public static func verifiedDiscovery(
         handshake: MCPHandshakePayload,

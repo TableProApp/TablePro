@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 import TableProPluginKit
 
 /// Turns Kafka messages into grid rows.

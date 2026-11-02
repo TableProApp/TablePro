@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProProcess
 
 internal struct GitProcessResult: Sendable {
     let exitCode: Int32
@@ -61,12 +62,19 @@ internal struct GitProcessRunner: Sendable {
     }
 
     private func runSynchronously(_ command: GitCommand, handle: RunningProcess) throws -> GitProcessResult {
-        let process = Process()
-        process.executableURL = executableURL
-        process.arguments = command.processArguments
-        process.currentDirectoryURL = command.workingDirectory
-        process.environment = command.environment(base: ProcessInfo.processInfo.environment)
-        process.standardInput = FileHandle.nullDevice
+        let process: Process
+        do {
+            process = try ProcessLauncher.process(
+                for: ProcessCommand(
+                    executable: executableURL,
+                    arguments: command.processArguments,
+                    environment: command.environment(base: ProcessInfo.processInfo.environment),
+                    currentDirectory: command.workingDirectory
+                )
+            )
+        } catch {
+            throw GitProcessError.launchFailed(error.localizedDescription)
+        }
         let outputPipe = Pipe()
         let errorPipe = Pipe()
         process.standardOutput = outputPipe

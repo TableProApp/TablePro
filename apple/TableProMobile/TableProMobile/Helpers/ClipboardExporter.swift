@@ -1,6 +1,7 @@
 import Foundation
 import TableProDatabase
 import TableProModels
+import TableProSQLQuoting
 import TableProTabularIO
 import UIKit
 import UniformTypeIdentifiers
@@ -220,11 +221,12 @@ nonisolated enum ClipboardExporter {
         databaseType: DatabaseType,
         driver: (any DatabaseDriver)?
     ) -> String {
-        if let driver { return driver.escapeStringLiteral(value) }
-        guard SQLBuilder.speaksMySQLDialect(databaseType) else {
-            return SQLEscaping.ansiStringLiteral(value)
+        if SQLBuilder.speaksMySQLDialect(databaseType) {
+            let escapes = MySQLDriver.keptTextEscapes(for: databaseType, banner: driver?.serverVersion)
+            return SQLQuoting.stringLiteralBody(value, escapes: escapes)
         }
-        return SQLEscaping.backslashStringLiteral(value)
+        if let driver { return driver.escapeStringLiteral(value) }
+        return SQLEscaping.ansiStringLiteral(value)
     }
 
     private static func csvField(_ value: String?) -> String {

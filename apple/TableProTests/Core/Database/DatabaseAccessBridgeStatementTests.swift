@@ -81,3 +81,40 @@ struct DatabaseAccessBridgeStatementTests {
         #expect(statement == "EXPLAIN SELECT 1")
     }
 }
+
+extension GlobalStateSuites {
+    // An approved operation runs in the scope it was approved in, whatever the session switched to since.
+    @MainActor
+    struct DatabaseAccessBridgeApprovedScopeTests {
+        @Test("A database switch between the approval and the run cannot move a schema drop")
+        func dropSchemaStaysOnTheApprovedDatabase() async throws {
+            let connection = TestFixtures.makeConnection(database: "app", type: .mysql)
+            let sessionDriver = WritePolicyDriver()
+            let pooledDriver = WritePolicyDriver()
+            var session = ConnectionSession(
+                connection: connection,
+                driver: PluginDriverAdapter(connection: connection, pluginDriver: sessionDriver)
+            )
+            session.browseDatabase = "app"
+            session.status = .connected
+            DatabaseManager.shared.injectSession(session, for: connection.id)
+            defer {
+                DatabaseManager.shared.removeSession(for: connection.id)
+                MetadataConnectionPool.shared.closeAll(connectionId: connection.id)
+            }
+            let approvedScope = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
+            let pooled = PluginDriverAdapter(connection: connection, pluginDriver: pooledDriver)
+            try await pooled.connect()
+            MetadataConnectionPool.shared.injectEntry(pooled, scope: approvedScope)
+            let operation = try await ApprovedOperationFixture.approve(
+                [], scope: approvedScope, databaseType: .mysql, kind: .destructiveQuery
+            )
+
+            DatabaseManager.shared.updateSession(connection.id) { $0.browseDatabase = "other" }
+            try await DatabaseAccessBridge().dropSchema(operation, name: "sales")
+
+            #expect(pooledDriver.received == ["DROP SCHEMA sales"])
+            #expect(sessionDriver.received.isEmpty)
+        }
+    }
+}

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 extension MySQLPluginDriver: PluginPrincipalManagement {
@@ -140,9 +141,9 @@ extension MySQLPluginDriver: PluginPrincipalManagement {
         limit: Int
     ) async throws -> [PluginPrivilegeScope] {
         guard serverHasInformationSchema else { return [] }
-        let pattern = escapeStringLiteral(MySQLGrantPatternEscaping.escapeDatabasePattern(query))
+        let pattern = mysqlEscapeStringLiteral(MySQLGrantPatternEscaping.escapeDatabasePattern(query))
         let excludedSchemas = flavor.systemDatabaseNames
-            .map { "'\(escapeStringLiteral($0))'" }
+            .map { "'\(mysqlEscapeStringLiteral($0))'" }
             .joined(separator: ", ")
         let sql = """
             SELECT TABLE_SCHEMA, TABLE_NAME

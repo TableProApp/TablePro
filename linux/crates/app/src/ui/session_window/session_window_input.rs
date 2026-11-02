@@ -3,8 +3,10 @@ use libadwaita as adw;
 use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::SecretKind;
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, ConnectionTagName, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionTag, ConnectionTagName, SavedConnection};
 use uuid::Uuid;
+
+use crate::services::saved_connection_editor::GroupChoice;
 
 use super::connect_failure_details::Remedy;
 use super::file_location_dialog::LocationChoice;
@@ -146,7 +148,7 @@ pub(crate) enum SessionWindowInput {
     SetConnectionColor(Uuid, Option<ConnectionColor>),
     /// A group picked from a connection row's menu, or `None` when the
     /// user took it out of one.
-    SetConnectionGroup(Uuid, Option<ConnectionGroupName>),
+    SetConnectionGroup(Uuid, GroupChoice),
     /// A tag ticked on or off in a connection row's menu.
     SetConnectionTag(Uuid, Uuid, bool),
     /// A new tag, put on the connection `on` when there is one.

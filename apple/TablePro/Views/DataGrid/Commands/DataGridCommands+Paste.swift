@@ -40,7 +40,7 @@ struct DataGridCellPasteBlock: Equatable {
 
     // A CRLF copy folds to LF; empty lines at the end are a spreadsheet's trailing breaks, not rows.
     static func pastedLines(_ text: String) -> [String] {
-        var lines = text.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines)
+        var lines = text.replacingOccurrences(of: "\r\n", with: "\n", options: .literal).components(separatedBy: .newlines)
         while lines.count > 1, lines.last?.isEmpty == true {
             lines.removeLast()
         }

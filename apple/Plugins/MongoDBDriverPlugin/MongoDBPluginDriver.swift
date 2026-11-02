@@ -35,7 +35,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     func quoteIdentifier(_ name: String) -> String { name }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery]
+        [.cancelQuery, .statementPolicy]
     }
 
     func defaultExportQuery(table: String) -> String? {
@@ -179,7 +179,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             )
         }
 
-        return try await runScript(trimmed, rowCap: nil, access: MongoScriptAccess(context), startTime: startTime)
+        return try await runScript(trimmed, rowCap: nil, context: context, startTime: startTime)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
@@ -218,14 +218,14 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         guard trimmed.lowercased() != "select 1" else {
             return try await execute(query: query, context: context)
         }
-        return try await runScript(trimmed, rowCap: rowCap, access: MongoScriptAccess(context), startTime: startTime)
+        return try await runScript(trimmed, rowCap: rowCap, context: context, startTime: startTime)
     }
 
     /// Runs one statement of the connection's shell and turns what it evaluated to into a result.
     private func runScript(
         _ statement: String,
         rowCap: Int?,
-        access: MongoScriptAccess,
+        context: PluginStatementContext,
         startTime: Date
     ) async throws -> PluginQueryResult {
         guard let runtime = scriptRuntime else { throw MongoDBPluginError.notConnected }
@@ -236,7 +236,8 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
                 statement: MongoShellCommandLine.rewrite(statement),
                 database: currentDb,
                 valueCeiling: ceiling,
-                access: access
+                access: MongoScriptAccess(context),
+                shell: MongoScriptRuntime.Shell(context)
             )
             if let switched = outcome.databaseSwitch { currentDb = switched }
             let declared = try await declaredColumns(for: outcome)
@@ -890,6 +891,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         )
         let db = currentDb
         let access = MongoScriptAccess(context)
+        let shell = MongoScriptRuntime.Shell(context)
 
         guard let runtime = scriptRuntime else {
             return AsyncThrowingStream { $0.finish(throwing: MongoDBPluginError.notConnected) }
@@ -899,17 +901,15 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let work = Task {
                 do {
-                    switch try await runtime.exportPlan(for: trimmed, database: db, access: access) {
+                    switch try await runtime.exportPlan(for: trimmed, database: db, access: access, shell: shell) {
                     case .cursor(let plan, let databaseSwitch, let writes):
                         if let databaseSwitch { self.currentDb = databaseSwitch }
                         let census = MongoFieldCensus.request(
                             for: plan, limit: PluginRowLimits.emergencyMax, timeoutMS: timeout
                         )
-                        guard !Self.exportWrites(plan, census: census, timeoutMS: timeout) else {
+                        if let refusal = Self.exportRefusal(plan, census: census, timeoutMS: timeout, access: access) {
                             throw MongoScriptStatementFailure.carrying(
-                                MongoScriptError(MongoScriptText.refusedWritingPipelineInExport),
-                                databaseSwitch: databaseSwitch,
-                                writes: writes
+                                MongoScriptError(refusal), databaseSwitch: databaseSwitch, writes: writes
                             )
                         }
                         let inner = plan.isFind
@@ -952,18 +952,28 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         }
     }
 
-    /// An export only reads, whatever the statement was sent as, and its plan runs outside the
-    /// host's checks, so every pipeline it would send is checked here.
-    private static func exportWrites(
+    // An export only reads, whatever the statement was sent as, and its plan runs outside the host's checks, so every
+    // document it would send is checked here.
+    private static func exportRefusal(
         _ plan: MongoScriptCursorPlan,
         census: MongoFieldCensus.Request?,
-        timeoutMS: Int32
-    ) -> Bool {
-        var sent = [census?.pipeline, census?.optionsJson]
-        if !plan.isFind {
-            sent += [plan.pipeline, plan.options.aggregateOptionsJson(timeoutMS: timeoutMS)]
+        timeoutMS: Int32,
+        access: MongoScriptAccess
+    ) -> String? {
+        var pipelines = [census?.pipeline, census?.optionsJson]
+        var findDocuments: [String?] = []
+        if plan.isFind {
+            findDocuments = [plan.filter, plan.options.findOptionsJson(limit: PluginRowLimits.emergencyMax, timeoutMS: timeoutMS)]
+        } else {
+            pipelines += [plan.pipeline, plan.options.aggregateOptionsJson(timeoutMS: timeoutMS)]
         }
-        return sent.compactMap { $0 }.contains(where: MongoScriptAccessPolicy.writesThroughPipeline)
+        let sentPipelines = pipelines.compactMap { $0 }
+        if sentPipelines.contains(where: MongoScriptAccessPolicy.writesThroughPipeline) {
+            return MongoScriptText.refusedWritingPipelineInExport
+        }
+        let sent = sentPipelines + findDocuments.compactMap { $0 }
+        guard !access.allowsServerCode, sent.contains(where: MongoScriptAccessPolicy.holdsServerCode) else { return nil }
+        return MongoScriptRefusal.serverCode(plan.isFind ? "find" : "aggregate").message
     }
 
     /// Hands over a statement that had already run by the time the export asked, rather than
@@ -1229,8 +1239,18 @@ nonisolated extension MongoDBPluginError: PluginDriverError {
     }
 }
 
-nonisolated private extension MongoScriptAccess {
+nonisolated extension MongoScriptAccess {
     init(_ context: PluginStatementContext) {
-        self = context.readOnly ? .read : .readWrite
+        self.init(
+            writes: !context.readOnly,
+            allowsDestructive: !context.readOnly && context.allowsDestructive,
+            allowsServerCode: context.allowsServerCode
+        )
+    }
+}
+
+nonisolated extension MongoScriptRuntime.Shell {
+    init(_ context: PluginStatementContext) {
+        self = context.origin == .external ? .external : .app
     }
 }

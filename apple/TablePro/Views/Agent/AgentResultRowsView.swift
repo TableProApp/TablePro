@@ -130,7 +130,7 @@ internal struct AgentResultRowsView: View {
 
     private func summary(of sql: String) -> String {
         let flattened = sql
-            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\n", with: " ", options: .literal)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (flattened as NSString).length > 60
             ? String(flattened.prefix(57)) + "…"

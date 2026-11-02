@@ -113,12 +113,15 @@ nonisolated enum SessionLocalStatements {
         return index
     }
 
+    // By scalar: a quote a combining mark follows is one Character with it.
     private static func unquoted(_ name: String) -> String {
-        guard let first = name.first, let last = name.last, name.count >= 2 else { return name }
+        let scalars = name.unicodeScalars
+        guard scalars.count >= 2, let first = scalars.first, let last = scalars.last else { return name }
+        let inner = String(String.UnicodeScalarView(scalars.dropFirst().dropLast()))
         switch (first, last) {
-        case ("`", "`"): return String(name.dropFirst().dropLast()).replacingOccurrences(of: "``", with: "`")
-        case ("\"", "\""): return String(name.dropFirst().dropLast()).replacingOccurrences(of: "\"\"", with: "\"")
-        case ("[", "]"): return String(name.dropFirst().dropLast())
+        case ("`", "`"): return inner.replacingOccurrences(of: "``", with: "`", options: .literal)
+        case ("\"", "\""): return inner.replacingOccurrences(of: "\"\"", with: "\"", options: .literal)
+        case ("[", "]"): return inner
         default: return name
         }
     }

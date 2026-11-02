@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// The `SELECT` a table tab pages through, with its filters.
 ///
@@ -41,9 +42,9 @@ internal enum OracleBrowseSQL {
             quoteIdentifier: quote,
             escapeTypedValue: filterValue,
             regexCondition: { quoted, value, ignoresCase in
-                let pattern = value.replacingOccurrences(of: "'", with: "''", options: .literal)
-                guard ignoresCase else { return "REGEXP_LIKE(\(quoted), '\(pattern)')" }
-                return "REGEXP_LIKE(\(quoted), '\(pattern)', 'i')"
+                let pattern = SQLQuoting.stringLiteral(value)
+                guard ignoresCase else { return "REGEXP_LIKE(\(quoted), \(pattern))" }
+                return "REGEXP_LIKE(\(quoted), \(pattern), 'i')"
             }
         )
         let filterClause = whereClause.isEmpty ? "" : " WHERE \(whereClause)"
@@ -52,11 +53,8 @@ internal enum OracleBrowseSQL {
         )
     }
 
-    /// A filter value as SQL. A value in the shape the grid shows a date or timestamp in, compared against a column
-    /// the host reports as neither text nor a number, becomes an ANSI `DATE` or `TIMESTAMP` literal: a quoted string
-    /// would be converted through the session's `NLS_DATE_FORMAT`, which is `DD-MON-RR` by default and rejects it
-    /// with ORA-01861. A literal with an offset compares as that instant against every temporal type (measured on
-    /// 23ai). Text and numeric columns keep their literals, because a date literal there would convert the column.
+    // A date or timestamp against a temporal column is an ANSI literal: a quoted string goes through
+    // NLS_DATE_FORMAT, `DD-MON-RR` by default, which rejects it with ORA-01861.
     static func filterValue(_ value: String, kind: PluginColumnKind?) -> String {
         if kind == .other, let literal = temporalLiteral(value.trimmingCharacters(in: .whitespaces)) {
             return literal
@@ -66,7 +64,7 @@ internal enum OracleBrowseSQL {
             kind: kind,
             trueLiteral: nil,
             falseLiteral: nil,
-            quote: { "'\($0.replacingOccurrences(of: "'", with: "''", options: .literal))'" }
+            quote: { SQLQuoting.stringLiteral($0) }
         )
     }
 
@@ -100,7 +98,7 @@ internal enum OracleBrowseSQL {
     }
 
     static func quote(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        SQLQuoting.identifier(identifier)
     }
 
     static func qualifiedName(schema: String?, table: String) -> String {

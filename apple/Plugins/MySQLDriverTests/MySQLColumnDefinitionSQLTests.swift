@@ -7,8 +7,10 @@
 //  round trip has to carry through an edit to an unrelated field.
 //
 
+import Foundation
 import TableProMySQLCore
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 struct MySQLColumnDefinitionSQLTests {
@@ -196,12 +198,121 @@ struct MySQLColumnDefinitionSQLTests {
             (value: "active", extra: "", type: "enum('active','inactive')", expected: "'active'"),
             (value: "uuid()", extra: "DEFAULT_GENERATED", type: "VARCHAR(36)", expected: "(uuid())"),
             (value: "(curdate() + interval 1 year)", extra: "DEFAULT_GENERATED", type: "DATE",
-             expected: "(curdate() + interval 1 year)")
+             expected: "(curdate() + interval 1 year)"),
+            (value: "0x00; DROP TABLE invoices", extra: "", type: "VARBINARY(64)", expected: "'0x00; DROP TABLE invoices'"),
+            (value: "0x00, DROP COLUMN secret", extra: "", type: "VARBINARY(64)", expected: "'0x00, DROP COLUMN secret'"),
+            (value: "abc", extra: "", type: "VARBINARY(8)", expected: "'abc'"),
+            (value: "1; DROP TABLE t", extra: "", type: "INT", expected: "'1; DROP TABLE t'")
         ]
     )
     func catalogDefaultRoundTrip(value: String, extra: String, type: String, expected: String) {
         for isNullable in [true, false] {
             #expect(mysqlColumnDefault(.bare(value), extra: extra, dataType: type, isNullable: isNullable) == expected)
+        }
+    }
+
+    // Measured: MySQL 5.7.44 reports a binary default as its bytes, 8.0.11 to 8.4.13 as `0x` and their hex.
+    @Test(
+        "A binary default passes as SQL only as the hex a server from 8.0 reports",
+        arguments: [
+            (value: "0x61", banner: "5.7.44", expected: "'0x61'"),
+            (value: "ab\u{0}\u{0}", banner: "5.7.44", expected: #"'ab\0\0'"#),
+            (value: "x';", banner: "5.7.44", expected: "'x'';'"),
+            (value: "0x61", banner: "8.0.11", expected: "0x61"),
+            (value: "0x78273B", banner: "8.4.13", expected: "0x78273B"),
+            (value: "0x00; DROP TABLE invoices", banner: "8.4.13", expected: "'0x00; DROP TABLE invoices'")
+        ]
+    )
+    func binaryDefaultFollowsTheVersion(value: String, banner: String, expected: String) {
+        let resolved = mysqlColumnDefault(
+            .bare(value), extra: "", dataType: "VARBINARY(64)", isNullable: true, banner: banner, flavor: .mysql
+        )
+        #expect(resolved == expected)
+    }
+
+    @Test("MariaDB reports a binary default as its bytes, whatever the version")
+    func mariaDBBinaryDefaultIsQuoted() {
+        let resolved = mysqlColumnDefault(
+            .bare("0x61"), extra: "", dataType: "BINARY(4)", isNullable: true, banner: "11.4.13-MariaDB", flavor: .mariadb
+        )
+        #expect(resolved == "'0x61'")
+    }
+
+    // Measured on MariaDB 13.0.2: `DEFAULT 'ab'` on a VARBINARY column reads back as `x'6162'` too.
+    @Test(
+        "A MariaDB binary default passes as SQL only as a whole x'' hex literal",
+        arguments: [
+            (value: "x'6162'", expected: "x'6162'"),
+            (value: "x'00FF'", expected: "x'00FF'"),
+            (value: "x'61'; DROP TABLE invoices; --'", expected: "'x''61''; DROP TABLE invoices; --'''"),
+            (value: "x'6g'", expected: "'x''6g'''"),
+            (value: "0x6162", expected: "'0x6162'")
+        ]
+    )
+    func mariaDBBinaryDefaultReadsItsHexLiteral(value: String, expected: String) {
+        let resolved = mysqlColumnDefault(
+            .bare(value), extra: "", dataType: "VARBINARY(4)", isNullable: true, banner: "13.0.2-MariaDB", flavor: .mariadb
+        )
+        #expect(resolved == expected)
+    }
+
+    // Under NO_BACKSLASH_ESCAPES the catalog's escaped copy reads `'\\\'` as a literal and `; DROP TABLE t;` as code.
+    @Test("Catalog text that is not one expression goes in as the string it holds")
+    func catalogTextThatIsNotOneExpressionIsQuoted() {
+        let quoted = mysqlColumnDefault(
+            .quoted("0x00; DROP TABLE invoices"), extra: "", dataType: "VARBINARY(64)", isNullable: true, flavor: .mariadb
+        )
+        #expect(quoted == "'0x00; DROP TABLE invoices'")
+        let escaped = #"concat(_utf8mb4\'日\',_utf8mb4\'\\\'; DROP TABLE t; -- \')"#
+        let expression = mysqlColumnDefault(.bare(escaped), extra: "DEFAULT_GENERATED", dataType: "VARCHAR(255)", isNullable: true)
+        #expect(expression == #"'(concat(_utf8mb4\\''日\\'',_utf8mb4\\''\\\\\\''; DROP TABLE t; -- \\''))'"#)
+    }
+
+    @Test("A column is refused, by name, when its type, default, expression or check is not one expression")
+    func columnTextThatIsNotOneExpressionIsRefused() {
+        let byDefault = PluginColumnDefinition(
+            name: "tag", dataType: "VARBINARY(64)", isNullable: true, defaultValue: "0x00, DROP COLUMN secret"
+        )
+        #expect(mysqlColumnTextRefusal(for: byDefault, flavor: .mysql)?.contains("tag") == true)
+        let byType = PluginColumnDefinition(name: "n", dataType: "INT; DROP TABLE x", isNullable: true)
+        #expect(mysqlColumnTextRefusal(for: byType, flavor: .mysql) != nil)
+        let plain = PluginColumnDefinition(
+            name: "s", dataType: "enum('a','b')", isNullable: true, defaultValue: #"'it\'s'"#
+        )
+        #expect(mysqlColumnTextRefusal(for: plain, flavor: .mysql) == nil)
+    }
+
+    // A source server's default, accepted as printed. Sent unchanged under NO_BACKSLASH_ESCAPES, MySQL 8.4 and
+    // MariaDB 11.4 read `"\"` as closed and dropped `secret`. No top-level comma, comment or `;` means no added action.
+    @Test("A default respelled for a NO_BACKSLASH_ESCAPES session adds no ALTER action", arguments: [
+        (MySQLServerFlavor.mysql, #""\" 'a\' ), DROP COLUMN secret -- '\"""#),
+        (MySQLServerFlavor.mariadb, #""\" 'a\' , DROP COLUMN secret -- '\"""#),
+    ])
+    func defaultRespelledForNoBackslashSession(flavor: MySQLServerFlavor, text: String) throws {
+        let readings = try #require(SQLLexicalProfile.curated(forDatabaseTypeId: flavor.databaseTypeId)).readings
+            .filter { !$0.contains(.backslashEscapesInSingleQuotes) && !$0.contains(.backslashEscapesInDoubleQuotes) }
+        let column = PluginColumnDefinition(name: "c", dataType: "varchar(20)", isNullable: true, defaultValue: text)
+        #expect(mysqlColumnTextRefusal(for: column, flavor: flavor) == nil)
+        let sent = MySQLLiteralSpelling.quoteDoubling.respelled(
+            "ALTER TABLE `t` MODIFY COLUMN " + mysqlColumnDefinitionSQL(column, isMariaDB: flavor.isMariaDB)
+        )
+        #expect(SQLExpressionFragment.isSingleExpression(sent, readings: readings))
+    }
+
+    @Test("A literal is read by scalar, so a doubled quote a combining mark follows stays inside it")
+    func literalWithMarkAfterDoubledQuoteIsBare() {
+        let literal = "'a''\u{301}'"
+        #expect(Array(mysqlDefaultValueLiteral(literal, dataType: "VARCHAR(8)", isMariaDB: false).unicodeScalars)
+            == Array(literal.unicodeScalars))
+    }
+
+    @Test("A dump literal holds under either backslash reading, so a restore reads it as written")
+    func dumpLiteralHoldsUnderEitherReading() throws {
+        let literal = "'" + mysqlEscapeStringLiteral(#"x\', ') ; DROP TABLE users; -- "#) + "'"
+        let length = (literal as NSString).length
+        for reading in try #require(SQLLexicalProfile.curated(forDatabaseTypeId: "MySQL")).readings {
+            let span = SQLNonCodeSpan.span(at: 0, in: literal as NSString, grammar: reading)
+            #expect(span?.kind == .quoted && span?.end == length)
         }
     }
 

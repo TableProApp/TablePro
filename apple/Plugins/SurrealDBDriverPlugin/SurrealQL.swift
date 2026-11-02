@@ -59,8 +59,9 @@ public enum SurrealQL {
             return SurrealRecordID(table: table, id: idValue(fromRaw: trimmed))
         }
 
-        let table = unwrap(String(trimmed[trimmed.startIndex..<separator]))
-        let rawId = String(trimmed[trimmed.index(after: separator)...])
+        let scalars = trimmed.unicodeScalars
+        let table = unwrap(String(scalars[..<separator]))
+        let rawId = String(scalars[scalars.index(after: separator)...])
         guard !table.isEmpty, !rawId.isEmpty else { return nil }
         return SurrealRecordID(table: table, id: idValue(fromRaw: rawId))
     }
@@ -76,38 +77,44 @@ public enum SurrealQL {
     }
 
     private static func isQuoted(_ text: String) -> Bool {
-        guard text.count >= 2 else { return false }
-        if text.hasPrefix("`"), text.hasSuffix("`") { return true }
-        return text.hasPrefix("\u{27E8}") && text.hasSuffix("\u{27E9}")
+        let scalars = text.unicodeScalars
+        guard scalars.count >= 2, let first = scalars.first, let last = scalars.last else { return false }
+        return (first == "`" && last == "`") || (first == "\u{27E8}" && last == "\u{27E9}")
     }
 
+    // A backslash inside backticks escapes the next scalar, as `escapeBackticks` writes it.
     private static func separatorIndex(in text: String) -> String.Index? {
         var insideBackticks = false
         var insideAngles = false
-        var index = text.startIndex
-        while index < text.endIndex {
-            let character = text[index]
-            if character == "`" {
+        var escaping = false
+        let scalars = text.unicodeScalars
+        var index = scalars.startIndex
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            if escaping {
+                escaping = false
+            } else if insideBackticks, scalar == "\\" {
+                escaping = true
+            } else if scalar == "`" {
                 insideBackticks.toggle()
-            } else if character == "\u{27E8}" {
+            } else if scalar == "\u{27E8}" {
                 insideAngles = true
-            } else if character == "\u{27E9}" {
+            } else if scalar == "\u{27E9}" {
                 insideAngles = false
-            } else if character == ":", !insideBackticks, !insideAngles {
+            } else if scalar == ":", !insideBackticks, !insideAngles {
                 return index
             }
-            index = text.index(after: index)
+            index = scalars.index(after: index)
         }
         return nil
     }
 
     private static func unwrap(_ text: String) -> String {
-        if text.count >= 2, text.hasPrefix("`"), text.hasSuffix("`") {
-            return unescapeBackticks(String(text.dropFirst().dropLast()))
-        }
-        if text.count >= 2, text.hasPrefix("\u{27E8}"), text.hasSuffix("\u{27E9}") {
-            return String(text.dropFirst().dropLast())
-        }
+        let scalars = text.unicodeScalars
+        guard scalars.count >= 2, let first = scalars.first, let last = scalars.last else { return text }
+        let inner = String(String.UnicodeScalarView(scalars.dropFirst().dropLast()))
+        if first == "`", last == "`" { return unescapeBackticks(inner) }
+        if first == "\u{27E8}", last == "\u{27E9}" { return inner }
         return text
     }
 
@@ -116,9 +123,19 @@ public enum SurrealQL {
             .replacingOccurrences(of: "`", with: "\\`", options: .literal)
     }
 
+    // The inverse of `escapeBackticks`, in one pass: two replacements in turn misread `\\` before a backtick.
     private static func unescapeBackticks(_ text: String) -> String {
-        text.replacingOccurrences(of: "\\`", with: "`")
-            .replacingOccurrences(of: "\\\\", with: "\\")
+        var unescaped = String.UnicodeScalarView()
+        var escaping = false
+        for scalar in text.unicodeScalars {
+            if !escaping, scalar == "\\" {
+                escaping = true
+                continue
+            }
+            escaping = false
+            unescaped.append(scalar)
+        }
+        return String(unescaped)
     }
 
     private static func isSimpleIdentifier(_ name: String) -> Bool {

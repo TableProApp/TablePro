@@ -28,12 +28,14 @@ struct MCPToolCancellationTests {
         let cancellation = MCPCancellationToken()
         await cancellation.cancel()
         let context = MCPToolTestHarness.context(cancellation: cancellation)
+        let operation = try await ApprovedOperationFixture.approve(
+            [OperationStatement(sql: "SELECT 1")], scope: scope, databaseType: .postgresql
+        )
 
         await #expect(throws: CancellationError.self) {
             _ = try await ToolQueryExecutor.executeAndLog(
                 services: MCPToolTestHarness.services(),
-                query: "SELECT 1",
-                scope: scope,
+                operation: operation,
                 maxRows: 10,
                 timeoutSeconds: 5,
                 context: context,

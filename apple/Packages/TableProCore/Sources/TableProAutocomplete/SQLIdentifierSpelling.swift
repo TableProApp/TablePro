@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 public enum SQLIdentifierCase: String, Codable, CaseIterable, Sendable {
     case asStored
@@ -26,9 +27,9 @@ public enum SQLIdentifierFolding: Sendable, Equatable {
 public struct SQLIdentifierRules: Sendable {
     public let folding: SQLIdentifierFolding
     public let reservedWords: Set<String>
-    public let quote: Character
+    public let quote: SQLIdentifierQuote
 
-    public init(folding: SQLIdentifierFolding, reservedWords: Set<String>, quote: Character = "\"") {
+    public init(folding: SQLIdentifierFolding, reservedWords: Set<String>, quote: SQLIdentifierQuote = .doubleQuote) {
         self.folding = folding
         self.reservedWords = Set(reservedWords.map { $0.uppercased() })
         self.quote = quote
@@ -102,8 +103,7 @@ public struct SQLIdentifierSpelling: Sendable {
     }
 
     public func quoted(_ name: String) -> String {
-        let quote = String(rules.quote)
-        return quote + name.replacingOccurrences(of: quote, with: quote + quote, options: .literal) + quote
+        SQLQuoting.identifier(name, quote: rules.quote)
     }
 
     // A name written into a statement with nothing typed: as stored keeps the caller's own spelling.
@@ -129,9 +129,8 @@ public struct SQLIdentifierSpelling: Sendable {
     ) -> SQLCompletionItem {
         guard let identifier = item.identifier else { return item }
         if quoting != .none, identifier.parts.count == 1, case .catalog(let name) = identifier.parts[0] {
-            // The user's own quote asks for the exact name: inside a closed pair it goes in raw.
-            let quote = String(rules.quote)
-            let text = quoting == .enclosed ? name.replacingOccurrences(of: quote, with: quote + quote, options: .literal) : quoted(name)
+            // The user's own quote asks for the exact name: inside a closed pair it goes in without the pair.
+            let text = quoting == .enclosed ? String(quoted(name).unicodeScalars.dropFirst().dropLast()) : quoted(name)
             return item.recased(label: name, insertText: text)
         }
         // A qualified reference replaces the user's quotes, so it is spelled as if none were typed.

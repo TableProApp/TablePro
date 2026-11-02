@@ -213,8 +213,8 @@ extension DynamoDBPluginDriver {
             var page = body
             if let startKey { page["ExclusiveStartKey"] = startKey }
             let response = try await session.client.send(operation, page)
-            total += response["Count"]?.intValue ?? 0
-            scanned += response["ScannedCount"]?.intValue ?? 0
+            total = Self.saturatingSum(total, response["Count"]?.intValue ?? 0)
+            scanned = Self.saturatingSum(scanned, response["ScannedCount"]?.intValue ?? 0)
             startKey = response["LastEvaluatedKey"]
         } while startKey != nil
         return PluginQueryResult(

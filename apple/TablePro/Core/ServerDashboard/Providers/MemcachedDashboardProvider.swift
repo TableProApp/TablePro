@@ -31,7 +31,7 @@ struct MemcachedDashboardProvider: ServerDashboardQueryProvider {
             ))
         }
         if let hits = number("get_hits"), let misses = number("get_misses") {
-            let lookups = Double(hits + misses)
+            let lookups = Double(hits) + Double(misses)
             metrics.append(DashboardMetric(
                 id: "hit_ratio",
                 label: String(localized: "Hit Ratio"),

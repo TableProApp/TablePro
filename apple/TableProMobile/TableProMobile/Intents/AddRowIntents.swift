@@ -3,14 +3,15 @@ import Foundation
 import TableProModels
 import UniformTypeIdentifiers
 
-nonisolated protocol RowInsertingIntent: AppIntent {
+nonisolated protocol RowInsertingIntent: ForegroundContinuableIntent {
     var connection: ConnectionEntity { get }
     var database: DatabaseEntity? { get }
     var table: TableEntity { get }
 }
 
 nonisolated extension RowInsertingIntent {
-    func insert(rows: [PayloadRow]) async throws -> Int {
+    func insert(rows: [PayloadRow], lock: AppLockState) async throws -> Int {
+        try await unlockApp(lock)
         guard let savedConnection = IntentConnectionLoader.connection(id: connection.id) else {
             throw IntentDataError.connectionNotFound
         }
@@ -31,9 +32,26 @@ nonisolated extension RowInsertingIntent {
         case .proceed:
             break
         }
-        return try await IntentDatabaseSession.with(connection: savedConnection) { session in
+        return try await IntentDatabaseSession.with(connection: savedConnection, lock: lock) { session in
             try await session.insertRows(namespace: database?.id, table: table.name, rows: rows)
         }
+    }
+
+    private func unlockApp(_ lock: AppLockState) async throws {
+        guard await lock.evaluateLock() else { return }
+        let prompt = String(format: String(localized: "Unlock TablePro to add rows to %@."), table.name)
+        let dialog = IntentDialog(LocalizedStringResource(String.LocalizationValue(prompt)))
+        do {
+            if #available(iOS 26.0, *) {
+                guard systemContext.currentMode.canContinueInForeground else { throw AppLockedError() }
+                try await continueInForeground(dialog)
+            } else {
+                try await requestToContinueInForeground(dialog)
+            }
+        } catch {
+            throw AppLockedError()
+        }
+        guard await lock.unlock() else { throw AppLockedError() }
     }
 
     func resultDialog(affectedRows: Int) -> IntentDialog {
@@ -52,7 +70,11 @@ struct AddRowToTableIntent: RowInsertingIntent {
         searchKeywords: ["TablePro", "database", "SQL", "insert", "row", "table"]
     )
     static let openAppWhenRun = false
+    @available(iOS 26.0, *)
+    static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
+
+    @Dependency private var lockState: AppLockState
 
     @Parameter(title: "Connection")
     var connection: ConnectionEntity
@@ -76,7 +98,7 @@ struct AddRowToTableIntent: RowInsertingIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         let rows = try await RowPayload.parseSingle(data: data, file: nil)
-        let count = try await insert(rows: rows)
+        let count = try await insert(rows: rows, lock: lockState)
         return .result(value: count, dialog: resultDialog(affectedRows: count))
     }
 }
@@ -89,7 +111,11 @@ struct AddRowsToTableIntent: RowInsertingIntent {
         searchKeywords: ["TablePro", "database", "SQL", "insert", "rows", "table", "import"]
     )
     static let openAppWhenRun = false
+    @available(iOS 26.0, *)
+    static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
+
+    @Dependency private var lockState: AppLockState
 
     @Parameter(title: "Connection")
     var connection: ConnectionEntity
@@ -117,7 +143,7 @@ struct AddRowsToTableIntent: RowInsertingIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         let rows = try await RowPayload.parse(data: data, file: file)
-        let count = try await insert(rows: rows)
+        let count = try await insert(rows: rows, lock: lockState)
         return .result(value: count, dialog: resultDialog(affectedRows: count))
     }
 }

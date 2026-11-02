@@ -113,7 +113,7 @@ internal struct ObjectCopySelection: Hashable, Identifiable, Sendable {
 
     internal var id: String {
         [kind.rawValue, schema ?? "", name, signature ?? "", owner ?? ""]
-            .map { $0.replacingOccurrences(of: "\u{1F}", with: "\u{1F}\u{1F}") }
+            .map { $0.replacingOccurrences(of: "\u{1F}", with: "\u{1F}\u{1F}", options: .literal) }
             .joined(separator: "\u{1F}")
     }
 

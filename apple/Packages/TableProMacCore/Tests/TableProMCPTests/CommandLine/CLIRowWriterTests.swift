@@ -71,6 +71,13 @@ struct CLIRowWriterTests {
         #expect(CLIRowWriter.uniqueKeys(["a", "a", "a_2", "b"]) == ["a", "a_2", "a_2_2", "b"])
     }
 
+    @Test("A result whose columns all share one name gets its keys in linear time", .timeLimit(.minutes(1)))
+    func manyDuplicateKeys() {
+        let keys = CLIRowWriter.uniqueKeys(Array(repeating: "a", count: 40_000))
+        #expect(keys.last == "a_40000")
+        #expect(Set(keys).count == 40_000)
+    }
+
     @Test("Control characters are escaped in JSON strings")
     func jsonControlCharacters() {
         #expect(CLIRowWriter.jsonString("a\u{1}b\nc") == "\"a\\u0001b\\nc\"")

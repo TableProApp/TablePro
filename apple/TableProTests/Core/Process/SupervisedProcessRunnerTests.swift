@@ -1,17 +1,14 @@
 import Darwin
 import Foundation
 @testable import TablePro
+import TableProProcess
 import TableProTestSupport
 import Testing
 
 struct SupervisedProcessRunnerTests {
     private func runner(script: String) throws -> ProcessSupervisedRunner {
         let runner = ProcessSupervisedRunner()
-        try runner.start(
-            binaryPath: "/bin/sh",
-            arguments: ["-c", script],
-            environment: ["PATH": "/usr/bin:/bin"]
-        )
+        try runner.start(.userShell(script, shell: .sh, environment: ["PATH": "/usr/bin:/bin"]))
         return runner
     }
 
@@ -51,6 +48,40 @@ struct SupervisedProcessRunnerTests {
         let result = await runner.termination
 
         #expect(result.wasRequested)
+    }
+
+    @Test("A stop before anything started is a no-op, and there is no pid to report")
+    func stopBeforeStart() {
+        let runner = ProcessSupervisedRunner()
+
+        runner.stop()
+
+        #expect(runner.processIdentifier == nil)
+    }
+
+    @Test("A stop after the process exited leaves its result as it was")
+    func stopAfterExit() async throws {
+        let runner = try runner(script: "exit 4")
+        let exited = await runner.termination
+
+        runner.stop()
+
+        #expect(await runner.termination == exited)
+        #expect(!exited.wasRequested)
+    }
+
+    @Test("A command the launcher refuses is not started")
+    func refusedCommandDoesNotStart() {
+        let runner = ProcessSupervisedRunner()
+
+        #expect(throws: ProcessLaunchError.nulCharacter) {
+            try runner.start(ProcessCommand(
+                executable: URL(fileURLWithPath: "/usr/bin/true"),
+                arguments: ["a\u{0}b"],
+                environment: [:]
+            ))
+        }
+        #expect(runner.processIdentifier == nil)
     }
 
     @Test("Standard error is delivered line by line and the stream finishes")

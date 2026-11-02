@@ -102,8 +102,9 @@ struct PostgreSQLSequenceStatementTests {
             SET LOCAL row_security = off;
             LOCK TABLE "public"."orders" IN SHARE ROW EXCLUSIVE MODE;
             SELECT pg_catalog.setval('"public"."orders_id_seq"', \
-            GREATEST(COALESCE(pg_catalog.max("id")::bigint + 1, 1), \
-            (SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END FROM "public"."orders_id_seq")), \
+            GREATEST(COALESCE(pg_catalog.max("id")::bigint OPERATOR(pg_catalog.+) 1, 1), \
+            (SELECT CASE WHEN is_called THEN last_value OPERATOR(pg_catalog.+) 1 ELSE last_value END \
+            FROM "public"."orders_id_seq")), \
             false) FROM "public"."orders"
             """)
     }
@@ -121,8 +122,8 @@ struct PostgreSQLSequenceStatementTests {
         let sql = PostgreSQLSequenceStatements.nextValue(
             sequence(increment: -2, start: -1), schema: "public", nextValue: .afterOwnedColumn
         )
-        #expect(sql?.contains("LEAST(COALESCE(pg_catalog.min(\"id\")::bigint + -2, -1), ") == true)
-        #expect(sql?.contains("THEN last_value + -2 ELSE last_value END") == true)
+        #expect(sql?.contains("LEAST(COALESCE(pg_catalog.min(\"id\")::bigint OPERATOR(pg_catalog.+) -2, -1), ") == true)
+        #expect(sql?.contains("THEN last_value OPERATOR(pg_catalog.+) -2 ELSE last_value END") == true)
     }
 
     @Test("A sequence no column owns has no column to continue from")

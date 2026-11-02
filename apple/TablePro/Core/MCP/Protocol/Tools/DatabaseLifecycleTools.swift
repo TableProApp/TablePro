@@ -49,19 +49,23 @@ public struct CreateDatabaseTool: MCPToolImplementation {
         let options = try MCPLifecycleArguments.stringMap(arguments, key: "options")
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
-        try await MCPStatementGate.authorize(
-            sql: "CREATE DATABASE \(name)",
+        // The driver builds the statement, so the approval is by kind and names the database.
+        try MCPStatementGate.classify(kind: .schemaMutation, meta: meta, allowsDestructive: false, context: context)
+        let operation = try await MCPStatementGate.approve(
+            [],
+            kind: .schemaMutation,
+            scope: DatabaseScope(connectionId: connectionId, database: "", schema: nil),
             meta: meta,
             allowsDestructive: false,
             forcesUserConsent: true,
-            operationLabel: String(localized: "creating a database"),
+            operationLabel: String(format: String(localized: "creating database '%@'"), name),
             context: context,
             services: services
         )
 
         do {
             let payload = try await services.connectionBridge.createDatabase(
-                connectionId: connectionId,
+                operation,
                 name: name,
                 options: options
             )
@@ -179,8 +183,16 @@ public struct DropDatabaseObjectTool: MCPToolImplementation {
         let name = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "name")
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
 
-        try await MCPStatementGate.authorize(
-            sql: "DROP \(kind.uppercased()) \(name)",
+        try MCPStatementGate.classify(kind: .destructiveQuery, meta: meta, allowsDestructive: true, context: context)
+        // A database is dropped from the server; a schema from the database the connection is on, which the
+        // approval names.
+        let scope = kind == "database"
+            ? DatabaseScope(connectionId: connectionId, database: "", schema: nil)
+            : try await services.connectionBridge.resolveScope(connectionId: connectionId, database: nil, schema: nil)
+        let operation = try await MCPStatementGate.approve(
+            [],
+            kind: .destructiveQuery,
+            scope: scope,
             meta: meta,
             allowsDestructive: true,
             operationLabel: String(
@@ -194,8 +206,8 @@ public struct DropDatabaseObjectTool: MCPToolImplementation {
 
         do {
             let payload = kind == "database"
-                ? try await services.connectionBridge.dropDatabase(connectionId: connectionId, name: name)
-                : try await services.connectionBridge.dropSchema(connectionId: connectionId, name: name)
+                ? try await services.connectionBridge.dropDatabase(operation, name: name)
+                : try await services.connectionBridge.dropSchema(operation, name: name)
             return .structured(payload)
         } catch {
             throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)

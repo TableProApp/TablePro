@@ -24,7 +24,7 @@ public struct ResourcesReadHandler: MCPMethodHandler {
             try await context.throwIfCancelled()
             let payload = try await Self.read(route: route, context: context, services: services)
 
-            Self.logger.debug("resources/read uri=\(uri, privacy: .public)")
+            Self.logger.debug("resources/read uri=\(uri, privacy: .private(mask: .hash))")
             MCPAuditLogger.logResourceRead(
                 principal: context.principal,
                 uri: uri,

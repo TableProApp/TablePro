@@ -3,6 +3,7 @@ import Observation
 import os
 import SwiftUI
 import TableProDatabase
+import TableProLogRedaction
 import TableProModels
 import TableProSQLGrammar
 
@@ -410,7 +411,7 @@ final class ConnectionCoordinator {
         do {
             fetched = try await newSession.driver.fetchTables(schema: nil)
         } catch {
-            Self.logger.warning("Failed to load tables on the new session: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to load tables on the new session: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             fetched = nil
         }
         guard attemptToken == token else { return false }
@@ -486,7 +487,7 @@ final class ConnectionCoordinator {
         do {
             fetched = try await live.driver.fetchTables(schema: supportsSchemas ? moved.schema ?? activeSchema : nil)
         } catch {
-            Self.logger.warning("Failed to load tables where another window moved the session: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to load tables where another window moved the session: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             fetched = nil
         }
         guard attemptToken == token, session?.driver === live.driver else { return }
@@ -550,7 +551,7 @@ final class ConnectionCoordinator {
         await refreshTransaction()
         guard attemptToken == token,
               appState.sessionTransactions.hold(for: connection.id, on: existing.driver) != nil else { return false }
-        Self.logger.info("Kept a session that refused its catalog: \(refusal.localizedDescription, privacy: .public)")
+        Self.logger.info("Kept a session that refused its catalog: \(LogRedaction.publicDescription(of: refusal), privacy: .public) \(refusal.localizedDescription, privacy: .private)")
         let database = sessionDatabase(of: existing)
         if supportsDatabaseSwitching, !database.isEmpty {
             activeDatabase = database
@@ -693,7 +694,7 @@ final class ConnectionCoordinator {
             guard self.session?.driver === session.driver else { return }
             tables = reloaded
         } catch {
-            Self.logger.warning("Failed to reload tables after a Roll Back: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to reload tables after a Roll Back: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
         // With autocommit off, a MySQL read opens a transaction.
         await refreshTransaction()
@@ -708,7 +709,7 @@ final class ConnectionCoordinator {
             tables = reloaded
             metadataRefused = false
         } catch {
-            Self.logger.warning("Tables are still refused: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Tables are still refused: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return
         }
         await loadDatabases()
@@ -797,7 +798,7 @@ final class ConnectionCoordinator {
             await loadSchemas()
         } catch {
             guard attemptToken == token else { return }
-            Self.logger.error("Failed to switch to database \(database, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to switch to database \(database, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             do {
                 let fallbackSession = try await appState.sessionRedialer.redial(
                     connection,
@@ -852,7 +853,7 @@ final class ConnectionCoordinator {
             let schema = supportsSchemas ? activeSchema : nil
             self.tables = try await session.driver.fetchTables(schema: schema)
         } catch {
-            Self.logger.warning("Failed to refresh tables: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to refresh tables: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             failureAlertMessage = String(localized: "Failed to refresh tables")
             showFailureAlert = true
         }
@@ -909,7 +910,7 @@ final class ConnectionCoordinator {
                     try await Self.readCatalog(kinds, schema: schema, from: $0)
                 }
             } catch {
-                Self.logger.warning("Reloading the catalog after a change failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Reloading the catalog after a change failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
                 seenCatalogGeneration = generation
                 return
             }
@@ -1016,7 +1017,7 @@ final class ConnectionCoordinator {
                 activeDatabase = connection.database
             }
         } catch {
-            Self.logger.warning("Failed to load databases: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to load databases: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 
@@ -1033,7 +1034,7 @@ final class ConnectionCoordinator {
                 activeSchema = currentSchema
             }
         } catch {
-            Self.logger.warning("Failed to load schemas: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Failed to load schemas: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 }

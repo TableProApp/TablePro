@@ -9,7 +9,7 @@ import TableProPluginKit
 
 internal extension LinkedConnection {
     @MainActor
-    func databaseConnection() -> DatabaseConnection {
+    func databaseConnection(origin: ConnectionOrigin = .linkedFolder) -> DatabaseConnection {
         var built = DatabaseConnection(
             importing: connection,
             id: id,
@@ -19,6 +19,7 @@ internal extension LinkedConnection {
             resolvesSSHProfile: { SSHProfileStorage.shared.profile(for: $0) != nil }
         )
         built.promptForPassword = Self.signsInWithPassword(built)
+        built.origin = origin
         return built
     }
 

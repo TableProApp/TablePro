@@ -3,7 +3,7 @@ import Foundation
 public struct ConnectionMatchKey: Hashable, Sendable {
     // MySQLLocalSocket.fieldKey and RedisDatabaseIndex.fieldName, which this package cannot import.
     private static let socketPathFieldKey = "localSocketPath"
-    private static let redisDatabaseFieldKey = "redisDatabase"
+    static let redisDatabaseFieldKey = "redisDatabase"
 
     private let host: String
     private let port: Int

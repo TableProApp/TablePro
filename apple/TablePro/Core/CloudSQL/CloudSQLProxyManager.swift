@@ -6,6 +6,7 @@
 import Darwin
 import Foundation
 import os
+import TableProProcess
 
 actor CloudSQLProxyManager: TunnelManaging {
     static let shared = CloudSQLProxyManager()
@@ -83,7 +84,7 @@ actor CloudSQLProxyManager: TunnelManaging {
             deleteCredentialsFile(at: credentialsFilePath)
             throw error
         }
-        let environment = ProcessInfo.processInfo.environment
+        let environment = ProcessEnvironment.inherited()
         let attempts = config.localPort != nil ? 1 : Self.portRetryCount
 
         var lastError: Error = CloudSQLProxyError.noAvailablePort
@@ -112,7 +113,14 @@ actor CloudSQLProxyManager: TunnelManaging {
             let arguments = Self.buildArguments(config: config, port: port, credentialsFilePath: credentialsFilePath)
 
             do {
-                try runner.start(binaryPath: binaryPath, arguments: arguments, environment: environment)
+                try runner.start(ProcessCommand(
+                    executable: URL(fileURLWithPath: binaryPath),
+                    arguments: arguments,
+                    environment: environment
+                ))
+            } catch let refusal as ProcessLaunchError {
+                deleteCredentialsFile(at: credentialsFilePath)
+                throw refusal
             } catch {
                 deleteCredentialsFile(at: credentialsFilePath)
                 throw CloudSQLProxyError.binaryNotFound
@@ -342,7 +350,8 @@ actor CloudSQLProxyManager: TunnelManaging {
         if config.usePrivateIP {
             arguments.append("--private-ip")
         }
-        arguments.append(config.instanceConnectionName)
+        // `isValid` takes `--credentials-file=/a:b:c`, and cobra reads nothing after `--` as a flag.
+        arguments += ["--", config.instanceConnectionName]
         return arguments
     }
 

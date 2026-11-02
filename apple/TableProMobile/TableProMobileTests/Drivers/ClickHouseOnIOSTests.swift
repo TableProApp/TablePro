@@ -60,7 +60,7 @@ struct ClickHouseOnIOSTests {
 
     @Test("Names are quoted with backquotes, a backslash or backquote inside escaped")
     func namesAreBackquoted() {
-        #expect(SQLBuilder.quoteIdentifier("a`b\\c", for: .clickhouse) == "`a``b\\\\c`")
+        #expect(SQLBuilder.quoteIdentifier("a`b\\c", for: .clickhouse) == #"`a\`b\\c`"#)
         #expect(SQLBuilder.buildSelect(table: "events", schema: nil, type: .clickhouse, limit: 10, offset: 20)
             == "SELECT * FROM `events` LIMIT 10 OFFSET 20")
     }

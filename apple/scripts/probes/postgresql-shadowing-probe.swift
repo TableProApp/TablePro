@@ -33,8 +33,55 @@ enum ShadowingProbe {
             exit(2)
         }
         await read(driver, schema: schema, database: arguments[4])
+        await readHostCatalogStatements(driver)
+        await setSequenceAfterOwnedColumn(driver, schema: schema)
         await readTypeCreatedAfterConnect(driver, schema: schema)
         driver.disconnect()
+    }
+
+    static var catalogRead: PluginStatementContext {
+        var context = PluginStatementContext()
+        context.readOnly = true
+        context.readsCatalog = true
+        return context
+    }
+
+    // The statements the app writes against the catalogs, which the script reads out of its source. Each prints
+    // whether it ran: stats-driven rows differ from read to read, and a planted lookalike counts its own calls.
+    static func readHostCatalogStatements(_ driver: PostgreSQLPluginDriver) async {
+        guard let folder = ProcessInfo.processInfo.environment["TP_SHADOW_HOST_SQL"],
+              let names = try? FileManager.default.contentsOfDirectory(atPath: folder) else { return }
+        for name in names.sorted() where name.hasSuffix(".sql") {
+            await attempt("host \(name)") {
+                let sql = try String(contentsOfFile: "\(folder)/\(name)", encoding: .utf8)
+                let result = try await driver.execute(query: sql, context: catalogRead)
+                line(["host", name, name.hasPrefix("primaryKey") ? result.rows.first?.first?.asText : "ran"])
+            }
+        }
+    }
+
+    // Sent on the session's own path, as the app sends it, where a database owner's default can list the schema first.
+    static func setSequenceAfterOwnedColumn(_ driver: PostgreSQLPluginDriver, schema: String) async {
+        let sequence = PluginSequenceDetails(
+            name: "orders_id_seq", schema: schema, dataType: "bigint", startValue: 1, increment: 1,
+            minValue: 1, maxValue: Int64.max, cacheSize: 1, cycles: false, lastValue: nil, nextValue: nil,
+            ownedByTable: "orders", ownedByColumn: "id"
+        )
+        let relation = "\"\(schema)\".orders_id_seq"
+        await attempt("sequenceAfterOwnedColumn") {
+            guard let sql = PostgreSQLSequenceStatements.nextValue(sequence, schema: schema, nextValue: .afterOwnedColumn)
+            else { return }
+            let before = try await driver.execute(query: "SELECT last_value, is_called FROM \(relation)").rows.first
+            let result = try await driver.execute(query: sql)
+            line(["sequence-after-owned-column", result.rows.first?.first?.asText])
+            // The other reads list this sequence, so it goes back to where the fixture left it.
+            if let lastValue = before?[safe: 0], let isCalled = before?[safe: 1] {
+                _ = try await driver.executeParameterized(
+                    query: "SELECT pg_catalog.setval($1::pg_catalog.regclass, $2::pg_catalog.int8, $3::pg_catalog.bool)",
+                    parameters: [.text(relation), lastValue, isCalled]
+                )
+            }
+        }
     }
 
     // The lookalikes are routines in the same schema, so the listings keep to what the fixture created.
@@ -53,7 +100,7 @@ enum ShadowingProbe {
     }
 
     static func line(_ fields: [String?]) {
-        print(fields.map { ($0 ?? "-").replacingOccurrences(of: "\n", with: "\\n") }.joined(separator: "|"))
+        print(fields.map { ($0 ?? "-").replacingOccurrences(of: "\n", with: "\\n", options: .literal) }.joined(separator: "|"))
     }
 
     static func attempt(_ label: String, _ body: () async throws -> Void) async {
@@ -150,7 +197,9 @@ enum ShadowingProbe {
         }
         await attempt("allTablesMetadataSQL") {
             guard let sql = driver.allTablesMetadataSQL(schema: schema) else { return }
-            for row in try await driver.execute(query: sql).rows { line(["all-tables", row[safe: 1]?.asText, row[safe: 7]?.asText]) }
+            for row in try await driver.execute(query: sql, context: catalogRead).rows {
+                line(["all-tables", row[safe: 1]?.asText, row[safe: 7]?.asText])
+            }
         }
         await attempt("fetchUserDefinedTypes") {
             for type in try await driver.fetchUserDefinedTypes(schema: schema).sorted(by: { $0.name < $1.name }) {

@@ -3,6 +3,7 @@ import NIOConcurrencyHelpers
 import NIOCore
 import NIOPosix
 import NIOSSL
+import TableProKafkaCore
 import TableProPluginKit
 
 /// Splits the TCP stream into whole Kafka responses. Every response is a 4-byte big-endian

@@ -119,8 +119,8 @@ internal final class MCPServerManager: ObservableObject {
         }
     }
 
-    /// Grants outlive the composition that recorded them, so the settings pane reads them through a
-    /// policy built on demand when the server is not running.
+    // Grants outlive the composition that recorded them, so the settings pane reads them through a
+    // policy built on demand when the server is not running.
     internal func connectionGrants() async -> [MCPConnectionGrant] {
         await approvalPolicy().grants()
     }
@@ -153,7 +153,7 @@ internal final class MCPServerManager: ObservableObject {
         await refreshClients()
     }
 
-    /// The one check every start path reaches, so no caller can bind a listener while MCP is off.
+    // The one check every start path reaches, so no caller can bind a listener while MCP is off.
     @discardableResult
     private func performStart(port: UInt16) async -> MCPServerStartError? {
         guard isEnabled() else {
@@ -179,10 +179,20 @@ internal final class MCPServerManager: ObservableObject {
         await store.loadFromDisk()
         tokenStore = store
 
+        let socketPath: String
+        do {
+            socketPath = try handshake.prepareSocketPath()
+        } catch {
+            Self.logger.error("MCP socket folder is not usable: \(error.publicLogShape, privacy: .public)")
+            state = .failed(String(localized: "The MCP server could not prepare its private socket folder"))
+            tokenStore = nil
+            return nil
+        }
+
         var lastFailure = ""
 
         for candidate in MCPPortAllocator.candidates(preferred: Int(port)) {
-            let built = MCPServerComposition.build(port: candidate, tokenStore: store)
+            let built = MCPServerComposition.build(port: candidate, socketPath: socketPath, tokenStore: store)
             do {
                 try await built.transport.start()
             } catch {
@@ -199,7 +209,7 @@ internal final class MCPServerManager: ObservableObject {
         }
 
         let failure = MCPPortAllocatorError.everyCandidateRejected(lastFailure: lastFailure)
-        Self.logger.error("MCP server failed to start: \(lastFailure, privacy: .public)")
+        Self.logger.error("MCP server failed to start: \(lastFailure, privacy: .private)")
         state = .failed(failure.localizedDescription)
         tokenStore = nil
         return nil
@@ -231,7 +241,7 @@ internal final class MCPServerManager: ObservableObject {
         startBridgeCredentialRenewal(generation: generation)
         await registerRevocationObserver(built, store: store, generation: generation)
 
-        writeHandshake(port: boundPort, credential: credential)
+        writeHandshake(socketPath: built.socketPath, credential: credential)
         handshake.removeRefusal()
         state = .running(port: boundPort)
         MCPAuditLogger.logServerStarted(port: boundPort)
@@ -320,7 +330,8 @@ internal final class MCPServerManager: ObservableObject {
     private func renewBridgeCredential(generation: Int) async {
         guard self.generation == generation,
               let store = tokenStore,
-              case .running(let port) = state else { return }
+              let socketPath = composition?.socketPath,
+              case .running = state else { return }
 
         let previous = bridgeCredential
         guard let credential = await mintBridgeCredential(store: store) else { return }
@@ -331,7 +342,7 @@ internal final class MCPServerManager: ObservableObject {
         }
 
         bridgeCredential = credential
-        writeHandshake(port: port, credential: credential)
+        writeHandshake(socketPath: socketPath, credential: credential)
 
         if let previous {
             await store.delete(tokenId: previous.tokenId)
@@ -339,10 +350,10 @@ internal final class MCPServerManager: ObservableObject {
         Self.logger.info("Rotated the MCP bridge credential")
     }
 
-    private func writeHandshake(port: UInt16, credential: BridgeCredential) {
+    private func writeHandshake(socketPath: String, credential: BridgeCredential) {
         handshake.write(
             MCPHandshakePayload(
-                port: Int(port),
+                socketPath: socketPath,
                 token: credential.plaintext,
                 pid: ProcessInfo.processInfo.processIdentifier,
                 instanceId: instanceId,

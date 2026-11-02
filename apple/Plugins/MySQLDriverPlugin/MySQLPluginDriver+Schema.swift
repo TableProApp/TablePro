@@ -62,6 +62,7 @@ internal extension MySQLPluginDriver {
         let createTableDefaults = try await createTableDefaults(
             table: table, schema: schema, showRows: result.rows, catalogDetails: catalogDetails
         )
+        let identity = serverIdentity
 
         let columns = result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText,
@@ -92,7 +93,9 @@ internal extension MySQLPluginDriver {
                 column: name,
                 extra: extra,
                 dataType: normalizedType,
-                isNullable: isNullable
+                isNullable: isNullable,
+                banner: identity.banner,
+                flavor: identity.flavor
             )
 
             return PluginColumnInfo(

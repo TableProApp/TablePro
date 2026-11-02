@@ -3,9 +3,9 @@
 //  TablePro
 //
 
-import AppKit
 import Foundation
 import os
+import TableProHTTP
 
 struct VaultToken: Equatable, Sendable {
     let value: String
@@ -59,7 +59,7 @@ actor VaultAuthenticator {
         readFile: @escaping @Sendable (String) -> String? = { try? String(contentsOfFile: $0, encoding: .utf8) },
         now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
         openURL: @escaping @Sendable (URL) async -> Void = { url in
-            await MainActor.run { _ = NSWorkspace.shared.open(url) }
+            await MainActor.run { _ = WebPageOpener.open(url, scope: .httpsOrLoopbackHTTP) }
         },
         makeCallbackReceiver: @escaping @Sendable () -> any VaultOIDCCallbackReceiving = { VaultOIDCLoopback() }
     ) {

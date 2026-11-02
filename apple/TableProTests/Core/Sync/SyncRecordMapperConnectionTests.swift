@@ -59,7 +59,8 @@ struct SyncRecordMapperConnectionTests {
         "cloudflareTunnelMode",
         "cloudSQLProxyMode",
         "socksProxyMode",
-        "tunnelCommandMode"
+        "tunnelCommandMode",
+        "origin"
     ]
 
     private static func storedValues(of connection: DatabaseConnection) -> [String: String] {
@@ -124,6 +125,7 @@ struct SyncRecordMapperConnectionTests {
         connection.tunnelCommandMode = .inline(
             TunnelCommandConfiguration(kubernetesNamespace: "data", kubernetesResource: "svc/postgres")
         )
+        connection.origin = .imported
         return connection
     }
 

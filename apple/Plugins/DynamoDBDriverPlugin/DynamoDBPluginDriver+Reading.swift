@@ -56,7 +56,7 @@ extension DynamoDBPluginDriver {
                 }
             }
             let page = try await fetchPage(plan: plan, body: body, session: session)
-            stats.scanned += page.scanned
+            stats.scanned = Self.saturatingSum(stats.scanned, page.scanned)
             stats.readUnits += page.readUnits
             stats.reportedReadUnits = stats.reportedReadUnits || page.reportedReadUnits
 

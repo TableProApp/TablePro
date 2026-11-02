@@ -9,9 +9,10 @@ enum SpringYamlExtractor {
     static func extract(
         contents: String,
         relativePath: String,
-        processEnvironment: [String: String]
+        processEnvironment: [String: String],
+        budget: ProjectScanExpansionBudget = ProjectScanExpansionBudget()
     ) -> [ScannedConnectionCandidate] {
-        for document in YamlMappingSupport.loadDocuments(contents) {
+        for document in YamlMappingSupport.loadDocuments(contents, budget: budget) {
             guard let rawURL = value(in: document, path: ["spring", "datasource", "url"]) else {
                 continue
             }

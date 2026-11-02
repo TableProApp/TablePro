@@ -86,10 +86,10 @@ struct SQLWriteClassifierTests {
         #expect(!isWrite("SELECT count(*) FROM users"))
     }
 
-    @Test("a statement that runs its plan or writes a pragma is a write")
+    @Test("a statement that runs its plan or writes a pragma is a write, and a plan of a read is a read")
     func explainAndPragmaAreWrites() {
         #expect(isWrite("EXPLAIN ANALYZE DELETE FROM users"))
-        #expect(isWrite("EXPLAIN SELECT * FROM users"))
+        #expect(!isWrite("EXPLAIN SELECT * FROM users"))
         #expect(isWrite("PRAGMA journal_mode = WAL", .sqlite))
     }
 
@@ -135,6 +135,62 @@ struct SQLWriteClassifierTests {
         #expect(isWrite("SELECT invoice_no.NEXTVAL FROM dual", .oracle))
         #expect(isWrite("WITH n AS (SELECT invoice_no.nextval AS id FROM dual) SELECT id FROM n", .oracle))
         #expect(!isWrite("SELECT t.nextval FROM t"))
+    }
+
+    @Test("an INTO glued to a number is still an INTO, as SQL Server lexes it", arguments: [
+        "SELECT name, is_copy = 1INTO users_copy FROM users", "SELECT name, is_copy = 1e1INTO users_copy FROM users",
+        "SELECT name, is_copy = 1.e1INTO users_copy FROM users", "SELECT name, is_copy = .5INTO users_copy FROM users",
+        "SELECT name, is_copy = 0x1INTO users_copy FROM users", "SELECT name, is_copy = $1INTO users_copy FROM users",
+        "WITH x AS (SELECT 1 AS a) SELECT a, b = 1INTO x_copy FROM x",
+    ])
+    func intoGluedToANumberIsAWrite(sql: String) {
+        #expect(isWrite(sql, .mssql))
+    }
+
+    @Test("MySQL and PostgreSQL end a number where its digits end too")
+    func intoGluedToADecimalIsAWrite() {
+        #expect(isWrite("SELECT password, 1.0INTO OUTFILE '/tmp/u.csv' FROM users", .mysql))
+        #expect(isWrite("SELECT password, 1e0INTO OUTFILE '/tmp/u.csv' FROM users", .mariadb))
+        #expect(isWrite("SELECT name, 1INTO users_copy FROM users", .postgresql))
+    }
+
+    @Test("a name that ends in INTO is a name")
+    func nameEndingInIntoIsARead() {
+        #expect(!isWrite("SELECT a1into, x_into, _1into, a$into, t1.e1into FROM t1", .mssql))
+        #expect(!isWrite("SELECT a1into, x_into, _1into, t1.e1into FROM t1", .postgresql))
+    }
+
+    @Test("an Oracle query whose WITH clause declares PL/SQL runs it, so it is a write", arguments: [
+        "WITH FUNCTION f RETURN NUMBER IS PRAGMA AUTONOMOUS_TRANSACTION;\nBEGIN EXECUTE IMMEDIATE 'DROP TABLE victims'; "
+            + "COMMIT; RETURN 1; END;\nSELECT f FROM dual",
+        "with procedure p IS BEGIN purge_all; END;\nFUNCTION f RETURN NUMBER IS BEGIN p; RETURN 1; END;\nSELECT f FROM dual",
+        "-- report\nWITH /* inline */ FUNCTION f RETURN NUMBER IS BEGIN purge_all; RETURN 1; END;\nSELECT f FROM dual",
+        "SELECT 1 FROM dual;\nWITH FUNCTION f RETURN NUMBER IS BEGIN purge_all; RETURN 1; END;\nSELECT f FROM dual",
+    ])
+    func inlinePLSQLIsAWrite(sql: String) {
+        #expect(isWrite(sql, .oracle))
+    }
+
+    @Test("a common table expression that declares no PL/SQL stays a read")
+    func plainCTEStaysARead() {
+        #expect(!isWrite("WITH recent AS (SELECT 1 AS a FROM dual) SELECT a FROM recent", .oracle))
+        #expect(!isWrite("WITH function AS (SELECT 1 AS a) SELECT a FROM function", .postgresql))
+    }
+
+    @Test("a query that reads or writes a server file is a write, as it is on the Mac", arguments: [
+        (DatabaseType.postgresql, "SELECT pg_read_file('/etc/passwd')"),
+        (DatabaseType.postgresql, "SELECT * FROM pg_ls_dir('.')"),
+        (DatabaseType.mysql, "SELECT LOAD_FILE('/etc/passwd')"),
+        (DatabaseType.mssql, "SELECT * FROM OPENROWSET(BULK 'C:\\secret.txt', SINGLE_CLOB) AS x"),
+        (DatabaseType.postgresql, "SELECT setval('orders_id_seq', 1, false)"),
+        (DatabaseType.postgresql, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid()"),
+        (DatabaseType.postgresql, "SELECT lo_unlink(16403)"),
+        (DatabaseType.postgresql, "SELECT dblink_exec('dbname=app', 'DELETE FROM orders')"),
+        (DatabaseType.mssql, "SELECT NEXT VALUE FOR orders_seq"),
+        (DatabaseType.oracle, "SELECT orders_seq.NEXTVAL FROM dual"),
+    ])
+    func fileAndStateChangingCallsAreWrites(engine: DatabaseType, sql: String) {
+        #expect(isWrite(sql, engine))
     }
 
     @Test("a query that only names a state-changing function is a read")

@@ -8,6 +8,7 @@ import TableProMSSQLCore
 import TableProMySQLCore
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     private let actor = MySQLActor()
@@ -25,11 +26,25 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     var currentSchema: String? { nil }
     var supportsTransactions: Bool { true }
 
-    func escapeStringLiteral(_ value: String) -> String {
-        SQLEscaping.backslashStringLiteral(value)
+    private let settledFacts = OSAllocatedUnfairLock<SQLSessionLexicalFacts?>(initialState: nil)
+
+    var settledLexicalFacts: SQLSessionLexicalFacts? {
+        settledFacts.withLock { $0 }
     }
 
-    // Set once during connect() before the driver is shared — safe for concurrent reads
+    func escapeStringLiteral(_ value: String) -> String {
+        SQLQuoting.stringLiteralBody(value, escapes: literalEscapes)
+    }
+
+    private var literalEscapes: SQLStringEscapes {
+        Self.stringEscapes(
+            for: databaseType,
+            session: settledLexicalFacts,
+            isDatabend: Self.serverFlavor(for: databaseType, banner: serverVersion).isDatabend
+        )
+    }
+
+    // Set once during connect(), before the driver is shared, so concurrent reads are safe.
     nonisolated(unsafe) private(set) var serverVersion: String?
 
     init(
@@ -108,11 +123,12 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                 _ = try await actor.execute(statement)
             } catch {
                 Self.logger.warning(
-                    "Session setup failed with \(statement, privacy: .public): \(error.localizedDescription, privacy: .private)"
+                    "Session setup failed with \(statement, privacy: .private): \(error.localizedDescription, privacy: .private)"
                 )
                 break
             }
         }
+        await settleLexicalFacts()
     }
 
     func disconnect() async throws {
@@ -127,6 +143,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
 
     func execute(query: String) async throws -> QueryResult {
         let raw = try await actor.execute(query)
+        await settleLexicalFacts()
         return QueryResult(
             columns: raw.columns.enumerated().map { i, name in
                 ColumnInfo(
@@ -185,6 +202,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
                         openStream = nil
                         try await actor.endStream(stream)
                     }
+                    await self.settleLexicalFacts()
                     continuation.finish()
                 } catch is CancellationError {
                     if let openStream { try? await actor.endStream(openStream) }
@@ -225,7 +243,9 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         database: String?,
         source: MySQLColumnListing.DefaultSource
     ) async -> [String: MySQLCatalogDefault] {
-        guard let query = MySQLColumnListing.catalogDefaultsQuery(table: table, database: database, source: source) else {
+        guard let query = MySQLColumnListing.catalogDefaultsQuery(
+            table: table, database: database, source: source, escapes: literalEscapes
+        ) else {
             return [:]
         }
         do {
@@ -276,7 +296,9 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
         guard Self.readsForeignKeyCatalog(for: databaseType, banner: serverVersion) else {
             return try await declaredForeignKeys(table: table, database: schema)
         }
-        let raw = try await actor.execute(Self.foreignKeyCatalogQuery(table: table, database: schema))
+        let raw = try await actor.execute(
+            Self.foreignKeyCatalogQuery(table: table, database: schema, escapes: literalEscapes)
+        )
         return Self.foreignKeys(fromCatalogRows: raw.rows)
     }
 
@@ -296,8 +318,7 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     }
 
     func switchDatabase(to name: String) async throws {
-        let safe = name.replacingOccurrences(of: "`", with: "``", options: .literal)
-        _ = try await actor.execute("USE `\(safe)`")
+        _ = try await actor.execute("USE \(Self.quotedIdentifier(name))")
     }
 
     func switchSchema(to name: String) async throws {
@@ -336,6 +357,27 @@ nonisolated final class MySQLDriver: DatabaseDriver, @unchecked Sendable {
     func sessionLexicalFacts() async -> SQLSessionLexicalFacts? {
         guard !Self.serverFlavor(for: databaseType, banner: serverVersion).isDatabend else { return nil }
         return await actor.lexicalFacts()
+    }
+
+    // NO_BACKSLASH_ESCAPES rides on every reply's status flags, so a `SET sql_mode` is read once it has run.
+    private func settleLexicalFacts() async {
+        let facts = await sessionLexicalFacts()
+        settledFacts.withLock { $0 = facts }
+    }
+
+    // `.mysql` keeps a NUL and 0x1A as MySQL's own escapes; Databend is not known to decode `\Z`.
+    static func stringEscapes(
+        for databaseType: DatabaseType,
+        session: SQLSessionLexicalFacts?,
+        isDatabend: Bool
+    ) -> SQLStringEscapes {
+        let escapes = SQLLexicalReadings.stringEscapes(databaseTypeId: databaseType.rawValue, declared: nil, session: session)
+        return escapes == .backslash && !isDatabend ? .mysql : escapes
+    }
+
+    // Kept text declares no sql_mode, so it is written for a session that has not settled the backslash rule.
+    static func keptTextEscapes(for databaseType: DatabaseType, banner: String?) -> SQLStringEscapes {
+        stringEscapes(for: databaseType, session: nil, isDatabend: serverFlavor(for: databaseType, banner: banner).isDatabend)
     }
 }
 
@@ -439,12 +481,12 @@ nonisolated extension MySQLDriver {
 
     // Nil reads the session's database, which the last USE set. The one the driver connected with
     // goes stale after a switch.
-    static func databaseLiteral(_ database: String?) -> String {
+    static func databaseLiteral(_ database: String?, escapes: SQLStringEscapes = .mysql) -> String {
         guard let database, !database.isEmpty else { return "DATABASE()" }
-        return "'\(SQLEscaping.backslashStringLiteral(database))'"
+        return SQLQuoting.stringLiteral(database, escapes: escapes)
     }
 
-    static func foreignKeyCatalogQuery(table: String, database: String?) -> String {
+    static func foreignKeyCatalogQuery(table: String, database: String?, escapes: SQLStringEscapes = .mysql) -> String {
         """
         SELECT
             kcu.CONSTRAINT_NAME,
@@ -459,8 +501,8 @@ nonisolated extension MySQLDriver {
         JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
             ON kcu.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
             AND kcu.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
-        WHERE kcu.TABLE_SCHEMA = \(databaseLiteral(database))
-            AND kcu.TABLE_NAME = '\(SQLEscaping.backslashStringLiteral(table))'
+        WHERE kcu.TABLE_SCHEMA = \(databaseLiteral(database, escapes: escapes))
+            AND kcu.TABLE_NAME = \(SQLQuoting.stringLiteral(table, escapes: escapes))
             AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
         ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION
         """
@@ -509,7 +551,7 @@ nonisolated extension MySQLDriver {
     }
 
     private static func quotedIdentifier(_ name: String) -> String {
-        "`\(name.replacingOccurrences(of: "`", with: "``", options: .literal))`"
+        SQLQuoting.identifier(name, quote: .backtick)
     }
 }
 

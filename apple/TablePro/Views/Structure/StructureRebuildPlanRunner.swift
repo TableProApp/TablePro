@@ -159,7 +159,7 @@ enum StructureRebuildPlanRunner {
             var completed = 0
             do {
                 for sql in plan.statements {
-                    logger.info("\(operationDescription, privacy: .public): \(sql, privacy: .public)")
+                    logger.info("\(operationDescription, privacy: .public): \(sql, privacy: .private)")
                     _ = try await driver.execute(query: sql)
                     completed += 1
                 }

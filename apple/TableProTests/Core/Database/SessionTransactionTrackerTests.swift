@@ -80,10 +80,12 @@ struct SessionTransactionTrackerTests {
         let scope = DatabaseScope(connectionId: connection.id, database: "app", schema: nil)
         let bridge = MCPConnectionBridge()
 
-        _ = try await bridge.transactionControl(scope: scope, action: "begin")
+        let operation = try await ApprovedOperationFixture.approve([], scope: scope, databaseType: .mysql, kind: .writeQuery)
+
+        _ = try await bridge.transactionControl(operation, action: "begin")
         #expect(Self.states(connection.id) == [.open])
 
-        _ = try await bridge.transactionControl(scope: scope, action: "rollback")
+        _ = try await bridge.transactionControl(operation, action: "rollback")
         #expect(Self.tracker.holds(for: connection.id).isEmpty)
         #expect(driver.statements.suffix(1) == ["ROLLBACK"])
     }

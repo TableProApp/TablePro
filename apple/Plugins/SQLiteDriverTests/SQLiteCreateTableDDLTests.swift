@@ -116,6 +116,34 @@ struct SQLiteCreateTableDDLTests {
         #expect(sqliteCreateTableSQL(definition: definition(columns: [])) == nil)
     }
 
+    @Test("Column text that is not one type or expression is refused, naming the column", arguments: [
+        PluginColumnDefinition(name: "price", dataType: "TEXT", defaultValue: "'x', secret TEXT"),
+        PluginColumnDefinition(name: "price", dataType: "TEXT); DROP TABLE child; --"),
+        PluginColumnDefinition(name: "price", dataType: "INT", generationExpression: "1) VIRTUAL, b INT AS (2", generationKind: .virtual),
+    ])
+    func refusesColumnText(column: PluginColumnDefinition) {
+        #expect(sqliteColumnRefusal(column)?.contains("price") == true)
+        #expect(sqliteCreateTableSQL(definition: definition(columns: [column])) == nil)
+    }
+
+    @Test("A literal, a call in parentheses and no default at all are written")
+    func acceptsOrdinaryDefaults() {
+        for value in ["'a, b'", "(datetime('now'))", "-1.5", "X'0102'", nil] {
+            #expect(sqliteColumnRefusal(PluginColumnDefinition(name: "price", dataType: "TEXT", defaultValue: value)) == nil)
+        }
+    }
+
+    @Test("A partial index whose predicate or key is not one expression is refused", arguments: [
+        PluginIndexDefinition(name: "ix", columns: ["a"], whereClause: "a > 0; DROP TABLE child"),
+        PluginIndexDefinition(
+            name: "ix", columns: ["a"], expressions: nil, includedColumns: nil,
+            ddlMethodAndKeys: "(a) WHERE 1; DROP TABLE child; --", ddlWhereClause: nil
+        ),
+    ])
+    func refusesIndexText(index: PluginIndexDefinition) {
+        #expect(sqliteIndexRefusal(index)?.contains("ix") == true)
+    }
+
     @Test("an identifier carrying a backtick is escaped")
     func escapedIdentifier() throws {
         let columns = [PluginColumnDefinition(name: "we`ird", dataType: "TEXT")]

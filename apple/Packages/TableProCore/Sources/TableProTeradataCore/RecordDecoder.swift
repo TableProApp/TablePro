@@ -1,4 +1,5 @@
 import Foundation
+import TableProWireIO
 
 enum RecordDecoder {
     static func nullBitmapLength(columnCount: Int) -> Int {

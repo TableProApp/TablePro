@@ -139,6 +139,7 @@ targets:
           - TableProDatabase
           - TableProGeometry
           - TableProGoogleCloud
+          - TableProHTTP
           - TableProImport
           - TableProLogRedaction
           - TableProModels
@@ -150,6 +151,7 @@ targets:
           - TableProQuery
           - TableProRedisCore
           - TableProSQLGrammar
+          - TableProSQLQuoting
           - TableProSQLVocabulary
           - TableProSSHTransport
           - TableProSync
@@ -256,6 +258,7 @@ targets:
     platform: iOS
     sources:
       - TableProMobileTests
+      - ../Plugins/DuckDBDriverPlugin/DuckDBReadOnlyStatement.swift
     dependencies:
       - target: TableProMobile
       - package: TableProCore

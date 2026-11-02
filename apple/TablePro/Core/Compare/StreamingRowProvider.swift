@@ -216,7 +216,8 @@ internal enum KeyOrderedQuery {
                 for: value,
                 columnType: index < keyTypes.count ? keyTypes[index] : nil,
                 databaseType: databaseType,
-                driver: driver
+                driver: driver,
+                keptInScript: false
             )
         }
         if keyColumns.count == 1, let column = keyColumns.first {

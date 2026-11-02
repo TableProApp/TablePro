@@ -16,11 +16,6 @@ public enum SQLTranscodedLiteralRewriter {
         let text: String
     }
 
-    private enum SQLModeAssignment {
-        case literal(String)
-        case unknown
-    }
-
     private struct LiteralContext {
         let encoding: String.Encoding
         let backslashEscapesAreOn: Bool
@@ -36,10 +31,6 @@ public enum SQLTranscodedLiteralRewriter {
         UInt8(ascii: "r"): 0x0D, UInt8(ascii: "t"): 0x09, UInt8(ascii: "Z"): 0x1A
     ]
     private static let backslash = UInt8(ascii: "\\")
-    private static let noBackslashEscapes = "NO_BACKSLASH_ESCAPES"
-    private static let sqlModeVariable = "SQL_MODE"
-    private static let sessionScopes: Set<String> = ["SESSION", "LOCAL"]
-    private static let serverScopes: Set<String> = ["GLOBAL", "PERSIST", "PERSIST_ONLY"]
     private static let percent = UInt8(ascii: "%")
 
     public static func rewritten(
@@ -100,77 +91,6 @@ public enum SQLTranscodedLiteralRewriter {
             introducer = introducerWord(in: text, range: NSRange(location: wordStart, length: index - wordStart))
         }
         return replacements
-    }
-
-    public static func backslashEscapesAreOn(
-        after statement: String,
-        currently isOn: Bool,
-        grammar: SQLLexicalGrammar
-    ) -> Bool {
-        let text = statement as NSString
-        guard text.range(of: "sql_mode", options: .caseInsensitive).location != NSNotFound else { return isOn }
-        var cursor = SQLTokenCursor(text, grammar: grammar)
-        guard cursor.next()?.word == "SET" else { return isOn }
-        var result = isOn
-        var listIsServerScoped = false
-        var head = cursor.next()
-        while let token = head {
-            switch sessionSQLMode(startingAt: token, cursor: &cursor, in: text, listIsServerScoped: &listIsServerScoped) {
-            case .literal(let mode):
-                result = !mode.uppercased().contains(noBackslashEscapes)
-            case .unknown:
-                result = false
-            case nil:
-                break
-            }
-            head = nextElementHead(&cursor)
-        }
-        return result
-    }
-
-    private static func sessionSQLMode(
-        startingAt token: SQLTokenCursor.Token,
-        cursor: inout SQLTokenCursor,
-        in text: NSString,
-        listIsServerScoped: inout Bool
-    ) -> SQLModeAssignment? {
-        var current = token
-        while let word = current.word, sessionScopes.contains(word) || serverScopes.contains(word) {
-            listIsServerScoped = serverScopes.contains(word)
-            guard let next = cursor.next() else { return nil }
-            current = next
-        }
-        guard let name = current.identifier else { return nil }
-        switch name {
-        case sqlModeVariable:
-            guard !listIsServerScoped else { return nil }
-        case "@@" + sqlModeVariable:
-            break
-        case "@@SESSION", "@@LOCAL":
-            guard cursor.next()?.isSymbol(SQLTokenCursor.period) == true,
-                  cursor.next()?.identifier == sqlModeVariable else { return nil }
-        default:
-            return nil
-        }
-        guard cursor.next()?.isSymbol(SQLTokenCursor.equals) == true, let value = cursor.next() else { return nil }
-        let range = cursor.tokenRange
-        switch value {
-        case .literal where range.length >= 2:
-            return .literal(text.substring(with: NSRange(location: range.location + 1, length: range.length - 2)))
-        case .word("DEFAULT"):
-            return .literal("")
-        default:
-            return .unknown
-        }
-    }
-
-    private static func nextElementHead(_ cursor: inout SQLTokenCursor) -> SQLTokenCursor.Token? {
-        while let token = cursor.next() {
-            if token.isSymbol(SQLTokenCursor.comma), cursor.parenDepth == 0 {
-                return cursor.next()
-            }
-        }
-        return nil
     }
 
     private static func introducerWord(in text: NSString, range: NSRange) -> Introducer? {

@@ -21,21 +21,26 @@ import TableProSQLGrammar
 /// SQLite. Every other engine's text is sent whole, as it always was, because the generic grammar cuts a T-SQL body
 /// with no `BEGIN`, a Dameng declaration section and a Snowflake `$$` body into pieces the server rejects.
 internal struct SQLScriptText {
-    private static let mysqlScriptDelimiter = "//"
+    private static let mysqlScriptDelimiterUnit = "/"
+
+    // MySQL connects without CLIENT_MULTI_STATEMENTS, DuckDB prepares every text and SQLite refuses a tail.
+    private static let enginesRefusingASecondStatement: Set<DatabaseType> = [.sqlite, .duckdb]
 
     internal let databaseType: DatabaseType
     private let dialect: SqlDialect
     private let grammar: SQLLexicalGrammar
+    private let readings: SQLLexicalReadings
 
     internal init(databaseType: DatabaseType) {
         self.init(databaseType: databaseType, grammar: databaseType.lexicalGrammar)
     }
 
-    /// `grammar` is the session's execution grammar, which a server setting such as KingbaseES Oracle mode changes.
+    // `grammar` is the session's execution grammar, which a server setting such as KingbaseES Oracle mode changes.
     internal init(databaseType: DatabaseType, grammar: SQLLexicalGrammar) {
         self.databaseType = databaseType
         self.dialect = SqlDialect.from(databaseTypeId: databaseType.rawValue)
         self.grammar = grammar
+        self.readings = SQLLexicalReadings(execution: grammar, all: databaseType.lexicalReadings.all)
     }
 
     /// The statements `text` holds, each exactly as the driver receives it in one call, in order.
@@ -45,6 +50,44 @@ internal struct SQLScriptText {
             return whole.isEmpty ? [] : [whole]
         }
         return SQLStatementScanner.executableStatements(in: text, grammar: grammar).map(\.sql)
+    }
+
+    // Nil when text the app did not write reads as several statements where the driver may run a second one.
+    internal func sendableStatements(ofForeignText text: String) -> [String]? {
+        switch foreignTextSending {
+        case .split:
+            return sendableStatements(text)
+        case .whole:
+            let whole = Self.withoutOneSeparator(text)
+            return whole.isEmpty ? [] : [whole]
+        case .oneStatement:
+            let statements = sendableStatements(text)
+            return statements.count > 1 ? nil : statements
+        }
+    }
+
+    private enum ForeignTextSending {
+        case split
+        // The driver refuses a second statement in one call, so the server decides where the text ends.
+        case whole
+        case oneStatement
+    }
+
+    private var foreignTextSending: ForeignTextSending {
+        switch dialect {
+        case .mysql:
+            return .whole
+        case .sqlite:
+            return Self.enginesRefusingASecondStatement.contains(databaseType) ? .whole : .oneStatement
+        default:
+            return .split
+        }
+    }
+
+    private static func withoutOneSeparator(_ text: String) -> String {
+        let trimmed = StatementBlank.trimming(text)
+        guard trimmed.unicodeScalars.last == ";" else { return trimmed }
+        return StatementBlank.trimming(String(trimmed.unicodeScalars.dropLast()))
     }
 
     /// The text that decides whether two definitions create the same object.
@@ -96,7 +139,9 @@ internal struct SQLScriptText {
 
     /// `ddl`, text a driver produced that may hold several statements, as script text for this engine's client.
     internal func scriptText(forDriverText ddl: String) -> String {
-        sendableStatements(ddl).map(terminated).joined(separator: "\n")
+        // A MySQL definition was recorded under its own sql_mode, so the export never cuts it with the session's.
+        let statements = dialect == .mysql ? (sendableStatements(ofForeignText: ddl) ?? []) : sendableStatements(ddl)
+        return statements.map(terminated).joined(separator: "\n")
     }
 
     // MARK: - Terminators
@@ -143,49 +188,64 @@ internal struct SQLScriptText {
         return !located.acceptsBindParameters || located.sql.hasSuffix(";")
     }
 
-    /// Whether the mysql client would end `statement` early: it ends a statement at the first `;` it meets outside a
-    /// string or a comment, so a routine body needs another delimiter. A trailing `;` ends the statement where it
-    /// ends anyway.
+    // The mysql client reads the body under whatever sql_mode the script set before it, so every reading counts.
     private func holdsInnerSemicolon(_ statement: String) -> Bool {
         var body = statement
-        while body.hasSuffix(";") {
-            body = StatementBlank.trimming(String(body.dropLast()))
+        while body.unicodeScalars.last == ";" {
+            body = StatementBlank.trimming(String(body.unicodeScalars.dropLast()))
         }
-        return codeShape(of: body).holdsSemicolon
+        return readings.distinct(for: body).contains { codeShape(of: body, grammar: $0).holdsSemicolon }
     }
 
-    /// `DELIMITER //`, which the mysql client and TablePro's own import both honour, rather than mysqldump's `;;`:
-    /// the import reads `DELIMITER ;;` as a statement ended by its own first `;`.
+    // Slashes rather than mysqldump's `;;`, which the import reads as a statement ended by its first `;`; never text the body holds.
     private func delimiterBlock(_ statement: String) -> String {
-        let delimiter = Self.mysqlScriptDelimiter
-        let body = codeShape(of: statement).endsInLineComment
+        let text = statement as NSString
+        var delimiter = Self.mysqlScriptDelimiterUnit + Self.mysqlScriptDelimiterUnit
+        while text.range(of: delimiter, options: .literal).location != NSNotFound {
+            delimiter += Self.mysqlScriptDelimiterUnit
+        }
+        let body = endsInLineComment(statement)
             ? "\(statement)\n\(delimiter)"
             : "\(statement) \(delimiter)"
         return "DELIMITER \(delimiter)\n\(body)\nDELIMITER ;"
     }
 
-    /// A terminator written after a line comment would be part of the comment, so it goes on a line of its own.
+    // A comment the text leaves open would run over the terminator, even one the text already ends with: SQLite stores
+    // `STRICT /* open` and `-- note` after a definition as written.
     internal func endedBySemicolon(_ statement: String) -> String {
-        guard !statement.hasSuffix(";") else { return statement }
-        return codeShape(of: statement).endsInLineComment ? "\(statement)\n;" : "\(statement);"
+        let shapes = readings.distinct(for: statement).map { codeShape(of: statement, grammar: $0) }
+        if shapes.contains(where: \.endsInOpenBlockComment) {
+            return "\(statement) */;"
+        }
+        if shapes.contains(where: \.endsInLineComment) {
+            return "\(statement)\n;"
+        }
+        return statement.unicodeScalars.last == ";" ? statement : "\(statement);"
+    }
+
+    private func endsInLineComment(_ statement: String) -> Bool {
+        readings.distinct(for: statement).contains { codeShape(of: statement, grammar: $0).endsInLineComment }
     }
 
     private struct CodeShape {
         var holdsSemicolon = false
         var endsInLineComment = false
+        var endsInOpenBlockComment = false
     }
 
-    /// Walks the code of `statement` with the lexer every scanner shares, stepping over strings, quoted identifiers
-    /// and comments.
-    private func codeShape(of statement: String) -> CodeShape {
+    private func codeShape(of statement: String, grammar: SQLLexicalGrammar) -> CodeShape {
         let text = statement as NSString
         let length = text.length
         var shape = CodeShape()
         var index = 0
         while index < length {
             if let end = SQLNonCodeSpan.end(at: index, in: text, grammar: grammar) {
-                if end >= length, startsLineComment(text, at: index, length: length) {
+                if end >= length, startsLineComment(text, at: index, length: length, grammar: grammar) {
                     shape.endsInLineComment = true
+                }
+                if end >= length, let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar),
+                   span.kind == .blockComment, !span.isTerminated {
+                    shape.endsInOpenBlockComment = true
                 }
                 index = max(end, index + 1)
                 continue
@@ -198,7 +258,7 @@ internal struct SQLScriptText {
         return shape
     }
 
-    private func startsLineComment(_ text: NSString, at index: Int, length: Int) -> Bool {
+    private func startsLineComment(_ text: NSString, at index: Int, length: Int, grammar: SQLLexicalGrammar) -> Bool {
         SqlLexer.startsLineComment(text, at: index, length: length)
             || (grammar.contains(.hashLineComments) && text.character(at: index) == SqlLexer.hash)
     }

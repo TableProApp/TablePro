@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 import Testing
 
@@ -34,7 +35,7 @@ struct MySQLIndexKeyHandoffWriterTests {
             spelling: "((lower(`v`)) DESC) USING BTREE"
         )
         #expect(
-            mysqlModifyIndexSQL(table: "t", oldIndexName: "i_fn", newIndex: renamed, flavor: .mysql)
+            mysqlModifyIndexSQL(table: "t", oldIndexName: "i_fn", newIndex: renamed, flavor: .mysql, spelling: .backslashEscapes)
                 == "ALTER TABLE `t` DROP INDEX `i_fn`, ADD INDEX `i_fn_lower` ((lower(`v`)) DESC) USING BTREE"
         )
     }
@@ -43,9 +44,47 @@ struct MySQLIndexKeyHandoffWriterTests {
     func renameKeepsColumnDescending() {
         let renamed = index("i_v_desc", columns: ["v", "id"], spelling: "(`v` DESC, `id`) USING BTREE")
         #expect(
-            mysqlModifyIndexSQL(table: "t", oldIndexName: "i_desc", newIndex: renamed, flavor: .mysql)
+            mysqlModifyIndexSQL(table: "t", oldIndexName: "i_desc", newIndex: renamed, flavor: .mysql, spelling: .backslashEscapes)
                 == "ALTER TABLE `t` DROP INDEX `i_desc`, ADD INDEX `i_v_desc` (`v` DESC, `id`) USING BTREE"
         )
+    }
+
+    // STATISTICS.EXPRESSION after one unescape. Sent unrespelled under NO_BACKSLASH_ESCAPES, `'\'` closed and DROP COLUMN ran.
+    private static let hostileKeyPart = #"concat(`note`,_utf8mb4'\'))), DROP COLUMN `total` #')"#
+
+    @Test("A renamed functional index is spelled for a session without backslash escapes")
+    func modifyIndexIsRespelled() {
+        let renamed = index(
+            "ix_label_renamed", columns: [Self.hostileKeyPart], expressions: [Self.hostileKeyPart]
+        )
+        #expect(
+            mysqlModifyIndexSQL(
+                table: "orders", oldIndexName: "ix_label", newIndex: renamed, flavor: .mysql, spelling: .quoteDoubling
+            ) == "ALTER TABLE `orders` DROP INDEX `ix_label`, ADD INDEX `ix_label_renamed` "
+                + "((concat(`note`,_utf8mb4'''))), DROP COLUMN `total` #'))) USING BTREE"
+        )
+    }
+
+    @Test("An added functional index is spelled for a session without backslash escapes")
+    func addIndexIsRespelled() {
+        let added = index("ix_label", columns: [Self.hostileKeyPart], expressions: [Self.hostileKeyPart])
+        #expect(
+            mysqlAddIndexSQL(table: "orders", index: added, spelling: .quoteDoubling)
+                == "ALTER TABLE `orders` ADD INDEX `ix_label` ((concat(`note`,_utf8mb4'''))), DROP COLUMN `total` #'))) USING BTREE"
+        )
+        #expect(
+            mysqlAddIndexSQL(table: "orders", index: added, spelling: .backslashEscapes)
+                == "ALTER TABLE `orders` ADD INDEX `ix_label` ((\(Self.hostileKeyPart))) USING BTREE"
+        )
+    }
+
+    @Test("A key part that is not one expression is refused, and one that is goes on to be respelled")
+    func keyPartThatIsNotOneExpressionIsRefused() {
+        let breakout = "a), DROP COLUMN `total`, ADD INDEX (b"
+        let refused = index("ix", columns: [breakout], expressions: [breakout])
+        #expect(mysqlIndexExpressionRefusal(for: refused, flavor: .mysql)?.contains("ix") == true)
+        let accepted = index("ix", columns: [Self.hostileKeyPart], expressions: [Self.hostileKeyPart])
+        #expect(mysqlIndexExpressionRefusal(for: accepted, flavor: .mysql) == nil)
     }
 
     @Test("A key edited away from its spelling is written from the fields")

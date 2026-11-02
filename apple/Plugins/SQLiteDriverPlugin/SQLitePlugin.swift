@@ -7,6 +7,8 @@ import CSQLite
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
+import TableProSQLiteCore
 import TableProSQLVocabulary
 
 final class SQLitePlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -149,6 +151,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .schemaCompare,
             .dataCompare,
             .temporaryTables,
+            .readOnlyStatements,
         ]
     }
 
@@ -219,20 +222,31 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        let rawResult = try await backend.executeQuery(query)
-        return PluginQueryResult(
-            columns: rawResult.columns,
-            columnTypeNames: rawResult.columnTypeNames,
-            rows: rawResult.rows,
-            rowsAffected: rawResult.rowsAffected,
-            executionTime: rawResult.executionTime,
-            isTruncated: rawResult.isTruncated
-        )
+        Self.queryResult(try await backend.executeQuery(query))
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        let scope = SQLiteStatementScope(context)
+        guard scope != .unrestricted else { return try await execute(query: query) }
+        return Self.queryResult(try await backend.executeQuery(query, parameters: nil, scope: scope))
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        let rawResult = try await backend.executeParameterizedQuery(query, parameters: parameters)
-        return PluginQueryResult(
+        Self.queryResult(try await backend.executeParameterizedQuery(query, parameters: parameters))
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        let scope = SQLiteStatementScope(context)
+        guard scope != .unrestricted else { return try await executeParameterized(query: query, parameters: parameters) }
+        return Self.queryResult(try await backend.executeQuery(query, parameters: parameters, scope: scope))
+    }
+
+    private static func queryResult(_ rawResult: SQLiteRawResult) -> PluginQueryResult {
+        PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
             rows: rawResult.rows,
@@ -322,6 +336,35 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         } else {
             raw = try await execute(query: query)
         }
+        return Self.capped(raw, to: rowCap)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard SQLiteStatementScope(context) != .unrestricted else {
+            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+        if parameters == nil, let cap = rowCap, cap > 0, Self.returnsRows(query) {
+            return try await PluginBoundedStream.collect(
+                streamRows(query: query, context: context),
+                rowCap: cap,
+                startedAt: Date()
+            )
+        }
+        let raw: PluginQueryResult
+        if let parameters {
+            raw = try await executeParameterized(query: query, parameters: parameters, context: context)
+        } else {
+            raw = try await execute(query: query, context: context)
+        }
+        return Self.capped(raw, to: rowCap)
+    }
+
+    private static func capped(_ raw: PluginQueryResult, to rowCap: Int?) -> PluginQueryResult {
         guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
         return PluginQueryResult(
             columns: raw.columns,
@@ -556,8 +599,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         guard firstRow[safe: 0]?.asText != "view" else { return ddl }
-        let formatted = formatDDL(ddl)
-        return formatted.hasSuffix(";") ? formatted : formatted + ";"
+        return ddl.hasSuffix(";") ? ddl : ddl + ";"
     }
 
     /// `sqlite_master` stores each index's own `CREATE INDEX` text, which is what `sqlite3 .dump`
@@ -637,11 +679,19 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        stream(query, scope: .unrestricted)
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        stream(query, scope: SQLiteStatementScope(context))
+    }
+
+    private func stream(_ query: String, scope: SQLiteStatementScope) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
-                    try await self.backend.streamQuery(queryToRun, continuation: continuation)
+                    try await self.backend.streamQuery(queryToRun, scope: scope, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -680,8 +730,20 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        guard sqliteColumnRefusal(column) == nil else { return nil }
         let colDef = sqliteColumnDefinitionSQL(addableColumn(column), isInlinePrimaryKey: false)
         return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(colDef)"
+    }
+
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        switch operation {
+        case .addColumn(let column):
+            return sqliteColumnRefusal(column)
+        case .addIndex(let index):
+            return sqliteIndexRefusal(index)
+        default:
+            return nil
+        }
     }
 
     /// ALTER TABLE ADD COLUMN refuses a STORED generated column outright once the table holds rows
@@ -744,13 +806,12 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    /// ADD/DROP CONSTRAINT arrived in SQLite 3.53.0. Returning nil below that version makes
-    /// `SchemaStatementGenerator` refuse the change with "Unsupported schema operation" rather than
-    /// sending a statement the linked library cannot parse.
+    // ADD CONSTRAINT arrived in 3.53.0; nil makes the app refuse the change instead of sending what the library cannot parse.
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
         guard SQLitePlugin.supportsCheckConstraintEditing else { return nil }
         let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        guard !expression.isEmpty, !constraint.name.isEmpty,
+              SQLExpressionFragment.isSingleExpression(expression, databaseTypeId: SQLitePlugin.databaseTypeId) else { return nil }
         return "ALTER TABLE \(quoteIdentifier(table)) ADD CONSTRAINT "
             + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
     }
@@ -761,7 +822,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        SQLiteIndexCatalog.createStatement(for: index, table: table, quote: sqliteQuoteIdentifier)
+        guard sqliteIndexRefusal(index) == nil else { return nil }
+        return SQLiteIndexCatalog.createStatement(for: index, table: table, quote: sqliteQuoteIdentifier)
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -775,57 +837,17 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw SQLitePluginError.attachedDatabaseStructure
         }
     }
+}
 
-    private func formatDDL(_ ddl: String) -> String {
-        guard ddl.uppercased().hasPrefix("CREATE TABLE") else {
-            return ddl
+extension SQLiteStatementScope {
+    init(_ context: PluginStatementContext) {
+        if context.readOnly, context.origin == .external {
+            self = .readOnly
+        } else if !context.allowsServerCode {
+            self = .noServerCode
+        } else {
+            self = .unrestricted
         }
-
-        var formatted = ddl
-
-        if let range = formatted.range(of: "(") {
-            let before = String(formatted[..<range.lowerBound])
-            let after = String(formatted[range.upperBound...])
-            formatted = before + "(\n  " + after.trimmingCharacters(in: .whitespaces)
-        }
-
-        var result = ""
-        var depth = 0
-        var i = 0
-        let chars = Array(formatted)
-
-        while i < chars.count {
-            let char = chars[i]
-
-            if char == "(" {
-                depth += 1
-                result.append(char)
-            } else if char == ")" {
-                depth -= 1
-                result.append(char)
-            } else if char == "," && depth == 1 {
-                result.append(",\n  ")
-                i += 1
-                while i < chars.count && chars[i].isWhitespace {
-                    i += 1
-                }
-                i -= 1
-            } else {
-                result.append(char)
-            }
-
-            i += 1
-        }
-
-        formatted = result
-
-        if let range = formatted.range(of: ")", options: .backwards) {
-            let before = String(formatted[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-            let after = String(formatted[range.lowerBound...])
-            formatted = before + "\n" + after
-        }
-
-        return formatted.isEmpty ? ddl : formatted
     }
 }
 
@@ -837,6 +859,7 @@ enum SQLitePluginError: Error {
     case queryFailed(String)
     case unsupportedOperation
     case attachedDatabaseStructure
+    case readOnlyStatement
 }
 
 extension SQLitePluginError: PluginDriverError {
@@ -848,6 +871,8 @@ extension SQLitePluginError: PluginDriverError {
         case .unsupportedOperation: return String(localized: "Operation not supported")
         case .attachedDatabaseStructure:
             return String(localized: "The structure of a table in an attached database cannot be changed here.")
+        case .readOnlyStatement:
+            return String(localized: "This request is read only, and the statement is not a read.")
         }
     }
 }

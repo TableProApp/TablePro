@@ -5,11 +5,14 @@ public struct ImportLibrarySnapshot: Sendable {
         public let id: UUID
         public let name: String
         public let matchKey: ConnectionMatchKey
+        // The saved connection as an export of it reads. Without it the analyzer never offers Replace.
+        public let settings: ExportableConnection?
 
-        public init(id: UUID, name: String, matchKey: ConnectionMatchKey) {
+        public init(id: UUID, name: String, matchKey: ConnectionMatchKey, settings: ExportableConnection? = nil) {
             self.id = id
             self.name = name
             self.matchKey = matchKey
+            self.settings = settings
         }
     }
 

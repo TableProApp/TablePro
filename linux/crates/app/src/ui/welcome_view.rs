@@ -12,7 +12,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::{ConnectionGroupName, ConnectionListState};
+use tablepro_storage::ConnectionListState;
 use uuid::Uuid;
 
 use crate::services::connection_search::ConnectionSearch;
@@ -107,8 +107,8 @@ glib::wrapper! {
 pub(super) struct Parts {
     list: Rc<SavedConnectionList>,
     tasks: Option<Tasks>,
-    /// The groups after the ungrouped one, by name, in list order.
-    groups: RefCell<Vec<(ConnectionGroupName, adw::PreferencesGroup)>>,
+    /// The groups after the ungrouped one, by label, in list order.
+    groups: RefCell<Vec<(String, adw::PreferencesGroup)>>,
     /// What the picker's search asks for; every section's filter reads it.
     search: Rc<RefCell<ConnectionSearch>>,
     /// The ungrouped section's filter, then each group's.
@@ -186,8 +186,8 @@ impl WelcomeView {
             let (Some(saved), Some(list)) = (object.saved(), list.upgrade()) else {
                 return false;
             };
-            saved.group.as_ref().map(ConnectionGroupName::as_str) == group.as_deref()
-                && search.borrow().matches(saved, &list.tags())
+            let label = object.group();
+            label == group && search.borrow().matches(saved, label.as_deref(), &list.tags())
         });
         parts.filters.borrow_mut().push(filter.clone());
         gtk::FilterListModel::new(Some(parts.list.model()), Some(filter))
@@ -305,9 +305,9 @@ impl WelcomeView {
         for name in names {
             // A group's title is markup, and the name is the user's text.
             let group = adw::PreferencesGroup::builder()
-                .title(glib::markup_escape_text(name.as_str()).as_str())
+                .title(glib::markup_escape_text(&name).as_str())
                 .build();
-            self.bind(&group, &self.filtered(Some(name.as_str())));
+            self.bind(&group, &self.filtered(Some(&name)));
             imp.page.add(&group);
             built.push((name, group));
         }

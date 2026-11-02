@@ -128,6 +128,7 @@ Nothing reaches users before the `github-release` job of `release.yml`.
 - An infrastructure failure (runner, network, notary service) is the same re-run, before or after publishing: each step skips what is done. A code failure is fixed on `main`, picked, and ships as the next number.
 - A stable that never published: the next release PR runs `git revert <its release commit>` before `assemble`, and `gh release delete vX.Y.Z --yes` removes a leftover draft.
 - A stable builds only on a GA Xcode (`setup-xcode` `require-release`). With none on the runner image, `app` and `plugins` fail, and a PR points `.github/actions/setup-xcode` at an image that has one. Betas still ship.
+- `feed` fails with "no signature vouches for the published plugins/v3.json" on the first release that signs the manifest, or after a release line without signing published it. Check `plugins/v3.json` on `gh-pages`, run `gh variable set PLUGIN_MANIFEST_RESIGN --body true`, then `gh run rerun <release run> --failed`, then `gh variable delete PLUGIN_MANIFEST_RESIGN`.
 
 ## Withdrawing a release
 
@@ -143,11 +144,15 @@ gh workflow run withdraw.yml --ref v<newest tag> -f version=X.Y.Z
 - The `signing` and `release` environments hold the secrets `release.yml` names. They and `github-pages` allow only `v*` tags and have no reviewer: only admins create those tags.
 - `.github/actions/apple-signing` stores the App Store Connect key as the `TablePro` notarytool profile, and warns when the Developer ID certificate expires within 60 days.
 - The maintainer holds an offline backup of the Sparkle EdDSA key. It never rotates without a signed transition, since every app from 0.82 verifies the feed with it.
+- `plugins/v3.json` has its own EdDSA key: the `release` secret `PLUGIN_REGISTRY_ED_PRIVATE_KEY` (a `generate_keys -x` export; backup in the login Keychain, account `tablepro-plugin-registry`). The app checks the signature against `TableProPluginRegistryPublicEDKey` in its `Info.plist` before it reads the manifest, and `feed.py` refuses a secret that does not match that key. `SUPublicEDKey` and `SPARKLE_PRIVATE_KEY` sign app updates only.
 - `feed.py` refuses an `appcast.xml` whose signature does not verify, so a hand edit to `gh-pages` is re-signed with `sign_update`.
 
 ## Plugins
 
 - One tag builds every registry plugin in `.github/plugin-registry.json`. The zips are assets of the app's release, at its version and build. There are no plugin tags.
+- `plugins/v3.json` carries a `serial`: one past the last, and never below the current Unix time. `feed.py` signs the manifest into `plugins/v3.json.sig` and refuses a published one whose signature is missing or does not verify. The app refuses a manifest with no valid signature or with a lower `serial` than it has seen.
+- Every live `release/X.Y` branch carries the manifest signing (`feed.py`, `registry.py`, `release.yml`, `withdraw.yml`) before its next tag. A tag without it publishes an unsigned manifest, and apps that check refuse it.
+- The repository variable `PLUGIN_MANIFEST_RESIGN=true` makes `feed.py` sign a published `v3.json` it cannot verify, or a missing one. Set it for one run only, after checking `plugins/v3.json` by hand (When a run fails), and unset it right after.
 - Retention per channel, kit and `minimumSystemVersion`: the two highest builds stay, a beta goes once a stable with the same key has a higher build, and a kit below `retainFromPluginKit` goes.
 - Check `retainFromPluginKit` only when `TABLEPRO_PLUGINKIT_VERSION` changes. It is the kit of the oldest app version still on at least 1% of the machines seen in the last 30 days (license dashboard, App Versions), raised with a normal PR. The manifest keeps the higher of its own value and the tag's, so an older line never lowers it. ABI: `.claude/rules/plugin-system.md`.
 

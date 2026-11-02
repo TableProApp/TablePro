@@ -49,10 +49,10 @@ struct RedisClusterTopology: Equatable, Sendable {
         allNodes.first { $0.address == address }
     }
 
-    /// Applies a MOVED without a full reload. Redis clients patch the single slot and reload
-    /// periodically rather than on every redirect.
+    // Redis clients patch the one slot on MOVED and reload the full map only periodically.
     func movingSlot(_ slot: Int, to address: RedisNodeAddress) -> RedisClusterTopology {
-        guard let targetShardIndex = shards.firstIndex(where: { $0.master.address == address }) else {
+        guard (0 ..< RedisKeySlot.slotCount).contains(slot),
+              let targetShardIndex = shards.firstIndex(where: { $0.master.address == address }) else {
             return self
         }
         var updated: [RedisClusterShard] = []
@@ -84,7 +84,6 @@ struct RedisClusterTopology: Equatable, Sendable {
 }
 
 enum RedisClusterTopologyParser {
-    /// CLUSTER SHARDS: [ [ "slots", [start, end, ...], "nodes", [ {id, port, ip, endpoint, role, health}, ... ] ], ... ]
     static func parseShards(_ reply: RedisReply, fallbackHost: String) -> RedisClusterTopology? {
         guard case .array(let shardReplies) = reply, !shardReplies.isEmpty else { return nil }
         var shards: [RedisClusterShard] = []
@@ -94,8 +93,8 @@ enum RedisClusterTopologyParser {
             let bounds = slotNumbers.compactMap(\.intValue)
             guard bounds.count % 2 == 0 else { return nil }
             var ranges: [ClosedRange<Int>] = []
-            for index in stride(from: 0, to: bounds.count, by: 2) where bounds[index] <= bounds[index + 1] {
-                ranges.append(bounds[index] ... bounds[index + 1])
+            for index in stride(from: 0, to: bounds.count, by: 2) {
+                if let range = slotRange(bounds[index], bounds[index + 1]) { ranges.append(range) }
             }
 
             guard case .array(let nodeReplies)? = map["nodes"] else { return nil }
@@ -111,13 +110,13 @@ enum RedisClusterTopologyParser {
         return shards.isEmpty ? nil : RedisClusterTopology(shards: shards)
     }
 
-    /// CLUSTER SLOTS: [ [ start, end, [ip, port, id, meta?], [replica...] ], ... ]
     static func parseSlots(_ reply: RedisReply, fallbackHost: String) -> RedisClusterTopology? {
         guard case .array(let rangeReplies) = reply, !rangeReplies.isEmpty else { return nil }
         var shards: [RedisClusterShard] = []
         for rangeReply in rangeReplies {
             guard case .array(let parts) = rangeReply, parts.count >= 3,
-                  let start = parts[0].intValue, let end = parts[1].intValue, start <= end else { continue }
+                  let start = parts[0].intValue, let end = parts[1].intValue,
+                  let range = slotRange(start, end) else { continue }
             var master: RedisClusterNode?
             var replicas: [RedisClusterNode] = []
             for (offset, nodeReply) in parts.dropFirst(2).enumerated() {
@@ -127,9 +126,14 @@ enum RedisClusterTopologyParser {
                 if node.isReplica { replicas.append(node) } else { master = node }
             }
             guard let master else { continue }
-            shards.append(RedisClusterShard(slots: [start ... end], master: master, replicas: replicas))
+            shards.append(RedisClusterShard(slots: [range], master: master, replicas: replicas))
         }
         return shards.isEmpty ? nil : RedisClusterTopology(shards: shards)
+    }
+
+    private static func slotRange(_ start: Int, _ end: Int) -> ClosedRange<Int>? {
+        guard start >= 0, start <= end, end < RedisKeySlot.slotCount else { return nil }
+        return start ... end
     }
 
     private static func parseShardNode(_ reply: RedisReply, fallbackHost: String) -> RedisClusterNode? {

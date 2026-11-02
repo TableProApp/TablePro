@@ -31,7 +31,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     init(driver: DatabaseDriver, databaseType: DatabaseType) {
         let snapshot = PluginMetadataRegistry.shared.snapshot(for: databaseType)
         self.supportsCascadeDrop = snapshot?.capabilities.supportsCascadeDrop ?? false
-        self.lexicalFeatures = databaseType.lexicalGrammar.pluginFeatures
+        self.lexicalFeatures = SQLLexicalResolver.executionFeatures(for: databaseType, session: driver.sessionLexicalState)
         self.implicitSchemaName = snapshot?.schema.implicitSchemaName
         self.pagination = PaginationCapability.of(databaseType)
         self.appliesRowScope = Self.canApplyRowScope(on: databaseType)

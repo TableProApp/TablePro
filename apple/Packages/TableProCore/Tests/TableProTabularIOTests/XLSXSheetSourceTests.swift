@@ -180,6 +180,83 @@ struct XLSXSheetSourceTests {
         #expect(source.mergedRanges == [XLSXCellRange(start: XLSXCellReference(row: 0, column: 0), end: XLSXCellReference(row: 1, column: 1))])
     }
 
+    @Test func testOverlappingAndRepeatedMergesHideEveryCoveredCellButTopLeftOnes() throws {
+        let rows = (1...6).map { row in
+            "<row r=\"\(row)\">\(number("A\(row)", "\(row)"))\(number("B\(row)", "\(row * 10)"))\(number("C\(row)", "\(row * 100)"))</row>"
+        }.joined()
+        // B4:C6 comes twice and A3:C5 covers its top-left cell; A2:A3 covers the top-left cell of A3:C5.
+        let merges = ["B4:C6", "A2:A3", "B4:C6", "A3:C5", "B1:C1"].map { "<mergeCell ref=\"\($0)\"/>" }.joined()
+        let source = try source(rows: rows, trailer: "<mergeCells>\(merges)</mergeCells>")
+        #expect(grid(source) == [
+            ["1", "10", ""],
+            ["2", "20", "200"],
+            ["", "", ""],
+            ["", "", ""],
+            ["", "", ""],
+            ["6", "", ""]
+        ])
+        #expect(source.mergedRanges.map { "\($0.start.text):\($0.end.text)" } == ["B4:C6", "A2:A3", "A3:C5", "B1:C1"])
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func testManyNestedFullWidthMergesReadInLinearTime() throws {
+        let count = 20_000
+        let rows = (1...count).map { "<row r=\"\($0)\">\(number("A\($0)", "\($0)"))</row>" }.joined()
+        let merges = (1...count).map { "<mergeCell ref=\"A\($0):XFD1048576\"/>" }.joined()
+        let read = try source(rows: rows, trailer: "<mergeCells>\(merges)</mergeCells>")
+        #expect(grid(read) == [["1"]])
+        #expect(read.mergedRanges.count == count)
+    }
+
+    @Test func testHidingMergedCellsStopsWhenCancelled() throws {
+        let body = """
+            <worksheet><sheetData><row r="1">\(number("A1", "1"))\(number("B1", "2"))</row></sheetData>\
+            <mergeCells><mergeCell ref="A1:B1"/></mergeCells></worksheet>
+            """
+        func reader() -> XLSXSheetReader {
+            var reader = XLSXSheetReader(styles: .empty, sharedStringCount: 0, dateSystem: .base1900)
+            let bytes = Array(body.utf8)
+            _ = bytes.withUnsafeBufferPointer { reader.consume($0, isFinal: true) }
+            return reader
+        }
+        var cancelled = reader()
+        #expect(throws: TabularCancellation.self) {
+            try cancelled.finish(name: "Data", sharedStrings: .empty, isCancelled: { true })
+        }
+        var running = reader()
+        let finished = try running.finish(name: "Data", sharedStrings: .empty, isCancelled: { false })
+        #expect(grid(finished) == [["1"]])
+    }
+
+    @Test func testOccupiedRowsSkipRowsWithNoValue() throws {
+        let rows = """
+            <row r="2">\(number("B2", "1"))</row><row r="3"/>\
+            <row r="5">\(number("D5", "2"))\(number("B5", "3"))</row><row r="9">\(number("C9", "4"))</row>
+            """
+        let source = try source(rows: rows)
+        #expect(source.rowCount == 8)
+        #expect(source.occupiedRows() == [0, 3, 7])
+    }
+
+    @Test func testAScanCanTellAnAbsentCellFromAnEmptyOne() throws {
+        let rows = """
+            <row r="1">\(number("A1", "1"))<c r="B1" t="str"><f>""</f><v></v></c>\
+            <c r="C1" t="inlineStr"><is><t/></is></c><c r="D1" t="s"><v>0</v></c></row>\
+            <row r="2">\(number("E2", "2"))</row>
+            """
+        let source = try source(rows: rows, sharedStrings: ["<si><t/></si>"])
+        var kinds: [[TabularCellKind]] = []
+        source.scan(columns: Array(0..<source.columnCount), rows: [0, 1], absentKind: .missing) { _, cells in
+            kinds.append(cells.kinds)
+            return true
+        }
+        #expect(kinds == [
+            [.number, .text, .text, .text, .missing],
+            [.missing, .missing, .missing, .missing, .number]
+        ])
+        #expect(scanned(source, rows: [1]).first?.map(\.kind) == [.text, .text, .text, .text, .number])
+    }
+
     @Test func testLargeGapsAndOutOfOrderCellsStayAddressable() throws {
         let rows = """
             <row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>10</v></c></row>\

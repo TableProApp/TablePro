@@ -214,6 +214,17 @@ struct OceanBaseColumnDefaultsTests {
         #expect(OceanBaseColumnDefaults.resolve(clause: clause, catalogDefault: "(a") == .unverified)
     }
 
+    @Test("A literal is decoded by scalar, so a doubled quote a combining mark follows is one quote")
+    func doubledQuoteBeforeMarkDecodes() {
+        #expect(OceanBaseColumnDefaults.resolve(clause: "'x''\u{301}'", catalogDefault: "x'\u{301}") == .value("'x''\u{301}'"))
+    }
+
+    @Test("A clause that is not one expression is not trusted, even when it matches the catalog")
+    func clauseThatIsNotOneExpressionIsUnverified() {
+        let clause = "0x00; DROP TABLE invoices"
+        #expect(OceanBaseColumnDefaults.resolve(clause: clause, catalogDefault: clause) == .unverified)
+    }
+
     @Test("A bare name may start with a digit, as sql_quote_show_create = 0 prints 1st_id")
     func bareNameStartingWithDigit() throws {
         let statement = "CREATE TABLE t (\n  id int(11) NOT NULL,\n  1st_id varchar(36) DEFAULT (uuid()),\n"

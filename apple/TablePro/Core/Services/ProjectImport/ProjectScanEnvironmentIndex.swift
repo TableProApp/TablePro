@@ -23,14 +23,17 @@ struct ProjectScanEnvironmentIndex {
     private var documentsByDirectory: [String: DotenvDocument] = [:]
     private var rootDocument: DotenvDocument?
 
-    init(files: [ProjectScanFile], rootURL: URL) {
+    init(files: [ProjectScanFile], rootURL: URL, budget: ProjectScanExpansionBudget) {
         let rootPath = rootURL.standardizedFileURL.path
         for file in files where file.match.kind == .dotenv {
+            guard !Task.isCancelled else {
+                return
+            }
             guard let contents = ProjectFileReader.text(at: file.url) else {
                 continue
             }
             // The folder may be someone else's, so a reference it does not define stays unresolved.
-            let document = DotenvParser.parse(contents, processEnvironment: [:])
+            let document = DotenvParser.parse(contents, processEnvironment: [:], budget: budget)
             let filePath = file.url.standardizedFileURL.path
             let directory = file.url.deletingLastPathComponent().standardizedFileURL.path
             documentsByFile[filePath] = document

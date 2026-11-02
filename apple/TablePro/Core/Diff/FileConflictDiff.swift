@@ -17,13 +17,11 @@ internal enum FileConflictComparison: Equatable, Sendable {
 internal enum FileConflictDiff {
     static let maximumDifferingLineCount = 2_000
 
-    /// Swift treats "\r\n" as one Character, so splitting on "\n" alone leaves a
-    /// CRLF file as a single line. Line endings are folded before splitting, then
-    /// blank lines are kept.
+    // "\r\n" is one Character, so line endings are folded by code unit before splitting.
     static func lines(_ content: String) -> [String] {
         content
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\r\n", with: "\n", options: .literal)
+            .replacingOccurrences(of: "\r", with: "\n", options: .literal)
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
     }

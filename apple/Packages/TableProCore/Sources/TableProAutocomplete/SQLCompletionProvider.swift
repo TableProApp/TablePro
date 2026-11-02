@@ -1,5 +1,6 @@
 import Foundation
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 public final class SQLCompletionProvider {
     private let contextAnalyzer = SQLContextAnalyzer()
@@ -496,7 +497,7 @@ public final class SQLCompletionProvider {
             var item = SQLCompletionItem(
                 label: "'\(value)'",
                 kind: .keyword,
-                insertText: "'\(value.replacingOccurrences(of: "'", with: "''", options: .literal))'",
+                insertText: SQLQuoting.stringLiteral(value, escapes: grammar.stringEscapes),
                 detail: column,
                 filterText: value.lowercased()
             )
@@ -606,8 +607,10 @@ public final class SQLCompletionProvider {
             && name.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || $0 == "_" }
         guard !isBare || SQLKeywords.isKeyword(name) else { return name }
         // The analyzer reads a backslash-escaped `"` as a string, which is where a backtick quotes a name instead.
-        let quote = grammar.isSuperset(of: [.backslashEscapesInDoubleQuotes, .backtickQuotes]) ? "`" : "\""
-        return quote + name.replacingOccurrences(of: quote, with: quote + quote, options: .literal) + quote
+        let quote: SQLIdentifierQuote = grammar.isSuperset(of: [.backslashEscapesInDoubleQuotes, .backtickQuotes])
+            ? .backtick
+            : .doubleQuote
+        return SQLQuoting.identifier(name, quote: quote, backslashEscapes: grammar.backslashEscapes(in: quote))
     }
 
     // CTEs were bound to their own scope by the parser, so what is left to expand is a table the catalog knows.

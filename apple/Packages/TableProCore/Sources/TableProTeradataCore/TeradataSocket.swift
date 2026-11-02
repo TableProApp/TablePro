@@ -32,6 +32,8 @@ protocol TeradataTransport: AnyObject {
 }
 
 final class TeradataSocket: TeradataTransport {
+    private static let receiveChunkLength = 64 * 1_024
+
     private let lock = NSLock()
     private var descriptor: Int32 = -1
     private var closed = false
@@ -131,29 +133,31 @@ final class TeradataSocket: TeradataTransport {
         }
     }
 
+    // The count comes from a reply header, so the result grows with the bytes that actually arrive.
     func receive(_ count: Int) throws -> [UInt8] {
         guard count > 0 else { return [] }
-        var buffer = [UInt8](repeating: 0, count: count)
-        var offset = 0
-        try buffer.withUnsafeMutableBytes { raw in
-            guard let base = raw.baseAddress else {
-                throw TeradataWireError.truncated("receive buffer unavailable")
-            }
-            while offset < count {
-                try applyCurrentTimeout()
-                let read = Darwin.recv(descriptor, base.advanced(by: offset), count - offset, 0)
-                if read == 0 {
-                    if isClosed { throw TeradataWireError.cancelled }
-                    throw TeradataWireError.truncated("peer closed after \(offset)/\(count)")
+        var received: [UInt8] = []
+        var chunk = [UInt8](repeating: 0, count: min(count, Self.receiveChunkLength))
+        while received.count < count {
+            try applyCurrentTimeout()
+            let wanted = min(count - received.count, chunk.count)
+            let read = try chunk.withUnsafeMutableBytes { raw -> Int in
+                guard let base = raw.baseAddress else {
+                    throw TeradataWireError.truncated("receive buffer unavailable")
                 }
-                if read < 0 {
-                    if isClosed { throw TeradataWireError.cancelled }
-                    throw TeradataWireError.truncated("recv errno \(errno)")
-                }
-                offset += read
+                return Darwin.recv(descriptor, base, wanted, 0)
             }
+            if read == 0 {
+                if isClosed { throw TeradataWireError.cancelled }
+                throw TeradataWireError.truncated("peer closed after \(received.count)/\(count)")
+            }
+            if read < 0 {
+                if isClosed { throw TeradataWireError.cancelled }
+                throw TeradataWireError.truncated("recv errno \(errno)")
+            }
+            received.append(contentsOf: chunk[..<read])
         }
-        return buffer
+        return received
     }
 
     static func socketTimeout(milliseconds: Int) -> timeval {

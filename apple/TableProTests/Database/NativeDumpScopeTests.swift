@@ -49,38 +49,36 @@ struct NativeDumpScopeTests {
 
     // MARK: - PostgreSQL
 
-    /// Measured with pg_dump 17.11: `-t` is a psql `\d` pattern, not a name. `-t 'app.Orders'`
-    /// exits with "no matching tables were found" because the pattern folds to lower case, and
-    /// `-t 'order.item'` splits on the dot. Only the fully quoted form matches exactly one table.
+    // Measured with pg_dump 17.11: `-t` is a psql `\d` pattern that folds case and splits on the dot.
     @Test("Every picked PostgreSQL table is quoted schema and name apart")
-    func postgresQuotesEveryPattern() {
+    func postgresQuotesEveryPattern() throws {
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "Orders", schema: "app")
             ) == "\"app\".\"Orders\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "order.item", schema: "app")
             ) == "\"app\".\"order.item\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "t[1]", schema: "app")
             ) == "\"app\".\"t[1]\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "star*", schema: "app")
             ) == "\"app\".\"star*\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "we\"ird", schema: "app")
             ) == "\"app\".\"we\"\"ird\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "plain")
             ) == "\"plain\""
         )

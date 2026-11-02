@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProProcess
 
 /// Resolves a connection password from an external source declared in connections.json.
 /// File and command sources require a non-sandboxed build; TablePro ships with the hardened
@@ -28,6 +29,7 @@ enum PasswordSourceResolver {
         case storeNotTrusted
         case profileStoreNotTrusted
         case signsInWithLease
+        case toolNotInstalled(name: String)
 
         var errorDescription: String? {
             switch self {
@@ -73,6 +75,8 @@ enum PasswordSourceResolver {
                     """)
             case .signsInWithLease:
                 return String(localized: "A Vault database role signs in with a username too, so it cannot stand in for a password alone.")
+            case let .toolNotInstalled(name):
+                return String(format: String(localized: "The %@ command line tool is not installed."), name)
             }
         }
     }
@@ -120,9 +124,9 @@ enum PasswordSourceResolver {
                 resolve: run
             )
         case .onePassword, .vault:
-            return try await resolveExternalTool(source)
+            return try await resolveExternalTool(source, inheriting: environment)
         case let .awsSecretsManager(_, jsonKey):
-            let secret = try await resolveExternalTool(source)
+            let secret = try await resolveExternalTool(source, inheriting: environment)
             guard let jsonKey, !jsonKey.isEmpty else { return secret }
             return try extractJsonField(jsonKey, from: secret)
         case .vaultDatabaseRole:
@@ -130,24 +134,23 @@ enum PasswordSourceResolver {
         }
     }
 
-    /// The shell command that fetches a secret for CLI-backed sources, or nil for the local sources.
-    /// Arguments are single-quoted so a reference can never break out into shell injection.
-    static func externalCommand(for source: PasswordSource) -> String? {
+    // No shell, and each value follows `--` or joins its flag with `=`, so a leading dash never reads as a flag.
+    static func externalTool(for source: PasswordSource, environment: [String: String]) throws -> ProcessCommand? {
+        let tool: (name: String, arguments: [String])
         switch source {
         case .file, .env, .command, .vaultDatabaseRole:
             return nil
         case let .onePassword(reference):
-            return "op read --no-newline \(shellQuote(reference))"
+            tool = ("op", ["read", "--no-newline", "--", reference])
         case let .vault(path, field):
-            return "vault kv get -field=\(shellQuote(field)) \(shellQuote(path))"
+            tool = ("vault", ["kv", "get", "-field=\(field)", "--", path])
         case let .awsSecretsManager(secretId, _):
-            return "aws secretsmanager get-secret-value --secret-id \(shellQuote(secretId)) "
-                + "--query SecretString --output text"
+            tool = ("aws", ["secretsmanager", "get-secret-value", "--secret-id=\(secretId)", "--query", "SecretString", "--output", "text"])
         }
-    }
-
-    static func shellQuote(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''", options: .literal) + "'"
+        guard let path = ProcessEnvironment.executable(named: tool.name, in: environment) else {
+            throw ResolutionError.toolNotInstalled(name: tool.name)
+        }
+        return ProcessCommand(executable: URL(fileURLWithPath: path), arguments: tool.arguments, environment: environment)
     }
 
     static func extractJsonField(_ key: String, from json: String) throws -> String {
@@ -167,11 +170,16 @@ enum PasswordSourceResolver {
         throw ResolutionError.invalidSecretJson
     }
 
-    private static func resolveExternalTool(_ source: PasswordSource) async throws -> String {
-        guard let command = externalCommand(for: source) else {
+    // The CLIs read their own settings from the user's environment: VAULT_ADDR, AWS_PROFILE, OP_ACCOUNT.
+    private static func resolveExternalTool(
+        _ source: PasswordSource,
+        inheriting parent: [String: String]
+    ) async throws -> String {
+        let environment = ProcessEnvironment.addingToolSearchPaths(to: ProcessEnvironment.inherited(from: parent))
+        guard let command = try externalTool(for: source, environment: environment) else {
             throw ResolutionError.emptyPassword
         }
-        return try await resolveCommand(shell: command, timeoutSeconds: commandTimeoutSeconds)
+        return try await run(command, timeoutSeconds: commandTimeoutSeconds)
     }
 
     private static func resolveFile(path: String) throws -> String {
@@ -193,18 +201,29 @@ enum PasswordSourceResolver {
         return try nonEmpty(value.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
+    // The user's own command, so it stays bash. The connection's values reach it only as TABLEPRO_ variables.
     static func resolveCommand(
         shell: String,
         environment: [String: String] = [:],
         timeoutSeconds: UInt64,
         clock: any Clock<Duration> = ContinuousClock()
     ) async throws -> String {
+        let inherited = ProcessEnvironment.addingToolSearchPaths(to: ProcessEnvironment.inherited())
+        let command = ProcessCommand.userShell(
+            shell,
+            shell: .bash,
+            environment: inherited.merging(environment) { _, connection in connection }
+        )
+        return try await run(command, timeoutSeconds: timeoutSeconds, clock: clock)
+    }
+
+    private static func run(
+        _ command: ProcessCommand,
+        timeoutSeconds: UInt64,
+        clock: any Clock<Duration> = ContinuousClock()
+    ) async throws -> String {
         let output = try await Task.detached(priority: .userInitiated) { () async throws -> String in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/bash")
-            process.arguments = ["-c", shell]
-            process.environment = CLIToolEnvironment.augmented().merging(environment) { _, connection in connection }
-            process.standardInput = FileHandle.nullDevice
+            let process = try ProcessLauncher.process(for: command)
 
             let stdoutPipe = Pipe()
             let stderrPipe = Pipe()

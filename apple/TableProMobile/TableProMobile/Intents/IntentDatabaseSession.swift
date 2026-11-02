@@ -16,15 +16,21 @@ struct IntentDatabaseSession {
         }
     }
 
-    static func open(connection: DatabaseConnection) async throws -> IntentDatabaseSession {
+    static func open(
+        connection: DatabaseConnection,
+        lock: AppLockState,
+        keychain: any SecureStore = KeychainSecureStore()
+    ) async throws -> IntentDatabaseSession {
+        if lock.evaluateLock() {
+            throw AppLockedError()
+        }
         guard supportsTabularInsert(connection.type) else {
             throw IntentDataError.unsupportedDatabaseType(connection.type.rawValue)
         }
-        let secureStore = KeychainSecureStore()
-        let sshProvider = IOSSSHProvider(secureStore: secureStore)
+        let sshProvider = IOSSSHProvider(secureStore: keychain)
         let manager = ConnectionManager(
-            driverFactory: IOSDriverFactory(),
-            secureStore: secureStore,
+            driverFactory: IOSDriverFactory(secureStore: keychain),
+            secureStore: keychain,
             sshProvider: sshProvider
         )
         do {
@@ -37,20 +43,24 @@ struct IntentDatabaseSession {
 
     static func with<T>(
         connectionId: UUID,
+        lock: AppLockState,
+        keychain: any SecureStore = KeychainSecureStore(),
         savedConnection: @Sendable (UUID) -> DatabaseConnection? = IntentConnectionLoader.connection(id:),
         _ body: (IntentDatabaseSession) async throws -> T
     ) async throws -> T {
         guard let connection = savedConnection(connectionId) else {
             throw IntentDataError.connectionNotFound
         }
-        return try await with(connection: connection, body)
+        return try await with(connection: connection, lock: lock, keychain: keychain, body)
     }
 
     static func with<T>(
         connection: DatabaseConnection,
+        lock: AppLockState,
+        keychain: any SecureStore = KeychainSecureStore(),
         _ body: (IntentDatabaseSession) async throws -> T
     ) async throws -> T {
-        let session = try await open(connection: connection)
+        let session = try await open(connection: connection, lock: lock, keychain: keychain)
         do {
             let result = try await body(session)
             await session.close()

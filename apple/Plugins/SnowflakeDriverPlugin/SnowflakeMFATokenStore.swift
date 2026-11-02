@@ -10,6 +10,7 @@
 import Foundation
 import os
 import Security
+import TableProSnowflakeCore
 
 enum SnowflakeMFATokenStore {
     private struct TokenState {
@@ -21,33 +22,45 @@ enum SnowflakeMFATokenStore {
     private static let service = "com.TablePro.SnowflakeDriverPlugin.mfaToken"
     private static let logger = Logger(subsystem: "com.TablePro", category: "SnowflakeMFATokenStore")
 
-    static func token(account: String, user: String) -> String? {
-        let key = cacheKey(account: account, user: user)
+    static func token(for account: SnowflakeAccount, user: String) -> String? {
+        let key = account.tokenKey(user: user)
         if let cached = state.withLock({ $0.cache[key] }) {
             return cached
         }
-        guard let stored = readKeychain(key: key) else { return nil }
-        state.withLock { $0.cache[key] = stored }
-        return stored
+        if let stored = readKeychain(key: key) {
+            state.withLock { $0.cache[key] = stored }
+            return stored
+        }
+        guard let legacyKey = account.legacyTokenKey(user: user), let legacy = readKeychain(key: legacyKey) else {
+            return nil
+        }
+        state.withLock { $0.cache[key] = legacy }
+        if writeKeychain(legacy, key: key) {
+            deleteKeychain(key: legacyKey)
+        }
+        return legacy
     }
 
-    static func store(_ token: String, account: String, user: String) {
-        let key = cacheKey(account: account, user: user)
+    static func store(_ token: String, for account: SnowflakeAccount, user: String) {
+        let key = account.tokenKey(user: user)
         state.withLock { $0.cache[key] = token }
         writeKeychain(token, key: key)
     }
 
-    static func clear(account: String, user: String) {
-        let key = cacheKey(account: account, user: user)
+    static func clear(for account: SnowflakeAccount, user: String) {
+        let key = account.tokenKey(user: user)
         state.withLock { $0.cache[key] = nil }
         deleteKeychain(key: key)
+        if let legacyKey = account.legacyTokenKey(user: user) {
+            deleteKeychain(key: legacyKey)
+        }
     }
 
     static let rejectedPasscodeLifetime: TimeInterval = 300
 
-    static func markPasscodeRejected(_ passcode: String, account: String, user: String) {
+    static func markPasscodeRejected(_ passcode: String, for account: SnowflakeAccount, user: String) {
         guard !passcode.isEmpty else { return }
-        let key = "\(cacheKey(account: account, user: user)):\(passcode)"
+        let key = "\(account.tokenKey(user: user)):\(passcode)"
         state.withLock { state in
             state.rejectedPasscodes = state.rejectedPasscodes.filter {
                 Date().timeIntervalSince($0.value) < rejectedPasscodeLifetime
@@ -56,17 +69,13 @@ enum SnowflakeMFATokenStore {
         }
     }
 
-    static func isPasscodeRejected(_ passcode: String, account: String, user: String) -> Bool {
+    static func isPasscodeRejected(_ passcode: String, for account: SnowflakeAccount, user: String) -> Bool {
         guard !passcode.isEmpty else { return false }
-        let key = "\(cacheKey(account: account, user: user)):\(passcode)"
+        let key = "\(account.tokenKey(user: user)):\(passcode)"
         return state.withLock {
             guard let rejectedAt = $0.rejectedPasscodes[key] else { return false }
             return Date().timeIntervalSince(rejectedAt) < rejectedPasscodeLifetime
         }
-    }
-
-    private static func cacheKey(account: String, user: String) -> String {
-        "\(SnowflakeAccount.issuerAccountName(forAccount: account)).\(user.uppercased())"
     }
 
     private static func baseQuery(key: String) -> [String: Any] {
@@ -87,7 +96,8 @@ enum SnowflakeMFATokenStore {
         return String(data: data, encoding: .utf8)
     }
 
-    private static func writeKeychain(_ value: String, key: String) {
+    @discardableResult
+    private static func writeKeychain(_ value: String, key: String) -> Bool {
         var addQuery = baseQuery(key: key)
         addQuery[kSecValueData as String] = Data(value.utf8)
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -101,6 +111,7 @@ enum SnowflakeMFATokenStore {
         if status != errSecSuccess {
             logger.warning("Could not persist MFA token (OSStatus \(status)); it will be cached in memory only")
         }
+        return status == errSecSuccess
     }
 
     private static func deleteKeychain(key: String) {

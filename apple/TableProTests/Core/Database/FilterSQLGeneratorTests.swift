@@ -1089,6 +1089,41 @@ struct FilterSQLGeneratorTests {
         #expect(condition(Self.mysqlDialect, .contains, #"a\b%"#) == #"`code` LIKE '%a\\\\b\\%%'"#)
     }
 
+    // standard_conforming_strings off makes PostgreSQL read `\'` as a quote, so the descriptor's answer let the value
+    // close the literal.
+    @Test("A PostgreSQL session that reads backslash escapes gets the backslash doubled")
+    func postgresSessionWithBackslashEscapes() {
+        let escaping = PluginSessionLexicalState(
+            determined: [.backslashEscapesInSingleQuotes], enabled: [.backslashEscapesInSingleQuotes]
+        )
+        let conforming = PluginSessionLexicalState(determined: [.backslashEscapesInSingleQuotes], enabled: [])
+        let filter = TableFilter(columnName: "code", filterOperator: .equal, value: #"\' OR 1=1 --"#, isCaseSensitive: true)
+        let rendered: (PluginSessionLexicalState) -> String? = { session in
+            FilterSQLGenerator(
+                dialect: Self.postgresqlDialect,
+                databaseType: .postgresql,
+                stringEscapes: SQLLexicalResolver.stringEscapes(for: .postgresql, session: session)
+            ).generateCondition(from: filter)
+        }
+        #expect(rendered(escaping) == #""code" = '\\'' OR 1=1 --'"#)
+        #expect(rendered(conforming) == #""code" = '\'' OR 1=1 --'"#)
+    }
+
+    // NO_BACKSLASH_ESCAPES leaves MySQL's LIKE with no escape character, so the pattern names one.
+    @Test("A MySQL session without backslash escapes names the LIKE escape")
+    func mysqlSessionWithoutBackslashEscapesNamesTheLikeEscape() {
+        let session = PluginSessionLexicalState(determined: [.backslashEscapesInSingleQuotes], enabled: [])
+        let generator = FilterSQLGenerator(
+            dialect: Self.mysqlDialect,
+            databaseType: .mysql,
+            stringEscapes: SQLLexicalResolver.stringEscapes(for: .mysql, session: session)
+        )
+        let like = generator.generateCondition(from: TableFilter(
+            columnName: "code", filterOperator: .contains, value: #"50%\"#, isCaseSensitive: true
+        ))
+        #expect(like == #"`code` LIKE '%50\%\\%' ESCAPE '\'"#)
+    }
+
     // A combining mark or a Prepend scalar joins the quote or backslash into one grapheme cluster.
     @Test("A quote or backslash fused with its neighbour is still escaped", arguments: [
         ("x'\u{0301} OR 1=1 --", #"`code` = 'x''"# + "\u{0301}" + #" OR 1=1 --'"#),

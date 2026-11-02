@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 internal struct JoinQuerySQLWriter {
     internal let graph: JoinGraph
@@ -13,6 +14,7 @@ internal struct JoinQuerySQLWriter {
     internal let databaseType: DatabaseType
     internal let schema: String?
     internal let quote: (String) -> String
+    internal var stringEscapes: SQLStringEscapes?
 
     internal func sql(for draft: JoinQueryDraft) -> String? {
         guard let first = draft.tables.first else { return nil }
@@ -66,7 +68,8 @@ internal struct JoinQuerySQLWriter {
             columnTypes: names.compactMap { types[$0] },
             quoteIdentifier: { "\(quote(table)).\(quote($0))" },
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
-            databaseType: databaseType
+            databaseType: databaseType,
+            stringEscapes: stringEscapes
         )
         return generator.generateCondition(from: filter.tableFilter)
     }

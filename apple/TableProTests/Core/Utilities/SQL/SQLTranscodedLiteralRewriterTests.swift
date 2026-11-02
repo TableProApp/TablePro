@@ -81,20 +81,6 @@ struct SQLTranscodedLiteralRewriterTests {
         ) == "INSERT INTO t VALUES (X'E92778')")
     }
 
-    @Test("The session's sql_mode decides whether backslashes escape")
-    func sqlModeTracking() {
-        func after(_ statement: String, _ isOn: Bool) -> Bool {
-            SQLTranscodedLiteralRewriter.backslashEscapesAreOn(after: statement, currently: isOn, grammar: TestGrammar.mysql)
-        }
-        #expect(after("/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */", true))
-        #expect(!after("SET sql_mode = 'ANSI_QUOTES,NO_BACKSLASH_ESCAPES'", true))
-        #expect(!after("SET SESSION sql_mode = @OLD_SQL_MODE", true))
-        #expect(after("SET GLOBAL sql_mode = 'NO_BACKSLASH_ESCAPES'", true))
-        #expect(!after("SET @@session.sql_mode = 'no_backslash_escapes'", true))
-        #expect(after("SET sql_mode = DEFAULT", false))
-        #expect(after("INSERT INTO t VALUES ('sql_mode')", true))
-    }
-
     @Test("A comment between the literal and COLLATE still keeps the collation valid")
     func collateAfterAComment() throws {
         #expect(try SQLTranscodedLiteralRewriter.rewritten(

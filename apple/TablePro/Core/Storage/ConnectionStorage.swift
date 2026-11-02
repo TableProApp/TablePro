@@ -179,6 +179,7 @@ final class ConnectionStorage {
             guard let index = connections.firstIndex(where: { $0.id == incoming.id }) else { continue }
             let stored = connections[index]
             var updated = incoming.adoptingDeviceLocalState(from: stored)
+            updated.origin = .imported
             if incoming.credentialMode.profileId != nil {
                 updated.credentialMode = incoming.credentialMode
             }
@@ -200,6 +201,7 @@ final class ConnectionStorage {
         for incoming in adding {
             guard knownIds.insert(incoming.id).inserted else { continue }
             var placed = incoming
+            placed.origin = .imported
             placed.sortOrder = Self.nextSortOrder(in: connections, groupId: incoming.groupId)
             connections.append(placed)
             added.append(placed)
@@ -534,6 +536,7 @@ final class ConnectionStorage {
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
         duplicate.sshRoute = connection.sshRoute
+        duplicate.origin = connection.origin
 
         var connections = loadConnections()
         let siblings = LibrarySorting.sorted(connections.filter { $0.groupId == connection.groupId }, mode: .manual)
@@ -602,6 +605,7 @@ final class ConnectionStorage {
             }
         }
         LoadableExtensionApprovalStore.shared.copyApprovals(from: connection.id, to: newId)
+        EnvVarReferenceApprovalStore.shared.copyApprovals(from: connection.id, to: newId)
 
         appEventsProvider().connectionUpdated.send(nil)
         return placedDuplicate

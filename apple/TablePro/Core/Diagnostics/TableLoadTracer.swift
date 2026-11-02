@@ -97,11 +97,11 @@ internal final class TableLoadTracer {
         let state = signposter.beginInterval(
             "TableLoad",
             id: signpostID,
-            "#\(token.sequence, privacy: .public) \(token.table, privacy: .public)"
+            "#\(token.sequence, privacy: .public) \(token.table, privacy: .private(mask: .hash))"
         )
         intervals[token.sequence] = Interval(id: signpostID, state: state)
         logger.debug(
-            "\(Self.prefix(token), privacy: .public) +0.0ms START origin=\(origin.rawValue, privacy: .public)"
+            "\(Self.prefix(token), privacy: .private(mask: .hash)) +0.0ms START origin=\(origin.rawValue, privacy: .public)"
         )
         drainCompletedTraces()
         return token
@@ -177,7 +177,7 @@ internal final class TableLoadTracer {
         let label = Self.label(for: outcome, detail: detail)
         logger.debug(
             """
-            \(Self.prefix(timing.token), privacy: .public) \
+            \(Self.prefix(timing.token), privacy: .private(mask: .hash)) \
             +\(Self.milliseconds(timing.sinceStart), privacy: .public)ms \
             END outcome=\(label, privacy: .public)
             """
@@ -226,7 +226,7 @@ internal final class TableLoadTracer {
     private func emit(_ stage: TableLoadStage, timing: TableLoadTiming, detail: String?) {
         logger.debug(
             """
-            \(Self.prefix(timing.token), privacy: .public) \
+            \(Self.prefix(timing.token), privacy: .private(mask: .hash)) \
             +\(Self.milliseconds(timing.sinceStart), privacy: .public)ms \
             (+\(Self.milliseconds(timing.sincePrevious), privacy: .public)ms) \
             \(stage.rawValue, privacy: .public)\(Self.suffix(detail), privacy: .public)
@@ -243,9 +243,9 @@ internal final class TableLoadTracer {
             ANOMALY \(anomaly.rawValue) after=\(timing.previousStage?.rawValue ?? "start")\(Self.suffix(detail))
             """
         if anomaly.isDefect {
-            logger.error("\(line, privacy: .public)")
+            logger.error("\(line, privacy: .private(mask: .hash))")
         } else {
-            logger.info("\(line, privacy: .public)")
+            logger.info("\(line, privacy: .private(mask: .hash))")
         }
         guard let interval = intervals[timing.token.sequence] else { return }
         signposter.emitEvent("TableLoadAnomaly", id: interval.id, "\(anomaly.rawValue)")

@@ -2,6 +2,7 @@ import Foundation
 import NIOCore
 import NIOPosix
 import os
+import TableProKafkaCore
 import TableProPluginKit
 
 /// Owns the connections to a cluster: the bootstrap dial, the per-broker pool, and the routing

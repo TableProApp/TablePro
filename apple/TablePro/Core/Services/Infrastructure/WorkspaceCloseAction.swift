@@ -66,9 +66,9 @@ internal enum WorkspaceCloseAction {
         let containers = listedContainers(of: workspace.connectionId)
         Self.logger.info(
             """
-            close container=\(workspace.container, privacy: .public) \
-            listed=[\(containers.joined(separator: " "), privacy: .public)] \
-            scope=\(String(describing: scope(entryCount: containers.count)), privacy: .public)
+            close container=\(workspace.container, privacy: .private(mask: .hash)) \
+            listed=[\(containers.joined(separator: " "), privacy: .private(mask: .hash))] \
+            scope=\(String(describing: scope(entryCount: containers.count)), privacy: .private)
             """
         )
         guard scope(entryCount: containers.count) == .container, !workspace.container.isEmpty else {
@@ -80,7 +80,7 @@ internal enum WorkspaceCloseAction {
         /// answer first would leave that tab open under an entry the user just closed.
         let hostedWorkspaces = WindowManager.shared.workspaces(for: workspace.connectionId)
         guard let hosted = hostedWorkspaces.first else {
-            Self.logger.error("close has no hosted workspace container=\(workspace.container, privacy: .public)")
+            Self.logger.error("close has no hosted workspace container=\(workspace.container, privacy: .private(mask: .hash))")
             return
         }
 
@@ -92,14 +92,14 @@ internal enum WorkspaceCloseAction {
         /// for, with the entry still listed, is a close that reads as a switch.
         let wasShowing = WindowManager.shared.shownConnection(besides: workspace.connectionId)
         guard await confirmEndingTransaction(in: workspace) else {
-            Self.logger.info("close cancelled at the transaction prompt container=\(workspace.container, privacy: .public)")
+            Self.logger.info("close cancelled at the transaction prompt container=\(workspace.container, privacy: .private(mask: .hash))")
             return
         }
         /// Taken after the transaction prompt: the tabs stay editable while it is answered.
         let victims = coordinators.flatMap { tabs(in: workspace.container, of: $0) }
         guard let closable = await confirm(victims, across: coordinators, revealing: workspace) else {
             WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
-            Self.logger.info("close cancelled at the save prompt container=\(workspace.container, privacy: .public)")
+            Self.logger.info("close cancelled at the save prompt container=\(workspace.container, privacy: .private(mask: .hash))")
             return
         }
         /// A tab whose work the save could not take keeps the container open, because it is still
@@ -110,7 +110,7 @@ internal enum WorkspaceCloseAction {
             WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
             Self.logger.info(
                 """
-                close kept container=\(workspace.container, privacy: .public) \
+                close kept container=\(workspace.container, privacy: .private(mask: .hash)) \
                 unsaveable=\(victims.count - closable.count, privacy: .public)
                 """
             )
@@ -132,9 +132,9 @@ internal enum WorkspaceCloseAction {
         }
         Self.logger.info(
             """
-            close done container=\(workspace.container, privacy: .public) \
+            close done container=\(workspace.container, privacy: .private(mask: .hash)) \
             tabsClosed=\(victims.count, privacy: .public) \
-            opened=[\(hosted.openedContainers.sorted().joined(separator: " "), privacy: .public)]
+            opened=[\(hosted.openedContainers.sorted().joined(separator: " "), privacy: .private(mask: .hash))]
             """
         )
 
@@ -154,7 +154,7 @@ internal enum WorkspaceCloseAction {
             }
             WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
             Self.logger.error(
-                "close could not leave container=\(workspace.container, privacy: .public)"
+                "close could not leave container=\(workspace.container, privacy: .private(mask: .hash))"
             )
             return
         }

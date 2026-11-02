@@ -11,10 +11,7 @@
 import Foundation
 
 enum RedisClusterAggregator {
-    /// A shard that refused its part, or queued it into an open `MULTI` block, wins over every
-    /// policy but one_succeeded, whose whole meaning is that some shards may fail. Folding it in
-    /// instead counted it as zero: a split `DEL` one shard refused reported the other shard's
-    /// deletions as the total, and `DBSIZE` reported part of the keyspace as all of it.
+    // A refused or queued shard reply wins over every policy but one_succeeded; folded in, it counted as zero.
     static func combine(_ replies: [RedisReply], policy: RedisResponsePolicy?) -> RedisReply {
         guard let first = replies.first else { return .array([]) }
         guard replies.count > 1 else { return first }
@@ -22,7 +19,7 @@ enum RedisClusterAggregator {
 
         switch policy {
         case .aggSum:
-            return aggregated(replies) { $0.reduce(0, +) }
+            return aggregated(replies) { $0.reduce(0, saturatingSum) }
         case .aggMin:
             return aggregated(replies) { $0.min() ?? 0 }
         case .aggMax:
@@ -40,15 +37,21 @@ enum RedisClusterAggregator {
         }
     }
 
-    /// Each primary's `INFO keyspace` added up per database. Nil when any primary declined, the
-    /// same rule `DBSIZE` follows, because a count missing one primary is short, not zero.
+    // Nil when any primary declined, as for `DBSIZE`: a count missing one primary is short, not zero.
     static func keyspace(_ perShard: [[Int: Int]?]) -> [Int: Int]? {
         var merged: [Int: Int] = [:]
         for shard in perShard {
             guard let shard else { return nil }
-            merged.merge(shard, uniquingKeysWith: +)
+            merged.merge(shard, uniquingKeysWith: saturatingSum)
         }
         return merged
+    }
+
+    // Each shard's count is the server's own number, so a total past the integer range pins to its end.
+    private static func saturatingSum<Value: FixedWidthInteger>(_ lhs: Value, _ rhs: Value) -> Value {
+        let (sum, overflow) = lhs.addingReportingOverflow(rhs)
+        guard overflow else { return sum }
+        return rhs < 0 ? .min : .max
     }
 
     /// The first shard error in the order the shards were asked, else the first `+QUEUED`.

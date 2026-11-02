@@ -9,6 +9,7 @@ internal enum SourceDefinitionDefect: Equatable, Sendable {
     case unreadable(String)
     case empty
     case notACreateStatement
+    case severalStatements
 
     internal static func of(_ read: RoutineSourceRead, sentAs scriptText: SQLScriptText) -> SourceDefinitionDefect? {
         if let failure = read.failure { return .unreadable(failure) }
@@ -16,9 +17,8 @@ internal enum SourceDefinitionDefect: Equatable, Sendable {
     }
 
     internal static func of(definition: String, sentAs scriptText: SQLScriptText) -> SourceDefinitionDefect? {
-        guard let first = scriptText.sendableStatements(definition).first,
-              let keyword = scriptText.leadingKeyword(of: first)
-        else { return .empty }
+        guard let statements = scriptText.sendableStatements(ofForeignText: definition) else { return .severalStatements }
+        guard let first = statements.first, let keyword = scriptText.leadingKeyword(of: first) else { return .empty }
         return keyword == "CREATE" ? nil : .notACreateStatement
     }
 
@@ -36,6 +36,10 @@ internal enum SourceDefinitionDefect: Equatable, Sendable {
             return String(localized: "The source returned a body rather than a statement that recreates it.")
         case (.notACreateStatement, .target):
             return String(localized: "The target returned a body rather than a statement that recreates it.")
+        case (.severalStatements, .source):
+            return String(localized: "The source's definition holds more than one statement.")
+        case (.severalStatements, .target):
+            return String(localized: "The target's definition holds more than one statement.")
         }
     }
 }

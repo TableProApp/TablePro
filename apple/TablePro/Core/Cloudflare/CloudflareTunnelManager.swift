@@ -8,6 +8,7 @@
 import Darwin
 import Foundation
 import os
+import TableProProcess
 
 actor CloudflareTunnelManager: TunnelManaging {
     static let shared = CloudflareTunnelManager()
@@ -72,6 +73,8 @@ actor CloudflareTunnelManager: TunnelManaging {
             try deadline.check(endpoint: timeoutEndpoint)
             let port = try config.localPort ?? allocateFreePort()
             let runner = runnerFactory()
+            // No `--`: cloudflared reads the word after it as an origin URL, and `--hostname` already
+            // keeps a dash-led value as its value.
             let arguments = [
                 "access", "tcp",
                 "--hostname", config.accessHostname,
@@ -79,7 +82,13 @@ actor CloudflareTunnelManager: TunnelManaging {
             ]
 
             do {
-                try runner.start(binaryPath: binaryPath, arguments: arguments, environment: environment)
+                try runner.start(ProcessCommand(
+                    executable: URL(fileURLWithPath: binaryPath),
+                    arguments: arguments,
+                    environment: environment
+                ))
+            } catch let refusal as ProcessLaunchError {
+                throw refusal
             } catch {
                 throw CloudflareTunnelError.binaryNotFound
             }
@@ -287,7 +296,7 @@ actor CloudflareTunnelManager: TunnelManaging {
         tokenId: String?,
         tokenSecret: String?
     ) -> [String: String] {
-        var environment = ProcessInfo.processInfo.environment
+        var environment = ProcessEnvironment.inherited()
         guard config.authMethod == .serviceToken else { return environment }
         if let tokenId, !tokenId.isEmpty {
             environment["TUNNEL_SERVICE_TOKEN_ID"] = tokenId

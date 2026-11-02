@@ -125,7 +125,7 @@ actor RemoteFileTransportManager: TunnelManaging {
         discardSession(for: connectionId)
         if let file = materialized.removeValue(forKey: connectionId) {
             Self.logger.info(
-                "Released the working copy for \(file.identity.displayOrigin, privacy: .public)"
+                "Released the working copy for \(file.identity.displayOrigin, privacy: .private(mask: .hash))"
             )
         }
     }
@@ -156,7 +156,7 @@ actor RemoteFileTransportManager: TunnelManaging {
         try deadline.check(endpoint: timeoutEndpoint)
         if !forceRefetch, let existing = materialized[connectionId], existing.identity == identity {
             Self.logger.info(
-                "Reusing the working copy for \(identity.displayOrigin, privacy: .public)"
+                "Reusing the working copy for \(identity.displayOrigin, privacy: .private(mask: .hash))"
             )
             return existing
         }
@@ -378,7 +378,7 @@ actor RemoteFileTransportManager: TunnelManaging {
         guard !current.differs(from: manifest.fingerprint) else { return nil }
 
         Self.logger.info(
-            "Reusing the working copy for \(identity.displayOrigin, privacy: .public): the server has not moved"
+            "Reusing the working copy for \(identity.displayOrigin, privacy: .private(mask: .hash)): the server has not moved"
         )
         await store.touch(identity)
         return MaterializedRemoteFile(

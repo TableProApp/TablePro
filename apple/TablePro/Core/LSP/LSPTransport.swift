@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProProcess
 
 // MARK: - LSPTransportError
 
@@ -51,17 +52,12 @@ actor LSPTransport {
     // MARK: - Lifecycle
 
     func start(executablePath: String, arguments: [String] = [], environment: [String: String]? = nil) throws {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: executablePath)
-        proc.arguments = arguments
-
-        if let environment {
-            var env = ProcessInfo.processInfo.environment
-            for (key, value) in environment {
-                env[key] = value
-            }
-            proc.environment = env
-        }
+        // Inherited: behind a proxy the server needs HTTPS_PROXY and NODE_EXTRA_CA_CERTS from the user.
+        let proc = try ProcessLauncher.process(for: ProcessCommand(
+            executable: URL(fileURLWithPath: executablePath),
+            arguments: arguments,
+            environment: ProcessEnvironment.inherited().merging(environment ?? [:]) { _, override in override }
+        ))
 
         let stdin = Pipe()
         let stdout = Pipe()

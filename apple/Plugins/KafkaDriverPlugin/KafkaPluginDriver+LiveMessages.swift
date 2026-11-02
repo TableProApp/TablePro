@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProKafkaCore
 import TableProPluginKit
 
 // Follows topics from each partition's end offset with plain Fetch requests and no consumer group, so it never
@@ -72,7 +73,12 @@ final class KafkaLiveSubscription: PluginLiveSubscription, @unchecked Sendable {
 
     init(cluster: KafkaCluster, cursors: [KafkaFollowCursor]) {
         self.cluster = cluster
-        let (stream, continuation) = AsyncThrowingStream<PluginLiveMessage, Error>.makeStream()
+        // The window's live buffer holds 10,000, so dropping older messages loses nothing it could show.
+        let (stream, continuation) = AsyncThrowingStream.makeStream(
+            of: PluginLiveMessage.self,
+            throwing: Error.self,
+            bufferingPolicy: .bufferingNewest(10_000)
+        )
         messages = stream
         reader = Task {
             do {
@@ -94,7 +100,8 @@ final class KafkaLiveSubscription: PluginLiveSubscription, @unchecked Sendable {
                                     continuation.yield(KafkaFollowCursor.message(from: record, topic: cursor.topic))
                                 }
                                 if let last = page.records.last {
-                                    offset = last.offset + 1
+                                    guard let next = KafkaOffsetMath.offset(after: last.offset) else { return }
+                                    offset = next
                                 } else if ContinuousClock.now - started < Self.idleWait / 2 {
                                     // A trailing transaction marker answers at once and reads as no record,
                                     // where an idle partition makes the broker wait out the long poll.

@@ -8,13 +8,13 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
 struct QueryClassifierEmbeddedStatementTests {
     @Test("A SurrealQL SELECT that holds a writing statement is a write", arguments: [
         "SELECT * FROM (DELETE orders RETURN BEFORE)",
         "SELECT * FROM orders WHERE (DELETE orders)",
-        "SELECT * FROM (REMOVE TABLE orders)",
         "SELECT * FROM (DEFINE USER x ON DB PASSWORD 'p' ROLES OWNER)",
         "SELECT * FROM (UPDATE orders SET total = 0)",
         "SELECT * FROM { CREATE orders }",
@@ -26,6 +26,14 @@ struct QueryClassifierEmbeddedStatementTests {
         #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) == .write)
         #expect(QueryClassifier.isWriteQuery(sql, databaseType: .surrealdb))
         #expect(!QueryClassifier.isMultiStatement(sql, databaseType: .surrealdb))
+    }
+
+    @Test("A SurrealQL SELECT that holds a REMOVE drops what it names", arguments: [
+        "SELECT * FROM (REMOVE TABLE orders)",
+        "SELECT * FROM { REMOVE DATABASE shop }",
+    ])
+    func surrealQLSubqueryRemoveIsDestructive(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) == .destructive)
     }
 
     @Test("A SurrealQL SELECT that only reads stays a read", arguments: [

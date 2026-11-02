@@ -1,24 +1,5 @@
 import Foundation
-
-struct KafkaUUID: Hashable, Sendable {
-    let bytes: [UInt8]
-
-    static let zero = KafkaUUID(bytes: [UInt8](repeating: 0, count: 16))
-
-    init(bytes: [UInt8]) {
-        self.bytes = bytes.count == 16 ? bytes : [UInt8](repeating: 0, count: 16)
-    }
-
-    var isZero: Bool { bytes.allSatisfy { $0 == 0 } }
-
-    var uuidString: String {
-        let hex = bytes.map { String(format: "%02x", $0) }.joined()
-        let groups = [0 ..< 8, 8 ..< 12, 12 ..< 16, 16 ..< 20, 20 ..< 32]
-        return groups
-            .map { String(hex[hex.index(hex.startIndex, offsetBy: $0.lowerBound) ..< hex.index(hex.startIndex, offsetBy: $0.upperBound)]) }
-            .joined(separator: "-")
-    }
-}
+import TableProKafkaCore
 
 enum KafkaApiKey: Int16, CaseIterable, Sendable {
     case produce = 0

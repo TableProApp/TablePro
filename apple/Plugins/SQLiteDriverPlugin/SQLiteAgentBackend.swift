@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLiteCore
 
 /// Runs a SQLite driver's statements on an SSH server through the Python agent, over a loopback
 /// socket the app's transport hands to a fresh exec channel per connection.
@@ -76,15 +77,15 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
         connection.setBusyTimeout(UInt32(max(0, milliseconds)))
     }
 
-    func executeQuery(_ query: String) async throws -> SQLiteRawResult {
-        try await run(query, parameters: [])
+    func executeQuery(
+        _ query: String,
+        parameters: [PluginCellValue]?,
+        scope: SQLiteStatementScope
+    ) async throws -> SQLiteRawResult {
+        try await run(query, parameters: (parameters ?? []).map(Self.encode), scope: scope)
     }
 
-    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> SQLiteRawResult {
-        try await run(query, parameters: parameters.map(Self.encode))
-    }
-
-    private func run(_ query: String, parameters: [SQLiteAgentValue]) async throws -> SQLiteRawResult {
+    private func run(_ query: String, parameters: [SQLiteAgentValue], scope: SQLiteStatementScope) async throws -> SQLiteRawResult {
         let startTime = Date()
         let accumulator = SQLiteAgentResultAccumulator()
 
@@ -92,6 +93,7 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
             try await connection.execute(
                 sql: query,
                 parameters: parameters,
+                scope: Self.agentScope(scope),
                 // The buffered path holds the whole result in memory, so it takes the same emergency
                 // ceiling the local backend applies; the streaming path below stays uncapped.
                 rowCap: UInt32(clamping: PluginRowLimits.emergencyMax),
@@ -124,12 +126,14 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
 
     func streamQuery(
         _ query: String,
+        scope: SQLiteStatementScope,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         _ = try await withTaskCancellationHandler {
             try await connection.execute(
                 sql: query,
                 parameters: [],
+                scope: Self.agentScope(scope),
                 rowCap: 0,
                 onHeader: { header in
                     continuation.yield(.header(PluginStreamHeader(
@@ -153,6 +157,15 @@ actor SQLiteAgentBackend: SQLiteExecutionBackend {
             connection.sendCancel()
         }
         continuation.finish()
+    }
+
+    // Nil runs the plain execute, so an unrestricted statement sends the frame it always sent.
+    private static func agentScope(_ scope: SQLiteStatementScope) -> SQLiteAgentStatementScope? {
+        switch scope {
+        case .unrestricted: nil
+        case .noServerCode: .noServerCode
+        case .readOnly: .readOnly
+        }
     }
 
     private static func encode(_ value: PluginCellValue) -> SQLiteAgentValue {
@@ -318,11 +331,14 @@ final class SQLiteAgentConnection: @unchecked Sendable {
     func execute(
         sql: String,
         parameters: [SQLiteAgentValue],
+        scope: SQLiteAgentStatementScope?,
         rowCap: UInt32,
         onHeader: @escaping (@Sendable ([SQLiteAgentColumn]) -> Void),
         onRows: @escaping (@Sendable (Int, [SQLiteAgentValue]) -> Void)
     ) async throws -> SQLiteAgentExecuteOutcome {
-        let request = SQLiteAgentRequest.execute(sql: sql, parameters: parameters, rowCap: rowCap)
+        let request = scope.map {
+            SQLiteAgentRequest.executeScoped(sql: sql, parameters: parameters, rowCap: rowCap, scope: $0)
+        } ?? SQLiteAgentRequest.execute(sql: sql, parameters: parameters, rowCap: rowCap)
         return try await withOperation(deadline: nil) { operation in
             operation.onHeader = onHeader
             operation.onRows = onRows

@@ -47,6 +47,16 @@ struct SQLiteCheckConstraintParserTests {
         #expect(parsed.first?.expression == "a IN (1, 2, 3)")
     }
 
+    @Test("a quote followed by a combining mark, or a bracketed name holding a parenthesis, stays inside the expression", arguments: [
+        "x <> 'a''\u{301})'",
+        "[a)] > 0",
+    ])
+    func expressionSpansQuotesAndBrackets(expression: String) {
+        let statement = "CREATE TABLE t (x TEXT, [a)] INT, CONSTRAINT ck CHECK (\(expression)))"
+        let parsed = SQLiteCheckConstraintParser.constraints(inCreateStatement: statement)
+        #expect(parsed == [SQLiteCheckConstraintParser.ParsedConstraint(name: "ck", expression: expression)])
+    }
+
     @Test("a quoted constraint name is unquoted")
     func unquotesConstraintName() {
         let statement = #"CREATE TABLE t (a INT, CONSTRAINT "my check" CHECK (a > 0))"#

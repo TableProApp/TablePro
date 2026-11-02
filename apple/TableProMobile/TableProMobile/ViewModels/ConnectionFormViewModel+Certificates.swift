@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProLogRedaction
 import TableProModels
 
 extension ConnectionFormViewModel {
@@ -94,7 +95,7 @@ extension ConnectionFormViewModel {
                 pendingCertificates[role] = nil
             } catch {
                 Self.certificateLogger.error(
-                    "Failed to store the \(role.rawValue, privacy: .public) certificate: \(error.localizedDescription, privacy: .public)"
+                    "Failed to store the \(role.rawValue, privacy: .public) certificate: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
                 )
                 storedEvery = false
             }

@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProDatabase
+import TableProLogRedaction
 import TableProModels
 import TableProPluginKit
 
@@ -118,7 +119,7 @@ nonisolated class PluginBackedDriver: DriverRowWriting, @unchecked Sendable {
         do {
             try await plugin.applyQueryTimeout(queryTimeoutSeconds)
         } catch {
-            Self.logger.warning("The query timeout was not applied: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("The query timeout was not applied: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 

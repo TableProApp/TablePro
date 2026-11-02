@@ -65,7 +65,7 @@ final class SchemaForeignKeyStore {
             guard let fetched else { return }
             entries[key] = fetched
             Self.logger.info(
-                "[fk] prefetched schema foreign keys tables=\(fetched.count) scope=\(key, privacy: .public)"
+                "[fk] prefetched schema foreign keys tables=\(fetched.count) scope=\(key, privacy: .private(mask: .hash))"
             )
         }
         loads[key] = load

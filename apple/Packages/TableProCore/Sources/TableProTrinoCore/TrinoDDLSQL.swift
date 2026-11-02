@@ -15,7 +15,8 @@ public struct TrinoColumnSpec: Sendable, Equatable {
 }
 
 public enum TrinoDDLSQL {
-    public static func columnDefinition(_ column: TrinoColumnSpec) -> String {
+    public static func columnDefinition(_ column: TrinoColumnSpec) -> String? {
+        guard TrinoTypeMapper.isWritable(column.type) else { return nil }
         var definition = "\(TrinoIntrospectionSQL.quoteIdentifier(column.name)) \(column.type)"
         if !column.nullable {
             definition += " NOT NULL"
@@ -32,9 +33,10 @@ public enum TrinoDDLSQL {
         tableComment: String?,
         ifNotExists: Bool
     ) -> String? {
-        guard !columns.isEmpty else { return nil }
+        let definitions = columns.compactMap(columnDefinition)
+        guard !columns.isEmpty, definitions.count == columns.count else { return nil }
         let existsClause = ifNotExists ? "IF NOT EXISTS " : ""
-        let body = columns.map(columnDefinition).joined(separator: ",\n  ")
+        let body = definitions.joined(separator: ",\n  ")
         var statement = "CREATE TABLE \(existsClause)\(qualifiedTable) (\n  \(body)\n)"
         if let tableComment, !tableComment.isEmpty {
             statement += " COMMENT \(TrinoIntrospectionSQL.quoteLiteral(tableComment))"
@@ -42,8 +44,8 @@ public enum TrinoDDLSQL {
         return statement
     }
 
-    public static func addColumn(qualifiedTable: String, column: TrinoColumnSpec) -> String {
-        "ALTER TABLE \(qualifiedTable) ADD COLUMN \(columnDefinition(column))"
+    public static func addColumn(qualifiedTable: String, column: TrinoColumnSpec) -> String? {
+        columnDefinition(column).map { "ALTER TABLE \(qualifiedTable) ADD COLUMN \($0)" }
     }
 
     public static func dropColumn(qualifiedTable: String, name: String) -> String {
@@ -55,8 +57,9 @@ public enum TrinoDDLSQL {
             + "\(TrinoIntrospectionSQL.quoteIdentifier(from)) TO \(TrinoIntrospectionSQL.quoteIdentifier(to))"
     }
 
-    public static func setColumnType(qualifiedTable: String, name: String, type: String) -> String {
-        "ALTER TABLE \(qualifiedTable) ALTER COLUMN \(TrinoIntrospectionSQL.quoteIdentifier(name)) SET DATA TYPE \(type)"
+    public static func setColumnType(qualifiedTable: String, name: String, type: String) -> String? {
+        guard TrinoTypeMapper.isWritable(type) else { return nil }
+        return "ALTER TABLE \(qualifiedTable) ALTER COLUMN \(TrinoIntrospectionSQL.quoteIdentifier(name)) SET DATA TYPE \(type)"
     }
 
     public static func setColumnComment(qualifiedTable: String, name: String, comment: String?) -> String {

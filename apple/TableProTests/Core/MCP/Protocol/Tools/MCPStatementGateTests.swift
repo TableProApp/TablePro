@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProMCP
+import TableProSQLGrammar
 import Testing
 
 struct MCPStatementGateRefusalTests {
@@ -18,14 +19,12 @@ struct MCPStatementGateRefusalTests {
     ) async throws -> MCPToolExecutionError? {
         let context = MCPToolTestHarness.context(principal: MCPToolTestHarness.principal(scopes: scopes))
         do {
-            _ = try await MCPStatementGate.authorize(
+            _ = try MCPStatementGate.classify(
                 sql: sql,
                 meta: MCPToolTestHarness.metadata(databaseType: databaseType),
                 allowsDestructive: allowsDestructive,
                 allowsMultiStatement: allowsMultiStatement,
-                operationLabel: "a query",
-                context: context,
-                services: MCPToolTestHarness.services()
+                context: context
             )
             return nil
         } catch let error as MCPToolExecutionError {
@@ -106,9 +105,31 @@ struct MCPStatementGateRefusalTests {
         "SELECT 1 AS a\nGO\nSELECT 2 AS b",
         "SELECT 1 AS a\nGO 3"
     ])
+    @MainActor
     func sqlServerScriptClearsBothGates(script: String) async throws {
         let error = try await refusal(sql: script, databaseType: .mssql, allowsMultiStatement: true)
         #expect(error == nil)
+
+        let meta = MCPToolTestHarness.metadata(databaseType: .mssql)
+        let gate = DefaultExecutionGate(
+            confirming: StubConfirming(answer: false),
+            authenticating: StubAuthenticating(answer: false),
+            safeModeLevelResolver: { _ in .silent },
+            forcesWriteResolver: { _ in false }
+        )
+        let operation = try await MCPStatementGate.approve(
+            [OperationStatement(sql: script)],
+            kind: .readQuery,
+            unit: .script,
+            scope: DatabaseScope(connectionId: meta.connectionId, database: "warehouse", schema: nil),
+            meta: meta,
+            allowsDestructive: false,
+            allowsMultiStatement: true,
+            operationLabel: "a query",
+            context: MCPToolTestHarness.context(),
+            services: MCPToolTestHarness.services(authPolicy: MCPToolTestHarness.authPolicy(executionGate: gate))
+        )
+        #expect(operation.statements.map(\.sql) == [script])
     }
 
     @Test("A destructive statement is refused unless the caller allows destructive work")
@@ -135,13 +156,11 @@ struct MCPStatementGateRefusalTests {
             principal: MCPToolTestHarness.principal(scopes: [.toolsRead])
         )
         do {
-            _ = try await MCPStatementGate.authorize(
+            _ = try MCPStatementGate.classify(
                 sql: "INSERT INTO users (id) VALUES (1)",
                 meta: MCPToolTestHarness.metadata(),
                 allowsDestructive: false,
-                operationLabel: "a query",
-                context: context,
-                services: MCPToolTestHarness.services()
+                context: context
             )
             Issue.record("Expected the write to be refused for a read-only token")
         } catch let error as MCPProtocolError {
@@ -214,19 +233,17 @@ struct MCPStatementGateConsentPolicyTests {
         #expect(MCPStatementGate.preview(of: statement) == statement)
     }
 
-    /// The cut used to land at 400 characters, which is before the `WHERE` clause of any statement
-    /// worth confirming, so the user approved a filter they never saw.
-    @Test("A long statement keeps its filter and is marked as cut")
-    func previewCapsWellPastAFilter() {
+    // A client form would show a cut statement, and approving what you cannot see is what the prompt prevents, so a
+    // statement past the cap is never elicited: the Mac dialog shows it whole.
+    @Test("A long statement keeps its filter, and one past the cap has no preview at all")
+    func previewIsNeverCut() {
         let padding = String(repeating: "a", count: 600)
         let statement = "UPDATE accounts SET note = '\(padding)' WHERE customer_id = 42"
         let preview = MCPStatementGate.preview(of: statement)
         #expect(preview == statement)
-        #expect(preview.contains("WHERE customer_id = 42"))
+        #expect(preview?.contains("WHERE customer_id = 42") == true)
 
         let overLimit = String(repeating: "a", count: MCPStatementGate.previewCharacterLimit + 500)
-        let cut = MCPStatementGate.preview(of: overLimit)
-        #expect((cut as NSString).length == MCPStatementGate.previewCharacterLimit + 1)
-        #expect(cut.hasSuffix("…"))
+        #expect(MCPStatementGate.preview(of: overLimit) == nil)
     }
 }

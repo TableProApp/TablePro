@@ -157,14 +157,21 @@ internal struct PhpViewerView: View {
     private func loadParse() async {
         parseResult = .parsing
         let raw = rawValue
-        let parsed = await Task.detached(priority: .userInitiated) { () -> PhpParseResult in
+        let work = Task.detached(priority: .userInitiated) { () -> PhpParseResult in
             if (raw as NSString).length > PhpSerializeParser.sizeCapBytes {
                 return .tooLarge
             }
-            guard let value = PhpSerializeParser.parse(raw) else { return .failed }
+            guard let value = PhpSerializeParser.parse(raw), !Task.isCancelled else { return .failed }
             let tree = PhpTreeBuilder.build(from: value)
             return .parsed(tree)
-        }.value
+        }
+        let parsed = await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
+        }
+        // A parse cancelled with its view leaves no result, so the view parses again when it returns.
+        guard !Task.isCancelled else { return }
         parseResult = parsed
     }
 }

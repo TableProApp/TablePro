@@ -7,6 +7,8 @@ import Foundation
 @testable import TablePro
 import TableProMCP
 import TableProPluginKit
+import TableProSQLGrammar
+import TableProSQLQuoting
 import Testing
 
 struct MCPCsvExportTests {
@@ -73,19 +75,19 @@ struct MCPSqlExportDialectTests {
     private let postgres = MCPSqlExportDialect(
         identifierQuote: "\"",
         booleanStyle: .truefalse,
-        usesBackslashEscaping: false,
+        stringEscapes: .standard,
         binaryStyle: .postgresBytea
     )
     private let mysql = MCPSqlExportDialect(
         identifierQuote: "`",
         booleanStyle: .numeric,
-        usesBackslashEscaping: true,
+        stringEscapes: .backslash,
         binaryStyle: .bitString
     )
     private let mssql = MCPSqlExportDialect(
         identifierQuote: "[",
         booleanStyle: .numeric,
-        usesBackslashEscaping: false,
+        stringEscapes: .standard,
         binaryStyle: .zeroX
     )
 
@@ -94,12 +96,48 @@ struct MCPSqlExportDialectTests {
         let resolvedPostgres = try #require(MCPSqlExportDialect.resolve(for: .postgresql))
         #expect(resolvedPostgres.identifierQuote == "\"")
         #expect(resolvedPostgres.booleanStyle == .truefalse)
-        #expect(!resolvedPostgres.usesBackslashEscaping)
 
         let resolvedMySQL = try #require(MCPSqlExportDialect.resolve(for: .mysql))
         #expect(resolvedMySQL.identifierQuote == "`")
         #expect(resolvedMySQL.booleanStyle == .numeric)
-        #expect(resolvedMySQL.usesBackslashEscaping)
+        #expect(resolvedMySQL.stringEscapes == .mysql)
+    }
+
+    // standard_conforming_strings decides PostgreSQL's reading. Unsettled, the backslash form is the one no reading ends
+    // early; settled, the session's answer is written.
+    @Test("PostgreSQL literals follow what the session settled about backslashes")
+    func postgresEscapesFollowTheSession() throws {
+        let unsettled = try #require(MCPSqlExportDialect.resolve(for: .postgresql))
+        #expect(unsettled.stringEscapes == .backslash)
+
+        let conforming = PluginSessionLexicalState(determined: [.backslashEscapesInSingleQuotes], enabled: [])
+        let standard = try #require(MCPSqlExportDialect.resolve(for: .postgresql, session: conforming))
+        #expect(standard.stringEscapes == .standard)
+        #expect(standard.literal("a\\b'") == "'a\\b'''")
+
+        let escaping = PluginSessionLexicalState(
+            determined: [.backslashEscapesInSingleQuotes], enabled: [.backslashEscapesInSingleQuotes]
+        )
+        let backslash = try #require(MCPSqlExportDialect.resolve(for: .postgresql, session: escaping))
+        #expect(backslash.literal("a\\b'") == "'a\\\\b'''")
+    }
+
+    // The file declares no sql_mode: written for a NO_BACKSLASH_ESCAPES session, `x\` ends its literal early elsewhere.
+    @Test("A MySQL export keeps MySQL's escapes whatever sql_mode the session has")
+    func mysqlExportIgnoresTheSessionsMode() throws {
+        let noBackslashEscapes = PluginSessionLexicalState(
+            determined: [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes], enabled: []
+        )
+        let dialect = try #require(MCPSqlExportDialect.resolve(for: .mysql, session: noBackslashEscapes))
+        let sql = MCPSqlExportWriter.write(
+            table: "t",
+            columns: ["a", "b"],
+            rows: [[.text("x\\"), .text(", 1); DROP TABLE users; -- ")]],
+            dialect: dialect
+        )
+
+        #expect(dialect.stringEscapes == .mysql)
+        #expect(SQLStatementScanner.allStatements(in: sql, grammar: TestGrammar.mysql).count == 1)
     }
 
     @Test("An engine with no SQL dialect cannot produce SQL output")
@@ -180,7 +218,7 @@ struct MCPSqlExportDialectTests {
         let oracle = MCPSqlExportDialect(
             identifierQuote: "\"",
             booleanStyle: .numeric,
-            usesBackslashEscaping: false,
+            stringEscapes: .standard,
             binaryStyle: .hexToRaw
         )
         #expect(oracle.binary(Data([0x01])) == "HEXTORAW('01')")

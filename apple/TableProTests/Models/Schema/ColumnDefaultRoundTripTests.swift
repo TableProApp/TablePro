@@ -38,27 +38,46 @@ struct ColumnDefaultRoundTripTests {
     }
 }
 
-struct SQLStringLiteralTests {
+@MainActor
+struct CustomValueModeTests {
+    private func mode(_ value: String, prefix: String = "") -> (mode: CustomValueContentView.Mode, text: String) {
+        CustomValueContentView.initialMode(
+            of: value, escapeStringLiteral: SQLEscaping.escapeStringLiteral, stringLiteralPrefix: prefix
+        )
+    }
+
     @Test(
-        "A single-quoted literal reads back as the text it stands for",
+        "A single-quoted literal opens as the text it stands for",
         arguments: [
             (literal: "''", expected: ""),
             (literal: "'abc'", expected: "abc"),
             (literal: "'it''s'", expected: "it's"),
-            (literal: "''''", expected: "'")
+            (literal: "''''", expected: "'"),
+            (literal: "'O''\u{301}x'", expected: "O'\u{301}x")
         ]
     )
-    func unquotesLiterals(literal: String, expected: String) {
-        #expect(SQLStringLiteral.unquoted(literal) == expected)
+    func literalOpensAsText(literal: String, expected: String) {
+        let opened = mode(literal)
+        #expect(opened.mode == .text)
+        #expect(Array(opened.text.unicodeScalars) == Array(expected.unicodeScalars))
     }
 
-    /// An expression that happens to start with a quote is not one literal, so reporting the text
-    /// inside it would silently drop the rest of the expression.
+    @Test("The engine's prefix is read past")
+    func prefixedLiteralOpensAsText() {
+        let opened = mode("N'日本語'", prefix: "N")
+        #expect(opened.mode == .text)
+        #expect(opened.text == "日本語")
+    }
+
+    // An expression that happens to start with a quote is not one literal; reading the text inside it would drop the
+    // rest of the expression.
     @Test(
-        "Anything that is not one whole literal reports nothing",
-        arguments: ["", "'", "abc", "now()", "'a' || b", "'unterminated", "gen_random_uuid()"]
+        "Anything that is not one whole literal opens as an expression",
+        arguments: ["", "'", "abc", "now()", "'a' || b", "'unterminated", "gen_random_uuid()", "'a'\u{301}'"]
     )
-    func rejectsNonLiterals(value: String) {
-        #expect(SQLStringLiteral.unquoted(value) == nil)
+    func nonLiteralOpensAsExpression(value: String) {
+        let opened = mode(value)
+        #expect(opened.mode == .expression)
+        #expect(opened.text == value)
     }
 }

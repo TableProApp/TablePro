@@ -1,5 +1,6 @@
 import Foundation
 import TableProMCP
+import TableProSQLGrammar
 
 public struct ExplainQueryTool: MCPToolImplementation {
     public static let name = "explain_query"
@@ -114,13 +115,11 @@ public struct ExplainQueryTool: MCPToolImplementation {
             throw MCPToolExecutionError.from(error, secrets: meta.redactionSecrets)
         }
 
-        try await MCPStatementGate.authorize(
+        let classification = try MCPStatementGate.classify(
             sql: request.gatedSQL,
             meta: meta,
             allowsDestructive: false,
-            operationLabel: String(localized: "an explain"),
-            context: context,
-            services: services
+            context: context
         )
 
         let scope = try await MCPScopeArguments.resolve(
@@ -129,9 +128,47 @@ public struct ExplainQueryTool: MCPToolImplementation {
             services: services
         )
 
+        let operation: ApprovedOperation
+        if request.driverStep != nil {
+            // The driver plans the statement itself, so the approval shows what it is asked to plan.
+            operation = try await MCPStatementGate.approve(
+                [OperationStatement(sql: request.subjectSQL)],
+                kind: OperationKind.from(classification.tier),
+                gradedSQL: request.gatedSQL,
+                displayStatements: [request.gatedSQL],
+                scope: scope,
+                meta: meta,
+                allowsDestructive: false,
+                operationLabel: String(localized: "an explain"),
+                context: context,
+                services: services
+            )
+        } else {
+            let statement: OperationStatement
+            do {
+                statement = try await services.connectionBridge.plannedStatement(
+                    scope: scope,
+                    query: request.statement,
+                    maxRows: MCPConnectionBridge.explainRowLimit
+                )
+            } catch {
+                throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+            }
+            operation = try await MCPStatementGate.approve(
+                [statement],
+                kind: OperationKind.from(classification.tier),
+                scope: scope,
+                meta: meta,
+                allowsDestructive: false,
+                operationLabel: String(localized: "an explain"),
+                context: context,
+                services: services
+            )
+        }
+
         do {
             var payload = try await services.connectionBridge.explainQuery(
-                scope: scope,
+                operation,
                 request: request,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: context.cancellation

@@ -175,7 +175,8 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 sessionDeclaration: .forDatabaseType(
                     dataSource.databaseTypeId,
                     readTimeZone: readScope.readTimeZone,
-                    readsWithANSIQuotes: readScope.readsWithANSIQuotes)
+                    readsWithANSIQuotes: readScope.readsWithANSIQuotes,
+                    literalsEscapeBackslash: dataSource.lexicalFeatures.contains(.backslashEscapesInSingleQuotes))
             )
         } catch {
             await readScope.close(on: dataSource)
@@ -542,7 +543,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     table: table.name, databaseName: table.databaseName)
                 for seq in sequences where !emittedSequenceNames.contains(seq.name) {
                     emittedSequenceNames.insert(seq.name)
-                    let quotedName = "\"\(seq.name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+                    let quotedName = dataSource.quoteIdentifier(seq.name)
                     if optionValue(table, at: 1) {
                         try writer.write(
                             "DROP SEQUENCE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\(statementEnd)")
@@ -562,7 +563,7 @@ final class SQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     table: table.name, databaseName: table.databaseName)
                 for enumType in enumTypes where !emittedTypeNames.contains(enumType.name) {
                     emittedTypeNames.insert(enumType.name)
-                    let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+                    let quotedName = dataSource.quoteIdentifier(enumType.name)
                     if optionValue(table, at: 1) {
                         try writer.write(
                             "DROP TYPE IF EXISTS \(quotedName)\(cascadeClause(dataSource));\(statementEnd)")

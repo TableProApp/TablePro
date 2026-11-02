@@ -36,6 +36,42 @@ struct MemcachedKeyListingTests {
             "STAT items:1:number 3", "STAT items:1:age 10", "STAT items:12:number 1", "STAT items:5:number 0",
         ]
         #expect(MemcachedKeyListing.slabClasses(fromItemStats: lines) == [1, 12])
+        #expect(MemcachedKeyListing.slabClasses(fromItemStats: ["STAT items:3:number 1", "STAT items:3:number 2"]) == [3])
+    }
+
+    @Test("A stats items reply naming 300,000 slab classes is read in one pass", .timeLimit(.minutes(1)))
+    func manySlabClasses() {
+        let lines = (1 ... 300_000).reversed().map { "STAT items:\($0):number 1" }
+        let classes = MemcachedKeyListing.slabClasses(fromItemStats: lines)
+        #expect(classes.count == 300_000)
+        #expect(classes.first == 1)
+        #expect(classes.last == 300_000)
+    }
+
+    @Test("An expiry too far from the server clock to subtract keeps the item listed, with no time left shown")
+    func expiryPastTheClockRange() throws {
+        let far = try #require(MemcachedKeyListing.metadumpEntry("key=a exp=9223372036854775807 la=1 cas=1 fetch=no cls=1 size=1"))
+        #expect(far.secondsLeft(at: -1) == nil)
+        #expect(!far.isExpired(at: -1))
+
+        let entry = MemcachedKeyEntry(key: "a", expiresAt: 1_793_500_167, flags: nil)
+        #expect(entry.secondsLeft(at: .min) == nil)
+        #expect(!entry.isExpired(at: .min))
+        #expect(entry.secondsLeft(at: 1_793_500_067) == 100)
+        #expect(entry.isExpired(at: 1_793_500_167))
+        #expect(entry.isExpired(at: .max))
+    }
+
+    @Test("A STAT time at either end of Int64 falls back to the local clock instead of crashing")
+    func serverClockAtTheEnds() {
+        #expect(MemcachedServerClock.offset(serverTime: 1_793_500_167, localTime: 1_793_499_867) == 300)
+        #expect(MemcachedServerClock.serverTime(localTime: 1_793_499_900, offset: 300) == 1_793_500_200)
+        #expect(MemcachedServerClock.serverTime(localTime: 1_793_499_900, offset: -300) == 1_793_499_600)
+
+        #expect(MemcachedServerClock.offset(serverTime: .min, localTime: 1_793_499_867) == 0)
+        let ahead = MemcachedServerClock.offset(serverTime: .max, localTime: 1_793_499_867)
+        #expect(MemcachedServerClock.serverTime(localTime: 1_793_499_867, offset: ahead) == .max)
+        #expect(MemcachedServerClock.serverTime(localTime: 1_793_499_868, offset: ahead) == 1_793_499_868)
     }
 
     @Test("Stat pairs keep a value with spaces whole")

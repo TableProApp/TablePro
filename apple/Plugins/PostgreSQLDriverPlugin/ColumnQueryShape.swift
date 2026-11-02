@@ -88,7 +88,7 @@ enum ColumnQueryShape {
             FROM information_schema.columns c
             LEFT JOIN pg_catalog.pg_class cls
                 ON cls.relname = c.table_name
-                AND cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = c.table_schema)
+                AND cls.relnamespace = (SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = c.table_schema)
             LEFT JOIN pg_catalog.pg_description pgd
                 ON pgd.objoid = cls.oid
                 AND pgd.objsubid = c.ordinal_position

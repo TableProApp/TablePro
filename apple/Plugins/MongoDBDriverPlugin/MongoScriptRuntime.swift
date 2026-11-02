@@ -51,6 +51,13 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
     static let silenceLimit: TimeInterval = 120
     private static let silenceCheckInterval: TimeInterval = 5
 
+    // An external caller's statement gets a shell built for it alone, so nothing it defines outlives it: the next
+    // statement may carry the app's approval or another caller's.
+    enum Shell {
+        case app
+        case external
+    }
+
     private final class Engine {
         let queue: DispatchQueue
         let context: JSContext
@@ -66,7 +73,7 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
 
     private let connection: MongoDBConnection
     private let lock = NSLock()
-    private var engine: Engine?
+    private var engines: [Shell: Engine] = [:]
     private var generation = 0
 
     init(connection: MongoDBConnection) {
@@ -79,9 +86,10 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
         statement: String,
         database: String,
         valueCeiling: Int,
-        access: MongoScriptAccess
+        access: MongoScriptAccess,
+        shell: Shell = .app
     ) async throws -> MongoScriptStatementResult {
-        let engine = try engine(startingAt: database, valueCeiling: valueCeiling)
+        let engine = try engine(startingAt: database, valueCeiling: valueCeiling, shell: shell)
         connection.beginScriptRun()
 
         let gate = MongoScriptResumeGate()
@@ -90,7 +98,7 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
             // Captured strongly: a gate that is never finished leaves the caller waiting, and the
             // work is one statement long.
             engine.queue.async {
-                gate.finish(with: Result {
+                let outcome = Result {
                     do {
                         return try self.run(statement, access: access, on: engine)
                     } catch {
@@ -98,7 +106,9 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
                             error, databaseSwitch: engine.host.databaseSwitch, writes: engine.host.writes
                         )
                     }
-                })
+                }
+                self.followDatabaseSwitch(of: engine, shell: shell)
+                gate.finish(with: outcome)
             }
             watchForSilence(engine: engine, gate: gate)
         }
@@ -130,9 +140,9 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
 
     func cancel() {
         lock.lock()
-        let running = engine
+        let running = Array(engines.values)
         lock.unlock()
-        running?.host.markCancelled()
+        running.forEach { $0.host.markCancelled() }
         connection.cancelCurrentQuery()
     }
 
@@ -143,10 +153,12 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
     /// captured in a variable keeps pointing at the database it came from, there too.
     func reset() {
         lock.lock()
-        let current = engine
-        engine = nil
+        let current = Array(engines.values)
+        engines.removeAll()
         lock.unlock()
-        current?.queue.async { current?.host.reset(database: "", valueCeiling: 0) }
+        for engine in current {
+            engine.queue.async { engine.host.reset(database: "", valueCeiling: 0) }
+        }
     }
 
     /// What an export should read, having evaluated the statement exactly once.
@@ -158,13 +170,14 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
     func exportPlan(
         for statement: String,
         database: String,
-        access: MongoScriptAccess
+        access: MongoScriptAccess,
+        shell: Shell = .app
     ) async throws -> MongoScriptExport {
-        let engine = try engine(startingAt: database, valueCeiling: PluginRowLimits.emergencyMax)
+        let engine = try engine(startingAt: database, valueCeiling: PluginRowLimits.emergencyMax, shell: shell)
         connection.beginScriptRun()
         return try await withCheckedThrowingContinuation { continuation in
             engine.queue.async {
-                continuation.resume(with: Result {
+                let outcome = Result {
                     do {
                         return try self.runForExport(statement, access: access, on: engine)
                     } catch {
@@ -172,7 +185,9 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
                             error, databaseSwitch: engine.host.databaseSwitch, writes: engine.host.writes
                         )
                     }
-                })
+                }
+                self.followDatabaseSwitch(of: engine, shell: shell)
+                continuation.resume(with: outcome)
             }
         }
     }
@@ -222,9 +237,9 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
     /// included. Both are single-threaded by construction: the cursor registry is a plain
     /// dictionary and a `JSContext` may only be entered from one thread at a time, so preparing an
     /// engine from the caller's thread would race the statement running on it.
-    private func engine(startingAt database: String, valueCeiling: Int) throws -> Engine {
+    private func engine(startingAt database: String, valueCeiling: Int, shell: Shell) throws -> Engine {
         lock.lock()
-        let existing = engine.flatMap { $0.isPoisoned ? nil : $0 }
+        let existing = shell == .app ? engines[.app].flatMap { $0.isPoisoned ? nil : $0 } : nil
         if existing == nil {
             generation += 1
         }
@@ -240,7 +255,7 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
             database: database, valueCeiling: valueCeiling, generation: requestedGeneration
         )
         lock.lock()
-        engine = built
+        engines[shell] = built
         lock.unlock()
         return built
     }
@@ -251,7 +266,7 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
     /// `use` alone.
     func rebindDatabase(_ database: String) {
         lock.lock()
-        let current = engine.flatMap { $0.isPoisoned ? nil : $0 }
+        let current = engines[.app].flatMap { $0.isPoisoned ? nil : $0 }
         lock.unlock()
         guard let current else { return }
         let rebound: Bool = current.queue.sync {
@@ -272,8 +287,15 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
         // app shows the new one, so the next statement starts a clean shell instead.
         Self.logger.warning("Rebinding the shell's db failed; the next statement starts a new shell")
         lock.lock()
-        if engine === current { engine = nil }
+        if engines[.app] === current { engines[.app] = nil }
         lock.unlock()
+    }
+
+    // The driver takes on a `use` an external statement ran, so the app's shell has to move with it before the caller
+    // hears back.
+    private func followDatabaseSwitch(of engine: Engine, shell: Shell) {
+        guard shell == .external, let switched = engine.host.databaseSwitch else { return }
+        rebindDatabase(switched)
     }
 
     private func makeEngine(database: String, valueCeiling: Int, generation: Int) throws -> Engine {
@@ -298,7 +320,9 @@ nonisolated final class MongoScriptRuntime: @unchecked Sendable {
     private func poison(_ engine: Engine) {
         lock.lock()
         engine.isPoisoned = true
-        if self.engine === engine { self.engine = nil }
+        for (shell, held) in engines where held === engine {
+            engines[shell] = nil
+        }
         lock.unlock()
         engine.host.markCancelled()
         Self.logger.warning("Abandoned a MongoDB script that did not stop; its queue stays blocked")

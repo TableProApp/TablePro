@@ -4,6 +4,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProProcess
 import TableProTestSupport
 
 final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendable {
@@ -18,6 +19,7 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
     let behavior: Behavior
     private var startCalls = 0
     private var stopCalls = 0
+    private var startedArgumentList: [String] = []
     private var listenerFd: Int32?
 
     let stderrLines: AsyncStream<String>
@@ -45,12 +47,20 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
         lock.withLock { stopCalls }
     }
 
-    func start(binaryPath: String, arguments: [String], environment: [String: String]) throws {
-        lock.withLock { startCalls += 1 }
+    var startedArguments: [String] {
+        lock.withLock { startedArgumentList }
+    }
+
+    func start(_ command: ProcessCommand) throws {
+        _ = try ProcessLauncher.process(for: command)
+        lock.withLock {
+            startCalls += 1
+            startedArgumentList = command.arguments
+        }
 
         switch behavior {
         case .ready, .squatted:
-            if let port = Self.parsePort(arguments) {
+            if let port = Self.parsePort(command.arguments) {
                 listenerFd = Self.openListener(port: port)
             }
         case .startupFailure:
@@ -311,6 +321,18 @@ struct CloudSQLProxyManagerTests {
         ))
         #expect(fake.stopCallCount >= 1)
         #expect(!(await manager.hasTunnel(connectionId: id)))
+    }
+
+    @Test("The instance name follows --, so a name that reads as a flag stays the instance")
+    func instanceFollowsEndOfOptions() async throws {
+        let fake = FakeCloudSQLProxyRunner(behavior: .ready)
+        let manager = CloudSQLProxyManager(testRunner: { fake })
+        let id = UUID()
+
+        _ = try await manager.createTunnel(connectionId: id, config: config(instance: "--credentials-file=/a:b:c"))
+
+        #expect(Array(fake.startedArguments.suffix(2)) == ["--", "--credentials-file=/a:b:c"])
+        try await manager.closeTunnel(connectionId: id)
     }
 
     @Test("an invalid instance connection name is rejected before launching")

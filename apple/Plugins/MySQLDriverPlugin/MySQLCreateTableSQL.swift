@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 /// MySQL's `CREATE TABLE` text, with no driver behind it.
@@ -37,7 +38,7 @@ internal func mysqlCreateTableSQL(
 
     var tableOptions: [String] = []
     if let engine = definition.engine, !engine.isEmpty {
-        tableOptions.append("ENGINE=\(engine)")
+        tableOptions.append("ENGINE=\(mysqlCharsetName(engine))")
     }
     if let charset = definition.charset, !charset.isEmpty {
         tableOptions.append("DEFAULT CHARSET=\(mysqlCharsetName(charset))")
@@ -113,15 +114,23 @@ internal func mysqlIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String 
     return "\(kind) \(mysqlQuoteIdentifier(index.name)) \(keys)"
 }
 
+// `spelling` is the session's: a key part is the catalog's backslash-escaped text.
+internal func mysqlAddIndexSQL(table: String, index: PluginIndexDefinition, spelling: MySQLLiteralSpelling) -> String {
+    spelling.respelled("ALTER TABLE \(mysqlQuoteIdentifier(table)) ADD \(mysqlIndexDefinitionSQL(index))")
+}
+
 internal func mysqlModifyIndexSQL(
     table: String,
     oldIndexName: String,
     newIndex: PluginIndexDefinition,
-    flavor: MySQLServerFlavor
+    flavor: MySQLServerFlavor,
+    spelling: MySQLLiteralSpelling
 ) -> String? {
     guard flavor == .mysql || flavor == .mariadb else { return nil }
-    return "ALTER TABLE \(mysqlQuoteIdentifier(table)) DROP INDEX \(mysqlQuoteIdentifier(oldIndexName)), "
-        + "ADD \(mysqlIndexDefinitionSQL(newIndex))"
+    return spelling.respelled(
+        "ALTER TABLE \(mysqlQuoteIdentifier(table)) DROP INDEX \(mysqlQuoteIdentifier(oldIndexName)), "
+            + "ADD \(mysqlIndexDefinitionSQL(newIndex))"
+    )
 }
 
 /// `PRIMARY`, in any case, names the primary key and nothing else: MariaDB 13 refuses
@@ -132,6 +141,13 @@ internal func mysqlReservedIndexNameRefusal(for index: PluginIndexDefinition) ->
     return String(
         localized: "PRIMARY is the primary key's name, and no other index can take it. Rename the index, or change the key on the Columns tab."
     )
+}
+
+// A key part, and the key list read from the catalog, go into the statement as SQL.
+internal func mysqlIndexExpressionRefusal(for index: PluginIndexDefinition, flavor: MySQLServerFlavor) -> String? {
+    let texts = (index.expressions ?? []) + [index.ddlMethodAndKeys].compactMap { $0 }
+    guard !texts.allSatisfy({ $0.isEmpty || mysqlIsSingleExpression($0, flavor: flavor) }) else { return nil }
+    return String(format: String(localized: "Index %@ has a key part that is not one SQL expression."), index.name)
 }
 
 /// `CONSTRAINT name` is optional in MySQL's grammar and the server invents one when it is left out,
@@ -154,15 +170,21 @@ internal func mysqlForeignKeyDefinitionSQL(_ foreignKey: PluginForeignKeyDefinit
         definition += " (\(referencedColumns))"
     }
 
-    let onDelete = foreignKey.onDelete.uppercased()
+    let onDelete = mysqlReferentialAction(foreignKey.onDelete)
     if onDelete != "NO ACTION" {
         definition += " ON DELETE \(onDelete)"
     }
 
-    let onUpdate = foreignKey.onUpdate.uppercased()
+    let onUpdate = mysqlReferentialAction(foreignKey.onUpdate)
     if onUpdate != "NO ACTION" {
         definition += " ON UPDATE \(onUpdate)"
     }
 
     return definition
+}
+
+// Catalog text that is no referential action goes in as a name, which the server refuses.
+private func mysqlReferentialAction(_ action: String) -> String {
+    let actions = ["CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT", "NO ACTION"]
+    return actions.first { $0 == action.uppercased() } ?? mysqlQuoteIdentifier(action)
 }

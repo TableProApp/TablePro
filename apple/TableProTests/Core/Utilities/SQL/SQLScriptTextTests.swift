@@ -153,6 +153,20 @@ struct SQLScriptTextTests {
             == "CREATE TABLE t (a INT);\n\nCREATE INDEX i ON t (a);")
     }
 
+    // SQLite stores a trailing comment after a definition as written; left open, it swallowed the dump's next statement.
+    @Test("A definition that ends inside a comment is still ended, so the next statement stays its own", arguments: [
+        "CREATE TABLE t (a TEXT) STRICT /* open;",
+        "CREATE TABLE t (a TEXT) STRICT /* open",
+        "CREATE TABLE t (a TEXT) STRICT -- note;",
+        "CREATE INDEX i ON t(a) -- note",
+    ])
+    func openCommentAtTheEndIsClosedBeforeTheTerminator(ddl: String) {
+        let script = Self.sqlite.scriptText(forDriverText: ddl) + "\nINSERT INTO t VALUES ('*/; DROP TABLE invoices; --');"
+        let statements = SQLStatementScanner.executableStatements(in: script, grammar: TestGrammar.sqlite).map(\.sql)
+        #expect(statements.count == 2)
+        #expect(statements.last == "INSERT INTO t VALUES ('*/; DROP TABLE invoices; --')")
+    }
+
     // MARK: - Other engines
 
     @Test("A SQL Server statement is a batch of its own")
@@ -304,6 +318,8 @@ struct SQLScriptTextTests {
         #expect(Self.oracle.scriptText(forDriverText: ddl) == "CREATE TABLE t (a NUMBER);\nCREATE INDEX i ON t (a);")
         #expect(Self.oracle.scriptText(forDriverText: Self.procedure) == Self.procedure + "\n/")
         #expect(Self.mysql.scriptText(forDriverText: Self.mysqlProcedure).hasPrefix("DELIMITER //\n"))
+        let otherMode = "CREATE PROCEDURE `p`() SET @a = '\\''; DROP DATABASE prod; #'"
+        #expect(Self.mysql.scriptText(forDriverText: otherMode) == "DELIMITER //\n\(otherMode)\n//\nDELIMITER ;")
     }
 
     // MARK: - Comparable text

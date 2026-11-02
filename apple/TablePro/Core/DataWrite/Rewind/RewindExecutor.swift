@@ -41,7 +41,8 @@ struct RewindExecutor {
                 pluginDriver: browseBuilder,
                 dialect: dialect,
                 pagination: PluginManager.shared.paginationCapability(for: connection.type),
-                dialectQuote: dialect.map { quoteIdentifierFromDialect($0) } ?? { SQLEscaping.quoteIdentifier($0) }
+                dialectQuote: dialect.map { quoteIdentifierFromDialect($0, databaseType: connection.type) } ?? { SQLEscaping.quoteIdentifier($0) },
+                sessionDriver: DatabaseManager.shared.sessionDriver(holding: scope)
             )
         )
         let queries = planner.readQueries()

@@ -378,21 +378,78 @@ struct GitCommandHardeningTests {
         #expect(command.workingDirectory.path == "/tmp/repo/sub dir")
     }
 
-    @Test("Inherited repository variables are dropped and the lock and prompt overrides win")
-    func environment() {
-        let environment = GitCommand.environment(base: [
+    @Test("A write drops the inherited repository variables, keeps the user's agent and home, and the lock and prompt overrides win")
+    func writeEnvironmentDropsRepositoryVariables() {
+        let directory = URL(fileURLWithPath: "/tmp/repo")
+        let base = [
             "GIT_DIR": "/elsewhere/.git",
             "GIT_WORK_TREE": "/elsewhere",
             "GIT_CONFIG": "/dev/null",
             "GIT_OPTIONAL_LOCKS": "1",
             "PATH": "/usr/bin",
-        ])
-        #expect(environment["GIT_DIR"] == nil)
-        #expect(environment["GIT_WORK_TREE"] == nil)
-        #expect(environment["GIT_CONFIG"] == nil)
-        #expect(environment["GIT_OPTIONAL_LOCKS"] == "0")
-        #expect(environment["GIT_TERMINAL_PROMPT"] == "0")
-        #expect(environment["PATH"] == "/usr/bin")
+            "HOME": "/Users/ann",
+            "SSH_AUTH_SOCK": "/private/tmp/com.apple.launchd.x/Listeners",
+        ]
+        for command in [GitCommand.push(in: directory), .pull(in: directory), .commit(["a.sql"], message: "Fix", in: directory)] {
+            let environment = command.environment(base: base)
+            #expect(environment["GIT_DIR"] == nil)
+            #expect(environment["GIT_WORK_TREE"] == nil)
+            #expect(environment["GIT_CONFIG"] == nil)
+            #expect(environment["GIT_OPTIONAL_LOCKS"] == "0")
+            #expect(environment["GIT_TERMINAL_PROMPT"] == "0")
+            #expect(environment["SSH_AUTH_SOCK"] == "/private/tmp/com.apple.launchd.x/Listeners")
+            #expect(environment["HOME"] == "/Users/ann")
+            #expect(environment["PATH"]?.hasPrefix("/usr/bin:") == true)
+        }
+    }
+
+    @Test("A read gets no variable from the parent that steers git, and the filter listing shares the status environment")
+    func readEnvironmentIsMinimal() {
+        let directory = URL(fileURLWithPath: "/tmp/repo")
+        let parent = [
+            "PATH": "/usr/bin:/bin",
+            "HOME": "/Users/ann",
+            "LANG": "en_US.UTF-8",
+            "SSH_AUTH_SOCK": "/private/tmp/com.apple.launchd.x/Listeners",
+            "GIT_EXEC_PATH": "/tmp/planted",
+            "GIT_CONFIG_GLOBAL": "/tmp/planted/gitconfig",
+            "GIT_CONFIG_SYSTEM": "/tmp/planted/gitconfig",
+            "XDG_CONFIG_HOME": "/tmp/planted",
+            "GIT_GLOB_PATHSPECS": "1",
+            "GIT_ICASE_PATHSPECS": "1",
+            "GIT_ATTR_SOURCE": "HEAD",
+            "GIT_TRACE": "/tmp/planted/trace",
+            "GIT_SSH_COMMAND": "/tmp/planted/ssh",
+            "GIT_ASKPASS": "/tmp/planted/askpass",
+            GitCommand.emptyValueVariable: "x",
+        ]
+        let allowed = Set(GitCommand.environmentOverrides.keys).union(GitCommand.readOnlyEnvironment.keys)
+        let reads: [GitCommand] = [
+            .repositoryInfo(in: directory),
+            .configuration(in: directory),
+            .status(in: directory),
+            .trackedFiles(in: directory),
+            .blob(revision: "HEAD", path: "a.sql", in: directory),
+            .fileHistory(of: directory.appendingPathComponent("a.sql"), limit: 10),
+            .currentBranch(in: directory),
+            .upstreamDivergence(in: directory),
+            .changedPaths(from: "a", to: "b", in: directory),
+        ]
+        for command in reads {
+            let environment = command.environment(base: parent)
+            #expect(Set(environment.keys.filter { $0.hasPrefix("GIT_") }) == allowed)
+            #expect(environment["XDG_CONFIG_HOME"] == nil)
+            #expect(environment["SSH_AUTH_SOCK"] == nil)
+            #expect(environment[GitCommand.emptyValueVariable] == nil)
+            #expect(environment["HOME"] == "/Users/ann")
+            #expect(environment["PATH"] == "/usr/bin:/bin")
+            #expect(environment["LANG"] == "en_US.UTF-8")
+        }
+
+        let status = GitCommand.status(in: directory, disablingFilters: ["lfs"]).environment(base: parent)
+        let listing = GitCommand.configuration(in: directory).environment(base: parent)
+        #expect(status[GitCommand.emptyValueVariable] == "")
+        #expect(status.filter { $0.key != GitCommand.emptyValueVariable } == listing)
     }
 
     @Test("Folder watcher events inside .git do not count as SQL file changes")
