@@ -1827,7 +1827,7 @@
       "name": "MIT License",
       "text": "The MIT License\n\nCopyright 2015 Google Inc. All rights reserved.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n",
       "used_by": [
-        { "crate": { "name": "pulldown-cmark", "version": "0.13.5" } }
+        { "crate": { "name": "pulldown-cmark", "version": "0.13.6" } }
       ]
     },
     {
@@ -2719,7 +2719,7 @@
     { "name": "pretty-hex", "version": "0.4.2", "license": "MIT" },
     { "name": "proc-macro-crate", "version": "3.5.0", "license": "MIT OR Apache-2.0" },
     { "name": "proc-macro2", "version": "1.0.107", "license": "MIT OR Apache-2.0" },
-    { "name": "pulldown-cmark", "version": "0.13.5", "license": "MIT" },
+    { "name": "pulldown-cmark", "version": "0.13.6", "license": "MIT" },
     { "name": "quote", "version": "1.0.47", "license": "MIT OR Apache-2.0" },
     { "name": "radium", "version": "0.7.0", "license": "MIT" },
     { "name": "rand", "version": "0.9.5", "license": "MIT OR Apache-2.0" },
