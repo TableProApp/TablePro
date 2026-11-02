@@ -131,9 +131,9 @@ internal sealed unsafe class TextLayouts : IDisposable
         }
     }
 
-    // A line's layout with its colors. styleKey must change whenever the spans or the composition do.
+    // A line's layout with its colors. styleKey must change whenever the runs do.
     public LineLayout Get(string text, ReadOnlySpan<StyleRun> runs, ulong styleKey, float scrollX, float viewWidth,
-        IStyleBrushes brushes, (int Start, int Length)? underline = null)
+        IStyleBrushes brushes)
     {
         var segmentStart = 0;
         var segmentLength = text.Length;
@@ -170,11 +170,6 @@ internal sealed unsafe class TextLayouts : IDisposable
             {
                 layout->SetFontWeight(DWRITE_FONT_WEIGHT_BOLD, range);
             }
-        }
-        if (underline is { } u && u.Length > 0)
-        {
-            var start = Math.Max(u.Start - segmentStart, 0);
-            layout->SetUnderline(BOOL.TRUE, new DWRITE_TEXT_RANGE { startPosition = (uint)start, length = (uint)u.Length });
         }
         var entry = new LineLayout
         {
