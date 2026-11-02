@@ -42,7 +42,7 @@ public sealed class ShellTests
         var saved = Retry.WhileFalse(
             () => File.ReadAllText(Path.Combine(app.DataFolder, "settings.json")).Contains("\"reopenSession\": false", StringComparison.Ordinal),
             AppSession.Wait,
-            throwOnTimeout: false).Result;
+            throwOnTimeout: false).Success;
         Assert.True(saved);
         app.Find("AboutExpander");
     }
@@ -157,7 +157,7 @@ public sealed class ShellTests
         app.Screenshot("12-connecting");
         cancel.AsButton().Invoke();
 
-        var gone = Retry.WhileFalse(() => app.TryFind("Rail_Unreachable") is null, AppSession.Wait, throwOnTimeout: false).Result;
+        var gone = Retry.WhileFalse(() => app.TryFind("Rail_Unreachable") is null, AppSession.Wait, throwOnTimeout: false).Success;
         Assert.True(gone);
         app.Find("ConnectionTree");
     }

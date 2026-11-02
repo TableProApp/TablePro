@@ -93,7 +93,7 @@ internal sealed class AppSession : IDisposable
 
     public void WaitForClose(string title)
     {
-        if (Retry.WhileTrue(() => OpenWindow(title) is not null, Wait, throwOnTimeout: false).Result)
+        if (!Retry.WhileTrue(() => OpenWindow(title) is not null, Wait, throwOnTimeout: false).Success)
         {
             throw Failure($"The window {title} stayed open.", screen: true);
         }
@@ -160,7 +160,7 @@ internal sealed class AppSession : IDisposable
         if (!_application.HasExited)
         {
             _application.Close();
-            if (!Retry.WhileFalse(() => _application.HasExited, TimeSpan.FromSeconds(5), throwOnTimeout: false).Result)
+            if (!Retry.WhileFalse(() => _application.HasExited, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
             {
                 _application.Kill();
             }
