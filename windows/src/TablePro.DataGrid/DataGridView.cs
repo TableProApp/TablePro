@@ -294,10 +294,18 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     public double ColumnWidth(int column) => _columns.Width(column);
 
-    void IGridWindow.PrepareRow(UIElement row, int index) => ((DrawnRow)row).SetRow(index);
+    // ItemsRepeater makes each prepared element a ScrollViewer anchor candidate, past the rows' anchorless window.
+    void IGridWindow.PrepareRow(UIElement row, int index)
+    {
+        row.CanBeScrollAnchor = false;
+        ((DrawnRow)row).SetRow(index);
+    }
 
-    void IGridWindow.PrepareHeader(UIElement header, int column) =>
+    void IGridWindow.PrepareHeader(UIElement header, int column)
+    {
+        header.CanBeScrollAnchor = false;
         ((HeaderCell)header).Bind(column, _names[column], column == _sort.Column ? _sort.Direction : SortDirection.None);
+    }
 
     // Shows data, or nothing for null. The grid opens its own reader on this thread and disposes it with the data.
     public void SetData(IGridData? data)

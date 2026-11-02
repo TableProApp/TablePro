@@ -79,7 +79,8 @@ foreach ($name in 'first', 'gate', 'repeat') {
     if ($json.ContainsKey('error')) { $failures += "${name}: $($json['error'])" }
     foreach ($phase in $phases) {
         $hb = $json["$phase.heartbeat_wait_ms"]
-        if ($null -ne $hb -and $hb.max -gt 50) { $failures += "$name $phase block max $($hb.max) ms" }
+        # The verify phases time the checks too; the block bar is the six measured phases'.
+        if ($null -ne $hb -and $hb.max -gt 50 -and -not $phase.EndsWith('_verify')) { $failures += "$name $phase block max $($hb.max) ms" }
         $verify = $json["$phase.verify"]
         foreach ($part in 'right_after_step', 'one_frame_later') {
             if ($null -ne $verify -and ($verify[$part].stale + $verify[$part].missing + $verify[$part].misplaced + $verify[$part].header_problems) -gt 0) {
