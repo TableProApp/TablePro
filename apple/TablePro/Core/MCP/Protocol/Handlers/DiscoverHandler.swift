@@ -24,7 +24,7 @@ public struct DiscoverHandler: MCPMethodHandler {
         }
 
         let clientName = context.meta.clientInfo?.name ?? "-"
-        Self.logger.debug("server/discover client=\(clientName, privacy: .public)")
+        Self.logger.debug("server/discover client=\(clientName, privacy: .private(mask: .hash))")
 
         var result = MCPResult.complete(payload, cacheHint: Self.cacheHint)
         result.meta.serverInfo = MCPMethodRegistry.serverInfo

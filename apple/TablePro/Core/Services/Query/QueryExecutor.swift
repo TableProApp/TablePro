@@ -259,7 +259,7 @@ final class QueryExecutor {
         isView: Bool
     ) async throws -> FetchedTableSchema {
         queryExecutorLog.info(
-            "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .public) schema=\(scope.schema ?? "default", privacy: .public)"
+            "[fk] schema fetch start table=\(tableName, privacy: .private(mask: .hash)) db=\(scope.database, privacy: .private(mask: .hash)) schema=\(scope.schema ?? "default", privacy: .private(mask: .hash))"
         )
         let (columns, approximateRowCount, viewRowEditing) = try await DatabaseManager.shared.withMetadataDriver(
             scope: scope

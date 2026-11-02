@@ -86,7 +86,7 @@ public final class QdrantClient: @unchecked Sendable {
         }
         let response = try await post("\(collectionPath(collection))/points/count", body)
         let result = (response.json as? [String: Any])?["result"] as? [String: Any]
-        guard let count = result?["count"] as? Int else {
+        guard let count = result?["count"] as? Int, count >= 0 else {
             throw QdrantError.malformedResponse(String(localized: "Qdrant answered a count without a number."))
         }
         return count

@@ -258,7 +258,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH"
+                    binaryLengthFunction: "OCTET_LENGTH",
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -329,7 +330,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH"
+                    binaryLengthFunction: "OCTET_LENGTH",
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -406,7 +408,8 @@ extension PluginMetadataRegistry {
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     supportsUserDefinedTypeBrowse: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -544,7 +547,8 @@ extension PluginMetadataRegistry {
                     supportsCheckConstraints: true,
                     supportsCheckConstraintEditing: false,
                     supportsGeneratedColumns: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -614,7 +618,8 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .disabled,
-                    supportsConnectionPooling: false
+                    supportsConnectionPooling: false,
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -683,7 +688,8 @@ extension PluginMetadataRegistry {
                     localFilePathField: .database,
                     newDatabaseFileExtensions: Self.sqliteFileExtensions,
                     supportsRemoteDatabaseFile: true,
-                    supportsRemoteDatabaseSession: true
+                    supportsRemoteDatabaseSession: true,
+                    readOnlyEnforcement: .engineEnforced
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

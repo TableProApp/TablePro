@@ -15,11 +15,13 @@ glib::wrapper! {
 }
 
 impl SavedConnectionObject {
-    /// `file_based` says whether the connection's driver opens a file,
-    /// which decides what the row names: the file, or the server.
-    pub(crate) fn new(saved: SavedConnection, file_based: bool) -> Self {
+    /// `group` is the label of the group it sits in. `file_based` says
+    /// whether the connection's driver opens a file, which decides what
+    /// the row names: the file, or the server.
+    pub(crate) fn new(saved: SavedConnection, group: Option<String>, file_based: bool) -> Self {
         let object: Self = glib::Object::new();
         let _ = object.imp().saved.set(saved);
+        let _ = object.imp().group_label.set(group);
         object.imp().file_based.set(file_based);
         object
     }
@@ -75,7 +77,8 @@ mod tests {
             ssh: None,
             last_opened_at: None,
             color: None,
-            group: None,
+            group_id: None,
+            order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
@@ -129,10 +132,9 @@ mod tests {
     #[gtk4::test]
     fn the_object_carries_the_connection_as_properties() {
         let mut connection = saved("sa", AuthMode::Password);
-        connection.group = Some(tablepro_storage::ConnectionGroupName::new("Work").expect("a group name"));
         connection.last_opened_at = Utc.timestamp_opt(1_700_000_000, 0).single();
 
-        let object = SavedConnectionObject::new(connection.clone(), false);
+        let object = SavedConnectionObject::new(connection.clone(), Some("Work".to_owned()), false);
 
         assert_eq!(object.id(), connection.id.to_string());
         assert_eq!(object.name(), "Corp");

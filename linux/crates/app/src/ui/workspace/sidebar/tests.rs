@@ -11,9 +11,7 @@ use libadwaita as adw;
 use tablepro_core::meta::{KeyKind, ObjectInfo, ObjectKind, ObjectScope, SchemaInfo, TableRef};
 use tablepro_core::{DriverError, DriverRegistry};
 use tablepro_session::SessionKey;
-use tablepro_storage::{
-    ConnectionColor, ConnectionGroupName, ConnectionStore, ConnectionTagName, SavedConnection, StoragePaths,
-};
+use tablepro_storage::{ConnectionColor, ConnectionStore, ConnectionTagName, SavedConnection, StoragePaths};
 use tablepro_test_support::FakeReply;
 use uuid::Uuid;
 
@@ -133,7 +131,8 @@ fn connection(name: &str, group: Option<&str>) -> SavedConnection {
         ssh: None,
         last_opened_at: None,
         color: None,
-        group: group.map(|group| ConnectionGroupName::new(group).expect("a group name")),
+        group_id: group.map(crate::test_support::group_id),
+        order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
@@ -171,11 +170,11 @@ impl Shown {
     fn new(connections: &[SavedConnection]) -> Self {
         adw::init().expect("libadwaita initialises under the test backend");
         let dir = tempfile::tempdir().expect("a temporary directory");
-        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let paths = StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID);
+        crate::test_support::seed_library(&paths, connections);
+        let store = ConnectionStore::new(&paths);
         let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
-        for saved in connections {
-            store.upsert_blocking(saved.clone()).expect("save the connection");
-        }
+        store.load_blocking().expect("the saved connections");
         wait_until(WAIT, || list.model().n_items() as usize == connections.len()).expect("the list to have them");
         let tree = ConnectionTree::new(list.clone());
         let entry = gtk::SearchEntry::new();
@@ -321,9 +320,19 @@ impl Shown {
         bound_row(&self.pane().list_view, name).unwrap_or_else(|| panic!("{name} is not on screen"))
     }
 
+    // The store places a saved connection in its group, so the order
+    // the list holds is the store's.
     fn write(&self, saved: &SavedConnection) {
-        self.store.upsert_blocking(saved.clone()).expect("the write");
-        wait_until(WAIT, || self.list.get(saved.id).as_ref() == Some(saved)).expect("the list to publish it");
+        crate::test_support::save_filed(&self.store, saved.clone());
+        wait_until(WAIT, || {
+            self.list.get(saved.id).is_some_and(|held| {
+                held == SavedConnection {
+                    order: held.order,
+                    ..saved.clone()
+                }
+            })
+        })
+        .expect("the list to publish it");
         drain_main_context();
     }
 }

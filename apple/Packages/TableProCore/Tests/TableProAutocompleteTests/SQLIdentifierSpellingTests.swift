@@ -92,6 +92,13 @@ struct SQLIdentifierSpellingTests {
         #expect(spelling(.lower).quoted("a\"b") == "\"a\"\"b\"")
     }
 
+    // A combining mark joins the quote it follows into one Character, which a grapheme search does not find.
+    @Test("A quote a combining mark follows is doubled")
+    func quoteWithCombiningMarkIsEscaped() {
+        let quoted = spelling(.lower).quoted("a\"\u{301}b")
+        #expect(Array(quoted.unicodeScalars) == Array("\"a\"\"\u{301}b\"".unicodeScalars))
+    }
+
     // MARK: - Completion items
 
     @Test("A table completes in the typed case, and a mixed-case one quoted as stored")

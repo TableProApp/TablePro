@@ -6,8 +6,8 @@ use crate::result_reader::{ReadEvent, ResultReader};
 const BATCH_ROWS: usize = 256;
 
 /// Every row of a read, into the sink. The call's client carries
-/// `readonly=2`, so user SQL that writes is refused by the server for
-/// the read's whole length.
+/// `readonly`, 1 for user SQL, so SQL that writes is refused by the
+/// server for the read's whole length.
 pub(crate) async fn stream(
     calls: &CallClient,
     read: &ReadStatement,

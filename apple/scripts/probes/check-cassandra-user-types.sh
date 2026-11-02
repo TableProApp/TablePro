@@ -16,7 +16,7 @@ set -uo pipefail
 
 CONTAINER="${1:-cassandra-probe}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PLUGIN="$ROOT/Plugins/CassandraDriverPlugin"
+SOURCES="$ROOT/Packages/TableProCore/Sources"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -36,27 +36,43 @@ export DEVELOPER_DIR
 cat > "$WORK/main.swift" << 'SWIFT'
 import Foundation
 
-let input = FileHandle.standardInput.readDataToEndOfFile()
-let rows = (try JSONSerialization.jsonObject(with: input) as? [[String: String]]) ?? []
+struct Request: Decodable {
+    let name: String
+    let keyspace: String
+    let names: [String]
+    let types: [String]
+    let release: String
+}
+
+let rows = try JSONDecoder().decode([Request].self, from: FileHandle.standardInput.readDataToEndOfFile())
 let types: [[String: Any]] = rows.map { row in
-    let name = row["name"] ?? ""
-    let keyspace = row["keyspace"] ?? ""
-    let fields = CassandraUserTypes.fields(names: row["names"], types: row["types"])
+    let fields = CassandraUserTypes.fields(names: row.names, types: row.types)
     return [
-        "name": name,
-        "definition": fields.map { CassandraUserTypes.definition(keyspace: keyspace, name: name, fields: $0) as Any }
+        "name": row.name,
+        "definition": fields.map { CassandraUserTypes.definition(keyspace: row.keyspace, name: row.name, fields: $0) as Any }
             ?? NSNull(),
-        "spelling": CassandraUserTypes.columnTypeSpelling(name: name, fields: fields, releaseVersion: row["release"]),
-        "bare": CassandraUserTypes.identifier(name),
-        "drop": CassandraUserTypes.dropStatement(keyspace: keyspace, name: name),
+        "spelling": CassandraUserTypes.columnTypeSpelling(name: row.name, fields: fields, releaseVersion: row.release),
+        "bare": CassandraUserTypes.identifier(row.name),
+        "drop": CassandraUserTypes.dropStatement(keyspace: row.keyspace, name: row.name),
     ]
 }
 let output: [String: Any] = ["types": types, "reserved": CassandraUserTypes.reservedKeywords.sorted()]
 let data = try JSONSerialization.data(withJSONObject: output)
 print(String(decoding: data, as: UTF8.self))
 SWIFT
-xcrun swiftc -o "$WORK/spell" "$WORK/main.swift" "$PLUGIN/CassandraObjectQueries.swift" "$PLUGIN/CassandraUserTypes.swift" \
-    > "$WORK/build.log" 2>&1 || {
+# TableProCassandraCore imports TableProSQLQuoting and TableProSQLGrammar, so both are built as modules first.
+module() {
+    local name="$1"
+    shift
+    xcrun swiftc -parse-as-library -emit-library -static -emit-module -module-name "$name" -I "$WORK" \
+        -emit-module-path "$WORK/$name.swiftmodule" -o "$WORK/lib$name.a" "$@"
+}
+{
+    module TableProSQLQuoting "$SOURCES"/TableProSQLQuoting/*.swift \
+        && module TableProSQLGrammar "$SOURCES"/TableProSQLGrammar/*.swift "$SOURCES"/TableProSQLGrammar/*/*.swift \
+        && xcrun swiftc -I "$WORK" -L "$WORK" -lTableProSQLGrammar -lTableProSQLQuoting -o "$WORK/spell" \
+            "$WORK/main.swift" "$SOURCES"/TableProCassandraCore/*.swift
+} > "$WORK/build.log" 2>&1 || {
     echo "the probe failed to build:" >&2
     grep -E 'error:' "$WORK/build.log" | sort -u | head -20 >&2
     exit 3
@@ -92,10 +108,6 @@ def rows(statement):
             for line in out.splitlines() if line.strip().startswith("{")]
 
 
-def driver_list(values):
-    return "[" + ", ".join(values) + "]"
-
-
 def check(condition, message):
     if not condition:
         failures.append(message)
@@ -120,6 +132,9 @@ try:
         "CREATE TYPE {k}.uses_comma (m frozen<\"My, Type\">, n int)",
         "CREATE TYPE {k}.\"text\" (v int)",
         "CREATE TYPE {k}.\"byte\" (v int)",
+        # ANT-2026-ZU4QG50Y: names the driver's rendered list text split in the wrong place.
+        "CREATE TYPE {k}.\"\N{COMBINING ACUTE ACCENT}A>, Z\" (note text)",
+        "CREATE TYPE {k}.carrier (\"f1, >); DROP KEYSPACE billing; --\" frozen<\"\N{COMBINING ACUTE ACCENT}A>, Z\">)",
     ]
     for statement in fixture:
         ok, out = cql(statement.format(k=source))
@@ -134,8 +149,8 @@ try:
     request = [{
         "name": name,
         "keyspace": target,
-        "names": driver_list(row["field_names"]),
-        "types": driver_list(row["field_types"]),
+        "names": row["field_names"] or [],
+        "types": row["field_types"] or [],
         "release": release,
     } for name, row in listed.items()]
     spelled = subprocess.run([os.environ["SPELL"]], input=json.dumps(request), capture_output=True, text=True, check=True)
@@ -143,10 +158,8 @@ try:
     built = {entry["name"]: entry for entry in output["types"]}
     print(f"Cassandra {release}: {len(built)} types")
 
-    check(built["weird"]["definition"] is None, "a field name holding ', ' still produced a definition")
     for name, entry in built.items():
-        check(entry["definition"] or name == "weird", f"{name}: no definition")
-    check(built["weird"]["spelling"].startswith("frozen<"), "a type with unreadable fields was not spelled frozen")
+        check(entry["definition"], f"{name}: no definition")
 
     pending = [name for name in built if built[name]["definition"]]
     for _ in range(len(pending)):
@@ -177,7 +190,7 @@ try:
                   f"{name}: spelled {entry['spelling']}, recorded {recorded}")
         if entry["spelling"].startswith("frozen<"):
             ok, out = cql(f"ALTER TABLE {source}.holder ADD b{index} {entry['bare']}")
-            check(not ok or name == "weird", f"{name}: spelled frozen, yet the bare name was accepted")
+            check(not ok, f"{name}: spelled frozen, yet the bare name was accepted")
 
     ok, out = cql(built["phone"]["drop"])
     check(not ok and "still used" in out, f"DROP of a type another type uses was not refused: {out}")

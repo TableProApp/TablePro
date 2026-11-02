@@ -108,6 +108,11 @@ struct NativeDumpDescriptor: Sendable {
         var host: String {
             connection.host.isEmpty ? "127.0.0.1" : connection.host
         }
+
+        // The server behind a tunnel's loopback forward, which its certificate names. Nil on a direct dial.
+        var tunneledServerName: String? {
+            connection.tunneledServerName
+        }
     }
 
     internal struct ConfigurationEntry: Sendable, Equatable {

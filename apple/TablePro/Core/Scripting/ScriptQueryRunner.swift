@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 // One statement, or on SQL Server a whole script, from AppleScript or a Shortcuts action. Both clear the
 // connection's own gates through `ExternalStatementGate`, the code MCP runs: External Clients, then Safe Mode.
@@ -84,9 +85,8 @@ internal enum ScriptQueryRunner {
 
         let capabilities = Self.capabilities(on: snapshot.databaseType)
 
-        /// Classified before anything connects, so a statement the connection refuses never opens a
-        /// session and never asks the user for a password.
-        try ExternalStatementGate.classify(
+        // Classified before anything connects, so a refused statement never opens a session or asks for a password.
+        let classification = try ExternalStatementGate.classify(
             ExternalStatementGate.Statement(
                 sql: request.sql,
                 connectionId: request.connectionId,
@@ -98,7 +98,7 @@ internal enum ScriptQueryRunner {
             )
         )
 
-        /// Before anything connects: a script asking for rows is not consent to load extensions.
+        // Before anything connects: a script asking for rows is not consent to load extensions.
         try await ScriptConnectGate.authorizeConnect(connectionId: request.connectionId)
 
         let scope = try await bridge.resolveScope(
@@ -107,28 +107,33 @@ internal enum ScriptQueryRunner {
             schema: request.schema
         )
 
-        try await ExternalStatementGate.authorizeExecution(
-            sql: request.sql,
-            connectionId: request.connectionId,
-            databaseType: snapshot.databaseType,
-            caller: request.channel.caller,
-            capabilities: capabilities,
-            operationDescription: confirmationTitle(
-                client: request.channel.clientName,
-                connection: snapshot.connectionName
+        let rowLimit = (request.rowLimit ?? defaultRowLimit).clamped(to: 1...maximumRowLimit)
+        let timeout = (request.timeoutSeconds ?? defaultTimeoutSeconds).clamped(to: 1...maximumTimeoutSeconds)
+
+        let planned = try await bridge.plannedScript(scope: scope, query: request.sql, maxRows: rowLimit)
+        let operation = try await ExternalStatementGate.approve(
+            PendingOperation(
+                scope: scope,
+                databaseType: snapshot.databaseType,
+                statements: [planned.statement],
+                kind: OperationKind.from(classification.tier),
+                unit: planned.unit,
+                caller: request.channel.caller,
+                capabilities: capabilities,
+                operationDescription: confirmationTitle(
+                    client: request.channel.clientName,
+                    connection: snapshot.connectionName
+                )
             ),
             gate: gate
         )
 
-        let rowLimit = (request.rowLimit ?? defaultRowLimit).clamped(to: 1...maximumRowLimit)
-        let timeout = (request.timeoutSeconds ?? defaultTimeoutSeconds).clamped(to: 1...maximumTimeoutSeconds)
         let startedAt = ContinuousClock.Instant.now
         let started = Date()
 
         do {
             let outcome = try await bridge.runScript(
-                scope: scope,
-                query: request.sql,
+                operation,
                 maxRows: rowLimit,
                 timeoutSeconds: timeout,
                 cancellation: nil

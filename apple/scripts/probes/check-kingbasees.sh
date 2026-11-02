@@ -35,6 +35,7 @@ let package = Package(
             .product(name: "TableProPluginKit", package: "TableProCore"),
             .product(name: "TableProCoreTypes", package: "TableProCore"),
             .product(name: "TableProKerberos", package: "TableProCore"),
+            .product(name: "TableProGeometry", package: "TableProCore"),
             .product(name: "TableProPostgreSQLCore", package: "TableProCore"),
             .product(name: "TableProSQLVocabulary", package: "TableProCore"),
             .product(name: "TableProSQLGrammar", package: "TableProCore"),

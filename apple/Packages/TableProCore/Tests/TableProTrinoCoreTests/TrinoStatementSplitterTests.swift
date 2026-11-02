@@ -31,4 +31,21 @@ struct TrinoStatementSplitterTests {
         let grammar = SQLLexicalReadings.resolve(databaseTypeId: typeId, declared: nil, session: nil).execution
         #expect(TrinoStatementSplitter.split(sql) == SQLStatementScanner.allStatements(in: sql, grammar: grammar))
     }
+
+    // The host approved this text as one statement; a cut here would run a piece Safe Mode never graded.
+    @Test("A host-split text is sent whole", arguments: [
+        "SELECT 1; DROP TABLE orders",
+        "INSERT INTO orders VALUES ('a;b')",
+        "SELECT 1",
+    ])
+    func hostSplitTextStaysWhole(sql: String) {
+        #expect(TrinoStatementSplitter.statements(in: sql, hostSplit: true) == [sql])
+    }
+
+    @Test("Text from the editor is still cut at each semicolon")
+    func editorTextIsCut() {
+        #expect(TrinoStatementSplitter.statements(in: "SELECT 1; DROP TABLE orders", hostSplit: false)
+            == ["SELECT 1", "DROP TABLE orders"])
+        #expect(TrinoStatementSplitter.statements(in: "SELECT 1", hostSplit: false) == ["SELECT 1"])
+    }
 }

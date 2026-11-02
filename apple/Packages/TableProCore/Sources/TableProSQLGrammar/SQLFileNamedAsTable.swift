@@ -1,6 +1,7 @@
 import Foundation
 
-// DuckDB reads a file named as a table. A quoted identifier counts only with a `/`, a `.` or a `\`.
+// DuckDB reads a file named as a table. A quoted identifier, in `"` or a backtick, counts only with a `/`, a `.` or a
+// `\`.
 public enum SQLFileNamedAsTable {
     private static let tableIntroducers: Set<String> = [
         "FROM", "JOIN", "USING", "TABLE", "DESCRIBE", "DESC", "SHOW", "SUMMARIZE", "PIVOT", "UNPIVOT",
@@ -106,7 +107,7 @@ public enum SQLFileNamedAsTable {
     }
 
     private static func namesFile(at location: Int, in source: NSString, grammar: SQLLexicalGrammar) -> Bool {
-        guard source.character(at: location) == SqlLexer.doubleQuote,
+        guard [SqlLexer.doubleQuote, SqlLexer.backtick].contains(source.character(at: location)),
               let span = SQLNonCodeSpan.span(at: location, in: source, grammar: grammar)
         else {
             return true

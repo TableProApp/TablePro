@@ -22,6 +22,7 @@ final class OraclePlugin: NSObject, TableProPlugin, DriverPlugin, PluginDiagnost
     static let databaseDisplayName = "Oracle"
     static let iconName = "oracle-icon"
     static let defaultPort = 1_521
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: OracleConnectionOptions.AdditionalFieldKey.connectionType,
@@ -245,7 +246,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             serviceName: config.additionalFields[OracleConnectionOptions.AdditionalFieldKey.serviceName] ?? "",
             sid: config.additionalFields[OracleConnectionOptions.AdditionalFieldKey.sid] ?? "",
             role: OracleConnectionOptions.role(from: config.additionalFields),
-            tls: config.ssl.oracleTLSDescription,
+            tls: config.ssl.oracleTLSDescription(serverName: config.tunneledServerName),
             networkEncryption: OracleConnectionOptions.networkEncryption(from: config.additionalFields),
             loginTimeoutSeconds: OracleConnectionOptions.loginTimeoutSeconds(from: config.additionalFields)
         )
@@ -609,7 +610,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var replacesDefinitionsInPlace: Bool { true }
 
     func createTriggerTemplate(table: String, schema: String?) -> String? {
-        let quotedTable = "\"\(table.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        let quotedTable = OracleObjectQueries.quoteIdentifier(table)
         return """
         CREATE OR REPLACE TRIGGER \("\"TRIGGER_NAME\"")
         BEFORE INSERT ON \(quotedTable)
@@ -696,7 +697,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if !view.rows.isEmpty {
             return try await viewStatement(from: view, schema: owner, view: table)
         }
-        return OracleTableDDL.createTable(
+        return try OracleTableDDL.createTable(
             qualifiedTable: "\(quoteIdentifier(owner)).\(quoteIdentifier(table))",
             columns: try await fetchColumns(table: table, schema: schema),
             quote: quoteIdentifier

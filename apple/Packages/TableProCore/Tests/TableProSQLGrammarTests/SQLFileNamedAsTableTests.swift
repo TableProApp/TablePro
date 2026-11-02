@@ -59,6 +59,8 @@ struct SQLFileNamedAsTableTests {
         "SELECT * FROM a.\"/../payroll.csv\"",
         "SELECT * FROM U&\"\\002FUsers\\002Fann\\002Fpayroll\\002Ecsv\"",
         "SELECT * FROM notes, \"s3://bucket/payroll.parquet\"",
+        "SELECT * FROM `/Users/ann/Documents/payroll.csv`",
+        "SELECT * FROM `payroll.csv`",
     ])
     func quotedPathsNameFiles(sql: String) {
         #expect(namesFile(sql))
@@ -94,6 +96,8 @@ struct SQLFileNamedAsTableTests {
     @Test("A string that is a value, and a quoted name that is a table's, are not files", arguments: [
         "SELECT * FROM notes",
         "SELECT * FROM \"main\".\"notes\" AS \"n\"",
+        "SELECT * FROM `main`.`notes` AS `n`",
+        "SELECT * FROM `orders`",
         "SELECT * FROM \"my notes\" \"n.x\"",
         "SELECT 'a.csv', 'b.csv' FROM notes WHERE path = 'c.csv' ORDER BY 'd', 'e'",
         "FROM notes SELECT 'a.csv', 'b.csv'",

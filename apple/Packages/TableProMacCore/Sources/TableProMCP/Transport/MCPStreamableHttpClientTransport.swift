@@ -28,13 +28,13 @@ public actor MCPStreamableHttpClientTransport {
     nonisolated public let inbound: AsyncThrowingStream<Data, Error>
     nonisolated private let continuation: AsyncThrowingStream<Data, Error>.Continuation
 
+    private static let mcpPath = "/mcp"
     private static let namedMethods: Set<String> = ["tools/call", "resources/read", "prompts/get"]
     private static let unavailableMessage =
         "TablePro's MCP server is not reachable. Make sure TablePro is running and the MCP server is enabled in Settings > MCP."
 
     private let configuration: MCPStreamableHttpClientConfiguration
     private let credentialsProvider: any MCPUpstreamCredentialsProviding
-    private let urlSession: URLSession
     private let errorLogger: (any MCPBridgeLogger)?
 
     private var isClosed = false
@@ -43,7 +43,6 @@ public actor MCPStreamableHttpClientTransport {
     public init(
         configuration: MCPStreamableHttpClientConfiguration = MCPStreamableHttpClientConfiguration(),
         credentialsProvider: any MCPUpstreamCredentialsProviding,
-        urlSession: URLSession? = nil,
         errorLogger: (any MCPBridgeLogger)? = nil
     ) {
         self.configuration = configuration
@@ -53,17 +52,6 @@ public actor MCPStreamableHttpClientTransport {
         let (stream, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
         self.inbound = stream
         self.continuation = continuation
-
-        if let urlSession {
-            self.urlSession = urlSession
-        } else {
-            let sessionConfiguration = URLSessionConfiguration.ephemeral
-            sessionConfiguration.timeoutIntervalForRequest =
-                TimeInterval(configuration.requestTimeout.components.seconds)
-            sessionConfiguration.waitsForConnectivity = false
-            sessionConfiguration.httpMaximumConnectionsPerHost = 16
-            self.urlSession = URLSession(configuration: sessionConfiguration)
-        }
     }
 
     public func send(_ frame: MCPUpstreamFrame) async throws {
@@ -88,7 +76,6 @@ public actor MCPStreamableHttpClientTransport {
         for task in running {
             task.cancel()
         }
-        urlSession.invalidateAndCancel()
         continuation.finish()
     }
 
@@ -106,16 +93,27 @@ public actor MCPStreamableHttpClientTransport {
         }
     }
 
-    private func recover(from error: MCPTransportError, frame: MCPUpstreamFrame) async {
+    // The app may have restarted: resend only after the provider re-acquires and verifies the listener.
+    private func recover(from failure: MCPTransportError, frame: MCPUpstreamFrame) async {
         guard !isClosed, !Task.isCancelled else { return }
-        guard case .authentication = error else {
-            emitTransportFailure(error, frame: frame)
+        switch failure {
+        case .authentication, .unreachable:
+            break
+        default:
+            emitTransportFailure(failure, frame: frame)
             return
         }
 
         do {
             _ = try await credentialsProvider.refreshCredentials()
-            errorLogger?.log(.info, "Re-acquired the MCP handshake after upstream rejected the bridge token")
+        } catch {
+            errorLogger?.log(.error, "Re-acquiring the MCP handshake failed: \(error)")
+            emitTransportFailure(error, frame: frame, original: failure)
+            return
+        }
+        guard !isClosed, !Task.isCancelled else { return }
+        errorLogger?.log(.info, "Re-acquired the MCP handshake after \(failure)")
+        do {
             try await perform(frame, allowCredentialRefresh: false)
         } catch {
             emitTransportFailure(error, frame: frame)
@@ -124,20 +122,20 @@ public actor MCPStreamableHttpClientTransport {
 
     private func perform(_ frame: MCPUpstreamFrame, allowCredentialRefresh: Bool) async throws {
         let credentials = await credentialsProvider.currentCredentials()
-        let exchange = MCPUpstreamExchange()
-        let task = urlSession.dataTask(with: makeRequest(credentials: credentials, frame: frame))
-        task.delegate = exchange
-        task.resume()
-        defer { task.cancel() }
+        let request = makeRequest(credentials: credentials, frame: frame)
 
-        let head: HTTPURLResponse
+        let response: MCPSocketHttpResponse
         do {
-            head = try await exchange.awaitHead()
+            response = try await MCPUnixSocketHttpClient.send(
+                request,
+                socketPath: credentials.socketPath,
+                idleTimeout: configuration.requestTimeout
+            )
         } catch {
             throw Self.mapRequestFailure(error)
         }
 
-        let status = head.statusCode
+        let status = response.status
         if status == 401, allowCredentialRefresh {
             throw MCPTransportError.authentication(
                 httpStatus: status,
@@ -145,42 +143,36 @@ public actor MCPStreamableHttpClientTransport {
             )
         }
 
-        let contentType = head.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+        let contentType = response.headers.value(for: "Content-Type")?.lowercased() ?? ""
 
         guard (200..<300).contains(status) else {
-            let body = try await collect(exchange.body)
-            emitHttpFailure(status: status, head: head, body: body, frame: frame)
+            let body = try await collect(response.body)
+            emitHttpFailure(status: status, headers: response.headers, body: body, frame: frame)
             return
         }
 
         if contentType.contains("text/event-stream") {
-            try await forwardEventStream(exchange.body)
+            try await forwardEventStream(response.body)
             return
         }
 
-        emit(try await collect(exchange.body))
+        emit(try await collect(response.body))
     }
 
-    private func makeRequest(credentials: MCPUpstreamCredentials, frame: MCPUpstreamFrame) -> URLRequest {
-        var request = URLRequest(url: credentials.endpoint)
-        request.httpMethod = "POST"
-        request.httpBody = frame.body
-        request.timeoutInterval = TimeInterval(configuration.requestTimeout.components.seconds)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
-        request.setValue("Bearer \(credentials.bearerToken)", forHTTPHeaderField: "Authorization")
-        request.setValue(MCPProtocolVersion.latest.rawValue, forHTTPHeaderField: "MCP-Protocol-Version")
-
-        guard let method = frame.method else {
-            return request
+    private func makeRequest(credentials: MCPUpstreamCredentials, frame: MCPUpstreamFrame) -> MCPSocketHttpRequest {
+        var headers: [(String, String)] = [
+            ("Content-Type", "application/json"),
+            ("Accept", "application/json, text/event-stream"),
+            ("Authorization", "Bearer \(credentials.bearerToken)"),
+            ("MCP-Protocol-Version", MCPProtocolVersion.latest.rawValue)
+        ]
+        if let method = frame.method {
+            headers.append(("Mcp-Method", method))
+            if Self.namedMethods.contains(method), let name = frame.name {
+                headers.append(("Mcp-Name", MCPBase64Sentinel.encodeIfNeeded(name)))
+            }
         }
-        request.setValue(method, forHTTPHeaderField: "Mcp-Method")
-
-        guard Self.namedMethods.contains(method), let name = frame.name else {
-            return request
-        }
-        request.setValue(MCPBase64Sentinel.encodeIfNeeded(name), forHTTPHeaderField: "Mcp-Name")
-        return request
+        return MCPSocketHttpRequest(path: Self.mcpPath, headers: headers, body: frame.body)
     }
 
     private func forwardEventStream(_ body: AsyncThrowingStream<Data, Error>) async throws {
@@ -214,7 +206,7 @@ public actor MCPStreamableHttpClientTransport {
 
     private func emitHttpFailure(
         status: Int,
-        head: HTTPURLResponse,
+        headers: HttpHeaders,
         body: Data,
         frame: MCPUpstreamFrame
     ) {
@@ -228,12 +220,12 @@ public actor MCPStreamableHttpClientTransport {
             return
         }
 
-        let allow = head.value(forHTTPHeaderField: "Allow") ?? "POST, OPTIONS"
+        let allow = headers.value(for: "Allow") ?? "POST, OPTIONS"
         let protocolError = Self.protocolError(status: status, body: body, frame: frame, allow: allow)
         emitError(protocolError.toJsonRpcErrorResponse(id: requestId))
     }
 
-    private func emitTransportFailure(_ error: Error, frame: MCPUpstreamFrame) {
+    private func emitTransportFailure(_ error: Error, frame: MCPUpstreamFrame, original: Error? = nil) {
         if Task.isCancelled || isClosed {
             return
         }
@@ -241,7 +233,7 @@ public actor MCPStreamableHttpClientTransport {
 
         guard let requestId = frame.requestId else { return }
 
-        if case MCPTransportError.unreachable = error {
+        if case MCPTransportError.unreachable = original ?? error {
             emitError(
                 JsonRpcErrorResponse(
                     id: requestId,
@@ -307,99 +299,19 @@ public actor MCPStreamableHttpClientTransport {
         }
     }
 
-    private static func mapRequestFailure(_ error: Error) -> MCPTransportError {
-        guard let urlError = error as? URLError else {
-            return .readFailed(detail: String(describing: error))
+    private static func mapRequestFailure(_ error: Error) -> Error {
+        guard let failure = error as? MCPSocketHttpError else {
+            return error
         }
-        switch urlError.code {
-        case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet:
-            return .unreachable(detail: urlError.localizedDescription)
+        switch failure {
+        case .connectFailed(let detail), .invalidSocketPath(let detail):
+            return MCPTransportError.unreachable(detail: detail)
         case .timedOut:
-            return .timeout
-        default:
-            return .readFailed(detail: urlError.localizedDescription)
+            return MCPTransportError.timeout
+        case .invalidHeader(let name):
+            return MCPTransportError.malformedFrame(detail: "\(name) cannot be sent as an HTTP header")
+        case .connectionClosed(let detail), .malformedResponse(let detail):
+            return MCPTransportError.readFailed(detail: detail)
         }
-    }
-}
-
-private final class MCPUpstreamExchange: NSObject, URLSessionDataDelegate, @unchecked Sendable {
-    let body: AsyncThrowingStream<Data, Error>
-
-    private let bodyContinuation: AsyncThrowingStream<Data, Error>.Continuation
-    private let lock = NSLock()
-    private var head: HTTPURLResponse?
-    private var failure: Error?
-    private var headContinuation: CheckedContinuation<HTTPURLResponse, Error>?
-
-    override init() {
-        let (stream, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
-        body = stream
-        bodyContinuation = continuation
-        super.init()
-    }
-
-    func awaitHead() async throws -> HTTPURLResponse {
-        try await withCheckedThrowingContinuation { continuation in
-            lock.lock()
-            if let head {
-                lock.unlock()
-                continuation.resume(returning: head)
-                return
-            }
-            if let failure {
-                lock.unlock()
-                continuation.resume(throwing: failure)
-                return
-            }
-            headContinuation = continuation
-            lock.unlock()
-        }
-    }
-
-    func urlSession(
-        _ session: URLSession,
-        dataTask: URLSessionDataTask,
-        didReceive response: URLResponse,
-        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
-    ) {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            resolveHead(.failure(MCPTransportError.readFailed(detail: "non-HTTP response")))
-            completionHandler(.cancel)
-            return
-        }
-        resolveHead(.success(httpResponse))
-        completionHandler(.allow)
-    }
-
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        bodyContinuation.yield(data)
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        if let error {
-            resolveHead(.failure(error))
-            bodyContinuation.finish(throwing: error)
-            return
-        }
-        resolveHead(.failure(MCPTransportError.readFailed(detail: "response ended before its head arrived")))
-        bodyContinuation.finish()
-    }
-
-    private func resolveHead(_ result: Result<HTTPURLResponse, Error>) {
-        lock.lock()
-        guard head == nil, failure == nil else {
-            lock.unlock()
-            return
-        }
-        switch result {
-        case .success(let response):
-            head = response
-        case .failure(let error):
-            failure = error
-        }
-        let waiting = headContinuation
-        headContinuation = nil
-        lock.unlock()
-        waiting?.resume(with: result)
     }
 }

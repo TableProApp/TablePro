@@ -496,7 +496,7 @@ actor RemoteDatabaseFileStore {
 
     func discard(_ identity: RemoteFileIdentity) {
         try? FileManager.default.removeItem(at: directory(for: identity))
-        Self.logger.info("Discarded the working copy for \(identity.displayOrigin, privacy: .public)")
+        Self.logger.info("Discarded the working copy for \(identity.displayOrigin, privacy: .private(mask: .hash))")
     }
 
     /// Marks a copy as used, so a reuse counts against the abandonment clock the same as a fresh

@@ -56,10 +56,10 @@ nonisolated extension AppError {
     // The device refuses these before any network work, so a second attempt fails the same way.
     var canRetry: Bool {
         switch underlying as? ConnectionError {
-        case .driverNotFound?, .localSocketNotSupported?, .kerberosNotSupported?:
-            false
+        case .driverNotFound?, .localSocketNotSupported?, .kerberosNotSupported?, .sslModeNotSupported?:
+            return false
         default:
-            true
+            return true
         }
     }
 }
@@ -273,6 +273,15 @@ nonisolated enum ErrorClassifier {
                 message: error.localizedDescription,
                 recovery: String(localized: "Open it on the Mac, or change it there to sign in with a password."),
                 underlying: error
+            )
+        case .sslModeNotSupported:
+            return AppError(
+                category: .config,
+                title: String(localized: "SSL Mode Unavailable"),
+                message: error.localizedDescription,
+                recovery: String(localized: "Choose another SSL mode in the connection's settings, or open it on the Mac."),
+                underlying: error,
+                opensEditor: true
             )
         }
     }

@@ -312,7 +312,7 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         /// success over the changes it did write.
         guard isColumnWritable(columnName) else {
             Self.logger.warning(
-                "Refusing an edit to server-owned column '\(columnName, privacy: .public)' in table '\(self.tableName, privacy: .public)'"
+                "Refusing an edit to server-owned column '\(columnName, privacy: .private(mask: .hash))' in table '\(self.tableName, privacy: .private(mask: .hash))'"
             )
             return
         }

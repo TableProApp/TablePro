@@ -25,6 +25,7 @@ final class Neo4jPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsSSH = true
     static let supportsSSL = true
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let supportsImport = false
     static let supportsExport = true
     static let supportsReadOnlyMode = true

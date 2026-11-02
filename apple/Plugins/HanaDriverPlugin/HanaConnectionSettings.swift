@@ -32,12 +32,16 @@ enum HanaConnectionSettings {
             password: config.password,
             schema: configuredSchema(in: config) ?? "",
             tlsMode: HanaConnectConfiguration.TLSMode(config.ssl.mode),
-            tlsServerName: usesTLS ? nonEmpty(config.additionalFields[HanaMetadata.tlsServerNameField]) ?? "" : "",
+            tlsServerName: usesTLS ? tlsServerName(in: config) ?? "" : "",
             caCertificatePath: usesTLS ? nonEmpty(config.ssl.caCertificatePath) ?? "" : "",
             clientCertificatePath: certificatePath,
             clientKeyPath: keyPath,
             connectTimeoutSeconds: connectTimeoutSeconds(in: config.additionalFields)
         )
+    }
+
+    private static func tlsServerName(in config: DriverConnectionConfig) -> String? {
+        nonEmpty(config.additionalFields[HanaMetadata.tlsServerNameField]) ?? config.tunneledServerName
     }
 
     private static func connectTimeoutSeconds(in fields: [String: String]) -> Double {

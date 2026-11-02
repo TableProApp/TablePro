@@ -458,7 +458,7 @@ struct IOSConnectionImportServiceTests {
         #expect(appState.connections.contains { $0.name == "Second (Imported)" })
     }
 
-    @Test("Replacing a connection keeps its favorite flag and its pasted key, whatever tunnel the import brings")
+    @Test("Replacing a connection with its own export keeps its favorite flag and its pasted key")
     func replaceKeepsLocalState() async throws {
         var existing = DatabaseConnection(
             name: "Bastion",
@@ -471,32 +471,116 @@ struct IOSConnectionImportServiceTests {
         existing.isFavorite = true
         #expect(appState.addConnection(existing))
         let keyAccount = ConnectionSecretKind.sshPrivateKey.account(for: existing.id)
-        let incoming: [ExportableSSHConfig?] = [
-            tunnel(authMethod: "privateKey"),
-            tunnel(authMethod: "privateKey", keyPath: "~/.ssh/id_ed25519"),
-            tunnel(authMethod: "password"),
-            nil
-        ]
+        store.seed(keyAccount, "PASTED KEY")
+        let imported = IOSConnectionExportService.portableSettings(for: existing, keepingLocalCredentials: true)
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
+        let preview = try await analyzed(bundle)
+        let row = try ref(of: existing.name, in: preview)
+        var selection = ImportSelection.defaults(for: preview)
+        selection.setSelected(true, connection: row, in: preview)
+        let replaces = selection.resolve(row, as: .replace(existing.id), in: preview)
+        #expect(replaces)
 
-        for ssh in incoming {
-            store.seed(keyAccount, "PASTED KEY")
-            var imported = settings(name: existing.name, host: existing.host, ssh: ssh)
-            imported.database = ""
-            imported.username = ""
+        let outcome = await apply(preview, selection)
+        #expect(outcome.connectionsReplaced == 1)
+
+        #expect(try store.retrieve(forKey: keyAccount) == "PASTED KEY")
+        #expect(appState.connections.first { $0.id == existing.id }?.isFavorite == true)
+    }
+
+    // Replace keeps the saved id, and the secrets saved under it would go wherever the file points.
+    @Test("A file entry that only names another host list or SSH server is offered As Copy, never Replace")
+    func otherDestinationIsNotOfferedReplace() async throws {
+        let documents = DatabaseConnection(
+            name: "Documents",
+            type: .mongodb,
+            host: "mongo1.example.com",
+            port: 27_017,
+            username: "app",
+            database: "docs",
+            additionalFields: ["mongoHosts": "mongo1.example.com:27017,mongo2.example.com:27017"]
+        )
+        let tunnelled = DatabaseConnection(
+            name: "Bastion",
+            type: .postgresql,
+            host: "db.example.com",
+            port: 5_432,
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "bastion.example.com", port: 22, username: "deploy", authMethod: .password)
+        )
+        #expect(appState.addConnection(documents))
+        #expect(appState.addConnection(tunnelled))
+        var otherHosts = IOSConnectionExportService.portableSettings(for: documents, keepingLocalCredentials: true)
+        otherHosts.additionalFields?["mongoHosts"] = "mongo1.example.com:27017,mongo.attacker.example:27017"
+        var otherServer = IOSConnectionExportService.portableSettings(for: tunnelled, keepingLocalCredentials: true)
+        otherServer.sshConfig?.host = "bastion.attacker.example"
+
+        for (imported, existing) in [(otherHosts, documents), (otherServer, tunnelled)] {
             let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
-            let preview = try await analyzed(bundle)
-            let row = try ref(of: existing.name, in: preview)
-            var selection = ImportSelection.defaults(for: preview)
-            selection.setSelected(true, connection: row, in: preview)
-            let replaces = selection.resolve(row, as: .replace(existing.id), in: preview)
-            #expect(replaces)
+            let row = try #require(try await analyzed(bundle).connections.first)
 
-            let outcome = await apply(preview, selection)
-            #expect(outcome.connectionsReplaced == 1)
-
-            #expect(try store.retrieve(forKey: keyAccount) == "PASTED KEY", "\(ssh?.authMethod ?? "no tunnel")")
-            #expect(appState.connections.first { $0.id == existing.id }?.isFavorite == true)
+            #expect(row.duplicate?.id == existing.id, "\(existing.name)")
+            #expect(row.resolutions == [.addCopy], "\(existing.name)")
         }
+    }
+
+    @Test("A row that signs in with this device's Microsoft Entra account imports without that sign-in")
+    func entraSignInIsDropped() async throws {
+        let entra = ExportableConnection(
+            name: "Reports",
+            host: "sql.attacker.example",
+            port: 1_433,
+            database: "reports",
+            username: "",
+            type: DatabaseType.mssql.rawValue,
+            additionalFields: [
+                "mssqlAuthMethod": "entra",
+                "entraTenantId": "victim-tenant",
+                "entraClientId": "attacker-app",
+                "mssqlSchema": "dbo"
+            ]
+        )
+
+        let connection = try await importedConnection(entra)
+
+        #expect(connection.additionalFields == ["mssqlSchema": "dbo"])
+        #expect(DatabaseConnection(importedSettings: entra).additionalFields == ["mssqlSchema": "dbo"])
+    }
+
+    @Test("A row that signs in with this device's credentials is still offered Replace, and keeps its sign-in and scripts")
+    func replaceKeepsTheLocalSignIn() async throws {
+        let existing = DatabaseConnection(
+            name: "Reports",
+            type: .mssql,
+            host: "sql.corp.example",
+            port: 1_433,
+            username: "",
+            database: "reports",
+            additionalFields: [
+                "mssqlAuthMethod": "entra",
+                "entraTenantId": "corp-tenant",
+                "mssqlSchema": "dbo",
+                "preConnectScript": "op signin",
+                "zzzFutureSetting": "kept"
+            ]
+        )
+        #expect(appState.addConnection(existing))
+        var exported = IOSConnectionExportService.portableSettings(for: existing, keepingLocalCredentials: true)
+        exported.name = "Reports (shared)"
+        let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: exported)])
+        let preview = try await analyzed(bundle)
+        let row = try ref(of: "Reports (shared)", in: preview)
+        var selection = ImportSelection.defaults(for: preview)
+        selection.setSelected(true, connection: row, in: preview)
+
+        let replaces = selection.resolve(row, as: .replace(existing.id), in: preview)
+        #expect(replaces)
+        let outcome = await apply(preview, selection)
+        #expect(outcome.connectionsReplaced == 1)
+
+        let replaced = try #require(appState.connections.first { $0.id == existing.id })
+        #expect(replaced.name == "Reports (shared)")
+        #expect(replaced.additionalFields == existing.additionalFields)
     }
 
     @Test("Replacing a connection keeps the route a Mac dialed for the same tunnel")
@@ -516,9 +600,7 @@ struct IOSConnectionImportServiceTests {
             target: .init(alias: "bastion.example.com", host: "10.0.0.5", port: 22, username: "deploy")
         )
         #expect(appState.addConnection(existing))
-        var imported = settings(name: existing.name, host: existing.host, ssh: tunnel(authMethod: "password"))
-        imported.database = ""
-        imported.username = ""
+        let imported = IOSConnectionExportService.portableSettings(for: existing, keepingLocalCredentials: true)
         let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
         let preview = try await analyzed(bundle)
         let row = try ref(of: existing.name, in: preview)
@@ -534,11 +616,11 @@ struct IOSConnectionImportServiceTests {
         #expect(replaced.sshRouteInEffect == existing.sshRoute)
     }
 
-    // The link makes this device send the Mac profile's password to whatever server the tunnel names.
-    @Test("Replacing a profile-linked connection keeps the link only when the file names the same SSH server")
+    // The link sends the Mac profile's password to whatever server the tunnel names, so only the same server replaces.
+    @Test("A profile-linked connection is replaced, link kept, only by a file naming the same SSH server")
     func replaceKeepsTheProfileLinkOnlyForTheSameServer() async throws {
         // Each case gets its own database host: a second connection on the same one would be the duplicate the file matches.
-        for (host, keepsLink) in [("bastion.example.com", true), ("bastion.attacker.example", false)] {
+        for (host, replaces) in [("bastion.example.com", true), ("bastion.attacker.example", false)] {
             var existing = DatabaseConnection(
                 name: "Linked \(host)",
                 type: .postgresql,
@@ -550,33 +632,26 @@ struct IOSConnectionImportServiceTests {
             let profileId = UUID()
             existing.sshProfileId = profileId
             #expect(appState.addConnection(existing))
-            var ssh = tunnel(authMethod: "password")
-            ssh.host = host
-            var imported = settings(name: existing.name, host: existing.host, ssh: ssh)
-            imported.database = ""
-            imported.username = ""
+            var imported = IOSConnectionExportService.portableSettings(for: existing, keepingLocalCredentials: true)
+            imported.sshConfig?.host = host
             let bundle = try ConnectionBundle(appVersion: "Tests", connections: [BundleConnection(ref: "c1", settings: imported)])
             let preview = try await analyzed(bundle)
             let row = try ref(of: existing.name, in: preview)
             var selection = ImportSelection.defaults(for: preview)
             selection.setSelected(true, connection: row, in: preview)
             let resolved = selection.resolve(row, as: .replace(existing.id), in: preview)
-            #expect(resolved, "\(host)")
+            #expect(resolved == replaces, "\(host)")
+            guard replaces else {
+                #expect(preview.connectionRow(row)?.resolutions == [.addCopy], "\(host)")
+                continue
+            }
 
             _ = await apply(preview, selection)
 
             let replaced = try #require(appState.connections.first { $0.id == existing.id })
-            #expect(replaced.sshProfileId == (keepsLink ? profileId : nil), "\(host)")
-            #expect(replaced.clearsSSHProfileLink == !keepsLink, "\(host)")
+            #expect(replaced.sshProfileId == profileId, "\(host)")
+            #expect(!replaced.clearsSSHProfileLink, "\(host)")
         }
-    }
-
-    private func tunnel(authMethod: String, keyPath: String = "") -> ExportableSSHConfig {
-        ExportableSSHConfig(
-            enabled: true, host: "bastion.example.com", port: 22, username: "deploy",
-            authMethod: authMethod, privateKeyPath: keyPath, agentSocketPath: "", jumpHosts: nil,
-            totpMode: nil, totpAlgorithm: nil, totpDigits: nil, totpPeriod: nil
-        )
     }
 
     @Test("A library that failed to load refuses the preview and leaves the file alone")
@@ -761,7 +836,7 @@ struct IOSConnectionImportServiceTests {
         let connection = try await importedConnection(settings(ssl: ExportableSSLConfig(mode: "Preferred")))
         #expect(connection.sslConfiguration?.mode == .require)
         #expect(connection.sslConfiguration?.isMacPreferred == true)
-        #expect(IOSConnectionExportService.portableSettings(for: connection).sslConfig?.mode == "Preferred")
+        #expect(IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: true).sslConfig?.mode == "Preferred")
     }
 
     // MARK: - Settings
@@ -813,13 +888,13 @@ struct IOSConnectionImportServiceTests {
             additionalFields: [
                 DatabaseConnection.connectTimeoutSecondsKey: "99",
                 DatabaseConnection.queryTimeoutSecondsKey: "88",
-                "schema": "public"
+                "connectionOptions": "-c search_path=app"
             ]
         ))
 
         #expect(connection.connectTimeoutSeconds == 12)
         #expect(connection.queryTimeoutSeconds == 0)
-        #expect(connection.additionalFields["schema"] == "public")
+        #expect(connection.additionalFields["connectionOptions"] == "-c search_path=app")
     }
 
     @Test("Older additional fields migrate to timeout overrides")
@@ -841,13 +916,13 @@ struct IOSConnectionImportServiceTests {
             additionalFields: [
                 DatabaseConnection.connectTimeoutSecondsKey: "15",
                 DatabaseConnection.queryTimeoutSecondsKey: "30",
-                "schema": "public"
+                "connectionOptions": "-c search_path=app"
             ]
         ))
 
         #expect(connection.connectTimeoutSeconds == nil)
         #expect(connection.queryTimeoutSeconds == nil)
-        #expect(connection.additionalFields == ["schema": "public"])
+        #expect(connection.additionalFields == ["connectionOptions": "-c search_path=app"])
     }
 
     @Test("Query timeout import accepts the maximum safe value")

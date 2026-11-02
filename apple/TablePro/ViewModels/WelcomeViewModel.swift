@@ -579,7 +579,9 @@ final class WelcomeViewModel: ObservableObject {
     }
 
     func connectToLinkedConnection(_ linked: LinkedConnection) {
-        let connection = linked.databaseConnection()
+        let connection = linked.databaseConnection(
+            origin: linked.folderId == Self.teamLibraryNamespace ? .teamLibrary : .linkedFolder
+        )
         Task {
             do {
                 try await TabRouter.shared.openTransientConnection(connection)
@@ -652,7 +654,7 @@ final class WelcomeViewModel: ObservableObject {
 
     func handleConnectError(_ error: Error, connection: DatabaseConnection) {
         if error is CancellationError {
-            Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .public)")
+            Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .private(mask: .hash))")
             return
         }
 

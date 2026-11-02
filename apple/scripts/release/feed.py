@@ -25,7 +25,13 @@ SPARKLE_NAMESPACE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
 SPARKLE = "{" + SPARKLE_NAMESPACE + "}"
 APPCAST = "appcast.xml"
 MANIFEST = "plugins/v3.json"
+MANIFEST_SIGNATURE = MANIFEST + ".sig"
+SIGN_UNSIGNED_FLAG = "--sign-unsigned-manifest"
+SIGN_UNSIGNED_HELP = f"sign a published {MANIFEST} that has no signature that verifies, after checking it by hand"
 METADATA = ".github/plugin-registry.json"
+APP_INFO_PLIST = "apple/TablePro/Info.plist"
+MANIFEST_PUBLIC_KEY = "TableProPluginRegistryPublicEDKey"
+PUBLIC_KEY_SCRIPT = Path(__file__).resolve().with_name("ed25519-public-key.swift")
 CHANGELOG_URL = "https://docs.tablepro.app/changelog"
 PHASED_ROLLOUT_SECONDS = 21600
 INTEGER = re.compile(r"[0-9]+")
@@ -222,6 +228,34 @@ def verify_signature(path: Path, key: str, tools: Path, run: Callable = subproce
     return []
 
 
+def verify_detached(path: Path, signature: str, key: str, tools: Path, run: Callable = subprocess.run) -> List[str]:
+    try:
+        _tool(tools, "sign_update", key, "--verify", "--ed-key-file", "-", str(path), signature, run=run)
+    except FeedError as error:
+        return [str(error)]
+    return []
+
+
+def public_key(private_key: str, run: Callable = subprocess.run) -> str:
+    result = run(["xcrun", "swift", str(PUBLIC_KEY_SCRIPT)], input=private_key, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise FeedError(f"PLUGIN_REGISTRY_ED_PRIVATE_KEY: {result.stderr.strip() or 'no public key'}")
+    return result.stdout.strip()
+
+
+# The manifest key is the app's own, apart from Sparkle's, so the secret is checked against what the app pins.
+def check_manifest_key(root: Path, manifest_key: str, derive: Callable[[str], str] = public_key) -> None:
+    plist = root / APP_INFO_PLIST
+    try:
+        pinned = plistlib.loads(plist.read_bytes()).get(MANIFEST_PUBLIC_KEY)
+    except (plistlib.InvalidFileException, ValueError, OSError) as error:
+        raise FeedError(f"{plist}: {error}") from error
+    if not isinstance(pinned, str) or not pinned:
+        raise FeedError(f"{APP_INFO_PLIST} has no {MANIFEST_PUBLIC_KEY}")
+    if derive(manifest_key) != pinned:
+        raise FeedError(f"PLUGIN_REGISTRY_ED_PRIVATE_KEY does not match the app's {MANIFEST_PUBLIC_KEY}")
+
+
 def _refuse(problems: List[str], reason: str = "the feed fails its checks") -> None:
     if problems:
         raise FeedError(f"{reason}, so nothing was written:\n  " + "\n  ".join(problems))
@@ -236,14 +270,51 @@ def _published_appcast(site: Path, key: str, tools: Path, run: Callable) -> Path
     return appcast
 
 
-def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Path, key: str,
+# The app verifies the exact bytes of v3.json against the detached signature beside it. A published manifest that
+# no signature vouches for, or none at all, is signed only when the maintainer passes sign_unsigned after checking.
+def _signed_manifest(site: Path, scratch: Path, edit: Callable[[Path], bool], key: str, tools: Path,
+                     run: Callable, sign_unsigned: bool) -> Optional[Tuple[Path, str]]:
+    published = site / MANIFEST
+    signature = site / MANIFEST_SIGNATURE
+    staged = scratch / Path(MANIFEST).name
+    if not published.exists():
+        problems = [f"{MANIFEST} does not exist"]
+    elif not signature.is_file():
+        problems = [f"{MANIFEST_SIGNATURE} does not exist"]
+    else:
+        problems = verify_detached(published, signature.read_text(encoding="utf-8").strip(), key, tools, run)
+    if not sign_unsigned:
+        _refuse(problems, f"no signature vouches for the published {MANIFEST}. Check it by hand, then rerun with "
+                          f"{SIGN_UNSIGNED_FLAG} (in CI, set the repository variable PLUGIN_MANIFEST_RESIGN to true "
+                          "for one run, then unset it)")
+    unverified = bool(problems) and published.exists()
+    if published.exists():
+        shutil.copy2(published, staged)
+    if not edit(staged):
+        if not unverified:
+            return None
+        registry.restamp(staged)
+    text = _tool(tools, "sign_update", key, "-p", "--ed-key-file", "-", str(staged), run=run)
+    _refuse(verify_detached(staged, text, key, tools, run), f"the new {MANIFEST} fails its signature check")
+    return staged, text
+
+
+def _publish_manifest(site: Path, staged: Path, signature: str) -> None:
+    (site / MANIFEST).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(staged, site / MANIFEST)
+    (site / MANIFEST_SIGNATURE).write_text(signature + "\n", encoding="utf-8")
+
+
+def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Path, key: str, manifest_key: str,
         releases: Releases, repository: str, run: Callable = subprocess.run,
-        log: Callable[[str], None] = print) -> bool:
+        log: Callable[[str], None] = print, sign_unsigned_manifest: bool = False,
+        derive: Callable[[str], str] = public_key) -> bool:
     release = version.parse_tag(tag)
     if critical and release.is_beta:
         raise FeedError(f"{tag} is a beta, and a beta is never critical")
     if not notes.is_file():
         raise FeedError(f"{notes} does not exist")
+    check_manifest_key(root, manifest_key, derive)
     appcast = _published_appcast(site, key, tools, run)
     metadata = registry.load_metadata(root / METADATA)
     plugins = [f"{target}-{release}.zip" for target in registry.publish_set(metadata)]
@@ -262,13 +333,13 @@ def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Pa
             log(releases.verify(tag, downloads / name))
         entries = registry.describe(downloads, str(release), release.build, kit, metadata)
 
-        changed = False
+        stage = Path(scratch) / "stage"
+        stage.mkdir()
+        new_appcast = False
         if has_item:
             log(f"{APPCAST} already has {release} ({release.build})")
         else:
             check_archive(downloads / archive, release)
-            stage = Path(scratch) / "stage"
-            stage.mkdir()
             (downloads / archive).rename(stage / archive)
             shutil.copy2(notes, stage / f"TablePro-{release}.md")
             shutil.copy2(appcast, stage / APPCAST)
@@ -281,38 +352,43 @@ def add(root: Path, site: Path, tag: str, notes: Path, critical: bool, tools: Pa
             if appcast_has(staged, release):
                 _refuse(new_item_problems(staged, release, url_base + archive)
                         + verify_signature(stage / APPCAST, key, tools, run))
-                shutil.copy2(stage / APPCAST, appcast)
-                changed = True
+                new_appcast = True
             else:
                 # The archive matched the tag, so only Sparkle's per-branch limit left it out.
                 log(f"generate_appcast keeps newer items on {release}'s branch, so {APPCAST} stays as it is")
-        manifest = site / MANIFEST
-        if registry.add(manifest, entries, release.channel, url_base, metadata["retainFromPluginKit"], log):
-            changed = True
-    return changed
+        manifest = _signed_manifest(site, Path(scratch), lambda path: registry.add(
+            path, entries, release.channel, url_base, metadata["retainFromPluginKit"], log), manifest_key, tools, run,
+            sign_unsigned_manifest)
+        if new_appcast:
+            shutil.copy2(stage / APPCAST, appcast)
+        if manifest is not None:
+            _publish_manifest(site, *manifest)
+    return new_appcast or manifest is not None
 
 
-def withdraw(site: Path, text: str, tools: Path, key: str, run: Callable = subprocess.run,
-             log: Callable[[str], None] = print) -> bool:
+def withdraw(site: Path, text: str, tools: Path, key: str, manifest_key: str, run: Callable = subprocess.run,
+             log: Callable[[str], None] = print, sign_unsigned_manifest: bool = False, root: Path = ROOT,
+             derive: Callable[[str], str] = public_key) -> bool:
     release = version.parse_version(text)
+    check_manifest_key(root, manifest_key, derive)
     appcast = _published_appcast(site, key, tools, run)
     previous = appcast.read_bytes()
     edited, removed = remove_items(previous, str(release))
-    changed = False
-    if removed:
-        if any(item.channel is None for item in parse_items(previous)) \
-                and not any(item.channel is None for item in parse_items(edited)):
-            raise FeedError(f"withdrawing {release} would leave the feed with no default-channel item")
-        appcast.write_bytes(edited)
-        log(sign(appcast, key, tools, run))
-        log(f"removed {removed} {release} item(s) from {APPCAST}")
-        changed = True
-    else:
-        log(f"{APPCAST} has no {release} item")
-    manifest = site / MANIFEST
-    if manifest.exists() and registry.withdraw(manifest, str(release), log):
-        changed = True
-    return changed
+    if removed and any(item.channel is None for item in parse_items(previous)) \
+            and not any(item.channel is None for item in parse_items(edited)):
+        raise FeedError(f"withdrawing {release} would leave the feed with no default-channel item")
+    with tempfile.TemporaryDirectory(prefix="withdraw-") as scratch:
+        manifest = _signed_manifest(site, Path(scratch), lambda path: path.exists() and registry.withdraw(
+            path, str(release), log), manifest_key, tools, run, sign_unsigned_manifest)
+        if removed:
+            appcast.write_bytes(edited)
+            log(sign(appcast, key, tools, run))
+            log(f"removed {removed} {release} item(s) from {APPCAST}")
+        else:
+            log(f"{APPCAST} has no {release} item")
+        if manifest is not None:
+            _publish_manifest(site, *manifest)
+    return bool(removed) or manifest is not None
 
 
 def latest(site: Path) -> version.Version:
@@ -322,14 +398,17 @@ def latest(site: Path) -> version.Version:
     return highest
 
 
-def _environment() -> Tuple[Path, str]:
+def _environment() -> Tuple[Path, str, str]:
     tools = os.environ.get("SPARKLE_BIN")
     key = os.environ.get("SPARKLE_PRIVATE_KEY")
+    manifest_key = os.environ.get("PLUGIN_REGISTRY_ED_PRIVATE_KEY")
     if not tools:
         raise FeedError("SPARKLE_BIN is not set; run the setup-sparkle action first")
     if not key:
         raise FeedError("SPARKLE_PRIVATE_KEY is not set")
-    return Path(tools), key
+    if not manifest_key:
+        raise FeedError("PLUGIN_REGISTRY_ED_PRIVATE_KEY is not set")
+    return Path(tools), key, manifest_key
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -340,9 +419,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     command.add_argument("--site", type=Path, required=True)
     command.add_argument("--notes", type=Path, required=True)
     command.add_argument("--critical", action="store_true")
+    command.add_argument(SIGN_UNSIGNED_FLAG, action="store_true", help=SIGN_UNSIGNED_HELP)
     command = commands.add_parser("withdraw", help="remove a version from the feed and the manifest")
     command.add_argument("version")
     command.add_argument("--site", type=Path, required=True)
+    command.add_argument(SIGN_UNSIGNED_FLAG, action="store_true", help=SIGN_UNSIGNED_HELP)
     command = commands.add_parser("latest", help="print the highest stable version in the feed")
     command.add_argument("--site", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -352,11 +433,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.command == "latest":
             print(latest(args.site))
             return 0
-        tools, key = _environment()
+        tools, key, manifest_key = _environment()
         if args.command == "add":
-            add(ROOT, args.site, args.tag, args.notes, args.critical, tools, key, Releases(repository), repository)
+            add(ROOT, args.site, args.tag, args.notes, args.critical, tools, key, manifest_key, Releases(repository),
+                repository, sign_unsigned_manifest=args.sign_unsigned_manifest)
         else:
-            withdraw(args.site, args.version, tools, key)
+            withdraw(args.site, args.version, tools, key, manifest_key,
+                     sign_unsigned_manifest=args.sign_unsigned_manifest)
     except (FeedError, registry.RegistryError, ValueError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

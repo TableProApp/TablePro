@@ -70,4 +70,27 @@ struct FirebaseConnectionSettingsTests {
         let crafted = Data(#"{"correctUrl": "https://collector.example.com%2F.firebaseio.com"}"#.utf8)
         #expect(RealtimeDatabaseClient.correctURL(in: crafted) == nil)
     }
+
+    @Test("An instance the management API lists off Firebase's hosts is dropped", arguments: [
+        #"{"instances":[{"databaseUrl":"https://collector.example/"}]}"#,
+        #"{"instances":[{"databaseUrl":"https://collector.example.com%2F.firebaseio.com"}]}"#,
+        #"{"instances":[{"databaseUrl":"http://shop-default-rtdb.firebaseio.com"}]}"#,
+    ])
+    func instanceListingDropsOtherHosts(listing: String) throws {
+        let parsed = try FirebaseJSON.parse(listing)
+        #expect(RealtimeDatabaseInstanceLister.instanceURLs(in: parsed).isEmpty)
+    }
+
+    @Test("Instances on Firebase's hosts are kept, with everything after the host dropped")
+    func instanceListingKeepsFirebaseHosts() throws {
+        let listing = try FirebaseJSON.parse(#"""
+        {"instances":[
+          {"databaseUrl":"https://shop.europe-west1.firebasedatabase.app","state":"ACTIVE"},
+          {"databaseUrl":"https://shop-default-rtdb.firebaseio.com/path","state":"ACTIVE"},
+          {"databaseUrl":"https://old.firebaseio.com","state":"DISABLED"}
+        ]}
+        """#)
+        let urls = RealtimeDatabaseInstanceLister.instanceURLs(in: listing).map { $0.absoluteString }
+        #expect(urls == ["https://shop.europe-west1.firebasedatabase.app/", "https://shop-default-rtdb.firebaseio.com/"])
+    }
 }

@@ -107,18 +107,25 @@ struct PluginInstallerHelpersTests {
         PluginInstaller.stripQuarantine(at: bundle)
     }
 
-    private func makeBundle(in directory: URL, kitVersion: Int?) throws -> Bundle {
+    private func makeBundle(
+        in directory: URL,
+        kitVersion: Int?,
+        build: Int? = nil,
+        bundleId: String = "com.example.Kit"
+    ) throws -> Bundle {
         let bundleURL = directory.appendingPathComponent("Kit.tableplugin", isDirectory: true)
         let contents = bundleURL.appendingPathComponent("Contents", isDirectory: true)
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
         let kitEntry = kitVersion.map { "<key>TableProPluginKitVersion</key><integer>\($0)</integer>" } ?? ""
+        let buildEntry = build.map { "<key>CFBundleVersion</key><string>\($0)</string>" } ?? ""
         let payload = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
         <dict>
-            <key>CFBundleIdentifier</key><string>com.example.Kit</string>
+            <key>CFBundleIdentifier</key><string>\(bundleId)</string>
             \(kitEntry)
+            \(buildEntry)
         </dict>
         </plist>
         """
@@ -171,6 +178,80 @@ struct PluginInstallerHelpersTests {
 
         let bundle = try makeBundle(in: dir, kitVersion: kitVersion)
         try PluginManager.validateBundleVersions(bundle)
+    }
+
+    private func makeRelease(build: Int) -> RegistryRelease {
+        RegistryRelease(
+            version: "1.0",
+            build: build,
+            channel: "stable",
+            pluginKit: PluginManager.currentPluginKitVersion,
+            minimumSystemVersion: "13.0",
+            url: "https://x",
+            sha256: "deadbeef"
+        )
+    }
+
+    @Test("validateBundle accepts an archive holding the build and plugin its manifest entry names")
+    func validateBundleAcceptsTheClaimedBuild() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(in: dir, kitVersion: PluginManager.currentPluginKitVersion, build: 99_999_999)
+        try PluginInstaller.validateBundle(bundle, against: makeRelease(build: 99_999_999), pluginId: "com.example.Kit")
+    }
+
+    @Test("validateBundle refuses an archive holding another build than its manifest entry claims", arguments: [
+        (820_099, 99_999_999), (820_000, 820_100), (820_200, 820_100)
+    ])
+    func validateBundleRefusesAnotherBuild(archiveBuild: Int, claimedBuild: Int) throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(in: dir, kitVersion: PluginManager.currentPluginKitVersion, build: archiveBuild)
+        let error = #expect(throws: PluginError.self) {
+            try PluginInstaller.validateBundle(bundle, against: makeRelease(build: claimedBuild), pluginId: "com.example.Kit")
+        }
+        guard case .installFailed(let reason) = error else {
+            Issue.record("Expected installFailed, got \(String(describing: error))")
+            return
+        }
+        #expect(reason.contains(String(archiveBuild)))
+    }
+
+    @Test("validateBundle refuses an archive holding another plugin than its manifest entry names")
+    func validateBundleRefusesAnotherPlugin() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(
+            in: dir,
+            kitVersion: PluginManager.currentPluginKitVersion,
+            build: 840_099,
+            bundleId: "com.TablePro.MSSQLDriver"
+        )
+        let error = #expect(throws: PluginError.self) {
+            try PluginInstaller.validateBundle(
+                bundle, against: makeRelease(build: 840_099), pluginId: "com.TablePro.OracleDriver"
+            )
+        }
+        guard case .installFailed(let reason) = error else {
+            Issue.record("Expected installFailed, got \(String(describing: error))")
+            return
+        }
+        #expect(reason.contains("com.TablePro.MSSQLDriver"))
+    }
+
+    @Test("validateBundle still refuses a bundle below the PluginKit floor")
+    func validateBundleRefusesKitBelowFloor() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(in: dir, kitVersion: PluginManager.minimumCompatiblePluginKitVersion - 1, build: 820_100)
+        let error = #expect(throws: PluginError.self) {
+            try PluginInstaller.validateBundle(bundle, against: makeRelease(build: 820_100), pluginId: "com.example.Kit")
+        }
+        #expect(error?.isOutdated == true)
     }
 
     @Test("isCompatibleKit accepts the floor through the current kit and nothing outside it")

@@ -91,7 +91,7 @@ internal extension MySQLPluginDriver {
                 _ = try await executeSetup(statement)
             } catch {
                 Self.logger.error(
-                    "Could not put a session setting back with \(statement, privacy: .public): \(error.localizedDescription)"
+                    "Could not put a session setting back with \(statement, privacy: .private): \(error.localizedDescription)"
                 )
                 firstFailure = firstFailure ?? error
             }

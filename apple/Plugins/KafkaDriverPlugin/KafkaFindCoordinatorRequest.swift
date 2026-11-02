@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 /// Asks any broker which broker coordinates a consumer group.
 ///

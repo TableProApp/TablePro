@@ -103,7 +103,7 @@ public enum Neo4jValueText {
         var orderedRelationships: [Any] = []
         var current = start
         for step in stride(from: 0, to: sequence.count, by: 2) {
-            let relationshipIndex = Int(sequence[step].magnitude) - 1
+            let relationshipIndex = Int(clamping: sequence[step].magnitude) - 1
             let nodeIndex = Int(sequence[step + 1])
             guard sequence[step] != 0, relationships.indices.contains(relationshipIndex),
                   nodes.indices.contains(nodeIndex),
@@ -161,27 +161,48 @@ public enum Neo4jValueText {
 
     // MARK: - Temporal and spatial
 
+    // java.time's range, which bounds what Neo4j stores: LocalDate.MIN to LocalDate.MAX and ZoneOffset's
+    // 18 hours. A value outside it reads like any other structure that does not decode.
+    private static let epochDays: ClosedRange<Int64> = -365_243_219_162...365_241_780_471
+    private static let epochSeconds: ClosedRange<Int64> = (epochDays.lowerBound * 86_400)...(epochDays.upperBound * 86_400 + 86_399)
+    private static let nanosOfSecond: Range<Int64> = 0..<1_000_000_000
+    private static let nanosOfDay: Range<Int64> = 0..<86_400_000_000_000
+    private static let offsetSeconds: ClosedRange<Int64> = -64_800...64_800
+    private static let utcSeconds: ClosedRange<Int64> =
+        (epochSeconds.lowerBound - offsetSeconds.upperBound)...(epochSeconds.upperBound - offsetSeconds.lowerBound)
+
+    // Tags 0x49 and 0x69 carry UTC seconds, so the range bounds them after the offset is added.
+    private static func localSeconds(_ seconds: Int64, plus offset: Int64) -> Int64? {
+        let (local, overflow) = seconds.addingReportingOverflow(offset)
+        return overflow || !epochSeconds.contains(local) ? nil : local
+    }
+
     static func structureText(tag: UInt8, fields: [PackStreamValue]) -> String? {
         let ints = fields.map { $0.intValue }
         switch tag {
         case Neo4jStructureTag.date:
-            guard let days = ints.first ?? nil else { return nil }
+            guard let days = ints.first ?? nil, epochDays.contains(days) else { return nil }
             return dateText(days: days)
         case Neo4jStructureTag.localTime:
-            guard let nanos = ints.first ?? nil else { return nil }
+            guard let nanos = ints.first ?? nil, nanosOfDay.contains(nanos) else { return nil }
             return timeText(nanosOfDay: nanos)
         case Neo4jStructureTag.time:
-            guard ints.count == 2, let nanos = ints[0], let offset = ints[1] else { return nil }
+            guard ints.count == 2, let nanos = ints[0], let offset = ints[1],
+                  nanosOfDay.contains(nanos), offsetSeconds.contains(offset) else { return nil }
             return timeText(nanosOfDay: nanos) + offsetText(offset)
         case Neo4jStructureTag.localDateTime:
-            guard ints.count == 2, let seconds = ints[0], let nanos = ints[1] else { return nil }
+            guard ints.count == 2, let seconds = ints[0], let nanos = ints[1],
+                  epochSeconds.contains(seconds), nanosOfSecond.contains(nanos) else { return nil }
             return dateTimeText(localSeconds: seconds, nanos: nanos)
         case Neo4jStructureTag.dateTime, Neo4jStructureTag.legacyDateTime:
-            guard ints.count == 3, let seconds = ints[0], let nanos = ints[1], let offset = ints[2] else { return nil }
-            let local = tag == Neo4jStructureTag.dateTime ? seconds + offset : seconds
+            guard ints.count == 3, let seconds = ints[0], let nanos = ints[1], let offset = ints[2],
+                  nanosOfSecond.contains(nanos), offsetSeconds.contains(offset),
+                  let local = localSeconds(seconds, plus: tag == Neo4jStructureTag.dateTime ? offset : 0)
+            else { return nil }
             return dateTimeText(localSeconds: local, nanos: nanos) + offsetText(offset)
         case Neo4jStructureTag.dateTimeZoneId, Neo4jStructureTag.legacyDateTimeZoneId:
             guard fields.count == 3, let seconds = ints[0], let nanos = ints[1],
+                  utcSeconds.contains(seconds), nanosOfSecond.contains(nanos),
                   let zoneId = fields[2].stringValue else { return nil }
             let zone = TimeZone(identifier: zoneId)
             let offset: Int64
@@ -191,7 +212,9 @@ public enum Neo4jValueText {
                 let guess = Int64(zone?.secondsFromGMT(for: Date(timeIntervalSince1970: TimeInterval(seconds))) ?? 0)
                 offset = Int64(zone?.secondsFromGMT(for: Date(timeIntervalSince1970: TimeInterval(seconds - guess))) ?? 0)
             }
-            let local = tag == Neo4jStructureTag.dateTimeZoneId ? seconds + offset : seconds
+            guard let local = localSeconds(seconds, plus: tag == Neo4jStructureTag.dateTimeZoneId ? offset : 0) else {
+                return nil
+            }
             return dateTimeText(localSeconds: local, nanos: nanos) + offsetText(offset) + "[\(zoneId)]"
         case Neo4jStructureTag.duration:
             guard ints.count == 4, let months = ints[0], let days = ints[1],
@@ -257,7 +280,8 @@ public enum Neo4jValueText {
         let carry = floorDivide(nanos, 1_000_000_000)
         let (total, overflow) = seconds.addingReportingOverflow(carry)
         let signedSeconds = overflow ? seconds : total
-        var fraction = nanos - carry * 1_000_000_000
+        var fraction = nanos % 1_000_000_000
+        if fraction < 0 { fraction += 1_000_000_000 }
         if signedSeconds != 0 || fraction != 0 {
             let negative = signedSeconds < 0
             var wholeSeconds = signedSeconds.magnitude

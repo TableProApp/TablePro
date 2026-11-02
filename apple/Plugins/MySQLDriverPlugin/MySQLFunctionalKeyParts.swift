@@ -30,16 +30,16 @@ internal enum MySQLFunctionalKeyParts {
     }
 
     static func unescaped(_ catalogExpression: String) -> String {
-        var result = ""
+        var result = String.UnicodeScalarView()
         var escaping = false
-        for character in catalogExpression {
-            if !escaping, character == "\\" {
+        for scalar in catalogExpression.unicodeScalars {
+            if !escaping, scalar == "\\" {
                 escaping = true
                 continue
             }
             escaping = false
-            result.append(character)
+            result.append(scalar)
         }
-        return result
+        return String(result)
     }
 }

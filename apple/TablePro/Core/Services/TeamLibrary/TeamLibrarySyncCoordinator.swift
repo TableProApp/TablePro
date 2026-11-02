@@ -125,7 +125,7 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
         let connectionPayloads = connections.map { connection in
             TeamLibraryConnectionPayload(
                 sourceConnectionId: connection.id.uuidString,
-                payload: exporter.portableSettings(for: connection)
+                payload: exporter.portableSettings(for: connection, keepingLocalCredentials: true)
             )
         }
         let folderPayloads = folders.map { folder in

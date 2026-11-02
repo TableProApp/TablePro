@@ -49,16 +49,8 @@ enum ForeignKeyLookupService {
         }
     }
 
-    /// Rows whose key or one of whose labels matches `term`, capped at
-    /// `ForeignKeyLookupQuery.rowLimit`.
-    ///
-    /// `.termNotSearchable` when the term cannot be expressed as a predicate against any selected
-    /// column, which is what a word typed into a picker on an integer key with no text label comes
-    /// to. No query is sent in that case.
-    ///
-    /// Routed through `withMetadataDriver` rather than the session driver, which the single-row
-    /// preview uses: a search runs on every keystroke, and the session driver is the one carrying
-    /// the user's own query.
+    // On the metadata driver, not the session one: a search runs on every keystroke and the session driver carries
+    // the user's own query.
     static func search(
         in origin: DatabaseScope,
         databaseType: DatabaseType,
@@ -87,6 +79,7 @@ enum ForeignKeyLookupService {
                 dialect: dialect,
                 stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
                 databaseType: databaseType,
+                stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, session: driver.sessionLexicalState),
                 quoteIdentifier: driver.quoteIdentifier
             ) else {
                 return .termNotSearchable

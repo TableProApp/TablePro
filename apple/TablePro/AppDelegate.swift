@@ -42,7 +42,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         Logger(subsystem: "com.TablePro", category: "DataFiles")
-            .debug("AppDelegate.application(_:open:) urls=\(urls.map(\.lastPathComponent).joined(separator: ","), privacy: .public)")
+            .debug("AppDelegate.application(_:open:) urls=\(urls.map(\.lastPathComponent).joined(separator: ","), privacy: .private(mask: .hash))")
         AppLaunchCoordinator.shared.handleOpenURLs(urls)
     }
 
@@ -139,6 +139,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !AppStorageEnvironment.shared.isIsolated else { return }
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
+        // Before sync starts, so a pulled change is never approved as part of the first use.
+        for store in ConnectionApprovalStore.all {
+            store.migrateIfNeeded()
+        }
         ConnectionStorage.shared.moveMongoURISecretsToKeychain()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
@@ -164,7 +168,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard QuitApproval.approve() else { return .terminateCancel }
+        guard QuitApproval.approve() else {
+            AppRelauncher.shared.terminationWasCancelled()
+            return .terminateCancel
+        }
 
         Task {
             // First, while the drivers are open: a debug stop rolls back the routine's transaction.
@@ -188,6 +195,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         CloudSQLProxyManager.shared.terminateAllProcessesSync()
         TunnelCommandManager.shared.terminateAllProcessesSync()
         RemoteSQLiteTransportManager.shared.terminateAllProcessesSync()
+        AppRelauncher.shared.applicationWillTerminate()
     }
 
     @objc func handleSystemDidWake(_ notification: Notification) {

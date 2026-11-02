@@ -262,19 +262,21 @@ struct SQLTokenStream {
         return close >= tokens.count || cursor <= tokens[close].range.location
     }
 
+    // By scalar: a quote a combining mark follows is one Character, so the name read as bare.
     static func unquoted(_ spelling: String) -> String {
-        guard let first = spelling.first else { return spelling }
-        let closing: Character
+        guard let first = spelling.unicodeScalars.first else { return spelling }
+        let closing: Unicode.Scalar
         switch first {
         case "\"", "`", "'": closing = first
         case "[": closing = "]"
         default: return spelling
         }
-        var body = spelling.dropFirst()
+        var body = spelling.unicodeScalars.dropFirst()
         if body.last == closing {
             body = body.dropLast()
         }
-        return String(body).replacingOccurrences(of: String(repeating: closing, count: 2), with: String(closing))
+        let closer = String(closing)
+        return String(body).replacingOccurrences(of: closer + closer, with: closer, options: .literal)
     }
 
     private static func end(closing: unichar, in code: NSString, from start: Int, _ length: Int) -> Int {

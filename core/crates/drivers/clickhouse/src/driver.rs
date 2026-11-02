@@ -42,18 +42,19 @@ impl DatabaseDriver for ClickhouseDriver {
         if let Some(tls) = CAPABILITIES.tls.as_ref() {
             target.tls.validate(tls, target.transport.kind().class())?;
         }
-        let endpoint = Arc::new(ClickHouseEndpoint::new(
+        let mut endpoint = ClickHouseEndpoint::new(
             target,
             options.liveness,
             &options.environment,
             options.workspace_settings.read_only,
-        )?);
+        )?;
         // HTTP has no login of its own, so the first request is the one
         // that proves the credentials, and a cancel abandons it.
         let (server, database) = tokio::select! {
             () = cancel.cancelled() => return Err(DriverError::Cancelled),
             identified = endpoint.identify() => identified?,
         };
+        let endpoint = Arc::new(endpoint);
         Ok(Arc::new(ClickHouseConnection::new(
             endpoint,
             options.workspace_settings,

@@ -348,7 +348,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             """
             reload rail=\(self.railName, privacy: .public) \
             entries=\(self.entries.count, privacy: .public) \
-            [\(self.entries.map(\.workspace).map(Self.describe).joined(separator: " "), privacy: .public)]
+            [\(self.entries.map(\.workspace).map(Self.describe).joined(separator: " "), privacy: .private(mask: .hash))]
             """
         )
         tableView.reloadData()
@@ -437,7 +437,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             Self.logger.debug(
                 """
                 applySelection rail=\(self.railName, privacy: .public) \
-                browsed=\(browsed.map(Self.describe) ?? "none", privacy: .public) row=none
+                browsed=\(browsed.map(Self.describe) ?? "none", privacy: .private(mask: .hash)) row=none
                 """
             )
             appliedSelection = nil
@@ -449,8 +449,8 @@ internal final class WorkspaceRailViewController: NSViewController {
         Self.logger.debug(
             """
             applySelection rail=\(self.railName, privacy: .public) \
-            browsed=\(browsed.map(Self.describe) ?? "none", privacy: .public) \
-            row=\(row, privacy: .public) applied=\(Self.describe(self.entries[row].workspace), privacy: .public)
+            browsed=\(browsed.map(Self.describe) ?? "none", privacy: .private(mask: .hash)) \
+            row=\(row, privacy: .public) applied=\(Self.describe(self.entries[row].workspace), privacy: .private(mask: .hash))
             """
         )
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -500,15 +500,15 @@ internal final class WorkspaceRailViewController: NSViewController {
             || WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId) != workspace
         else {
             Self.logger.debug(
-                "commit rail=\(self.railName, privacy: .public) ignored: already at \(Self.describe(workspace), privacy: .public)"
+                "commit rail=\(self.railName, privacy: .public) ignored: already at \(Self.describe(workspace), privacy: .private(mask: .hash))"
             )
             return
         }
         Self.logger.info(
             """
             commit rail=\(self.railName, privacy: .public) row=\(row, privacy: .public) \
-            was=\(self.appliedSelection.map(Self.describe) ?? "none", privacy: .public) \
-            now=\(Self.describe(workspace), privacy: .public)
+            was=\(self.appliedSelection.map(Self.describe) ?? "none", privacy: .private(mask: .hash)) \
+            now=\(Self.describe(workspace), privacy: .private(mask: .hash))
             """
         )
         appliedSelection = workspace
@@ -527,7 +527,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         guard let window = WindowManager.shared.window(for: workspace.connectionId),
               let host = window.contentViewController as? MainSplitViewController else {
             Self.logger.error(
-                "show has no window target=\(Self.describe(workspace), privacy: .public)"
+                "show has no window target=\(Self.describe(workspace), privacy: .private(mask: .hash))"
             )
             return nil
         }
@@ -541,7 +541,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         Self.logger.info(
             """
             show rail=\(self.railName, privacy: .public) \
-            target=\(Self.describe(workspace), privacy: .public) \
+            target=\(Self.describe(workspace), privacy: .private(mask: .hash)) \
             window=\(window.windowNumber, privacy: .public) visible=\(window.isVisible, privacy: .public) \
             tabs=\(group?.windows.count ?? 0, privacy: .public) \
             wasSelectedTab=\(group?.selectedWindow === window, privacy: .public)
@@ -573,13 +573,13 @@ internal final class WorkspaceRailViewController: NSViewController {
         guard let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId, in: window) else {
             Self.logger.error(
                 """
-                moveBrowseCursor has no coordinator target=\(Self.describe(workspace), privacy: .public) \
+                moveBrowseCursor has no coordinator target=\(Self.describe(workspace), privacy: .private(mask: .hash)) \
                 window=\(window.windowNumber, privacy: .public)
                 """
             )
             return
         }
-        Self.logger.info("moveBrowseCursor to=\(Self.describe(workspace), privacy: .public)")
+        Self.logger.info("moveBrowseCursor to=\(Self.describe(workspace), privacy: .private(mask: .hash))")
         coordinator.browseCursorCoordinator.goToEntry(workspace.container)
     }
 
@@ -956,7 +956,7 @@ extension WorkspaceRailViewController: NSTableViewDelegate {
         Self.logger.debug(
             """
             selectionDidChange rail=\(self.railName, privacy: .public) row=\(row, privacy: .public) \
-            highlight=\(Self.describe(self.entries[row].workspace), privacy: .public)
+            highlight=\(Self.describe(self.entries[row].workspace), privacy: .private(mask: .hash))
             """
         )
     }

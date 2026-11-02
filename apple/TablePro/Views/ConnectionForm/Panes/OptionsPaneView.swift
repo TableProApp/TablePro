@@ -8,17 +8,21 @@ import SwiftUI
 import TableProAutocomplete
 import TableProPluginKit
 
-/// What TablePro is allowed to do with this connection, and what it runs when it opens it.
-///
-/// Driver options, startup SQL, Safe Mode, external and AI access and iCloud were split across
-/// three sidebar panes called Customization, Advanced and AI Rules. They answer one question, so
-/// they are one tab.
 struct OptionsPaneView: View {
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @ObservedObject var coordinator: ConnectionFormCoordinator
 
     private var databaseType: DatabaseType { coordinator.network.type }
     private var aiIsEnabled: Bool { settingsManager.ai.enabled }
+
+    // Nil until this connection is open as the type the form shows.
+    private var liveDriverRunsReadOnly: Bool? {
+        guard let connectionId = coordinator.connectionId,
+              let driver = DatabaseManager.shared.driver(for: connectionId),
+              driver.connection.type == databaseType
+        else { return nil }
+        return driver.runsReadOnlyStatements
+    }
 
     var body: some View {
         Form {
@@ -400,6 +404,14 @@ struct OptionsPaneView: View {
             } else {
                 // swiftlint:disable:next line_length
                 Text(String(localized: "Controls how external clients (Raycast, Cursor, Claude Desktop, AppleScript, Shortcuts) access this connection. Tokens cannot exceed this level even with full-access scope."))
+            }
+            if coordinator.advanced.externalAccess == .readOnly {
+                Text(
+                    ReadOnlyEnforcement.externalClientsNote(
+                        for: databaseType,
+                        liveDriverRunsReadOnly: liveDriverRunsReadOnly
+                    )
+                )
             }
         }
         .font(.caption)

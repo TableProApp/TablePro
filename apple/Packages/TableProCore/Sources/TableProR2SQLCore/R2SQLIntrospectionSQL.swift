@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 public struct R2SQLColumnDescription: Sendable, Equatable {
     public let name: String
@@ -33,7 +34,7 @@ public enum R2SQLIntrospectionSQL {
     }
 
     public static func quoteIdentifier(_ identifier: String) -> String {
-        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
+        SQLQuoting.identifier(identifier)
     }
 
     static let namespaceColumns = ["namespace", "namespace_name", "database_name", "schema_name", "databaseName"]

@@ -110,7 +110,23 @@ internal struct ProtobufSchema: Equatable, Sendable {
     }
 
     static func parse(protoFiles texts: [String]) throws -> ProtobufSchema {
-        try build(texts.flatMap { try ProtoFileParser.parse($0) })
+        var files: [ProtobufFileDefinition] = []
+        var defined = 0
+        for text in texts {
+            for file in try ProtoFileParser.parse(text) {
+                try countDefinitions(of: file, into: &defined)
+                files.append(file)
+            }
+        }
+        return try build(files)
+    }
+
+    // Each file bounds its own definitions, so many files are bounded together as they are read.
+    static func countDefinitions(of file: ProtobufFileDefinition, into defined: inout Int) throws {
+        defined += file.allMessages.count + file.allEnums.count
+        guard defined <= 2 * maxMessages else {
+            throw ProtobufSchemaError(reason: String(localized: "The schema defines more messages than TablePro reads."))
+        }
     }
 
     func messageIndexed(by indexes: [Int]) -> ProtobufMessageDescriptor? {
@@ -157,10 +173,11 @@ internal struct ProtobufSchema: Equatable, Sendable {
         var resolved: [String: ProtobufMessageDescriptor] = [:]
         for (name, message) in definitions {
             let features = scopes.messages[name] ?? ProtobufFeatures(syntax: .proto2)
+            let scope = resolver.scope(of: name)
             resolved[name] = ProtobufMessageDescriptor(
                 fullName: name,
                 fields: message.fields.map {
-                    resolver.resolve($0, scope: name, features: features, inMapEntry: message.isMapEntry)
+                    resolver.resolve($0, scope: scope, features: features, inMapEntry: message.isMapEntry)
                 },
                 nestedMessages: message.nestedMessages,
                 isMapEntry: message.isMapEntry
@@ -296,15 +313,34 @@ private struct ProtobufFeatureScopes {
     }
 }
 
-// C++ scoping: a name is looked up from the innermost scope outward, by its first component.
+// C++ scoping, as protoc does it: the first component is looked up from the innermost scope outward,
+// and the rest is resolved inside the first scope that has it.
 private struct ProtobufTypeResolver {
     let messageNames: Set<String>
     let enumNames: Set<String>
     let mapEntryNames: Set<String>
+    private let paths: ProtobufNamePaths
+
+    init(messageNames: Set<String>, enumNames: Set<String>, mapEntryNames: Set<String>) {
+        self.messageNames = messageNames
+        self.enumNames = enumNames
+        self.mapEntryNames = mapEntryNames
+        paths = ProtobufNamePaths(messageNames.union(enumNames))
+    }
+
+    // Found once per message: splitting the name again for each field cost fields times its length.
+    func scope(of messageName: String) -> [Int] {
+        var nodes = [ProtobufNamePaths.root]
+        for component in messageName.split(separator: ".") {
+            guard let last = nodes.last, let next = paths.child(of: last, component) else { break }
+            nodes.append(next)
+        }
+        return nodes
+    }
 
     func resolve(
         _ field: ProtobufFieldDefinition,
-        scope: String,
+        scope: [Int],
         features: ProtobufFeatures,
         inMapEntry: Bool
     ) -> ProtobufFieldDescriptor {
@@ -342,17 +378,26 @@ private struct ProtobufTypeResolver {
         return !mapEntryNames.contains(name)
     }
 
-    private func resolve(_ reference: String, scope: String) -> ProtobufFieldType {
+    private func resolve(_ reference: String, scope: [Int]) -> ProtobufFieldType {
         if reference.hasPrefix(".") {
             return lookup(String(reference.dropFirst())) ?? .unresolved(reference)
         }
-        var components = scope.split(separator: ".").map(String.init)
-        while true {
-            let candidate = (components + [reference]).joined(separator: ".")
-            if let found = lookup(candidate) { return found }
-            guard !components.isEmpty else { return .unresolved(reference) }
-            components.removeLast()
+        let parts = reference.split(separator: ".", omittingEmptySubsequences: false)
+        guard let first = parts.first else { return .unresolved(reference) }
+        for scopeNode in scope.reversed() {
+            guard var node = paths.child(of: scopeNode, first) else { continue }
+            if parts.count == 1 {
+                guard let name = paths.name(at: node) else { continue }
+                return lookup(name) ?? .unresolved(reference)
+            }
+            for part in parts.dropFirst() {
+                guard let next = paths.child(of: node, part) else { return .unresolved(reference) }
+                node = next
+            }
+            guard let name = paths.name(at: node) else { return .unresolved(reference) }
+            return lookup(name) ?? .unresolved(reference)
         }
+        return .unresolved(reference)
     }
 
     private func lookup(_ name: String) -> ProtobufFieldType? {
@@ -362,14 +407,54 @@ private struct ProtobufTypeResolver {
     }
 }
 
+// Every known type name as a path of components. A node that ends a name remembers it.
+private struct ProtobufNamePaths {
+    private struct Step: Hashable {
+        let parent: Int
+        let component: Substring
+    }
+
+    static let root = 0
+    private var steps: [Step: Int] = [:]
+    private var names: [Int: String] = [:]
+
+    init(_ fullNames: Set<String>) {
+        for fullName in fullNames {
+            var node = Self.root
+            for component in fullName.split(separator: ".", omittingEmptySubsequences: false) {
+                let step = Step(parent: node, component: component)
+                if let next = steps[step] {
+                    node = next
+                } else {
+                    let next = steps.count + 1
+                    steps[step] = next
+                    node = next
+                }
+            }
+            names[node] = fullName
+        }
+    }
+
+    func child(of node: Int, _ component: Substring) -> Int? {
+        steps[Step(parent: node, component: component)]
+    }
+
+    func name(at node: Int) -> String? {
+        names[node]
+    }
+}
+
 // descriptor.proto read with the wire reader. Field numbers are descriptor.proto's.
 internal enum ProtobufDescriptorSetParser {
     static func parse(_ data: Data) throws -> [ProtobufFileDefinition] {
         var files: [ProtobufFileDefinition] = []
+        var defined = 0
         do {
             for (number, value) in try fields(data) {
                 guard number == 1, case .bytes(let bytes) = value else { throw ProtobufSchemaError.notASchema }
-                files.append(try file(bytes))
+                let parsed = try file(bytes)
+                try ProtobufSchema.countDefinitions(of: parsed, into: &defined)
+                files.append(parsed)
             }
         } catch let error as ProtobufSchemaError {
             throw error
@@ -466,6 +551,7 @@ internal enum ProtobufDescriptorSetParser {
             default: break
             }
         }
+        try ProtoFileParser.checkPackage(package)
         let syntax = bytes(entries, 12).flatMap { String(data: $0, encoding: .utf8) }
         switch syntax {
         case "proto3": file.syntax = .proto3
@@ -490,8 +576,8 @@ internal enum ProtobufDescriptorSetParser {
                 throw ProtobufSchemaError(reason: String(localized: "Messages are nested too deeply."))
             }
             let entries = try ProtobufDescriptorSetParser.fields(data)
-            let name = entries.first { $0.0 == 1 }.flatMap { string($0.1) } ?? ""
-            let fullName = scope.isEmpty ? name : "\(scope).\(name)"
+            let name = try Self.declaredName(entries.first { $0.0 == 1 }.flatMap { string($0.1) } ?? "")
+            let fullName = try ProtoFileParser.qualifiedName(scope, name, defined: messages.count)
             let slot = messages.count
             messages.append(ProtobufMessageDefinition(fullName: fullName))
             var definition = messages[slot]
@@ -515,7 +601,7 @@ internal enum ProtobufDescriptorSetParser {
             var name = ""
             var values: [Int32: String] = [:]
             for (number, value) in entries {
-                if number == 1 { name = string(value) ?? "" }
+                if number == 1 { name = try Self.declaredName(string(value) ?? "") }
                 guard number == 2, case .bytes(let bytes) = value else { continue }
                 var valueName = ""
                 var valueNumber: Int32 = 0
@@ -526,11 +612,17 @@ internal enum ProtobufDescriptorSetParser {
                 // protoc prints an aliased number by its first name.
                 if values[valueNumber] == nil { values[valueNumber] = valueName }
             }
-            let fullName = scope.isEmpty ? name : "\(scope).\(name)"
+            let fullName = try ProtoFileParser.qualifiedName(scope, name, defined: enums.count)
             enums.append(ProtobufEnumDefinition(
                 fullName: fullName, values: values, features: try features(entries, options: 3, features: 7)
             ))
             return fullName
+        }
+
+        // protoc refuses a dotted name, and one would lengthen the scope each field's type is looked up through.
+        private static func declaredName(_ name: String) throws -> String {
+            guard !name.contains(".") else { throw ProtobufSchemaError.notASchema }
+            return name
         }
 
         private func field(_ data: Data) throws -> ProtobufFieldDefinition {

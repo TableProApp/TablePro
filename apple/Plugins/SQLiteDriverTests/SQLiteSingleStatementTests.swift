@@ -86,4 +86,16 @@ struct SQLiteSingleStatementTests {
             #expect(result.rows.first?.first?.asText == "1")
         }
     }
+
+    @Test("A table's DDL is the text SQLite stored, so a comment in it stays a comment", arguments: [
+        "CREATE TABLE notes (body TEXT, id INTEGER -- the key, x); "
+            + "DROP TABLE IF EXISTS invoices; CREATE TABLE IF NOT EXISTS scrap (y\n)",
+        "CREATE TABLE notes -- ( (y); DROP TABLE invoices; --\n (id INTEGER)",
+    ])
+    func tableDDLIsTheStoredText(create: String) async throws {
+        try await withDriver { driver in
+            _ = try await driver.execute(query: create)
+            #expect(try await driver.fetchTableDDL(table: "notes", schema: nil) == create + ";")
+        }
+    }
 }

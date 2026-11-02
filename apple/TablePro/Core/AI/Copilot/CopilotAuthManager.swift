@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import os
+import TableProHTTP
 
 @MainActor
 final class CopilotAuthManager {
@@ -38,7 +39,7 @@ final class CopilotAuthManager {
         NSPasteboard.general.setString(response.userCode, forType: .string)
 
         if let url = URL(string: response.verificationUri) {
-            NSWorkspace.shared.open(url)
+            WebPageOpener.open(url, scope: .https)
         }
 
         Self.logger.info("Sign-in initiated, user code copied to clipboard")

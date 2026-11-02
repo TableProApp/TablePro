@@ -144,7 +144,7 @@ internal struct CompareRowService {
         if let refusal = concurrentReadRefusal(source: source, target: target) {
             throw CompareSyncError.unsupportedOperation(refusal.comparisonMessage)
         }
-        if let invalidFilter = plan.scope.filterValidationError {
+        if let invalidFilter = plan.scope.filterValidationError(source: source.databaseType, target: target.databaseType) {
             throw CompareSyncError.invalidFilter(invalidFilter)
         }
         try await manager.ensureConnected(sourceConnection)

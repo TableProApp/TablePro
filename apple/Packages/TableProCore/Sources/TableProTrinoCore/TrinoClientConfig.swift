@@ -16,15 +16,19 @@ public struct TrinoTLSOptions: Sendable, Equatable {
     public var mode: VerificationMode
     public var anchorCertificate: Data?
     public var clientCredential: URLCredential?
+    // Behind a tunnel the URL names its loopback forward, so `full` checks the certificate against this name.
+    public var serverName: String?
 
     public init(
         mode: VerificationMode = .full,
         anchorCertificate: Data? = nil,
-        clientCredential: URLCredential? = nil
+        clientCredential: URLCredential? = nil,
+        serverName: String? = nil
     ) {
         self.mode = mode
         self.anchorCertificate = anchorCertificate
         self.clientCredential = clientCredential
+        self.serverName = serverName
     }
 
     public static let systemDefault = TrinoTLSOptions(mode: .full)

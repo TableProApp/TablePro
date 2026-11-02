@@ -69,20 +69,10 @@ nonisolated enum MongoDBDialPlan {
         return fields
     }
 
-    // OpenSSL on iOS has no trust store, so a verify mode needs the user's CA. Behind a tunnel the dialed name is the
-    // loopback, so Verify Identity keeps the chain check and drops only the name check.
-    static func ssl(_ ssl: DriverSSLConfiguration, tunneled: Bool) throws -> DriverSSLConfiguration {
-        guard ssl.verifiesCertificate else { return ssl }
-        guard ssl.existingCACertificatePath != nil else {
-            throw DatabaseError(message: verifyNeedsCAMessage)
-        }
-        guard tunneled, ssl.verifiesHostname else { return ssl }
-        return DriverSSLConfiguration(
-            mode: .verifyCa,
-            caCertificatePath: ssl.caCertificatePath,
-            clientCertificatePath: ssl.clientCertificatePath,
-            clientKeyPath: ssl.clientKeyPath,
-            serverName: ssl.serverName
-        )
+    // OpenSSL on iOS has no trust store, so a verify mode needs the user's CA. Behind a tunnel the plugin's stream
+    // initiator checks the name of the server the tunnel reaches, so every mode stays as chosen.
+    static func ssl(_ ssl: DriverSSLConfiguration) throws -> DriverSSLConfiguration {
+        guard ssl.verifiesCertificate, ssl.existingCACertificatePath == nil else { return ssl }
+        throw DatabaseError(message: verifyNeedsCAMessage)
     }
 }

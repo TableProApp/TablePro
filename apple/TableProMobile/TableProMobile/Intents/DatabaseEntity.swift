@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import TableProDatabase
 import TableProModels
 
 struct DatabaseEntity: AppEntity {
@@ -27,22 +28,30 @@ struct DatabaseEntityQuery: EntityQuery {
     @IntentParameterDependency<AddRowsToTableIntent>(\.$connection)
     var addRows
 
+    @Dependency private var lockState: AppLockState
+
     func entities(for identifiers: [String]) async throws -> [DatabaseEntity] {
         identifiers.map { DatabaseEntity(id: $0, name: $0, kind: .database) }
     }
 
     func suggestedEntities() async throws -> [DatabaseEntity] {
-        try await Self.namespaces(of: selectedConnection?.id)
+        try await Self.namespaces(of: selectedConnection?.id, lock: lockState)
     }
 
-    /// Throws instead of listing nothing, for the same reason as the table picker: an empty list
-    /// would read as a server with no databases.
+    // Throws instead of listing nothing: an empty list would read as a server with no databases.
     static func namespaces(
         of connectionId: UUID?,
+        lock: AppLockState,
+        keychain: any SecureStore = KeychainSecureStore(),
         savedConnection: @Sendable (UUID) -> DatabaseConnection? = IntentConnectionLoader.connection(id:)
     ) async throws -> [DatabaseEntity] {
         guard let connectionId else { return [] }
-        return try await IntentDatabaseSession.with(connectionId: connectionId, savedConnection: savedConnection) {
+        return try await IntentDatabaseSession.with(
+            connectionId: connectionId,
+            lock: lock,
+            keychain: keychain,
+            savedConnection: savedConnection
+        ) {
             try await $0.namespaces()
         }
     }

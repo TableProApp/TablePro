@@ -1,8 +1,3 @@
-//
-//  ConnectionTunnelError.swift
-//  TablePro
-//
-
 import Foundation
 
 enum ConnectionTunnelError: Error, LocalizedError, Equatable {
@@ -11,12 +6,14 @@ enum ConnectionTunnelError: Error, LocalizedError, Equatable {
     case remoteFilePathMissing
     case srvLookupBehindTunnel
 
-    // An SRV name resolves to the cluster's own servers, which the driver dials around the one forwarded port.
     static func refusal(for connection: DatabaseConnection) -> ConnectionTunnelError? {
-        guard connection.type.pluginTypeId == "MongoDB", connection.usesMongoSrv,
-              connection.enabledTunnelKinds.contains(where: { $0 != .remoteFile && $0 != .remoteDatabaseSession })
+        guard connection.enabledTunnelKinds.contains(where: { $0 != .remoteFile && $0 != .remoteDatabaseSession })
         else { return nil }
-        return .srvLookupBehindTunnel
+        // An SRV name resolves to the cluster's own servers, which the driver dials around the one forwarded port.
+        if connection.type.pluginTypeId == "MongoDB", connection.usesMongoSrv {
+            return .srvLookupBehindTunnel
+        }
+        return nil
     }
 
     var errorDescription: String? {

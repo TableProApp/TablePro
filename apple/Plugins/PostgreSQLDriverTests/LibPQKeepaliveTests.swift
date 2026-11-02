@@ -8,8 +8,8 @@ import TableProPluginKit
 import Testing
 
 struct LibPQKeepaliveTests {
-    private func build(options: String? = nil) -> String {
-        LibPQConnectionString.build(
+    private func build(options: String? = nil) throws -> String {
+        try LibPQConnectionString.build(
             host: "db.example.com",
             port: 5_432,
             user: "postgres",
@@ -69,7 +69,7 @@ struct LibPQKeepaliveTests {
     }
 
     @Test("The connection options stay the last keyword after the keepalives are added")
-    func optionsStayLast() {
-        #expect(build(options: "-c search_path=app").hasSuffix(" options='-c search_path=app'"))
+    func optionsStayLast() throws {
+        #expect(try build(options: "-c search_path=app").hasSuffix(" options='-c search_path=app'"))
     }
 }

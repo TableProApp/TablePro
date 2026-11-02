@@ -49,7 +49,12 @@ enum ImportFixtures {
         id: UUID = UUID(),
         name: String? = nil
     ) -> ImportLibrarySnapshot.Connection {
-        ImportLibrarySnapshot.Connection(id: id, name: name ?? settings.name, matchKey: ConnectionMatchKey(settings))
+        ImportLibrarySnapshot.Connection(
+            id: id,
+            name: name ?? settings.name,
+            matchKey: ConnectionMatchKey(settings),
+            settings: settings
+        )
     }
 
     static func makeBundle(

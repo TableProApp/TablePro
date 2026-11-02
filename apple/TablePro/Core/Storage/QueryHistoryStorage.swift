@@ -439,7 +439,7 @@ actor QueryHistoryStorage {
 
     func logSqliteError(context: String) {
         guard let db, let message = sqlite3_errmsg(db) else { return }
-        Self.logger.error("Query history SQL \(context, privacy: .public) failed: \(String(cString: message), privacy: .public)")
+        Self.logger.error("Query history SQL \(context, privacy: .public) failed: \(String(cString: message), privacy: .private)")
     }
 
     private func beginTransaction() {

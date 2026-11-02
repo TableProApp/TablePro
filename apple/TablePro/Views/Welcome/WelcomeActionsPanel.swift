@@ -1,9 +1,8 @@
-import Combine
 import SwiftUI
 
 struct WelcomeActionsPanel: View {
     @ObservedObject private var licenseManager = LicenseManager.shared
-    @ObservedObject private var updater = SoftwareUpdater.shared
+    @ObservedObject private var updates = UpdateCenter.shared
     let onActivateLicense: () -> Void
     let onNewConnection: () -> Void
     let onOpenFile: () -> Void
@@ -12,13 +11,6 @@ struct WelcomeActionsPanel: View {
     let onImportFromAWS: () -> Void
     let onImportConnectionsFile: () -> Void
     let onOpenProjectFolder: () -> Void
-
-    // One key, not the whole manager: the window lives all session and every settings write would redraw it.
-    @State private var showsVersionInfo = AppSettingsManager.shared.general.showWelcomeVersionInfo
-
-    private static let versionInfoSetting = AppSettingsManager.shared.$general
-        .map(\.showWelcomeVersionInfo)
-        .removeDuplicates()
 
     // Captured once: the same appearance that reads the stored value overwrites it.
     @State private var showsWhatsNew: Bool?
@@ -36,7 +28,6 @@ struct WelcomeActionsPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear(perform: recordAppVersion)
-        .onReceive(Self.versionInfoSetting) { showsVersionInfo = $0 }
     }
 
     private var identity: some View {
@@ -51,22 +42,19 @@ struct WelcomeActionsPanel: View {
                 Text(verbatim: "TablePro")
                     .font(.title2.weight(.semibold))
 
-                if showsVersionInfo {
-                    Text(String(format: String(localized: "Version %@"), Bundle.main.displayVersion))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("welcome-version-line")
-                }
+                Text(String(format: String(localized: "Version %@"), Bundle.main.displayVersion))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("welcome-version-line")
 
-                // A deferred update has its gentle reminder here, so hiding the line never hides that.
-                if showsVersionInfo || updater.hasPendingUpdate {
-                    Button(updater.checkForUpdatesTitle) {
-                        updater.checkForUpdates()
+                if let title = updates.status.indicatorTitle {
+                    Button(title) {
+                        updates.performPrimaryAction()
                     }
                     .buttonStyle(.link)
                     .font(.callout)
-                    .disabled(!updater.canCheckForUpdates)
-                    .accessibilityIdentifier("welcome-check-for-updates-link")
+                    .help(updates.status.indicatorHelp ?? "")
+                    .accessibilityIdentifier("welcome-update-link")
                 }
 
                 if showsWhatsNew == true {

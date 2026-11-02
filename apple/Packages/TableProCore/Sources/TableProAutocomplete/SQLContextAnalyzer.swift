@@ -800,10 +800,11 @@ public final class SQLContextAnalyzer {
 
     private static let identifierQuoteChars = CharacterSet(charactersIn: "`\"'[]")
 
-    private static func closingQuote(for character: Character) -> Character? {
-        switch character {
+    // By scalar: a quote a combining mark follows is one Character, so the name inside read as bare.
+    private static func closingQuote(for scalar: Unicode.Scalar) -> Unicode.Scalar? {
+        switch scalar {
         case "\"", "`", "'":
-            return character
+            return scalar
         case "[":
             return "]"
         default:
@@ -812,19 +813,19 @@ public final class SQLContextAnalyzer {
     }
 
     private static func isQuoted(_ raw: String) -> Bool {
-        raw.first.flatMap(closingQuote(for:)) != nil
+        raw.unicodeScalars.first.flatMap(closingQuote(for:)) != nil
     }
 
     private static func unquoted(_ raw: String) -> String {
-        guard let first = raw.first, let close = closingQuote(for: first) else {
+        guard let first = raw.unicodeScalars.first, let close = closingQuote(for: first) else {
             return raw.trimmingCharacters(in: identifierQuoteChars)
         }
-        var body = raw.dropFirst()
+        var body = raw.unicodeScalars.dropFirst()
         if body.last == close {
             body = body.dropLast()
         }
         let closer = String(close)
-        return String(body).replacingOccurrences(of: closer + closer, with: closer)
+        return String(body).replacingOccurrences(of: closer + closer, with: closer, options: .literal)
     }
 
     // A quoted alias is a name whatever it spells; a bare keyword is the next clause.

@@ -13,6 +13,8 @@ import Foundation
 import os
 import TableProConnectionLibrary
 import TableProPluginKit
+import TableProProcess
+import Yams
 
 // MARK: - Public Types
 
@@ -45,6 +47,7 @@ enum NativeDumpError: LocalizedError, Equatable {
     case incompatibleTool(message: String)
     case unreachableServer(message: String)
     case nulInArgument
+    case uncheckedThroughTunnel(tool: String, mode: SSLMode, supportedModes: [SSLMode])
 
     var errorDescription: String? {
         switch self {
@@ -68,6 +71,15 @@ enum NativeDumpError: LocalizedError, Equatable {
             return message
         case .nulInArgument:
             return String(localized: "The database name or a sign-in value holds a NUL character, which a command line cannot carry.")
+        case .uncheckedThroughTunnel(let tool, let mode, let supportedModes):
+            return String(
+                format: String(
+                    localized: "This connection uses SSL Mode %2$@, which %1$@ cannot check through a tunnel. Set SSL Mode to %3$@, or connect without the tunnel."
+                ),
+                tool,
+                mode.displayLabel,
+                supportedModes.map(\.displayLabel).formatted(.list(type: .or))
+            )
         }
     }
 }
@@ -474,8 +486,7 @@ final class NativeDumpService: ObservableObject {
 
     // MARK: - Resolution
 
-    /// Both halves run off the main actor together: the lookup spawns `which`, and identifying what
-    /// it found spawns the tool itself.
+    // Off the main actor: the lookup reads the disk and identifying what it found spawns the tool itself.
     private static func resolveExecutable(
         tool: NativeDumpDescriptor.CommandLineTool,
         kind: NativeDumpKind,
@@ -642,7 +653,7 @@ final class NativeDumpService: ObservableObject {
             if let pluginFolder { try? FileManager.default.removeItem(at: pluginFolder.url) }
             throw error
         }
-        var environment = minimalEnvironment()
+        var environment = ProcessEnvironment.minimal()
         environment.merge(tool.environment(request)) { _, new in new }
         if tool.requiresUntranslatedMessages {
             environment = untranslatedMessagesEnvironment(environment)
@@ -679,7 +690,7 @@ final class NativeDumpService: ObservableObject {
     ) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-mongo-\(UUID().uuidString).yaml")
-        let contents = entries.map { "\($0.key): \(mongoYAMLQuoted($0.value))\n" }.joined()
+        let contents = try mongoConfigurationText(entries)
         guard let data = contents.data(using: .utf8) else {
             throw NativeDumpError.sourceUnreadable
         }
@@ -688,13 +699,13 @@ final class NativeDumpService: ObservableObject {
         return url
     }
 
-    /// A double-quoted YAML scalar, which is the one form that carries every character a password
-    /// can hold without the value changing meaning.
-    nonisolated static func mongoYAMLQuoted(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
-        return "\"\(escaped)\""
+    // Double-quoted, so a line break or a control character in a password is escaped instead of folding into
+    // another value; unlimited width, so libyaml never wraps one across lines.
+    nonisolated static func mongoConfigurationText(_ entries: [NativeDumpDescriptor.ConfigurationEntry]) throws -> String {
+        let pairs = entries.map { entry in
+            (Node(entry.key), Node(entry.value, .implicit, .doubleQuoted))
+        }
+        return try Yams.serialize(node: .mapping(Node.Mapping(pairs)), width: -1, allowUnicode: true)
     }
 
     /// The locale variables a spawned tool reads, named rather than spelled at each use site. The
@@ -707,10 +718,6 @@ final class NativeDumpService: ObservableObject {
         static let messages = "LC_MESSAGES"
     }
 
-    nonisolated private static let inheritedEnvironmentKeys: [String] = [
-        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", LocaleEnvironmentKey.everyCategory
-    ]
-
     nonisolated internal static let untranslatedMessagesLocale = "C"
 
     nonisolated internal static func untranslatedMessagesEnvironment(_ environment: [String: String]) -> [String: String] {
@@ -721,15 +728,6 @@ final class NativeDumpService: ObservableObject {
         }
         result[LocaleEnvironmentKey.messages] = untranslatedMessagesLocale
         return result
-    }
-
-    nonisolated static func minimalEnvironment() -> [String: String] {
-        let parent = ProcessInfo.processInfo.environment
-        var env: [String: String] = [:]
-        for key in inheritedEnvironmentKeys where parent[key] != nil {
-            env[key] = parent[key]
-        }
-        return env
     }
 
     // MARK: - Termination + Progress
@@ -859,7 +857,7 @@ extension NativeDumpService {
     nonisolated static func sizeQuery(for type: DatabaseType) -> String? {
         switch type {
         case .postgresql, .redshift:
-            return "SELECT pg_database_size($1)"
+            return "SELECT pg_catalog.pg_database_size($1::pg_catalog.name)"
         case .mysql, .mariadb:
             return """
                 SELECT COALESCE(SUM(data_length + index_length), 0)

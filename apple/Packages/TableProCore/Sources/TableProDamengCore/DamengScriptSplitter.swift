@@ -14,6 +14,11 @@ public enum DamengScriptSplitter {
         return SQLStatementScanner.allStatements(in: script, grammar: grammar)
     }
 
+    // A host-split text is the one statement the host approved: it goes whole, and DM8 refuses a second one in it.
+    public static func statements(in script: String, backslashEscapes: Bool, hostSplit: Bool) -> [String] {
+        hostSplit ? [script] : statements(in: script, backslashEscapes: backslashEscapes)
+    }
+
     private static func holdsBlock(_ script: String, grammar: SQLLexicalGrammar) -> Bool {
         SQLCodeProjection.code(of: script, grammar: grammar)
             .split { !($0.isLetter || $0.isNumber || $0 == "_") }

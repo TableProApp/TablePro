@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 extension QueryClassifier {
     private static let memcachedReadCommands: Set<String> = ["get", "gets", "version"]

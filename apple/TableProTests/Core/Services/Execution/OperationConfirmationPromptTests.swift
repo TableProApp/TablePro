@@ -184,3 +184,34 @@ struct OperationConfirmationPromptTests {
         #expect(MCPAuthPolicy.operationDescription(for: "") == fallback)
     }
 }
+
+// The confirmation writes each bound value where the engine binds it, never into a name, a literal or a comment.
+struct SQLParameterInlinerLexingTests {
+    @Test("A ? in a quoted name or a comment is text, and the value goes to the placeholder", arguments: [
+        (DatabaseType.mysql, "INSERT INTO `a?` (`x?`) VALUES (?) -- why?"),
+        (DatabaseType.sqlite, "INSERT INTO \"a?\" (\"x?\") VALUES (?) /* why? */"),
+    ])
+    func questionMarkOutsideCodeIsText(type: DatabaseType, sql: String) {
+        let shown = SQLParameterInliner.inline(ParameterizedStatement(sql: sql, parameters: ["v"]), databaseType: type)
+        #expect(shown == sql.replacingOccurrences(of: "VALUES (?)", with: "VALUES ('v')"))
+    }
+
+    @Test("A $1 in a comment or inside a name is not a placeholder")
+    func dollarOutsideCodeIsText() {
+        let sql = "SELECT price$1, $1 FROM t -- $1"
+        let shown = SQLParameterInliner.inline(ParameterizedStatement(sql: sql, parameters: [7]), databaseType: .postgresql)
+        #expect(shown == "SELECT price$1, 7 FROM t -- $1")
+    }
+
+    @Test("An approved statement shows its bound cells as the driver receives them")
+    func operationStatementShowsItsCells() {
+        let statement = OperationStatement(
+            sql: "INSERT INTO \"staff\" (\"email\", \"role\") VALUES ($1, $2)",
+            parameters: [.text("mallory@attacker.example"), .null]
+        )
+        #expect(
+            SQLParameterInliner.inline(statement, databaseType: .postgresql)
+                == "INSERT INTO \"staff\" (\"email\", \"role\") VALUES ('mallory@attacker.example', NULL)"
+        )
+    }
+}

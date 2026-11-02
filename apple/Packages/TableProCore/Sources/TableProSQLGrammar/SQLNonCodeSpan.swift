@@ -287,13 +287,27 @@ public enum SQLNonCodeSpan {
         if startsEscapeString || startsEscapeBytes,
            index + 1 < length,
            text.character(at: index + 1) == SqlLexer.singleQuote {
-            let span = SqlLexer.skipQuotedString(
+            var span = SqlLexer.skipQuotedString(
                 text,
                 from: index + 1,
                 quote: SqlLexer.singleQuote,
                 length: length,
                 backslashEscapes: true
             )
+            if grammar.contains(.escapeStringContinuations) {
+                var newlines = span.newlines
+                while span.isClosed, let continued = continuingQuote(after: span.next, in: text, length: length) {
+                    span = SqlLexer.skipQuotedString(
+                        text,
+                        from: continued.quote,
+                        quote: SqlLexer.singleQuote,
+                        length: length,
+                        backslashEscapes: true
+                    )
+                    newlines += continued.newlines + span.newlines
+                }
+                span = SqlLexer.Span(next: span.next, newlines: newlines, isClosed: span.isClosed)
+            }
             return closedSpan(.quoted, at: index, span, closerLength: 1)
         }
         guard grammar.contains(.alternativeQuoting),
@@ -309,6 +323,50 @@ public enum SQLNonCodeSpan {
             newlines: literal.span.newlines,
             isTerminated: literal.span.isClosed
         )
+    }
+
+    private static let verticalTab: UInt16 = 0x0B
+
+    // DuckDB 1.5 turns these into spaces before it lexes (measured on 1.5.4). PostgreSQL and CockroachDB do not, and
+    // the text a join there leaves them does not parse, so they run none of it.
+    private static let spacesBeforeLexing: Set<UInt16> = Set([0x00A0, 0x202F, 0x205F, 0x2060, 0x3000, 0xFEFF])
+        .union(0x2000...0x200B)
+
+    /// The quote that carries on the string closed just before `index`, as PostgreSQL's `quotecontinue` finds it: only
+    /// blanks and `--` comments between, a line break among them. PostgreSQL 16 and later take a vertical tab for a
+    /// blank; an older server refuses the text.
+    private static func continuingQuote(after index: Int, in text: NSString, length: Int) -> (quote: Int, newlines: Int)? {
+        var cursor = index
+        var lineBroke = false
+        var newlines = 0
+        while cursor < length {
+            switch text.character(at: cursor) {
+            case SqlLexer.newline:
+                lineBroke = true
+                newlines += 1
+                cursor += 1
+            case SqlLexer.carriageReturn:
+                lineBroke = true
+                cursor += 1
+            case SqlLexer.space, SqlLexer.tab, verticalTab, SqlLexer.formFeed:
+                cursor += 1
+            case let unit where spacesBeforeLexing.contains(unit):
+                cursor += 1
+            case SqlLexer.dash where SqlLexer.startsLineComment(text, at: cursor, length: length):
+                cursor = SqlLexer.endOfLineComment(
+                    text,
+                    from: cursor,
+                    length: length,
+                    carriageReturnEnds: true,
+                    formFeedEnds: false
+                )
+            case SqlLexer.singleQuote where lineBroke:
+                return (cursor, newlines)
+            default:
+                return nil
+            }
+        }
+        return nil
     }
 
     private static func dollarQuotedSpan(at index: Int, in text: NSString, grammar: SQLLexicalGrammar) -> Span? {

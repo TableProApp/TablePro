@@ -37,8 +37,8 @@ internal struct SQLExportDDLRewriter {
     internal func rewrite(_ ddl: String) -> String {
         guard dialect == .mysql, excludesAutoIncrementValue || excludesDefiner else { return ddl }
 
-        let characters = Array(ddl)
-        var output: [Character] = []
+        let characters = Array(ddl.unicodeScalars)
+        var output: [Unicode.Scalar] = []
         output.reserveCapacity(characters.count)
         var state = ScanState()
         var index = 0
@@ -65,7 +65,7 @@ internal struct SQLExportDDLRewriter {
             while wordEnd < characters.count, Self.isWordCharacter(characters[wordEnd]) {
                 wordEnd += 1
             }
-            let keyword = String(characters[index ..< wordEnd]).uppercased()
+            let keyword = String(String.UnicodeScalarView(characters[index ..< wordEnd])).uppercased()
 
             if let clauseEnd = clauseEnd(keyword: keyword, in: characters, assignmentStart: wordEnd, state: state) {
                 index = Self.closeGap(in: characters, after: clauseEnd, output: &output)
@@ -77,12 +77,12 @@ internal struct SQLExportDDLRewriter {
             index = wordEnd
         }
 
-        return String(output)
+        return String(String.UnicodeScalarView(output))
     }
 
     private func clauseEnd(
         keyword: String,
-        in characters: [Character],
+        in characters: [Unicode.Scalar],
         assignmentStart: Int,
         state: ScanState
     ) -> Int? {
@@ -114,7 +114,7 @@ internal struct SQLExportDDLRewriter {
         }
     }
 
-    private static func track(_ character: Character, in state: inout ScanState) {
+    private static func track(_ character: Unicode.Scalar, in state: inout ScanState) {
         if character == "(" {
             state.parenthesisDepth += 1
         } else if character == ")" {
@@ -125,9 +125,9 @@ internal struct SQLExportDDLRewriter {
     }
 
     private static func assignedValueEnd(
-        in characters: [Character],
+        in characters: [Unicode.Scalar],
         from start: Int,
-        value: (_ characters: [Character], _ start: Int) -> Int?
+        value: (_ characters: [Unicode.Scalar], _ start: Int) -> Int?
     ) -> Int? {
         var index = skippingBlanks(in: characters, from: start)
         guard index < characters.count, characters[index] == "=" else { return nil }
@@ -135,17 +135,16 @@ internal struct SQLExportDDLRewriter {
         return value(characters, index)
     }
 
-    private static func digitRunEnd(in characters: [Character], from start: Int) -> Int? {
+    private static func digitRunEnd(in characters: [Unicode.Scalar], from start: Int) -> Int? {
         var index = start
-        while index < characters.count, characters[index].isASCII, characters[index].isNumber {
+        while index < characters.count, ("0"..."9").contains(characters[index]) {
             index += 1
         }
         return index > start ? index : nil
     }
 
-    /// A DEFINER is `user@host`, where either half arrives quoted or bare, and `CURRENT_USER`
-    /// stands alone without a host.
-    private static func accountEnd(in characters: [Character], from start: Int) -> Int? {
+    // Either half of `user@host` may be quoted or bare, and `CURRENT_USER` has no host.
+    private static func accountEnd(in characters: [Unicode.Scalar], from start: Int) -> Int? {
         guard let userEnd = accountPartEnd(in: characters, from: start) else { return nil }
         let separator = skippingBlanks(in: characters, from: userEnd)
         guard separator < characters.count, characters[separator] == "@" else { return userEnd }
@@ -153,7 +152,7 @@ internal struct SQLExportDDLRewriter {
         return accountPartEnd(in: characters, from: hostStart) ?? userEnd
     }
 
-    private static func accountPartEnd(in characters: [Character], from start: Int) -> Int? {
+    private static func accountPartEnd(in characters: [Unicode.Scalar], from start: Int) -> Int? {
         if let quoted = quotedRunEnd(in: characters, from: start) { return quoted }
         var index = start
         while index < characters.count, isAccountCharacter(characters[index]) {
@@ -162,12 +161,11 @@ internal struct SQLExportDDLRewriter {
         return index > start ? index : nil
     }
 
-    /// A removed clause leaves the separator that preceded it. Take the run of blanks that followed
-    /// too, and where the clause ended its fragment, the one that preceded it as well.
+    // Takes the blanks after a removed clause, and the ones before it where the clause ended its fragment.
     private static func closeGap(
-        in characters: [Character],
+        in characters: [Unicode.Scalar],
         after clauseEnd: Int,
-        output: inout [Character]
+        output: inout [Unicode.Scalar]
     ) -> Int {
         let precededByBlank = output.last.map(isBlank) ?? true
         guard precededByBlank else { return clauseEnd }
@@ -180,7 +178,7 @@ internal struct SQLExportDDLRewriter {
         return index
     }
 
-    private static func quotedRunEnd(in characters: [Character], from start: Int) -> Int? {
+    private static func quotedRunEnd(in characters: [Unicode.Scalar], from start: Int) -> Int? {
         guard start < characters.count else { return nil }
         let delimiter = characters[start]
         guard delimiter == "'" || delimiter == "\"" || delimiter == "`" else { return nil }
@@ -205,9 +203,8 @@ internal struct SQLExportDDLRewriter {
         return characters.count
     }
 
-    /// Text inside a comment is copied rather than rewritten. Every dialect spells its comments
-    /// differently enough that a wrong guess here only ever leaves a clause in place.
-    private static func commentRunEnd(in characters: [Character], from start: Int) -> Int? {
+    // A wrong guess at a comment only ever leaves a clause in place.
+    private static func commentRunEnd(in characters: [Unicode.Scalar], from start: Int) -> Int? {
         let next = start + 1 < characters.count ? characters[start + 1] : nil
         if characters[start] == "#" || (characters[start] == "-" && next == "-") {
             return lineEnd(in: characters, from: start)
@@ -221,7 +218,7 @@ internal struct SQLExportDDLRewriter {
         return characters.count
     }
 
-    private static func lineEnd(in characters: [Character], from start: Int) -> Int {
+    private static func lineEnd(in characters: [Unicode.Scalar], from start: Int) -> Int {
         var index = start
         while index < characters.count, characters[index] != "\n", characters[index] != "\r" {
             index += 1
@@ -229,7 +226,7 @@ internal struct SQLExportDDLRewriter {
         return index
     }
 
-    private static func skippingBlanks(in characters: [Character], from start: Int) -> Int {
+    private static func skippingBlanks(in characters: [Unicode.Scalar], from start: Int) -> Int {
         var index = start
         while index < characters.count, isBlank(characters[index]) {
             index += 1
@@ -237,19 +234,21 @@ internal struct SQLExportDDLRewriter {
         return index
     }
 
-    private static func isBlank(_ character: Character) -> Bool {
+    private static func isBlank(_ character: Unicode.Scalar) -> Bool {
         character == " " || character == "\t"
     }
 
-    private static func endsFragment(_ character: Character) -> Bool {
+    private static func endsFragment(_ character: Unicode.Scalar) -> Bool {
         character == ";" || character == ")" || character == "\n" || character == "\r"
     }
 
-    private static func isWordCharacter(_ character: Character) -> Bool {
-        character.isLetter || character.isNumber || character == "_" || character == "$"
+    // MySQL reads every character outside ASCII as part of an unquoted name.
+    private static func isWordCharacter(_ character: Unicode.Scalar) -> Bool {
+        !character.isASCII || ("a"..."z").contains(character) || ("A"..."Z").contains(character)
+            || ("0"..."9").contains(character) || character == "_" || character == "$"
     }
 
-    private static func isAccountCharacter(_ character: Character) -> Bool {
+    private static func isAccountCharacter(_ character: Unicode.Scalar) -> Bool {
         isWordCharacter(character) || character == "." || character == "-" || character == "%"
     }
 }

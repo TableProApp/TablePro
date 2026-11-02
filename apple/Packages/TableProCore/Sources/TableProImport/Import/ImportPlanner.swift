@@ -1,4 +1,5 @@
 import Foundation
+import TableProCoreTypes
 
 public enum ImportPlanner {
     public static func plan(
@@ -36,7 +37,13 @@ extension ImportPlanner {
         let bundle = preview.collected.bundle
         let rules = preview.environment.rules
         let tagColors = firstTagColors(bundle.tags)
-        var takenNames = Set(preview.library.connections.map { normalized($0.name) })
+        var takenNames = UniqueNameAllocator(
+            taken: preview.library.connections.map(\.name),
+            key: normalized,
+            candidate: { base, ordinal in
+                ordinal == 1 ? "\(base) (Imported)" : "\(base) (Imported \(ordinal))"
+            }
+        )
         var replacedTargets: Set<UUID> = []
         var tagKeys: Set<String> = []
         var profileRefs: Set<BundleRef> = []
@@ -61,13 +68,13 @@ extension ImportPlanner {
             case .addCopy:
                 id = makeId()
                 write = .add
-                name = uniqueCopyName(for: name, taken: takenNames)
+                name = takenNames.allocate(name)
             case .replace(let existingId):
                 guard replacedTargets.insert(existingId).inserted else { continue }
                 id = existingId
                 write = .replace
             }
-            takenNames.insert(normalized(name))
+            takenNames.reserve(name)
             plan.targets[row.ref] = id
 
             var settings = selection.keepsCommands
@@ -107,21 +114,6 @@ extension ImportPlanner {
             ))
         }
         return plan
-    }
-
-    static func uniqueCopyName(for baseName: String, taken: Set<String>) -> String {
-        let firstCandidate = "\(baseName) (Imported)"
-        if !taken.contains(normalized(firstCandidate)) {
-            return firstCandidate
-        }
-        var suffix = 2
-        while true {
-            let candidate = "\(baseName) (Imported \(suffix))"
-            if !taken.contains(normalized(candidate)) {
-                return candidate
-            }
-            suffix += 1
-        }
     }
 
     private static func groupPath(

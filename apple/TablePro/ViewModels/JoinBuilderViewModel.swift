@@ -96,7 +96,11 @@ internal final class JoinBuilderViewModel: ObservableObject {
             dialect: dialect,
             databaseType: connection.type,
             schema: qualifyingSchema,
-            quote: quoteIdentifier(dialect: dialect)
+            quote: quoteIdentifier(dialect: dialect),
+            stringEscapes: SQLLexicalResolver.stringEscapes(
+                for: connection.type,
+                session: services.databaseManager.driver(for: connection.id)?.sessionLexicalState
+            )
         ).sql(for: draft)
     }
 
@@ -183,7 +187,7 @@ internal final class JoinBuilderViewModel: ObservableObject {
 
     private func quoteIdentifier(dialect: SQLDialectDescriptor) -> (String) -> String {
         guard let driver = services.databaseManager.driver(for: connection.id) else {
-            return quoteIdentifierFromDialect(dialect)
+            return quoteIdentifierFromDialect(dialect, databaseType: connection.type)
         }
         return { driver.quoteIdentifier($0) }
     }

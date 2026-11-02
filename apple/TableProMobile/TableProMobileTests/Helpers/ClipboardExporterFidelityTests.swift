@@ -1,5 +1,7 @@
 import Foundation
 import TableProModels
+import TableProSQLGrammar
+import TableProSQLQuoting
 import Testing
 @testable import TableProMobile
 
@@ -193,5 +195,30 @@ struct ClipboardExporterFidelityTests {
     @Test("a NULL stays the NULL keyword rather than a quoted string")
     func insertNull() {
         #expect(insert(["1", nil, "c"], .postgresql).contains(", NULL, "))
+    }
+
+    // The copy declares no sql_mode: escaped as a NO_BACKSLASH_ESCAPES session reads, `x\` ends its literal early elsewhere.
+    @Test("a MySQL INSERT keeps MySQL's escapes whatever sql_mode the driver's session has")
+    func mysqlInsertIgnoresTheSessionsMode() {
+        let noBackslashEscapes = SQLSessionLexicalFacts(
+            determined: [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes], enabled: []
+        )
+        let driver = MockDatabaseDriver()
+        driver.usesBackslashEscaping = false
+        #expect(
+            driver.escapeStringLiteral("x\\") == SQLQuoting.stringLiteralBody(
+                "x\\", escapes: MySQLDriver.stringEscapes(for: .mysql, session: noBackslashEscapes, isDatabend: false)
+            )
+        )
+
+        let text = ClipboardExporter.exportRow(
+            columns: columns, row: ["1", "x\\", ", 1); DROP TABLE users; -- "], format: .sqlInsert,
+            tableName: "t", databaseType: .mysql, driver: driver
+        )
+        let backslashReading = SQLLexicalReadings.resolve(databaseTypeId: "MySQL", declared: nil, session: nil).execution
+
+        #expect(SQLStatementScanner.allStatements(in: text, grammar: backslashReading).count == 1)
+        #expect(MySQLDriver.keptTextEscapes(for: .mysql, banner: nil) == .mysql)
+        #expect(MySQLDriver.keptTextEscapes(for: .mysql, banner: "8.0.90-v1.2.725-nightly") == .backslash)
     }
 }

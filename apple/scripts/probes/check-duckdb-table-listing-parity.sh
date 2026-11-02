@@ -178,8 +178,20 @@ xcrun swiftc -swift-version 6 -parse-as-library -module-name TableProSQLVocabula
     exit 3
 }
 
+# It quotes through TableProSQLQuoting and checks catalog text with TableProSQLGrammar.
+for module in TableProSQLQuoting TableProSQLGrammar; do
+    xcrun swiftc -swift-version 6 -parse-as-library -module-name "$module" -Onone -I "$WORK" \
+        -emit-module -emit-module-path "$WORK/$module.swiftmodule" -emit-library -static \
+        -o "$WORK/lib$module.a" "$ROOT/Packages/TableProCore/Sources/$module"/*.swift > "$WORK/$module.log" 2>&1 || {
+        echo "$module failed to compile:" >&2
+        grep -E 'error:' "$WORK/$module.log" | sort -u | head -20 >&2
+        exit 3
+    }
+done
+
 xcrun swiftc -swift-version 6 -parse-as-library -module-name ListingParity -Onone \
     -I "$WORK" -Xlinker "$WORK/libTableProSQLVocabulary.a" \
+    -Xlinker "$WORK/libTableProSQLQuoting.a" -Xlinker "$WORK/libTableProSQLGrammar.a" \
     -F "$FRAMEWORK_DIR" -framework TableProPluginKit -Xlinker -rpath -Xlinker "$FRAMEWORK_DIR" \
     -I "$PLUGIN/CDuckDB" -Xcc -I"$PLUGIN/CDuckDB/include" \
     -Xlinker -force_load -Xlinker "$LIB" -lc++ \

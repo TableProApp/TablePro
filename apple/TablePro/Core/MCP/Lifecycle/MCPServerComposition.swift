@@ -13,16 +13,17 @@ internal struct MCPServerComposition {
     internal let legacyAdapter: MCPLegacyEraAdapter
     internal let dispatcher: MCPProtocolDispatcher
     internal let transport: MCPHttpServerTransport
+    internal let socketPath: String
 
     internal var authPolicy: MCPAuthPolicy {
         services.authPolicy
     }
 
-    internal static func build(port: UInt16, tokenStore: MCPTokenStore) -> MCPServerComposition {
+    internal static func build(port: UInt16, socketPath: String, tokenStore: MCPTokenStore) -> MCPServerComposition {
         let rateLimiter = MCPRateLimiter()
         let authenticator = MCPBearerTokenAuthenticator(tokenStore: tokenStore, rateLimiter: rateLimiter)
         let transport = MCPHttpServerTransport(
-            configuration: .loopback(port: port),
+            configuration: .loopback(port: port, socketPath: socketPath),
             authenticator: authenticator,
             pairingService: .shared
         )
@@ -51,7 +52,8 @@ internal struct MCPServerComposition {
             subscriptionEvents: MCPSubscriptionEventSource(registry: subscriptions),
             legacyAdapter: legacyAdapter,
             dispatcher: dispatcher,
-            transport: transport
+            transport: transport,
+            socketPath: socketPath
         )
     }
 

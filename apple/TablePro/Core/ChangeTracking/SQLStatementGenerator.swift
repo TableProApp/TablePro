@@ -83,7 +83,7 @@ struct SQLStatementGenerator {
             self.quoteIdentifierFn = quoteIdentifier
         } else {
             let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
-            self.quoteIdentifierFn = quoteIdentifierFromDialect(resolvedDialect)
+            self.quoteIdentifierFn = quoteIdentifierFromDialect(resolvedDialect, databaseType: databaseType)
         }
     }
 

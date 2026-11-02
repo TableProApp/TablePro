@@ -117,7 +117,7 @@ internal enum BigQueryCredentialFactory {
         if let value = trimmed(fields[BigQueryConnectionFields.serviceAccountKey]) {
             return value
         }
-        if let value = trimmed(password) {
+        if let value = GoogleServiceAccountKey.inlineDocument(fromPassword: password) {
             return value
         }
         throw BigQueryConfigurationError.missingField(BigQueryConnectionFields.serviceAccountKey)

@@ -9,6 +9,7 @@ import AppKit
 import Combine
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProSSHConfig
 
@@ -38,19 +39,16 @@ extension DatabaseManager {
         disconnectReasons[connection.id] = nil
         userRequestedDisconnects.remove(connection.id)
 
-        let resolvedConnection: DatabaseConnection
-        if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
-            resolvedConnection = EnvVarResolver.resolveConnection(connection)
-        } else {
-            resolvedConnection = connection
-        }
-
         let effectiveQueryTimeoutSeconds = prepareConnectingSession(for: connection)
         lastActiveSessionId = connection.id
 
+        let resolvedConnection: DatabaseConnection
         do {
+            // Before anything signs in: the host resolves some credentials below, and a plugin the rest in `connect()`.
+            try await localCredentialConsent.check(connection, trigger: trigger)
+            resolvedConnection = try await envVarReferenceConsent.resolve(connection, trigger: trigger)
             try await preConnectScriptConsent.authorize(connection, trigger: trigger)
-            /// The answer can take a minute, long enough for the person to cancel the attempt.
+            // The answer can take a minute, long enough for the person to cancel the attempt.
             guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
             try await runPreConnectScriptIfNeeded(connection, resolvedConnection: resolvedConnection, attempt: attempt)
         } catch {
@@ -215,15 +213,18 @@ extension DatabaseManager {
         for connection: DatabaseConnection,
         incoming: String?,
         attempt: Int
-    ) async throws -> (String?, Bool, UUID) {
+    ) async throws -> (String?, Bool, PromptedPasswordKey) {
         let promptsForPassword = ConnectionCredentialResolver.promptsForPassword(connection)
-        let promptCacheKey = ConnectionCredentialResolver.promptCacheKey(for: connection)
+        let promptCacheKey = Self.promptCacheKey(for: connection)
         guard incoming == nil, promptsForPassword, !pluginManager.hidesPassword(for: connection) else {
             return (incoming, promptsForPassword, promptCacheKey)
         }
-        /// Keyed by the credential profile when there is one, so a profile set to ask every
-        /// time asks once rather than once per connection using it.
-        if let cached = promptedPasswords[promptCacheKey] ?? activeSessions[connection.id]?.cachedPassword {
+        // A session's answer is reused only while the connection still dials where it was typed for.
+        let session = activeSessions[connection.id]
+        let sessionPassword = session?.connection.destination.digest == connection.destination.digest
+            ? session?.cachedPassword
+            : nil
+        if let cached = promptedPasswords[promptCacheKey] ?? sessionPassword {
             return (cached, promptsForPassword, promptCacheKey)
         }
 
@@ -242,6 +243,16 @@ extension DatabaseManager {
             throw CancellationError()
         }
         return (prompted, promptsForPassword, promptCacheKey)
+    }
+
+    // A profile set to ask every time asks once for every connection on it. Any other answer is kept per
+    // destination, so a linked-folder or team-library row whose file names another server asks again.
+    static func promptCacheKey(for connection: DatabaseConnection) -> PromptedPasswordKey {
+        let sharedByProfile = connection.credentialMode.profileId != nil
+        return PromptedPasswordKey(
+            owner: ConnectionCredentialResolver.promptCacheKey(for: connection),
+            destination: sharedByProfile ? "" : connection.destination.digest
+        )
     }
 
     private func prepareDriverConfiguration(
@@ -385,7 +396,7 @@ extension DatabaseManager {
                         try await adapter.switchDatabase(to: savedDb)
                         activeSessions[connection.id]?.browseDatabase = savedDb
                     } catch {
-                        Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.publicLogShape, privacy: .public)")
+                        Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .private(mask: .hash))' for \(connection.id): \(error.publicLogShape, privacy: .public)")
                     }
                 }
             case .selectDatabaseFromConnectionField(let fieldId):
@@ -408,7 +419,7 @@ extension DatabaseManager {
                         try await schemaDriver.switchSchemaIfNeeded(to: savedSchema)
                         activeSessions[connection.id]?.browseSchema = savedSchema
                     } catch {
-                        Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.publicLogShape, privacy: .public)")
+                        Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .private(mask: .hash))': \(error.publicLogShape, privacy: .public)")
                     }
                 }
             }
@@ -479,7 +490,7 @@ extension DatabaseManager {
             """
             switchDatabase landed conn=\(connectionId, privacy: .public) \
             database=\(database, privacy: .private(mask: .hash)) \
-            browse=\(self.session(for: connectionId)?.resolvedBrowseDatabase ?? "none", privacy: .public)
+            browse=\(self.session(for: connectionId)?.resolvedBrowseDatabase ?? "none", privacy: .private(mask: .hash))
             """
         )
         AppEvents.shared.browseContainerChanged.send(connectionId)
@@ -676,7 +687,7 @@ extension DatabaseManager {
             try await driver.switchSchemaIfNeeded(to: defaultSchemaName)
         } catch {
             Self.logger.warning(
-                "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.publicLogShape, privacy: .public)"
+                "Failed to reset schema to '\(defaultSchemaName, privacy: .private(mask: .hash))' after a database switch: \(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -759,7 +770,7 @@ extension DatabaseManager {
         }
         let totalStart = Date()
         lifecycleLogger.info(
-            "[close] disconnectSession start connId=\(sessionId, privacy: .public) name=\(session.connection.name, privacy: .public) hasSSH=\(session.connection.resolvedSSHConfig.enabled)"
+            "[close] disconnectSession start connId=\(sessionId, privacy: .public) name=\(session.connection.name, privacy: .private(mask: .hash)) hasSSH=\(session.connection.resolvedSSHConfig.enabled)"
         )
 
         if let tunnelManager = activeTunnelManager(for: session.connection) {

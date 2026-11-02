@@ -1,5 +1,6 @@
 import Foundation
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 /// The object name a stored module's `CREATE` header declares.
 ///
@@ -57,9 +58,7 @@ public struct MSSQLModuleHeader: Sendable, Equatable {
         return MSSQLModuleHeader(nameParts: parts, partRanges: ranges)
     }
 
-    /// `definition` with its header naming the object as it is named now. Only a stale part is
-    /// replaced, so a comment between the parts stays, and a stale unqualified name gains its schema.
-    /// A header that already names the object is left exactly as it was written.
+    // Only a stale part of the name is replaced, so a comment between the parts stays.
     public static func namingObject(
         in definition: String,
         objectKeyword: String,
@@ -70,8 +69,8 @@ public struct MSSQLModuleHeader: Sendable, Equatable {
               let nameRange = header.partRanges.last
         else { return definition }
         let text = definition as NSString
-        let bracketedName = "[\(MSSQLSchemaQueries.escapeBracket(name))]"
-        let bracketedSchema = "[\(MSSQLSchemaQueries.escapeBracket(schema))]"
+        let bracketedName = SQLQuoting.identifier(name, quote: .bracket)
+        let bracketedSchema = SQLQuoting.identifier(schema, quote: .bracket)
 
         guard header.nameParts.count == 2, let schemaRange = header.partRanges.first else {
             guard header.nameParts.last != name else { return definition }

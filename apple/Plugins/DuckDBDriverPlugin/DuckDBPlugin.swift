@@ -7,6 +7,8 @@ import CDuckDB
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
+import TableProSQLQuoting
 import TableProSQLVocabulary
 
 final class DuckDBPlugin: NSObject, TableProPlugin, DriverPlugin {
@@ -234,6 +236,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .cancelQuery,
             .schemaCompare,
             .dataCompare,
+            .readOnlyStatements,
         ]
     }
 
@@ -256,9 +259,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return _currentSchema
     }
 
-    /// Every metadata query filters on the catalog, because `duckdb_tables()` and its
-    /// siblings span every attached database and a schema name alone matches all of them.
-    private func requireCatalog() throws -> String {
+    // `duckdb_tables()` and its siblings span every attached database, so a schema name alone matches all of them.
+    func requireCatalog() throws -> String {
         stateLock.lock()
         let catalog = _currentDatabase
         stateLock.unlock()
@@ -640,23 +642,53 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        let rawResult = try await connectionActor.executeQuery(query)
-        return PluginQueryResult(
-            columns: rawResult.columns,
-            columnTypeNames: rawResult.columnTypeNames,
-            rows: rawResult.rows,
-            rowsAffected: rawResult.rowsAffected,
-            executionTime: rawResult.executionTime,
-            isTruncated: rawResult.isTruncated
-        )
+        Self.queryResult(try await connectionActor.executeQuery(query))
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        guard context.readOnly, context.origin == .external else { return try await execute(query: query) }
+        return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: []))
     }
 
     func executeParameterized(
         query: String,
         parameters: [PluginCellValue]
     ) async throws -> PluginQueryResult {
-        let rawResult = try await connectionActor.executePrepared(query, parameters: parameters)
+        Self.queryResult(try await connectionActor.executePrepared(query, parameters: parameters))
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard context.readOnly, context.origin == .external else { return try await executeParameterized(query: query, parameters: parameters) }
+        return Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters))
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard context.readOnly, context.origin == .external else {
+            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+        let raw = Self.queryResult(try await connectionActor.executeReadOnly(query, parameters: parameters ?? []))
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
         return PluginQueryResult(
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            executionTime: raw.executionTime,
+            isTruncated: true
+        )
+    }
+
+    private static func queryResult(_ rawResult: DuckDBRawResult) -> PluginQueryResult {
+        PluginQueryResult(
             columns: rawResult.columns,
             columnTypeNames: rawResult.columnTypeNames,
             rows: rawResult.rows,
@@ -679,6 +711,20 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             Task {
                 do {
                     try await actor.streamQuery(query, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard context.readOnly, context.origin == .external else { return streamRows(query: query) }
+        let actor = connectionActor
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
+            Task {
+                do {
+                    try await actor.streamReadOnly(query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -905,8 +951,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return sql.hasSuffix(";") ? sql : sql + ";"
         }
 
-        /// `duckdb_tables()` has no row for a view while `duckdb_columns()` lists its columns, so
-        /// without this a view fell through to a `CREATE TABLE` rebuilt from them.
+        // `duckdb_tables()` has no row for a view while `duckdb_columns()` lists its columns.
         let viewResult = try await executeParameterized(
             query: DuckDBSchemaQueries.viewDefinition,
             parameters: [.text(try requireCatalog()), .text(schemaName), .text(table)]
@@ -915,14 +960,18 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return DuckDBViewDefinition.makeReplaceable(definition)
         }
 
-        // Fallback: synthesize DDL from schema metadata
+        // Fallback: synthesize DDL from schema metadata, whose text goes in only as one type or expression.
         let columns = try await fetchColumns(table: table, schema: schemaName)
         let fks = try await fetchForeignKeys(table: table, schema: schemaName)
+        let refusal = columns.lazy.compactMap {
+            Self.columnTextRefusal(name: $0.name, dataType: $0.dataType, defaultValue: $0.defaultValue)
+        }.first
+        if let refusal { throw DuckDBPluginError.queryFailed(refusal) }
 
-        var ddl = "CREATE TABLE \"\(escapeIdentifier(schemaName))\".\"\(escapeIdentifier(table))\" (\n"
+        var ddl = "CREATE TABLE \(quoteIdentifier(schemaName)).\(quoteIdentifier(table)) (\n"
 
         let columnDefs = columns.map { col in
-            var def = "  \"\(escapeIdentifier(col.name))\" \(col.dataType)"
+            var def = "  \(quoteIdentifier(col.name)) \(col.dataType)"
             if !col.isNullable { def += " NOT NULL" }
             if let defaultVal = col.defaultValue { def += " DEFAULT \(defaultVal)" }
             return def
@@ -932,16 +981,22 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let pkColumns = columns.filter(\.isPrimaryKey)
         if !pkColumns.isEmpty {
-            let pkCols = pkColumns.map { "\"\(escapeIdentifier($0.name))\"" }
+            let pkCols = pkColumns.map { quoteIdentifier($0.name) }
                 .joined(separator: ", ")
             allDefs.append("  PRIMARY KEY (\(pkCols))")
         }
 
         for fk in fks {
-            let fkDef = "  FOREIGN KEY (\"\(escapeIdentifier(fk.column))\")"
-                + " REFERENCES \"\(escapeIdentifier(fk.referencedTable))\""
-                + "(\"\(escapeIdentifier(fk.referencedColumn))\")"
-                + " ON DELETE \(fk.onDelete) ON UPDATE \(fk.onUpdate)"
+            guard let onDelete = Self.referentialAction(fk.onDelete), let onUpdate = Self.referentialAction(fk.onUpdate)
+            else {
+                throw DuckDBPluginError.queryFailed(String(
+                    format: String(localized: "The action of foreign key %@ cannot be written as SQL."), fk.name
+                ))
+            }
+            let fkDef = "  FOREIGN KEY (\(quoteIdentifier(fk.column)))"
+                + " REFERENCES \(quoteIdentifier(fk.referencedTable))"
+                + "(\(quoteIdentifier(fk.referencedColumn)))"
+                + " ON DELETE \(onDelete) ON UPDATE \(onUpdate)"
             allDefs.append(fkDef)
         }
 
@@ -1018,9 +1073,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\0", with: "", options: .literal)
-            .replacingOccurrences(of: "'", with: "''", options: .literal)
+        SQLQuoting.stringLiteralBody(value)
     }
 
     func objectCommentStatement(name: String, objectType: String, schema: String?, comment: String?) -> String? {
@@ -1131,10 +1184,6 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return path
     }
 
-    private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
-    }
-
     private func fetchPrimaryKeyColumns(
         table: String,
         schema: String
@@ -1158,7 +1207,10 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateCreateTableStatements(definition: PluginCreateTableDefinition) -> [String]? {
-        guard !definition.columns.isEmpty else { return nil }
+        guard !definition.columns.isEmpty,
+              definition.columns.allSatisfy({ Self.columnTextRefusal(for: $0) == nil }),
+              definition.indexes.allSatisfy({ Self.indexExpressionRefusal(for: $0) == nil })
+        else { return nil }
 
         let schema = resolveSchema(nil)
         let table = definition.tableName
@@ -1175,7 +1227,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         for fk in definition.foreignKeys {
-            parts.append(duckdbForeignKeyDefinition(fk))
+            guard let foreignKey = duckdbForeignKeyDefinition(fk) else { return nil }
+            parts.append(foreignKey)
         }
 
         let createTable = "CREATE TABLE \(qualifiedTable) (\n  " + parts.joined(separator: ",\n  ") + "\n)"
@@ -1187,12 +1240,46 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
-        guard case .addColumn(let column) = operation,
-              column.autoIncrement,
-              let defaultValue = column.defaultValue,
-              !defaultValue.trimmingCharacters(in: .whitespaces).isEmpty
+        switch operation {
+        case .addColumn(let column):
+            if column.autoIncrement, let defaultValue = column.defaultValue,
+               !defaultValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                return String(localized: "An auto-increment column takes its values from a sequence, so it cannot also have a default.")
+            }
+            return Self.columnTextRefusal(for: column)
+        case .modifyColumn(_, let column):
+            return Self.columnTextRefusal(for: column)
+        case .addIndex(let index):
+            return Self.indexExpressionRefusal(for: index)
+        default:
+            return nil
+        }
+    }
+
+    // The statements take these as SQL, whether the catalog or the user wrote them.
+    private static func columnTextRefusal(name: String, dataType: String, defaultValue: String?) -> String? {
+        guard SQLExpressionFragment.isSingleType(dataType, databaseTypeId: DuckDBPlugin.databaseTypeId) else {
+            return String(format: String(localized: "The type of column %@ cannot be written as SQL."), name)
+        }
+        if let defaultValue, !SQLExpressionFragment.isSingleExpression(defaultValue, databaseTypeId: DuckDBPlugin.databaseTypeId) {
+            return String(format: String(localized: "The default of column %@ cannot be written as SQL."), name)
+        }
+        return nil
+    }
+
+    private static func columnTextRefusal(for column: PluginColumnDefinition) -> String? {
+        columnTextRefusal(name: column.name, dataType: column.dataType, defaultValue: column.defaultValue)
+    }
+
+    private static func indexExpressionRefusal(for index: PluginIndexDefinition) -> String? {
+        let expressions = index.expressions ?? []
+        guard !expressions.allSatisfy({ SQLExpressionFragment.isSingleExpression($0, databaseTypeId: DuckDBPlugin.databaseTypeId) })
         else { return nil }
-        return String(localized: "An auto-increment column takes its values from a sequence, so it cannot also have a default.")
+        return String(format: String(localized: "Index %@ has a key part that is not one SQL expression."), index.name)
+    }
+
+    private static func referentialAction(_ action: String) -> String? {
+        ["NO ACTION", "CASCADE", "SET NULL", "SET DEFAULT", "RESTRICT"].first { $0 == action.uppercased() }
     }
 
     private func sequenceStatements(for columns: [PluginColumnDefinition], schema: String, table: String) -> [String] {
@@ -1249,18 +1336,20 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         DuckDBIndexClauses.createStatement(for: index, qualifiedTable: qualifiedTable, quote: quoteIdentifier)
     }
 
-    private func duckdbForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
+    private func duckdbForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String? {
+        guard let onDelete = Self.referentialAction(fk.onDelete), let onUpdate = Self.referentialAction(fk.onUpdate)
+        else { return nil }
         let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let constraint = fk.name.isEmpty ? "" : "CONSTRAINT \(quoteIdentifier(fk.name)) "
         var def = "\(constraint)FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable))"
         if !fk.referencedColumns.isEmpty {
             def += " (\(fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")))"
         }
-        if fk.onDelete != "NO ACTION" {
-            def += " ON DELETE \(fk.onDelete)"
+        if onDelete != "NO ACTION" {
+            def += " ON DELETE \(onDelete)"
         }
-        if fk.onUpdate != "NO ACTION" {
-            def += " ON UPDATE \(fk.onUpdate)"
+        if onUpdate != "NO ACTION" {
+            def += " ON UPDATE \(onUpdate)"
         }
         return def
     }
@@ -1271,16 +1360,16 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - ALTER TABLE DDL
 
-    /// One statement only: the connection refuses a text holding two. An auto-increment column needs
-    /// its sequence created first, so adding one to an existing table is reported as unsupported.
+    // One statement only; an auto-increment column needs its sequence created first, so it is unsupported here.
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        guard !column.autoIncrement else { return nil }
+        guard !column.autoIncrement, Self.columnTextRefusal(for: column) == nil else { return nil }
         let schema = resolveSchema(nil)
         let colDef = duckdbColumnDefinition(column, schema: schema, table: table, inlinePK: false, inCreateTable: false)
         return "ALTER TABLE \(qualifiedTableName(table)) ADD COLUMN \(colDef)"
     }
 
     func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        guard Self.columnTextRefusal(for: newColumn) == nil else { return nil }
         let qt = qualifiedTableName(table)
         var stmts: [String] = []
 
@@ -1315,7 +1404,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
-        duckdbIndexDefinition(index, qualifiedTable: qualifiedTableName(table))
+        guard Self.indexExpressionRefusal(for: index) == nil else { return nil }
+        return duckdbIndexDefinition(index, qualifiedTable: qualifiedTableName(table))
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -1323,7 +1413,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(qualifiedTableName(table)) ADD \(duckdbForeignKeyDefinition(fk))"
+        duckdbForeignKeyDefinition(fk).map { "ALTER TABLE \(qualifiedTableName(table)) ADD \($0)" }
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {

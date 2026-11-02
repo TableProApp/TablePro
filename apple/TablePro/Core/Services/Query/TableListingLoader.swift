@@ -35,7 +35,7 @@ internal struct TableListingLoader: Sendable {
                 ) else {
                     throw TableListingError.unavailable
                 }
-                return try await driver.execute(query: statement)
+                return try await driver.executeCatalogRead(query: statement)
             }
             return .fetched(TableListing(
                 rows: TableRows.from(queryRows: result.rows, columns: result.columns, columnTypes: result.columnTypes),

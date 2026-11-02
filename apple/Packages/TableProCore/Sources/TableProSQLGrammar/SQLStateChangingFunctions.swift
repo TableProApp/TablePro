@@ -2,7 +2,8 @@ import Foundation
 
 public enum SQLStateChangingFunctions {
     public static func contains(_ name: String) -> Bool {
-        let lowered = name.lowercased()
+        // MariaDB looks `releaſe_lock` up as `RELEASE_LOCK` (measured on 13.0.2), so the name is folded upper first.
+        let lowered = name.uppercased().lowercased()
         // KingbaseES ships each pg_ function under a sys_ name too, such as sys_terminate_backend (measured on V9R1C10).
         if lowered.hasPrefix("sys_") { return names.contains("pg_" + lowered.dropFirst(4)) }
         return names.contains(lowered)
@@ -10,15 +11,11 @@ public enum SQLStateChangingFunctions {
 
     // SQLite runs a table-valued pragma named as a table source too, so `SELECT * FROM main.pragma_optimize` runs
     // ANALYZE. A call is the call scanner's; a column or alias of that name runs nothing.
-    public static func namesStateChangingTable(in statement: String, grammar: SQLLexicalGrammar) -> Bool {
-        guard tableFunctions.contains(where: { statement.range(of: $0, options: .caseInsensitive) != nil }) else {
-            return false
-        }
-        let text = statement as NSString
+    static func namesStateChangingTable(in text: NSString, tokens: [TSQLTokens.Token], grammar: SQLLexicalGrammar) -> Bool {
         var listsTables: [Int: Bool] = [:]
         var expectsTable = false
         var namesTable = false
-        for token in TSQLTokens.read(text, grammar: grammar) {
+        for token in tokens {
             let expected = expectsTable
             let qualifies = namesTable
             expectsTable = false
@@ -63,7 +60,7 @@ public enum SQLStateChangingFunctions {
 
     private static let tableFunctions: Set<String> = ["pragma_optimize"]
 
-    private static let names: Set<String> = serverSignals
+    static let names: Set<String> = serverSignals
         .union(sessionControl)
         .union(recoveryAndBackup)
         .union(replication)
@@ -72,26 +69,27 @@ public enum SQLStateChangingFunctions {
         .union(settingsAndStatistics)
         .union(largeObjects)
         .union(filesAndExtensions)
+        .union(catalogAndStorage)
         .union(indexMaintenance)
         .union(sqlTextRunners)
 
-    private static let serverSignals: Set<String> = [
+    static let serverSignals: Set<String> = [
         "pg_cancel_backend", "pg_terminate_backend", "pg_reload_conf", "pg_rotate_logfile",
         "pg_log_backend_memory_contexts"
     ]
 
-    private static let sessionControl: Set<String> = [
+    static let sessionControl: Set<String> = [
         "system$abort_session", "system$cancel_query", "system$cancel_all_queries", "system$abort_transaction",
         "abortsessions"
     ]
 
-    private static let recoveryAndBackup: Set<String> = [
+    static let recoveryAndBackup: Set<String> = [
         "pg_promote", "pg_wal_replay_pause", "pg_wal_replay_resume", "pg_backup_start", "pg_backup_stop",
         "pg_switch_wal", "pg_create_restore_point", "pg_log_standby_snapshot", "pg_start_backup", "pg_stop_backup",
         "pg_switch_xlog", "pg_xlog_replay_pause", "pg_xlog_replay_resume"
     ]
 
-    private static let replication: Set<String> = [
+    static let replication: Set<String> = [
         "pg_create_physical_replication_slot", "pg_create_logical_replication_slot",
         "pg_copy_physical_replication_slot", "pg_copy_logical_replication_slot", "pg_drop_replication_slot",
         "pg_replication_slot_advance", "pg_sync_replication_slots", "pg_logical_slot_get_changes",
@@ -101,41 +99,49 @@ public enum SQLStateChangingFunctions {
         "pg_replication_origin_xact_reset"
     ]
 
-    private static let sequences: Set<String> = ["nextval", "setval"]
+    static let sequences: Set<String> = ["nextval", "setval"]
 
-    private static let advisoryLocks: Set<String> = [
+    static let advisoryLocks: Set<String> = [
         "pg_advisory_lock", "pg_advisory_lock_shared", "pg_advisory_unlock", "pg_advisory_unlock_shared",
         "pg_advisory_unlock_all", "pg_advisory_xact_lock", "pg_advisory_xact_lock_shared", "pg_try_advisory_lock",
         "pg_try_advisory_lock_shared", "pg_try_advisory_xact_lock", "pg_try_advisory_xact_lock_shared", "get_lock",
         "release_lock", "release_all_locks"
     ]
 
-    private static let settingsAndStatistics: Set<String> = [
+    static let settingsAndStatistics: Set<String> = [
         "set_config", "pg_notify", "pg_stat_reset", "pg_stat_reset_shared", "pg_stat_reset_single_table_counters",
         "pg_stat_reset_single_function_counters", "pg_stat_reset_slru", "pg_stat_reset_replication_slot",
         "pg_stat_reset_subscription_stats", "pg_stat_statements_reset", "pg_restore_relation_stats",
-        "pg_restore_attribute_stats", "pg_clear_relation_stats", "pg_clear_attribute_stats"
+        "pg_restore_attribute_stats", "pg_clear_relation_stats", "pg_clear_attribute_stats",
+        "pg_stat_reset_backend_stats"
     ]
 
-    private static let largeObjects: Set<String> = [
+    static let largeObjects: Set<String> = [
         "lo_create", "lo_creat", "lo_unlink", "lo_from_bytea", "lo_put", "lowrite", "lo_truncate", "lo_truncate64"
     ]
 
-    // The Mac flags these through its file markers too; iOS has only this list.
-    private static let filesAndExtensions: Set<String> = [
-        "lo_import", "lo_export", "pg_file_write", "writefile", "load_extension"
+    static let filesAndExtensions: Set<String> = [
+        "lo_import", "lo_export", "pg_file_write", "pg_file_rename", "pg_file_unlink", "writefile", "load_extension"
+    ]
+
+    // Writes to the catalog, or straight to a table's pages, that a read-only transaction does not stop (measured on
+    // PostgreSQL 17.11).
+    static let catalogAndStorage: Set<String> = [
+        "pg_import_system_collations", "heap_force_kill", "heap_force_freeze", "pg_truncate_visibility_map"
     ]
 
     // SQLite's pragma_optimize table function runs ANALYZE, measured on 3.54.0. No other pragma function takes a value.
-    private static let indexMaintenance: Set<String> = [
+    static let indexMaintenance: Set<String> = [
         "brin_summarize_new_values", "brin_summarize_range", "brin_desummarize_range", "gin_clean_pending_list",
         "pragma_optimize"
     ]
 
     // SQL Server's OPENQUERY and OPENROWSET hand their last argument to a linked server, or back to this one through
     // a loopback link, as a batch of its own: a SELECT from either can carry a DELETE, as a SELECT from dblink can.
-    private static let sqlTextRunners: Set<String> = [
+    // crosstab, connectby and xpath_table paste their text arguments into the SQL they run.
+    static let sqlTextRunners: Set<String> = [
         "query_to_xml", "query_to_xml_and_xmlschema", "ts_stat", "ts_rewrite", "dblink", "dblink_exec",
-        "dblink_send_query", "dblink_open", "openquery", "openrowset"
+        "dblink_send_query", "dblink_open", "openquery", "openrowset", "crosstab", "crosstab2", "crosstab3", "crosstab4",
+        "connectby", "xpath_table"
     ]
 }

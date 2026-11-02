@@ -1,4 +1,5 @@
 import Foundation
+import TableProWireIO
 
 enum TeradataResultParser {
     static func parse(_ parcels: [Parcel]) throws -> TeradataResultSet {

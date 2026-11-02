@@ -525,7 +525,7 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchDatabases() async throws -> [String] {
         let result = try await catalogRead(
-            "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
+            "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname"
         )
         return result.rows.compactMap { row in row.first?.asText }
     }
@@ -539,13 +539,13 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
         let databaseLiteral = PostgreSQLObjectQueries.quoteLiteral(database)
         let countQuery = """
-            SELECT COUNT(DISTINCT "table") AS table_count
+            SELECT pg_catalog.count(DISTINCT "table") AS table_count
             FROM svv_table_info
             WHERE schema NOT IN ('pg_internal', 'pg_catalog', 'information_schema')
               AND database = \(databaseLiteral)
             """
         let sizeQuery = """
-            SELECT SUM(size) FROM svv_table_info WHERE database = current_database()
+            SELECT pg_catalog.sum(size) FROM svv_table_info WHERE database = pg_catalog.current_database()
             """
         async let countResult = catalogRead(countQuery)
         async let sizeResult = catalogRead(sizeQuery)
@@ -565,12 +565,12 @@ final class RedshiftPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchAllDatabaseMetadata() async throws -> [PluginDatabaseMetadata] {
         let dbResult = try await catalogRead(
-            "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
+            "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname"
         )
         let dbNames = dbResult.rows.compactMap { $0.first?.asText }
 
         let infoQuery = """
-            SELECT database, COUNT(DISTINCT "table"), COALESCE(SUM(size), 0)
+            SELECT database, pg_catalog.count(DISTINCT "table"), COALESCE(pg_catalog.sum(size), 0)
             FROM svv_table_info
             WHERE schema NOT IN ('pg_internal', 'pg_catalog', 'information_schema')
             GROUP BY database

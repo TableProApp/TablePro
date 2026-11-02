@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProProcess
 
 internal struct GitCommand: Equatable, Sendable {
     internal enum Access: Equatable, Sendable {
@@ -76,20 +77,22 @@ internal struct GitCommand: Equatable, Sendable {
         }
     }
 
+    // A parent's GIT_* or XDG_CONFIG_HOME can swap a read's config, exec path or pathspec mode; a write runs as Terminal git.
     func environment(base: [String: String]) -> [String: String] {
-        var environment = Self.environment(base: access == .write ? CLIToolEnvironment.augmented(base) : base)
-        if access == .read {
+        var environment: [String: String]
+        switch access {
+        case .read:
+            environment = ProcessEnvironment.minimal(from: base)
             environment.merge(Self.readOnlyEnvironment) { _, override in override }
+        case .write:
+            environment = ProcessEnvironment.addingToolSearchPaths(
+                to: ProcessEnvironment.inherited(removing: Self.inheritedRepositoryVariables, from: base)
+            )
         }
+        environment.merge(Self.environmentOverrides) { _, override in override }
         if !disabledFilters.isEmpty {
             environment[Self.emptyValueVariable] = ""
         }
-        return environment
-    }
-
-    static func environment(base: [String: String]) -> [String: String] {
-        var environment = base.filter { !inheritedRepositoryVariables.contains($0.key) }
-        environment.merge(environmentOverrides) { _, override in override }
         return environment
     }
 

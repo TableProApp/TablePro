@@ -24,8 +24,9 @@ if [ ! -f "$LIB" ]; then
     exit 1
 fi
 
-FORBIDDEN='current_database\(\)|current_schema\(\)|key_column_usage|referential_constraints'
-if grep -nE "$FORBIDDEN" "$SWIFT_FILE" | grep -vE '^\s*[0-9]+:\s*///'; then
+FORBIDDEN='current_database\(\)|current_schema\(\)|key_column_usage|referential_constraints|generate_subscripts\(|generate_series\('
+if grep -nE "$FORBIDDEN" "$SWIFT_FILE" "$ROOT/Plugins/DuckDBDriverPlugin/DuckDBPluginDriver+Routines.swift" \
+    | grep -vE ':[0-9]+:\s*//'; then
     echo "error: the lines above need the core_functions extension, which the macOS libduckdb does not link." >&2
     exit 1
 fi
@@ -122,7 +123,13 @@ enum Builders {
     }
 }
 SWIFT
+# The query builders quote through this TableProCore module.
+QUOTING="$ROOT/Packages/TableProCore/Sources/TableProSQLQuoting"
+xcrun swiftc -swift-version 6 -parse-as-library -module-name TableProSQLQuoting -Onone \
+    -emit-module -emit-module-path "$WORK/TableProSQLQuoting.swiftmodule" -emit-library -static \
+    -o "$WORK/libTableProSQLQuoting.a" "$QUOTING"/*.swift
 xcrun swiftc -parse-as-library -module-name Builders \
+    -I "$WORK" -Xlinker "$WORK/libTableProSQLQuoting.a" \
     -F "$FRAMEWORK_DIR" -framework TableProPluginKit -Xlinker -rpath -Xlinker "$FRAMEWORK_DIR" \
     "$SWIFT_FILE" "$WORK/builders.swift" -o "$WORK/builders"
 "$WORK/builders" >> "$WORK/queries.txt"

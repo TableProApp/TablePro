@@ -51,6 +51,8 @@ pub(crate) struct ClickHouseConnection {
 enum Client {
     /// The workspace's own, held to reads.
     Reads,
+    // SQL a user or an MCP client wrote, held to reads with `readonly=1`.
+    UserReads,
     /// The control client, for the driver's own SYSTEM statements.
     Control,
 }
@@ -118,7 +120,16 @@ impl ClickHouseConnection {
         self.ensure_open()?;
         let stop = Arc::new(ClickHouseStop::new(self.endpoint.control().clone()));
         let base = match client {
-            Client::Reads => reading(self.endpoint.workspace(), read_bound(options.deadline(), bound)),
+            Client::Reads => reading(
+                self.endpoint.workspace(),
+                read_bound(options.deadline(), bound),
+                self.endpoint.read_level(false),
+            ),
+            Client::UserReads => reading(
+                self.endpoint.workspace(),
+                read_bound(options.deadline(), bound),
+                self.endpoint.read_level(true),
+            ),
             Client::Control => self.endpoint.control().clone(),
         };
         let work_stop = stop.clone();
@@ -408,7 +419,11 @@ impl Connection for ClickHouseConnection {
         options: CallOptions,
     ) -> Result<StreamSummary, DriverError> {
         let read = read.clone();
-        self.read(options, Client::Reads, None, move |calls| async move {
+        let client = match read {
+            ReadStatement::User(_) => Client::UserReads,
+            ReadStatement::Generated(_) => Client::Reads,
+        };
+        self.read(options, client, None, move |calls| async move {
             stream(&calls, &read, sink.as_mut()).await
         })
         .await
@@ -425,7 +440,7 @@ impl Connection for ClickHouseConnection {
             batch: batch.clone(),
             table: TableRef::new(Some(written.database), written.name),
             ledger: ledger.clone(),
-            probes: reading(self.endpoint.workspace(), probe_bound),
+            probes: reading(self.endpoint.workspace(), probe_bound, self.endpoint.read_level(false)),
             writes: self
                 .endpoint
                 .workspace()

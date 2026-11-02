@@ -53,8 +53,26 @@ const COMMON_SETTINGS: [(&str, &str); 7] = [
     ("cancel_http_readonly_queries_on_client_close", "1"),
 ];
 
-/// The settings that hold a read-only connection to reads.
-pub(crate) const READ_ONLY_SETTINGS: [(&str, &str); 2] = [("readonly", "2"), ("allow_ddl", "0")];
+// `readonly=2` still lets `INSERT INTO FUNCTION file(...)` write a file (measured on 26.8); 1 refuses it and still
+// takes the settings a request carries. A login already at 1 or 2 refuses any change of `readonly`, so it keeps its own.
+pub(crate) fn strict_readonly(login_level: u8) -> Option<&'static str> {
+    (login_level == 0).then_some("1")
+}
+
+// User SQL and everything on a read-only connection is held strictly. The app's own reads keep 2, which still lets
+// them carry settings of their own.
+pub(crate) fn read_level(read_only: bool, user_sql: bool, login_level: u8) -> Option<&'static str> {
+    if read_only || user_sql {
+        return strict_readonly(login_level);
+    }
+    (login_level != 1).then_some("2")
+}
+
+pub(crate) fn read_only_settings(login_level: u8) -> Vec<(&'static str, &'static str)> {
+    let mut settings = vec![("allow_ddl", "0")];
+    settings.extend(strict_readonly(login_level).map(|level| ("readonly", level)));
+    settings
+}
 
 /// The client every request of one target goes through: hyper's pool
 /// over the target's transport, the target's credentials and database,
@@ -147,6 +165,33 @@ fn setup_error(error: TlsSetupError) -> DriverError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_read_only_connection_asks_for_readonly_1_which_refuses_writing_a_file() {
+        assert_eq!(read_only_settings(0), vec![("allow_ddl", "0"), ("readonly", "1")]);
+    }
+
+    #[test]
+    fn a_login_with_a_readonly_level_of_its_own_keeps_it() {
+        assert_eq!(read_only_settings(1), vec![("allow_ddl", "0")]);
+        assert_eq!(read_only_settings(2), vec![("allow_ddl", "0")]);
+    }
+
+    #[test]
+    fn user_sql_is_held_to_readonly_1_on_any_connection() {
+        assert_eq!(read_level(false, true, 0), Some("1"));
+        assert_eq!(read_level(true, true, 0), Some("1"));
+        assert_eq!(read_level(true, false, 0), Some("1"));
+        assert_eq!(read_level(false, false, 0), Some("2"));
+    }
+
+    #[test]
+    fn no_read_asks_a_login_at_its_own_level_for_another() {
+        assert_eq!(read_level(false, true, 2), None);
+        assert_eq!(read_level(false, false, 2), Some("2"));
+        assert_eq!(read_level(false, false, 1), None);
+        assert_eq!(read_level(true, true, 1), None);
+    }
 
     #[test]
     fn only_a_refused_client_certificate_is_a_client_identity_failure() {

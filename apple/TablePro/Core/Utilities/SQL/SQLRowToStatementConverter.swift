@@ -88,8 +88,9 @@ internal struct SQLRowToStatementConverter {
             self.escapeStringFn = escapeStringLiteral
         } else {
             let resolvedDialect = try resolveSQLDialect(for: databaseType, explicit: dialect)
-            quote = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect)
-            self.escapeStringFn = escapeStringLiteral ?? escapeStringLiteralFromDialect(resolvedDialect)
+            quote = quoteIdentifier ?? quoteIdentifierFromDialect(resolvedDialect, databaseType: databaseType)
+            self.escapeStringFn = escapeStringLiteral
+                ?? escapeStringLiteralFromDialect(resolvedDialect, databaseType: databaseType)
         }
         if let identifierSpelling {
             self.quoteIdentifierFn = { identifierSpelling.statementName($0, quotedBy: quote) }

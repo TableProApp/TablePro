@@ -38,6 +38,10 @@ internal enum ByteSizeFormatting {
         guard value < Double(Int64.max) else { return byteString }
         return string(bytes: Int64(value))
     }
+
+    internal static func string(mebibytes: Int64) -> String {
+        string(bytes: SaturatingArithmetic.product(mebibytes, 1_048_576))
+    }
 }
 
 internal enum DurationFormatting {
@@ -53,13 +57,17 @@ internal enum DurationFormatting {
     }
 
     internal static func string(seconds: Double) -> String {
-        string(seconds: Int(seconds.rounded()))
+        string(seconds: SaturatingArithmetic.int(seconds.rounded()))
+    }
+
+    internal static func string(milliseconds: Int) -> String {
+        string(microseconds: SaturatingArithmetic.product(milliseconds, 1_000))
     }
 
     // Slow log entries mostly finish within a second, which the whole-second form shows as 0s.
     internal static func string(microseconds: Int) -> String {
         let microseconds = max(0, microseconds)
-        let milliseconds = (microseconds + 500) / 1_000
+        let milliseconds = microseconds / 1_000 + (microseconds % 1_000 >= 500 ? 1 : 0)
         if milliseconds >= 1_000 {
             return string(seconds: Double(microseconds) / 1_000_000)
         }
@@ -67,5 +75,22 @@ internal enum DurationFormatting {
             return Duration.milliseconds(milliseconds).formatted(.units(allowed: [.milliseconds], width: .narrow))
         }
         return Duration.microseconds(microseconds).formatted(.units(allowed: [.microseconds], width: .narrow))
+    }
+}
+
+// A number a server reports for display pins to the end of the range instead of trapping.
+internal enum SaturatingArithmetic {
+    // Truncates toward zero like `Int(_:)`; NaN reads as zero.
+    internal static func int(_ value: Double) -> Int {
+        if value.isNaN { return 0 }
+        if value >= Double(Int.max) { return .max }
+        if value <= Double(Int.min) { return .min }
+        return Int(value)
+    }
+
+    internal static func product<Value: FixedWidthInteger>(_ lhs: Value, _ rhs: Value) -> Value {
+        let (result, overflow) = lhs.multipliedReportingOverflow(by: rhs)
+        guard overflow else { return result }
+        return (lhs < 0) == (rhs < 0) ? .max : .min
     }
 }

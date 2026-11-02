@@ -48,4 +48,12 @@ struct MemcachedDashboardProviderTests {
         #expect(metrics.map(\.id) == ["hit_ratio"])
         #expect(metrics.first?.value == "0")
     }
+
+    @Test("Hit and miss counters whose sum passes Int64 still give a ratio instead of crashing")
+    func hugeCountersGiveARatio() async throws {
+        let metrics = try await MemcachedDashboardProvider().fetchMetrics { _ in
+            Self.stats([("get_hits", "9223372036854775807"), ("get_misses", "1")])
+        }
+        #expect(metrics.first { $0.id == "hit_ratio" }?.value == "100.0")
+    }
 }

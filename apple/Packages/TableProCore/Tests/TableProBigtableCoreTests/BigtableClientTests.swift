@@ -30,6 +30,13 @@ struct BigtableConnectionSettingsTests {
         #expect(throws: BigtableError.self) { try BigtableConnectionSettings.credentialSource(fields: [:], password: "") }
     }
 
+    @Test("A password that names a key file is never read as one")
+    func passwordPathIsNotAKey() {
+        #expect(throws: BigtableError.self) {
+            try BigtableConnectionSettings.credentialSource(fields: [:], password: "~/.config/gcloud/sa.json")
+        }
+    }
+
     /// `PluginMetadataRegistry+BigtableDefaults.swift` in the app spells these IDs out, since the app
     /// links no engine core. Renaming one here strands the connections saved under the old one.
     @Test("Field IDs keep the spelling saved connections and the app's defaults use")

@@ -353,7 +353,9 @@ public enum SSHConfigParser {
         case "canonicaldomains":
             let domains = value.components(separatedBy: CharacterSet(charactersIn: ", \t"))
                 .filter { !$0.isEmpty }
-            return .canonicalDomains(domains)
+            guard !domains.isEmpty else { return nil }
+            // ssh stops at `none`, which means no domains rather than one named none.
+            return .canonicalDomains(Array(domains.prefix { !isNone($0) }))
         case "canonicalizepermittedcnames":
             return .canonicalizePermittedCNAMEs(value)
         case "canonicalizefallbacklocal":

@@ -550,7 +550,8 @@ final class FilterCoordinator: ObservableObject {
             columns: queryColumns?.columns ?? [],
             columnTypes: queryColumns?.columnTypes ?? [],
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
-            databaseType: databaseType
+            databaseType: databaseType,
+            stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, connectionId: parent.connectionId)
         )
         let filtersToPreview = filtersForPreview(in: state)
 

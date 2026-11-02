@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProHTTP
 
 struct VaultEndpoint: Hashable, Sendable {
     let address: URL
@@ -54,10 +55,16 @@ struct URLSessionVaultTransport: VaultTransport {
         session = URLSession(configuration: configuration)
     }
 
+    // A standby that cannot forward answers 307 with the active node's address; the token never follows it there.
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-        return (data, http)
+        guard let url = request.url, let origin = HTTPOrigin(url) else { throw URLError(.badURL) }
+        let token = request.value(forHTTPHeaderField: "X-Vault-Token")
+        let namespace = request.value(forHTTPHeaderField: "X-Vault-Namespace")
+        let credentialed = CredentialedHTTPSession(origin: origin, session: session) {
+            $0.setValue(token, forHTTPHeaderField: "X-Vault-Token")
+            $0.setValue(namespace, forHTTPHeaderField: "X-Vault-Namespace")
+        }
+        return try await credentialed.data(for: request)
     }
 }
 
@@ -154,11 +161,14 @@ struct VaultClient: Sendable {
         let reply: AuthURLReply = try await call(
             "POST", "auth/\(VaultDatabaseRole.trimmedPath(mount))/oidc/auth_url", token: nil, body: body
         )
-        guard let raw = reply.data.authUrl, !raw.isEmpty, let url = URL(string: raw) else {
+        guard let raw = reply.data.authUrl, !raw.isEmpty else {
             throw VaultError.oidcFailed(String(localized: """
                 Vault returned no sign-in page. The OIDC role must allow the redirect URI \
                 http://localhost:8250/oidc/callback.
                 """))
+        }
+        guard let url = WebPageOpener.page(raw, scope: .httpsOrLoopbackHTTP) else {
+            throw VaultError.oidcFailed(String(localized: "Vault returned a sign-in page that is not an https address, so TablePro did not open it."))
         }
         return url
     }

@@ -6,7 +6,9 @@
 //
 
 import Foundation
+import TableProMSSQLCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// A type has no `sys.sql_modules` row on any engine path, so unlike a procedure there is no stored
 /// text to read back. Every statement here is synthesized from the catalog, and both shapes were
@@ -80,12 +82,14 @@ public enum MSSQLTypeDefinition {
     }
 
     public static func bracketed(_ identifier: String) -> String {
-        "[\(identifier.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
+        SQLQuoting.identifier(identifier, quote: .bracket)
     }
 
-    /// `CREATE TYPE x FROM base NULL|NOT NULL`. Nullability is always spelled out, because the
-    /// default differs with `ANSI_NULL_DFLT_ON` and a reader cannot tell which applied.
-    public static func aliasStatement(schema: String, name: String, baseType: String?, isNullable: Bool) -> String {
+    // Nullability is always spelled out: the default differs with `ANSI_NULL_DFLT_ON`.
+    public static func aliasStatement(schema: String, name: String, baseType: String?, isNullable: Bool) throws -> String {
+        if let baseType, !MSSQLDefinitionText.isColumnType(baseType) {
+            throw MSSQLDefinitionRefusal.columnType(name, baseType)
+        }
         let base = baseType.map { " FROM \($0)" } ?? ""
         return "CREATE TYPE \(bracketed(schema)).\(bracketed(name))\(base) \(isNullable ? "NULL" : "NOT NULL");"
     }
@@ -106,9 +110,7 @@ public enum MSSQLTypeDefinition {
         return "CREATE TYPE \(bracketed(schema)).\(bracketed(name)) EXTERNAL NAME \(external);"
     }
 
-    /// `CREATE TYPE x AS TABLE (...)`. A primary key goes inline on its column when it covers one
-    /// column, because that is how it reads back and because the constraint's own name is
-    /// server-generated (`PK__TT_IdLis__3214EC07...`) and carrying it forward is noise.
+    // A single-column primary key goes inline: its constraint name is server-generated (`PK__TT_IdLis__3214EC07...`).
     public static func tableStatement(
         schema: String,
         name: String,
@@ -117,21 +119,27 @@ public enum MSSQLTypeDefinition {
         checkConstraints: [String] = [],
         isMemoryOptimized: Bool = false,
         databaseCollation: String?
-    ) -> String {
+    ) throws -> String {
         let primaryKey = indexes.first(where: \.isPrimaryKey)
         let inlinedKey = primaryKey.flatMap { key -> IndexKey? in
             guard key.keys.count == 1, let only = key.keys.first, !only.isDescending else { return nil }
             return only
         }
-        var lines = columns.map { column in
-            columnClause(
+        var lines = try columns.map { column in
+            try columnClause(
                 column,
                 primaryKey: inlinedKey.map { ($0.column, primaryKey?.typeDescription) },
                 databaseCollation: databaseCollation
             )
         }
+        let checks = try checkConstraints.filter { !$0.isEmpty }.map { check -> String in
+            guard let expression = MSSQLDefinitionText.expression(check) else {
+                throw MSSQLDefinitionRefusal.checkConstraint(name)
+            }
+            return "CHECK \(expression)"
+        }
         lines.append(contentsOf: indexClauses(indexes, inlinedPrimaryKeyColumn: inlinedKey?.column))
-        lines.append(contentsOf: checkConstraints.filter { !$0.isEmpty }.map { "CHECK \($0)" })
+        lines.append(contentsOf: checks)
         let body = lines.map { "    \($0)" }.joined(separator: ",\n")
         let tail = isMemoryOptimized ? "\n)\nWITH (MEMORY_OPTIMIZED = ON);" : "\n);"
         return "CREATE TYPE \(bracketed(schema)).\(bracketed(name)) AS TABLE (\n\(body)\(tail)"
@@ -152,19 +160,38 @@ public enum MSSQLTypeDefinition {
         _ column: Column,
         primaryKey: (column: String, clustering: String?)?,
         databaseCollation: String?
-    ) -> String {
+    ) throws -> String {
         var parts = [bracketed(column.name)]
         if let computed = column.computedDefinition, !computed.isEmpty {
-            parts.append("AS \(computed)")
+            guard let expression = MSSQLDefinitionText.expression(computed) else {
+                throw MSSQLDefinitionRefusal.computedColumn(column.name)
+            }
+            parts.append("AS \(expression)")
             return parts.joined(separator: " ")
         }
-        if let type = column.type, !type.isEmpty { parts.append(type) }
+        if let type = column.type, !type.isEmpty {
+            guard MSSQLDefinitionText.isColumnType(type) else { throw MSSQLDefinitionRefusal.columnType(column.name, type) }
+            parts.append(type)
+        }
         if let collation = column.collation, !collation.isEmpty, collation != databaseCollation {
+            guard MSSQLDefinitionText.isCollationName(collation) else {
+                throw MSSQLDefinitionRefusal.collation(column.name, collation)
+            }
             parts.append("COLLATE \(collation)")
         }
-        if let identity = column.identitySpec, !identity.isEmpty { parts.append("IDENTITY(\(identity))") }
+        if let identity = column.identitySpec, !identity.isEmpty {
+            guard MSSQLDefinitionText.isIdentitySpecification(identity) else {
+                throw MSSQLDefinitionRefusal.identity(column.name, identity)
+            }
+            parts.append("IDENTITY(\(identity))")
+        }
         parts.append(column.isNullable ? "NULL" : "NOT NULL")
-        if let value = column.defaultDefinition, !value.isEmpty { parts.append("DEFAULT \(value)") }
+        if let value = column.defaultDefinition, !value.isEmpty {
+            guard let expression = MSSQLDefinitionText.expression(value) else {
+                throw MSSQLDefinitionRefusal.columnDefault(column.name)
+            }
+            parts.append("DEFAULT \(expression)")
+        }
         if let primaryKey, primaryKey.column == column.name {
             parts.append("PRIMARY KEY\(clusteringClause(primaryKey.clustering))")
         }

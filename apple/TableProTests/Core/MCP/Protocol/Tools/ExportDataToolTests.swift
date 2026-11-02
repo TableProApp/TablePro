@@ -7,6 +7,7 @@ import Foundation
 @testable import TablePro
 import TableProMCP
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 private actor SettingsProviderProbe {

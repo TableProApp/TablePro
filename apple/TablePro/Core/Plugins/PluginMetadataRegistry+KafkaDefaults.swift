@@ -40,10 +40,11 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsDropSchema: false,
-                    defaultSSLMode: .verifyIdentity,
+                    defaultSSLMode: .disabled,
                     supportsOpportunisticTLS: false,
                     verifiesServerWithSystemTrust: true,
-                    supportsColumnSort: false
+                    supportsColumnSort: false,
+                    statementPolicyInDriver: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",

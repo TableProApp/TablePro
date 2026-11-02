@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMySQLCore
 import TableProPluginKit
 
 extension MySQLPluginDriver {
@@ -13,7 +14,7 @@ extension MySQLPluginDriver {
         case .mysql, .mariadb: break
         default: return nil
         }
-        let escape = escapeStringLiteral
+        let escape = mysqlEscapeStringLiteral
         let topRows = try await catalogRows(MySQLViewRowEditing.viewQuery(database: schema, name: view, escape: escape))
         guard let top = MySQLViewRowEditing.view(rows: topRows) else { return nil }
         // Once the relation proved to be a view, a failed read must not let it pass for a table.

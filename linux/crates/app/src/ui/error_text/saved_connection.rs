@@ -14,6 +14,9 @@ pub fn saved_connection_error_message(error: &SavedConnectionError) -> String {
         SavedConnectionError::NotFound(_) => crate::i18n::gettext("The connection was deleted."),
         SavedConnectionError::TagNotFound(_) => crate::i18n::gettext("The tag was deleted."),
         SavedConnectionError::Storage(StorageError::TagNameTaken) => crate::i18n::gettext("Another tag has that name."),
+        SavedConnectionError::Storage(StorageError::GroupNotFound { .. }) => {
+            crate::i18n::gettext("The group was deleted.")
+        }
         SavedConnectionError::Storage(StorageError::DocumentUnavailable(_)) => {
             crate::i18n::gettext("The saved connections could not be read, so nothing was changed.")
         }
@@ -60,6 +63,12 @@ mod tests {
         assert_eq!(
             saved_connection_error_message(&SavedConnectionError::TagNotFound(Uuid::nil())),
             "The tag was deleted."
+        );
+        assert_eq!(
+            saved_connection_error_message(&SavedConnectionError::Storage(StorageError::GroupNotFound {
+                id: Uuid::nil()
+            })),
+            "The group was deleted."
         );
     }
 }

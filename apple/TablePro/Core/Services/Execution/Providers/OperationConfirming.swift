@@ -14,6 +14,30 @@ internal struct OperationConfirmationRequest: Sendable {
     let databaseType: DatabaseType
     let caller: OperationCaller
     let isDestructive: Bool
+    let scope: DatabaseScope?
+    let statements: [String]
+
+    init(
+        sql: String?,
+        operationDescription: String,
+        connectionId: UUID,
+        connectionName: String?,
+        databaseType: DatabaseType,
+        caller: OperationCaller,
+        isDestructive: Bool,
+        scope: DatabaseScope? = nil,
+        statements: [String] = []
+    ) {
+        self.sql = sql
+        self.operationDescription = operationDescription
+        self.connectionId = connectionId
+        self.connectionName = connectionName
+        self.databaseType = databaseType
+        self.caller = caller
+        self.isDestructive = isDestructive
+        self.scope = scope
+        self.statements = statements
+    }
 }
 
 internal protocol OperationConfirming: Sendable {
@@ -33,8 +57,28 @@ internal enum OperationConfirmationPrompt {
         return sql
     }
 
+    // Every statement the request runs, values written in, or the one statement it grades.
+    internal static func statements(of request: OperationConfirmationRequest) -> [String] {
+        let shown = request.statements
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard shown.isEmpty else { return shown }
+        return statement(of: request).map { [$0] } ?? []
+    }
+
     internal static func subtitle(of request: OperationConfirmationRequest) -> String {
-        subtitle(connectionName: request.connectionName, caller: request.caller)
+        let caller = subtitle(connectionName: request.connectionName, caller: request.caller)
+        guard let scope = scopeLine(of: request.scope) else { return caller }
+        return "\(caller)\n\(scope)"
+    }
+
+    // A connection reaches many databases, so the person approving reads which one this runs in.
+    internal static func scopeLine(of scope: DatabaseScope?) -> String? {
+        guard let scope, !scope.isServerScoped else { return nil }
+        guard let schema = scope.schema else {
+            return String(format: String(localized: "Database: %@"), scope.database)
+        }
+        return String(format: String(localized: "Database: %1$@, schema: %2$@"), scope.database, schema)
     }
 
     /// The line under a confirmation's heading, for a sheet that confirms without going through
@@ -105,7 +149,8 @@ internal struct AlertOperationConfirming: OperationConfirming {
         ).map(Self.frontmostSheet(of:))
 
         guard !Task.isCancelled else { return false }
-        guard let statement = OperationConfirmationPrompt.statement(of: request) else {
+        let statements = OperationConfirmationPrompt.statements(of: request)
+        guard !statements.isEmpty else {
             let alert = OperationConfirmationPrompt.makeAlert(for: request)
             let withdrawal = AlertWithdrawal(alert)
             // A caller that gives up (a debug run stopped while it waits) takes the alert down as Cancel.
@@ -120,7 +165,7 @@ internal struct AlertOperationConfirming: OperationConfirming {
             title: request.operationDescription,
             subtitle: OperationConfirmationPrompt.subtitle(of: request),
             warning: OperationConfirmationPrompt.destructiveWarning(of: request),
-            statements: [statement],
+            statements: statements,
             databaseType: request.databaseType,
             confirmTitle: OperationConfirmationPrompt.confirmTitle,
             isDestructive: request.isDestructive,

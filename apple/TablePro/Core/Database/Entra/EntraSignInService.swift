@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import TableProHTTP
 import TableProPluginKit
 
 enum EntraSignInService {
@@ -10,8 +11,7 @@ enum EntraSignInService {
         return entraError.needsSignIn
     }
 
-    /// Runs the device code flow. The user code is put on the pasteboard and shown, because the
-    /// Microsoft endpoint returns a bare verification URL and expects the code to be typed in.
+    // Microsoft's verification URL is bare and expects the code typed in, so the code goes on the pasteboard too.
     static func signIn(fields: [String: String], window: NSWindow?) async throws {
         try await EntraCredentialResolver.shared.signIn(
             fields: fields,
@@ -19,7 +19,7 @@ enum EntraSignInService {
                 Task { @MainActor in
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(userCode, forType: .string)
-                    NSWorkspace.shared.open(url)
+                    WebPageOpener.open(url, scope: .https)
                     AlertHelper.showInfoSheet(
                         title: String(localized: "Finish Signing In"),
                         message: String(

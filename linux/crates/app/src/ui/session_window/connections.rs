@@ -11,8 +11,7 @@ use tablepro_core::SafeModeLevel;
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroupName, ConnectionListState, ConnectionTag, ConnectionTagName, CredentialDemand,
-    SavedConnection,
+    ConnectionColor, ConnectionListState, ConnectionTag, ConnectionTagName, CredentialDemand, SavedConnection,
 };
 use uuid::Uuid;
 
@@ -20,6 +19,7 @@ use super::{SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::connection_deletion::DeletionOptions;
 use crate::services::deletion_error::DeletionError;
+use crate::services::saved_connection_editor::GroupChoice;
 use crate::services::saved_connection_error::SavedConnectionError;
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogMode, ConnectPrefill, FormField};
 use crate::ui::delete_connection_dialog::{self, DeleteConnectionDialog};
@@ -394,12 +394,12 @@ impl SessionWindow {
 
     /// File a connection under a group, or take it out of the one it
     /// is in.
-    pub(super) fn on_set_connection_group(&self, id: Uuid, group: Option<ConnectionGroupName>) {
+    pub(super) fn on_set_connection_group(&self, id: Uuid, choice: GroupChoice) {
         let Some(state) = self.state() else {
             return;
         };
         let editor = state.services.saved_connection_editor.clone();
-        self.change_connection(async move { editor.move_to_group(id, group).await }, |reason| {
+        self.change_connection(async move { editor.move_to_group(id, choice).await }, |reason| {
             crate::i18n::gettext_f("The group could not be saved. {reason}", &[("reason", reason)])
         });
     }

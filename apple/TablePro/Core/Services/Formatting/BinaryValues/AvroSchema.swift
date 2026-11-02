@@ -148,7 +148,10 @@ internal struct AvroSchema: Equatable, Sendable {
     }
 
     private static func quoted(_ text: String) -> String {
-        "\"" + text.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+        "\""
+            + text.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+                .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
+            + "\""
     }
 
     // Far past any engine's decimal; a larger one would only let a schema file pad a cell with zeros.

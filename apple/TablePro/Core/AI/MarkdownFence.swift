@@ -27,12 +27,13 @@ enum MarkdownFence {
 
     static func tableCell(_ text: String?) -> String {
         guard let text, !text.isEmpty else { return "" }
+        // `.literal` compares code units: a `|` or line break a combining mark follows is one Character.
         return text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "|", with: "\\|")
-            .replacingOccurrences(of: "\r\n", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "|", with: "\\|", options: .literal)
+            .replacingOccurrences(of: "\r\n", with: " ", options: .literal)
+            .replacingOccurrences(of: "\n", with: " ", options: .literal)
+            .replacingOccurrences(of: "\r", with: " ", options: .literal)
     }
 
     private static let backtick = UInt16(UnicodeScalar("`").value)

@@ -1,24 +1,23 @@
 import Foundation
+import TableProWireIO
 
 public actor SseDecoder {
-    private var buffer: Data
+    private static let lineFeed: UInt8 = 0x0A
+    private static let carriageReturn: UInt8 = 0x0D
+
+    private var buffer = ByteQueue()
+    // The front of the buffer already searched for a line break, so a line split over many chunks is scanned once.
+    private var searchedCount = 0
     private var pendingEvent: String?
     private var pendingId: String?
     private var pendingRetry: Int?
-    private var pendingDataLines: [String]
-    private var hasPendingFields: Bool
+    private var pendingDataLines: [String] = []
+    private var hasPendingFields = false
 
-    public init() {
-        buffer = Data()
-        pendingEvent = nil
-        pendingId = nil
-        pendingRetry = nil
-        pendingDataLines = []
-        hasPendingFields = false
-    }
+    public init() {}
 
     public func feed(_ chunk: Data) -> [SseFrame] {
-        buffer.append(chunk)
+        buffer.append(contentsOf: chunk)
 
         var frames: [SseFrame] = []
 
@@ -36,33 +35,32 @@ public actor SseDecoder {
     }
 
     private func takeLine() -> String? {
-        var index = buffer.startIndex
-        while index < buffer.endIndex {
-            let byte = buffer[index]
-            if byte == 0x0A {
-                let lineData = buffer[buffer.startIndex..<index]
-                buffer.removeSubrange(buffer.startIndex...index)
-                return decodeLine(lineData)
-            }
-            if byte == 0x0D {
-                let lineData = buffer[buffer.startIndex..<index]
-                let nextIndex = buffer.index(after: index)
-                if nextIndex < buffer.endIndex, buffer[nextIndex] == 0x0A {
-                    buffer.removeSubrange(buffer.startIndex...nextIndex)
-                } else if nextIndex == buffer.endIndex {
+        let count = buffer.count
+        var index = searchedCount
+        while index < count {
+            switch buffer[index] {
+            case Self.lineFeed:
+                return removeLine(length: index, terminatorLength: 1)
+            case Self.carriageReturn:
+                // A carriage return at the end of what has arrived may be the first half of a CRLF.
+                guard index + 1 < count else {
+                    searchedCount = index
                     return nil
-                } else {
-                    buffer.removeSubrange(buffer.startIndex...index)
                 }
-                return decodeLine(lineData)
+                return removeLine(length: index, terminatorLength: buffer[index + 1] == Self.lineFeed ? 2 : 1)
+            default:
+                index += 1
             }
-            index = buffer.index(after: index)
         }
+        searchedCount = count
         return nil
     }
 
-    private func decodeLine(_ data: Data) -> String {
-        String(data: data, encoding: .utf8) ?? ""
+    private func removeLine(length: Int, terminatorLength: Int) -> String {
+        let line = buffer.removeFirst(length)
+        buffer.removeFirst(terminatorLength)
+        searchedCount = 0
+        return String(bytes: line, encoding: .utf8) ?? ""
     }
 
     private func processLine(_ line: String) {

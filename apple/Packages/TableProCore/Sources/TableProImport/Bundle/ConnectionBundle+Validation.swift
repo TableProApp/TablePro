@@ -32,7 +32,7 @@ enum BundleViolation: Equatable, Sendable {
         case .tooDeep(let ref):
             String(format: String(localized: "the reference “%@” is nested too deeply"), ref.rawValue)
         case .invalidSSHDestination(let connection):
-            String(format: String(localized: "the SSH host or user of “%@” contains characters ssh does not allow"), connection)
+            String(format: String(localized: "the SSH host, user or port of “%@” is not one TablePro allows"), connection)
         }
     }
 

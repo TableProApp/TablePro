@@ -288,4 +288,30 @@ struct SQLParameterInlinerTests {
         #expect(result.contains("col99 = 99"))
         #expect(!result.contains("?"))
     }
+
+    // MySQL has no `\x` escape, so `'\x001'` reads back as `x001`, not the NUL and `1` that were bound.
+    @Test("A NUL before a digit shows as MySQL's own \\0", arguments: [DatabaseType.mysql, .mariadb])
+    func mysqlNulBeforeADigit(type: DatabaseType) {
+        let statement = ParameterizedStatement(sql: "INSERT INTO t (a) VALUES (?)", parameters: ["\u{0}1"])
+
+        let result = SQLParameterInliner.inline(statement, databaseType: type)
+
+        #expect(result == #"INSERT INTO t (a) VALUES ('\01')"#)
+    }
+
+    // Copy All takes the text away with no mode declared. Spelled for the session, `x\` ends its literal in the default mode.
+    @Test("A MySQL value is spelled in MySQL's own set under NO_BACKSLASH_ESCAPES too")
+    func mysqlKeepsItsOwnSetUnderNoBackslashEscapes() {
+        let statement = ParameterizedStatement(
+            sql: "UPDATE t SET c = 1 WHERE a = ? AND b = ?",
+            parameters: ["x\\", " OR 1=1; DROP TABLE users; -- "]
+        )
+        let session = PluginSessionLexicalState(
+            determined: [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes], enabled: []
+        )
+
+        let result = SQLParameterInliner.inline(statement, databaseType: .mysql, session: session)
+
+        #expect(result == #"UPDATE t SET c = 1 WHERE a = 'x\\' AND b = ' OR 1=1; DROP TABLE users; -- '"#)
+    }
 }

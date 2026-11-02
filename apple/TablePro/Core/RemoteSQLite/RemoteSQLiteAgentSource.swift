@@ -62,6 +62,7 @@ OP_EXECUTE = 0x02
 OP_CANCEL = 0x03
 OP_HEARTBEAT = 0x04
 OP_SET_BUSY = 0x05
+OP_EXECUTE_SCOPED = 0x06
 OP_READY = 0x81
 OP_FAILURE = 0x82
 OP_HEADER = 0x83
@@ -80,12 +81,27 @@ SQLITE_OK = 0
 SQLITE_DENY = 1
 SQLITE_ROW = 100
 SQLITE_DONE = 101
+SQLITE_ERROR = 1
+SQLITE_READONLY = 8
+SQLITE_PRAGMA = 19
+SQLITE_TRANSACTION = 22
+SQLITE_ATTACH = 24
+SQLITE_DETACH = 25
 SQLITE_FUNCTION = 31
+SQLITE_SAVEPOINT = 32
 SQLITE_OPEN_READWRITE = 0x00000002
 SQLITE_COL_NULL = 5
 SQLITE_COL_BLOB = 4
 
 DENIED_FUNCTIONS = (b"fts3_tokenizer", b"load_extension")
+SCOPE_NO_SERVER_CODE = 1
+SCOPE_READ_ONLY = 2
+# Pragmas that only report. Any other one can change the database, the connection or the process.
+REPORTING_PRAGMAS = (
+    b"table_info", b"table_xinfo", b"table_list", b"index_info", b"index_xinfo", b"index_list",
+    b"foreign_key_list", b"foreign_key_check", b"integrity_check", b"quick_check", b"function_list",
+    b"pragma_list", b"module_list", b"collation_list", b"database_list", b"compile_options",
+)
 IDLE_DEADLINE_SECONDS = 60.0
 BUSY_RETRY_MS = 10
 ROW_BATCH = 500
@@ -98,6 +114,7 @@ write_lock = threading.Lock()
 last_activity = [time.time()]
 cancel_flag = [False]
 busy_timeout_ms = [0]
+statement_scope = [0]
 
 
 def load_sqlite():
@@ -144,6 +161,10 @@ def configure(lib):
     lib.sqlite3_reset.argtypes = [p]
     lib.sqlite3_interrupt.argtypes = [p]
     lib.sqlite3_close_v2.argtypes = [p]
+    lib.sqlite3_stmt_readonly.argtypes = [p]
+    # SQLite before 3.28 has no sqlite3_stmt_isexplain.
+    if hasattr(lib, "sqlite3_stmt_isexplain"):
+        lib.sqlite3_stmt_isexplain.argtypes = [p]
 
 
 def frame(op, payload):
@@ -239,6 +260,19 @@ def make_authorizer():
     def authorizer(_ctx, action, arg1, arg2, _db, _trigger):
         if action == SQLITE_FUNCTION and arg2 is not None and arg2.lower() in DENIED_FUNCTIONS:
             return SQLITE_DENY
+        scope = statement_scope[0]
+        if scope == SCOPE_READ_ONLY and action in (SQLITE_ATTACH, SQLITE_DETACH):
+            return SQLITE_DENY
+        # Plain VACUUM attaches the literal ''; a filename that is an expression arrives as None.
+        if scope and action == SQLITE_ATTACH and arg1 != b"":
+            return SQLITE_DENY
+        if scope and action == SQLITE_DETACH:
+            return SQLITE_DENY
+        if scope == SCOPE_READ_ONLY:
+            if action in (SQLITE_TRANSACTION, SQLITE_SAVEPOINT):
+                return SQLITE_DENY
+            if action == SQLITE_PRAGMA and (arg1 is None or arg1.lower() not in REPORTING_PRAGMAS):
+                return SQLITE_DENY
         return SQLITE_OK
 
     return authz_type(authorizer)
@@ -272,6 +306,23 @@ def open_database(lib, path, busy_ms):
     lib.sqlite3_extended_result_codes(db, 1)
     busy_timeout_ms[0] = busy_ms
     return db, None
+
+
+def step_once(lib, db, sql):
+    stmt = ctypes.c_void_p()
+    if lib.sqlite3_prepare_v2(db, sql, -1, ctypes.byref(stmt), None) != SQLITE_OK or not stmt.value:
+        if stmt.value:
+            lib.sqlite3_finalize(stmt)
+        return None
+    try:
+        rows = []
+        while True:
+            step = lib.sqlite3_step(stmt)
+            if step != SQLITE_ROW:
+                return rows if step == SQLITE_DONE else None
+            rows.append(read_row(lib, stmt, lib.sqlite3_column_count(stmt)))
+    finally:
+        lib.sqlite3_finalize(stmt)
 
 
 TRANSIENT = ctypes.cast(-1, ctypes.c_void_p)
@@ -309,7 +360,7 @@ def read_row(lib, stmt, column_count):
     return row
 
 
-def execute(lib, db, sql, parameters, row_cap):
+def execute(lib, db, sql, parameters, row_cap, must_read=False):
     cancel_flag[0] = False
     stmt = ctypes.c_void_p()
     rc = lib.sqlite3_prepare_v2(db, sql.encode("utf-8"), -1, ctypes.byref(stmt), None)
@@ -317,6 +368,12 @@ def execute(lib, db, sql, parameters, row_cap):
         if stmt.value:
             lib.sqlite3_finalize(stmt)
         send(OP_ERROR, struct.pack(">I", rc & 0xFFFFFFFF) + encode_str(lib.sqlite3_errmsg(db).decode("utf-8", "replace")))
+        return
+    # EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
+    is_explain = getattr(lib, "sqlite3_stmt_isexplain", lambda _stmt: 0)
+    if must_read and not lib.sqlite3_stmt_readonly(stmt) and not is_explain(stmt):
+        lib.sqlite3_finalize(stmt)
+        send(OP_ERROR, struct.pack(">I", SQLITE_READONLY) + encode_str("the request is read only, and the statement is not a read"))
         return
     try:
         bind_parameters(lib, stmt, parameters)
@@ -364,6 +421,50 @@ def execute(lib, db, sql, parameters, row_cap):
         send(OP_DONE, struct.pack(">q", changes) + bytes([1 if truncated else 0]))
     finally:
         lib.sqlite3_finalize(stmt)
+
+
+# A read-only statement runs on the session's handle, so temp objects, attachments, last_insert_rowid() and changes()
+# read as they do in the session.
+def execute_scoped(lib, db, sql, parameters, row_cap, scope):
+    if scope == SCOPE_READ_ONLY:
+        execute_on_session_read_only(lib, db, sql, parameters, row_cap)
+    elif scope == SCOPE_NO_SERVER_CODE:
+        statement_scope[0] = scope
+        try:
+            execute(lib, db, sql, parameters, row_cap)
+        finally:
+            statement_scope[0] = 0
+    else:
+        send(OP_ERROR, struct.pack(">I", SQLITE_ERROR) + encode_str("unknown statement scope"))
+
+
+# query_only stops writes to the database files, the authorizer stops ATTACH, transactions and pragmas that change
+# anything, and the statement must be one SQLite reads as read-only.
+def execute_on_session_read_only(lib, db, sql, parameters, row_cap):
+    current = step_once(lib, db, b"PRAGMA query_only")
+    if not current:
+        send(OP_ERROR, struct.pack(">I", SQLITE_ERROR) + encode_str(lib.sqlite3_errmsg(db).decode("utf-8", "replace")))
+        return
+    was_query_only = current[0][0][1] == b"1"
+    if not was_query_only and step_once(lib, db, b"PRAGMA query_only = 1") is None:
+        send(OP_ERROR, struct.pack(">I", SQLITE_ERROR) + encode_str(lib.sqlite3_errmsg(db).decode("utf-8", "replace")))
+        return
+    statement_scope[0] = SCOPE_READ_ONLY
+    try:
+        execute(lib, db, sql, parameters, row_cap, must_read=True)
+    finally:
+        statement_scope[0] = 0
+        if not was_query_only:
+            step_once(lib, db, b"PRAGMA query_only = 0")
+
+
+def read_statement(payload):
+    request = Cursor(payload)
+    sql = request.text()
+    count = request.u32()
+    parameters = [request.value() for _ in range(count)]
+    row_cap = request.u32()
+    return request, sql, parameters, row_cap
 
 
 def send_rows(column_count, batch):
@@ -468,14 +569,12 @@ def main():
         if item is None:
             break
         op, payload = item
-        if op != OP_EXECUTE:
-            continue
-        request = Cursor(payload)
-        sql = request.text()
-        count = request.u32()
-        parameters = [request.value() for _ in range(count)]
-        row_cap = request.u32()
-        execute(lib, db, sql, parameters, row_cap)
+        if op == OP_EXECUTE:
+            _, sql, parameters, row_cap = read_statement(payload)
+            execute(lib, db, sql, parameters, row_cap)
+        elif op == OP_EXECUTE_SCOPED:
+            request, sql, parameters, row_cap = read_statement(payload)
+            execute_scoped(lib, db, sql, parameters, row_cap, request.u8())
 
     lib.sqlite3_close_v2(db)
 

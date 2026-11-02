@@ -146,6 +146,7 @@ extension MainContentCoordinator {
             epilogue: epilogue
         )
         plan.viewTarget = viewTarget
+        plan.sessionLexicalState = services.databaseManager.sessionDriver(holding: scope)?.sessionLexicalState
         return plan
     }
 

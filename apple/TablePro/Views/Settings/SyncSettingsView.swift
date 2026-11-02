@@ -36,7 +36,7 @@ private struct SyncNoticeSection: View {
     /// Observed for `isValidating`, which disables Check Again while a check runs. Read off the
     /// singleton directly, the button never learned that a check had started or finished.
     @ObservedObject private var licenseManager = LicenseManager.shared
-    @ObservedObject private var updater = SoftwareUpdater.shared
+    @ObservedObject private var updates = UpdateCenter.shared
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SyncSettingsView")
 
@@ -83,10 +83,10 @@ private struct SyncNoticeSection: View {
                 Self.openSystemSettings("x-apple.systempreferences:com.apple.systempreferences.AppleIDSettings")
             }
         case .checkForUpdates:
-            Button(action.title) {
-                updater.checkForUpdates()
+            Button(updates.status.appUpdateTitle) {
+                updates.performAppUpdateAction()
             }
-            .disabled(!updater.canCheckForUpdates)
+            .disabled(!updates.isAppUpdateActionEnabled)
         case .uploadAgain:
             Button(action.title) {
                 Task { await SyncCoordinator.shared.uploadAgain() }

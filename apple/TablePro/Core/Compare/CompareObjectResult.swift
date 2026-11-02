@@ -15,6 +15,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 internal struct CompareObjectIdentity: Hashable, Sendable {
     internal let kind: CompareObjectKind
@@ -58,6 +59,8 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
     internal let sourceIndexes: [EditableIndexDefinition]?
     internal let targetIndexes: [EditableIndexDefinition]?
     internal let definitionMatches: Bool
+    // What the source recorded for a routine or trigger, such as MySQL's sql_mode, set around its CREATE.
+    internal let sourceCreationScope: PluginStatementScope?
 
     internal init(
         identity: CompareObjectIdentity,
@@ -69,7 +72,8 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
         comparisonError: String? = nil,
         sourceIndexes: [EditableIndexDefinition]? = nil,
         targetIndexes: [EditableIndexDefinition]? = nil,
-        definitionMatches: Bool = false
+        definitionMatches: Bool = false,
+        sourceCreationScope: PluginStatementScope? = nil
     ) {
         self.identity = identity
         self.status = status
@@ -81,6 +85,12 @@ internal struct CompareObjectResult: Identifiable, Hashable, Sendable {
         self.sourceIndexes = sourceIndexes
         self.targetIndexes = targetIndexes
         self.definitionMatches = definitionMatches
+        self.sourceCreationScope = sourceCreationScope
+    }
+
+    // PluginStatementScope is only Equatable; equal results share an identity.
+    internal func hash(into hasher: inout Hasher) {
+        hasher.combine(identity)
     }
 
     internal var id: String { identity.id }

@@ -53,7 +53,7 @@ struct SqlFileImportSourceCleanupTests {
         let source = SqlFileImportSource(
             url: archive,
             encoding: .utf8,
-            grammar: TestGrammar.standard,
+            grammar: { TestGrammar.standard },
             decompressedURL: nil,
             ownsDecompressedFile: false
         )
@@ -85,7 +85,7 @@ struct SqlFileImportSourceCleanupTests {
         let source = SqlFileImportSource(
             url: archive,
             encoding: .utf8,
-            grammar: TestGrammar.standard,
+            grammar: { TestGrammar.standard },
             decompressedURL: expanded,
             ownsDecompressedFile: true
         )
@@ -110,7 +110,7 @@ struct SqlFileImportSourceCleanupTests {
         let source = SqlFileImportSource(
             url: archive,
             encoding: .utf8,
-            grammar: TestGrammar.standard,
+            grammar: { TestGrammar.standard },
             decompressedURL: expanded,
             ownsDecompressedFile: false
         )

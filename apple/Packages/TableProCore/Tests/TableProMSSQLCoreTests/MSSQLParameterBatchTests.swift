@@ -85,6 +85,16 @@ struct MSSQLParameterBatchTests {
         #expect(statement.query == "SELECT 'it''s ?', @__tablepro_p1")
     }
 
+    // A quote a combining mark follows is one Character, which a Character scan never matched as the doubled quote.
+    @Test("A doubled quote a combining mark follows stays inside the literal")
+    func doubledQuoteBeforeACombiningMarkStaysInsideTheLiteral() {
+        let statement = MSSQLParameterBatch.spExecuteSql(
+            query: "SELECT 'x''\u{301}?', ?", parameters: [.text("a")]
+        )
+        #expect(statement.query == "SELECT 'x''\u{301}?', @__tablepro_p1")
+        #expect(statement.assignments == "@__tablepro_p1 = N'a'")
+    }
+
     @Test("A query with no placeholder declares nothing")
     func noPlaceholdersDeclaresNothing() {
         let statement = MSSQLParameterBatch.spExecuteSql(

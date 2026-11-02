@@ -301,6 +301,7 @@ final class DataBrowserViewModel {
                 table: table.name, schema: schema, type: databaseType,
                 searchText: activeSearchText, searchColumns: searchableColumns(),
                 filters: filters, logicMode: filterLogicMode, columns: columnDetails,
+                session: session?.driver.settledLexicalFacts,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -309,6 +310,7 @@ final class DataBrowserViewModel {
             return SQLBuilder.buildFilteredSelect(
                 table: table.name, schema: schema, type: databaseType,
                 filters: filters, logicMode: filterLogicMode, columns: columnDetails,
+                session: session?.driver.settledLexicalFacts,
                 sortState: activeSort,
                 limit: pagination.pageSize, offset: pagination.currentOffset
             )
@@ -370,12 +372,14 @@ final class DataBrowserViewModel {
                 countQuery = SQLBuilder.buildSearchCount(
                     table: table.name, schema: schema, type: databaseType,
                     searchText: activeSearchText, searchColumns: searchableColumns(),
-                    filters: filters, logicMode: filterLogicMode, columns: columnDetails
+                    filters: filters, logicMode: filterLogicMode, columns: columnDetails,
+                    session: session.driver.settledLexicalFacts
                 )
             } else if hasActiveFilters {
                 countQuery = SQLBuilder.buildFilteredCount(
                     table: table.name, schema: schema, type: databaseType,
-                    filters: filters, logicMode: filterLogicMode, columns: columnDetails
+                    filters: filters, logicMode: filterLogicMode, columns: columnDetails,
+                    session: session.driver.settledLexicalFacts
                 )
             } else {
                 countQuery = SQLBuilder.buildCount(table: table.name, schema: schema, type: databaseType)

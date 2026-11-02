@@ -65,17 +65,6 @@ struct SparkleUpdatePreferencesTests {
         #expect(defaults.string(forKey: "SUFeedURL") == "keep me", "reset cleared a key Sparkle does not let the user set")
     }
 
-    @Test("A deferred update renames the control, and nothing else does")
-    @MainActor
-    func deferredUpdateRenamesTheControl() {
-        let idle = SoftwareUpdater.checkForUpdatesTitle(hasPendingUpdate: false)
-        let pending = SoftwareUpdater.checkForUpdatesTitle(hasPendingUpdate: true)
-
-        #expect(idle != pending)
-        #expect(idle.hasSuffix("…"), "the title opens a dialog, so it keeps its ellipsis")
-        #expect(pending.hasSuffix("…"))
-    }
-
     @Test("Reset on a domain that never held the keys is a no-op")
     func resetIsIdempotent() throws {
         let suite = try EphemeralDefaults()

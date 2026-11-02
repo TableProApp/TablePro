@@ -9,7 +9,7 @@
 # unnest WITH ORDINALITY and json_build_object are 9.4, to_json and json_agg are 9.3, pg_sequences
 # and collprovider are 10, and array_position is 9.5.
 #
-# Builds TableProPluginKit and every PostgreSQL driver source with swiftc, loads a fixture into a
+# Builds every PostgreSQL driver source with SwiftPM against TableProCore, loads a fixture into a
 # scratch database, prints one canonical line per object each read returns, and diffs that against
 # the answers below. A second pass connects as a role that owns nothing, because a read that works
 # for the owner can still fail for a reader (a sequence the role cannot SELECT, for one). Overloads,
@@ -83,7 +83,6 @@ if [[ -z "${DEVELOPER_DIR:-}" ]]; then
     done
 fi
 
-KIT_DIR="$REPO_ROOT/Plugins/TableProPluginKit"
 DRIVER_DIR="$REPO_ROOT/Plugins/PostgreSQLDriverPlugin"
 LIBS="$REPO_ROOT/Libs"
 for required in "$LIBS/libpq.a" "$LIBS/libpgcommon.a" "$LIBS/libpgport.a" "$LIBS/dylibs/libssl.3.dylib"; do
@@ -94,12 +93,16 @@ for required in "$LIBS/libpq.a" "$LIBS/libpgcommon.a" "$LIBS/libpgport.a" "$LIBS
 done
 
 # The driver class reaches every file in its folder, so the folder is the unit rather than a list.
-KIT_SOURCES=()
-while IFS= read -r file; do KIT_SOURCES+=("$file"); done < <(find "$KIT_DIR" -name '*.swift' | sort)
-DRIVER_SOURCES=()
-while IFS= read -r file; do DRIVER_SOURCES+=("$file"); done < <(find "$DRIVER_DIR" -maxdepth 1 -name '*.swift' | sort)
+mkdir -p "$WORK/Sources/Probe"
+for source in "$DRIVER_DIR"/*.swift; do
+    ln -s "$source" "$WORK/Sources/Probe/$(basename "$source")"
+done
+for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; do
+    ln -s "$REPO_ROOT/Plugins/Shared/$shared.swift" "$WORK/Sources/Probe/$shared.swift"
+done
+ln -s "$DRIVER_DIR/CLibPQ" "$WORK/CModule"
 
-cat > "$WORK/harness.swift" <<'SWIFT'
+cat > "$WORK/Sources/Probe/Harness.swift" <<'SWIFT'
 import Foundation
 import TableProPluginKit
 
@@ -346,27 +349,38 @@ enum CompatHarness {
 SWIFT
 
 echo "Building the harness from the shipping sources..."
-BUILD="$WORK/build"
-mkdir -p "$BUILD"
-if ! xcrun swiftc -emit-library -emit-module -module-name TableProPluginKit -parse-as-library -swift-version 6 \
-    -enable-library-evolution -Xlinker -install_name -Xlinker @rpath/libTableProPluginKit.dylib \
-    -emit-module-path "$BUILD/TableProPluginKit.swiftmodule" -o "$BUILD/libTableProPluginKit.dylib" \
-    "${KIT_SOURCES[@]}" > "$WORK/build-kit.log" 2>&1; then
-    echo "FAIL: TableProPluginKit did not build" >&2
-    grep -E "error" "$WORK/build-kit.log" | head -20 >&2
-    exit 2
-fi
-if ! xcrun swiftc -parse-as-library -swift-version 6 -module-name PostgreSQLCompatHarness \
-    -I "$BUILD" -L "$BUILD" -lTableProPluginKit \
-    -I "$DRIVER_DIR/CLibPQ" -Xcc -I"$DRIVER_DIR/CLibPQ/include" \
-    -Xlinker -force_load -Xlinker "$LIBS/libpq.a" "$LIBS/libpgcommon.a" "$LIBS/libpgport.a" \
-    -L "$LIBS/dylibs" -lssl.3 -lcrypto.3 -lz \
-    -Xlinker -rpath -Xlinker "$BUILD" -Xlinker -rpath -Xlinker "$LIBS/dylibs" \
-    -o "$BUILD/harness" "${DRIVER_SOURCES[@]}" "$WORK/harness.swift" > "$WORK/build-harness.log" 2>&1; then
+cat > "$WORK/Package.swift" <<MANIFEST
+// swift-tools-version: 6.0
+import PackageDescription
+let package = Package(
+    name: "CompatProbe", platforms: [.macOS(.v14)],
+    dependencies: [.package(path: "$REPO_ROOT/Packages/TableProCore")],
+    targets: [
+        .systemLibrary(name: "CLibPQ", path: "CModule"),
+        .executableTarget(name: "Probe", dependencies: [
+            "CLibPQ",
+            .product(name: "TableProPluginKit", package: "TableProCore"),
+            .product(name: "TableProCoreTypes", package: "TableProCore"),
+            .product(name: "TableProGeometry", package: "TableProCore"),
+            .product(name: "TableProKerberos", package: "TableProCore"),
+            .product(name: "TableProPostgreSQLCore", package: "TableProCore"),
+            .product(name: "TableProSQLVocabulary", package: "TableProCore"),
+            .product(name: "TableProLogRedaction", package: "TableProCore")
+        ], swiftSettings: [.swiftLanguageMode(.v6), .enableUpcomingFeature("MemberImportVisibility"),
+            .unsafeFlags(["-Xcc", "-I$DRIVER_DIR/CLibPQ/include"])],
+        linkerSettings: [.unsafeFlags([
+            "-L$LIBS", "-L$LIBS/dylibs", "-Xlinker", "-rpath", "-Xlinker", "$LIBS/dylibs",
+            "$LIBS/libpq.a", "$LIBS/libpgcommon.a", "$LIBS/libpgport.a",
+            "-lssl.3", "-lcrypto.3", "-lz", "-framework", "GSS"
+        ])])
+    ])
+MANIFEST
+if ! (cd "$WORK" && swift build --jobs 2 > "$WORK/build.log" 2>&1); then
     echo "FAIL: the driver harness did not build" >&2
-    grep -E "error" "$WORK/build-harness.log" | head -20 >&2
+    grep -E "error:" "$WORK/build.log" | head -20 >&2
     exit 2
 fi
+HARNESS="$WORK/.build/debug/Probe"
 
 if ! drop_fixture; then
     echo "FAIL: a leftover fixture could not be dropped; another session is probably connected to $DATABASE" >&2
@@ -613,7 +627,7 @@ compare() {
 # directory: the script whose job is diagnosis would print nothing to diagnose with.
 run_pass() {
     local pass="$1" user="$2" password="$3" out="$4" status=0
-    "$BUILD/harness" "$HOST" "$PORT" "$user" "$password" "$DATABASE" "$pass" \
+    "$HARNESS" "$HOST" "$PORT" "$user" "$password" "$DATABASE" "$pass" \
         > "$WORK/$pass.raw" 2> "$WORK/$pass.err" || status=$?
     if [[ "$status" -ne 0 ]]; then
         echo "FAIL: the $pass harness pass exited $status" >&2

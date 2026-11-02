@@ -15,9 +15,45 @@ struct ZipArchiveTests {
     @Test func testAnEntryLargerThanTheBufferLimitIsRefusedBeforeInflating() throws {
         let archive = try archive([("xl/styles.xml", String(repeating: "a", count: 4_096), .deflate)])
         let entry = try #require(archive.entry(named: "xl/styles.xml"))
-        if let error = #expect(throws: (any Error).self, performing: { try archive.data(for: entry, limit: 1_024) }) {
+        if let error = #expect(throws: (any Error).self, performing: {
+            try archive.data(for: entry, budget: .init(limit: 1_024, ratioLimit: .max, grace: .max))
+        }) {
             #expect(error as? ZipArchive.Failure == .entryTooLarge("xl/styles.xml"))
         }
+    }
+
+    @Test func testAnEntryThatInflatesPastTheBudgetLimitIsRefused() throws {
+        var builder = TestZipBuilder()
+        builder.usesZip64Extra = true
+        builder.zip64UncompressedSizeOverride = 1 << 46
+        builder.add("xl/styles.xml", String(repeating: "a", count: 4_096), method: .deflate)
+        let archive = try ZipArchive(bytes: builder.build())
+        let entry = try #require(archive.entry(named: "xl/styles.xml"))
+        if let error = #expect(throws: (any Error).self, performing: {
+            try archive.withReader(for: entry, budget: .init(limit: 1_024, ratioLimit: .max, grace: .max)) { reader in
+                let chunk = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: 512)
+                defer { chunk.deallocate() }
+                while try reader.read(into: chunk) > 0 {}
+            }
+        }) {
+            #expect(error as? ZipArchive.Failure == .entryTooLarge("xl/styles.xml"))
+        }
+    }
+
+    @Test func testADeclaredSizeIsNotTrustedForTheBuffer() throws {
+        let body = String(repeating: "<row/>", count: 1_000)
+        var builder = TestZipBuilder()
+        builder.usesZip64Extra = true
+        builder.zip64UncompressedSizeOverride = 1 << 46
+        builder.add("xl/worksheets/sheet1.xml", body, method: .deflate)
+        let archive = try ZipArchive(bytes: builder.build())
+        let entry = try #require(archive.entry(named: "xl/worksheets/sheet1.xml"))
+        #expect(entry.uncompressedSize == 1 << 46)
+        if let error = #expect(throws: (any Error).self, performing: { try archive.data(for: entry) }) {
+            #expect(error as? ZipArchive.Failure == .entryTooLarge("xl/worksheets/sheet1.xml"))
+        }
+        let unlimited = try archive.data(for: entry, budget: .init(ratioLimit: ZipArchive.bufferedBudget.ratioLimit, grace: 1 << 20))
+        #expect(unlimited == Data(body.utf8))
     }
 
     @Test func testAnEntryThatInflatesPastItsDeclaredSizeIsRefused() throws {
@@ -34,13 +70,15 @@ struct ZipArchiveTests {
     }
 
     @Test func testAnEntryThatExpandsFarBeyondItsCompressedSizeIsRefused() throws {
-        let policy = ZipExpansionPolicy(ratioLimit: ZipExpansionPolicy.standard.ratioLimit, grace: 1 << 20)
+        let ratioLimit = ZipArchive.bufferedBudget.ratioLimit
         let body = String(repeating: "A", count: 4 << 20)
         let archive = try archive([("xl/worksheets/sheet1.xml", body, .deflate)])
         let entry = try #require(archive.entry(named: "xl/worksheets/sheet1.xml"))
-        #expect(entry.uncompressedSize / max(entry.compressedSize, 1) > policy.ratioLimit)
+        #expect(entry.uncompressedSize / max(entry.compressedSize, 1) > ratioLimit)
         #expect(try archive.data(for: entry).count == body.utf8.count)
-        if let error = #expect(throws: (any Error).self, performing: { try archive.data(for: entry, policy: policy) }) {
+        if let error = #expect(throws: (any Error).self, performing: {
+            try archive.data(for: entry, budget: .init(ratioLimit: ratioLimit, grace: 1 << 20))
+        }) {
             #expect(error as? ZipArchive.Failure == .entryTooLarge("xl/worksheets/sheet1.xml"))
         }
     }

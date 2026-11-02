@@ -103,7 +103,10 @@ nonisolated internal final class ClickHouseHTTPChunks: NSObject, URLSessionDataD
         let failure = lock.withLock { () -> Error? in
             guard let statusCode = failureStatusCode else { return error }
             let body = String(decoding: failureBody, as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
-            return ClickHouseError.httpFailure(statusCode: statusCode, body: body)
+            let exceptionCode = responseHeaders.first {
+                $0.key.caseInsensitiveCompare(ClickHousePluginDriver.exceptionCodeHeader) == .orderedSame
+            }?.value
+            return ClickHouseError.httpFailure(statusCode: statusCode, body: body, exceptionCode: exceptionCode)
         }
         guard let failure else {
             continuation.finish()

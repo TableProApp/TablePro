@@ -3,6 +3,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProProcess
 import TableProTestSupport
 
 /// Stands in for the forwarding process. `.ready` opens a real loopback listener on the port the
@@ -47,17 +48,19 @@ final class FakeTunnelCommandRunner: SupervisedProcessRunner, @unchecked Sendabl
         lock.withLock { stopCalls }
     }
 
-    func start(binaryPath: String, arguments: [String], environment: [String: String]) throws {
+    // Validates as the real runner does, so a command built with the wrong authorship fails here too.
+    func start(_ command: ProcessCommand) throws {
+        _ = try ProcessLauncher.process(for: command)
         lock.lock()
         startCalls += 1
-        startedBinaryPath = binaryPath
-        startedArguments = arguments
-        startedEnvironment = environment
+        startedBinaryPath = command.executable.path
+        startedArguments = command.arguments
+        startedEnvironment = command.environment
         lock.unlock()
 
         switch behavior {
         case .ready:
-            if let port = Self.parsePort(arguments) {
+            if let port = Self.parsePort(command.arguments) {
                 listenerFd = Self.openListener(port: port)
             }
         case .exitsDuringStartup(let message):
@@ -172,10 +175,44 @@ struct TunnelCommandManagerTests {
             connectionId: UUID(), config: customConfig(), remoteHost: "h", remotePort: 1
         )
         let path = fake.startedEnvironment["PATH"] ?? ""
-        for toolPath in CLIToolEnvironment.toolPaths {
+        for toolPath in ProcessEnvironment.toolSearchPaths {
             #expect(path.contains(toolPath))
         }
         await manager.closeAllTunnels()
+    }
+
+    @Test("a custom command may name a shell, since the user wrote it")
+    func customCommandMayNameAShell() async throws {
+        let fake = FakeTunnelCommandRunner(behavior: .ready)
+        let manager = TunnelCommandManager(runnerFactory: { fake })
+        let id = UUID()
+
+        let port = try await manager.createTunnel(
+            connectionId: id,
+            config: customConfig(command: "/bin/sh -c : --listen {port}"),
+            remoteHost: "h",
+            remotePort: 1
+        )
+
+        #expect(fake.startedBinaryPath == "/bin/sh")
+        #expect(fake.startedArguments == ["-c", ":", "--listen", String(port)])
+        try await manager.closeTunnel(connectionId: id)
+    }
+
+    @Test("an imported host that is not a DNS name or IP address never reaches a command that uses {host}")
+    func unsafeHostNeverStarts() async {
+        let fake = FakeTunnelCommandRunner(behavior: .ready)
+        let manager = TunnelCommandManager(runnerFactory: { fake })
+
+        await #expect(throws: TunnelCommandRefusal.hostNotAllowed("a;id")) {
+            _ = try await manager.createTunnel(
+                connectionId: UUID(),
+                config: self.customConfig(command: "/bin/sh -c 'exec nc {host} {remotePort}' --listen {port}"),
+                remoteHost: "a;id",
+                remotePort: 5_432
+            )
+        }
+        #expect(fake.startCallCount == 0)
     }
 
     @Test("a command that exits during startup fails with its stderr")

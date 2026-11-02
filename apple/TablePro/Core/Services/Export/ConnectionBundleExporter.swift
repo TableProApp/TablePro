@@ -53,7 +53,11 @@ internal struct ConnectionBundleExporter {
         self.appVersion = appVersion
     }
 
-    func portableSettings(for connection: DatabaseConnection) -> ExportableConnection {
+    // The Replace check passes false, so a saved row compares with what a saved import keeps.
+    func portableSettings(
+        for connection: DatabaseConnection,
+        keepingLocalCredentials: Bool = true
+    ) -> ExportableConnection {
         var settings = ExportableConnection(
             name: connection.name,
             host: connection.host,
@@ -71,7 +75,10 @@ internal struct ConnectionBundleExporter {
         settings.aiPolicy = connection.aiPolicy?.rawValue
         settings.connectTimeoutSeconds = DatabaseConnection.portableConnectTimeout(connection.connectTimeoutSeconds)
         settings.queryTimeoutSeconds = DatabaseConnection.portableQueryTimeout(connection.queryTimeoutSeconds)
-        settings.additionalFields = shareableAdditionalFields(for: connection)
+        settings.additionalFields = shareableAdditionalFields(
+            for: connection,
+            keepingLocalCredentials: keepingLocalCredentials
+        )
         settings.redisDatabase = connection.redisDatabase
         settings.startupCommands = connection.startupCommands
         settings.localOnly = connection.localOnly ? true : nil
@@ -161,7 +168,10 @@ internal struct ConnectionBundleExporter {
         return profile.toSSHConfiguration()
     }
 
-    private func shareableAdditionalFields(for connection: DatabaseConnection) -> [String: String]? {
+    private func shareableAdditionalFields(
+        for connection: DatabaseConnection,
+        keepingLocalCredentials: Bool
+    ) -> [String: String]? {
         // Without metadata the secure fields are unknown, so nothing is shared.
         guard registry.snapshot(for: connection.type) != nil else { return nil }
         var fields = connection.additionalFields
@@ -169,7 +179,8 @@ internal struct ConnectionBundleExporter {
         fields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
         return ExportableConnection.shareableAdditionalFields(
             fields,
-            excluding: Set(PluginManager.shared.secureConnectionFieldIds(for: connection.type))
+            excluding: Set(PluginManager.shared.secureConnectionFieldIds(for: connection.type)),
+            keepingLocalCredentials: keepingLocalCredentials
         )
     }
 
@@ -205,7 +216,7 @@ internal struct ConnectionBundleExporter {
             connections: exported.map { connection in
                 BundleExportInput.Connection(
                     id: connection.id,
-                    settings: portableSettings(for: connection),
+                    settings: portableSettings(for: connection, keepingLocalCredentials: true),
                     groupId: connection.groupId,
                     tagIds: connection.tagIds,
                     credentialProfileId: connection.credentialMode.profileId,

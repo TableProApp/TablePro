@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProProcess
 import TableProUtilities
 
 protocol RegistryPluginInstalling: Sendable {
@@ -116,7 +117,7 @@ actor PluginInstaller: RegistryPluginInstalling {
         }
 
         try PluginCodeSignatureVerifier.verify(bundle: stagedBundle)
-        try PluginManager.validateBundleVersions(stagedBundle)
+        try Self.validateBundle(stagedBundle, against: release, pluginId: registryPlugin.id)
         Self.stripQuarantine(at: bundleURL)
 
         return ExtractedBundle(workingDir: workingDir, bundleURL: bundleURL)
@@ -178,10 +179,17 @@ actor PluginInstaller: RegistryPluginInstalling {
         return stagedURL
     }
 
+    // --noqtn: the signature check is the gate, and the bundle drops quarantine after it either way.
+    nonisolated static func extractZipCommand(at zipURL: URL, into destDir: URL) -> ProcessCommand {
+        ProcessCommand(
+            executable: URL(fileURLWithPath: "/usr/bin/ditto"),
+            arguments: ["-x", "-k", "--noqtn", "--", zipURL.path, destDir.path],
+            environment: ProcessEnvironment.minimal()
+        )
+    }
+
     nonisolated static func extractZip(at zipURL: URL, into destDir: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = ["-xk", zipURL.path, destDir.path]
+        let process = try ProcessLauncher.process(for: extractZipCommand(at: zipURL, into: destDir))
         try process.run()
         process.waitUntilExit()
         if process.terminationStatus != 0 {
@@ -207,6 +215,28 @@ actor PluginInstaller: RegistryPluginInstalling {
 
     nonisolated static func stripQuarantine(at url: URL) {
         DownloadedBinary.stripQuarantine(at: url)
+    }
+
+    // The archive must be the build and the plugin its manifest entry names, as registry.py checks when it publishes.
+    nonisolated static func validateBundle(_ bundle: Bundle, against release: RegistryRelease, pluginId: String) throws {
+        try PluginManager.validateBundleVersions(bundle)
+        let info = PluginManager.infoPlist(at: bundle.bundleURL)
+        let identifier = info["CFBundleIdentifier"] as? String ?? ""
+        guard identifier == pluginId else {
+            throw PluginError.installFailed(String(
+                format: String(localized: "The archive holds the plugin %1$@, not %2$@."),
+                identifier,
+                pluginId
+            ))
+        }
+        let build = PluginManager.bundleBuild(at: bundle.bundleURL)
+        guard build == release.build else {
+            throw PluginError.installFailed(String(
+                format: String(localized: "The archive holds build %1$ld, not build %2$ld."),
+                build,
+                release.build
+            ))
+        }
     }
 
     nonisolated static func atomicReplace(stagedBundleURL: URL, destURL: URL) throws -> URL {

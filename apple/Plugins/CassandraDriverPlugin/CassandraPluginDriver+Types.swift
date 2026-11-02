@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProCassandraCore
 import TableProPluginKit
 
 extension CassandraPluginDriver {
@@ -29,7 +30,12 @@ extension CassandraPluginDriver {
 
     private func userType(from row: [PluginCellValue], keyspace: String) -> PluginUserDefinedTypeInfo? {
         guard let name = row[safe: 0]?.asText else { return nil }
-        let fields = CassandraUserTypes.fields(names: row[safe: 1]?.asText, types: row[safe: 2]?.asText)
+        let fields: [CassandraUserTypes.Field]? = if let names = CassandraObjectQueries.jsonList(row[safe: 1]?.asText),
+            let types = CassandraObjectQueries.jsonList(row[safe: 2]?.asText) {
+            CassandraUserTypes.fields(names: names, types: types)
+        } else {
+            nil
+        }
         return PluginUserDefinedTypeInfo(
             name: name,
             kind: .udt,

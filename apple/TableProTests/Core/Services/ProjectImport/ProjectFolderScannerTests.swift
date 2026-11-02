@@ -186,6 +186,21 @@ struct ProjectFolderScannerTests {
         return (name, secret)
     }
 
+    @Test("A scan whose task is cancelled stops and offers nothing")
+    func testCancelledScanOffersNothing() async throws {
+        try write("DATABASE_URL=postgresql://u:p@localhost:5432/appdb", to: ".env")
+        let rootURL = root
+        let cancelled = await Task.detached { () -> Result<ProjectFolderScanResult, ProjectFolderScanError> in
+            withUnsafeCurrentTask { task in
+                guard let task else { return }
+                task.cancel()
+            }
+            return ProjectFolderScanner.scan(rootURL: rootURL)
+        }.value
+        #expect(try cancelled.get().candidates.isEmpty)
+        #expect(try !scan().candidates.isEmpty)
+    }
+
     @Test("Results are ordered with the most trustworthy sources first")
     func testOrdering() throws {
         try write("DATABASE_URL=postgresql://u:p@localhost:5432/fromlocal", to: ".env.local")

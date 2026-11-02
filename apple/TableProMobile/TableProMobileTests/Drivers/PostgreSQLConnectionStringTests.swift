@@ -11,8 +11,8 @@ struct PostgreSQLConnectionStringTests {
         return path
     }
 
-    private func build(ssl: DriverSSLConfiguration) -> String {
-        PostgreSQLConnectionString.build(
+    private func build(ssl: DriverSSLConfiguration) throws -> String {
+        try PostgreSQLConnectionString.build(
             host: "db.example.com",
             port: 5432,
             database: "app",
@@ -23,8 +23,8 @@ struct PostgreSQLConnectionStringTests {
     }
 
     @Test("the base parameters are always present")
-    func baseParameters() {
-        let connStr = build(ssl: .disabled)
+    func baseParameters() throws {
+        let connStr = try build(ssl: .disabled)
 
         #expect(connStr.contains("host='db.example.com'"))
         #expect(connStr.contains("port='5432'"))
@@ -35,18 +35,18 @@ struct PostgreSQLConnectionStringTests {
     }
 
     @Test("the session is pinned to UTF8 in the startup packet, whatever the database's encoding")
-    func pinsClientEncoding() {
-        #expect(build(ssl: .disabled).contains("client_encoding='UTF8'"))
+    func pinsClientEncoding() throws {
+        #expect(try build(ssl: .disabled).contains("client_encoding='UTF8'"))
     }
 
     @Test("A Mac Preferred reaches libpq as prefer, and Required as require")
-    func preferredIsPrefer() {
-        #expect(build(ssl: DriverSSLConfiguration(mode: .require, isPreferred: true)).contains("sslmode='prefer'"))
-        #expect(build(ssl: DriverSSLConfiguration(mode: .require)).contains("sslmode='require'"))
+    func preferredIsPrefer() throws {
+        #expect(try build(ssl: DriverSSLConfiguration(mode: .require, isPreferred: true)).contains("sslmode='prefer'"))
+        #expect(try build(ssl: DriverSSLConfiguration(mode: .require)).contains("sslmode='require'"))
     }
 
     @Test("a client certificate and key reach libpq as sslcert and sslkey")
-    func clientCertificateIsSent() {
+    func clientCertificateIsSent() throws {
         let certPath = temporaryFile()
         let keyPath = temporaryFile()
         defer {
@@ -54,7 +54,7 @@ struct PostgreSQLConnectionStringTests {
             try? FileManager.default.removeItem(atPath: keyPath)
         }
 
-        let connStr = build(ssl: DriverSSLConfiguration(
+        let connStr = try build(ssl: DriverSSLConfiguration(
             mode: .require,
             clientCertificatePath: certPath,
             clientKeyPath: keyPath
@@ -65,20 +65,20 @@ struct PostgreSQLConnectionStringTests {
     }
 
     @Test("a CA certificate is sent only when the mode verifies it")
-    func caOnlyWhenVerifying() {
+    func caOnlyWhenVerifying() throws {
         let caPath = temporaryFile()
         defer { try? FileManager.default.removeItem(atPath: caPath) }
 
-        let requiring = build(ssl: DriverSSLConfiguration(mode: .require, caCertificatePath: caPath))
+        let requiring = try build(ssl: DriverSSLConfiguration(mode: .require, caCertificatePath: caPath))
         #expect(!requiring.contains("sslrootcert"))
 
-        let verifying = build(ssl: DriverSSLConfiguration(mode: .verifyFull, caCertificatePath: caPath))
+        let verifying = try build(ssl: DriverSSLConfiguration(mode: .verifyFull, caCertificatePath: caPath))
         #expect(verifying.contains("sslrootcert='\(caPath)'"))
     }
 
     @Test("a certificate path that does not exist is left out entirely")
-    func missingFileIsOmitted() {
-        let connStr = build(ssl: DriverSSLConfiguration(
+    func missingFileIsOmitted() throws {
+        let connStr = try build(ssl: DriverSSLConfiguration(
             mode: .require,
             clientCertificatePath: "/does/not/exist.pem",
             clientKeyPath: "/does/not/exist.key"
@@ -89,8 +89,8 @@ struct PostgreSQLConnectionStringTests {
     }
 
     @Test("quotes and backslashes in values are escaped")
-    func escapesValues() {
-        let connStr = PostgreSQLConnectionString.build(
+    func escapesValues() throws {
+        let connStr = try PostgreSQLConnectionString.build(
             host: "db",
             port: 5432,
             database: "app",
@@ -103,9 +103,42 @@ struct PostgreSQLConnectionStringTests {
         #expect(connStr.contains("password='back\\\\slash'"))
     }
 
+    @Test(
+        "A NUL in any setting fails the connect and names the setting, instead of libpq reading a cut string",
+        arguments: ["host", "dbname", "user", "password"]
+    )
+    func refusesANULCharacter(keyword: String) {
+        let value = "a\u{0}b"
+        let error = #expect(throws: PostgreSQLError.self) {
+            try PostgreSQLConnectionString.build(
+                host: keyword == "host" ? value : "db.example.com",
+                port: 5_432,
+                database: keyword == "dbname" ? value : "app",
+                user: keyword == "user" ? value : "postgres",
+                password: keyword == "password" ? value : "hunter2",
+                ssl: .disabled
+            )
+        }
+        #expect(error?.localizedDescription.contains(keyword) == true)
+    }
+
+    @Test("A line break stays inside the quotes, where libpq reads it as data")
+    func keepsALineBreakAsData() throws {
+        let connStr = try PostgreSQLConnectionString.build(
+            host: "db",
+            port: 5_432,
+            database: "app",
+            user: "postgres",
+            password: "a\nhost=evil",
+            ssl: .disabled
+        )
+
+        #expect(connStr.contains("password='a\nhost=evil'"))
+    }
+
     @Test("Through a tunnel, libpq checks the certificate against the server name and dials the loopback")
-    func tunneledConnectionNamesTheServer() {
-        let connStr = PostgreSQLConnectionString.build(
+    func tunneledConnectionNamesTheServer() throws {
+        let connStr = try PostgreSQLConnectionString.build(
             host: "127.0.0.1",
             port: 49_152,
             database: "app",
@@ -121,11 +154,11 @@ struct PostgreSQLConnectionStringTests {
     }
 
     @Test("No server name, the same name, or a dial host that is not an address sends host alone")
-    func hostaddrOnlyForAnAddress() {
-        #expect(!build(ssl: .disabled).contains("hostaddr"))
-        #expect(!build(ssl: DriverSSLConfiguration(mode: .require, serverName: "db.example.com")).contains("hostaddr"))
+    func hostaddrOnlyForAnAddress() throws {
+        #expect(try !build(ssl: .disabled).contains("hostaddr"))
+        #expect(try !build(ssl: DriverSSLConfiguration(mode: .require, serverName: "db.example.com")).contains("hostaddr"))
 
-        let named = build(ssl: DriverSSLConfiguration(mode: .verifyFull, serverName: "other.example.com"))
+        let named = try build(ssl: DriverSSLConfiguration(mode: .verifyFull, serverName: "other.example.com"))
         #expect(named.contains("host='db.example.com'"))
         #expect(!named.contains("hostaddr"))
     }

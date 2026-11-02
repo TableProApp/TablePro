@@ -163,6 +163,37 @@ struct RDSDiscoveryReconcilerTests {
         ))
     }
 
+    @MainActor
+    @Test("Rows the AWS import wrote sign in with this Mac's profile without asking, and only those rows")
+    func discoveredRowsAreApproved() throws {
+        let suite = try EphemeralDefaults()
+        let approvals = ConnectionApprovalStore(kind: .localCredentials, defaults: suite.defaults, savedConnections: { [] })
+        let saved = { (settings: ExportableConnection) -> DatabaseConnection in
+            var row = DatabaseConnection(
+                importing: settings,
+                id: UUID(),
+                groupId: nil,
+                tagIds: [],
+                credentialProfileId: nil,
+                resolvesSSHProfile: { _ in false }
+            )
+            row.origin = .imported
+            return row
+        }
+        let written = saved(exportable())
+        let fromAFile = saved(exportable(name: "billing", host: "billing.abc123.us-east-1.rds.amazonaws.com"))
+        #expect(!approvals.isApproved(written))
+
+        RDSDiscoveryReconciler.approveLocalCredentials(
+            of: [written.id, UUID()],
+            saved: [written, fromAFile],
+            approvals: approvals
+        )
+
+        #expect(approvals.isApproved(written))
+        #expect(!approvals.isApproved(fromAFile))
+    }
+
     @Test("AWS error codes map to the recovery the user needs")
     func errorMapping() {
         #expect(

@@ -179,6 +179,7 @@ final class ConnectionStorage {
             guard let index = connections.firstIndex(where: { $0.id == incoming.id }) else { continue }
             let stored = connections[index]
             var updated = incoming.adoptingDeviceLocalState(from: stored)
+            updated.origin = .imported
             if incoming.credentialMode.profileId != nil {
                 updated.credentialMode = incoming.credentialMode
             }
@@ -187,6 +188,11 @@ final class ConnectionStorage {
             }
             // A file carries no route, and readers drop the stored one once it no longer describes the tunnel.
             updated.sshRoute = stored.sshRoute
+            // A saved import brings no sign-in with this Mac's credentials, scripts or fields this build does not know, so
+            // the row keeps its own.
+            for (key, value) in stored.additionalFields where ConnectionFieldCatalog.survivesReplace(key) {
+                updated.additionalFields[key] = value
+            }
             updated.sortOrder = stored.groupId == updated.groupId
                 ? stored.sortOrder
                 : Self.nextSortOrder(in: connections, groupId: updated.groupId)
@@ -200,6 +206,7 @@ final class ConnectionStorage {
         for incoming in adding {
             guard knownIds.insert(incoming.id).inserted else { continue }
             var placed = incoming
+            placed.origin = .imported
             placed.sortOrder = Self.nextSortOrder(in: connections, groupId: incoming.groupId)
             connections.append(placed)
             added.append(placed)
@@ -534,6 +541,7 @@ final class ConnectionStorage {
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
         duplicate.sshRoute = connection.sshRoute
+        duplicate.origin = connection.origin
 
         var connections = loadConnections()
         let siblings = LibrarySorting.sorted(connections.filter { $0.groupId == connection.groupId }, mode: .manual)
@@ -602,6 +610,9 @@ final class ConnectionStorage {
             }
         }
         LoadableExtensionApprovalStore.shared.copyApprovals(from: connection.id, to: newId)
+        for store in ConnectionApprovalStore.all {
+            store.copyApprovals(from: connection.id, to: newId)
+        }
 
         appEventsProvider().connectionUpdated.send(nil)
         return placedDuplicate

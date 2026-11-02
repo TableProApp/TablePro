@@ -34,11 +34,10 @@ enum SettingsValidationError: LocalizedError {
 // MARK: - String Validation
 
 extension String {
-    /// Sanitize string for settings: strip newlines/tabs, trim whitespace
     var sanitized: String {
-        self.replacingOccurrences(of: "\n", with: "")
-            .replacingOccurrences(of: "\r", with: "")
-            .replacingOccurrences(of: "\t", with: " ")
+        self.replacingOccurrences(of: "\n", with: "", options: .literal)
+            .replacingOccurrences(of: "\r", with: "", options: .literal)
+            .replacingOccurrences(of: "\t", with: " ", options: .literal)
             .trimmingCharacters(in: .whitespaces)
     }
 

@@ -62,12 +62,7 @@ internal enum LiveMessageExport {
         let columns = columns(for: kind)
         let header = columns.map(\.title).joined(separator: "\t")
         let rows = entries.map { entry in
-            columns.map { column in
-                value(of: column, in: entry)
-                    .replacingOccurrences(of: "\t", with: " ")
-                    .replacingOccurrences(of: "\n", with: " ")
-            }
-            .joined(separator: "\t")
+            columns.map { tsvField(value(of: $0, in: entry)) }.joined(separator: "\t")
         }
         return ([header] + rows).joined(separator: "\n")
     }
@@ -80,8 +75,19 @@ internal enum LiveMessageExport {
         return lines.joined(separator: "\r\n") + "\r\n"
     }
 
+    // By scalar: `\r\n` and a quote a combining mark follows are one Character, so a Character search missed both
+    // and the row split.
+    private static func tsvField(_ value: String) -> String {
+        var field = String.UnicodeScalarView()
+        for scalar in value.unicodeScalars {
+            field.append(scalar == "\t" || CharacterSet.newlines.contains(scalar) ? " " : scalar)
+        }
+        return String(field)
+    }
+
     private static func quoted(_ field: String) -> String {
-        guard field.contains(where: { $0 == "," || $0 == "\"" || $0.isNewline }) else { return field }
-        return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        guard field.unicodeScalars.contains(where: { $0 == "," || $0 == "\"" || CharacterSet.newlines.contains($0) })
+        else { return field }
+        return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
     }
 }

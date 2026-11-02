@@ -4,47 +4,20 @@
 //
 
 import Foundation
+import TableProProcess
 
 enum CLIExecutableFinder {
     static func findExecutable(_ name: String) -> String? {
-        if let path = shell("/usr/bin/which", arguments: [name]), !path.isEmpty {
+        let environment = ProcessEnvironment.addingToolSearchPaths(to: ProcessInfo.processInfo.environment)
+        if let path = ProcessEnvironment.executable(named: name, in: environment) {
             return path
         }
 
-        let commonPaths = [
-            "/opt/homebrew/bin/\(name)",
-            "/usr/local/bin/\(name)",
-            "/usr/local/mysql/bin/\(name)",
-            "/Applications/Postgres.app/Contents/Versions/latest/bin/\(name)",
-            (NSHomeDirectory() as NSString).appendingPathComponent("google-cloud-sdk/bin/\(name)")
+        let folders = [
+            "/usr/local/mysql/bin",
+            "/Applications/Postgres.app/Contents/Versions/latest/bin",
+            (NSHomeDirectory() as NSString).appendingPathComponent("google-cloud-sdk/bin"),
         ]
-
-        for path in commonPaths where FileManager.default.isExecutableFile(atPath: path) {
-            return path
-        }
-
-        return nil
-    }
-
-    private static func shell(_ path: String, arguments: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = arguments
-        process.environment = CLIToolEnvironment.augmented()
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return nil
-        }
-
-        guard process.terminationStatus == 0 else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ProcessEnvironment.executable(named: name, in: ["PATH": folders.joined(separator: ":")])
     }
 }

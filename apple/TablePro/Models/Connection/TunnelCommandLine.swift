@@ -71,24 +71,39 @@ enum TunnelCommandLine {
         return tokens.map(expandingTilde)
     }
 
-    /// Runs after tokenization, never before, so a substituted value carrying a space stays one
-    /// argument instead of splitting into two.
+    // After tokenization, so a value carrying a space stays one argument. By code unit, as the checks below find it.
     static func substitutePlaceholders(
         in tokens: [String],
-        localPort: Int,
+        localPort: String,
         remoteHost: String,
         remotePort: Int
     ) -> [String] {
         tokens.map { token in
             token
-                .replacingOccurrences(of: localPortPlaceholder, with: String(localPort))
-                .replacingOccurrences(of: hostPlaceholder, with: remoteHost)
-                .replacingOccurrences(of: remotePortPlaceholder, with: String(remotePort))
+                .replacingOccurrences(of: localPortPlaceholder, with: localPort, options: .literal)
+                .replacingOccurrences(of: hostPlaceholder, with: remoteHost, options: .literal)
+                .replacingOccurrences(of: remotePortPlaceholder, with: String(remotePort), options: .literal)
         }
     }
 
     static func containsLocalPortPlaceholder(_ commandLine: String) -> Bool {
-        commandLine.contains(localPortPlaceholder)
+        commandLine.range(of: localPortPlaceholder, options: .literal) != nil
+    }
+
+    static func usesHost(_ tokens: [String]) -> Bool {
+        tokens.contains { $0.range(of: hostPlaceholder, options: .literal) != nil }
+    }
+
+    // An imported connection can replace the host while the user's command stays, and that command may be
+    // `sh -c "..."`. A DNS name or an IP literal (`[::1]`, `fe80::1%en0`) needs nothing more.
+    static func isSubstitutableHost(_ host: String) -> Bool {
+        guard let first = host.unicodeScalars.first, first != "-" else { return false }
+        return host.unicodeScalars.allSatisfy { scalar in
+            switch scalar {
+            case "a"..."z", "A"..."Z", "0"..."9", ".", "_", ":", "%", "[", "]", "-": true
+            default: false
+            }
+        }
     }
 
     private static func expandingTilde(_ token: String) -> String {

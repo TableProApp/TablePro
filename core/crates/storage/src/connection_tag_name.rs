@@ -13,10 +13,10 @@ impl ConnectionTagName {
     pub const MAX_CHARS: usize = 32;
 
     pub fn new(value: &str) -> Result<Self, TagNameError> {
-        match name_rules::checked(value, Self::MAX_CHARS) {
+        match name_rules::checked(value) {
+            Ok(name) if name.chars().count() > Self::MAX_CHARS => Err(TagNameError::TooLong { max: Self::MAX_CHARS }),
             Ok(name) => Ok(Self(name.to_owned())),
             Err(NameFault::Empty) => Err(TagNameError::Empty),
-            Err(NameFault::TooLong) => Err(TagNameError::TooLong { max: Self::MAX_CHARS }),
             Err(NameFault::ControlCharacter) => Err(TagNameError::ControlCharacter),
         }
     }
@@ -36,15 +36,17 @@ impl ConnectionTagName {
     }
 }
 
-/// A tag's name read back from a file, cleaned as a group's is. A name
-/// left blank is refused: a tag nobody can see cannot be told apart.
+// A blank name is refused: a tag nobody can see cannot be told apart.
 pub(crate) fn deserialize_stored<'de, D>(deserializer: D) -> Result<ConnectionTagName, D::Error>
 where
     D: Deserializer<'de>,
 {
     let stored = String::deserialize(deserializer)?;
-    ConnectionTagName::new(&name_rules::cleaned(&stored, ConnectionTagName::MAX_CHARS))
-        .map_err(serde::de::Error::custom)
+    let cut: String = name_rules::cleaned(&stored)
+        .chars()
+        .take(ConnectionTagName::MAX_CHARS)
+        .collect();
+    ConnectionTagName::new(&cut).map_err(serde::de::Error::custom)
 }
 
 impl TryFrom<String> for ConnectionTagName {
@@ -85,6 +87,13 @@ mod tests {
             })
         );
         assert_eq!(ConnectionTagName::new("a\u{7}"), Err(TagNameError::ControlCharacter));
+    }
+
+    #[test]
+    fn the_limit_counts_characters_not_bytes() {
+        let name = "é".repeat(ConnectionTagName::MAX_CHARS);
+
+        assert_eq!(ConnectionTagName::new(&name).map(String::from), Ok(name));
     }
 
     #[test]

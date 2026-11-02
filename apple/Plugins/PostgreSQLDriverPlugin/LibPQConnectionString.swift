@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 internal struct LibPQConnectTimeout: Equatable, Sendable {
     static let defaultMilliseconds = 10_000
@@ -96,12 +97,14 @@ internal enum LibPQConnectionString {
         options: String?,
         applicationName: String? = nil,
         connectTimeoutSeconds: Int? = nil,
-        kerberos: LibPQKerberosSignIn? = nil
-    ) -> String {
+        kerberos: LibPQKerberosSignIn? = nil,
+        serverName: String? = nil
+    ) throws -> String {
         var parameters: [(String, String)] = []
-        if let serviceHost = kerberos?.serviceHost, isAddressLiteral(host) {
-            // GSS names the service after host, and hostaddr is where the tunnel listens.
-            parameters.append(contentsOf: [("host", serviceHost), ("hostaddr", host)])
+        if let serverName, !serverName.isEmpty, serverName != host, isAddressLiteral(host) {
+            // libpq checks the certificate, sends SNI and names the GSS service after host, and dials hostaddr, where
+            // the tunnel listens.
+            parameters.append(contentsOf: [("host", serverName), ("hostaddr", host)])
         } else {
             parameters.append(("host", host))
         }
@@ -120,6 +123,9 @@ internal enum LibPQConnectionString {
         if let password, !password.isEmpty {
             parameters.append(("password", password))
         }
+        // libpq reads ~/.pgpass itself whenever no password is given, so the app's own reader behind Use ~/.pgpass
+        // stays the only route to it.
+        parameters.append(("passfile", unreadablePassfile))
         if let connectTimeoutSeconds {
             parameters.append(("connect_timeout", String(max(connectTimeoutSeconds, 1))))
         }
@@ -152,10 +158,28 @@ internal enum LibPQConnectionString {
             parameters.append(("options", options))
         }
 
-        return parameters
-            .map { "\($0.0)='\(escape($0.1))'" }
-            .joined(separator: " ")
+        var pairs: [String] = []
+        for (keyword, value) in parameters {
+            let quoted: String
+            do {
+                quoted = try ConnectionStringQuoting.libpqValue(value)
+            } catch {
+                throw LibPQPluginError(
+                    message: String(
+                        format: String(localized: "The %@ setting holds a NUL character, which a PostgreSQL connection cannot carry."),
+                        keyword
+                    ),
+                    sqlState: nil,
+                    detail: nil
+                )
+            }
+            pairs.append("\(keyword)=\(quoted)")
+        }
+        return pairs.joined(separator: " ")
     }
+
+    // Nothing can exist under a device file, so libpq finds no file there and says nothing.
+    static let unreadablePassfile = "/dev/null/pgpass"
 
     private static func isAddressLiteral(_ host: String) -> Bool {
         var ipv4 = in_addr()
@@ -205,10 +229,5 @@ internal enum LibPQConnectionString {
     static func isClientEncoding(reportedByServer reported: String?) -> Bool {
         guard let reported else { return false }
         return clientEncodingNames.contains(reported.uppercased())
-    }
-
-    static func escape(_ value: String) -> String {
-        value.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "'", with: "\\'", options: .literal)
     }
 }

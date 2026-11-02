@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 import TableProPluginKit
 
 /// The Kafka driver.
@@ -15,7 +16,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var liveCluster: KafkaCluster { cluster }
 
-    var capabilities: PluginCapabilities { [] }
+    var capabilities: PluginCapabilities { [.statementPolicy] }
 
     /// The config is read here and not retained. It carries the password, and nothing after
     /// this point needs it: the cluster holds only what it must to reconnect.
@@ -30,6 +31,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         cluster = KafkaCluster(
             bootstrap: endpoints,
             ssl: KafkaConnectionField.effectiveSSL(config.ssl, fields: config.additionalFields),
+            tunneledServerName: config.tunneledServerName,
             credentials: KafkaCredentials(
                 mechanism: mechanism,
                 username: config.username,
@@ -158,7 +160,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             partitions: topic.partitions.map(\.index),
             cluster: cluster
         )
-        let total = bounds.reduce(Int64(0)) { $0 + $1.messageCount }
+        let total = KafkaOffsetMath.total(bounds.map(\.messageCount))
         return PluginTableMetadata(tableName: table, rowCount: total)
     }
 
@@ -171,24 +173,75 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query execution
 
     func execute(query: String) async throws -> PluginQueryResult {
-        try await run(KafkaQL.parse(query))
+        try await execute(query: query, context: PluginStatementContext())
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        try await run(Self.parse(query), context: context)
     }
 
     func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
-        var statement = try KafkaQL.parse(query)
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters, context: PluginStatementContext())
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        var statement = try Self.parse(query)
         if let rowCap, case .consume(var consume) = statement {
             consume.limit = min(consume.limit, rowCap)
             statement = .consume(consume)
         }
-        return try await run(statement)
+        return try await run(statement, context: context)
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await execute(query: query)
     }
 
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await execute(query: query, context: context)
+    }
+
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         try await executeUserQuery(query: query, rowCap: rowCap, parameters: nil)
+    }
+
+    // The default stream runs the context-free `execute`, which would drop a read-only context.
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let result = try await self.execute(query: query, context: context)
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: result.columns,
+                        columnTypeNames: result.columnTypeNames
+                    )))
+                    if !result.rows.isEmpty {
+                        continuation.yield(.rows(result.rows))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private static func parse(_ query: String) throws -> KafkaStatement {
+        do {
+            return try KafkaQL.parse(query)
+        } catch let error as KafkaQLSyntaxError {
+            throw KafkaError.syntax(error.message)
+        }
     }
 
     /// `Task.cancel()` propagates through every await in this driver, so there is nothing
@@ -332,7 +385,10 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Statement dispatch
 
-    private func run(_ statement: KafkaStatement) async throws -> PluginQueryResult {
+    private func run(_ statement: KafkaStatement, context: PluginStatementContext) async throws -> PluginQueryResult {
+        if let refusal = statement.refusal(readOnly: context.readOnly, allowsDestructive: context.allowsDestructive) {
+            throw KafkaError.refused(refusal.message)
+        }
         switch statement {
         case .consume(let query):
             return try await runConsume(query)
@@ -494,8 +550,6 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    /// A group's lag, per partition. This is the number a Kafka debugging session is usually
-    /// after: how far behind the consumers are, and on which partition.
     private func runDescribeGroup(_ group: String) async throws -> PluginQueryResult {
         // Asked first, and only to tell a typo apart from a group with nothing committed. Kafka
         // answers OffsetFetch for a group it has never heard of with an empty topic list and no
@@ -520,7 +574,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 // A group that never committed a partition reports -1, and calling that a lag
                 // of `end + 1` would be a fabricated number.
                 let lag: PluginCellValue = offset.committedOffset >= 0
-                    ? .text(String(max(0, end - offset.committedOffset)))
+                    ? .text(String(KafkaOffsetMath.messageCount(earliest: offset.committedOffset, latest: end)))
                     : .null
                 rows.append([
                     .text(topic),

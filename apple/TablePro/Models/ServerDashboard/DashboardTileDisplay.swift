@@ -57,7 +57,7 @@ struct DashboardTileTable: Equatable, Sendable {
         case .null:
             return nullDisplay
         case .text(let value):
-            let line = value.replacingOccurrences(of: "\n", with: " ")
+            let line = value.replacingOccurrences(of: "\n", with: " ", options: .literal)
             guard line.count > maximumCellLength else { return line }
             return String(line.prefix(maximumCellLength)) + "…"
         case .bytes(let data):

@@ -176,7 +176,7 @@ final class ServerDashboardViewModel: ObservableObject {
 
     private static func readExecutor(connectionId: UUID, services: AppServices) -> DashboardTileBoard.Execute {
         { [connectionId, services] query in
-            try await liveDriver(connectionId: connectionId, services: services).executeRead(query: query)
+            try await liveDriver(connectionId: connectionId, services: services).executeCatalogRead(query: query)
         }
     }
 

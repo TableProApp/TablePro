@@ -279,7 +279,7 @@ nonisolated struct LibSSH2Authentication {
     // Read right after the failing call: a later list read overwrites libssh2's last error.
     private func failureText(of method: String, rc: Int32) -> String {
         let detail = session.lastError() ?? "\(method) authentication failed (error \(rc))"
-        Self.logger.debug("SSH \(method, privacy: .public) authentication failed (\(rc)): \(detail, privacy: .public)")
+        Self.logger.debug("SSH \(method, privacy: .public) authentication failed (\(rc)): \(detail, privacy: .private)")
         return detail
     }
 

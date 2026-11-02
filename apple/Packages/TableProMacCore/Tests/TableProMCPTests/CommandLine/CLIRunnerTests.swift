@@ -60,13 +60,13 @@ private struct Rig {
     let pairing = PairingRecorder()
 
     func runner(stdinIsTerminal: Bool = true, stderrIsTerminal: Bool = true, stdin: String = "") -> CLIRunner {
-        let port = Int(server.port)
+        let socketPath = server.socketPath
         let pairing = pairing
         return CLIRunner(
             console: console,
             terminal: CLITerminal(standardInput: stdinIsTerminal, standardOutput: false, standardError: stderrIsTerminal),
             tokenStore: tokens,
-            openServer: { CLIServerEndpoint(port: port, appPath: nil) },
+            openServer: { CLIServerEndpoint(socketPath: socketPath, appPath: nil) },
             pair: { _ in pairing.pair() },
             readStandardInput: { stdin },
             readFile: { path in throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: path]) }

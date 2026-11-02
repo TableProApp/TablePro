@@ -75,7 +75,9 @@ extension PluginMetadataRegistry {
                     authenticationIsDatabaseScoped: true,
                     columnsAreSampled: true,
                     patternFiltersReadAnyColumn: true,
-                    filtersTypedByReadRows: true
+                    filtersTypedByReadRows: true,
+                    readOnlyEnforcement: .clientGuard,
+                    statementPolicyInDriver: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -176,7 +178,8 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsOpportunisticTLS: false,
-                    supportsColumnSort: false
+                    supportsColumnSort: false,
+                    readOnlyEnforcement: .clientGuard
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -596,7 +599,8 @@ extension PluginMetadataRegistry {
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
                     tlsImpliedPorts: [8_443, 443],
-                    verifiesServerWithSystemTrust: true
+                    verifiesServerWithSystemTrust: true,
+                    readOnlyEnforcement: .engineEnforced
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -745,7 +749,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: cassandraColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [
+                    additionalConnectionFields: AWSAuthFields.standard() + [
                         ConnectionField(
                             id: "sslCaCertPath",
                             label: "CA Certificate",

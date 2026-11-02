@@ -210,6 +210,7 @@ actor Neo4jConnection {
 
     private let host: String
     private let port: Int
+    private let tlsServerName: String
     private let wire = NIOLockedValueBox<Wire?>(nil)
     private var turnIsTaken = false
     private var waitingForTurn: [CheckedContinuation<Void, Never>] = []
@@ -218,9 +219,10 @@ actor Neo4jConnection {
     private(set) var version = BoltVersion(major: 0, minor: 0)
     private(set) var serverAgent: String?
 
-    init(host: String, port: Int) {
+    init(host: String, port: Int, tlsServerName: String) {
         self.host = host
         self.port = port
+        self.tlsServerName = tlsServerName
     }
 
     func open(ssl: SSLConfiguration, credentials: Neo4jCredentials, userAgent: String, timeout: TimeAmount) async throws {
@@ -242,7 +244,7 @@ actor Neo4jConnection {
                     try await dial(ssl: ssl, timeout: timeout)
                 } catch let error where !(error is CancellationError) && !timedOut {
                     let reason = error.localizedDescription
-                    Self.logger.info("TLS failed under SSL Preferred, retrying without it: \(reason, privacy: .public)")
+                    Self.logger.info("TLS failed under SSL Preferred, retrying without it: \(reason, privacy: .private)")
                     var plain = ssl
                     plain.mode = .disabled
                     try await dial(ssl: plain, timeout: timeout)
@@ -265,7 +267,7 @@ actor Neo4jConnection {
             throw Neo4jError.connectionFailed(PluginNIOChannel.describe(error))
         }
         // NIOSSL refuses an IP address as SNI; Aura routes on SNI, so a hostname always sends it.
-        let serverHostname = Self.isIPAddress(host) ? nil : host
+        let serverHostname = Self.isIPAddress(tlsServerName) ? nil : tlsServerName
         let handler = BoltResponseHandler()
         let bootstrap = ClientBootstrap(group: NIOSingletons.posixEventLoopGroup)
             .connectTimeout(timeout)
@@ -472,7 +474,7 @@ actor Neo4jConnection {
         await close()
     }
 
-    private static func isIPAddress(_ host: String) -> Bool {
+    static func isIPAddress(_ host: String) -> Bool {
         var v4 = in_addr()
         var v6 = in6_addr()
         return inet_pton(AF_INET, host, &v4) == 1 || inet_pton(AF_INET6, host, &v6) == 1

@@ -3,6 +3,7 @@ import NIOConcurrencyHelpers
 import NIOCore
 import NIOPosix
 import NIOSSL
+import TableProKafkaCore
 import TableProPluginKit
 
 /// Splits the TCP stream into whole Kafka responses. Every response is a 4-byte big-endian
@@ -124,6 +125,7 @@ actor KafkaConnection {
     /// already waiting, and a connect abandoned without closing leaks a live socket.
     func open(
         ssl: SSLConfiguration,
+        tlsServerName: String,
         credentials: KafkaCredentials,
         group: EventLoopGroup,
         timeout: TimeAmount
@@ -140,7 +142,7 @@ actor KafkaConnection {
         defer { timeoutTask.cancel() }
 
         let sslContext = try Self.makeSSLContext(ssl)
-        let serverHostname = ssl.verifiesHostname ? endpoint.host : nil
+        let serverHostname = ssl.verifiesHostname ? tlsServerName : nil
         let responseHandler = KafkaResponseHandler()
         let bootstrap = ClientBootstrap(group: group)
             .connectTimeout(timeout)

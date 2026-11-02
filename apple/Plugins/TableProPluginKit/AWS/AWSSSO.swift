@@ -263,6 +263,7 @@ public enum AWSSSO {
         session: URLSession,
         now: Date = Date()
     ) async throws -> AWSSSORoleCredentials {
+        try AWSPartition.requireValidRegion(settings.region)
         let portalHost = AWSPartition.host(service: "portal.sso", region: settings.region)
         var components = URLComponents(string: "https://\(portalHost)/federation/credentials")
         components?.queryItems = [
@@ -282,7 +283,7 @@ public enum AWSSSO {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: RedirectRefusingTaskDelegate.shared)
         } catch {
             throw AWSSSOError.networkFailure(profile: profileName, underlying: error.localizedDescription)
         }

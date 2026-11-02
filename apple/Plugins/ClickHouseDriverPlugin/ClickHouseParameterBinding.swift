@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 nonisolated internal enum ClickHouseParameterBinding {
     struct Bound: Equatable {
@@ -33,10 +34,11 @@ nonisolated internal enum ClickHouseParameterBinding {
         let itemBytes = sizes.indices.reduce(0) { $0 + "&param_p\($1 + 1)=".utf8.count }
         let fitsURL = sizes.allSatisfy { $0 <= maxParameterBytes } && sizes.reduce(itemBytes, +) <= maxParametersBytes
 
-        // Scalars, not Characters: a combining mark after a quote would merge with it into one Character.
-        let scalars = Array(query.unicodeScalars)
-        var converted = String.UnicodeScalarView()
-        converted.reserveCapacity(query.utf8.count)
+        // The engine's own lexer, so a `?` in a string, a quoted name or any comment ClickHouse reads stays text.
+        let source = query as NSString
+        let units = Array(query.utf16)
+        var converted: [UInt16] = []
+        converted.reserveCapacity(units.count)
         var paramMap: [String: String?] = [:]
         var consumed = 0
         var namedCount = 0
@@ -44,44 +46,50 @@ nonisolated internal enum ClickHouseParameterBinding {
         var firstWord: String?
         var isInsertData = false
 
-        while index < scalars.count {
-            let skipped = skippedEnd(in: scalars, from: index)
-            if skipped > index {
-                converted.append(contentsOf: scalars[index..<skipped])
-                index = skipped
-                continue
-            }
-            if isWordScalar(scalars[index]) {
-                var end = index + 1
-                while end < scalars.count, isWordScalar(scalars[end]) {
-                    end += 1
-                }
-                let word = String(String.UnicodeScalarView(scalars[index..<end])).uppercased()
-                firstWord = firstWord ?? word
-                isInsertData = isInsertData || (firstWord == "INSERT" && word == "VALUES")
-                converted.append(contentsOf: scalars[index..<end])
+        while index < units.count {
+            if let span = SQLNonCodeSpan.span(at: index, in: source, grammar: grammar) {
+                let end = min(max(span.end, index + 1), units.count)
+                converted.append(contentsOf: units[index..<end])
                 index = end
                 continue
             }
-            let scalar = scalars[index]
+            if isWordUnit(units[index]) {
+                var end = index + 1
+                while end < units.count, isWordUnit(units[end]) {
+                    end += 1
+                }
+                let word = String(decoding: units[index..<end], as: UTF16.self).uppercased()
+                firstWord = firstWord ?? word
+                isInsertData = isInsertData || (firstWord == "INSERT" && word == "VALUES")
+                converted.append(contentsOf: units[index..<end])
+                index = end
+                continue
+            }
+            let unit = units[index]
             index += 1
-            guard scalar == "?", consumed < parameters.count else {
-                converted.append(scalar)
+            guard unit == questionMark, consumed < parameters.count else {
+                converted.append(unit)
                 continue
             }
             if fitsURL, let value = escaped[consumed] {
                 namedCount += 1
                 let name = "p\(namedCount)"
-                converted.append(contentsOf: "{\(name):String}".unicodeScalars)
+                converted.append(contentsOf: "{\(name):String}".utf16)
                 paramMap[name] = value
             } else {
-                converted.append(contentsOf: literal(for: parameters[consumed], isInsertData: isInsertData).unicodeScalars)
+                converted.append(contentsOf: literal(for: parameters[consumed], isInsertData: isInsertData).utf16)
             }
             consumed += 1
         }
 
-        return Bound(query: String(converted), params: paramMap)
+        return Bound(query: String(decoding: converted, as: UTF16.self), params: paramMap)
     }
+
+    private static let grammar = SQLLexicalReadings.resolve(
+        databaseTypeId: ClickHousePlugin.databaseTypeId, declared: nil, session: nil
+    ).execution
+
+    private static let questionMark = UInt16(UnicodeScalar("?").value)
 
     // The server substitutes a String parameter as a plain literal, which also fits where no expression may stand,
     // such as IDENTIFIED BY. INSERT data is the exception: there a plain literal goes to the column's own parser, which
@@ -126,71 +134,7 @@ nonisolated internal enum ClickHouseParameterBinding {
         return "unhex('\(hex)')"
     }
 
-    // The spans SQLParameterExtractor skips when it writes the `?`s, so a `?` or a quote inside a string, a name, a
-    // comment or a dollar-quoted body is never taken for a placeholder.
-    private static func skippedEnd(in scalars: [Unicode.Scalar], from start: Int) -> Int {
-        let next = start + 1 < scalars.count ? scalars[start + 1] : nil
-        switch scalars[start] {
-        case "'", "\"", "`":
-            return quotedEnd(in: scalars, from: start)
-        case "-" where next == "-":
-            return scalars[start...].firstIndex(of: "\n") ?? scalars.count
-        case "/" where next == "*":
-            return blockCommentEnd(in: scalars, from: start)
-        case "$":
-            return dollarQuotedEnd(in: scalars, from: start) ?? start
-        default:
-            return start
-        }
-    }
-
-    // ClickHouse reads backslash escapes inside all three quote forms. A doubled quote closes the span and opens the next.
-    private static func quotedEnd(in scalars: [Unicode.Scalar], from start: Int) -> Int {
-        let quote = scalars[start]
-        var index = start + 1
-        while index < scalars.count {
-            if scalars[index] == "\\" {
-                index += 2
-                continue
-            }
-            if scalars[index] == quote {
-                return index + 1
-            }
-            index += 1
-        }
-        return scalars.count
-    }
-
-    private static func blockCommentEnd(in scalars: [Unicode.Scalar], from start: Int) -> Int {
-        var index = start + 2
-        while index + 1 < scalars.count {
-            if scalars[index] == "*" && scalars[index + 1] == "/" {
-                return index + 2
-            }
-            index += 1
-        }
-        return scalars.count
-    }
-
-    // `$$...$$` or `$tag$...$tag$`, the tag made of letters, digits and underscores. An unclosed one runs to the end.
-    private static func dollarQuotedEnd(in scalars: [Unicode.Scalar], from start: Int) -> Int? {
-        var tagEnd = start + 1
-        while tagEnd < scalars.count, isWordScalar(scalars[tagEnd]) {
-            tagEnd += 1
-        }
-        guard tagEnd < scalars.count, scalars[tagEnd] == "$" else { return nil }
-        let tag = Array(scalars[start...tagEnd])
-        var index = tagEnd + 1
-        while index + tag.count <= scalars.count {
-            if scalars[index] == "$", Array(scalars[index..<index + tag.count]) == tag {
-                return index + tag.count
-            }
-            index += 1
-        }
-        return scalars.count
-    }
-
-    private static func isWordScalar(_ scalar: Unicode.Scalar) -> Bool {
-        scalar == "_" || ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar) || ("0"..."9").contains(scalar)
+    private static func isWordUnit(_ unit: UInt16) -> Bool {
+        unit < 0x80 && SQLNonCodeSpan.isWordUnit(unit)
     }
 }

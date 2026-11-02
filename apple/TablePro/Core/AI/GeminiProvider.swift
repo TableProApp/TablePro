@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProHTTP
 import TableProMCP
 
 final class GeminiProvider: ChatTransport {
@@ -77,7 +78,7 @@ final class GeminiProvider: ChatTransport {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         } catch {
             Self.logger.warning("Gemini model fetch failed; using known models: \(error.publicLogShape, privacy: .public)")
             return Self.offlineModels
@@ -137,7 +138,7 @@ final class GeminiProvider: ChatTransport {
         request.httpMethod = "GET"
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             return false

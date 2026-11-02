@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProDatabase
+import TableProLogRedaction
 import TableProPluginKit
 
 // IAM Identity Center sign-in with the device authorization flow, as `EntraSignIn` does it: no
@@ -56,7 +57,7 @@ enum AWSSSOSignIn {
         do {
             device = try DeviceIAMCredentials.load(for: connectionId, from: secureStore)
         } catch {
-            logger.error("Reading the IAM Identity Center settings failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Reading the IAM Identity Center settings failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return nil
         }
         let startUrl = device.ssoStartUrl.trimmingCharacters(in: .whitespacesAndNewlines)

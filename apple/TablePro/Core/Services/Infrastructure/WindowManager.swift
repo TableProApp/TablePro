@@ -424,7 +424,7 @@ internal final class WindowManager {
     ) {
         let t0 = Date()
         Self.lifecycleLogger.info(
-            "[open] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) skipAutoExecute=\(payload.skipAutoExecute) activate=\(activate)"
+            "[open] WindowManager.openTab start payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(payload.intent.rawValue, privacy: .public) skipAutoExecute=\(payload.skipAutoExecute) activate=\(activate)"
         )
 
         let resolvedConnection = DatabaseManager.shared.activeSessions[payload.connectionId]?.connection

@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProMSSQLCore
 import TableProPluginKit
 
 extension MSSQLPluginDriver {
@@ -18,8 +19,7 @@ extension MSSQLPluginDriver {
         }
     }
 
-    /// Addressed by `user_type_id`, so a type renamed since the listing still resolves, and the kind
-    /// is never part of the lookup.
+    // Addressed by `user_type_id`, so a type renamed since the listing still resolves.
     func fetchUserDefinedType(_ type: PluginUserDefinedTypeInfo) async throws -> PluginUserDefinedTypeInfo {
         let resolvedSchema = effectiveSchema(type.schema)
         let result = try await execute(query: MSSQLTypeQueries.userDefinedTypeList(schema: resolvedSchema))
@@ -28,23 +28,27 @@ extension MSSQLPluginDriver {
             ?? listed.first { $0.name == type.name }
         guard let match else { throw PluginObjectSourceError.notFound(type.name) }
 
-        switch match.kind {
-        case .tableType:
-            return try await tableType(match, schema: resolvedSchema)
-        case .clrType:
-            return match.withDefinition(MSSQLTypeDefinition.clrStatement(
-                schema: resolvedSchema,
-                name: match.name,
-                assembly: match.attributes.first { $0.label == "Assembly" }?.value,
-                assemblyClass: match.attributes.first { $0.label == "Class" }?.value
-            ))
-        default:
-            return match.withDefinition(MSSQLTypeDefinition.aliasStatement(
-                schema: resolvedSchema,
-                name: match.name,
-                baseType: match.baseType,
-                isNullable: match.attributes.first { $0.label == "Nullable" }?.value != "NO"
-            ))
+        do {
+            switch match.kind {
+            case .tableType:
+                return try await tableType(match, schema: resolvedSchema)
+            case .clrType:
+                return match.withDefinition(MSSQLTypeDefinition.clrStatement(
+                    schema: resolvedSchema,
+                    name: match.name,
+                    assembly: match.attributes.first { $0.label == "Assembly" }?.value,
+                    assemblyClass: match.attributes.first { $0.label == "Class" }?.value
+                ))
+            default:
+                return try match.withDefinition(MSSQLTypeDefinition.aliasStatement(
+                    schema: resolvedSchema,
+                    name: match.name,
+                    baseType: match.baseType,
+                    isNullable: match.attributes.first { $0.label == "Nullable" }?.value != "NO"
+                ))
+            }
+        } catch let refusal as MSSQLDefinitionRefusal {
+            throw MSSQLPluginError(refusal)
         }
     }
 
@@ -107,6 +111,15 @@ extension MSSQLPluginDriver {
         }
         let indexes = indexOrder.compactMap { indexesById[$0] }
         let checks = checkRows.compactMap { $0[safe: 0]?.asText }
+        let definition = try MSSQLTypeDefinition.tableStatement(
+            schema: schema,
+            name: type.name,
+            columns: columns,
+            indexes: indexes,
+            checkConstraints: checks,
+            isMemoryOptimized: type.attributes.contains { $0.label == "Memory Optimized" && $0.value == "YES" },
+            databaseCollation: collation ?? nil
+        )
 
         return PluginUserDefinedTypeInfo(
             name: type.name,
@@ -117,15 +130,7 @@ extension MSSQLPluginDriver {
                 PluginUserDefinedTypeField(name: $0.name, type: $0.type ?? "", collation: $0.collation)
             },
             columnTypeSpelling: type.columnTypeSpelling,
-            definition: MSSQLTypeDefinition.tableStatement(
-                schema: schema,
-                name: type.name,
-                columns: columns,
-                indexes: indexes,
-                checkConstraints: checks,
-                isMemoryOptimized: type.attributes.contains { $0.label == "Memory Optimized" && $0.value == "YES" },
-                databaseCollation: collation ?? nil
-            ),
+            definition: definition,
             attributes: type.attributes
         )
     }

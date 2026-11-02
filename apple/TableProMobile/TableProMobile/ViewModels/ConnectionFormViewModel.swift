@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProConnectionLibrary
 import TableProDatabase
+import TableProLogRedaction
 import TableProModels
 import TableProOracleCore
 import TableProSSHTransport
@@ -857,7 +858,7 @@ final class ConnectionFormViewModel {
                 try appState.connectionManager.storePassword(changed, for: connectionId)
                 storedSecrets.password = changed
             } catch {
-                Self.logger.error("Failed to store password: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Failed to store password: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
                 storageFailed = true
             }
         }
@@ -867,7 +868,7 @@ final class ConnectionFormViewModel {
                 try secureStore.store(changed, forKey: ConnectionSecretKind.sshPassword.account(for: connectionId))
                 storedSecrets.sshPassword = changed
             } catch {
-                Self.logger.error("Failed to store SSH password: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Failed to store SSH password: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
                 storageFailed = true
             }
         }
@@ -876,7 +877,7 @@ final class ConnectionFormViewModel {
                 try secureStore.store(changed, forKey: ConnectionSecretKind.keyPassphrase.account(for: connectionId))
                 storedSecrets.sshKeyPassphrase = changed
             } catch {
-                Self.logger.error("Failed to store SSH key passphrase: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Failed to store SSH key passphrase: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
                 storageFailed = true
             }
         }
@@ -885,7 +886,7 @@ final class ConnectionFormViewModel {
                 try secureStore.store(changed, forKey: ConnectionSecretKind.totpSecret.account(for: connectionId))
                 storedSecrets.totpSecret = changed
             } catch {
-                Self.logger.error("Failed to store TOTP secret: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Failed to store TOTP secret: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
                 storageFailed = true
             }
         }
@@ -897,7 +898,7 @@ final class ConnectionFormViewModel {
         do {
             try persistPrivateKey(secureStore: secureStore)
         } catch {
-            Self.logger.error("Failed to store SSH private key: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Failed to store SSH private key: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             storageFailed = true
         }
 

@@ -39,16 +39,14 @@ public struct MarkdownExportOptions: Equatable, Codable {
 /// holding a pipe or a line break has to be neutralised or it ends the cell early and every column
 /// after it shifts.
 public enum MarkdownTableRenderer {
-    /// A pipe closes a cell and a line break closes a row, so both are replaced rather than
-    /// escaped: `\|` works in GitHub's renderer and in few others, and no renderer accepts a raw
-    /// newline inside a cell.
+    // A pipe closes a cell and a line break a row, and no renderer takes a raw newline inside a cell.
     public static func cell(_ value: String) -> String {
         value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "|", with: "\\|")
-            .replacingOccurrences(of: "\r\n", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "|", with: "\\|", options: .literal)
+            .replacingOccurrences(of: "\r\n", with: " ", options: .literal)
+            .replacingOccurrences(of: "\n", with: " ", options: .literal)
+            .replacingOccurrences(of: "\r", with: " ", options: .literal)
     }
 
     public static func row(_ cells: [String], widths: [Int]?) -> String {

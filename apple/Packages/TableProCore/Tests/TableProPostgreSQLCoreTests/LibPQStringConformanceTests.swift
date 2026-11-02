@@ -79,6 +79,12 @@ struct LibPQStringConformanceTests {
         #expect(LibPQStringConformance.escape("a\0b", standardConformingStrings: false) == "ab")
     }
 
+    @Test("With the setting off, a line break is written as it is and a NUL never starts an octal escape")
+    func controlCharactersWhenNotConforming() {
+        #expect(LibPQStringConformance.escape("a\nb\\", standardConformingStrings: false) == "a\n" + #"b\\"#)
+        #expect(LibPQStringConformance.escape("\0" + "12", standardConformingStrings: false) == "12")
+    }
+
     private static func decodeLegacyLiteralBody(_ body: String) -> String {
         var decoded = ""
         var iterator = Array(body).makeIterator()

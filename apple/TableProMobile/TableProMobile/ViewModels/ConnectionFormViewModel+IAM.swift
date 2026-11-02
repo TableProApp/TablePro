@@ -2,6 +2,7 @@ import Foundation
 import os
 import TableProDatabase
 import TableProGoogleCloud
+import TableProLogRedaction
 import TableProModels
 import TableProPluginKit
 
@@ -94,7 +95,7 @@ extension ConnectionFormViewModel {
                 secrets[deviceAccount] = encoded
             }
         } catch {
-            Self.iamLogger.error("Encoding the device sign-in settings failed: \(error.localizedDescription, privacy: .public)")
+            Self.iamLogger.error("Encoding the device sign-in settings failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
         return secrets
     }

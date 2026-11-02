@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 public enum Neo4jEntityKind: String, Sendable, CaseIterable {
     case node
@@ -70,25 +71,28 @@ public enum Neo4jCypher {
     // Neo4j decodes `\uXXXX` before parsing, inside backticks too, so no spelling of `\u` stays inside its quotes.
     // `\uZZZZ` is an escape the server rejects; the query builders refuse such a name before it gets that far.
     public static func quote(_ identifier: String) -> String {
-        let escaped = identifier
-            .replacingOccurrences(of: "\\u", with: "\\uZZZZ")
-            .replacingOccurrences(of: "`", with: "``")
-        return "`" + escaped + "`"
+        let escaped = identifier.replacingOccurrences(of: "\\u", with: "\\uZZZZ", options: .literal)
+        return SQLQuoting.identifier(escaped, quote: .backtick)
     }
 
     public static func isQuotable(_ name: String) -> Bool {
-        !name.contains("\\u")
+        name.range(of: "\\u", options: .literal) == nil
     }
 
     static func requireQuotable(_ names: [String]) throws {
         if let name = names.first(where: { !isQuotable($0) }) { throw Neo4jCypherError.unquotableName(name) }
     }
 
+    // Cypher's own escapes: it has no `''` and no `\0`, so none of SQLQuoting's literal rules fit.
     public static func literal(_ text: String) -> String {
-        let escaped = text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-        return "'" + escaped + "'"
+        var quoted = String.UnicodeScalarView()
+        quoted.append("'")
+        for scalar in text.unicodeScalars {
+            if scalar == "\\" || scalar == "'" { quoted.append("\\") }
+            quoted.append(scalar)
+        }
+        quoted.append("'")
+        return String(quoted)
     }
 
     public static func browseKind(of query: String) -> Neo4jEntityKind? {

@@ -71,6 +71,11 @@ internal enum ConnectionLocalState {
         }
         DatabaseTreeFilterStorage.shared.removeFilters(for: connectionIds)
         LoadableExtensionApprovalStore.shared.revoke(for: connectionIds)
+        for store in ConnectionApprovalStore.all {
+            for connectionId in connectionIds {
+                store.revoke(for: connectionId)
+            }
+        }
         RecentlyClosedTabStore.shared.removeEntries(for: connectionIds)
         WorkspaceRailOrderStore.shared.removeEntries(for: connectionIds)
         Task {

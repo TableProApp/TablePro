@@ -22,6 +22,8 @@ final class PostgreSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "PostgreSQL"
     static let iconName = "postgresql-icon"
     static let defaultPort = 5_432
+    // libpq checks the certificate against host and dials hostaddr, so the pre-tunnel host is checked through a forward.
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: "usePgpass",

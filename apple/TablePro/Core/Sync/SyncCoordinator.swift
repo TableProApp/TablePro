@@ -1001,7 +1001,9 @@ final class SyncCoordinator: ObservableObject {
         if let index {
             connections[index] = kept.adoptingDeviceLocalState(from: connections[index])
         } else {
-            connections.append(kept)
+            var inserted = kept
+            inserted.origin = .synced
+            connections.append(inserted)
         }
         guard services.connectionStorage.saveConnections(connections, byUser: false) else {
             Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")

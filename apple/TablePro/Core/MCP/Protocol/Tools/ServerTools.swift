@@ -1,5 +1,6 @@
 import Foundation
 import TableProMCP
+import TableProSQLGrammar
 
 public struct ServerDashboardTool: MCPToolImplementation {
     public static let name = "get_server_dashboard"
@@ -176,8 +177,29 @@ public struct StopServerSessionTool: MCPToolImplementation {
             throw MCPToolExecutionError.from(error, secrets: meta.redactionSecrets)
         }
 
-        try await MCPStatementGate.authorize(
+        let classification = try MCPStatementGate.classify(
             sql: statement,
+            meta: meta,
+            allowsDestructive: true,
+            context: context
+        )
+
+        let settings = await services.settingsProvider()
+        let scope = try await services.connectionBridge.resolveScope(
+            connectionId: connectionId,
+            database: nil,
+            schema: nil
+        )
+        let planned: OperationStatement
+        do {
+            planned = try await services.connectionBridge.plannedStatement(scope: scope, query: statement, maxRows: 1)
+        } catch {
+            throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+        }
+        let operation = try await MCPStatementGate.approve(
+            [planned],
+            kind: OperationKind.from(classification.tier),
+            scope: scope,
             meta: meta,
             allowsDestructive: true,
             forcesUserConsent: true,
@@ -187,17 +209,9 @@ public struct StopServerSessionTool: MCPToolImplementation {
             context: context,
             services: services
         )
-
-        let settings = await services.settingsProvider()
-        let scope = try await services.connectionBridge.resolveScope(
-            connectionId: connectionId,
-            database: nil,
-            schema: nil
-        )
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,
-            query: statement,
-            scope: scope,
+            operation: operation,
             maxRows: 1,
             timeoutSeconds: settings.validatedQueryTimeoutSeconds,
             context: context,

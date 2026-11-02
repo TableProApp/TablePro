@@ -4,14 +4,14 @@
 //
 
 import Foundation
+import TableProProcess
 
-/// Spawns and supervises the one subprocess a command-line dump tool needs.
 final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
     private let command: NativeDumpCommand
-    private let process = Process()
     private let stderrPipe: Pipe
     private let stderrReader: PipeReader
     private let stateLock = NSLock()
+    private var process: Process?
     private var stderrBuffer = Data()
     private var wasCancelled = false
     private var terminationResult: NativeDumpRunResult?
@@ -28,20 +28,25 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
 
     func start() throws {
         let stderrCap = command.stderrByteCap
-
-        process.executableURL = command.executable
-        process.arguments = command.arguments
-        process.environment = command.environment
-        process.standardError = stderrPipe
         credentialsFileURL = command.temporaryCredentialsFileURL
         pluginFolderURL = command.clientPluginFolder?.url
 
+        // A restore cancelled before it launched must not write a single statement.
+        guard !stateLock.withLock({ wasCancelled }) else {
+            releaseRedirection()
+            finish(NativeDumpRunResult(exitCode: SIGTERM, stderr: "", wasCancelled: true, targetUntouched: true))
+            return
+        }
+
+        let process: Process
         do {
-            try attachRedirection(for: command)
+            process = try Self.launchableProcess(for: command)
+            try attachRedirection(to: process, for: command)
         } catch {
             releaseRedirection()
             throw error
         }
+        process.standardError = stderrPipe
 
         stderrReader.start { [weak self] chunk in
             self?.append(chunk, cap: stderrCap)
@@ -55,17 +60,10 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
             self.stateLock.lock()
             let stderrText = String(data: self.stderrBuffer, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let result = NativeDumpRunResult(
-                exitCode: proc.terminationStatus,
-                stderr: stderrText,
-                wasCancelled: self.wasCancelled
-            )
-            self.terminationResult = result
-            let pending = self.continuation
-            self.continuation = nil
+            let wasCancelled = self.wasCancelled
             self.stateLock.unlock()
 
-            pending?.resume(returning: result)
+            self.finish(NativeDumpRunResult(exitCode: proc.terminationStatus, stderr: stderrText, wasCancelled: wasCancelled))
         }
 
         do {
@@ -75,15 +73,48 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
             releaseRedirection()
             throw error
         }
+
+        let cancelledWhileLaunching = stateLock.withLock {
+            self.process = process
+            return wasCancelled
+        }
+        if cancelledWhileLaunching, process.isRunning {
+            process.terminate()
+        }
     }
 
     func cancel() {
-        stateLock.lock()
-        wasCancelled = true
-        stateLock.unlock()
-        if process.isRunning {
-            process.terminate()
+        let running = stateLock.withLock {
+            wasCancelled = true
+            return process
         }
+        if let running, running.isRunning {
+            running.terminate()
+        }
+    }
+
+    private static func launchableProcess(for command: NativeDumpCommand) throws -> Process {
+        do {
+            return try ProcessLauncher.process(
+                for: ProcessCommand(
+                    executable: command.executable,
+                    arguments: command.arguments,
+                    environment: command.environment
+                )
+            )
+        } catch ProcessLaunchError.nulCharacter {
+            throw NativeDumpError.nulInArgument
+        }
+    }
+
+    private func finish(_ result: NativeDumpRunResult) {
+        let pending = stateLock.withLock {
+            terminationResult = result
+            let pending = continuation
+            continuation = nil
+            return pending
+        }
+        pending?.resume(returning: result)
     }
 
     private func append(_ chunk: Data, cap: Int) {
@@ -95,11 +126,8 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
         }
     }
 
-    /// A tool that writes to standard output gets the destination file as its stdout, and a restore
-    /// that reads from standard input gets the dump file as its stdin. The one that manages its own
-    /// file gets the null device, which is what keeps a chatty tool from filling a pipe nobody
-    /// drains and deadlocking on write.
-    private func attachRedirection(for command: NativeDumpCommand) throws {
+    // A tool that writes its own file gets the null device as stdout, so a chatty one never fills a pipe nobody drains.
+    private func attachRedirection(to process: Process, for command: NativeDumpCommand) throws {
         guard command.delivery == .standardOutput, let fileURL = command.redirectedFileURL else {
             process.standardOutput = FileHandle.nullDevice
             return
