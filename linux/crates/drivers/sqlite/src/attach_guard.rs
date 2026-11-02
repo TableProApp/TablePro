@@ -8,8 +8,7 @@
 //! editor runs an ATTACH under `tablepro_core::opening_file`, so DuckDB
 //! cannot open the file between the check and SQLite's open.
 
-use std::ffi::{CStr, OsString, c_char, c_int, c_void};
-use std::os::unix::ffi::OsStringExt;
+use std::ffi::{CStr, c_char, c_int, c_void};
 use std::path::PathBuf;
 
 use sqlx::sqlite::SqliteConnection as SqlxConnection;
@@ -74,7 +73,7 @@ fn attached_paths(name: &[u8]) -> Vec<PathBuf> {
     if name.is_empty() || name == b":memory:" {
         return Vec::new();
     }
-    let mut paths = vec![PathBuf::from(OsString::from_vec(name.to_vec()))];
+    let mut paths = vec![path_from_bytes(name.to_vec())];
     if let Some(uri) = name.strip_prefix(b"file:") {
         let end = uri
             .iter()
@@ -87,10 +86,23 @@ fn attached_paths(name: &[u8]) -> Vec<PathBuf> {
             .unwrap_or(path);
         let decoded = percent_decoded(path);
         if !decoded.is_empty() && decoded != b":memory:" {
-            paths.push(PathBuf::from(OsString::from_vec(decoded)));
+            paths.push(path_from_bytes(decoded));
         }
     }
     paths
+}
+
+#[cfg(unix)]
+fn path_from_bytes(bytes: Vec<u8>) -> PathBuf {
+    use std::os::unix::ffi::OsStringExt;
+
+    PathBuf::from(std::ffi::OsString::from_vec(bytes))
+}
+
+/// SQLite names a file in UTF-8 on Windows.
+#[cfg(windows)]
+fn path_from_bytes(bytes: Vec<u8>) -> PathBuf {
+    PathBuf::from(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// The path with each `%XX` escape decoded, as SQLite decodes a URI: a

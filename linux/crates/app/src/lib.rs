@@ -5,7 +5,6 @@ use thiserror::Error;
 
 use tablepro_core::DriverRegistry;
 use tablepro_linux_platform::AppSettings;
-use tablepro_storage::StoragePaths;
 
 pub mod application;
 pub mod config;

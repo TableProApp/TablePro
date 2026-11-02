@@ -27,6 +27,7 @@ pub fn write_executable(path: &Path, contents: &[u8], mode: u32) -> io::Result<(
 }
 
 #[cfg(test)]
+#[cfg(unix)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
 

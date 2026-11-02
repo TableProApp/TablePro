@@ -5,6 +5,8 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+# Integrated login: MIT Kerberos on Unix, behind this feature since it
+# links libgssapi, and SSPI on Windows, which every Windows has.
 [features]
 default = []
 kerberos = ["tiberius/integrated-auth-gssapi"]
@@ -22,6 +24,9 @@ tokio = { workspace = true, features = ["rt"] }
 tokio-util = { workspace = true, features = ["compat"] }
 tracing.workspace = true
 uuid.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+tiberius = { workspace = true, features = ["winauth"] }
 
 [dev-dependencies]
 tablepro-test-fixtures.workspace = true

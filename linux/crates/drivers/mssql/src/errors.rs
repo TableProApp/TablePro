@@ -21,7 +21,7 @@ pub(crate) fn map_error(error: Error) -> DriverError {
             detail,
         },
         Error::Server(token) => server_error(&TdsMessage::from(&token)),
-        #[cfg(feature = "kerberos")]
+        #[cfg(all(unix, feature = "kerberos"))]
         Error::Gssapi(detail) => DriverError::IntegratedAuth(detail),
         Error::Routing { host, port } => {
             DriverError::Protocol(format!("the server asked for the login to go to {host}:{port}"))
@@ -218,7 +218,7 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "kerberos")]
+    #[cfg(all(unix, feature = "kerberos"))]
     #[test]
     fn a_gssapi_failure_is_classified_instead_of_reported_as_an_internal_error() {
         let error = map_error(Error::Gssapi("No Kerberos credentials available".to_owned()));

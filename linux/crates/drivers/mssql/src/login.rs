@@ -23,8 +23,9 @@ enum LoginCredentials {
         username: String,
         password: SecretString,
     },
-    /// The Kerberos ticket the user already holds.
-    #[cfg(feature = "kerberos")]
+    /// The Kerberos ticket the user already holds, or on Windows the
+    /// account they signed in with.
+    #[cfg(any(all(unix, feature = "kerberos"), windows))]
     Integrated,
 }
 
@@ -58,9 +59,9 @@ impl LoginPlan {
                 username: username.clone(),
                 password: password.clone(),
             },
-            #[cfg(feature = "kerberos")]
+            #[cfg(any(all(unix, feature = "kerberos"), windows))]
             Credentials::Integrated => LoginCredentials::Integrated,
-            #[cfg(not(feature = "kerberos"))]
+            #[cfg(not(any(all(unix, feature = "kerberos"), windows)))]
             Credentials::Integrated => {
                 return Err(DriverError::Config(tablepro_core::ConfigError::AuthModeUnsupported));
             }
@@ -103,7 +104,7 @@ impl LoginPlan {
             LoginCredentials::Password { username, password } => {
                 AuthMethod::sql_server(username, password.expose_secret())
             }
-            #[cfg(feature = "kerberos")]
+            #[cfg(any(all(unix, feature = "kerberos"), windows))]
             LoginCredentials::Integrated => AuthMethod::Integrated,
         }
     }
@@ -111,7 +112,7 @@ impl LoginPlan {
     fn integrated(&self) -> bool {
         match &self.credentials {
             LoginCredentials::Password { .. } => false,
-            #[cfg(feature = "kerberos")]
+            #[cfg(any(all(unix, feature = "kerberos"), windows))]
             LoginCredentials::Integrated => true,
         }
     }
@@ -204,11 +205,11 @@ async fn attempt(plan: &LoginPlan, config: Config, transport: Arc<dyn Transport>
 }
 
 async fn connect(integrated: bool, config: Config, io: MssqlStream) -> Result<MssqlClient, Error> {
-    #[cfg(feature = "kerberos")]
+    #[cfg(any(all(unix, feature = "kerberos"), windows))]
     if integrated {
         return connect_off_worker(config, io).await;
     }
-    #[cfg(not(feature = "kerberos"))]
+    #[cfg(not(any(all(unix, feature = "kerberos"), windows)))]
     let _ = integrated;
     // On the heap: the TLS handshake inside makes this future tens of
     // kilobytes, and every caller up to the pool would hold a copy in its
@@ -216,11 +217,11 @@ async fn connect(integrated: bool, config: Config, io: MssqlStream) -> Result<Ms
     Box::pin(Client::connect(config, io)).await
 }
 
-/// MIT Kerberos runs as blocking FFI inside the login, which would hold
+/// MIT Kerberos and SSPI run as blocking FFI inside the login, which would hold
 /// an async worker between polls and starve every other task on it, the
 /// timers that bound this login included. The blocking pool is where a
 /// blocking poll belongs.
-#[cfg(feature = "kerberos")]
+#[cfg(any(all(unix, feature = "kerberos"), windows))]
 async fn connect_off_worker(config: Config, io: MssqlStream) -> Result<MssqlClient, Error> {
     let handle = tokio::runtime::Handle::current();
     match tokio::task::spawn_blocking(move || handle.block_on(Client::connect(config, io))).await {

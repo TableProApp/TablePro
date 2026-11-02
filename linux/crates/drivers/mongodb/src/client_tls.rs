@@ -1,6 +1,5 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 use mongodb::options::{Tls, TlsOptions};
@@ -84,7 +83,10 @@ impl ClientTls {
 
 /// A directory only the user can open, in the runtime directory where
 /// there is one, for files that live while a client is built.
+#[cfg(unix)]
 pub(crate) fn private_dir() -> io::Result<TempDir> {
+    use std::os::unix::fs::PermissionsExt;
+
     let builder = || {
         let mut builder = tempfile::Builder::new();
         // The default follows the umask, which leaves the directory
@@ -100,19 +102,27 @@ pub(crate) fn private_dir() -> io::Result<TempDir> {
     }
 }
 
+/// A directory in the user's own temporary folder, which only they and
+/// the system can open.
+#[cfg(windows)]
+pub(crate) fn private_dir() -> io::Result<TempDir> {
+    tempfile::Builder::new().prefix("tablepro-mongodb-").tempdir()
+}
+
 fn write_private(dir: &Path, name: &str, contents: &[u8]) -> io::Result<PathBuf> {
     let path = dir.join(name);
-    let mut file: File = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&path)?;
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file: File = options.open(&path)?;
     file.write_all(contents)?;
     file.sync_all()?;
     Ok(path)
 }
 
 #[cfg(test)]
+#[cfg(unix)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
 

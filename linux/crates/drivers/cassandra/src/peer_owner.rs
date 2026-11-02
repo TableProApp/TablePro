@@ -1,20 +1,31 @@
 //! Who owns the other end of a loopback TCP connection, read from the
-//! kernel's socket table as proc(5) describes `/proc/net/tcp`.
+//! kernel's socket table as proc(5) describes `/proc/net/tcp`. Other
+//! systems keep no such table, so there the relay serves no one.
 
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-
-const TCP_TABLE: &str = "/proc/net/tcp";
+#[cfg(any(target_os = "linux", test))]
+use std::net::Ipv4Addr;
+use std::net::{SocketAddr, SocketAddrV4};
 
 /// The uid that owns the socket at `peer` connected to `local`, or
 /// `None` when the table has no such row, as for a socket closed since.
+#[cfg(target_os = "linux")]
 pub(crate) fn loopback_peer_uid(peer: SocketAddrV4, local: SocketAddrV4) -> io::Result<Option<u32>> {
-    let table = std::fs::read_to_string(TCP_TABLE)?;
+    let table = std::fs::read_to_string("/proc/net/tcp")?;
     Ok(owner_in(&table, peer, local))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn loopback_peer_uid(_peer: SocketAddrV4, _local: SocketAddrV4) -> io::Result<Option<u32>> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "only Linux names the owner of a loopback connection",
+    ))
 }
 
 /// The table lists each socket from its own side, so the peer's row has
 /// the peer as its local address and `local` as its remote one.
+#[cfg(any(target_os = "linux", test))]
 fn owner_in(table: &str, peer: SocketAddrV4, local: SocketAddrV4) -> Option<u32> {
     table.lines().skip(1).find_map(|line| {
         let mut fields = line.split_ascii_whitespace();
@@ -31,6 +42,7 @@ fn owner_in(table: &str, peer: SocketAddrV4, local: SocketAddrV4) -> Option<u32>
 
 /// `0100007F:1F90`: the address as the kernel's 32-bit value in host
 /// byte order, then the port, both in hex.
+#[cfg(any(target_os = "linux", test))]
 fn parse_address(field: &str) -> Option<SocketAddrV4> {
     let (address, port) = field.split_once(':')?;
     let address = u32::from_str_radix(address, 16).ok()?;
@@ -39,8 +51,15 @@ fn parse_address(field: &str) -> Option<SocketAddrV4> {
 }
 
 /// The process's own uid.
+#[cfg(unix)]
 pub(crate) fn own_uid() -> u32 {
     rustix::process::getuid().as_raw()
+}
+
+/// Windows has no uid, and `loopback_peer_uid` names no owner there.
+#[cfg(not(unix))]
+pub(crate) fn own_uid() -> u32 {
+    u32::MAX
 }
 
 /// Both ends as IPv4 loopback addresses, which is all the relay listens on.
@@ -73,6 +92,7 @@ mod tests {
         assert_eq!(owner_in(&table, loopback(50_001), loopback(8080)), None);
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_connection_this_process_opens_is_its_own() {
         let listener = std::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();

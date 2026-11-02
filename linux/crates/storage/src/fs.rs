@@ -86,18 +86,7 @@ pub fn write_private_blocking(path: &Path, bytes: &[u8]) -> Result<(), StorageEr
     temporary.write_all(bytes).map_err(write_error)?;
     temporary.as_file().sync_all().map_err(write_error)?;
     temporary.persist(path).map_err(|error| write_error(error.error))?;
-    sync_directory(directory).map_err(write_error)
-}
-
-#[cfg(unix)]
-fn sync_directory(directory: &Path) -> std::io::Result<()> {
-    File::open(directory)?.sync_all()
-}
-
-/// Windows opens no directory as a file, and NTFS journals the rename.
-#[cfg(windows)]
-fn sync_directory(_directory: &Path) -> std::io::Result<()> {
-    Ok(())
+    tablepro_core::sync_directory(directory).map_err(write_error)
 }
 
 /// Create an empty 0600 file when it is absent, so a library that opens

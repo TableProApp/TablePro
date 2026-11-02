@@ -15,11 +15,19 @@ futures.workspace = true
 # be linked.
 libsqlite3-sys.workspace = true
 sqlparser.workspace = true
-sqlx = { workspace = true, features = ["sqlite-unbundled"] }
+sqlx.workspace = true
 tokio = { workspace = true, features = ["rt"] }
 tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+
+# Linux links the distribution's SQLite, as tablepro-storage does; the
+# other targets build the copy sqlx ships.
+[target.'cfg(target_os = "linux")'.dependencies]
+sqlx = { workspace = true, features = ["sqlite-unbundled"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+sqlx = { workspace = true, features = ["sqlite"] }
 
 [dev-dependencies]
 tablepro-test-support.workspace = true

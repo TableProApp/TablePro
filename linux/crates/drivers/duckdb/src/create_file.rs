@@ -1,11 +1,8 @@
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io::ErrorKind;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use rustix::fs::FlockOperation;
-use rustix::io::Errno;
 use tablepro_core::{BusyReason, DriverError};
 use tokio_util::sync::CancellationToken;
 
@@ -56,10 +53,7 @@ pub(crate) fn create_or_replace(path: &Path, given_up: &CancellationToken) -> Re
         let _ = std::fs::remove_file(wal_of(&temporary));
         return placed;
     }
-    // The rename is durable only once the directory that records it is.
-    File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| file_error(error.kind(), path))
+    tablepro_core::sync_directory(parent).map_err(|error| file_error(error.kind(), path))
 }
 
 /// A hidden name beside the user's file, unique to this call.
@@ -77,8 +71,15 @@ fn build_empty(temporary: &Path, target: &Path) -> Result<(), DriverError> {
     let connection = duckdb::Connection::open_with_flags(temporary, config(false)?).map_err(map_error)?;
     connection.execute_batch("CHECKPOINT").map_err(map_error)?;
     connection.close().map_err(|(_, error)| map_error(error))?;
-    std::fs::set_permissions(temporary, std::fs::Permissions::from_mode(0o600))
-        .and_then(|()| File::open(temporary)?.sync_all())
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        std::fs::set_permissions(temporary, std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| file_error(error.kind(), target))?;
+    }
+    File::open(temporary)
+        .and_then(|file| file.sync_all())
         .map_err(|error| file_error(error.kind(), target))
 }
 
@@ -124,22 +125,58 @@ fn lock_replaced(path: &Path) -> Result<Option<File>, DriverError> {
     if tablepro_core::held_by_this_process(path) {
         return Err(DriverError::Busy(BusyReason::FileLocked));
     }
-    let (file, lock) = match OpenOptions::new().read(true).write(true).open(path) {
-        Ok(file) => (file, FlockOperation::NonBlockingLockExclusive),
+    let (file, exclusive) = match OpenOptions::new().read(true).write(true).open(path) {
+        Ok(file) => (file, true),
         // A write lock needs the file open for writing. A shared lock
         // still meets the writer's.
-        Err(error) if error.kind() == ErrorKind::PermissionDenied || error.kind() == ErrorKind::ReadOnlyFilesystem => (
-            File::open(path).map_err(|error| file_error(error.kind(), path))?,
-            FlockOperation::NonBlockingLockShared,
-        ),
+        Err(error) if error.kind() == ErrorKind::PermissionDenied || error.kind() == ErrorKind::ReadOnlyFilesystem => {
+            (File::open(path).map_err(|error| file_error(error.kind(), path))?, false)
+        }
         Err(error) => return Err(file_error(error.kind(), path)),
     };
-    match rustix::fs::fcntl_lock(&file, lock) {
-        Ok(()) => Ok(Some(file)),
-        Err(errno) if errno == Errno::AGAIN || errno == Errno::ACCESS => Err(DriverError::Busy(BusyReason::FileLocked)),
-        // A file system without locks: DuckDB could not have locked it
-        // either.
-        Err(_) => Ok(Some(file)),
+    match lock_as_duckdb_does(&file, exclusive) {
+        LockOutcome::Held | LockOutcome::Unsupported => Ok(Some(file)),
+        LockOutcome::Busy => Err(DriverError::Busy(BusyReason::FileLocked)),
+    }
+}
+
+enum LockOutcome {
+    Held,
+    Busy,
+    /// A file system without locks: DuckDB could not have locked it
+    /// either.
+    Unsupported,
+}
+
+/// A POSIX record lock, the kind DuckDB takes on Unix.
+#[cfg(unix)]
+fn lock_as_duckdb_does(file: &File, exclusive: bool) -> LockOutcome {
+    use rustix::fs::FlockOperation;
+    use rustix::io::Errno;
+
+    let operation = match exclusive {
+        true => FlockOperation::NonBlockingLockExclusive,
+        false => FlockOperation::NonBlockingLockShared,
+    };
+    match rustix::fs::fcntl_lock(file, operation) {
+        Ok(()) => LockOutcome::Held,
+        Err(errno) if errno == Errno::AGAIN || errno == Errno::ACCESS => LockOutcome::Busy,
+        Err(_) => LockOutcome::Unsupported,
+    }
+}
+
+/// LockFileEx, the kind DuckDB takes on Windows, which std's file locks
+/// are.
+#[cfg(windows)]
+fn lock_as_duckdb_does(file: &File, exclusive: bool) -> LockOutcome {
+    let locked = match exclusive {
+        true => file.try_lock(),
+        false => file.try_lock_shared(),
+    };
+    match locked {
+        Ok(()) => LockOutcome::Held,
+        Err(std::fs::TryLockError::WouldBlock) => LockOutcome::Busy,
+        Err(std::fs::TryLockError::Error(_)) => LockOutcome::Unsupported,
     }
 }
 
@@ -150,7 +187,10 @@ fn wal_of(path: &Path) -> PathBuf {
 }
 
 #[cfg(test)]
+#[cfg(unix)]
 mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
     use super::*;
 
     #[test]

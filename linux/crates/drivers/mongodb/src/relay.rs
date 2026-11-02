@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use rustls_pki_types::ServerName;
-use tablepro_core::{DriverError, TlsFailure, Transport};
+use tablepro_core::{DriverError, Transport};
 use tempfile::TempDir;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::{UnixListener, UnixStream};
@@ -14,6 +14,7 @@ use tokio::task::{JoinHandle, JoinSet};
 use tokio_rustls::TlsConnector;
 
 use crate::client_tls::private_dir;
+use crate::errors::closed_unanswered;
 
 /// TLS the driver negotiates itself on a relayed stream, so it checks the
 /// server against the system store and the CA file under the name the
@@ -148,18 +149,6 @@ async fn relay(
             true => failure.note(closed_unanswered()),
             false => note_tls(&failure, &error),
         }
-    }
-}
-
-/// A server that closed a TLS session it had just agreed to, before
-/// answering anything, which is how mongod refuses a client without the
-/// certificate it requires.
-pub(crate) fn closed_unanswered() -> DriverError {
-    DriverError::Tls {
-        failure: TlsFailure::HandshakeRejected,
-        detail: "the server closed the connection after the TLS handshake without answering; \
-                 it may require a client certificate"
-            .to_owned(),
     }
 }
 

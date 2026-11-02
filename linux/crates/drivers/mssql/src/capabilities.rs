@@ -6,11 +6,11 @@ use tablepro_core::{
 
 pub(crate) const DEFAULT_PORT: u16 = 1433;
 
-/// Integrated login needs MIT Kerberos at build time, so a build without
-/// it never offers the mode.
-#[cfg(feature = "kerberos")]
+/// Integrated login needs MIT Kerberos at build time on Unix, so a build
+/// without it never offers the mode. Windows signs in through SSPI.
+#[cfg(any(all(unix, feature = "kerberos"), windows))]
 const AUTH_MODES: &[AuthMode] = &[AuthMode::Password, AuthMode::Kerberos];
-#[cfg(not(feature = "kerberos"))]
+#[cfg(not(any(all(unix, feature = "kerberos"), windows)))]
 const AUTH_MODES: &[AuthMode] = &[AuthMode::Password];
 
 pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {

@@ -12,14 +12,13 @@
 //! editor sessions included.
 
 use std::collections::HashMap;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError, Weak};
 use std::time::Duration;
 
 use duckdb::{AccessMode, Config, InterruptHandle};
-use tablepro_core::{BusyReason, DriverError, FileClaim, FileEndpoint, FileOpenMode, LossPhase};
+use tablepro_core::{BusyReason, DriverError, FileClaim, FileEndpoint, FileIdentity, FileOpenMode, LossPhase};
 use tokio_util::sync::CancellationToken;
 
 use crate::create_file::create_or_replace;
@@ -29,23 +28,7 @@ use crate::errors::{map_error, map_open_error};
 /// The files this process has open. An entry whose instance is gone is
 /// a database still closing: its drop removes the entry once DuckDB has
 /// let the file go.
-static OPEN: LazyLock<Mutex<HashMap<FileId, Opened>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-
-/// A file whatever path names it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct FileId {
-    device: u64,
-    inode: u64,
-}
-
-impl FileId {
-    fn of(path: &Path) -> Option<Self> {
-        std::fs::metadata(path).ok().map(|metadata| Self {
-            device: metadata.dev(),
-            inode: metadata.ino(),
-        })
-    }
-}
+static OPEN: LazyLock<Mutex<HashMap<FileIdentity, Opened>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 struct Opened {
     instance: Weak<Instance>,
@@ -67,7 +50,7 @@ pub(crate) struct Instance {
     /// to a database already open. It runs only the catalogue read of
     /// what is attached. Taken at drop, which closes the file.
     root: Root,
-    id: FileId,
+    id: FileIdentity,
     path: PathBuf,
     read_only: bool,
     /// The catalogue name DuckDB gave the file, which the catalogue
@@ -185,7 +168,7 @@ impl Instance {
             // Held through the open, so two windows opening one file at
             // once get one instance.
             let mut open = OPEN.lock().unwrap_or_else(PoisonError::into_inner);
-            let known = FileId::of(path)
+            let known = FileIdentity::of(path)
                 .and_then(|id| open.get(&id))
                 .map(|entry| entry.instance.strong_count() > 0);
             match (known, endpoint.mode()) {
@@ -198,7 +181,7 @@ impl Instance {
                 // out from under the windows using it.
                 (Some(true), FileOpenMode::CreateNew) => return Err(DriverError::Busy(BusyReason::FileLocked)),
                 (None, FileOpenMode::CreateNew) => {
-                    if FileId::of(path).is_some_and(|id| attached(&open, id, None)) {
+                    if FileIdentity::of(path).is_some_and(|id| attached(&open, id, None)) {
                         return Err(DriverError::Busy(BusyReason::FileLocked));
                     }
                     if given_up.is_cancelled() {
@@ -209,7 +192,7 @@ impl Instance {
                 (_, FileOpenMode::OpenExisting) => {}
             }
             let canonical = existing_file(path)?;
-            let id = FileId::of(&canonical).ok_or_else(|| DriverError::FileNotFound {
+            let id = FileIdentity::of(&canonical).ok_or_else(|| DriverError::FileNotFound {
                 path: path.to_path_buf(),
             })?;
             if let Some(entry) = open.get(&id) {
@@ -316,11 +299,11 @@ fn database_paths(entry: &Opened) -> Vec<String> {
 
 /// Whether an open database other than `except` has the file attached,
 /// which DuckDB lists with its own file.
-fn attached(open: &HashMap<FileId, Opened>, id: FileId, except: Option<FileId>) -> bool {
+fn attached(open: &HashMap<FileIdentity, Opened>, id: FileIdentity, except: Option<FileIdentity>) -> bool {
     open.iter().filter(|(key, _)| Some(**key) != except).any(|(_, entry)| {
         database_paths(entry)
             .iter()
-            .any(|path| FileId::of(Path::new(path)) == Some(id))
+            .any(|path| FileIdentity::of(Path::new(path)) == Some(id))
     })
 }
 
@@ -343,12 +326,12 @@ pub(crate) fn attach_unless_open<T>(
     let own = link.instance.id;
     let own_paths = open.get(&own).map(database_paths).unwrap_or_default();
     let in_use = targets.iter().any(|target| {
-        let Some(id) = FileId::of(target) else {
+        let Some(id) = FileIdentity::of(target) else {
             return false;
         };
         let mut held_here = own_paths
             .iter()
-            .filter(|path| FileId::of(Path::new(path)) == Some(id))
+            .filter(|path| FileIdentity::of(Path::new(path)) == Some(id))
             .peekable();
         if held_here.peek().is_some() {
             let spelled = target.to_string_lossy();
@@ -372,16 +355,16 @@ pub(crate) fn attach_unless_open<T>(
     let result = attach()?;
     // `ATTACH IF NOT EXISTS` under an alias already taken opens nothing,
     // so only a file the database now lists is claimed.
-    let listed: Vec<FileId> = open
+    let listed: Vec<FileIdentity> = open
         .get(&own)
         .map(database_paths)
         .unwrap_or_default()
         .iter()
-        .filter_map(|path| FileId::of(Path::new(path)))
+        .filter_map(|path| FileIdentity::of(Path::new(path)))
         .collect();
     let mut claims = Vec::with_capacity(targets.len());
     for target in targets {
-        if FileId::of(target).is_some_and(|id| listed.contains(&id)) {
+        if FileIdentity::of(target).is_some_and(|id| listed.contains(&id)) {
             claims.extend(tablepro_core::claim_file(target, ENGINE)?);
         }
     }

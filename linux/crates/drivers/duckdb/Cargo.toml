@@ -11,11 +11,14 @@ async-trait.workspace = true
 chrono.workspace = true
 deadpool.workspace = true
 duckdb.workspace = true
-rustix = { workspace = true, features = ["fs"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+# fcntl record locks, the kind DuckDB takes, which std does not offer.
+rustix = { workspace = true, features = ["fs"] }
 
 [dev-dependencies]
 tablepro-test-support.workspace = true

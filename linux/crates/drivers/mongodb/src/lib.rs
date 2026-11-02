@@ -26,6 +26,8 @@ mod execute;
 mod extended_json;
 mod field_types;
 mod nested_document;
+// The relay listens on a Unix socket, which the SSH route needs alone.
+#[cfg(unix)]
 mod relay;
 mod rows;
 mod server_version;

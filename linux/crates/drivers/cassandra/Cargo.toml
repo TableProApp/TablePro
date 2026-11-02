@@ -11,7 +11,6 @@ tablepro-net.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 num-bigint.workspace = true
-rustix = { workspace = true, features = ["process"] }
 rustls.workspace = true
 rustls-pki-types.workspace = true
 scylla.workspace = true
@@ -20,6 +19,9 @@ tokio = { workspace = true, features = ["io-util", "rt"] }
 tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, features = ["process"] }
 
 [dev-dependencies]
 futures-util.workspace = true

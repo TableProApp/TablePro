@@ -9,6 +9,18 @@ use tablepro_core::sql_syntax::mongo::ShellSyntaxError;
 
 use crate::to_bson::ValueError;
 
+/// A server that closed a TLS session it had just agreed to, before
+/// answering anything, which is how mongod refuses a client without the
+/// certificate it requires.
+pub(crate) fn closed_unanswered() -> DriverError {
+    DriverError::Tls {
+        failure: TlsFailure::HandshakeRejected,
+        detail: "the server closed the connection after the TLS handshake without answering; \
+                 it may require a client certificate"
+            .to_owned(),
+    }
+}
+
 /// `AuthenticationFailed`: the user or the password is wrong.
 pub(crate) const AUTHENTICATION_FAILED: i32 = 18;
 /// `MaxTimeMSExpired`: the server stopped the operation at its time limit.

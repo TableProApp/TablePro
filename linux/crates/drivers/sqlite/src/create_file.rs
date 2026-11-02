@@ -1,6 +1,5 @@
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::ErrorKind;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use tablepro_core::{BusyReason, DriverError};
@@ -40,12 +39,11 @@ pub(crate) fn create_or_replace(path: &Path) -> Result<(), DriverError> {
         uuid::Uuid::new_v4().simple()
     ));
 
-    let created = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(&temporary)
-        .and_then(|file| file.sync_all());
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let created = options.open(&temporary).and_then(|file| file.sync_all());
     if let Err(error) = created {
         // A file that was created and then failed to sync is not left
         // behind beside the user's files.
@@ -64,10 +62,7 @@ pub(crate) fn create_or_replace(path: &Path) -> Result<(), DriverError> {
             _ => {}
         }
     }
-    // The rename is durable only once the directory that records it is.
-    File::open(parent)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| file_error(error.kind(), path))
+    tablepro_core::sync_directory(parent).map_err(|error| file_error(error.kind(), path))
 }
 
 fn file_error(kind: ErrorKind, path: &Path) -> DriverError {
@@ -81,6 +76,7 @@ fn file_error(kind: ErrorKind, path: &Path) -> DriverError {
 }
 
 #[cfg(test)]
+#[cfg(unix)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
 

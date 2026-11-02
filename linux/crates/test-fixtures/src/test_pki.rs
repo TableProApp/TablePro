@@ -1,6 +1,5 @@
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use rcgen::{
@@ -72,12 +71,11 @@ impl TestPki {
     }
 
     fn write(&self, file: PkiFile, contents: &[u8]) -> Result<(), FixtureError> {
-        let mode = if file.is_private_key() { 0o600 } else { 0o644 };
-        let mut handle = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(mode)
-            .open(self.path(file))?;
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, if file.is_private_key() { 0o600 } else { 0o644 });
+        let mut handle = options.open(self.path(file))?;
         handle.write_all(contents)?;
         Ok(())
     }
@@ -115,6 +113,7 @@ fn common_name(name: &str) -> DistinguishedName {
 }
 
 #[cfg(test)]
+#[cfg(unix)]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::Arc;

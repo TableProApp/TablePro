@@ -18,8 +18,10 @@ use tokio_rustls::TlsConnector;
 
 use crate::client_tls::{ClientTls, private_dir};
 use crate::connect_watch::ConnectWatch;
+use crate::errors::closed_unanswered;
 use crate::errors::map_error;
-use crate::relay::{Relay, RelayTls, closed_unanswered};
+#[cfg(unix)]
+use crate::relay::{Relay, RelayTls};
 use crate::server_version;
 
 /// What a client of this connection is for, which sets how many
@@ -50,6 +52,7 @@ enum Route {
     /// The library dials the servers and sets up TLS itself.
     Dialed(ClientTls),
     /// The library dials a relay whose streams come from the transport.
+    #[cfg(unix)]
     Relayed(Relay),
 }
 
@@ -114,6 +117,7 @@ impl MongoEndpoint {
             TransportRoute::Tcp(_) => {
                 Route::Dialed(tablepro_net::tls::set_up_off_runtime(move || ClientTls::new(&tls)).await?)
             }
+            #[cfg(unix)]
             TransportRoute::UnixSocket(_) => {
                 let server_name = target.tls_server_name().to_owned();
                 let relay_tls = tablepro_net::tls::set_up_off_runtime(move || relay_tls(&tls, server_name)).await?;
@@ -124,6 +128,12 @@ impl MongoEndpoint {
                 }];
                 template.tls = None;
                 Route::Relayed(relay)
+            }
+            #[cfg(not(unix))]
+            TransportRoute::UnixSocket(_) => {
+                return Err(DriverError::Protocol(
+                    "a route through a Unix socket needs the relay, which runs on Unix alone".to_owned(),
+                ));
             }
         };
         Ok(Self {
@@ -161,6 +171,7 @@ impl MongoEndpoint {
             // What an earlier client's streams met is not this one's. The
             // client starts its monitors as it is built, so a failure
             // they meet lands after this.
+            #[cfg(unix)]
             if let Route::Relayed(relay) = &self.route {
                 relay.failure().take();
             }
@@ -196,6 +207,7 @@ impl MongoEndpoint {
     async fn build(&self, mut options: ClientOptions) -> Result<Client, DriverError> {
         let tls = match &self.route {
             Route::Dialed(tls) => Some(tls.clone()),
+            #[cfg(unix)]
             Route::Relayed(_) => None,
         };
         let runtime = tokio::runtime::Handle::current();
@@ -253,6 +265,7 @@ impl MongoEndpoint {
 
     fn relayed_failure(&self) -> Option<DriverError> {
         match &self.route {
+            #[cfg(unix)]
             Route::Relayed(relay) => relay.failure().take(),
             Route::Dialed(_) => None,
         }
@@ -322,6 +335,7 @@ fn credential(target: &NetworkTarget) -> Result<Option<Credential>, DriverError>
     Ok(Some(credential))
 }
 
+#[cfg(unix)]
 fn relay_tls(tls: &tablepro_core::TlsConfig, server_name: String) -> Result<Option<RelayTls>, DriverError> {
     let Some(config) = build_client_config(tls).map_err(setup_error)? else {
         return Ok(None);
