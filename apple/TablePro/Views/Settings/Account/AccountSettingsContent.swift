@@ -273,7 +273,7 @@ private extension EntitlementRefreshState {
 internal enum AccountCodes {
     static func planName(_ code: String) -> String {
         switch code {
-        case "starter": String(localized: "Starter")
+        case "starter": String(localized: "Pro")
         case "team": String(localized: "Team")
         default: String(localized: "Paid plan")
         }

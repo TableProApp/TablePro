@@ -89,13 +89,13 @@ struct AccountSettingsContentTests {
         #expect(content.canRefresh)
     }
 
-    @Test("A lifetime Starter license reads as Starter with a Lifetime status, owned personally, with the personal billing page")
+    @Test("A lifetime starter-tier license reads as Pro with a Lifetime status, owned personally, with the personal billing page")
     func starterLifetime() throws {
         let content = Self.make(AccountState(isSignedIn: true, entitlement: Self.entitlement(), refresh: .succeeded(Self.now)))
 
         #expect(content.identity == .account(name: "Ada", email: "ada@m16.example", isSignedIn: true))
         let plan = try #require(content.plans.first)
-        #expect(plan.title == "Starter")
+        #expect(plan.title == "Pro")
         #expect(plan.owner == "Personal")
         #expect(plan.status == .lifetime)
         #expect(plan.billing == URL(string: "http://account.localhost:5284/billing"))
@@ -118,22 +118,22 @@ struct AccountSettingsContentTests {
         let endsAt = Self.now.addingTimeInterval(90 * Self.day)
 
         let subscription = try plan(Self.license(cycle: "yearly", source: "subscription"))
-        #expect(subscription.title == "Starter, Yearly")
+        #expect(subscription.title == "Pro, Yearly")
         #expect(subscription.status == .active)
         #expect(subscription.billing == personalBilling)
 
         let order = try plan(Self.license(cycle: "lifetime", source: "order"))
-        #expect(order.title == "Starter")
+        #expect(order.title == "Pro")
         #expect(order.status == .lifetime)
         #expect(order.billing == personalBilling)
 
         let manual = try plan(Self.license(cycle: "lifetime", source: "manual"))
-        #expect(manual.title == "Starter")
+        #expect(manual.title == "Pro")
         #expect(manual.status == .active)
         #expect(manual.billing == nil)
 
         let manualWithEnd = try plan(Self.license(cycle: "yearly", source: "manual", endsAt: endsAt))
-        #expect(manualWithEnd.title == "Starter")
+        #expect(manualWithEnd.title == "Pro")
         #expect(manualWithEnd.status == .endsOn(endsAt))
         #expect(manualWithEnd.billing == nil)
 
@@ -143,7 +143,7 @@ struct AccountSettingsContentTests {
         #expect(legacy.billing == nil)
 
         let unknown = try plan(Self.license(cycle: "monthly", source: "voucher"))
-        #expect(unknown.title == "Starter")
+        #expect(unknown.title == "Pro")
         #expect(unknown.billing == nil)
     }
 
@@ -160,7 +160,7 @@ struct AccountSettingsContentTests {
 
         #expect(try #require(online.plans.first).status == .renewsOn(renewsAt))
         #expect(try #require(offline.plans.first).status == .renewsOn(renewsAt))
-        #expect(try #require(online.plans.first).title == "Starter, Monthly")
+        #expect(try #require(online.plans.first).title == "Pro, Monthly")
     }
 
     @Test("A signed-in account without licenses is on Free")

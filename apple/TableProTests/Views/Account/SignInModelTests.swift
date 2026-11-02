@@ -24,7 +24,7 @@ struct SignInModelTests {
 
         await model.signIn(using: FakeAuthenticator(server: fixture.server))
 
-        #expect(model.phase == .signedIn(email: "ada@m16.example", plan: "Starter, Lifetime"))
+        #expect(model.phase == .signedIn(email: "ada@m16.example", plan: "Pro, Lifetime"))
         #expect(fixture.access.state.isSignedIn)
     }
 
@@ -61,7 +61,7 @@ struct SignInModelTests {
         #expect(model.phase == .failed(try #require(error.friendlyDescription)))
 
         await model.signIn(using: FakeAuthenticator(server: fixture.server))
-        #expect(model.phase == .signedIn(email: "ada@m16.example", plan: "Starter, Lifetime"))
+        #expect(model.phase == .signedIn(email: "ada@m16.example", plan: "Pro, Lifetime"))
     }
 
     @Test("Past the device limit the window opens the device limit sheet once, and Not Now keeps it closed")
@@ -91,6 +91,6 @@ struct SignInModelTests {
         try await fixture.services.removeDevice("dev_other")
         model.settle(presentsSheet: false)
 
-        #expect(model.phase == .signedIn(email: "ada@m16.example", plan: "Starter, Lifetime"))
+        #expect(model.phase == .signedIn(email: "ada@m16.example", plan: "Pro, Lifetime"))
     }
 }
