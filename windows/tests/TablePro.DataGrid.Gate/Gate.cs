@@ -131,6 +131,7 @@ internal sealed partial class Gate(RunContext ctx)
         var worstMs = -1.0;
         var gcSteps = 0;
         var allocated = new List<double>(frames);
+        var cyclesPerMs = new List<double>(frames);
         var samples = await Frames.LoopAsync(frames, i =>
         {
             if (check && i > 0)
@@ -147,10 +148,14 @@ internal sealed partial class Gate(RunContext ctx)
             var surfaces = _grid.Counters.SurfaceMilliseconds;
             var drawn = _grid.Counters.RowsDrawn;
             var measure = _grid.Counters.Layout.MeasureMilliseconds + _grid.Counters.FrozenLayout.MeasureMilliseconds;
+            var cpu = Native.CpuNow();
             var s = Clock.Now();
             _grid.ScrollTo(x, y);
             _grid.UpdateLayout();
             var ms = Clock.MsSince(s);
+            var cpuAfter = Native.CpuNow();
+            var uiCyclesPerMs = (cpuAfter.ThreadCycles - cpu.ThreadCycles) / Math.Max(ms, 0.001);
+            cyclesPerMs.Add(uiCyclesPerMs);
             allocated.Add(GC.GetAllocatedBytesForCurrentThread() - bytes);
             var gcs = GC.CollectionCount(0) - gen0;
             gcSteps += gcs > 0 ? 1 : 0;
@@ -161,7 +166,8 @@ internal sealed partial class Gate(RunContext ctx)
                     $"i={i} ms={ms:F1} x={x:F0} y={y:F0} columns={_grid.ColumnWindow} gen0_gcs={gcs} gen2_gcs={GC.CollectionCount(2) - gen2} " +
                     $"fetch_ms={_grid.FetchMilliseconds - fetch:F1} blocks={_grid.BlocksFetched - blocks} draw_ms={_grid.Counters.DrawMilliseconds - draw:F1} " +
                     $"layout_ms={_grid.Counters.LayoutMilliseconds - layouts:F1} surface_ms={_grid.Counters.SurfaceMilliseconds - surfaces:F1} " +
-                    $"rows_drawn={_grid.Counters.RowsDrawn - drawn} measure_ms={_grid.Counters.Layout.MeasureMilliseconds + _grid.Counters.FrozenLayout.MeasureMilliseconds - measure:F1}");
+                    $"rows_drawn={_grid.Counters.RowsDrawn - drawn} measure_ms={_grid.Counters.Layout.MeasureMilliseconds + _grid.Counters.FrozenLayout.MeasureMilliseconds - measure:F1} " +
+                    $"ui_cycles_per_ms={uiCyclesPerMs:F0} process_cpu_ms={(cpuAfter.Process - cpu.Process) / 10_000.0:F1} other_cpu_ms={(cpuAfter.Busy - cpu.Busy - (cpuAfter.Process - cpu.Process)) / 10_000.0:F1}");
             }
             var sv = _grid.Scroller;
             var applied = Math.Abs(sv.HorizontalOffset - Math.Min(x, sv.ScrollableWidth)) < 1 && Math.Abs(sv.VerticalOffset - Math.Min(y, sv.ScrollableHeight)) < 2;
@@ -189,6 +195,8 @@ internal sealed partial class Gate(RunContext ctx)
         _report.Line($"{name}.gc", $"gen0={GC.CollectionCount(0) - gcStart[0]} gen1={GC.CollectionCount(1) - gcStart[1]} gen2={GC.CollectionCount(2) - gcStart[2]} steps_with_gc={gcSteps}");
         _report.Line($"{name}.worst_step", worst);
         _report.Stats($"{name}.allocated_bytes_per_step", allocated);
+        // A worst step far below the median ran little of its time: the thread waited or the runner took the core.
+        _report.Stats($"{name}.ui_cycles_per_ms", cyclesPerMs);
         if (check)
         {
             _report.Line($"{name}.verify", verify.Summary());

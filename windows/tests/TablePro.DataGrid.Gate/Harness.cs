@@ -392,6 +392,30 @@ internal static partial class Native
     [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();
 
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentThread();
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll")]
+    private static extern bool QueryThreadCycleTime(IntPtr thread, out ulong cycles);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool GetProcessTimes(IntPtr process, out long creation, out long exit, out long kernel, out long user);
+
+    // The calling thread's cycles, and the CPU time of the machine and of this process in 100 ns units.
+    public static (ulong ThreadCycles, long Busy, long Process) CpuNow()
+    {
+        QueryThreadCycleTime(GetCurrentThread(), out var cycles);
+        GetSystemTimes(out var idle, out var kernel, out var user);
+        GetProcessTimes(GetCurrentProcess(), out _, out _, out var processKernel, out var processUser);
+        return (cycles, kernel + user - idle, processKernel + processUser);
+    }
+
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
