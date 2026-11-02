@@ -12,7 +12,7 @@ meson setup _build -Dprofile=development
 meson compile -C _build        # builds tablepro and tablepro-askpass
 meson test -C _build           # unit, gtk, data and packaging suites
 meson devenv -C _build ./crates/app/tablepro   # run the app
-meson devenv -C _build cargo test --workspace --exclude tablepro   # the unit suite through cargo
+meson devenv -C _build cargo test --workspace --exclude tablepro --exclude tablepro-ffi   # the unit suite
 GTK_A11Y=test GSK_RENDERER=cairo GDK_BACKEND=x11 meson devenv -C _build cargo test -p tablepro   # the app's tests
 cargo fmt --all                # format
 ```
