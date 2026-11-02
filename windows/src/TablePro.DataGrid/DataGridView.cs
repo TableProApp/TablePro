@@ -711,6 +711,10 @@ internal sealed class GridCounters
     public long CellsBound;
     public double DrawMilliseconds;
 
+    // Inside DrawMilliseconds: making text layouts, and the surfaces' BeginDraw and EndDraw.
+    public double LayoutMilliseconds;
+    public double SurfaceMilliseconds;
+
     public void Reset()
     {
         Layout.Reset();
@@ -718,6 +722,8 @@ internal sealed class GridCounters
         RowsDrawn = 0;
         CellsBound = 0;
         DrawMilliseconds = 0;
+        LayoutMilliseconds = 0;
+        SurfaceMilliseconds = 0;
     }
 }
 

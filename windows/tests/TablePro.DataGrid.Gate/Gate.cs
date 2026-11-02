@@ -68,6 +68,7 @@ internal sealed partial class Gate(RunContext ctx)
         _report.Line("first_cells_ms_since_process_start", Clock.SinceProcessStart());
         await DataGridView.FontWarmupTask;
         _report.Line("font_warmup_background_ms", DataGridView.FontWarmupMilliseconds);
+        _report.Line("font_warmup_rows_device", CellPainter.Warmed);
         await Task.Delay(1000);
 
         var sv = _grid.Scroller;
@@ -142,6 +143,8 @@ internal sealed partial class Gate(RunContext ctx)
             var fetch = _grid.FetchMilliseconds;
             var blocks = _grid.BlocksFetched;
             var draw = _grid.Counters.DrawMilliseconds;
+            var layouts = _grid.Counters.LayoutMilliseconds;
+            var surfaces = _grid.Counters.SurfaceMilliseconds;
             var drawn = _grid.Counters.RowsDrawn;
             var measure = _grid.Counters.Layout.MeasureMilliseconds + _grid.Counters.FrozenLayout.MeasureMilliseconds;
             var s = Clock.Now();
@@ -157,6 +160,7 @@ internal sealed partial class Gate(RunContext ctx)
                 worst = string.Create(CultureInfo.InvariantCulture,
                     $"i={i} ms={ms:F1} x={x:F0} y={y:F0} columns={_grid.ColumnWindow} gen0_gcs={gcs} gen2_gcs={GC.CollectionCount(2) - gen2} " +
                     $"fetch_ms={_grid.FetchMilliseconds - fetch:F1} blocks={_grid.BlocksFetched - blocks} draw_ms={_grid.Counters.DrawMilliseconds - draw:F1} " +
+                    $"layout_ms={_grid.Counters.LayoutMilliseconds - layouts:F1} surface_ms={_grid.Counters.SurfaceMilliseconds - surfaces:F1} " +
                     $"rows_drawn={_grid.Counters.RowsDrawn - drawn} measure_ms={_grid.Counters.Layout.MeasureMilliseconds + _grid.Counters.FrozenLayout.MeasureMilliseconds - measure:F1}");
             }
             var sv = _grid.Scroller;

@@ -75,6 +75,9 @@ internal sealed unsafe class CellPainter : IDisposable
 
     public long LayoutsCreated { get; set; }
 
+    // What WarmAsync drew, for the gate: samples drawn and the milliseconds it took.
+    public static string Warmed { get; private set; } = "";
+
     public void Configure(float fontSize, GridColors colors)
     {
         ReleaseFormats();
@@ -235,6 +238,8 @@ internal sealed unsafe class CellPainter : IDisposable
             {
                 return;
             }
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var drawn = 0;
             context->BeginDraw();
             context->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
             var samples = FontWarmup.Scripts.Split(' ');
@@ -258,8 +263,11 @@ internal sealed unsafe class CellPainter : IDisposable
                 context->Clear(&clear);
                 context->DrawTextLayout(default, layout, (ID2D1Brush*)brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
                 layout->Release();
+                drawn++;
             }
-            _ = context->EndDraw(null, null);
+            var result = context->EndDraw(null, null);
+            Warmed = string.Create(CultureInfo.InvariantCulture,
+                $"samples={drawn} end=0x{result.Value:X8} ms={System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1}");
             context->SetTarget(null);
         }
         finally

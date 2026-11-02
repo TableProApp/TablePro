@@ -63,7 +63,7 @@ foreach ($name in 'first', 'gate', 'repeat') {
         Write-Host ("{0,-18} block p50={1} p95={2} max={3} | gc {4} | {5} | worst {6}" -f $phase, $hb.p50, $hb.p95, $hb.max, $json["$phase.gc"], $json["$phase.worst_block"], $json["$phase.worst_step"])
         if ($json.ContainsKey("$phase.verify")) { Write-Host ("{0,-18} verify {1}" -f '', ($json["$phase.verify"] | ConvertTo-Json -Compress -Depth 5)) }
     }
-    foreach ($key in $json.Keys | Where-Object { $_ -match '^(error|unhandled|header\.|keyboard\.summary|keyboard\.shift|keyboard\.ctrl_a|selection\.|large_copy\.summary|high_contrast\.|text_scale\.|dpi\.|device_loss|content\.|font_warmup|core_query_ms|idle\.realized|xy_random_verify\.realized|insets|rendering|first_cells)' } | Sort-Object) {
+    foreach ($key in $json.Keys | Where-Object { $_ -match '^(error|unhandled|header\.|keyboard\.summary|keyboard\.shift|keyboard\.ctrl_a|selection\.|large_copy\.summary|high_contrast\.|text_scale\.|dpi\.|device_loss|content\.|font_warmup|font_warmup_rows_device|core_query_ms|idle\.realized|xy_random_verify\.realized|insets|rendering|first_cells)' } | Sort-Object) {
         Write-Host ("{0}: {1}" -f $key, ($json[$key] | ConvertTo-Json -Compress -Depth 5))
     }
 }

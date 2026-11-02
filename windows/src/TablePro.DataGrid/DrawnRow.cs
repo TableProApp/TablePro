@@ -139,6 +139,7 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         KeepColumns(first, last);
         var rowHeight = (float)_grid.RowHeight;
         var columns = _grid.Columns;
+        var layoutStarted = Stopwatch.GetTimestamp();
         for (var column = first; column <= last; column++)
         {
             if (IndexOf(column) < 0)
@@ -146,6 +147,7 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
                 AddCell(column, painter, rowHeight);
             }
         }
+        _grid.Counters.LayoutMilliseconds += Stopwatch.GetElapsedTime(layoutStarted).TotalMilliseconds;
         var x0 = _frozen ? 0 : columns.PaneX(first);
         var width = _frozen ? columns.FrozenWidth : columns.PaneX(last) + columns.Width(last) - x0;
         var scale = _grid.RenderScale;
@@ -168,7 +170,9 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
         _sprite.Offset = new Vector3((float)x0, 0, 0);
 
         var generation = device.Generation;
+        var beginStarted = Stopwatch.GetTimestamp();
         var context = _surface.Begin(scale);
+        _grid.Counters.SurfaceMilliseconds += Stopwatch.GetElapsedTime(beginStarted).TotalMilliseconds;
         if (context is null)
         {
             _grid.OnDeviceLost();
@@ -208,7 +212,10 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
             context->FillRectangle(&edge, painter.FrozenEdgeBrush);
         }
         context->PopAxisAlignedClip();
-        if (!_surface.End(context) || device.Generation != generation)
+        var endStarted = Stopwatch.GetTimestamp();
+        var ended = _surface.End(context);
+        _grid.Counters.SurfaceMilliseconds += Stopwatch.GetElapsedTime(endStarted).TotalMilliseconds;
+        if (!ended || device.Generation != generation)
         {
             _grid.OnDeviceLost();
             return;
