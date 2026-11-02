@@ -13,6 +13,8 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let state = KafkaDriverState()
     private let anchors = KafkaAnchorStore()
 
+    var liveCluster: KafkaCluster { cluster }
+
     var capabilities: PluginCapabilities { [] }
 
     /// The config is read here and not retained. It carries the password, and nothing after

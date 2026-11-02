@@ -6,10 +6,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use gio::prelude::SettingsExt;
 use gtk4::prelude::ObjectExt;
 use secrecy::{ExposeSecret, SecretString};
+use tablepro_linux_platform::AppSettings;
+use tablepro_linux_platform::settings::keys;
 use tablepro_mcp::{AccessToken, McpServer, TokenVault, ToolContext};
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
-use tablepro_storage::settings::keys;
 use tokio::sync::{Mutex, watch};
 
 use super::mcp_status::{McpFailure, McpStatus};

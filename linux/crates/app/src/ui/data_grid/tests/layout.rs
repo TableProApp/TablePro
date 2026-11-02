@@ -6,7 +6,7 @@ use tablepro_core::{ColumnInfo, Value};
 
 use super::{Layouts, data_column, text};
 use crate::services::grid::{ColumnLayout, LayoutSlot};
-use crate::test_support::{drain_main_context, wait_until};
+use crate::test_support::{after_next_frame, drain_main_context, wait_until};
 use crate::ui::data_grid::test_grid::{Grid, GridSpec, WAIT, named, persisted, two_text_columns, two_text_values};
 
 fn users() -> Vec<ColumnInfo> {
@@ -171,19 +171,19 @@ fn the_last_shown_column_cannot_be_hidden() {
     assert!(data_column(&grid, 1).is_visible());
 }
 
-/// The header takes no focus, so the focused cell's column moves from the
-/// keyboard, past hidden columns, and the table keeps the order.
+fn said(grid: &Grid) -> Vec<String> {
+    crate::ui::a11y::announced_in(&grid.grid)
+        .into_iter()
+        .map(|(text, _)| text)
+        .collect()
+}
+
 #[gtk4::test]
 fn a_column_moved_from_its_cell_skips_hidden_ones_and_is_kept() {
     let layouts = Layouts::new();
     let grid = open_users(&layouts, "users");
     grid.grid.set_column_visible(1, false);
     grid.focus(0, 2);
-    assert!(grid.is_enabled("move-column-left"));
-    assert!(
-        !grid.is_enabled("move-column-right"),
-        "the last column moves no further right"
-    );
 
     grid.activate("move-column-left");
 
@@ -191,16 +191,50 @@ fn a_column_moved_from_its_cell_skips_hidden_ones_and_is_kept() {
     assert_eq!(
         grid.focused_cell().map(|cell| (cell.position(), cell.column())),
         Some((Some(0), 2)),
-        "the focus stays on the moved cell"
+        "the focus left the moved cell"
     );
+    assert_eq!(said(&grid).last().map(String::as_str), Some("Moved email before id"));
     let saved = layouts.saved("users").order;
-    let at = |name: &str| saved.iter().position(|kept| *kept == slot(name));
+    let at = |name: &str| {
+        saved
+            .iter()
+            .position(|kept| *kept == slot(name))
+            .unwrap_or_else(|| panic!("{name} has no slot in {saved:?}"))
+    };
     assert!(at("email") < at("id"), "{saved:?}");
-    assert!(grid.is_enabled("move-column-right"));
     drop(grid);
 
     let again = open_users(&layouts, "users");
     assert_eq!(again.grid.shown_columns(), [2, 0]);
+}
+
+#[gtk4::test]
+fn the_first_column_stops_at_the_row_numbers() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    let view = grid.grid.column_view();
+    let row_numbers = grid.grid.row_numbers_column().expect("a row number column");
+    grid.focus(0, 0);
+    // A disabled action lets the key pass on without the bell.
+    assert!(grid.is_enabled("move-column-left"));
+
+    grid.activate("move-column-left");
+    grid.grid
+        .activate_action("grid.move-column-left-at", Some(&0u32.to_variant()))
+        .expect("the header's Move Column Left");
+    drain_main_context();
+
+    assert_eq!(grid.grid.shown_columns(), [0, 1, 2]);
+    assert_eq!(
+        position_in_view(&view, &row_numbers),
+        0,
+        "the column passed the row numbers"
+    );
+    assert!(
+        !said(&grid).iter().any(|text| text.starts_with("Moved")),
+        "{:?}",
+        said(&grid)
+    );
 }
 
 #[gtk4::test]
@@ -231,36 +265,53 @@ fn the_header_menu_moves_its_column_and_stops_at_the_edge() {
     assert_ne!(last, Some(data_column(&grid, 0)), "the filler stays last");
 }
 
-/// A header drag can give the focused column a neighbour it lacked.
 #[gtk4::test]
-fn a_move_elsewhere_updates_what_the_focused_column_can_do() {
+fn left_and_right_follow_the_column_views_direction() {
     let layouts = Layouts::new();
     let grid = open_users(&layouts, "users");
-    grid.focus(0, 2);
-    assert!(!grid.is_enabled("move-column-right"));
-
-    let view = grid.grid.column_view();
-    let filler = view.columns().n_items() - 1;
-    view.insert_column(filler, &data_column(&grid, 0));
-    drain_main_context();
-
-    assert_eq!(grid.grid.shown_columns(), [1, 2, 0]);
-    assert!(grid.is_enabled("move-column-right"));
-}
-
-#[gtk4::test]
-fn left_and_right_follow_a_right_to_left_locale() {
-    let layouts = Layouts::new();
-    let grid = open_users(&layouts, "users");
-    grid.grid.set_direction(gtk::TextDirection::Rtl);
+    grid.grid.column_view().set_direction(gtk::TextDirection::Rtl);
     grid.focus(0, 1);
 
     grid.activate("move-column-left");
+    after_next_frame(&grid.window);
 
     assert_eq!(grid.grid.shown_columns(), [0, 2, 1]);
+    let x = |column: usize| {
+        grid.cell_at(0, column)
+            .compute_bounds(&grid.window)
+            .expect("the cell is in the window")
+            .x()
+    };
+    assert!(x(1) < x(2), "the column moved right on screen");
 }
 
-/// These press keys on the X display every test shares.
+#[gtk4::test]
+fn a_column_moved_past_a_wide_one_stays_in_view() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    let view = grid.grid.column_view();
+    data_column(&grid, 1).set_fixed_width(3000);
+    grid.focus(0, 0);
+    after_next_frame(&grid.window);
+
+    grid.activate("move-column-right");
+    after_next_frame(&grid.window);
+
+    assert_eq!(grid.grid.shown_columns(), [1, 0, 2]);
+    let cell = grid.focused_cell().expect("a focused cell");
+    assert_eq!(cell.column(), 0);
+    let bounds = cell.compute_bounds(&view).expect("the cell is in the view");
+    assert!(
+        bounds.x() >= 0.0 && bounds.x() + bounds.width() <= view.width() as f32,
+        "the focused cell spans {} to {} in a view {} wide",
+        bounds.x(),
+        bounds.x() + bounds.width(),
+        view.width()
+    );
+}
+
+/// These press keys on the X display every test shares; nextest runs them
+/// with no other test beside them.
 mod real_keys {
     use gtk4::gdk;
     use gtk4::prelude::*;

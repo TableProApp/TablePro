@@ -8,6 +8,7 @@ nonisolated enum AppPreferences {
     static let defaultPageSizeKey = "com.TablePro.settings.defaultPageSize"
     static let defaultSafeModeKey = "com.TablePro.settings.defaultSafeMode"
     static let hideQueryPreviewInActivityKey = "com.TablePro.settings.hideQueryPreviewInActivity"
+    static let rowLayoutKey = "com.TablePro.settings.rowLayout"
 
     static let pageSizeOptions: [Int] = [50, 100, 200, 500]
 

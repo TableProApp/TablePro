@@ -11,6 +11,8 @@ extension MainContentCoordinator {
     // origin, fail-closed (#2243). A table tab has one result and only a view there explains a refusal.
     var activeResultEditRefusal: ResultEditRefusal? {
         guard let tab = tabManager.selectedTab else { return nil }
+        // A masked value can neither be written back nor find its row, and a copied row would insert the mask.
+        if !tabSessionRegistry.tableRows(for: tab.id).masks.isEmpty { return .masked }
         guard tab.tabType == .query else { return tab.tableContext.viewEditRefusal }
         return ResultEditability.refusal(
             for: tab.display.activeResultSet?.origin,

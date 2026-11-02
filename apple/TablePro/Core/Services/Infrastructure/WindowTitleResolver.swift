@@ -184,6 +184,11 @@ enum WindowTitleResolver {
                 return explicitTitle
             }
             return String(localized: "Debug")
+        case .liveMessages:
+            if let explicitTitle, !explicitTitle.isBlank {
+                return explicitTitle
+            }
+            return String(localized: "Live Messages")
         default:
             break
         }

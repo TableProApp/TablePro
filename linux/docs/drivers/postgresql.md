@@ -1,6 +1,6 @@
 # PostgreSQL
 
-Driver id `postgres`, crate `crates/drivers/postgres`. It runs on tokio-postgres 0.7.18 with postgres-types and postgres-protocol, deadpool-postgres 0.14.2 for the pool and tokio-postgres-rustls 0.14 for TLS, all from crates.io ([ADR 0016](../decisions/0016-driver-contract-v2.md)). The integration suite runs against PostgreSQL 17, and CI runs it again on 14 and 18; the catalogue is also checked on 13 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `postgres`, crate `core/crates/drivers/postgres`. It runs on tokio-postgres 0.7.18 with postgres-types and postgres-protocol, deadpool-postgres 0.14.2 for the pool and tokio-postgres-rustls 0.14 for TLS, all from crates.io ([ADR 0016](../decisions/0016-driver-contract-v2.md)). The integration suite runs against PostgreSQL 17, and CI runs it again on 14 and 18; the catalogue is also checked on 13 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 ## Connections
 
@@ -16,7 +16,7 @@ Every connection logs in with `Config::connect_raw` over a stream from the trans
 ## TLS
 
 - `Disable` sends no SSLRequest. `Require` and `VerifyFull` both send it and refuse to continue in plaintext; they differ only in the certificate check.
-- `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../ARCHITECTURE.md#trust)), and checks the name from `NetworkTarget::tls_server_name()`.
+- `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)), and checks the name from `NetworkTarget::tls_server_name()`.
 - A client certificate is offered when one is set, for `cert` authentication in `pg_hba.conf`.
 - A server that answers the SSLRequest with `N` is reported as `ServerRefusedTls`, never as a certificate problem: the TLS connector records whether the handshake started.
 - SCRAM channel binding (`tls-server-end-point`) is preferred, never required. It is used when the server's certificate is signed with RSA (SHA-1 to SHA-512) or ECDSA with SHA-256 or SHA-384. With any other signature, such as Ed25519 or ECDSA with SHA-512, tokio-postgres-rustls has no hash to bind with, and the login goes ahead without binding.
@@ -35,6 +35,7 @@ COMMIT
 - `statement_timeout` is the nearer of the call's deadline and the workspace's 60 s. `lock_timeout` is 10 s, so a blocked edit reports the lock instead of a generic timeout.
 - `SET LOCAL` ends with the transaction, so nothing is left on a server connection a pooler shares.
 - A catalog read runs under the session's own search_path, so names print as the user's session sees them, and resolves nothing through it: every function is written `pg_catalog.<name>`, and every operator compares two values of one built-in type, cast where they differ (`attrelid = $1::text::regclass::oid`), or is written `OPERATOR(pg_catalog.<op>)`. A lookalike another user creates on the path can then only tie with the built-in, and `pg_catalog`, searched first, wins the tie. `bare_calls` in `metadata/mod.rs` checks every catalog statement for an unqualified call.
+- The sidebar lists functions, procedures, sequences and user triggers in their schema's section, a trigger with the table it fires on beside it. Two triggers of one name on different tables are both kept, and a partition's clone of its parent's trigger (`tgparentid` set) is left out. A definition comes from `pg_get_functiondef` (every overload), `pg_get_triggerdef` without pretty printing, which names the table with its schema, or for a sequence a `CREATE SEQUENCE` built from `pg_sequences` with every clause the statement takes: `UNLOGGED` or `TEMPORARY` from `relpersistence`, and `OWNED BY` the column a `pg_depend` row of type `a` names. An identity column's sequence (type `i`) is made with its table, so its text does not open in the editor.
 - Generated SQL runs on the unnamed statement (`query_typed_raw`, `execute_typed`) with typed parameters. Nothing is prepared under a name.
 - A connection whose flight did not end with an acknowledged COMMIT or ROLLBACK is taken out of the pool, because deadpool's recycle check (`RecyclingMethod::Verified`) passes inside a half-finished transaction.
 - A read that returns no rows still has its columns: the statement runs once more as a subquery right-joined to one row on a false condition, in a read-only transaction of its own.

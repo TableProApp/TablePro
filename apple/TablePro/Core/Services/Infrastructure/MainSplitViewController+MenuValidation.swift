@@ -137,6 +137,7 @@ struct MenuValidationContext: Equatable {
     var hasSchemaFilter = false
     // Filled only when a Debug menu item is validated; the menu exists only while the module is on.
     var routineDebug = RoutineDebugMenuState()
+    var canOpenLiveMessages = false
 
     // The validation and the window's handler both read it, so a lit Use Selection for Find never lands on an editor with no selection.
     var usesGridSelectionForFind: Bool {
@@ -296,6 +297,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected
         case #selector(showTableHealth(_:)):
             return context.isConnected && context.supportsTableHealth
+        case #selector(openLiveMessages(_:)):
+            return context.isConnected && !context.isAgentMode && context.canOpenLiveMessages
 
         case #selector(toggleFilterBar(_:)):
             return context.isConnected && context.canUseTableResultCommands
@@ -728,6 +731,9 @@ extension MainSplitViewController: NSMenuItemValidation {
         }
         if Self.routineDebugSelectors.contains(action) {
             context.routineDebug = routineDebugMenuState
+        }
+        if action == #selector(openLiveMessages(_:)) {
+            context.canOpenLiveMessages = canOpenLiveMessages
         }
         guard Self.agentSessionSelectors.contains(action) else { return context }
         context.agentSessionTarget = agentSessionTarget(for: menuItem)?.status

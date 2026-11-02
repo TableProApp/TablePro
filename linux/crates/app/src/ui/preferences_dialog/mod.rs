@@ -12,8 +12,8 @@ use gtk4::glib;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
 
 use crate::services::ai_service::AiService;
 use crate::services::history_service::HistoryService;
@@ -107,7 +107,7 @@ fn test_storage(tasks: &Tasks) -> crate::storage::SharedStorage {
     let paths = tablepro_storage::StoragePaths::under(&root, "tablepro-test", "app.tablepro.TablePro.Devel");
     Rc::new(crate::storage::AppStorage::new(
         paths,
-        std::sync::Arc::new(tablepro_storage::SecretStore::new(crate::config::secret_schema())),
+        std::sync::Arc::new(tablepro_linux_platform::SecretStore::new(crate::config::secret_schema())),
         tasks,
     ))
 }

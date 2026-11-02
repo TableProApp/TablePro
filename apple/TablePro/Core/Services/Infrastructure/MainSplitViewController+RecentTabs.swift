@@ -217,6 +217,8 @@ internal extension MainSplitViewController {
             return "list.bullet.rectangle"
         case .routineDebug:
             return "ladybug"
+        case .liveMessages:
+            return "dot.radiowaves.left.and.right"
         }
     }
 }

@@ -13,11 +13,10 @@ use tablepro_app::application::{AppServices, AppServicesParts, TableProApplicati
 use tablepro_app::runtime::AppRuntime;
 use tablepro_app::storage::AppStorage;
 use tablepro_core::{AuthMode, DriverRegistry, LivenessPolicy, TlsConfig};
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::fakes::FakeConnector;
 use tablepro_session::operation::DefaultDeadlines;
-use tablepro_storage::{
-    AppSettings, ConnectionColor, ConnectionIcon, ConnectionTagName, SavedConnection, StoragePaths,
-};
+use tablepro_storage::{ConnectionColor, ConnectionIcon, ConnectionTagName, SavedConnection, StoragePaths};
 use tablepro_test_support::FakeSecretVault;
 
 /// Long enough for a page to settle on a loaded CI runner.

@@ -1,6 +1,6 @@
 # Storage
 
-The app's data goes to the store its shape calls for. The `storage` crate owns the stores and the calls that write private files; the app crate's workspace, column-width and filter files go through those same calls in `tablepro_storage::fs`.
+The app's data goes to the store its shape calls for. The core's `storage` crate owns the stores and the calls that write private files; the app crate's workspace, column-width and filter files go through those same calls in `tablepro_storage::fs`. The stores that come from the desktop, GSettings and the Secret Service, are in `tablepro-linux-platform` (`crates/platform`).
 
 | Data | Backend | API |
 |---|---|---|
@@ -47,7 +47,7 @@ SSH passwords and key passphrases sit in the keyring next to database passwords.
 
 ## Passwords in the keyring
 
-`SecretStore` is the app's `SecretVault`: `store`, `load`, `relabel`, `delete_kind` and `delete_connection`, keyed by connection id and `SecretKind`, with the secret as a `SecretString`.
+`SecretStore` (`tablepro_linux_platform`) is the app's `SecretVault`: `store`, `load`, `relabel`, `delete_kind` and `delete_connection`, keyed by connection id and `SecretKind`, with the secret as a `SecretString`. It is also the app's `SecretItems`, which holds the MCP access token and the AI providers' API keys and labels them through the app's `SecretItemLabeler`.
 
 Backed by the [`oo7`](https://crates.io/crates/oo7) crate ([ADR 0004](decisions/0004-libsecret-secret-storage.md)). Outside Flatpak it talks to the host's Secret Service over D-Bus, which GNOME Keyring and KWallet both implement. Inside Flatpak it keeps the items in an encrypted file in the sandbox, unlocked with a key from the Secret portal, and uses the Secret Service only when there is no portal.
 
@@ -146,11 +146,11 @@ Everything private goes through `tablepro_storage::fs`:
 - `ensure_user_dir` creates a folder the user fills, such as the snippets
   folder, and what is missing above it as 0700, and leaves one that
   exists as it is: it may be a link to a folder other tools share.
-- `write_private_blocking` writes through `g_file_set_contents_full` with
-  `CONSISTENT | DURABLE`: a reader sees the old file or the new one, never
-  a mix, and the new one survives a power cut. It tightens an existing
-  file to 0600 first, because that call keeps an existing file's mode and
-  only applies the mode argument when it creates the file.
+- `write_private_blocking` writes a 0600 temporary file beside the target,
+  syncs it, renames it over the target and syncs the directory: a reader
+  sees the old file or the new one, never a mix, and the new one survives
+  a power cut. The rename replaces a symbolic link rather than its target,
+  and the new file is 0600 whatever mode the old one had.
 - `append_private_blocking` appends to a file it creates 0600 when absent,
   for the crash report, which a second panic adds to.
 - `create_private_file_if_missing` pre-creates an empty 0600 file. SQLite
@@ -169,7 +169,7 @@ query text is the user's own SQL. It links the system SQLite: the trigram
 tokenizer needs 3.34 or later, and `trigram_index_available_on_system_sqlite`
 fails against an older one.
 
-`crates/storage/migrations/` holds the schema as sqlx migrations, embedded
+`core/crates/storage/migrations/` holds the schema as sqlx migrations, embedded
 at compile time with `sqlx::migrate!` and run by `QueryHistory::open`:
 
 1. `20260914000000_create_history.sql`: the `history` table.
@@ -357,6 +357,6 @@ A keyring failure is a `SecretError` from `tablepro-core`, not a `StorageError`;
 - A JSON document is a `VersionedDocument` with a `version` field. A new shape bumps its `VERSION` and appends a step to its `UPGRADES`, which turns a file of the version before into the new shape. `decode_document` runs an older file through every step it is behind, oldest first, so a user who skipped releases keeps their data. A step that shipped is never changed or dropped.
 - The upgrade happens in memory. The file stays as it was until the next save writes the current version.
 - A file older than the first step, one a step cannot read, or one from a newer build is never written over. The connection list and a workspace wait for the user's Reset, which moves the file aside; the smaller state files move an unusable file aside themselves.
-- Each released version of the connection list and the workspace file has a golden file that a test reads into the model it was written from: `crates/storage/tests/fixtures/connections-v1.json`, `connections-v2.json`, and `crates/app/tests/fixtures/workspace-v1.json` and `workspace-v2.json`. A committed fixture is never edited. A format change adds the new version's fixture and updates the expected models of the old ones, which now read through the upgrade.
-- The history database moves forward by sqlx migration: a new timestamped file under `crates/storage/migrations/` with its own fixture test, never an edit to an applied one.
+- Each released version of the connection list and the workspace file has a golden file that a test reads into the model it was written from: `core/crates/storage/tests/fixtures/connections-v1.json`, `connections-v2.json`, and `crates/app/tests/fixtures/workspace-v1.json` and `workspace-v2.json`. A committed fixture is never edited. A format change adds the new version's fixture and updates the expected models of the old ones, which now read through the upgrade.
+- The history database moves forward by sqlx migration: a new timestamped file under `core/crates/storage/migrations/` with its own fixture test, never an edit to an applied one.
 - Update this page, and add a fragment to the Linux changelog.

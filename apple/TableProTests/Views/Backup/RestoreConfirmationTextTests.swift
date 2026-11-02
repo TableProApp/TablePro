@@ -14,19 +14,39 @@ struct RestoreConfirmationTextTests {
     func onlyMySQLOverwrites() throws {
         for type in [DatabaseType.mysql, .mariadb] {
             let message = try #require(RestoreConfirmationText.message(for: type))
-            #expect(message.contains("overwritten"), "\(type.rawValue)")
+            #expect(message.contains("overwrites each object"), "\(type.rawValue)")
         }
         for type in [DatabaseType.postgresql, .redshift, .mongodb, .sqlite, .libsql, .mssql, .duckdb] {
             let message = try #require(RestoreConfirmationText.message(for: type))
-            #expect(!message.contains("overwritten"), "\(type.rawValue)")
+            #expect(!message.contains("overwrit"), "\(type.rawValue)")
         }
     }
 
-    @Test("pg_restore, mongorestore and sqlite3 say existing objects are kept and added to")
-    func appendingEnginesKeepExistingObjects() throws {
-        for type in [DatabaseType.postgresql, .redshift, .mongodb, .sqlite, .libsql] {
+    @Test("mysql runs without --force, so MySQL and MariaDB say the restore stops at the first error and keeps what ran")
+    func mySQLStopsAtTheFirstError() throws {
+        for type in [DatabaseType.mysql, .mariadb] {
             let message = try #require(RestoreConfirmationText.message(for: type))
-            #expect(message.contains("kept"), "\(type.rawValue)")
+            #expect(message.contains("stops at the first error and keeps what ran before it"), "\(type.rawValue)")
+        }
+    }
+
+    @Test("pg_restore and mongorestore say existing objects are kept, added to, and errors do not stop the run")
+    func appendingEnginesKeepExistingObjects() throws {
+        for type in [DatabaseType.postgresql, .redshift, .mongodb] {
+            let message = try #require(RestoreConfirmationText.message(for: type))
+            #expect(message.contains("kept, not replaced"), "\(type.rawValue)")
+            #expect(message.contains("carries on past errors"), "\(type.rawValue)")
+        }
+    }
+
+    @Test("sqlite3 runs with -bail, so SQLite and libSQL say the restore stops at the first error and keeps no transaction")
+    func sqliteStopsAtTheFirstError() throws {
+        for type in [DatabaseType.sqlite, .libsql] {
+            let message = try #require(RestoreConfirmationText.message(for: type))
+            #expect(message.contains("stops at the first error"), "\(type.rawValue)")
+            #expect(message.contains("none of it is kept"), "\(type.rawValue)")
+            #expect(message.contains("what ran before the error stays"), "\(type.rawValue)")
+            #expect(!message.contains("added to them"), "\(type.rawValue)")
         }
     }
 

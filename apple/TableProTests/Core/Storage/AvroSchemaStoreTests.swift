@@ -29,6 +29,23 @@ struct AvroSchemaStoreTests {
         }
     }
 
+    @Test("A schema file that cannot be read is not read again on every cell, until it is added back")
+    func unreadableFileIsRememberedUntilAdded() throws {
+        try withDirectory { directory in
+            let id = AvroSchemaStore.schemaID(of: Self.schema)
+            let file = directory.appendingPathComponent(id).appendingPathExtension("avsc")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data("not json".utf8).write(to: file)
+            let store = AvroSchemaStore(directory: directory)
+            #expect(store.schema(id: id) == nil)
+
+            try Data(Self.schema.utf8).write(to: file)
+            #expect(store.schema(id: id) == nil)
+            #expect(try store.add(Self.schema) == id)
+            #expect(store.schema(id: id)?.displayName == "Reading")
+        }
+    }
+
     @Test("Text that is not a schema is refused and leaves nothing behind")
     func invalidTextIsRefused() throws {
         try withDirectory { directory in

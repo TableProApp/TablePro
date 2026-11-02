@@ -1,6 +1,6 @@
 # MySQL and MariaDB
 
-Driver id `mysql`, crate `crates/drivers/mysql`. One driver serves both servers through sqlx 0.9 (`mysql`, `mysql-rsa`, `tls-rustls-aws-lc-rs`) with a deadpool 0.13 pool. `MySqlFlavour` tells them apart from `VERSION()` (MariaDB says so in it), because they name their timeouts, error numbers and catalogue columns differently. The integration suite runs against MySQL 8.4 and MariaDB 11.4, and CI runs it again on MySQL 8.0 with MariaDB 10.11 and on MySQL 9.7 with MariaDB 12.3 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `mysql`, crate `core/crates/drivers/mysql`. One driver serves both servers through sqlx 0.9 (`mysql`, `mysql-rsa`, `tls-rustls-aws-lc-rs`) with a deadpool 0.13 pool. `MySqlFlavour` tells them apart from `VERSION()` (MariaDB says so in it), because they name their timeouts, error numbers and catalogue columns differently. The integration suite runs against MySQL 8.4 and MariaDB 11.4, and CI runs it again on MySQL 8.0 with MariaDB 10.11 and on MySQL 9.7 with MariaDB 12.3 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 A connection needs a database name (`database_required`).
 
@@ -48,7 +48,7 @@ A workspace session also pins what the app's generated SQL depends on:
 - `sql_mode` without `NO_BACKSLASH_ESCAPES`, because generated DDL writes literals such as `COMMENT '...'` that have no hex form.
 - `sql_mode` with `STRICT_ALL_TABLES`. Without strict mode the server stores what it can and only warns: a too-long string is cut, an unknown `ENUM` label becomes `''`, a number out of range is clamped, and a column made `NOT NULL` turns its NULLs into `0` or `''`. Strict mode makes each of these an error, so a save, an import or a schema change stores what it was given or fails.
 
-An editor session keeps the server's own zone and `sql_mode`, as the mysql client would.
+An editor session keeps the server's own zone and `sql_mode`, as the mysql client would. sqlx's handshake asks for `IGNORE_SPACE`, which the mysql client does not, so an editor session sends `SET SESSION sql_mode = @@GLOBAL.sql_mode` after the statements above.
 
 sqlx's own session statements (`PIPES_AS_CONCAT`, `NO_ENGINE_SUBSTITUTION`, its `SET NAMES`) are turned off. Its time zone is off too, except on a workspace session, where sqlx's `time_zone` option sends the `+00:00` above. Its statement cache is 0 so no prepared statement outlives its call, and its statement logging is off.
 
@@ -60,13 +60,13 @@ A save or a schema change runs in the server's own zone, `@@GLOBAL.time_zone`, a
 - In the hour a daylight-saving zone repeats, one wall time names two instants and the server picks one, so a key compared there can match the other row. Before a write sends anything, each instant it binds goes to the server's zone and back; one that changes refuses the batch. A zone written as an offset (`+07:00`) skips the check.
 - A `TIMESTAMP` column's constant default is read from `SHOW CREATE TABLE` and converted to the server's zone, so a `MODIFY` restates the same instant. MySQL's `COLUMN_DEFAULT` keeps the text in the zone of whoever last altered the table, so it is not used for this.
 
-`crates/drivers/mysql/src/server_zone.rs` has the reasoning.
+`core/crates/drivers/mysql/src/server_zone.rs` has the reasoning.
 
 ## TLS
 
 - `Disable` connects without TLS. A server with `require_secure_transport` answers with error 3159, reported as `ServerRequiresTls`. MariaDB before 11.2 answers 1045, Access denied, as it does for a wrong password ([MDEV-30178](https://jira.mariadb.org/browse/MDEV-30178)), so on 10.11 the refusal reads as an authentication failure.
 - `Require` encrypts without checking the certificate. A server that does not offer TLS is reported as `ServerRefusedTls`.
-- `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the system's CA store and the connection's CA file, which sqlx takes only as PEM, so the driver hands it both as one bundle; sqlx adds the Mozilla roots compiled into it ([Trust](../../ARCHITECTURE.md#trust)). `Require` checks no certificate, so it loads neither.
+- `VerifyFull` is sqlx's `VerifyIdentity`. It trusts the system's CA store and the connection's CA file, which sqlx takes only as PEM, so the driver hands it both as one bundle; sqlx adds the Mozilla roots compiled into it ([Trust](../../../core/ARCHITECTURE.md#trust)). `Require` checks no certificate, so it loads neither.
 - The name checked is the host sqlx dials, so a server name override works only through an SSH forward, where the dial goes to a socket path (`ServerNameOverride::SshForwardOnly`).
 - A client certificate and key are sent when set, for `REQUIRE X509` logins.
 - With TLS off, the password is safe only from a passive observer. `caching_sha2_password` encrypts it with an RSA key the server sends in band, which nothing authenticates. sqlx 0.9 also takes the login plugin the first handshake names without checking it against `enable_cleartext_plugin`, which it checks only on an auth switch, so a man in the middle can ask for `mysql_clear_password` and receive the password in clear. The mysql client refuses both by default (`--enable-cleartext-plugin`, `--get-server-public-key`). sqlx has no option to refuse either, so the driver cannot: on a network you do not trust, use TLS.
@@ -146,6 +146,12 @@ The structure tab edits a table's default character set and collation, converts 
 - The counter is `AUTO_INCREMENT = n` in the combined ALTER. A counter set before a MODIFY that turns AUTO_INCREMENT on is lost, in the same ALTER it is kept. The server raises a value at or below the largest key to that key plus one, without a warning, so the tab reads the table again after a save.
 - A column takes CHARACTER SET and COLLATE only when its type holds text: `CHAR`, `VARCHAR`, the `TEXT` types, `ENUM` and `SET`, in any spelling the type parser takes, such as `character varying(64)` or `VARCHAR (64)`. A national spelling (`NCHAR`, `NVARCHAR`) refuses CHARACTER SET, so none is written for it.
 - A restated `ON UPDATE CURRENT_TIMESTAMP`, and a `CURRENT_TIMESTAMP` default as the catalogue read it, take the precision of the column's type, since MySQL refuses any other (1294, 1067). A default the user typed goes as written.
+
+## Definitions
+
+The sidebar's objects, routines and triggers come from one `UNION ALL` over `information_schema`, every name converted to `utf8mb4_bin`, since the catalogue tables collate their names differently from one version to the next. TRIGGERS is narrowed by `EVENT_OBJECT_SCHEMA`: MariaDB then reads one schema's trigger files, where by `TRIGGER_SCHEMA` it reads every schema's.
+
+A definition is the server's `SHOW CREATE`, which names neither the object's database nor a trigger's table's, so Open in Editor moves the tab to the object's database before the text runs. A routine or a trigger reads its body under the `sql_mode` and `collation_connection` it was made with. One read before `SHOW CREATE` gets what a new editor tab runs with (`@@GLOBAL.sql_mode`, and the collation `SET NAMES utf8mb4` gives), and a trigger's table; when the settings differ, the text does not open in the editor, since it would read otherwise there, and a trigger now on another table reads as gone. The editor ends a statement at each `;` as the mysql client does, so a routine's or trigger's text comes framed in `DELIMITER ;;`, as mysqldump writes it, and does not open in the editor when the editor's plan of it is not the one statement. An object that is not there answers 1305, 1360, 1146, 1049 or, on MariaDB, 4089 (a table where the sequence was), and reads as gone.
 
 ## Editor sessions
 

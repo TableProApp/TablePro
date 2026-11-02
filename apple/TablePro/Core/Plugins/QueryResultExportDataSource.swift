@@ -64,7 +64,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
             columnTypeNames: Self.columnTypeNames(of: tableRows),
             rows: tableRows.rows.map { Array($0.values) },
             unloadedRows: unloadedRows,
-            fillUnloaded: fillUnloaded,
+            fillUnloaded: fillUnloaded.map { Self.masking($0, by: tableRows.masks) },
             databaseTypeId: databaseType.rawValue,
             quoteIdentifier: quoting.quoteIdentifier,
             escapeStringLiteral: quoting.escapeStringLiteral
@@ -83,6 +83,16 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
             quoteIdentifier: SQLEscaping.quoteIdentifier,
             escapeStringLiteral: SQLEscaping.escapeStringLiteral
         )
+    }
+
+    // A value the page left on the server arrives raw, so it takes the same masks as the rows already held.
+    private static func masking(_ fill: @escaping UnloadedValueFill, by masks: ColumnMasks) -> UnloadedValueFill {
+        guard !masks.isEmpty else { return fill }
+        return { rows in
+            try await fill(rows).mapValues { cells in
+                Dictionary(uniqueKeysWithValues: cells.map { ($0.key, masks.value($0.value, column: $0.key)) })
+            }
+        }
     }
 
     private static func columnTypeNames(of tableRows: TableRows) -> [String] {

@@ -37,8 +37,14 @@ final class AppSettingsStorage: Sendable {
         static let typography = "com.TablePro.settings.typography"
         static let hasSeenWelcomeSheet = "com.TablePro.settings.hasCompletedOnboarding"
         static let startupReopenMigration = "com.TablePro.settings.didMigrateStartupToReopenLast"
-        static let jsonFieldHeightMigration = "com.TablePro.settings.didMigrateJsonFieldHeightKey"
-        static let legacyJsonFieldHeight = "rightSidebar.jsonFieldHeight"
+        // One height per editor kind, before a height belonged to its column.
+        static let retiredFieldHeights = [
+            "rightSidebar.jsonFieldHeight",
+            "com.TablePro.rightSidebar.jsonFieldHeight",
+            "com.TablePro.rightSidebar.textFieldHeight",
+            "com.TablePro.rightSidebar.geometryFieldHeight",
+            "com.TablePro.settings.didMigrateJsonFieldHeightKey",
+        ]
     }
 
     /// The storage environment's defaults, not `.standard`. A UI test runs against a per-sandbox
@@ -71,15 +77,10 @@ final class AppSettingsStorage: Sendable {
         saveGeneral(general)
     }
 
-    func migrateJsonFieldHeightKeyIfNeeded() {
-        guard !defaults.bool(forKey: Keys.jsonFieldHeightMigration) else { return }
-        defaults.set(true, forKey: Keys.jsonFieldHeightMigration)
-
-        let newKey = PreferenceKeys.rowInspectorJsonFieldHeight.name
-        guard defaults.object(forKey: Keys.legacyJsonFieldHeight) != nil,
-              defaults.object(forKey: newKey) == nil else { return }
-        defaults.set(defaults.double(forKey: Keys.legacyJsonFieldHeight), forKey: newKey)
-        defaults.removeObject(forKey: Keys.legacyJsonFieldHeight)
+    func removeRetiredFieldHeightKeys() {
+        for key in Keys.retiredFieldHeights where defaults.object(forKey: key) != nil {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     // MARK: - Appearance Settings
@@ -310,9 +311,7 @@ final class AppSettingsStorage: Sendable {
         saveMCP(.default)
         saveTypography(.default)
         defaults.removeObject(forKey: PreferenceKeys.selectedSettingsPane.name)
-        defaults.removeObject(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name)
-        defaults.removeObject(forKey: PreferenceKeys.rowInspectorTextFieldHeight.name)
-        defaults.removeObject(forKey: PreferenceKeys.rowInspectorGeometryFieldHeight.name)
+        defaults.removeObject(forKey: PreferenceKeys.rowInspectorFieldHeights.name)
         defaults.removeObject(forKey: PreferenceKeys.rowInspectorGeometryFieldMode.name)
         defaults.removeObject(forKey: SidebarPersistenceKey.defaultLayout)
         RoutineDebugOptionStore(defaults: { [defaults] in defaults }).removeAll()

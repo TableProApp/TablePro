@@ -412,6 +412,80 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
 
 extension RedisPluginConnection: RedisClusterNodeConnection {}
 
+// MARK: - Pub/Sub
+
+extension RedisPluginConnection {
+    func pubSubConnection() -> RedisPluginConnection? { self }
+
+    /// Sends without reading: a subscribed connection answers with one confirmation per channel,
+    /// which `nextPushReplies` reads with the messages.
+    func sendSubscription(_ args: [Data]) async throws {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            #if canImport(CRedis)
+            let ctx = try subscribedContext()
+            let argc = Int32(args.count)
+            try RedisCommandArgv.withPointers(args) { argv, argvlen in
+                guard redisAppendCommandArgv(ctx, argc, argv, argvlen) == REDIS_OK else {
+                    throw transportFailure(ctx, delivered: false)
+                }
+            }
+            var done: Int32 = 0
+            while done == 0 {
+                guard redisBufferWrite(ctx, &done) == REDIS_OK else {
+                    throw transportFailure(ctx, delivered: false)
+                }
+            }
+            #else
+            throw RedisPluginError.notConnected
+            #endif
+        }
+    }
+
+    /// Waits at most `waitMilliseconds` for the socket, never in hiredis, whose read timeout would
+    /// leave the context unusable.
+    func nextPushReplies(waitMilliseconds: Int32) async throws -> [RedisReply] {
+        try await pluginDispatchAsync(on: queue) { [self] in
+            #if canImport(CRedis)
+            let ctx = try subscribedContext()
+            var replies = try bufferedReplies(ctx)
+            guard replies.isEmpty else { return replies }
+            var descriptor = pollfd(fd: ctx.pointee.fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&descriptor, 1, waitMilliseconds)
+            guard ready >= 0 || errno == EINTR else { throw transportFailure(ctx, delivered: true) }
+            guard ready > 0 else { return [] }
+            guard redisBufferRead(ctx) == REDIS_OK else { throw transportFailure(ctx, delivered: true) }
+            replies = try bufferedReplies(ctx)
+            return replies
+            #else
+            throw RedisPluginError.notConnected
+            #endif
+        }
+    }
+
+    #if canImport(CRedis)
+    private func subscribedContext() throws -> UnsafeMutablePointer<redisContext> {
+        guard !isShuttingDown else { throw RedisPluginError.notConnected }
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard let ctx = context else { throw RedisPluginError.notConnected }
+        return ctx
+    }
+
+    private func bufferedReplies(_ ctx: UnsafeMutablePointer<redisContext>) throws -> [RedisReply] {
+        var replies: [RedisReply] = []
+        while true {
+            var rawReply: UnsafeMutableRawPointer?
+            guard redisGetReplyFromReader(ctx, &rawReply) == REDIS_OK else {
+                throw transportFailure(ctx, delivered: true)
+            }
+            guard let reply = rawReply else { return replies }
+            replies.append(parseReply(reply.assumingMemoryBound(to: redisReply.self)))
+            freeReplyObject(reply)
+        }
+    }
+    #endif
+}
+
 // MARK: - Synchronous Helpers (must be called on the serial queue)
 
 #if canImport(CRedis)

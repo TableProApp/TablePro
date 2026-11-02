@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use tablepro_storage::AppSettings;
+use tablepro_linux_platform::AppSettings;
 
 /// The schema compiled into a `TempDir` behind a memory backend, so a
 /// test never reads or writes the developer's own dconf database.

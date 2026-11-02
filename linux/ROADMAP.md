@@ -57,6 +57,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Column layout | Order, hidden columns and widths kept per table; a column added since goes last and a dropped one keeps its place. A header drag, or Move Column Left and Move Column Right in the cell menu (Alt+Left and Alt+Right), reorders them; Widen Column and Narrow Column (Shift+Alt+Right and Shift+Alt+Left) resize them; Reset Columns in the Columns dialog goes back to the table's own order |
 | CSV import | Into an existing table, with a column mapping, in one write batch (one transaction where the engine has them), up to 64 MiB |
 | Sidebar | Tables (partitioned ones included), views, materialized views and foreign tables by schema, with search and Refresh, read again after the editor runs DDL, Open in New Tab and Show CREATE TABLE; Edit Structure, Import CSV and Drop Table for tables |
+| Routines and triggers | Functions, procedures and sequences in the sidebar after each schema's tables, and triggers with the table each fires on, on every engine that has them. Opening one shows its definition read-only, with Copy and Open in Editor; every overload of a PostgreSQL function name is shown |
 | ER diagram | Show ER Diagram in a table's menu or on a schema's heading opens the schema's tables as cards and their foreign keys as lines in crow's foot notation, read two tables at a time with Stop. Pan, zoom, Best Fit, drag tables, Reset Layout, and PNG and SVG export. Each table is a list item the keyboard and a screen reader reach: Tab and the arrow keys move between tables, Enter opens one, Alt+arrows move it, and its description names its columns and the tables it joins |
 
 ### Structure
@@ -64,7 +65,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Capability | Detail |
 |---|---|
 | Table definition | Columns, indexes, foreign keys and column comments |
-| Index statements | Show CREATE INDEX and Copy CREATE INDEX on each index the table has: the server's own text on PostgreSQL, SQLite and DuckDB, and written from the catalog on MySQL, MariaDB, SQL Server, ClickHouse (as ALTER TABLE ADD INDEX), Cassandra and ScyllaDB. An index with no statement of its own, such as a MySQL primary key or a ClickHouse sorting key, offers none |
+| Index statements | Show CREATE INDEX and Copy CREATE INDEX on each index the table has, as the statement that makes it again: the server's own text on PostgreSQL, MySQL, MariaDB, SQLite and DuckDB, and written from the catalog, storage and options included, on SQL Server, ClickHouse, Cassandra and ScyllaDB. An index a constraint owns, such as a primary key or a UNIQUE constraint, a partition's index attached to its parent's and a ClickHouse sorting key offer none. Show CREATE TABLE uses the same statements |
 | Changes | Create, rename and drop tables; add, drop and rename columns, and change their type, nullability, default, comment, primary key and auto-increment; add and drop indexes (column keys, unique, descending) and foreign keys. ClickHouse creates no tables, indexes or foreign keys and changes no primary key or auto-increment; SQL Server changes no auto-increment; SQLite keeps no column comments; Cassandra and ScyllaDB take no default or NOT NULL, and rename only key columns |
 | Review | The SQL is previewed, and a save that loses data or can stop halfway is reviewed before it runs |
 | SQLite rebuilds | Changes SQLite cannot ALTER rebuild the table in one transaction, keeping its rows, indexes, triggers, the views and triggers that name it and its AUTOINCREMENT counter, with foreign keys checked before commit. SQLite itself checks the views and triggers made again; a trigger that lists a dropped column or inserts by position is refused before Save |
@@ -171,7 +172,6 @@ Not built yet, in no order.
 
 - Edit binary columns from and to a file. They are read-only today, as are array, spatial, composite and variant columns.
 - Time and timestamp pickers. Dates have a calendar; times and timestamps are typed.
-- Functions, procedures, sequences and triggers in the sidebar. The drivers already list the first three.
 - Reorder columns in the structure tab by dragging, with the ALTER previewed.
 
 ### Release and project
@@ -187,7 +187,7 @@ Not built yet, in no order.
 
 ### More engines
 
-Each one is a crate under `crates/drivers` ([adding-drivers.md](docs/adding-drivers.md)), on a client library that meets [adding-drivers.md, The client library](docs/adding-drivers.md#1-the-client-library): maintained on crates.io, TLS through aws-lc-rs, a stream or Unix socket transport for SSH, and a way to stop a statement.
+Each one is a crate under `core/crates/drivers` ([adding-drivers.md](docs/adding-drivers.md)), on a client library that meets [adding-drivers.md, The client library](docs/adding-drivers.md#1-the-client-library): maintained on crates.io, TLS through aws-lc-rs, a stream or Unix socket transport for SSH, and a way to stop a statement.
 
 | Engine | Client | Condition |
 |---|---|---|

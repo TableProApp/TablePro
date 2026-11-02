@@ -33,7 +33,7 @@ internal enum GridSelectionOwner: Equatable {
             // Map selects through the same model: a clicked shape selects its row.
             return .dataGrid
         case .createTable, .erDiagram, .serverDashboard, .usersRoles, .insights, .tableHealth, .objectSource,
-             .versionHistory, .tableListing, .routineDebug:
+             .versionHistory, .tableListing, .routineDebug, .liveMessages:
             return .none
         }
     }

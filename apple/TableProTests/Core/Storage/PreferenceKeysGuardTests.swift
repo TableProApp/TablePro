@@ -19,9 +19,7 @@ struct PreferenceKeysGuardTests {
     @Test("The inspector's field preferences are registered under their own names")
     func inspectorFieldKeysAreRegistered() {
         let keys = [
-            PreferenceKeys.rowInspectorJsonFieldHeight.name,
-            PreferenceKeys.rowInspectorTextFieldHeight.name,
-            PreferenceKeys.rowInspectorGeometryFieldHeight.name,
+            PreferenceKeys.rowInspectorFieldHeights.name,
             PreferenceKeys.rowInspectorGeometryFieldMode.name,
         ]
         #expect(Set(keys).count == keys.count)

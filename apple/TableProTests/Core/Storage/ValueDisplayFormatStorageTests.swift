@@ -309,6 +309,28 @@ struct ValueDisplayFormatStorageTests {
         #expect(schemas.storedIDs.isEmpty)
         #expect(orphan != kept)
     }
+
+    @Test("A Protobuf schema file goes once no saved format names it, beside the Avro ones")
+    func protobufSchemaFilesFollowTheFormatsThatNameThem() throws {
+        let defaults = try pool.make().defaults
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let protobuf = ProtobufSchemaStore(directory: directory.appendingPathComponent("proto", isDirectory: true))
+        let kept = try protobuf.add(Data("message A { int32 id = 1; }".utf8))
+        let storage = ValueDisplayFormatStorage(
+            defaults: defaults,
+            schemas: AvroSchemaStore(directory: directory.appendingPathComponent("avro", isDirectory: true)),
+            protobufSchemas: ProtobufSchemaStore(directory: directory.appendingPathComponent("proto", isDirectory: true))
+        )
+        let target = scope("public", connectionId: UUID())
+
+        storage.save(["payload": .protobufSchema(schemaID: kept, message: "A")], for: target)
+        #expect(storage.load(for: target) == ["payload": .protobufSchema(schemaID: kept, message: "A")])
+        #expect(protobuf.storedIDs == [kept])
+
+        storage.dropTable(target)
+        #expect(protobuf.storedIDs.isEmpty)
+    }
 }
 
 // What 0.83.1 decodes a table's formats as: a String enum of the names it shipped.

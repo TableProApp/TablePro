@@ -23,9 +23,10 @@ use tablepro_app::application::{AppServices, AppServicesParts, TableProApplicati
 use tablepro_app::runtime::AppRuntime;
 use tablepro_app::storage::AppStorage;
 use tablepro_core::{AuthMode, DriverRegistry, EditorSession, LivenessPolicy, TlsConfig, TransactionState};
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::fakes::{FakeConnector, FakeEstablish};
 use tablepro_session::operation::DefaultDeadlines;
-use tablepro_storage::{AppSettings, SavedConnection, StoragePaths};
+use tablepro_storage::{SavedConnection, StoragePaths};
 use tablepro_test_support::{
     CloseBehaviour, ConnectionScript, FakeConnection, FakeDriver, FakeEditorSession, FakeReply, FakeRun,
     FakeSecretVault, Replies,

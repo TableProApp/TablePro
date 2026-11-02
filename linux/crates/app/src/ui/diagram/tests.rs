@@ -27,6 +27,7 @@ fn object(name: &str) -> ObjectInfo {
         schema: Some("sales".to_owned()),
         name: name.to_owned(),
         kind: ObjectKind::Table,
+        parent_table: None,
     }
 }
 

@@ -46,7 +46,7 @@ pub(super) struct TabFactoryParts {
     pub shell: glib::WeakRef<WorkspaceShell>,
     pub toasts: glib::WeakRef<adw::ToastOverlay>,
     pub context: Rc<SessionContext>,
-    pub settings: Rc<tablepro_storage::AppSettings>,
+    pub settings: Rc<tablepro_linux_platform::AppSettings>,
     pub storage: crate::storage::SharedStorage,
     pub history: Option<HistoryService>,
     pub drafts: Rc<DraftWriter>,
@@ -421,7 +421,7 @@ fn connect_structure(structure: &StructureTab, tab_id: Uuid, input: &WorkspaceSe
     let alert = input.clone();
     structure.connect_alert(move |_, title, body| alert.deliver(WorkspaceInput::ShowAlert { title, body }));
     let open = input.clone();
-    structure.connect_open_in_editor(move |_, sql| open.deliver(WorkspaceInput::OpenInEditor(sql)));
+    structure.connect_open_in_editor(move |_, sql| open.deliver(WorkspaceInput::OpenInEditor { sql, database: None }));
 }
 
 /// The diagram's signals, as the workspace's inputs: a table it names

@@ -163,6 +163,10 @@ impl StructureTabSender {
             tab.send(msg);
         }
     }
+
+    fn tab(&self) -> Option<StructureTab> {
+        self.tab.upgrade()
+    }
 }
 
 impl StructureTab {
@@ -481,7 +485,6 @@ pub(crate) enum StructureTabOutput {
     },
     /// A read of the definition started or ended, for the tab bar.
     LoadingChanged(bool),
-    /// SQL the user asked to see in an editor tab.
     OpenInEditor(String),
 }
 

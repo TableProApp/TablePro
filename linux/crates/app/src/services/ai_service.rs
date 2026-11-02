@@ -9,8 +9,8 @@ use secrecy::SecretString;
 use tablepro_ai::{AiClient, AiError, ApiKeyVault, ChatRequest, Endpoint, ReplyEnd, ReplyEvent};
 use tablepro_core::AiProvider;
 use tablepro_core::credentials::SecretError;
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 

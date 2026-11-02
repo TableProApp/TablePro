@@ -1,7 +1,7 @@
 #!/bin/sh
 # Downloads the source and vendor tarballs of a published Linux release into
 # <output dir>, checked against the release's SHA256SUMS. A packaging fix
-# builds from these rather than from a new meson dist: Launchpad refuses an
+# builds from these rather than from a new tarball: Launchpad refuses an
 # orig tarball whose bytes differ from the one it already has.
 #
 # --install-deps first installs curl, as root in a throwaway ubuntu:26.04.

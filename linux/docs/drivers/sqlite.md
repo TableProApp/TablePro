@@ -1,6 +1,6 @@
 # SQLite
 
-Driver id `sqlite`, crate `crates/drivers/sqlite`. It runs on sqlx 0.9 with `sqlite-unbundled`, so it links the system's libsqlite3 rather than a second copy, and calls `libsqlite3-sys` directly twice: `sqlite3_get_autocommit`, until sqlx exposes a connection's transaction state, and `sqlite3_busy_handler`, so a stop reaches a statement waiting for a lock. The library must be SQLite 3.37.0 or newer (`SQLITE_MIN_VERSION`), which the driver checks when it opens the file. The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `sqlite`, crate `core/crates/drivers/sqlite`. It runs on sqlx 0.9 with `sqlite-unbundled` on Linux, so it links the system's libsqlite3 rather than a second copy (the other targets build the copy sqlx ships), and calls `libsqlite3-sys` directly twice: `sqlite3_get_autocommit`, until sqlx exposes a connection's transaction state, and `sqlite3_busy_handler`, so a stop reaches a statement waiting for a lock. The library must be SQLite 3.37.0 or newer (`SQLITE_MIN_VERSION`), which the driver checks when it opens the file. The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 There is no network, login or TLS: the target is a `FileEndpoint`, an absolute path with a `FileOpenMode`.
 
@@ -108,6 +108,10 @@ The foreign key check covers the rebuilt table and every table whose keys point 
 SQLite always numbers its rowid column, a lone `INTEGER PRIMARY KEY` not declared `PRIMARY KEY DESC` on the column itself, and takes AUTOINCREMENT only there. So numbering turns off only together with a change of the column's type or of the key (`AlwaysNumbered` otherwise), and a column that keeps AUTOINCREMENT keeps the type `INTEGER` (`NotAnInteger`).
 
 SQLite's pragmas do not report a foreign key's constraint name, so the definition reads it from the CREATE TABLE text, and a key declared without one is named `fk_<table>_<n>` after its position.
+
+## Definitions
+
+The sidebar lists every schema's triggers, each with the table it fires on. A trigger's definition is its text from `sqlite_schema`, which SQLite stores without the schema before the trigger's name. The driver puts it back (`CREATE TRIGGER "archive".audit ...`), so the text run from any tab makes the trigger where it was: the table after `ON` takes the trigger's schema. A main trigger gets `"main"` too, since an unqualified table name finds a session's temporary table of that name first.
 
 ## Editor sessions
 

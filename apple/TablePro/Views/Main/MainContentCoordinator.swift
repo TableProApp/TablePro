@@ -338,6 +338,7 @@ final class MainContentCoordinator: ObservableObject {
     private var schemaSwitchCancellable: AnyCancellable?
     private var clearedEditsCancellable: AnyCancellable?
     private var gridRepaintCancellable: AnyCancellable?
+    var maskingRulesCancellable: AnyCancellable?
     private var browseContainerCancellable: AnyCancellable?
 
     @Published var fileConflictRequest: FileConflictRequest?
@@ -670,6 +671,7 @@ final class MainContentCoordinator: ObservableObject {
         self.rowEditingCoordinator = RowEditingCoordinator(parent: self)
         clearedEditsCancellable = resumeWhenEditsClear()
         gridRepaintCancellable = observeChangeManagerForGridRepaint()
+        maskingRulesCancellable = observeMaskingRuleChanges()
 
         Self.lifecycleLogger.info(
             "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
@@ -879,6 +881,7 @@ final class MainContentCoordinator: ObservableObject {
         let debugTabIds = tabManager.tabs.filter { $0.tabType.isTransient }.map(\.id)
         if !debugTabIds.isEmpty {
             RoutineDebugSessions.shared.endSessions(forTabs: debugTabIds, window: contentWindow)
+            LiveMessageSessions.shared.end(tabIds: debugTabIds)
         }
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil

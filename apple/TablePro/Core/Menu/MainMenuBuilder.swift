@@ -32,7 +32,7 @@ enum MainMenuBuilder {
         bar.addItem(FileMenuBuilder.build(keyboard: keyboard))
         bar.addItem(EditMenuBuilder.build(keyboard: keyboard))
         bar.addItem(ViewMenuBuilder.build(keyboard: keyboard))
-        bar.addItem(DatabaseMenuBuilder.build(keyboard: keyboard))
+        bar.addItem(DatabaseMenuBuilder.build(keyboard: keyboard, modules: modules))
         bar.addItem(QueryMenuBuilder.build(keyboard: keyboard))
         if modules.contains(.routineDebugger) {
             bar.addItem(DebugMenuBuilder.build(keyboard: keyboard))
@@ -63,6 +63,9 @@ enum MainMenuBuilder {
         to bar: NSMenu,
         windowsMenu: NSMenu?
     ) {
+        if let database = bar.items.first(where: { $0.identifier == DatabaseMenuBuilder.identifier })?.submenu {
+            DatabaseMenuBuilder.applyModules(modules, to: database)
+        }
         let existing = bar.items.first { $0.identifier == DebugMenuBuilder.identifier }
         switch (modules.contains(.routineDebugger), existing) {
         case (true, nil):

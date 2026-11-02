@@ -36,8 +36,9 @@ enum ValueDisplayFormatter {
             return formatAsTimestamp(rawValue, divideBy: 1_000)
         case .json, .phpSerialized:
             return rawValue
-        case .messagePack, .protobuf, .igbinary, .avro:
-            guard let data = rawValue.data(using: .isoLatin1), let decoder = format.binaryValueFormat else { return nil }
+        case .messagePack, .protobuf, .igbinary, .avro, .protobufSchema, .schemaRegistry:
+            guard let data = BinaryValueBytes.data(of: rawValue, holdsBytes: BinaryValueBytes.holdsBytes(columnType: columnType)),
+                  let decoder = format.binaryValueFormat else { return nil }
             return BinaryValueDecoding.text(data, format: decoder)
         }
     }
@@ -54,7 +55,7 @@ enum ValueDisplayFormatter {
             guard rawValue.count == 16 else { return nil }
             let order: UUIDByteOrder = format == .uuidSwappedTime ? .swappedTime : .stored
             return insertUuidHyphens(order.uuidBytes(fromStored: [UInt8](rawValue)).hexEncoded)
-        case .messagePack, .protobuf, .igbinary, .avro:
+        case .messagePack, .protobuf, .igbinary, .avro, .protobufSchema, .schemaRegistry:
             guard let decoder = format.binaryValueFormat else { return nil }
             return BinaryValueDecoding.text(rawValue, format: decoder)
         case .raw, .unixTimestamp, .unixTimestampMillis, .json, .phpSerialized:

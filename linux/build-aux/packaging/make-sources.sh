@@ -1,6 +1,6 @@
 #!/bin/sh
 # Writes the two release source tarballs into <output dir>:
-# tablepro-X.Y.Z.tar.xz from meson dist, and tablepro-X.Y.Z-vendor.tar.xz,
+# tablepro-X.Y.Z.tar.xz from make-dist.sh, and tablepro-X.Y.Z-vendor.tar.xz,
 # which holds vendor/ with every crate in Cargo.lock and
 # vendor/cargo-config.toml, so the packages build offline.
 #
@@ -12,6 +12,7 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
+workspace="$(cd "$root/.." && pwd)"
 
 container=""
 if [ "${1:-}" = "--install-deps" ]; then
@@ -22,7 +23,7 @@ if [ "${1:-}" = "--install-deps" ]; then
     apt-get install -y --no-install-recommends ca-certificates git xz-utils
     # The checkout belongs to another user, which git refuses to read.
     git config --global --add safe.directory '*'
-    rust="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' "$root/Cargo.toml")"
+    rust="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' "$workspace/Cargo.toml")"
     "$here/add-rust-toolchain-ppa.sh" "$rust"
     apt-get build-dep -y --no-install-recommends -P nocheck "$root/build-aux"
     PATH="/usr/lib/rust-$rust/bin:$PATH"
@@ -43,11 +44,9 @@ if [ -n "$container" ]; then
     export CARGO_HOME="$work/cargo-home"
 fi
 
-meson setup "$work/build" "$root"
-meson dist -C "$work/build" --no-tests --formats xztar
-version="$(meson introspect --projectinfo "$work/build" \
-    | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
-cp "$work/build/meson-dist/tablepro-$version.tar.xz" "$out/"
+dist="$("$here/make-dist.sh" "$out")"
+version="$(basename "$dist" .tar.xz)"
+version="${version#tablepro-}"
 
 # cargo vendor prints the source replacement on stdout, naming the
 # directory as it was given, and may prune that directory. Run from its
@@ -55,7 +54,7 @@ cp "$work/build/meson-dist/tablepro-$version.tar.xz" "$out/"
 mkdir "$work/vendor-root"
 (
     cd "$work/vendor-root"
-    cargo vendor --locked --versioned-dirs --manifest-path "$root/Cargo.toml" vendor
+    cargo vendor --locked --versioned-dirs --manifest-path "$workspace/Cargo.toml" vendor
 ) > "$work/cargo-config.toml"
 mv "$work/cargo-config.toml" "$work/vendor-root/vendor/cargo-config.toml"
 

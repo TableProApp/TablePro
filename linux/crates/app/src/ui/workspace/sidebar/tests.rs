@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use super::connection_tree::{Pane, TreeInner, Which};
 use super::object_key::ObjectKey;
+use super::object_target::ObjectTarget;
 use super::sidebar_event::SidebarEvent;
 use super::sidebar_object::SidebarObject;
 use super::tree_node::TreeNode;
@@ -29,6 +30,10 @@ use crate::test_support::{descendants, drain_main_context, test_runtime, wait_un
 use crate::ui::session_window::tests::{TestWindow, WAIT};
 use crate::ui::workspace::WorkspaceTab;
 use crate::ui::workspace::tab_spec::{TabSpec, TablePage};
+
+pub(crate) fn rows_target(schema: &str, name: &str) -> glib::Variant {
+    ObjectKey::rows(TableRef::new(Some(schema.to_owned()), name)).to_variant()
+}
 
 /// How many tables `view` lists, searched for or not.
 pub(crate) fn listed(view: &SidebarView) -> u32 {
@@ -76,6 +81,7 @@ fn object(schema: &str, name: &str) -> ObjectInfo {
         schema: Some(schema.to_owned()),
         name: name.to_owned(),
         kind: ObjectKind::Table,
+        parent_table: None,
     }
 }
 
@@ -565,7 +571,7 @@ fn the_search_list_opens_and_offers_the_menus_of_what_it_finds() {
     );
     gtk::prelude::GtkWindowExt::set_focus(&shown.window, None::<&gtk::Widget>);
     WidgetExt::activate_action(&shown.tree.widget(), "tree.context-menu", None).expect("the action");
-    assert_eq!(menu_table(&shown.popover()), Some(ObjectKey(table("orders"))));
+    assert_eq!(menu_table(&shown.popover()), Some(ObjectKey::rows(table("orders"))));
     shown.popover().popdown();
     shown.menu("Orders Archive");
     assert!(menu_actions(&shown.popover()).contains(&"picker.connect".to_owned()));
@@ -591,6 +597,62 @@ fn the_search_list_opens_and_offers_the_menus_of_what_it_finds() {
     assert_eq!(
         shown.fired(),
         [("picker.connect".to_owned(), Some(beta.id.to_string()))]
+    );
+}
+
+#[gtk4::test]
+fn a_routine_shows_its_sql_and_never_acts_as_the_table_of_its_name() {
+    let alpha = connection("Alpha", None);
+    let shown = Shown::new(std::slice::from_ref(&alpha));
+    let routine = ObjectInfo::new(Some("public".to_owned()), "orders", ObjectKind::Function);
+    let trigger = ObjectInfo::trigger(Some("public".to_owned()), "audit", "orders");
+    let (view, events) = session(
+        &[object("public", "orders"), routine.clone(), trigger.clone()],
+        every_affordance(),
+    );
+    shown.open(&alpha, &view);
+
+    shown.search("orders");
+    assert_eq!(shown.rows(), ["orders", "orders", "audit"]);
+    let routine_at = shown.position("orders") + 1;
+    shown.menu("orders");
+    assert_eq!(menu_table(&shown.popover()), Some(ObjectKey::rows(table("orders"))));
+    shown.popover().popdown();
+    shown.inner().popup_menu(shown.which(), routine_at, None);
+    assert_eq!(menu_actions(&shown.popover()), ["sidebar.show-definition"]);
+    assert_eq!(
+        menu_table(&shown.popover()),
+        Some(ObjectKey(ObjectTarget::Definition(routine.clone())))
+    );
+    shown.popover().popdown();
+    assert!(
+        !shown.inner().pressed(
+            shown.which(),
+            routine_at,
+            gdk::BUTTON_PRIMARY,
+            gdk::ModifierType::CONTROL_MASK,
+            None
+        ),
+        "a routine has no tab to open beside the others"
+    );
+    shown.pane().list_view.emit_by_name::<()>("activate", &[&routine_at]);
+    shown.activate("audit");
+    let trigger_key = ObjectKey(ObjectTarget::Definition(trigger.clone())).to_variant();
+    view.actions().activate_action("open-in-new-tab", Some(&trigger_key));
+    view.actions().activate_action("show-definition", Some(&trigger_key));
+    let gone = ObjectInfo::trigger(Some("public".to_owned()), "audit", "carts");
+    view.actions().activate_action(
+        "show-definition",
+        Some(&ObjectKey(ObjectTarget::Definition(gone)).to_variant()),
+    );
+
+    assert_eq!(
+        events.take(),
+        [
+            SidebarEvent::ShowDefinition(routine),
+            SidebarEvent::ShowDefinition(trigger.clone()),
+            SidebarEvent::ShowDefinition(trigger),
+        ]
     );
 }
 
@@ -697,6 +759,7 @@ fn a_key_row_shows_its_type_beside_its_name() {
         schema: None,
         name: name.to_owned(),
         kind: ObjectKind::Key(kind),
+        parent_table: None,
     };
     view.show_keys(
         SidebarIndex::keys(
@@ -1163,13 +1226,15 @@ fn secondary_press_selects_the_row_and_opens_its_menu() {
         .map(|(_, target)| target.as_ref().and_then(ObjectKey::from_variant))
         .collect();
     assert!(
-        targets.iter().all(|key| key.as_ref() == Some(&ObjectKey(table("f")))),
+        targets
+            .iter()
+            .all(|key| key.as_ref() == Some(&ObjectKey::rows(table("f")))),
         "{targets:?}"
     );
     WidgetExt::activate_action(
         &popover,
         "sidebar.open-in-new-tab",
-        Some(&ObjectKey(table("f")).to_variant()),
+        Some(&ObjectKey::rows(table("f")).to_variant()),
     )
     .expect("the session's actions reach the menu");
     popover.popdown();
@@ -1370,6 +1435,7 @@ fn collections_and_keys_offer_no_er_diagram() {
                 schema: None,
                 name: "user:1".to_owned(),
                 kind: ObjectKind::Key(KeyKind::Hash),
+                parent_table: None,
             }],
             "db0".to_owned(),
         ),
@@ -1398,7 +1464,7 @@ fn context_menu_action_carries_object_key() {
         every_affordance(),
     );
     let actions = view.actions();
-    let key = ObjectKey(table("users")).to_variant();
+    let key = ObjectKey::rows(table("users")).to_variant();
 
     for action in [
         "open-in-new-tab",
@@ -1410,7 +1476,7 @@ fn context_menu_action_carries_object_key() {
         actions.activate_action(action, Some(&key));
     }
     actions.activate_action("drop-table", Some(&(None::<String>, String::new()).to_variant()));
-    actions.activate_action("drop-table", Some(&ObjectKey(table("gone")).to_variant()));
+    actions.activate_action("drop-table", Some(&ObjectKey::rows(table("gone")).to_variant()));
 
     assert_eq!(
         events.take(),
@@ -1436,7 +1502,7 @@ fn a_read_only_connection_refuses_writes_from_a_stale_menu() {
     );
 
     view.actions()
-        .activate_action("drop-table", Some(&ObjectKey(table("orders")).to_variant()));
+        .activate_action("drop-table", Some(&ObjectKey::rows(table("orders")).to_variant()));
     view.actions()
         .activate_action("new-table", Some(&Some("public".to_owned()).to_variant()));
 
@@ -1479,7 +1545,7 @@ fn keyboard_menu_falls_back_to_the_selected_row() {
     WidgetExt::activate_action(&shown.tree.widget(), "tree.context-menu", None).expect("the action");
 
     let popover = shown.popover();
-    assert_eq!(menu_table(&popover), Some(ObjectKey(table("c"))));
+    assert_eq!(menu_table(&popover), Some(ObjectKey::rows(table("c"))));
     assert!(popover.pointing_to().0, "the menu points at nothing");
     popover.popdown();
 }
@@ -1499,14 +1565,14 @@ fn keyboard_menu_opens_for_the_focused_row() {
     focus_row(&shown, "c");
     shown.tree.select(Some(&key), None);
     WidgetExt::activate_action(&shown.tree.widget(), "tree.context-menu", None).expect("the action");
-    assert_eq!(menu_table(&shown.popover()), Some(ObjectKey(table("c"))));
+    assert_eq!(menu_table(&shown.popover()), Some(ObjectKey::rows(table("c"))));
     shown.popover().popdown();
 
     // A table tab in front selects its own row, not the focused one.
     focus_row(&shown, "c");
     shown.tree.select(Some(&key), Some(&table("a")));
     WidgetExt::activate_action(&shown.tree.widget(), "tree.context-menu", None).expect("the action");
-    assert_eq!(menu_table(&shown.popover()), Some(ObjectKey(table("c"))));
+    assert_eq!(menu_table(&shown.popover()), Some(ObjectKey::rows(table("c"))));
     shown.popover().popdown();
 }
 

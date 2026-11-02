@@ -218,7 +218,7 @@ class RenderCopyrightTests(unittest.TestCase):
         rendered = self.render([entry("MIT", MIT_ALICE, crate("a", "1.0.0"))], metainfo="CC0-1.0")
         paragraph = files_paragraph(rendered, "metainfo")
 
-        self.assertEqual(paragraph["Files"], [license_metadata.METAINFO.as_posix()])
+        self.assertEqual(paragraph["Files"], ["linux/data/app.tablepro.TablePro.metainfo.xml.in.in"])
         self.assertEqual(paragraph["License"][0], "CC0-1.0")
         self.assertIn("/usr/share/common-licenses/CC0-1.0", "\n".join(paragraph["License"]))
 

@@ -66,7 +66,7 @@ extension DatabaseAccessBridge {
             )
             return .statement(outcome.result, executionTimeMs: outcome.executionTimeMs)
         case .batches(let batches):
-            return try await runBatches(
+            let outcome = try await runBatches(
                 batches,
                 of: query,
                 scope: scope,
@@ -74,6 +74,12 @@ extension DatabaseAccessBridge {
                 rowCap: maxRows,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation
+            )
+            let policy = await maskingPolicy(for: scope.connectionId)
+            return ScriptOutcome(
+                resultSets: outcome.resultSets.map { $0.masked(by: policy) },
+                primary: outcome.primary.masked(by: policy),
+                executionTimeMs: outcome.executionTimeMs
             )
         case .statements:
             throw DatabaseAccessError.invalidArgument(

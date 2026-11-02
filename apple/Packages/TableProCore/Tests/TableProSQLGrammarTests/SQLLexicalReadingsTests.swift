@@ -11,7 +11,7 @@ struct SQLLexicalReadingsTests {
             "SQLite", "libSQL", "Turso", "Cloudflare D1", "DuckDB", "Oracle", "Dameng", "SQL Server", "ClickHouse",
             "Snowflake", "BigQuery", "Spanner", "Trino", "Presto", "Teradata", "SAP HANA", "Cassandra", "ScyllaDB", "DynamoDB",
             "SurrealDB", "Redis", "MongoDB", "etcd", "Elasticsearch", "Typesense", "Weaviate", "Kafka",
-            "Firestore", "Firebase Realtime Database", "Bigtable",
+            "Firestore", "Firebase Realtime Database", "Bigtable", "InfluxDB",
         ]
         let missing = shipped.filter { SQLLexicalProfile.curated(forDatabaseTypeId: $0) == nil }
         #expect(missing.isEmpty)
@@ -110,6 +110,17 @@ struct SQLLexicalReadingsTests {
         #expect(readings.all.contains(.ansi))
         #expect(SQLStatementScanner.executableStatements(in: text, grammar: readings.execution).count == 2)
         #expect(counts.max() == 3)
+    }
+
+    @Test("InfluxDB splits InfluxQL's backslash-escaped quote and Flux's `//` comment as one statement each")
+    func influxDBKeepsInfluxQLEscapesAndFluxComments() {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: "InfluxDB", declared: nil, session: nil)
+        let influxQL = #"SELECT * FROM cpu WHERE note = 'it\'s; x'; SHOW MEASUREMENTS"#
+        let flux = "// don't; split\nfrom(bucket: \"m\") |> range(start: -1h)"
+
+        #expect(readings.all.contains(.ansi))
+        #expect(SQLStatementScanner.executableStatements(in: influxQL, grammar: readings.execution).count == 2)
+        #expect(SQLStatementScanner.executableStatements(in: flux, grammar: readings.execution).count == 1)
     }
 
     @Test("SQL Server's `1E--` is read as a comment and as a signed exponent, and any other `--` once")

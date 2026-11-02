@@ -48,8 +48,8 @@ meson devenv -C _build cargo clippy --locked --workspace --all-targets --no-defa
 meson compile -C _build
 xvfb-run -a dbus-run-session -- meson test -C _build --print-errorlogs
 dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
-  && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
-meson dist -C _build --no-tests --formats xztar
+  && meson devenv -C _build cargo test --locked -p tablepro-linux-platform --test secret_service -- --ignored"
+build-aux/packaging/make-dist.sh _build/dist
 ```
 
 Inside a desktop session, `dbus-run-session -- meson test -C _build` runs the same suites without xvfb.
@@ -90,11 +90,11 @@ The script stops and names each crate it read no license file for, since the not
 | Tool | Config | Notes |
 |---|---|---|
 | `rustfmt` | `rustfmt.toml` at the workspace root | CI fails on any diff from `cargo fmt --all -- --check`. There is no pre-commit hook. |
-| `clippy` | `[workspace.lints]` in `Cargo.toml`, `clippy.toml`, `crates/app/clippy.toml`, `crates/session/clippy.toml` | Every crate passes with `-D warnings`, with and without default features. |
+| `clippy` | `[workspace.lints]` in `Cargo.toml`, `clippy.toml`, `crates/app/clippy.toml`, `core/crates/session/clippy.toml` | Every crate passes with `-D warnings`, with and without default features. |
 | Edition | 2024 | Set per workspace. Do not override per crate. |
 | MSRV | 1.97 | `rust-version` in `Cargo.toml`: the `rustc-1.97` the PPA builds with, checked by CI. `rust-toolchain.toml` pins 1.98, the Flatpak rust-stable extension's. |
 
-The denied lints are `[workspace.lints]` in `Cargo.toml`; the test allowances and the banned types and methods, each with its reason, are in the `clippy.toml` files. Clippy reads only the `clippy.toml` nearest a crate, so `crates/app/clippy.toml` and `crates/session/clippy.toml` replace the root one for their crate.
+The denied lints are `[workspace.lints]` in `Cargo.toml`; the test allowances and the banned types and methods, each with its reason, are in the `clippy.toml` files. Clippy reads only the `clippy.toml` nearest a crate, so `crates/app/clippy.toml` and `core/crates/session/clippy.toml` replace the root one for their crate.
 
 Conventions, beyond what `rustfmt` decides:
 

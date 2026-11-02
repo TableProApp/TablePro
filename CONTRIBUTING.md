@@ -1,9 +1,9 @@
 # Contributing to TablePro
 
-This repository holds two apps that share no code. Each keeps its setup, build, test and style steps beside its code:
+This repository holds the apps and the shared Rust core the Linux app builds on. Each keeps its setup, build, test and style steps beside its code:
 
 - macOS and iOS: [`apple/CONTRIBUTING.md`](apple/CONTRIBUTING.md).
-- Linux: [`linux/CONTRIBUTING.md`](linux/CONTRIBUTING.md).
+- Linux, and the shared core it builds: [`linux/CONTRIBUTING.md`](linux/CONTRIBUTING.md). The core's own rules are in [`core/AGENTS.md`](core/AGENTS.md).
 
 [`AGENTS.md`](AGENTS.md) holds the rules both apps meet, and each app's `AGENTS.md` adds its own. The docs site lives in [TableProApp/docs](https://github.com/TableProApp/docs), and releasing is in [`RELEASING.md`](RELEASING.md).
 

@@ -10,6 +10,7 @@ enum AppModuleTermination {
     // the same one the runs close their connections at.
     static func stopModuleWork() async {
         hasBegun = true
+        LiveMessageSessions.shared.endAll()
         guard RoutineDebugSessions.shared.hasActiveSessions else { return }
         await RoutineDebugSessions.shared.stopAll(timeout: stopLimit)
     }

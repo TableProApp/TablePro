@@ -147,7 +147,8 @@ extension MCPConnectionBridge {
             query: sql,
             maxRows: limit,
             timeoutSeconds: timeoutSeconds,
-            cancellation: cancellation
+            cancellation: cancellation,
+            maskingTable: request.table
         )
         if case .object(var fields) = payload {
             fields["table"] = .string(request.table)

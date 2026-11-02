@@ -1,5 +1,5 @@
 cargo_options = [
-  '--manifest-path', meson.project_source_root() / 'Cargo.toml',
+  '--manifest-path', meson.project_source_root() / '..' / 'Cargo.toml',
   '--locked',
 ]
 

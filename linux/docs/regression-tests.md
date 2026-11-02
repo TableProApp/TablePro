@@ -30,30 +30,30 @@ Kinds: `unit` runs in the Meson unit suite, `gtk` in the gtk suite, `docker` in 
 
 | Finding | Kind | Guard | File |
 |---|---|---|---|
-| F-001 | conformance | `f001_read_only_connection_refuses_writes` | [crates/test-support/src/conformance/cases/read_only.rs](../crates/test-support/src/conformance/cases/read_only.rs) |
-| F-001 | docker | `f001_editor_idle_delete_fails_25006` | [crates/drivers/postgres/tests/integration/read_only.rs](../crates/drivers/postgres/tests/integration/read_only.rs) |
-| F-001 | docker | `f001_read_only_insert_and_create_1792` | [crates/drivers/mysql/tests/integration/flavour_suite.rs](../crates/drivers/mysql/tests/integration/flavour_suite.rs) |
-| F-001 | unit | `f001_read_only_insert_is_read_only` | [crates/drivers/sqlite/tests/integration/open_semantics.rs](../crates/drivers/sqlite/tests/integration/open_semantics.rs) |
-| F-001 | docker | `f001_read_only_insert_164` | [crates/drivers/clickhouse/tests/integration/writes.rs](../crates/drivers/clickhouse/tests/integration/writes.rs) |
-| F-002 | unit | `f002_accepts_only_latest_generation` | [crates/session/src/connect/connect_attempts.rs](../crates/session/src/connect/connect_attempts.rs) |
-| F-002 | unit | `f002_late_reconnect_after_cancel_is_discarded_and_closed` | [crates/session/src/health/health_monitor.rs](../crates/session/src/health/health_monitor.rs) |
+| F-001 | conformance | `f001_read_only_connection_refuses_writes` | [core/crates/test-support/src/conformance/cases/read_only.rs](../../core/crates/test-support/src/conformance/cases/read_only.rs) |
+| F-001 | docker | `f001_editor_idle_delete_fails_25006` | [core/crates/drivers/postgres/tests/integration/read_only.rs](../../core/crates/drivers/postgres/tests/integration/read_only.rs) |
+| F-001 | docker | `f001_read_only_insert_and_create_1792` | [core/crates/drivers/mysql/tests/integration/flavour_suite.rs](../../core/crates/drivers/mysql/tests/integration/flavour_suite.rs) |
+| F-001 | unit | `f001_read_only_insert_is_read_only` | [core/crates/drivers/sqlite/tests/integration/open_semantics.rs](../../core/crates/drivers/sqlite/tests/integration/open_semantics.rs) |
+| F-001 | docker | `f001_read_only_insert_164` | [core/crates/drivers/clickhouse/tests/integration/writes.rs](../../core/crates/drivers/clickhouse/tests/integration/writes.rs) |
+| F-002 | unit | `f002_accepts_only_latest_generation` | [core/crates/session/src/connect/connect_attempts.rs](../../core/crates/session/src/connect/connect_attempts.rs) |
+| F-002 | unit | `f002_late_reconnect_after_cancel_is_discarded_and_closed` | [core/crates/session/src/health/health_monitor.rs](../../core/crates/session/src/health/health_monitor.rs) |
 | F-002 | gtk | `f002_cancel_connect_discards_late_attempt` | [crates/app/src/ui/session_window/tests/mod.rs](../crates/app/src/ui/session_window/tests/mod.rs) |
 | F-002 | gtk | `f002_late_show_create_reply_after_disconnect_is_dropped` | [crates/app/src/ui/session_window/tests/mod.rs](../crates/app/src/ui/session_window/tests/mod.rs) |
 | F-002 | gtk | `f002_a_connect_beside_the_last_session_adopts_from_the_connecting_page_without_connecting_again` | [crates/app/src/ui/session_window/tests/sessions.rs](../crates/app/src/ui/session_window/tests/sessions.rs) |
 | F-002 | gtk | `f002_stop_connecting_a_dialog_connect_beside_the_sessions_closes_its_late_connection` | [crates/app/src/ui/session_window/tests/sessions.rs](../crates/app/src/ui/session_window/tests/sessions.rs) |
 | F-002 | gtk | `f002_a_late_catalog_commit_after_the_watch_drops_is_not_delivered` | [crates/app/src/ui/workspace/sidebar/catalog_watch.rs](../crates/app/src/ui/workspace/sidebar/catalog_watch.rs) |
-| F-003 | unit | `f003_truncated_file_is_unavailable_and_upsert_leaves_bytes_identical` | [crates/storage/src/connections.rs](../crates/storage/src/connections.rs) |
-| F-003 | unit | `f003_a_newer_version_is_never_written` | [crates/storage/src/connections.rs](../crates/storage/src/connections.rs) |
+| F-003 | unit | `f003_truncated_file_is_unavailable_and_upsert_leaves_bytes_identical` | [core/crates/storage/src/connections.rs](../../core/crates/storage/src/connections.rs) |
+| F-003 | unit | `f003_a_newer_version_is_never_written` | [core/crates/storage/src/connections.rs](../../core/crates/storage/src/connections.rs) |
 | F-004 | gtk | `f004_edit_after_draft_insert_targets_edited_row` | [crates/app/src/ui/data_grid/edit/tests/mod.rs](../crates/app/src/ui/data_grid/edit/tests/mod.rs) |
 | F-004 | gtk | `f004_menu_set_null_after_draft_removal_targets_clicked_row` | [crates/app/src/ui/data_grid/edit/tests/mod.rs](../crates/app/src/ui/data_grid/edit/tests/mod.rs) |
 | F-004 | gtk | `f004_copy_row_as_insert_uses_row_below_draft` | [crates/app/src/ui/browse_tab/tests/rows.rs](../crates/app/src/ui/browse_tab/tests/rows.rs) |
 | F-005 | gtk | `f005_unchanged_40kb_multiline_text_records_no_edit` | [crates/app/src/ui/data_grid/row_detail/tests.rs](../crates/app/src/ui/data_grid/row_detail/tests.rs) |
 | F-005 | gtk | `f005_pasted_newlines_in_text_cell_are_kept` | [crates/app/src/ui/data_grid/edit/tests/mod.rs](../crates/app/src/ui/data_grid/edit/tests/mod.rs) |
 | F-005 | gtk | `f005_pressing_enter_on_float_keeps_full_precision` | [crates/app/src/ui/data_grid/edit/tests/mod.rs](../crates/app/src/ui/data_grid/edit/tests/mod.rs) |
-| F-006 | conformance | `f006_unsupported_types_never_decode_as_null` | [crates/test-support/src/conformance/cases/type_fallback.rs](../crates/test-support/src/conformance/cases/type_fallback.rs) |
-| F-006 | docker | `f006_round_trip_matrix` | [crates/drivers/postgres/tests/integration/decode.rs](../crates/drivers/postgres/tests/integration/decode.rs) |
-| F-006 | unit | `f006_count_sum_and_expression_columns_are_typed` | [crates/drivers/sqlite/tests/integration/decode.rs](../crates/drivers/sqlite/tests/integration/decode.rs) |
-| F-006 | docker | `f006_bigint_unsigned_max_id_edit_affects_one_row` | [crates/drivers/mysql/tests/integration/decode.rs](../crates/drivers/mysql/tests/integration/decode.rs) |
+| F-006 | conformance | `f006_unsupported_types_never_decode_as_null` | [core/crates/test-support/src/conformance/cases/type_fallback.rs](../../core/crates/test-support/src/conformance/cases/type_fallback.rs) |
+| F-006 | docker | `f006_round_trip_matrix` | [core/crates/drivers/postgres/tests/integration/decode.rs](../../core/crates/drivers/postgres/tests/integration/decode.rs) |
+| F-006 | unit | `f006_count_sum_and_expression_columns_are_typed` | [core/crates/drivers/sqlite/tests/integration/decode.rs](../../core/crates/drivers/sqlite/tests/integration/decode.rs) |
+| F-006 | docker | `f006_bigint_unsigned_max_id_edit_affects_one_row` | [core/crates/drivers/mysql/tests/integration/decode.rs](../../core/crates/drivers/mysql/tests/integration/decode.rs) |
 | F-007 | ci-job | `flatpak-devel` | [.github/workflows/build-linux.yml](../../.github/workflows/build-linux.yml) |
 
 The read-only case runs on every engine. SQL Server leaves read-only to the login's privileges, so there it checks only the app's own refusal of a save. The type case runs on every network engine: every SQLite value is one of five storage classes, and the driver decodes all five.

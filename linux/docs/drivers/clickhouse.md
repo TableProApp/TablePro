@@ -1,6 +1,6 @@
 # ClickHouse
 
-Driver id `clickhouse`, crate `crates/drivers/clickhouse`. It speaks ClickHouse's HTTP interface through the official `clickhouse` crate 0.15 with its default features off, on a hyper-util client whose connector dials through the transport and whose TLS is hyper-rustls with the driver's own rustls config. The integration suite runs against ClickHouse 26.8, and CI runs it again on 26.3 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `clickhouse`, crate `core/crates/drivers/clickhouse`. It speaks ClickHouse's HTTP interface through the official `clickhouse` crate 0.15 with its default features off, on a hyper-util client whose connector dials through the transport and whose TLS is hyper-rustls with the driver's own rustls config. The integration suite runs against ClickHouse 26.8, and CI runs it again on 26.3 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 The default port is 8123, the plain HTTP port. With TLS on, use the server's HTTPS port (8443 by default); a TLS connect to the HTTP port fails.
 
@@ -39,7 +39,7 @@ Results stream as `JSONCompactEachRowWithNamesAndTypes`, and each cell is read b
 
 ## TLS
 
-- `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../ARCHITECTURE.md#trust)) and checks the name from `NetworkTarget::tls_server_name()`. `Require` encrypts without checking the certificate.
+- `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)) and checks the name from `NetworkTarget::tls_server_name()`. `Require` encrypts without checking the certificate.
 - With a client certificate set, the driver sends `X-ClickHouse-SSL-Certificate-Auth: on` and no password, and the server logs the user in by the certificate's common name (`ssl_certificates` in the user's configuration).
 - The crate's own TLS features stay off, so there is one TLS stack.
 

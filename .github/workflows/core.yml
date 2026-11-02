@@ -1,0 +1,62 @@
+name: Core
+
+# The shared Rust core on the platforms other than Linux it is built for.
+# CI calls it whenever it runs the Linux suite.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Core (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - name: Windows Arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+          - name: macOS
+            runner: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    # DuckDB's C++ takes most of it, and MSVC builds it slowly.
+    timeout-minutes: 150
+    env:
+      TARGET: ${{ matrix.target }}
+      RUSTFLAGS: -D warnings
+      # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks;
+      # its prebuilt objects stand in.
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: ${{ matrix.target }}
+      # Named packages: the workspace also holds the GTK app, which builds
+      # on Linux alone.
+      - name: Check the core crates
+        run: |
+          cargo check --locked --target "$TARGET" \
+            -p tablepro-core -p tablepro-net -p tablepro-storage -p tablepro-ssh -p tablepro-session \
+            -p tablepro-ai -p tablepro-mcp -p tablepro-test-support -p tablepro-test-fixtures \
+            -p tablepro-driver-cassandra -p tablepro-driver-clickhouse -p tablepro-driver-duckdb \
+            -p tablepro-driver-mongodb -p tablepro-driver-mssql -p tablepro-driver-mysql \
+            -p tablepro-driver-postgres -p tablepro-driver-redis -p tablepro-driver-sqlite
+      - name: Core unit tests
+        run: cargo test --locked --target "$TARGET" -p tablepro-core --lib

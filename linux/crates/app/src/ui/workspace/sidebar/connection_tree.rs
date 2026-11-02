@@ -20,6 +20,7 @@ use tablepro_session::SessionKey;
 use uuid::Uuid;
 
 use super::object_key::ObjectKey;
+use super::object_target::ObjectTarget;
 use super::sidebar_menu::{GROUP, object_menu, schema_menu};
 use super::sidebar_object::SidebarObject;
 use super::sidebar_view::{Holds, RowsObserverId, SidebarView};
@@ -968,16 +969,20 @@ impl TreeInner {
         }
     }
 
-    /// A click or Enter: a table opens, a closed connection connects and
-    /// an open one comes to the front, and a group or schema opens or
-    /// folds. Bringing a connection forward leaves its row as it is.
+    /// A click or Enter: a table opens, a routine shows its SQL, a closed
+    /// connection connects and an open one comes to the front, and a
+    /// group or schema opens or folds. Bringing a connection forward
+    /// leaves its row as it is.
     fn activate(&self, which: Which, position: u32) {
         let Some((item, key)) = self.item_at(which, position) else {
             return;
         };
         if let Some(object) = item.downcast_ref::<SidebarObject>() {
             if let Some(view) = key.and_then(|key| self.view_of(&key)) {
-                view.open(object.table_ref());
+                match object.target() {
+                    ObjectTarget::Rows(table) => view.open(table),
+                    ObjectTarget::Definition(object) => view.show_definition(object),
+                }
             }
             return;
         }
@@ -1009,7 +1014,10 @@ impl TreeInner {
         let Some((item, key)) = self.item_at(which, position) else {
             return false;
         };
-        let table = item.downcast_ref::<SidebarObject>().map(SidebarObject::table_ref);
+        // A definition has no tab to open beside the others.
+        let table = item
+            .downcast_ref::<SidebarObject>()
+            .and_then(|object| object.target().into_rows());
         match button {
             gdk::BUTTON_SECONDARY => {
                 self.pane(which).selection.set_selected(position);
@@ -1087,7 +1095,7 @@ impl TreeInner {
             let view = view?;
             self.popover.insert_action_group(GROUP, Some(view.actions()));
             return Some(object_menu(
-                &ObjectKey(object.table_ref()),
+                &ObjectKey(object.target()),
                 object.kind(),
                 view.affordances(),
             ));

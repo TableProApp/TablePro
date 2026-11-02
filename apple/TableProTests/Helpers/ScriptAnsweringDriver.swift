@@ -24,6 +24,7 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
     private let transactionState: PluginSessionTransactionState
     private let transactionStateAfterBatches: PluginSessionTransactionState?
     private let answer: @Sendable (String) -> QueryBatchResult
+    private let statementAnswer: @Sendable (String) -> QueryResult
     private let lock = NSLock()
     private var batches: [SentBatch] = []
     private var statements: [String] = []
@@ -40,7 +41,10 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
         transactionState: PluginSessionTransactionState = .idle,
         transactionStateAfterBatches: PluginSessionTransactionState? = nil,
         sessionLexicalState: PluginSessionLexicalState? = nil,
-        answer: @escaping @Sendable (String) -> QueryBatchResult = { _ in .empty }
+        answer: @escaping @Sendable (String) -> QueryBatchResult = { _ in .empty },
+        statementAnswer: @escaping @Sendable (String) -> QueryResult = { _ in
+            ScriptAnsweringDriver.resultSet(columns: ["n"], rows: [["1"]])
+        }
     ) {
         self.connection = connection
         self.sessionLexicalState = sessionLexicalState
@@ -48,6 +52,7 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
         self.transactionState = transactionState
         self.transactionStateAfterBatches = transactionStateAfterBatches
         self.answer = answer
+        self.statementAnswer = statementAnswer
     }
 
     var sentBatches: [SentBatch] {
@@ -79,7 +84,7 @@ final class ScriptAnsweringDriver: DatabaseDriver, @unchecked Sendable {
 
     private func record(_ query: String) -> QueryResult {
         lock.withLock { statements.append(query) }
-        return Self.resultSet(columns: ["n"], rows: [["1"]])
+        return statementAnswer(query)
     }
 
     func explainPlan(statement: String, variantId: String) async throws -> QueryResult {

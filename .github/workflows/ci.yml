@@ -35,7 +35,6 @@ jobs:
       swiftlint: ${{ steps.decide.outputs.swiftlint }}
       linux: ${{ steps.decide.outputs.linux }}
       linux-docs: ${{ steps.decide.outputs.linux-docs }}
-      windows: ${{ steps.decide.outputs.windows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -77,7 +76,7 @@ jobs:
           REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          for suite in macos plugins ios oracle hana swiftlint linux linux-docs windows; do
+          for suite in macos plugins ios oracle hana swiftlint linux linux-docs; do
             verdict="$(scripts/ci/detect-changed-paths.sh --base "$BASE" --ref "$REF" "$suite")"
             echo "$suite=$verdict"
             echo "$suite=$verdict" >> "$GITHUB_OUTPUT"
@@ -117,14 +116,16 @@ jobs:
     with:
       docs-only: ${{ needs.plan.outputs.linux != 'true' }}
 
-  windows:
+  # The shared Rust core on Windows and macOS, with the Linux suite, which core/ and the workspace files at
+  # the top trigger. Skipped on a release/** line, as the Linux job is.
+  core:
     needs: plan
-    if: needs.plan.outputs.windows == 'true'
-    uses: ./.github/workflows/build-windows.yml
+    if: needs.plan.outputs.linux == 'true' && !startsWith(github.ref, 'refs/heads/release/')
+    uses: ./.github/workflows/core.yml
 
   ci:
     name: CI
-    needs: [plan, macos, ios, swiftlint, hygiene, linux, windows]
+    needs: [plan, macos, ios, swiftlint, hygiene, linux, core]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+# The Linux app's crates and the shared core's, beside it.
+CRATES = [ROOT / "crates", ROOT.parent / "core" / "crates"]
 MAP = ROOT / "docs" / "regression-tests.md"
 
 ROW = re.compile(r"^\|(.+)\|\s*$")
@@ -85,16 +87,16 @@ class RegressionNamesTest(unittest.TestCase):
         for name, path in [(guard[2], guard[3]) for guard in self.tests] + self.retired:
             with self.subTest(name=name):
                 self.assertTrue(path.is_file(), f"{path} does not exist")
-                self.assertTrue(defines(path, name), f"no fn {name} in {path.relative_to(ROOT)}")
+                self.assertTrue(defines(path, name), f"no fn {name} in {path.relative_to(ROOT.parent)}")
 
     def test_every_finding_named_test_is_listed(self):
         listed = {(name, path) for _, _, name, path in self.tests}
-        for path in sorted((ROOT / "crates").rglob("*.rs")):
+        for path in sorted(path for crates in CRATES for path in crates.rglob("*.rs")):
             for name in GUARD_NAME.findall(path.read_text(encoding="utf-8")):
                 with self.subTest(name=name):
                     self.assertTrue(
                         (name, path.resolve()) in listed,
-                        f"{path.relative_to(ROOT)} defines {name}, which docs/regression-tests.md does not list",
+                        f"{path.relative_to(ROOT.parent)} defines {name}, which docs/regression-tests.md does not list",
                     )
 
     def test_every_listed_ci_job_exists(self):

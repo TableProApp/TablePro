@@ -194,6 +194,20 @@ impl WorkspaceModel {
         });
     }
 
+    pub(super) fn open_sql_in_editor(&mut self, sql: String, database: Option<String>) {
+        let own = self
+            .context
+            .active
+            .get()
+            .and_then(|session| session.database().map(str::to_owned));
+        self.open_editor(TabSpec::Editor {
+            initial_query: Some(sql),
+            draft: None,
+            file: None,
+            database: database.filter(|database| own.as_deref() != Some(database.as_str())),
+        });
+    }
+
     // AdwTabView moves the focus to the page it selects only from the page
     // that held it, so an editor opened from the sidebar, a header button
     // or a key pressed there would leave the typing where it was.

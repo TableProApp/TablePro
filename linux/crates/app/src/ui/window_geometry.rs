@@ -1,5 +1,5 @@
 use gtk4::prelude::*;
-use tablepro_storage::{AppSettings, WindowGeometry};
+use tablepro_linux_platform::{AppSettings, WindowGeometry};
 
 pub(crate) fn restore(window: &libadwaita::ApplicationWindow, settings: &AppSettings) {
     let geometry = settings.window_geometry();
@@ -34,7 +34,7 @@ pub(crate) fn persist(window: &libadwaita::ApplicationWindow, settings: &AppSett
 
 #[cfg(test)]
 mod tests {
-    use tablepro_storage::WindowGeometry;
+    use tablepro_linux_platform::WindowGeometry;
 
     use crate::test_support::{MemorySettings, OwnedWindow};
 

@@ -40,6 +40,9 @@
     "HanaDriver": {
       "name": "SAP HANA Driver"
     },
+    "InfluxDBDriverPlugin": {
+      "name": "InfluxDB Driver"
+    },
     "KafkaDriverPlugin": {
       "name": "Kafka Driver"
     },
@@ -48,6 +51,9 @@
     },
     "LibSQLDriverPlugin": {
       "name": "libSQL / Turso Driver"
+    },
+    "MemcachedDriverPlugin": {
+      "name": "Memcached Driver"
     },
     "MSSQLDriver": {
       "name": "MSSQL Driver"
@@ -63,6 +69,9 @@
     },
     "ParquetExport": {
       "name": "Parquet Export"
+    },
+    "QdrantDriverPlugin": {
+      "name": "Qdrant Driver"
     },
     "SnowflakeDriverPlugin": {
       "name": "Snowflake Driver"

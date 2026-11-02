@@ -3,26 +3,43 @@
 //  TablePro
 //
 
-import AppKit
 import SwiftUI
 
 internal struct ResizableEditorContainer<Content: View>: View {
-    @Binding var height: Double
+    let column: String
+    let defaultHeight: Double
     let range: ClosedRange<Double>
-
-    /// Set while the field is expanded in place. It wins over the dragged height for as long as it
-    /// lasts and never overwrites it, so collapsing returns the editor to the size the user chose.
+    // Wins over the dragged height without overwriting it, so collapsing returns to the user's size.
     var expandedHeight: Double?
-
+    @ObservedObject var heights: InspectorFieldHeightStore
     @ViewBuilder let content: () -> Content
 
-    @GestureState private var liveDelta: Double = 0
-    @State private var isHandleHovered = false
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var liveDelta: Double = 0
+
+    init(
+        column: String,
+        defaultHeight: Double,
+        range: ClosedRange<Double>,
+        expandedHeight: Double? = nil,
+        heights: InspectorFieldHeightStore = .shared,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.column = column
+        self.defaultHeight = defaultHeight
+        self.range = range
+        self.expandedHeight = expandedHeight
+        self.heights = heights
+        self.content = content
+    }
+
+    private var baseHeight: Double {
+        heights.height(for: column) ?? defaultHeight
+    }
 
     private var resolvedHeight: Double {
-        let dragged = ResizableFieldMetrics.resolve(base: height, delta: liveDelta, range: range)
-        /// Never below what the user already dragged. The allowed ranges reach 600, so a field
-        /// enlarged past the expanded height would otherwise shrink when asked to expand.
+        let dragged = ResizableFieldMetrics.resolve(base: baseHeight, delta: liveDelta, range: range)
+        // The ranges reach 600, so a field dragged past the expanded height must not shrink on Expand.
         if let expandedHeight { return max(expandedHeight, dragged) }
         return dragged
     }
@@ -35,43 +52,24 @@ internal struct ResizableEditorContainer<Content: View>: View {
                 resizeHandle
             }
         }
+        .onChange(of: isEnabled) { enabled in
+            if !enabled { liveDelta = 0 }
+        }
     }
 
     private var resizeHandle: some View {
-        Capsule()
-            .fill(Color(nsColor: .tertiaryLabelColor))
-            .frame(width: 26, height: 4)
-            .opacity(isHandleHovered ? 1 : 0.5)
-            .frame(maxWidth: .infinity, minHeight: 11)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                    .updating($liveDelta) { value, state, _ in
-                        state = value.translation.height
-                    }
-                    .onEnded { value in
-                        height = ResizableFieldMetrics.resolve(
-                            base: height,
-                            delta: value.translation.height,
-                            range: range
-                        )
-                    }
-            )
-            .onHover { hovering in
-                guard hovering != isHandleHovered else { return }
-                isHandleHovered = hovering
-                if hovering {
-                    NSCursor.resizeUpDown.push()
-                } else {
-                    NSCursor.pop()
+        FieldResizeHandle(
+            onDrag: { liveDelta = $0 },
+            onEnd: { delta in
+                if let height = ResizableFieldMetrics.committedHeight(base: baseHeight, delta: delta, range: range) {
+                    heights.setHeight(height, for: column)
                 }
+                liveDelta = 0
             }
-            .onDisappear {
-                if isHandleHovered {
-                    NSCursor.pop()
-                    isHandleHovered = false
-                }
-            }
-            .accessibilityHidden(true)
+        )
+        .frame(maxWidth: .infinity)
+        .frame(height: 11)
+        .onDisappear { liveDelta = 0 }
+        .accessibilityHidden(true)
     }
 }

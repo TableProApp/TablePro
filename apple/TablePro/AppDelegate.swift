@@ -21,7 +21,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         LaunchTracer.shared.mark(.willFinishLaunchingBegan)
         AppSettingsStorage.shared.migrateStartupBehaviorToReopenLastIfNeeded()
-        AppSettingsStorage.shared.migrateJsonFieldHeightKeyIfNeeded()
+        AppSettingsStorage.shared.removeRetiredFieldHeightKeys()
         AIProviderRegistration.registerAll()
 
         /// Installed before any window exists, so the bar is correct from the first frame.

@@ -40,6 +40,22 @@ struct ValueDisplayFormatTests {
         #expect(ValueDisplayFormat(rawValue: "nope") == nil)
     }
 
+    @Test("A Protobuf schema format keeps its schema and message, a Schema Registry one its connection")
+    func schemaFormatsRoundTrip() throws {
+        let schemaID = String(repeating: "ab12", count: 8)
+        let connection = UUID()
+        let protobuf = ValueDisplayFormat.protobufSchema(schemaID: schemaID, message: "shop.Item")
+        #expect(protobuf.rawValue == "protobuf:\(schemaID):shop.Item")
+        #expect(ValueDisplayFormat(rawValue: protobuf.rawValue) == protobuf)
+        #expect(ValueDisplayFormat(rawValue: "schemaRegistry:\(connection.uuidString)") == .schemaRegistry(connectionID: connection))
+        #expect(ValueDisplayFormat(rawValue: "protobuf:\(schemaID):") == nil)
+        #expect(ValueDisplayFormat(rawValue: "protobuf:ab12:shop.Item") == nil)
+        #expect(ValueDisplayFormat(rawValue: "schemaRegistry:nope") == nil)
+        #expect(protobuf.isApplicable(to: .blob(rawType: "BLOB")))
+        #expect(!protobuf.isApplicable(to: .text(rawType: "TEXT")))
+        #expect(ValueDisplayFormat.schemaRegistry(connectionID: connection).isApplicable(to: .text(rawType: "TEXT")))
+    }
+
     @Test("only the formats that produce characters count as rendering binary as text")
     func rendersBinaryAsText() {
         #expect(ValueDisplayFormat.text.rendersBinaryAsText)

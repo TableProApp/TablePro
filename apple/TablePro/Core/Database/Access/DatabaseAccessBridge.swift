@@ -123,6 +123,18 @@ internal actor DatabaseAccessBridge {
         }
     }
 
+    /// Every row an automation client, MCP or the in-app assistant reads leaves through this bridge, so this is
+    /// where those rows take the connection's masking rules.
+    internal func maskingPolicy(for connectionId: UUID) async -> MaskingPolicy {
+        let manager = await databaseManager
+        return await MainActor.run {
+            if let session = manager.session(for: connectionId) {
+                return session.connection.maskingPolicy
+            }
+            return manager.connectionStorage.loadConnection(id: connectionId)?.maskingPolicy ?? .none
+        }
+    }
+
     internal func resolveDriver(_ connectionId: UUID) async throws -> (DatabaseDriver, DatabaseType) {
         let manager = await databaseManager
         let pending: DatabaseConnection? = await MainActor.run {
@@ -204,12 +216,15 @@ internal actor DatabaseAccessBridge {
         internal let executionTimeMs: Double
     }
 
+    /// `maskingTable` names the table the rows come from when the caller built the query for one, so a
+    /// `table.column` rule matches by table; without it a rule matches by column name alone.
     internal func runStatement(
         scope: DatabaseScope,
         query: String,
         maxRows: Int,
         timeoutSeconds: Int,
-        cancellation: (any StatementCancellationSignal)?
+        cancellation: (any StatementCancellationSignal)?,
+        maskingTable: String? = nil
     ) async throws -> StatementOutcome {
         guard !Self.statementText(query, grammar: .ansi).isEmpty else {
             throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
@@ -293,7 +308,9 @@ internal actor DatabaseAccessBridge {
         if let tableEdits {
             CatalogChangeService.post(.statementsSucceeded(tableEdits))
         }
-        return StatementOutcome(result: result, executionTimeMs: (CFAbsoluteTimeGetCurrent() - startTime) * 1_000)
+        let executionTimeMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1_000
+        let masking = await maskingPolicy(for: connectionId)
+        return StatementOutcome(result: result.masked(by: masking, table: maskingTable), executionTimeMs: executionTimeMs)
     }
 
     internal func runExplainPlan(

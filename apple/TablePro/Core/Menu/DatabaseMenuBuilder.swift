@@ -8,8 +8,11 @@ import AppKit
 // Database-or-Schema titles are a closed set, never interpolated: System Settings binds an App Shortcut to the exact title.
 @MainActor
 enum DatabaseMenuBuilder {
-    static func build(keyboard: KeyboardSettings) -> NSMenuItem {
-        MenuItemFactory.menu(String(localized: "Database"), items: [
+    static let identifier = NSUserInterfaceItemIdentifier("menu.database")
+    static let liveMessagesIdentifier = NSUserInterfaceItemIdentifier("menu.database.liveMessages")
+
+    static func build(keyboard: KeyboardSettings, modules: Set<AppModule> = []) -> NSMenuItem {
+        let item = MenuItemFactory.menu(String(localized: "Database"), items: [
             MenuItemFactory.item(
                 String(localized: "Switch Connection…"),
                 action: #selector(MainSplitViewController.switchConnection(_:)),
@@ -161,6 +164,30 @@ enum DatabaseMenuBuilder {
             MenuItemFactory.separator,
             compareSubmenu()
         ])
+        item.identifier = identifier
+        if let menu = item.submenu {
+            applyModules(modules, to: menu)
+        }
+        return item
+    }
+
+    // Live Messages… sits with the other connection-wide tabs, and exists only while its module is on.
+    static func applyModules(_ modules: Set<AppModule>, to menu: NSMenu) {
+        let existing = menu.items.first { $0.identifier == liveMessagesIdentifier }
+        switch (modules.contains(.liveMessages), existing) {
+        case (true, nil):
+            let anchor = menu.items.firstIndex { $0.action == #selector(MainSplitViewController.showTableHealth(_:)) }
+            let item = MenuItemFactory.item(
+                String(localized: "Live Messages…"),
+                action: #selector(MainSplitViewController.openLiveMessages(_:))
+            )
+            item.identifier = liveMessagesIdentifier
+            menu.insertItem(item, at: anchor.map { $0 + 1 } ?? menu.items.count)
+        case (false, let item?):
+            menu.removeItem(item)
+        default:
+            return
+        }
     }
 
     /// The HIG asks that every toolbar item also be a menu-bar command. These are the Compare &

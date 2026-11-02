@@ -42,10 +42,10 @@ jobs:
           tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee" --strip-components=1 \
             lychee-x86_64-unknown-linux-gnu/lychee
           echo "$RUNNER_TEMP/lychee" >> "$GITHUB_PATH"
-      - name: Links and anchors in the Linux docs resolve
+      - name: Links and anchors in the Linux and core docs resolve
         # Offline, so only links to files and headings in the tree are
         # checked: the ones a rename or a move breaks.
-        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md'
+        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md' 'core/**/*.md'
 
   fast:
     name: Fast checks
@@ -65,7 +65,7 @@ jobs:
     steps:
       # Before the checkout, not after: actions/checkout falls back to
       # downloading a tarball when git is missing, which leaves no .git
-      # for `meson dist` to read. The workspace is owned by the host's
+      # for make-dist.sh to archive. The workspace is owned by the host's
       # runner user and every step here runs as root, so git also needs
       # to be told the checkout is not a stranger's.
       - name: Install git
@@ -82,7 +82,8 @@ jobs:
         # install, then the meson toolchain, the -dev packages the
         # workspace links, the runtime pieces the test suites need (xvfb,
         # dbus, gnome-keyring for the Secret Service step, openssh-client
-        # for the SSH transport, glycin-loaders for a value's picture).
+        # for the SSH transport, glycin-loaders for a value's picture),
+        # and xz for the source tarball.
         run: |
           apt-get install -y --no-install-recommends \
             build-essential \
@@ -111,16 +112,18 @@ jobs:
             openssh-client \
             xvfb \
             xauth \
-            dbus-daemon
+            dbus-daemon \
+            xz-utils
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
           components: rustfmt, clippy
       # Meson points Cargo at _build/cargo-home and _build/cargo-target,
-      # so those are what the cache keeps.
+      # so those are what the cache keeps. The workspace is the top of the
+      # repository.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: linux -> _build/cargo-target
+          workspaces: . -> linux/_build/cargo-target
           cache-directories: linux/_build/cargo-home
       - name: Generate the en_US.UTF-8 locale
         # glibc loads no catalogue under C or C.UTF-8, so the i18n
@@ -213,9 +216,9 @@ jobs:
       - name: Secret Service tests
         run: |
           dbus-run-session -- bash -c "gnome-keyring-daemon --components=secrets --daemonize --unlock <<< ci \
-            && meson devenv -C _build cargo test --locked -p tablepro-storage --test secret_service -- --ignored"
-      - name: Dist
-        run: meson dist -C _build --no-tests --formats xztar
+            && meson devenv -C _build cargo test --locked -p tablepro-linux-platform --test secret_service -- --ignored"
+      - name: Source tarball
+        run: build-aux/packaging/make-dist.sh _build/dist
 
   # Launchpad builds the PPA package with rustc-X.Y and cargo-X.Y, X.Y being
   # the workspace rust-version, so the workspace is checked with that
@@ -244,7 +247,7 @@ jobs:
         # Cargo needs the CA certificates to fetch the crates.
         id: toolchain
         run: |
-          version="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          version="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' ../Cargo.toml)"
           sh build-aux/packaging/add-rust-toolchain-ppa.sh "$version"
           apt-get install -y --no-install-recommends ca-certificates
           apt-get build-dep -y --no-install-recommends -P nocheck ./build-aux
@@ -275,10 +278,13 @@ jobs:
         with:
           tool: cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-shear@${{ env.CARGO_SHEAR_VERSION }},cargo-about@${{ env.CARGO_ABOUT_VERSION }},zizmor@${{ env.ZIZMOR_VERSION }}
       - name: Advisories, bans, licenses and sources
-        # deny.toml checks every feature, both Linux targets and the
-        # dev-dependencies, so a test-only crate is held to the same rules.
+        # deny.toml checks every feature, every target the core builds for
+        # and the dev-dependencies, so a test-only crate is held to the
+        # same rules. The workspace and deny.toml are at the top.
+        working-directory: .
         run: cargo deny --locked check advisories bans licenses sources
       - name: No unused or misplaced dependencies
+        working-directory: .
         run: cargo shear
       - name: Regenerate the notices from Cargo.lock
         run: build-aux/update-third-party-licenses.sh
@@ -291,7 +297,7 @@ jobs:
             echo "::error::the license files do not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
             exit 1
           fi
-      - name: The Linux workflows
+      - name: The Linux and core workflows
         # Offline, so the verdict depends on these files alone and not on
         # where a branch the pins name has moved since.
         working-directory: .
@@ -299,6 +305,7 @@ jobs:
           zizmor --offline --format=github --min-severity=medium \
             .github/workflows/ci.yml \
             .github/workflows/build-linux.yml \
+            .github/workflows/core.yml \
             .github/workflows/linux-packages.yml \
             .github/workflows/release-linux.yml
 
@@ -395,7 +402,7 @@ jobs:
           arch: ${{ matrix.arch }}
           run-tests: true
           build-bundle: false
-          cache-key: flatpak-devel-${{ matrix.arch }}-${{ hashFiles('linux/Cargo.lock') }}
+          cache-key: flatpak-devel-${{ matrix.arch }}-${{ hashFiles('Cargo.lock') }}
       # The image is built on the linter's own. Only the findings in
       # lint-exceptions.json may remain. The repository is not linted: its
       # screenshot checks need images mirrored from the release tag.
@@ -494,7 +501,7 @@ jobs:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: linux
+          workspaces: .
           key: ${{ matrix.package }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
@@ -520,7 +527,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-${{ matrix.package }}${{ matrix.release != 'default' && format('-{0}', matrix.release) || '' }}
-          path: linux/target/nextest/ci/junit.xml
+          path: target/nextest/ci/junit.xml
 
   integration-session:
     # The session crate builds tablepro-storage, which links GIO 2.88,
@@ -569,7 +576,7 @@ jobs:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: linux
+          workspaces: .
           key: tablepro-session
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
@@ -584,7 +591,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-tablepro-session
-          path: linux/target/nextest/ci/junit.xml
+          path: target/nextest/ci/junit.xml
 
   integration-app:
     # The app links GTK 4.22 and libadwaita 1.9, which the host runner
@@ -641,7 +648,7 @@ jobs:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: linux
+          workspaces: .
           key: tablepro-app
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
@@ -663,4 +670,4 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-tablepro
-          path: linux/target/nextest/ci/junit.xml
+          path: target/nextest/ci/junit.xml

@@ -56,6 +56,8 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
 
     var isConnected: Bool { current?.isConnected ?? false }
 
+    func pubSubConnection() -> RedisPluginConnection? { current }
+
     private var current: RedisPluginConnection? {
         lock.lock()
         defer { lock.unlock() }

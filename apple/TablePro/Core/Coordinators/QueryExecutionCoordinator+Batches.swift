@@ -526,7 +526,9 @@ extension QueryExecutionCoordinator {
                     : []
             } else {
                 produced = output.resultSets.enumerated().map { offset, result in
-                    numberedResultSet(result, anchor: entry.batch.anchor, index: firstNumber + resultSets.count + offset)
+                    numberedResultSet(
+                        result, anchor: entry.batch.anchor, index: firstNumber + resultSets.count + offset, tabId: tabId
+                    )
                 }
             }
             produced.last?.serverOutput = output.serverOutput
@@ -550,14 +552,16 @@ extension QueryExecutionCoordinator {
         )
     }
 
-    private func numberedResultSet(_ result: QueryResult, anchor: StatementAnchor?, index: Int) -> ResultSet {
+    private func numberedResultSet(_ result: QueryResult, anchor: StatementAnchor?, index: Int, tabId: UUID) -> ResultSet {
+        let columns = result.columns.map { String($0) }
         let resultSet = ResultSet(
             label: ResultSet.label(tableName: nil, anchor: nil, index: index),
             tableRows: TableRows.from(
                 queryRows: result.rows,
-                columns: result.columns.map { String($0) },
+                columns: columns,
                 columnTypes: result.columnTypes,
-                absentCells: result.absentCells
+                absentCells: result.absentCells,
+                masks: parent.columnMasks(forTabId: tabId, table: nil, columns: columns, columnTypes: result.columnTypes)
             )
         )
         resultSet.statementAnchor = anchor
