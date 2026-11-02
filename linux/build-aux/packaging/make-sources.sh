@@ -12,6 +12,7 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
+workspace="$(cd "$root/.." && pwd)"
 
 container=""
 if [ "${1:-}" = "--install-deps" ]; then
@@ -22,7 +23,7 @@ if [ "${1:-}" = "--install-deps" ]; then
     apt-get install -y --no-install-recommends ca-certificates git xz-utils
     # The checkout belongs to another user, which git refuses to read.
     git config --global --add safe.directory '*'
-    rust="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' "$root/Cargo.toml")"
+    rust="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' "$workspace/Cargo.toml")"
     "$here/add-rust-toolchain-ppa.sh" "$rust"
     apt-get build-dep -y --no-install-recommends -P nocheck "$root/build-aux"
     PATH="/usr/lib/rust-$rust/bin:$PATH"
@@ -53,7 +54,7 @@ version="${version#tablepro-}"
 mkdir "$work/vendor-root"
 (
     cd "$work/vendor-root"
-    cargo vendor --locked --versioned-dirs --manifest-path "$root/Cargo.toml" vendor
+    cargo vendor --locked --versioned-dirs --manifest-path "$workspace/Cargo.toml" vendor
 ) > "$work/cargo-config.toml"
 mv "$work/cargo-config.toml" "$work/vendor-root/vendor/cargo-config.toml"
 

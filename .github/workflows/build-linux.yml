@@ -119,10 +119,11 @@ jobs:
           toolchain: "1.98"
           components: rustfmt, clippy
       # Meson points Cargo at _build/cargo-home and _build/cargo-target,
-      # so those are what the cache keeps.
+      # so those are what the cache keeps. The workspace is the top of the
+      # repository.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: linux -> _build/cargo-target
+          workspaces: . -> linux/_build/cargo-target
           cache-directories: linux/_build/cargo-home
       - name: Generate the en_US.UTF-8 locale
         # glibc loads no catalogue under C or C.UTF-8, so the i18n
@@ -246,7 +247,7 @@ jobs:
         # Cargo needs the CA certificates to fetch the crates.
         id: toolchain
         run: |
-          version="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)"
+          version="$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' ../Cargo.toml)"
           sh build-aux/packaging/add-rust-toolchain-ppa.sh "$version"
           apt-get install -y --no-install-recommends ca-certificates
           apt-get build-dep -y --no-install-recommends -P nocheck ./build-aux
@@ -277,10 +278,13 @@ jobs:
         with:
           tool: cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-shear@${{ env.CARGO_SHEAR_VERSION }},cargo-about@${{ env.CARGO_ABOUT_VERSION }},zizmor@${{ env.ZIZMOR_VERSION }}
       - name: Advisories, bans, licenses and sources
-        # deny.toml checks every feature, both Linux targets and the
-        # dev-dependencies, so a test-only crate is held to the same rules.
+        # deny.toml checks every feature, every target the core builds for
+        # and the dev-dependencies, so a test-only crate is held to the
+        # same rules. The workspace and deny.toml are at the top.
+        working-directory: .
         run: cargo deny --locked check advisories bans licenses sources
       - name: No unused or misplaced dependencies
+        working-directory: .
         run: cargo shear
       - name: Regenerate the notices from Cargo.lock
         run: build-aux/update-third-party-licenses.sh
@@ -397,7 +401,7 @@ jobs:
           arch: ${{ matrix.arch }}
           run-tests: true
           build-bundle: false
-          cache-key: flatpak-devel-${{ matrix.arch }}-${{ hashFiles('linux/Cargo.lock') }}
+          cache-key: flatpak-devel-${{ matrix.arch }}-${{ hashFiles('Cargo.lock') }}
       # The image is built on the linter's own. Only the findings in
       # lint-exceptions.json may remain. The repository is not linted: its
       # screenshot checks need images mirrored from the release tag.
@@ -496,7 +500,7 @@ jobs:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: linux
+          workspaces: .
           key: ${{ matrix.package }}
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
@@ -522,7 +526,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-${{ matrix.package }}${{ matrix.release != 'default' && format('-{0}', matrix.release) || '' }}
-          path: linux/target/nextest/ci/junit.xml
+          path: target/nextest/ci/junit.xml
 
   integration-session:
     # The session crate builds tablepro-storage, which links GIO 2.88,
@@ -571,7 +575,7 @@ jobs:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: linux
+          workspaces: .
           key: tablepro-session
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
@@ -586,7 +590,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-tablepro-session
-          path: linux/target/nextest/ci/junit.xml
+          path: target/nextest/ci/junit.xml
 
   integration-app:
     # The app links GTK 4.22 and libadwaita 1.9, which the host runner
@@ -643,7 +647,7 @@ jobs:
           toolchain: "1.98"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: linux
+          workspaces: .
           key: tablepro-app
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
@@ -665,4 +669,4 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-tablepro
-          path: linux/target/nextest/ci/junit.xml
+          path: target/nextest/ci/junit.xml

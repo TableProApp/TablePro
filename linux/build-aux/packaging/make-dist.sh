@@ -17,7 +17,7 @@ linux="$(cd "$here/../.." && pwd)"
 repo="$(git -C "$linux" rev-parse --show-toplevel)"
 
 # Every path a build from the tarball reads, from the top of the repository.
-set -- "$1" linux
+set -- "$1" Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml deny.toml .config linux
 
 out="$1"
 shift

@@ -72,6 +72,14 @@
                         "target",
                         "build-aux/flatpak/.flatpak-builder"
                     ]
+                },
+                {
+                    "type": "file",
+                    "path": "../../../Cargo.toml"
+                },
+                {
+                    "type": "file",
+                    "path": "../../../Cargo.lock"
                 }
             ]
         }

@@ -88,7 +88,9 @@ case "$SUITE" in
         PATTERNS=('.*\.swift$' '(.*/)?\.swiftlint\.yml$' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/workflows/(ci|swiftlint)\.yml$') ;;
     linux|linux-docs)
-        PATTERNS=('linux/' 'scripts/ci/detect-changed-paths\.sh$'
+        # The Cargo workspace the Linux app builds in has its files at the top.
+        PATTERNS=('linux/' 'Cargo\.(toml|lock)$' '(rust-toolchain|rustfmt|clippy|deny)\.toml$' '\.config/nextest\.toml$'
+            'scripts/ci/detect-changed-paths\.sh$'
             '\.github/workflows/(ci|build-linux|linux-packages|release-linux)\.yml$')
         # linux-docs decides the docs links job, which reads every path. The other Linux jobs skip
         # Markdown, except the files a Meson test reads and the notices the build installs.
