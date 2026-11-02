@@ -19,6 +19,7 @@ public sealed partial class HomeView : UserControl
     private readonly HashSet<string> _collapsed = [];
     private LibrarySnapshot _snapshot = new([], [], [], []);
     private int _reload;
+    private bool _rebuilding;
 
     internal HomeView(Workbench workbench, IShell shell)
     {
@@ -80,11 +81,15 @@ public sealed partial class HomeView : UserControl
         NewGroupButton.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
         var query = LibrarySearch.Text;
         var searching = !string.IsNullOrWhiteSpace(query);
+        // Clearing the rows reports them collapsed, which is not the user collapsing them.
+        _rebuilding = true;
         Items.Clear();
         foreach (var node in LibraryTree.Build(_snapshot, query, _workbench.EngineName))
         {
             Items.Add(ToItem(node, searching));
         }
+
+        _rebuilding = false;
 
         NoResultsText.Visibility = searching && Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -134,7 +139,7 @@ public sealed partial class HomeView : UserControl
 
     private void OnLibraryExpanding(TreeView sender, TreeViewExpandingEventArgs args)
     {
-        if (args.Item is LibraryItem item)
+        if (!_rebuilding && args.Item is LibraryItem item)
         {
             _collapsed.Remove(item.Node.Key);
         }
@@ -142,7 +147,7 @@ public sealed partial class HomeView : UserControl
 
     private void OnLibraryCollapsed(TreeView sender, TreeViewCollapsedEventArgs args)
     {
-        if (args.Item is LibraryItem item)
+        if (!_rebuilding && args.Item is LibraryItem item)
         {
             _collapsed.Add(item.Node.Key);
         }
@@ -152,8 +157,7 @@ public sealed partial class HomeView : UserControl
     private void OnLibraryRowLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is TreeViewItem row
-            && ConnectionTree.ItemFromContainer(row) is LibraryItem { StartsExpanded: true, Children.Count: > 0 } item
-            && !_collapsed.Contains(item.Node.Key))
+            && ConnectionTree.ItemFromContainer(row) is LibraryItem { StartsExpanded: true, Children.Count: > 0 })
         {
             row.IsExpanded = true;
         }
