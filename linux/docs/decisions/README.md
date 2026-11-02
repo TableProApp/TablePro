@@ -49,7 +49,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 
 | # | Title | Status | Summary |
 |---|---|---|---|
-| [0001](0001-no-plugin-system.md) | No plugin system; drivers are statically linked | Accepted | Drivers are crates, registered at compile time. No `.tableplugin`-equivalent on Linux. |
+| [0001](0001-no-plugin-system.md) | No plugin system; drivers are statically linked | Superseded by core 0004 | Drivers are crates, registered at compile time. No `.tableplugin`-equivalent on Linux. |
 | [0002](0002-rust-gtk4-libadwaita.md) | Rust + GTK4 + libadwaita | Accepted; version floor superseded by 0015, the Relm4 consequence by 0012 | Validated by spike. Only stack with a production virtualized data grid (GtkColumnView). |
 | [0003](0003-relm4-architecture.md) | Relm4 for app architecture | Accepted; superseded by 0012 except for the saved-queries and CSV import dialogs | Elm-style components scale to TablePro's view count. |
 | [0004](0004-libsecret-secret-storage.md) | Secret storage through oo7 | Accepted; store API and Flatpak path amended 2026-09-15, the rules for edits 2026-10-15 | The Secret Service on the host, and oo7's own keyring file with a key from the Secret portal inside Flatpak; never a plain-text file. |
@@ -63,7 +63,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0013](0013-openssh-client-transport.md) | SSH through the system OpenSSH client | Accepted; the forced options amended by 0019, the TCP port amended by 0023 | ControlMaster per connection, Unix-socket forwards, prompts through an askpass helper. |
 | [0014](0014-lossless-values-and-dialects.md) | Lossless values and engine dialects | Accepted | A value reaches the user and goes back without loss; every statement is spelled by the dialect of the connection that runs it. |
 | [0015](0015-gnome-50-platform-floor.md) | GNOME 50 platform floor | Accepted; the runtime row amended by 0018 | GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88; AdwShortcutsDialog replaces the shortcuts window. |
-| [0016](0016-driver-contract-v2.md) | Driver contract v2 | Accepted | Owned calls with engine stops, phase-aware write outcomes, server-side row limits; PostgreSQL on tokio-postgres; no forks. |
+| [0016](0016-driver-contract-v2.md) | Driver contract v2 | Accepted; the no-fork rule for tiberius superseded by core 0005 | Owned calls with engine stops, phase-aware write outcomes, server-side row limits; PostgreSQL on tokio-postgres; no forks. |
 | [0017](0017-distribution-channels.md) | Distribution channels | Superseded by 0018 | Flathub, a .deb for Ubuntu 26.04 on GitHub Releases built with rustup, and an .rpm for Fedora 44 on COPR, all from `meson install` and one vendor tarball; no AppImage. |
 | [0018](0018-ppa-copr-and-flathub-later.md) | A PPA and COPR first, Flathub later | Accepted; the source tarball amended by core 0001 | A Launchpad PPA built with `rustc-1.97` and a COPR project built on each release are the primary channels; Flathub follows as a submission a maintainer writes; Rust 1.97 is the MSRV. |
 | [0019](0019-ssh-key-file-identities-only.md) | A chosen SSH key file limits the keys ssh offers | Superseded by 0020 | A key file comes with `IdentitiesOnly=yes`, so the agent's other keys cannot use up `MaxAuthTries` first. |
