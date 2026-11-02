@@ -125,14 +125,19 @@ public sealed class ItemsRepeaterTrapTests
         }
     });
 
-    // A new source leaves elements realized with SuppressAutoRecycle where they were, and the old rows stayed drawn
-    // under the new ones, as a sorted result showed in the app.
+    // A new source leaves elements realized with SuppressAutoRecycle where they were. Once the new rows arrived, the
+    // old rows stayed drawn under them, as a sorted result showed in the app.
     [Fact]
     public Task NewDataLeavesOnlyItsOwnRowsAndHeadersOnScreen() => WinUiHost.RunAsync(async () =>
     {
         var grid = await WinUiHost.ShowAsync(new SyntheticData(), frozen: 1);
-        var next = new SyntheticData(rows: 500, columns: 30);
+        // As a run's result set: no rows when the grid gets it, then rows as they arrive.
+        var next = new SyntheticData(rows: 0, columns: 30);
         grid.SetData(next);
+        await WinUiHost.NextFrameAsync();
+        await WinUiHost.NextFrameAsync();
+        next.RowCount = 500;
+        grid.RowsChanged();
         for (var i = 0; i < 300 && grid.RealizedRows.Count == 0; i++)
         {
             await WinUiHost.NextFrameAsync();
