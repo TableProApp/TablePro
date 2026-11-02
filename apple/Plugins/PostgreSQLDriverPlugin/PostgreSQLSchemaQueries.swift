@@ -217,8 +217,8 @@ enum PostgreSQLSchemaQueries {
         return "SELECT collname, collprovider FROM pg_catalog.pg_collation WHERE collprovider IN ('b', 'c', 'i') ORDER BY collname"
     }
 
-    /// The app runs this itself, on the session's own path, which may name another schema before `pg_catalog`: every
-    /// call, relation and operator names `pg_catalog`.
+    // The app runs this itself as a catalog read, which Redshift and CockroachDB do not pin, so every call, relation and
+    // operator names pg_catalog.
     static func allTablesMetadata(schema: String) -> String {
         """
         SELECT

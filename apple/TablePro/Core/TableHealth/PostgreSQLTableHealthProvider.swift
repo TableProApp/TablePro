@@ -54,8 +54,8 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
                   WHERE fk.contype = 'f'
                     AND fk.conrelid = i.indrelid
                     AND pg_catalog.array_length(fk.conkey, 1)
-                        <= COALESCE((pg_catalog.row_to_json(i) ->> 'indnkeyatts')::pg_catalog.int4, i.indnatts)
-                    AND (i.indkey::pg_catalog.int2[])[0:pg_catalog.array_length(fk.conkey, 1) - 1] @> fk.conkey
+                        <= COALESCE((pg_catalog.row_to_json(i) OPERATOR(pg_catalog.->>) 'indnkeyatts'::pg_catalog.text)::pg_catalog.int4, i.indnatts)
+                    AND (i.indkey::pg_catalog.int2[])[0:pg_catalog.array_length(fk.conkey, 1) - 1] OPERATOR(pg_catalog.@>) fk.conkey
               )
           )
         ORDER BY index_bytes DESC, schema_name, index_name
@@ -99,15 +99,15 @@ struct PostgreSQLTableHealthProvider: TableHealthProvider {
         JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
         WHERE con.contype = 'f'
           AND pg_catalog.left(n.nspname, 3) <> 'pg_'
-          AND COALESCE(pg_catalog.row_to_json(con) ->> 'conparentid', '0') = '0'
+          AND COALESCE(pg_catalog.row_to_json(con) OPERATOR(pg_catalog.->>) 'conparentid'::pg_catalog.text, '0') = '0'
           AND NOT EXISTS (
               SELECT 1 FROM pg_catalog.pg_index i
               WHERE i.indrelid = con.conrelid
                 AND i.indpred IS NULL
                 AND i.indisvalid
                 AND pg_catalog.array_length(con.conkey, 1)
-                    <= COALESCE((pg_catalog.row_to_json(i) ->> 'indnkeyatts')::pg_catalog.int4, i.indnatts)
-                AND (i.indkey::pg_catalog.int2[])[0:pg_catalog.array_length(con.conkey, 1) - 1] @> con.conkey
+                    <= COALESCE((pg_catalog.row_to_json(i) OPERATOR(pg_catalog.->>) 'indnkeyatts'::pg_catalog.text)::pg_catalog.int4, i.indnatts)
+                AND (i.indkey::pg_catalog.int2[])[0:pg_catalog.array_length(con.conkey, 1) - 1] OPERATOR(pg_catalog.@>) con.conkey
           )
         ORDER BY n.nspname, c.relname, con.conname, k.position
         """

@@ -49,7 +49,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     private func probeServerVersion() async {
-        if let result = try? await core.executeCatalogRead("SELECT version()"),
+        if let result = try? await core.executeCatalogRead("SELECT pg_catalog.version()"),
            let version = result.rows.first?.first?.asText {
             cachedServerVersion = version
         }
@@ -194,7 +194,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchDatabases() async throws -> [String] {
         let result = try await catalogRead(
-            "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
+            "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname"
         )
         return result.rows.compactMap { $0.first?.asText }
     }
@@ -207,7 +207,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
         let databaseLiteral = PostgreSQLObjectQueries.quoteLiteral(database)
         let query = """
-            SELECT COUNT(*)
+            SELECT pg_catalog.count(*)
             FROM information_schema.tables
             WHERE table_catalog = \(databaseLiteral)
               AND table_schema NOT IN ('pg_catalog', 'information_schema', 'crdb_internal', 'pg_extension')

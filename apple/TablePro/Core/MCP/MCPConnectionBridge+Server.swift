@@ -104,7 +104,7 @@ extension MCPConnectionBridge {
                 )
             }
             let execute: (String) async throws -> QueryResult = { sql in
-                try await driver.executeRead(query: sql)
+                try await driver.executeCatalogRead(query: sql)
             }
             var result: [String: JsonValue] = [:]
             var failures: [String: String] = [:]

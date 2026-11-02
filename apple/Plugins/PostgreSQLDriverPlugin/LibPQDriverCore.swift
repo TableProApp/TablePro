@@ -59,9 +59,9 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
-    /// Redshift and CockroachDB pass `pinsCatalogSearchPath: false`: neither has user-defined operators, so their
-    /// catalog statements are safe through `pg_catalog`-qualified calls alone, and neither was measured with
-    /// `SET LOCAL search_path` naming `pg_temp`.
+    // Redshift and CockroachDB pass false: CockroachDB drops a SET LOCAL sent outside an explicit transaction (v25.2),
+    // and Redshift was never measured with one. Neither has user-defined operators, so their catalog SQL names
+    // pg_catalog on every function call instead (apple/scripts/ci/check-postgresql-qualified-calls.py).
     init(
         config: DriverConnectionConfig,
         schemaFallbackQueries: [String] = PostgreSQLSchemaQueries.schemaFallbackQueries,
@@ -233,7 +233,8 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
-    /// The one way a statement the driver writes against the catalogs runs. Under `PostgreSQLCatalogSearchPath`,
+    /// The one way a statement the driver or the host (`PluginStatementContext.readsCatalog`) writes against the
+    /// catalogs runs. Under `PostgreSQLCatalogSearchPath`,
     /// whatever schema the session is pinned to, so a function or operator in that schema cannot stand in for a
     /// `pg_catalog` one. A definition that is replayed (table DDL, routines, triggers, types) reads pinned and comes
     /// back qualified, as `pg_dump` writes it. `namesRelativeTo` is for what a person reads or compares across
@@ -331,7 +332,7 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.interruptBlockedCallOnDisconnect()
     }
 
-    func setPostgisOidMap(_ map: [UInt32: PostGISType]) {
+    func setPostgisOidMap(_ map: [UInt32: String]) {
         libpqConnection?.setPostgisOidMap(map)
     }
 
@@ -490,8 +491,10 @@ extension LibPQBackedDriver {
     }
 
     func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
-        guard runsReadOnly(context) else { return try await execute(query: query) }
-        return try await core.executeReadOnly(query: query, parameters: nil)
+        if runsReadOnly(context) { return try await core.executeReadOnly(query: query, parameters: nil) }
+        // The catalog entry runs its text as a multi-statement string, so it takes only the app's own SQL.
+        if context.readsCatalog, context.origin == .app { return try await catalogRead(query) }
+        return try await execute(query: query)
     }
 
     func executeParameterized(

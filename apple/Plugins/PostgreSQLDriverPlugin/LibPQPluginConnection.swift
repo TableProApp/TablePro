@@ -61,7 +61,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
     private let suppressServerSideCancel: Bool
     private let connectTimeout: LibPQConnectTimeout
     private let kerberos: LibPQKerberosSignIn?
-    private let pinsCatalogSearchPath: Bool
+    let pinsCatalogSearchPath: Bool
 
     private let stateLock = NSLock()
     let cancellationGate = PluginQueryCancellationGate()
@@ -620,7 +620,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     // MARK: - Catalog Type Names
 
-    func setPostgisOidMap(_ map: [UInt32: PostGISType]) {
+    func setPostgisOidMap(_ map: [UInt32: String]) {
         typeNames.setPostgisTypes(map)
     }
 
@@ -1156,7 +1156,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             isTruncated: truncated,
             firstRowTime: firstRowTime ?? Date().timeIntervalSince(sentAt)
         )
-        return applySpatialRendering(to: bounded)
+        return PostGISTypes.rendering(bounded, types: typeNames.postgisTypes)
     }
 
     private func executeParameterizedQuerySync(_ query: String, parameters: [PluginCellValue]) throws -> LibPQPluginQueryResult {

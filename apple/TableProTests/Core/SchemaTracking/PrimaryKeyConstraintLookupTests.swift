@@ -33,6 +33,7 @@ private class LookupBaseDriver {
 
 private final class LookupDriver: LookupBaseDriver, PluginDatabaseDriver, @unchecked Sendable {
     private(set) var executedQueries: [String] = []
+    private(set) var contexts: [PluginStatementContext] = []
     var answer: String?
     var failure: Error?
     let supportsSchemas: Bool
@@ -51,6 +52,11 @@ private final class LookupDriver: LookupBaseDriver, PluginDatabaseDriver, @unche
         return PluginQueryResult(
             columns: ["CONSTRAINT_NAME"], columnTypeNames: ["TEXT"], rows: rows, rowsAffected: 0, executionTime: 0
         )
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        contexts.append(context)
+        return try await execute(query: query)
     }
 
     func switchDatabase(to database: String) async throws {}
@@ -82,6 +88,22 @@ struct PrimaryKeyConstraintLookupTests {
         #expect(query.contains("TABLE_SCHEMA = 'reporting'"))
         #expect(query.contains("TABLE_NAME = 'sales'"))
         #expect(query.contains("CONSTRAINT_TYPE = 'PRIMARY KEY'"))
+    }
+
+    // information_schema's domains have no exact = in pg_catalog, so a planted =(sql_identifier, sql_identifier) in the
+    // table's schema ran as the reader while this went out as a plain statement.
+    @Test("Asks the catalog as a catalog read")
+    func asksAsACatalogRead() async {
+        let driver = LookupDriver(currentSchema: "reporting")
+
+        _ = await PrimaryKeyConstraintLookup.constraintName(
+            tableName: "sales",
+            changes: [.modifyPrimaryKey(old: ["id"], new: [])],
+            driver: Self.adapter(driver)
+        )
+
+        #expect(driver.contexts.map { $0.readsCatalog } == [true])
+        #expect(driver.contexts.map { $0.readOnly } == [true])
     }
 
     @Test("Escapes the table name as a string literal")

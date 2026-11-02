@@ -717,6 +717,12 @@ struct NativeDumpRegistryTests {
         #expect(NativeDumpService.sizeQuery(for: .sqlite) == nil)
     }
 
+    // An untyped $1 picked a planted pg_database_size(text) in the browsed schema over pg_catalog's (name).
+    @Test("The PostgreSQL size query names pg_catalog's function and types its parameter")
+    func postgresSizeQueryIsQualified() {
+        #expect(NativeDumpService.sizeQuery(for: .postgresql) == "SELECT pg_catalog.pg_database_size($1::pg_catalog.name)")
+    }
+
     @Test("A MySQL dump signed in with a token requires TLS, and MySQL's tools send the token in cleartext")
     func mysqlTokenDump() throws {
         var iam = connection(type: .mysql)

@@ -93,19 +93,10 @@ class PostgreSQLPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     private func probePostgisOids() async {
         do {
-            let result = try await core.executeCatalogRead(PostGISSpatialRewrite.probeQuery)
-            var map: [UInt32: PostGISType] = [:]
-            for row in result.rows {
-                guard row.count >= 3,
-                      let oidText = row[0].asText,
-                      let oid = UInt32(oidText),
-                      let typname = row[1].asText,
-                      let schema = row[2].asText else { continue }
-                map[oid] = PostGISType(name: typname, schema: schema)
-            }
-            core.setPostgisOidMap(map)
+            let result = try await core.executeCatalogRead(PostGISTypes.probeQuery)
+            core.setPostgisOidMap(PostGISTypes.names(fromProbeRows: result.rows.map { row in row.map(\.asText) }))
         } catch {
-            Self.logger.debug("PostGIS OID probe failed; spatial rewrite disabled for this session: \(error.localizedDescription)")
+            Self.logger.debug("PostGIS type probe failed; spatial values stay as hex: \(error.localizedDescription)")
         }
     }
 

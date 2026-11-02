@@ -859,7 +859,7 @@ extension NativeDumpService {
     nonisolated static func sizeQuery(for type: DatabaseType) -> String? {
         switch type {
         case .postgresql, .redshift:
-            return "SELECT pg_database_size($1)"
+            return "SELECT pg_catalog.pg_database_size($1::pg_catalog.name)"
         case .mysql, .mariadb:
             return """
                 SELECT COALESCE(SUM(data_length + index_length), 0)

@@ -184,7 +184,7 @@ targetTemplates:
   PostgreSQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProCoreTypes, TableProKerberos, TableProLogRedaction, TableProPostgreSQLCore, TableProSQLVocabulary]
+        products: [TableProCoreTypes, TableProGeometry, TableProKerberos, TableProLogRedaction, TableProPostgreSQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:

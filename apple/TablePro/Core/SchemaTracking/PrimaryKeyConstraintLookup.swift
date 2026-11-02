@@ -27,7 +27,7 @@ enum PrimaryKeyConstraintLookup {
             """
 
         do {
-            let result = try await driver.execute(query: query)
+            let result = try await driver.executeCatalogRead(query: query)
             guard let row = result.rows.first, let name = row.first?.asText, !name.isEmpty else { return nil }
             return name
         } catch {

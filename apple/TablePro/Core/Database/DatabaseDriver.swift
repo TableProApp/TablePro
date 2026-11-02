@@ -555,6 +555,15 @@ extension DatabaseDriver {
         try await execute(query: query)
     }
 
+    // A read the app wrote against the engine's own catalogs. PostgreSQL, KingbaseES and PGlite pin it to pg_catalog, so
+    // a lookalike in the browsed schema never runs as the reader; Redshift and CockroachDB rely on qualified calls.
+    func executeCatalogRead(query: String) async throws -> QueryResult {
+        var context = PluginStatementContext()
+        context.readOnly = true
+        context.readsCatalog = true
+        return try await execute(query: query, context: context)
+    }
+
     func executeUserQuery(
         query: String,
         rowCap: Int?,

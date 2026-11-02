@@ -121,6 +121,10 @@ jobs:
       - name: Check Oracle SQL names dictionary objects through OracleDictionary
         run: python3 apple/scripts/ci/check-oracle-dictionary-names.py
 
+      # PostgreSQL takes an exact match from any schema on search_path over a pg_catalog built-in that needs a cast.
+      - name: Check PostgreSQL SQL calls built-ins through pg_catalog
+        run: python3 apple/scripts/ci/check-postgresql-qualified-calls.py
+
       - name: Check the statement classifiers read words through the grammar's tokens
         run: python3 apple/scripts/ci/check-classifier-text-matching.py
 

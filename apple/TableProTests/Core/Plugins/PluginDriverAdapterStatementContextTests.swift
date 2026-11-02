@@ -108,6 +108,19 @@ struct PluginDriverAdapterStatementContextTests {
         #expect(driver.contexts.map { $0.readOnly } == [true, false])
     }
 
+    @Test("Only a catalog read the app writes reaches the driver marked as one")
+    func catalogReadIsMarked() async throws {
+        let driver = ContextRecordingDriver()
+        let adapter = makeAdapter(.postgresql, driver: driver)
+        _ = try await adapter.executeCatalogRead(query: "SELECT 1 FROM pg_catalog.pg_class")
+        _ = try await adapter.executeRead(query: "SELECT 1")
+        _ = try await adapter.execute(query: "SELECT 1")
+        _ = try await adapter.executeUserQuery(query: "SELECT 1", rowCap: nil, parameters: nil)
+        #expect(driver.contexts.map { $0.readsCatalog } == [true, false, false, false])
+        #expect(driver.contexts.first?.readOnly == true)
+        #expect(driver.contexts.first?.origin == .app)
+    }
+
     /// A SQL driver ignores the flag, so its statements are not classified for it.
     @Test("A SQL read is not marked")
     func sqlReadIsNotMarked() async throws {
