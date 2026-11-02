@@ -441,27 +441,24 @@ public sealed partial class DataGridView
         }
         var top = (rows.First * _rowHeight) - _originY;
         var height = (rows.Last - rows.First + 1) * _rowHeight;
-        Place(_frozenSelectionBox, range.FirstColumn, Math.Min(range.LastColumn, _columns.FrozenCount - 1), frozen: true);
-        Place(_selectionBox, Math.Max(range.FirstColumn, _columns.FrozenCount), range.LastColumn, frozen: false);
+        PlaceSelection(_frozenSelectionBox, range.FirstColumn, Math.Min(range.LastColumn, _columns.FrozenCount - 1), frozen: true, top, height);
+        PlaceSelection(_selectionBox, Math.Max(range.FirstColumn, _columns.FrozenCount), range.LastColumn, frozen: false, top, height);
+    }
 
-        void Place(Microsoft.UI.Xaml.Shapes.Rectangle box, int firstColumn, int lastColumn, bool frozen)
+    private void PlaceSelection(Microsoft.UI.Xaml.Shapes.Rectangle box, int firstColumn, int lastColumn, bool frozen, double top,
+        double height)
+    {
+        if (lastColumn < firstColumn)
         {
-            if (lastColumn < firstColumn)
-            {
-                box.Visibility = Visibility.Collapsed;
-                return;
-            }
-            var left = _columns.PaneX(firstColumn);
-            if (frozen && _selection.Kind != SelectionKind.Cells)
-            {
-                left = 0;
-            }
-            Canvas.SetLeft(box, left);
-            Canvas.SetTop(box, top);
-            box.Width = _columns.PaneX(lastColumn) + _columns.Width(lastColumn) - left;
-            box.Height = height;
-            box.Visibility = Visibility.Visible;
+            box.Visibility = Visibility.Collapsed;
+            return;
         }
+        var left = frozen && _selection.Kind != SelectionKind.Cells ? 0 : _columns.PaneX(firstColumn);
+        Canvas.SetLeft(box, left);
+        Canvas.SetTop(box, top);
+        box.Width = _columns.PaneX(lastColumn) + _columns.Width(lastColumn) - left;
+        box.Height = height;
+        box.Visibility = Visibility.Visible;
     }
 
     private void UpdateFocusBox()

@@ -229,11 +229,11 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     internal UIElement FrozenPane => _frozenContent;
 
-    internal IReadOnlyDictionary<int, UIElement> RealizedRows => _rowsLayout.Realized;
+    internal Dictionary<int, UIElement> RealizedRows => _rowsLayout.Realized;
 
-    internal IReadOnlyDictionary<int, UIElement> RealizedFrozenRows => _frozenRowsLayout.Realized;
+    internal Dictionary<int, UIElement> RealizedFrozenRows => _frozenRowsLayout.Realized;
 
-    internal IReadOnlyDictionary<int, UIElement> RealizedHeaders => _headerLayout.Realized;
+    internal Dictionary<int, UIElement> RealizedHeaders => _headerLayout.Realized;
 
     // The background layout of every script for this grid's font, which the first non-Latin cell would pay for.
     internal static Task FontWarmupTask { get; private set; } = Task.CompletedTask;

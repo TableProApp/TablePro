@@ -52,7 +52,7 @@ internal sealed partial class RowsLayout(IGridWindow grid, bool frozen, LayoutCo
     private readonly Dictionary<int, UIElement> _realized = [];
     private readonly List<int> _leaving = [];
 
-    public IReadOnlyDictionary<int, UIElement> Realized => _realized;
+    public Dictionary<int, UIElement> Realized => _realized;
 
     // After the data was replaced: the repeater recycles every element itself.
     public void Forget() => _realized.Clear();
@@ -116,7 +116,7 @@ internal sealed partial class HeaderLayout(IGridWindow grid) : VirtualizingLayou
     private readonly Dictionary<int, UIElement> _realized = [];
     private readonly List<int> _leaving = [];
 
-    public IReadOnlyDictionary<int, UIElement> Realized => _realized;
+    public Dictionary<int, UIElement> Realized => _realized;
 
     public void Forget() => _realized.Clear();
 
