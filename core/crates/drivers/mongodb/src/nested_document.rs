@@ -23,7 +23,9 @@ pub(crate) fn current_document(cursor: &SessionCursor<Document>) -> Result<Docum
             detail: format!("the document nests deeper than {MAX_DEPTH} levels"),
         });
     }
-    cursor.deserialize_current().map_err(|error| DriverError::Decode {
+    #[expect(clippy::disallowed_methods, reason = "the depth is checked above")]
+    let document = cursor.deserialize_current();
+    document.map_err(|error| DriverError::Decode {
         column: String::new(),
         detail: error.to_string(),
     })
@@ -80,5 +82,22 @@ mod tests {
     #[test]
     fn a_document_past_the_limit_is_refused() {
         assert!(!within_depth(&nested(MAX_DEPTH + 1)));
+    }
+
+    #[test]
+    fn a_document_at_the_limit_is_read_and_written_on_a_worker_stack() {
+        let raw = nested(MAX_DEPTH);
+        // A runtime worker has the 2 MiB default stack.
+        let worker = std::thread::Builder::new().stack_size(2 << 20);
+        let handle = worker
+            .spawn(move || {
+                // The decode `deserialize_current` runs on the cursor's bytes.
+                let document: Document = bson::deserialize_from_slice(raw.as_bytes()).unwrap();
+                let written = crate::extended_json::extended_json(&Bson::Document(document));
+
+                assert_eq!(written.matches(['{', '[']).count(), MAX_DEPTH, "{written}");
+            })
+            .unwrap();
+        handle.join().unwrap();
     }
 }

@@ -3,7 +3,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::name_rules::{self, NameFault};
 use crate::tag_name_error::TagNameError;
 
-/// A tag's name as the user typed it, without the spaces around it.
+/// A tag's name as the list shows it, the form a connection's name takes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct ConnectionTagName(String);
@@ -15,7 +15,7 @@ impl ConnectionTagName {
     pub fn new(value: &str) -> Result<Self, TagNameError> {
         match name_rules::checked(value) {
             Ok(name) if name.chars().count() > Self::MAX_CHARS => Err(TagNameError::TooLong { max: Self::MAX_CHARS }),
-            Ok(name) => Ok(Self(name.to_owned())),
+            Ok(name) => Ok(Self(name)),
             Err(NameFault::Empty) => Err(TagNameError::Empty),
             Err(NameFault::ControlCharacter) => Err(TagNameError::ControlCharacter),
         }
@@ -27,7 +27,7 @@ impl ConnectionTagName {
 
     // Two tags whose names differ only in case would read as one.
     pub fn same_name(&self, other: &str) -> bool {
-        self.key() == other.trim().to_lowercase()
+        self.key() == name_rules::shown(other).to_lowercase()
     }
 
     /// The name as two tags are told apart by.
@@ -87,6 +87,10 @@ mod tests {
             })
         );
         assert_eq!(ConnectionTagName::new("a\u{7}"), Err(TagNameError::ControlCharacter));
+        assert_eq!(
+            ConnectionTagName::new("prod\u{200b}").map(String::from),
+            Ok("prod".to_owned())
+        );
     }
 
     #[test]
@@ -102,6 +106,7 @@ mod tests {
 
         assert!(name.same_name("production"));
         assert!(name.same_name(" PRODUCTION "));
+        assert!(name.same_name("produc\u{200b}tion"));
         assert!(!name.same_name("prod"));
     }
 
@@ -119,6 +124,9 @@ mod tests {
 
         let read: Stored = serde_json::from_str(r#"{"name":"a\tb"}"#).expect("a control character");
         assert_eq!(read.name.as_str(), "a b");
+
+        let read: Stored = serde_json::from_str(r#"{"name":"production\u200b"}"#).expect("a blank");
+        assert_eq!(read.name.as_str(), "production");
 
         assert!(serde_json::from_str::<Stored>(r#"{"name":" \n "}"#).is_err());
     }

@@ -438,14 +438,17 @@ pub struct ImportEntry {
     pub change: ImportChange,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportChange {
     /// A connection the list did not have, including one whose id was
     /// taken by a different connection and was given its own.
     Added,
     /// A connection already in the list that the file only renamed,
     /// recoloured, regrouped, retagged or gave another icon.
-    Updated,
+    Updated {
+        /// The name it had, when the import gives it another.
+        renamed_from: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -711,7 +714,8 @@ impl ConnectionStore {
     /// when the import began, whatever order the file lists them in, and
     /// an added one never takes the file's last-opened time, so a file
     /// cannot pass one host off as another saved connection or sort it
-    /// above one.
+    /// above one. An updated entry whose name the file keeps keeps it,
+    /// even when another entry has the same one.
     ///
     /// Tags are matched by id first and then by name, so importing a
     /// file twice, or a file from a machine whose `production` tag has
@@ -947,22 +951,29 @@ fn merge_connection(
 ) -> ImportEntry {
     match list.iter().position(|saved| saved.id == connection.id) {
         Some(index) if list[index].connects_like(&connection) => {
-            let name = unclaimed_name(list, held, &connection.name, Some(connection.id));
+            // Two connections saved without a name to one server share
+            // one, and re-importing their export must rename neither.
+            let name = if connection.name == list[index].name {
+                connection.name
+            } else {
+                unclaimed_name(list, held, &connection.name, Some(connection.id))
+            };
             let order = if list[index].group_id == connection.group_id {
                 list[index].order
             } else {
                 placement::next_order(list, connection.group_id)
             };
             let existing = &mut list[index];
-            existing.name = name;
+            let before = std::mem::replace(&mut existing.name, name);
             existing.color = connection.color;
             existing.group_id = connection.group_id;
             existing.order = order;
             existing.tags = connection.tags;
             existing.icon = connection.icon;
+            let renamed_from = (existing.name != before).then_some(before);
             ImportEntry {
                 connection: existing.clone(),
-                change: ImportChange::Updated,
+                change: ImportChange::Updated { renamed_from },
             }
         }
         Some(_) => {
@@ -1787,18 +1798,120 @@ mod tests {
     }
 
     #[test]
+    fn a_rename_in_the_file_does_not_free_the_name_for_an_entry_under_the_same_id() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = saved("production");
+        store.upsert_blocking(mine.clone()).expect("upsert");
+        let renamed = SavedConnection {
+            name: "staging".to_owned(),
+            ..mine.clone()
+        };
+        let elsewhere = SavedConnection {
+            host: "db.other.example".to_owned(),
+            ..mine.clone()
+        };
+        let bytes = crate::document::encode_document(&ConnectionsDocument {
+            connections: vec![renamed, elsewhere],
+            ..ConnectionsDocument::default()
+        })
+        .expect("encode");
+
+        let report = store.import_blocking(Path::new("/tmp/c.json"), &bytes).expect("import");
+
+        assert_eq!(report, ImportReport { added: 1, updated: 1 });
+        let list = store.load_blocking().expect("load");
+        let kept = list.iter().find(|saved| saved.id == mine.id).expect("the saved entry");
+        assert_eq!(kept.name, "staging");
+        assert_eq!(kept.host, "db.internal");
+        let added = list.iter().find(|saved| saved.id != mine.id).expect("the import");
+        assert_eq!(added.name, "production (imported)");
+        assert_eq!(added.host, "db.other.example");
+    }
+
+    #[test]
+    fn an_unchanged_reimport_keeps_names_two_entries_share() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        store.upsert_blocking(saved("postgres@localhost")).expect("upsert");
+        let reports = SavedConnection {
+            database: "reports".to_owned(),
+            ..saved("postgres@localhost")
+        };
+        store.upsert_blocking(reports).expect("upsert");
+        let bytes = store.export_blocking().expect("export");
+
+        let preview = store
+            .preview_import_blocking(Path::new("/tmp/c.json"), &bytes)
+            .expect("preview");
+
+        for entry in preview.entries() {
+            assert_eq!(entry.change, ImportChange::Updated { renamed_from: None });
+        }
+        assert_eq!(
+            store.apply_import_blocking(&preview).expect("apply"),
+            ImportReport { added: 0, updated: 2 }
+        );
+        let names: Vec<String> = store
+            .load_blocking()
+            .expect("load")
+            .iter()
+            .map(|saved| saved.name.clone())
+            .collect();
+        assert_eq!(names, ["postgres@localhost", "postgres@localhost"]);
+    }
+
+    #[test]
+    fn a_preview_names_what_an_updated_entry_was_called() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let production = saved("production");
+        let staging = saved("staging");
+        store.upsert_blocking(production.clone()).expect("upsert");
+        store.upsert_blocking(staging.clone()).expect("upsert");
+        let renamed = SavedConnection {
+            name: "reporting".to_owned(),
+            ..production
+        };
+        let bytes = crate::document::encode_document(&ConnectionsDocument {
+            connections: vec![renamed, staging],
+            ..ConnectionsDocument::default()
+        })
+        .expect("encode");
+
+        let preview = store
+            .preview_import_blocking(Path::new("/tmp/c.json"), &bytes)
+            .expect("preview");
+
+        let changes: Vec<ImportChange> = preview.entries().iter().map(|entry| entry.change.clone()).collect();
+        assert_eq!(
+            changes,
+            [
+                ImportChange::Updated {
+                    renamed_from: Some("production".to_owned())
+                },
+                ImportChange::Updated { renamed_from: None },
+            ]
+        );
+        assert_eq!(preview.entries()[0].connection.name, "reporting");
+    }
+
+    #[test]
     fn a_name_that_only_looks_like_a_saved_one_is_suffixed() {
-        for lookalike in [
-            "production ",
-            " production",
-            "production\u{a0}",
-            "produ\u{200b}ction",
-            "\u{feff}production",
-            "production\u{2060}",
+        for (mine, lookalike) in [
+            ("production", "production "),
+            ("production", " production"),
+            ("production", "production\u{a0}"),
+            ("production", "produ\u{200b}ction"),
+            ("production", "\u{feff}production"),
+            ("production", "production\u{2060}"),
+            ("staging db", "staging\u{a0}db"),
+            ("staging db", "staging\u{2007}db"),
+            ("Caf\u{e9} prod", "Cafe\u{301} prod"),
         ] {
             let root = TempDir::new().expect("tempdir");
             let store = store(&root);
-            store.upsert_blocking(saved("production")).expect("upsert");
+            store.upsert_blocking(saved(mine)).expect("upsert");
             let imported = SavedConnection {
                 host: "db.attacker.example".to_owned(),
                 ..saved(lookalike)
@@ -1813,7 +1926,7 @@ mod tests {
 
             let list = store.load_blocking().expect("load");
             let added = list.iter().find(|saved| saved.id == imported.id).expect("the import");
-            assert_eq!(added.name, "production (imported)", "{lookalike:?}");
+            assert_eq!(added.name, format!("{mine} (imported)"), "{lookalike:?}");
         }
     }
 
@@ -2327,6 +2440,27 @@ mod tests {
             vec![mine.clone(), fresh.clone()]
         );
         assert_eq!(store.load_blocking().expect("list")[0].tags, [mine.id, fresh.id]);
+    }
+
+    #[test]
+    fn an_imported_tag_that_only_looks_like_one_the_list_has_becomes_that_tag() {
+        let root = TempDir::new().expect("tempdir");
+        let store = store(&root);
+        let mine = store
+            .create_tag_blocking(tag_name("production"), crate::ConnectionColor::Red)
+            .expect("the tag");
+        let theirs = tag("lookalike", crate::ConnectionColor::Green);
+        let connection = tagged("globex-prod", &[&theirs]);
+        let file = String::from_utf8(document(vec![connection], vec![theirs]))
+            .expect("utf-8")
+            .replace("lookalike", "production\u{200b}");
+
+        store
+            .import_blocking(Path::new("/tmp/c.json"), file.as_bytes())
+            .expect("import");
+
+        assert_eq!(store.tags_blocking().expect("tags").to_vec(), vec![mine.clone()]);
+        assert_eq!(store.load_blocking().expect("list")[0].tags, [mine.id]);
     }
 
     #[test]

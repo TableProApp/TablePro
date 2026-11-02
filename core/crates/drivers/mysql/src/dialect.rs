@@ -466,6 +466,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "DES_DECRYPT",
         "ENCODE",
         "DECODE",
+        "VALIDATE_PASSWORD_STRENGTH",
     ],
     secret_parameters: &[],
 };
@@ -816,6 +817,9 @@ mod tests {
             "SELECT AES_DECRYPT(secret, UNHEX(SHA2('passphrase', 512))) FROM t",
             "SELECT DES_ENCRYPT('text', 'key'), DES_DECRYPT(secret, 'key') FROM t",
             "SELECT ENCODE('text', 'pass'), DECODE(secret, 'pass') FROM t",
+            "SELECT VALIDATE_PASSWORD_STRENGTH('Hunter2!')",
+            "PREPARE s FROM 'CREATE USER app IDENTIFIED BY ''p'''; EXECUTE s; DEALLOCATE PREPARE s",
+            "SET @s = 'CREATE USER app IDENTIFIED BY ''Hunter2!'''",
         ] {
             assert_eq!(
                 dialect(MySqlFlavour::MySql).history_recording(sql),
@@ -823,6 +827,10 @@ mod tests {
                 "{sql}"
             );
         }
+        assert_eq!(
+            dialect(MySqlFlavour::MariaDb).history_recording("EXECUTE IMMEDIATE 'CREATE USER app IDENTIFIED BY ''p'''"),
+            HistoryRecording::Withhold(tablepro_core::sql_syntax::WithholdReason::CredentialStatement)
+        );
     }
 
     #[test]

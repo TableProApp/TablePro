@@ -5,16 +5,18 @@ use tokio_postgres::Client;
 use super::{decode_error, text_rows};
 
 /// Schemas this session can use: no TOAST schemas, and no other
-/// session's temporary schema.
+/// session's temporary schema. The default is the session's first
+/// schema, which a catalog read's path puts after `pg_catalog`.
 pub(super) const SCHEMAS_SQL: &str = "\
 SELECT n.nspname::text,
-       COALESCE(n.nspname = pg_catalog.current_schema(), false),
+       COALESCE(n.nspname = (pg_catalog.current_schemas(false))[2], false),
        n.nspname = 'information_schema' OR pg_catalog.starts_with(n.nspname, 'pg_')
 FROM pg_catalog.pg_namespace n
 WHERE NOT pg_catalog.starts_with(n.nspname, 'pg_toast')
   AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
 ORDER BY n.nspname";
 
+/// `default` is the schema `SCHEMAS_SQL` marks as the default.
 pub(super) const OBJECTS_SQL: &str = "\
 SELECT DISTINCT n.nspname::text, o.name, o.kind, o.owner_table
 FROM (
@@ -34,7 +36,7 @@ FROM (
 JOIN pg_catalog.pg_namespace n ON n.oid = o.namespace
 WHERE NOT pg_catalog.pg_is_other_temp_schema(n.oid)
   AND CASE $1
-        WHEN 'default' THEN n.nspname = pg_catalog.current_schema()
+        WHEN 'default' THEN n.nspname = (pg_catalog.current_schemas(false))[2]
         WHEN 'schema' THEN n.nspname = $2
         ELSE n.nspname <> 'information_schema' AND NOT pg_catalog.starts_with(n.nspname, 'pg_')
       END
@@ -58,9 +60,9 @@ pub(crate) async fn list_schemas(client: &Client) -> Result<Vec<SchemaInfo>, Dri
 /// The databases the login may connect to, the connection's own the
 /// default. `template0` takes no connections; `template1` and `postgres`
 /// are the server's own.
-const DATABASES_SQL: &str = "\
+pub(super) const DATABASES_SQL: &str = "\
 SELECT d.datname::text,
-       d.datname = current_database(),
+       d.datname = pg_catalog.current_database(),
        d.datistemplate OR d.datname = 'postgres'
 FROM pg_catalog.pg_database d
 WHERE d.datallowconn AND pg_catalog.has_database_privilege(d.datname, 'CONNECT')

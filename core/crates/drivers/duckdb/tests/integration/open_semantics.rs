@@ -205,11 +205,20 @@ async fn an_exported_query_cannot_write() {
     let committed = export("SELECT 1; COMMIT; INSERT INTO t VALUES (1)").await;
     let inserted = export("INSERT INTO t VALUES (2)").await;
     let read = export("SELECT 'COMMIT' AS word").await;
+    // DuckDB quotes an identifier in backticks, and a string that
+    // continues an E-string on the next line keeps no backslash escape.
+    let hidden = [
+        export("SELECT 1 AS `'`; COMMIT; INSERT INTO t VALUES (3); --'").await,
+        export("SELECT E'x'\n'\\'; COMMIT; INSERT INTO t VALUES (3); --'").await,
+    ];
 
     assert_eq!(
         committed.err(),
         Some(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard))
     );
+    for refused in hidden {
+        assert_eq!(refused.err(), Some(DriverError::ReadOnly(ReadOnlyRefusal::ClientGuard)));
+    }
     assert!(
         matches!(
             &inserted,

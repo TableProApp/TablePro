@@ -97,14 +97,31 @@ impl PgConnection {
         }
     }
 
+    /// Run one read of the user's data, whose names resolve through the
+    /// session's search_path as the user's own SQL does.
+    async fn read<T: Send + 'static>(&self, options: CallOptions, op: ReadOp<T>) -> Result<T, DriverError> {
+        let begin = self.read_preamble(&options);
+        self.read_in(options, begin, op).await
+    }
+
+    /// Run one read of the catalog, with `pg_catalog` searched first.
+    async fn catalog_read<T: Send + 'static>(&self, options: CallOptions, op: ReadOp<T>) -> Result<T, DriverError> {
+        let begin = self.read_preamble(&options).with_catalog_path();
+        self.read_in(options, begin, op).await
+    }
+
     /// Run one read in its own read-only transaction on a pooled
     /// connection, owned by a task that outlives the caller.
-    async fn read<T: Send + 'static>(&self, options: CallOptions, op: ReadOp<T>) -> Result<T, DriverError> {
+    async fn read_in<T: Send + 'static>(
+        &self,
+        options: CallOptions,
+        begin: Preamble,
+        op: ReadOp<T>,
+    ) -> Result<T, DriverError> {
         self.ensure_open()?;
         let stop = Arc::new(PgStop::new(self.endpoint.clone()));
         let pool = self.pool.clone();
         let timeouts = workspace_timeouts(self.liveness());
-        let begin = self.read_preamble(&options);
         let work_stop = stop.clone();
         let outcome = self
             .calls
@@ -257,18 +274,18 @@ impl Connection for PgConnection {
     }
 
     async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
-        self.read(options, read_op(|client| Box::pin(metadata::list_databases(client))))
+        self.catalog_read(options, read_op(|client| Box::pin(metadata::list_databases(client))))
             .await
     }
 
     async fn list_schemas(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
-        self.read(options, read_op(|client| Box::pin(metadata::list_schemas(client))))
+        self.catalog_read(options, read_op(|client| Box::pin(metadata::list_schemas(client))))
             .await
     }
 
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
         let scope = scope.clone();
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| Box::pin(async move { metadata::list_objects(client, &scope).await })),
         )
@@ -281,7 +298,7 @@ impl Connection for PgConnection {
         options: CallOptions,
     ) -> Result<Option<ObjectDefinition>, DriverError> {
         let object = object.clone();
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| Box::pin(async move { metadata::fetch_object_definition(client, &object).await })),
         )
@@ -291,7 +308,7 @@ impl Connection for PgConnection {
     async fn fetch_columns(&self, table: &TableRef, options: CallOptions) -> Result<Vec<ColumnInfo>, DriverError> {
         let relation = self.relation(table);
         let columns_sql = self.columns_sql();
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| {
                 Box::pin(async move { metadata::fetch_columns(client, columns_sql, &relation).await })
@@ -302,7 +319,7 @@ impl Connection for PgConnection {
 
     async fn fetch_indexes(&self, table: &TableRef, options: CallOptions) -> Result<Vec<IndexInfo>, DriverError> {
         let relation = self.relation(table);
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| Box::pin(async move { metadata::fetch_indexes(client, &relation).await })),
         )
@@ -315,7 +332,7 @@ impl Connection for PgConnection {
         options: CallOptions,
     ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
         let relation = self.relation(table);
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| Box::pin(async move { metadata::fetch_foreign_keys(client, &relation).await })),
         )
@@ -328,7 +345,7 @@ impl Connection for PgConnection {
         options: CallOptions,
     ) -> Result<Vec<OutboundForeignKey>, DriverError> {
         let relation = self.relation(table);
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| {
                 Box::pin(async move { metadata::fetch_outbound_foreign_keys(client, &relation).await })
@@ -343,7 +360,7 @@ impl Connection for PgConnection {
         options: CallOptions,
     ) -> Result<Vec<InboundForeignKey>, DriverError> {
         let relation = self.relation(table);
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| {
                 Box::pin(async move { metadata::fetch_inbound_foreign_keys(client, &relation).await })
@@ -360,7 +377,7 @@ impl Connection for PgConnection {
         let relation = self.relation(table);
         let columns_sql = self.columns_sql();
         let table = table.clone();
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| {
                 Box::pin(async move { metadata::fetch_table_definition(client, columns_sql, &table, &relation).await })
@@ -371,7 +388,7 @@ impl Connection for PgConnection {
 
     async fn row_identity(&self, table: &TableRef, options: CallOptions) -> Result<RowIdentity, DriverError> {
         let relation = self.relation(table);
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| Box::pin(async move { metadata::row_identity(client, &relation).await })),
         )
@@ -380,7 +397,7 @@ impl Connection for PgConnection {
 
     async fn table_estimate(&self, table: &TableRef, options: CallOptions) -> Result<TableEstimate, DriverError> {
         let relation = self.relation(table);
-        self.read(
+        self.catalog_read(
             options,
             read_op(move |client| Box::pin(async move { metadata::table_estimate(client, &relation).await })),
         )
@@ -473,7 +490,7 @@ impl Connection for PgConnection {
     }
 
     async fn resolve_commit(&self, token: &CommitToken, options: CallOptions) -> Result<CommitResolution, DriverError> {
-        self.read(options, resolve_op(token)?).await
+        self.catalog_read(options, resolve_op(token)?).await
     }
 
     async fn open_editor_session(

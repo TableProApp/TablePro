@@ -33,6 +33,13 @@ pub(crate) enum Access {
     ReadWrite,
 }
 
+/// Searched first, `pg_catalog` wins the tie against a function, operator
+/// or type of the same name and argument types in a later schema. The
+/// session's own path stays after it, so types and defaults print as the
+/// session prints them.
+const CATALOG_PATH: &str = "SELECT pg_catalog.set_config('search_path', \
+    pg_catalog.concat('pg_catalog, ', pg_catalog.current_setting('search_path'), ', pg_temp'), true)";
+
 /// The transaction a workspace call runs in, with its bounds set for
 /// that transaction only. SET LOCAL ends with the transaction, so the
 /// bounds reach the server through PgBouncer's transaction pooling and
@@ -62,6 +69,14 @@ impl Preamble {
             sql,
             statement_timeout_ms,
         }
+    }
+
+    /// The transaction of a catalog read, which also puts `pg_catalog`
+    /// ahead of the session's search_path until it ends.
+    pub(crate) fn with_catalog_path(mut self) -> Self {
+        self.sql.push_str("; ");
+        self.sql.push_str(CATALOG_PATH);
+        self
     }
 
     pub(crate) fn sql(&self) -> &str {
@@ -281,6 +296,24 @@ mod tests {
     #[test]
     fn an_unbounded_schema_change_sends_the_servers_no_limit() {
         assert!(sql(Access::ReadWrite, None, Duration::from_secs(10)).contains("statement_timeout = 0;"));
+    }
+
+    #[test]
+    fn a_catalog_read_searches_pg_catalog_first_and_a_data_read_keeps_the_session_path() {
+        let data = Preamble::new(
+            Access::ReadOnly,
+            Some(Duration::from_millis(1_500)),
+            Duration::from_secs(10),
+        );
+        let catalog = data.clone().with_catalog_path();
+
+        assert_eq!(
+            catalog.sql(),
+            "START TRANSACTION READ ONLY; SET LOCAL statement_timeout = 1500; SET LOCAL lock_timeout = 10000; \
+             SELECT pg_catalog.set_config('search_path', pg_catalog.concat('pg_catalog, ', \
+             pg_catalog.current_setting('search_path'), ', pg_temp'), true)"
+        );
+        assert!(!data.sql().contains("search_path"), "{}", data.sql());
     }
 
     #[tokio::test(start_paused = true)]
