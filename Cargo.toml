@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "core/crates/ai",
     "core/crates/core",
+    "core/crates/ffi",
     "core/crates/mcp",
     "core/crates/net",
     "core/crates/session",
@@ -59,6 +60,11 @@ tokio-util = { version = "0.7", default-features = false, features = ["codec", "
 secrecy = { version = "0.10", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+# Pinned to the minor uniffi-bindgen-cs supports, since one library carries
+# one scaffolding contract (core/docs/decisions/0002-uniffi-bindings.md).
+# The library needs no generator, which the default feature pulls in.
+uniffi = { version = "=0.31.2", default-features = false }
+csbindgen = "1.9.8"
 # The driver dials through its own hyper-rustls connector, so the crate's
 # own TLS features would only add a second, unused TLS stack.
 clickhouse = { version = "0.15", default-features = false }
