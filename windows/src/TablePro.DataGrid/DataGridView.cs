@@ -52,7 +52,6 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     private readonly List<HeaderCell> _cornerCells = [];
     private readonly GridSelection _selection = new();
     private readonly UISettings _settings = new();
-    private readonly AccessibilitySettings _accessibility = new();
 
     private IGridData? _data;
     private CellCache? _cache;
@@ -454,7 +453,6 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         MeasureInsets();
         _settings.TextScaleFactorChanged += OnTextScaleChanged;
         _settings.ColorValuesChanged += OnColorsChanged;
-        _accessibility.HighContrastChanged += OnHighContrastChanged;
         if (XamlRoot is not null)
         {
             XamlRoot.Changed += OnXamlRootChanged;
@@ -468,20 +466,17 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     {
         _settings.TextScaleFactorChanged -= OnTextScaleChanged;
         _settings.ColorValuesChanged -= OnColorsChanged;
-        _accessibility.HighContrastChanged -= OnHighContrastChanged;
         if (XamlRoot is not null)
         {
             XamlRoot.Changed -= OnXamlRootChanged;
         }
     }
 
-    // UISettings and AccessibilitySettings raise their events on a thread of their own.
+    // UISettings calls back on its own thread; AccessibilitySettings.HighContrastChanged needs a CoreWindow (0x80070490).
     private void OnTextScaleChanged(UISettings sender, object args) =>
         DispatcherQueue.TryEnqueue(() => ApplyTextScale(_settings.TextScaleFactor));
 
     private void OnColorsChanged(UISettings sender, object args) => DispatcherQueue.TryEnqueue(RefreshTheme);
-
-    private void OnHighContrastChanged(AccessibilitySettings sender, object args) => DispatcherQueue.TryEnqueue(RefreshTheme);
 
     private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) =>
         ApplyRasterizationScale(sender.RasterizationScale);

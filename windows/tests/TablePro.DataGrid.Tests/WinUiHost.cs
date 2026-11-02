@@ -20,6 +20,9 @@ internal static class WinUiHost
 
     public static Window Window { get; private set; } = null!;
 
+    // An exception XAML raised on the UI thread during the test, which would otherwise end the process.
+    public static Exception? Unhandled { get; set; }
+
     public static async Task RunAsync(Func<Task> body)
     {
         var queue = await s_queue.Value.WaitAsync(TimeSpan.FromSeconds(90));
@@ -28,7 +31,12 @@ internal static class WinUiHost
         {
             try
             {
+                Unhandled = null;
                 await body();
+                if (Unhandled is { } error)
+                {
+                    throw new InvalidOperationException("XAML raised an unhandled exception", error);
+                }
                 done.SetResult();
             }
             catch (Exception ex)
@@ -118,6 +126,11 @@ internal sealed partial class TestApp : Application, IXamlMetadataProvider
         _failed = failed;
         XamlControlsXamlMetaDataProvider.Initialize();
         _provider = new XamlControlsXamlMetaDataProvider();
+        UnhandledException += (_, e) =>
+        {
+            e.Handled = true;
+            WinUiHost.Unhandled ??= e.Exception;
+        };
     }
 
     public IXamlType GetXamlType(Type type) => _provider.GetXamlType(type);

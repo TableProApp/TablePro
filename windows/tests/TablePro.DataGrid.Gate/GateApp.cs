@@ -36,6 +36,7 @@ public sealed partial class GateApp : Application, IXamlMetadataProvider
         _provider = new XamlControlsXamlMetaDataProvider();
         UnhandledException += (_, e) =>
         {
+            e.Handled = true;
             _report?.Line("unhandled", e.Exception.ToString());
             _report?.Flush();
         };
