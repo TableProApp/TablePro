@@ -7,7 +7,6 @@ public sealed class ResultSetData : IGridData
 {
     private readonly ResultSet _set;
     private readonly string[] _names;
-    private int _rowCount;
 
     public ResultSetData(ResultSet set, IReadOnlyList<ResultColumn> columns)
     {
@@ -15,17 +14,14 @@ public sealed class ResultSetData : IGridData
         ArgumentNullException.ThrowIfNull(columns);
         _set = set;
         _names = [.. columns.Select(column => column.Name)];
-        Refresh();
     }
 
-    public int RowCount => _rowCount;
+    // Read when the grid is given the data and on its RowsChanged, after the run's RowsAppended.
+    public int RowCount => (int)Math.Min(int.MaxValue, _set.RowCount);
 
     public int ColumnCount => _names.Length;
 
     public string GetColumnName(int column) => _names[column];
-
-    // Reads the set's row count again, after the run's RowsAppended. The grid reads RowCount on every layout pass.
-    public void Refresh() => _rowCount = (int)Math.Min(int.MaxValue, _set.RowCount);
 
     public IGridReader OpenReader() => new Reader(_set);
 
