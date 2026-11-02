@@ -7,7 +7,7 @@ public sealed class CellCache : IDisposable
 {
     // Small enough that a block of long text stays off the large object heap, whose allocations start gen2 GCs.
     public const int TileRows = 32;
-    public const int TileColumns = 16;
+    public const int TileColumns = 8;
 
     private readonly IGridReader _reader;
     private readonly int _capacity;

@@ -63,7 +63,8 @@ public sealed class CellCacheTests
                 }
             }
         }
-        Assert.Equal((200 + CellCache.TileRows - 1) / CellCache.TileRows * 3, data.Reads);
+        var tiles = (200 + CellCache.TileRows - 1) / CellCache.TileRows * ((40 + CellCache.TileColumns - 1) / CellCache.TileColumns);
+        Assert.Equal(tiles, data.Reads);
     }
 
     [Fact]

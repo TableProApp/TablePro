@@ -1,3 +1,4 @@
+using System.Text;
 using TablePro.Interop;
 
 namespace TablePro.DataGrid.Model;
@@ -33,16 +34,16 @@ public sealed class ResultSetData : IGridData
         {
             var window = _cursor.Fetch(firstRow, rowCount, firstColumn, columnCount, maxCharacters);
             block.Reset(firstRow, window.RowCount, firstColumn, window.ColumnCount, maxCharacters);
-            var bytes = 0;
+            var characters = 0;
             for (var column = 0; column < window.ColumnCount; column++)
             {
                 for (var row = 0; row < window.RowCount; row++)
                 {
-                    bytes += window.GetUtf8(row, column).Length + 1;
+                    // One more for a cut mark.
+                    characters += Encoding.UTF8.GetCharCount(window.GetUtf8(row, column)) + 1;
                 }
             }
-            // UTF-8 never takes fewer bytes than UTF-16 takes characters; the extra one is for a cut mark.
-            block.EnsureCapacity(bytes);
+            block.EnsureCapacity(characters);
             for (var column = 0; column < window.ColumnCount; column++)
             {
                 for (var row = 0; row < window.RowCount; row++)

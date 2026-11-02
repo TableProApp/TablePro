@@ -138,6 +138,11 @@ internal sealed partial class Gate(RunContext ctx)
             var (x, y) = next(i);
             int gen0 = GC.CollectionCount(0), gen2 = GC.CollectionCount(2);
             var bytes = GC.GetAllocatedBytesForCurrentThread();
+            var fetch = _grid.FetchMilliseconds;
+            var blocks = _grid.BlocksFetched;
+            var draw = _grid.Counters.DrawMilliseconds;
+            var drawn = _grid.Counters.RowsDrawn;
+            var measure = _grid.Counters.Layout.MeasureMilliseconds + _grid.Counters.FrozenLayout.MeasureMilliseconds;
             var s = Clock.Now();
             _grid.ScrollTo(x, y);
             _grid.UpdateLayout();
@@ -148,7 +153,10 @@ internal sealed partial class Gate(RunContext ctx)
             if (ms > worstMs)
             {
                 worstMs = ms;
-                worst = $"i={i} ms={ms:F1} x={x:F0} y={y:F0} columns={_grid.ColumnWindow} gen0_gcs={gcs} gen2_gcs={GC.CollectionCount(2) - gen2}";
+                worst = string.Create(CultureInfo.InvariantCulture,
+                    $"i={i} ms={ms:F1} x={x:F0} y={y:F0} columns={_grid.ColumnWindow} gen0_gcs={gcs} gen2_gcs={GC.CollectionCount(2) - gen2} " +
+                    $"fetch_ms={_grid.FetchMilliseconds - fetch:F1} blocks={_grid.BlocksFetched - blocks} draw_ms={_grid.Counters.DrawMilliseconds - draw:F1} " +
+                    $"rows_drawn={_grid.Counters.RowsDrawn - drawn} measure_ms={_grid.Counters.Layout.MeasureMilliseconds + _grid.Counters.FrozenLayout.MeasureMilliseconds - measure:F1}");
             }
             var sv = _grid.Scroller;
             var applied = Math.Abs(sv.HorizontalOffset - Math.Min(x, sv.ScrollableWidth)) < 1 && Math.Abs(sv.VerticalOffset - Math.Min(y, sv.ScrollableHeight)) < 2;

@@ -363,6 +363,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         Follow(_viewX, _viewY);
     }
 
+    internal double FetchMilliseconds => _cache?.FetchMilliseconds ?? 0;
+
+    internal long BlocksFetched => _cache?.BlocksFetched ?? 0;
+
     internal CellText Cell(int row, int column) =>
         _cache is null ? new CellText([], CellState.Missing) : _cache.Get(row, column, CapFor(column));
 
