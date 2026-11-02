@@ -33,6 +33,17 @@ public sealed class StoreTests : IDisposable
     }
 
     [Fact]
+    public void AFileThatNamesSomeValuesKeepsTheDefaultsForTheRest()
+    {
+        var path = File("settings.json");
+        System.IO.File.WriteAllText(path, """{ "theme": "Dark" }""");
+
+        var settings = new SettingsStore(path).Load();
+
+        Assert.Equal(new AppSettings { Theme = AppTheme.Dark }, settings);
+    }
+
+    [Fact]
     public void ValuesOutOfRangeAreBroughtBackIn()
     {
         var path = File("settings.json");

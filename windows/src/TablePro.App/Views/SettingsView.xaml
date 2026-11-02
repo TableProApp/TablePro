@@ -6,7 +6,12 @@
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
 
     <ScrollViewer x:Name="Scroller" AutomationProperties.AutomationId="SettingsPage">
-        <StackPanel MaxWidth="1000" Margin="36,24,36,36" Spacing="{StaticResource SettingsCardSpacing}">
+        <!-- Left-aligned up to the width the settings guidance gives, as Windows Settings lays out its pages. -->
+        <Grid Margin="36,24,36,36">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MaxWidth="1000" />
+            </Grid.ColumnDefinitions>
+        <StackPanel Spacing="{StaticResource SettingsCardSpacing}">
             <TextBlock
                 x:Uid="SettingsTitle"
                 Margin="0,0,0,12"
@@ -88,5 +93,6 @@
                 </toolkit:SettingsExpander.Items>
             </toolkit:SettingsExpander>
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

@@ -55,7 +55,7 @@ public sealed class ShellTests
         var database = AppSession.SampleDatabase(folder);
         using (var app = AppSession.Relaunch(folder, theme))
         {
-            app.Find("NewConnectionCard").AsButton().Invoke();
+            app.Find("NewConnectionCard").Click();
             var form = app.WaitForWindow("New connection");
             app.Find("EngineGrid", form);
             app.Screenshot("02-form-engines", form);
@@ -102,7 +102,7 @@ public sealed class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Find("SampleCard").AsButton().Invoke();
+        app.Find("SampleCard").Click();
         app.FindByName("Track", app.Find("ObjectTree"));
         app.Find("HomeItem").AsListBoxItem().Select();
         var tree = app.Find("ConnectionTree");
@@ -116,7 +116,7 @@ public sealed class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Find("NewConnectionCard").AsButton().Invoke();
+        app.Find("NewConnectionCard").Click();
         var form = app.WaitForWindow("New connection");
         app.Find("Engine_postgres", form).Click();
         app.Find("HostBox", form).AsTextBox().Text = "127.0.0.1";
@@ -143,7 +143,7 @@ public sealed class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Find("NewConnectionCard").AsButton().Invoke();
+        app.Find("NewConnectionCard").Click();
         var form = app.WaitForWindow("New connection");
         app.Find("Engine_postgres", form).Click();
         // A documentation address that drops packets, so the connect waits until cancelled.
@@ -168,7 +168,7 @@ public sealed class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Find("NewConnectionCard").AsButton().Invoke();
+        app.Find("NewConnectionCard").Click();
         var form = app.WaitForWindow("New connection");
         app.Find("Engine_mysql", form).Click();
         app.Find("HostBox", form).AsTextBox().Text = string.Empty;

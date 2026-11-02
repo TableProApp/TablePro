@@ -14,16 +14,16 @@ public sealed record AppSettings
 {
     public const int DefaultRowLimit = 10_000;
 
-    public AppTheme Theme { get; init; } = AppTheme.System;
+    public AppTheme Theme { get; set; } = AppTheme.System;
 
-    public bool ReopenSession { get; init; } = true;
+    public bool ReopenSession { get; set; } = true;
 
-    public double EditorFontSize { get; init; } = 14;
+    public double EditorFontSize { get; set; } = 14;
 
-    public int RowLimit { get; init; } = DefaultRowLimit;
+    public int RowLimit { get; set; } = DefaultRowLimit;
 
     // Zero leaves the statement to the connection's own limit.
-    public int QueryTimeoutSeconds { get; init; }
+    public int QueryTimeoutSeconds { get; set; }
 
     public AppSettings Normalized() => this with
     {

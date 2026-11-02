@@ -8,41 +8,41 @@ public enum TabKind
 
 public sealed record SessionTab
 {
-    public TabKind Kind { get; init; }
+    public TabKind Kind { get; set; }
 
-    public string Title { get; init; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
 
-    public string? Sql { get; init; }
+    public string? Sql { get; set; }
 
-    public string? Schema { get; init; }
+    public string? Schema { get; set; }
 
-    public string? Table { get; init; }
+    public string? Table { get; set; }
 }
 
 // A connection the window had open. A saved one is reopened by id; a file opened without saving, by its path.
 public sealed record SessionConnection
 {
-    public Guid? ConnectionId { get; init; }
+    public Guid? ConnectionId { get; set; }
 
-    public string? FilePath { get; init; }
+    public string? FilePath { get; set; }
 
-    public string Name { get; init; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 
-    public string EngineId { get; init; } = string.Empty;
+    public string EngineId { get; set; } = string.Empty;
 
-    public IReadOnlyList<SessionTab> Tabs { get; init; } = [];
+    public IReadOnlyList<SessionTab> Tabs { get; set; } = [];
 
-    public int SelectedTab { get; init; }
+    public int SelectedTab { get; set; }
 
     public bool IsRestorable => ConnectionId is not null || !string.IsNullOrEmpty(FilePath);
 }
 
 public sealed record SessionState
 {
-    public IReadOnlyList<SessionConnection> Connections { get; init; } = [];
+    public IReadOnlyList<SessionConnection> Connections { get; set; } = [];
 
     // The connection in front when the window closed, which is the only one that connects at launch.
-    public int Front { get; init; } = -1;
+    public int Front { get; set; } = -1;
 
     public static SessionState Empty { get; } = new();
 
