@@ -4,6 +4,7 @@ mod created_object;
 mod credential_rules;
 mod errors;
 mod grammar;
+mod highlight;
 mod history_recording;
 mod keywords;
 mod literal_token;
@@ -23,6 +24,7 @@ pub use created_object::{holds_client_directive, mysql_program_script, qualify_c
 pub use credential_rules::CredentialRules;
 pub use errors::{ExpressionSyntaxError, TypeSyntaxError};
 pub use grammar::SqlGrammar;
+pub use highlight::{SyntaxKind, SyntaxToken, syntax_tokens};
 pub use history_recording::{HistoryRecording, WithholdReason, classify_for_history};
 pub use literal_token::LiteralToken;
 pub use parse_expression::{MAX_EXPRESSION_LEN, ValidatedExpression, parse_expression};

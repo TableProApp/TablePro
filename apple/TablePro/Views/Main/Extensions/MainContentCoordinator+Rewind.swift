@@ -103,7 +103,7 @@ extension MainContentCoordinator {
         guard !isDataRewindLicensed else { return true }
         Task { @MainActor in
             let alert = NSAlert()
-            alert.messageText = String(localized: "Data Rewind needs a Starter license")
+            alert.messageText = String(localized: "Data Rewind needs a Pro license")
             alert.informativeText = String(
                 localized: "Restore the previous values of rows you already saved. Saves are kept on this Mac for 7 days, encrypted, and never leave it."
             )

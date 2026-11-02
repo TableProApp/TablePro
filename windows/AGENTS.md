@@ -1,13 +1,13 @@
 # TablePro for Windows
 
-The Windows app: C# on .NET 10 with WinUI 3, for Windows 10 1809 and later and Windows 11, on x64 and Arm64, over the shared Rust core in `core/` (`core/AGENTS.md`). The app project is not in the tree yet. Today this folder holds the interop library the app will reach the core through, and its tests.
+The Windows app: C# on .NET 10 with WinUI 3, for Windows 10 1809 and later and Windows 11, on x64 and Arm64, over the shared Rust core in `core/` (`core/AGENTS.md`). The app project is not in the tree yet. Today this folder holds the interop library the app will reach the core through, the SQL editor control, and their tests.
 
 This is the guide for work under `windows/`. The root `AGENTS.md` holds the rules every app shares. Claude Code loads this file through `windows/CLAUDE.md` once a file under `windows/` is read; Codex reads it when started in `windows/`.
 
 ## Principles
 
 1. **Tests define behavior**, as in the root `AGENTS.md`.
-2. **Native only.** WinUI 3 controls, used as the Fluent guidance describes. No custom control where WinUI has one, no web view, no cross-platform toolkit.
+2. **Native only.** WinUI 3 controls, used as the Fluent guidance describes. No custom control where WinUI has one, no web view, no cross-platform toolkit. The SQL editor is our own control because RichEditBox failed its gate (`docs/decisions/0002-sql-editor-control.md`).
 3. **The core does the work.** Drivers, sessions, the catalog, result sets and error codes live in `core/`. This folder words, lays out and styles. What the core lacks is added there, with its Rust tests.
 4. **Nothing generated is edited.** `src/TablePro.Interop/Generated/` changes only through the generator (Bindings, below).
 
@@ -16,6 +16,9 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `TablePro.slnx`: the solution. `global.json`: the .NET 10 SDK, and Microsoft.Testing.Platform as the runner `dotnet test` uses. `Directory.Build.props`: nullable, warnings as errors and the latest recommended analyzers for every project. `Directory.Packages.props`: every package version. `.editorconfig`: the C# style.
 - `src/TablePro.Interop`: the library the app calls. Its public API is hand-written; `Generated/` holds the uniffi-bindgen-cs and csbindgen output, all `internal`, so a generator upgrade cannot change what the app sees. The project is AOT and trim compatible, and its analyzers fail the build otherwise.
 - `tests/TablePro.Interop.Tests`: xunit v3 tests against the real core and real SQLite files.
+- `src/TablePro.Editor.Model`: the editor's text, carets, undo history, find and line-state highlighter. Plain `net10.0` with no WinUI, so `tests/TablePro.Editor.Model.Tests` runs anywhere.
+- `src/TablePro.Editor`: the `SqlEditor` control over that model: Direct2D and DirectWrite in a SwapChainPanel, TSF, the UIA text provider, and the core's lexer through `CoreSqlLexer`.
+- `docs/decisions/`: the decisions only the Windows app makes.
 - The core's side of the boundary: `core/crates/ffi` (`core/ARCHITECTURE.md`, Bindings).
 
 ## Using the interop library
@@ -34,6 +37,8 @@ Run `dotnet` from `windows/`: `global.json` is found only from here, and without
 dotnet build TablePro.slnx
 dotnet test --solution TablePro.slnx
 ```
+
+On macOS the solution builds `TablePro.Editor` as a compile check only: WinUI's PRI and manifest tools run on Windows.
 
 The build runs `cargo build -p tablepro-ffi` for the runtime identifier, or for the SDK's own platform when none is given, and copies the library next to the assembly. `-r win-x64` or `-r win-arm64` picks the target, `-c Release` builds the core with Cargo's release profile, `CARGO_TARGET_DIR` is honoured, and `-p:SkipCoreBuild=true` leaves cargo out. Building needs the Rust toolchain that `rust-toolchain.toml` names, with the target added, and the .NET 10 SDK; on Windows, MSVC.
 

@@ -32,7 +32,7 @@ internal enum LicenseTier: Hashable {
     var displayName: String {
         switch self {
         case .starter:
-            return String(localized: "Starter")
+            return String(localized: "Pro")
         case .team:
             return String(localized: "Team")
         case .unknown(let raw):
