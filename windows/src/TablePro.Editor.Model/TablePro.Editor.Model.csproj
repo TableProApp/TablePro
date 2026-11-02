@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Plain net10.0 with no WinUI, so its tests run on any machine (windows/docs/decisions/0001-sql-editor-control.md). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>TablePro.Editor.Model</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Editor.Model.Tests" />
+  </ItemGroup>
+
+</Project>
