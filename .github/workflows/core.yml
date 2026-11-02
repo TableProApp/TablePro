@@ -48,6 +48,11 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: ${{ matrix.target }}
+      # rust-cache keeps only Cargo's own artifacts, so DuckDB's unpacked
+      # sources come back as folders with no files. A rerun of its build
+      # script then cannot unpack them over the folder, so it goes.
+      - name: Drop the emptied DuckDB sources
+        run: rm -rf "target/$TARGET/duckdb-sources"
       # Named packages: the workspace also holds the GTK app, which builds
       # on Linux alone.
       - name: Check the core crates

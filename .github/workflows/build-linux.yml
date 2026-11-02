@@ -125,6 +125,11 @@ jobs:
         with:
           workspaces: . -> linux/_build/cargo-target
           cache-directories: linux/_build/cargo-home
+      # rust-cache keeps only Cargo's own artifacts, so DuckDB's unpacked
+      # sources come back as folders with no files. A rerun of its build
+      # script then cannot unpack them over the folder, so it goes.
+      - name: Drop the emptied DuckDB sources
+        run: rm -rf _build/cargo-target/duckdb-sources
       - name: Generate the en_US.UTF-8 locale
         # glibc loads no catalogue under C or C.UTF-8, so the i18n
         # catalogue test needs a real locale on the machine.
@@ -651,6 +656,9 @@ jobs:
         with:
           workspaces: .
           key: tablepro-app
+      # As in the fast job: the cache restores DuckDB's sources without files.
+      - name: Drop the emptied DuckDB sources
+        run: rm -rf ../target/duckdb-sources
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}

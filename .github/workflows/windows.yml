@@ -54,6 +54,11 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: windows-${{ matrix.target }}
+      # rust-cache keeps only Cargo's own artifacts, so DuckDB's unpacked
+      # sources come back as folders with no files. A rerun of its build
+      # script then cannot unpack them over the folder, so they go.
+      - name: Drop the emptied DuckDB sources
+        run: rm -rf "target/${{ matrix.target }}/duckdb-sources" target/duckdb-sources
       # windows/global.json takes the newest 10.0 SDK.
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
