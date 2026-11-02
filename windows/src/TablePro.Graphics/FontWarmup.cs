@@ -18,8 +18,7 @@ internal static unsafe class FontWarmup
 {
     public const string Scripts = "Tiếng Việt 你好 数据库 日本語 한국어 العربية עברית ไทย Ελληνικά Привет देवनागरी Ünïcödé ✓ 😀 🚀";
 
-    // Each glyph's first draw on a machine cost the grid gate's first process 57 to 245 ms for one column of mixed
-    // scripts, so the common letters of each script and the most used Han characters are drawn once ahead.
+    // First draws of a column of mixed scripts cost the grid gate's first process 57 to 245 ms, a glyph at a time.
     public static string Glyphs { get; } = BuildGlyphs();
 
     private static readonly Dictionary<string, Task> s_started = [];

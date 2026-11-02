@@ -1,5 +1,4 @@
-# Builds and runs the data grid gate on a Windows runner (windows/docs/decisions/0003-data-grid-control.md, Gate).
-# The core must already be built with Cargo's release profile in target/<triple>/release.
+# Needs the core built with Cargo's release profile in target/<triple>/release (windows/docs/decisions/0003, Gate).
 param(
     [Parameter(Mandatory)][ValidateSet('arm64', 'x64')][string]$Arch,
     [string]$Out = "$env:RUNNER_TEMP\gate",
@@ -83,8 +82,7 @@ foreach ($name in 'first', 'gate', 'repeat') {
 }
 foreach ($file in Get-ChildItem "$Out\uia-*.json") { Write-Host "== $($file.Name)"; Get-Content $file.FullName | Out-Host }
 
-# The bars: a UI-thread block of at most 50 ms in every phase, no stale, missing or misplaced cell, realized cells
-# within the viewport, and the behavior checks of the full process.
+# The bars of windows/docs/decisions/0003-data-grid-control.md, Gate.
 $failures = @()
 foreach ($name in 'first', 'gate', 'repeat') {
     $file = "$Out\$name.json"

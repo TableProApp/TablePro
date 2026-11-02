@@ -40,8 +40,7 @@ function Get-ForegroundProcess {
     if ($p) { "$($p.ProcessName) ($owner)" } else { "pid $owner" }
 }
 
-# The Windows 11 Arm64 image signs in to "Choose privacy settings for your device", which covers the desktop and
-# keeps the foreground. The policy keeps it from coming back; the open page still has to be closed.
+# The Arm64 image opens "Choose privacy settings for your device" over the desktop; the policy stops it reopening.
 function Clear-FirstLogon {
     $log = @("foreground before: $(Get-ForegroundProcess)")
     New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE' -Force | Out-Null
