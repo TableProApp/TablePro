@@ -16,3 +16,16 @@ pub enum TlsSetupError {
     #[error("could not encode a certificate as PEM: {0}")]
     PemEncoding(pem_rfc7468::Error),
 }
+
+impl TlsSetupError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Config(..) => "tls_setup.config",
+            Self::ClientIdentity(..) => "tls_setup.client_identity",
+            Self::Rustls(..) => "tls_setup.rustls",
+            Self::PemEncoding(..) => "tls_setup.pem_encoding",
+        }
+    }
+}

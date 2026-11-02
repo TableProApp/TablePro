@@ -105,6 +105,35 @@ pub enum SshFailure {
 }
 
 impl SshFailure {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::OpenSshClientMissing { .. } => "ssh.open_ssh_client_missing",
+            Self::AskpassHelperMissing { .. } => "ssh.askpass_helper_missing",
+            Self::LaunchFailed { .. } => "ssh.launch_failed",
+            Self::InvalidDestination { .. } => "ssh.invalid_destination",
+            Self::ConfigRejected { .. } => "ssh.config_rejected",
+            Self::ConfigUnreadable { .. } => "ssh.config_unreadable",
+            Self::ControlPathTooLong { .. } => "ssh.control_path_too_long",
+            Self::RuntimeDirUnsafe { .. } => "ssh.runtime_dir_unsafe",
+            Self::HostKeyUnknown { .. } => "ssh.host_key_unknown",
+            Self::HostKeyChanged { .. } => "ssh.host_key_changed",
+            Self::HostKeyRevoked { .. } => "ssh.host_key_revoked",
+            Self::AuthenticationRejected { .. } => "ssh.authentication_rejected",
+            Self::TooManyAuthenticationFailures { .. } => "ssh.too_many_authentication_failures",
+            Self::NoCommonAlgorithm { .. } => "ssh.no_common_algorithm",
+            Self::InteractionCancelled => "ssh.interaction_cancelled",
+            Self::ForwardRejected { .. } => "ssh.forward_rejected",
+            Self::ChannelOpenFailed { .. } => "ssh.channel_open_failed",
+            Self::MasterExited { .. } => "ssh.master_exited",
+            Self::Protocol { .. } => "ssh.protocol",
+            Self::Internal => "ssh.internal",
+        }
+    }
+}
+
+impl SshFailure {
     pub fn category(&self) -> ErrorCategory {
         match self {
             Self::AuthenticationRejected { .. }

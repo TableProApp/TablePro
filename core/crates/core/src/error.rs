@@ -140,6 +140,40 @@ pub enum DriverError {
 }
 
 impl DriverError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Transport(..) => "driver.transport",
+            Self::Auth { .. } => "driver.auth",
+            Self::LoginRefused(..) => "driver.login_refused",
+            Self::IntegratedAuth(..) => "driver.integrated_auth",
+            Self::Tls { .. } => "driver.tls",
+            Self::Server(..) => "driver.server",
+            Self::ReadOnly(..) => "driver.read_only",
+            Self::Cancelled => "driver.cancelled",
+            Self::Timeout { .. } => "driver.timeout",
+            Self::ConnectionLost { .. } => "driver.connection_lost",
+            Self::RolledBack { .. } => "driver.rolled_back",
+            Self::RowGuardFailed { .. } => "driver.row_guard_failed",
+            Self::GuardUnsupported { .. } => "driver.guard_unsupported",
+            Self::CommitOutcomeUnknown { .. } => "driver.commit_outcome_unknown",
+            Self::PartiallyApplied { .. } => "driver.partially_applied",
+            Self::FileNotFound { .. } => "driver.file_not_found",
+            Self::FileAccessDenied { .. } => "driver.file_access_denied",
+            Self::NotADatabase { .. } => "driver.not_a_database",
+            Self::FileIo { .. } => "driver.file_io",
+            Self::Busy(..) => "driver.busy",
+            Self::EditorSessionBusy => "driver.editor_session_busy",
+            Self::Config(..) => "driver.config",
+            Self::Decode { .. } => "driver.decode",
+            Self::Protocol(..) => "driver.protocol",
+            Self::Unsupported { .. } => "driver.unsupported",
+        }
+    }
+}
+
+impl DriverError {
     /// What stopped a save, inside the outcome it reports, or the error
     /// itself. A lost connection under `CommitOutcomeUnknown` still says
     /// the link may be gone.
@@ -317,5 +351,44 @@ mod tests {
         };
 
         assert_eq!(error.category(), ErrorCategory::Internal);
+    }
+
+    #[test]
+    fn each_error_names_its_variant_with_a_code_that_does_not_change() {
+        let cases = [
+            (DriverError::Cancelled.code(), "driver.cancelled"),
+            (DriverError::auth(None).code(), "driver.auth"),
+            (DriverError::server("no such table").code(), "driver.server"),
+            (DriverError::Config(ConfigError::EmptyHost).code(), "driver.config"),
+            (ConfigError::EmptyHost.code(), "config.empty_host"),
+            (
+                DriverError::Timeout {
+                    phase: TimeoutPhase::Statement,
+                    server_cancelled: true,
+                }
+                .code(),
+                "driver.timeout",
+            ),
+            (
+                TransportError::Timeout {
+                    phase: TimeoutPhase::Connect,
+                }
+                .code(),
+                "transport.timeout",
+            ),
+            (
+                crate::SshFailure::InteractionCancelled.code(),
+                "ssh.interaction_cancelled",
+            ),
+            (
+                crate::CertificateFileProblem::NoPrivateKey.code(),
+                "certificate_file.no_private_key",
+            ),
+            (crate::credentials::SecretError::Locked.code(), "secret.locked"),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(code, expected);
+        }
     }
 }

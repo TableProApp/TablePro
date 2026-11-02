@@ -28,6 +28,21 @@ pub enum SecretError {
 }
 
 impl SecretError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::ServiceUnavailable { .. } => "secret.service_unavailable",
+            Self::PortalUnavailable { .. } => "secret.portal_unavailable",
+            Self::Locked => "secret.locked",
+            Self::UnlockDismissed => "secret.unlock_dismissed",
+            Self::InvalidEncoding => "secret.invalid_encoding",
+            Self::Backend { .. } => "secret.backend",
+        }
+    }
+}
+
+impl SecretError {
     /// Whether trying again could work. A dismissed prompt and a locked
     /// keyring both clear once the user unlocks; a missing service does
     /// not.

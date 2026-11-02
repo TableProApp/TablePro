@@ -66,3 +66,29 @@ pub enum ConfigError {
     #[error("this connection option is not supported by the driver")]
     NetworkOptionUnsupported,
 }
+
+impl ConfigError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::EmptyHost => "config.empty_host",
+            Self::InvalidHost => "config.invalid_host",
+            Self::InvalidPort => "config.invalid_port",
+            Self::RelativePath => "config.relative_path",
+            Self::UnsupportedTlsMode => "config.unsupported_tls_mode",
+            Self::CaFileUnsupported => "config.ca_file_unsupported",
+            Self::ClientIdentityUnsupported => "config.client_identity_unsupported",
+            Self::ClientIdentityIncomplete => "config.client_identity_incomplete",
+            Self::CaFile { .. } => "config.ca_file",
+            Self::ClientIdentityFile { .. } => "config.client_identity_file",
+            Self::InvalidServerName => "config.invalid_server_name",
+            Self::ServerNameOverrideUnsupported { .. } => "config.server_name_override_unsupported",
+            Self::AuthModeUnsupported => "config.auth_mode_unsupported",
+            Self::DatabaseRequired => "config.database_required",
+            Self::DatabaseNumber => "config.database_number",
+            Self::SeedListOverSsh => "config.seed_list_over_ssh",
+            Self::NetworkOptionUnsupported => "config.network_option_unsupported",
+        }
+    }
+}

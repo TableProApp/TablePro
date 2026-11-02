@@ -68,3 +68,45 @@ pub enum StorageError {
     #[error("the saved connections changed after the import was previewed")]
     ImportOutdated,
 }
+
+impl StorageError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Io { .. } => "storage.io",
+            Self::Write { .. } => "storage.write",
+            Self::Permissions { .. } => "storage.permissions",
+            Self::Serde(..) => "storage.serde",
+            Self::Schema(..) => "storage.schema",
+            Self::Database(..) => "storage.database",
+            Self::NotInitialised => "storage.not_initialised",
+            Self::TooLarge { .. } => "storage.too_large",
+            Self::NotFound => "storage.not_found",
+            Self::EmptyName => "storage.empty_name",
+            Self::NameTaken => "storage.name_taken",
+            Self::TagNameTaken => "storage.tag_name_taken",
+            Self::Encode(..) => "storage.encode",
+            Self::HistoryNewerThanApp { .. } => "storage.history_newer_than_app",
+            Self::HistoryMigration(..) => "storage.history_migration",
+            Self::DocumentUnavailable(..) => "storage.document_unavailable",
+            Self::DraftNotUtf8 { .. } => "storage.draft_not_utf8",
+            Self::ImportOutdated => "storage.import_outdated",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_error_names_its_variant_with_a_code_that_does_not_change() {
+        assert_eq!(StorageError::NotFound.code(), "storage.not_found");
+        assert_eq!(
+            StorageError::HistoryNewerThanApp { version: 9 }.code(),
+            "storage.history_newer_than_app"
+        );
+        assert_eq!(crate::CredentialError::Cancelled.code(), "credential.cancelled");
+    }
+}

@@ -13,6 +13,17 @@ pub enum KeyringError {
 }
 
 impl KeyringError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::SecretNotStored { .. } => "keyring.secret_not_stored",
+            Self::Secret { .. } => "keyring.secret",
+        }
+    }
+}
+
+impl KeyringError {
     pub fn kind(&self) -> SecretKind {
         match self {
             Self::SecretNotStored { kind } | Self::Secret { kind, .. } => *kind,
@@ -27,6 +38,17 @@ pub enum CredentialError {
     /// The user dismissed the prompt.
     #[error("the credential prompt was cancelled")]
     Cancelled,
+}
+
+impl CredentialError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Keyring(..) => "credential.keyring",
+            Self::Cancelled => "credential.cancelled",
+        }
+    }
 }
 
 fn kind_text(kind: SecretKind) -> &'static str {

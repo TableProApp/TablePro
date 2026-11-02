@@ -22,6 +22,20 @@ pub enum TransportError {
 }
 
 impl TransportError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::NameResolution { .. } => "transport.name_resolution",
+            Self::Refused { .. } => "transport.refused",
+            Self::Unreachable { .. } => "transport.unreachable",
+            Self::Timeout { .. } => "transport.timeout",
+            Self::Ssh(..) => "transport.ssh",
+        }
+    }
+}
+
+impl TransportError {
     pub fn category(&self) -> ErrorCategory {
         match self {
             Self::NameResolution { .. } | Self::Refused { .. } | Self::Unreachable { .. } => ErrorCategory::Network,

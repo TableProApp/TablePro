@@ -28,6 +28,22 @@ pub enum OperationError {
 }
 
 impl OperationError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Driver(..) => "operation.driver",
+            Self::Sql(..) => "operation.sql",
+            Self::Browse(..) => "operation.browse",
+            Self::Build(..) => "operation.build",
+            Self::Panicked(..) => "operation.panicked",
+            Self::Cancelled => "operation.cancelled",
+            Self::Closed => "operation.closed",
+        }
+    }
+}
+
+impl OperationError {
     /// The driver error's category, when the driver is what failed.
     pub fn category(&self) -> Option<ErrorCategory> {
         match self {

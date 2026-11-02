@@ -20,6 +20,20 @@ pub enum ConnectError {
     Panicked(TaskPanic),
 }
 
+impl ConnectError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Driver(..) => "connect.driver",
+            Self::Keyring(..) => "connect.keyring",
+            Self::UnknownDriver(..) => "connect.unknown_driver",
+            Self::Cancelled => "connect.cancelled",
+            Self::Panicked(..) => "connect.panicked",
+        }
+    }
+}
+
 impl From<CredentialError> for ConnectError {
     fn from(error: CredentialError) -> Self {
         match error {
