@@ -10,6 +10,8 @@ use windows_sys::Win32::Security::Credentials::{
     CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree, CredReadW, CredWriteW,
 };
 
+static STORE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 // Generic credentials under one prefix, so Credential Manager lists TablePro's together and a test keeps to its own.
 pub(crate) struct CredentialManager {
     prefix: String,
@@ -32,13 +34,18 @@ impl CredentialManager {
         format!("{}/{}", self.prefix, item_name(item))
     }
 
-    // Credential Manager calls block, so they run where blocking is allowed.
+    // Credential Manager calls block, so they run where blocking is allowed, one at a time: concurrent writes from one
+    // process lost each other's changes on both CI runners, a write coming back as missing and a delete undone.
     async fn blocking<T, F>(&self, work: F) -> Result<T, SecretError>
     where
         T: Send + 'static,
         F: FnOnce() -> Result<T, SecretError> + Send + 'static,
     {
-        match self.tasks.spawn_blocking_task(work).await {
+        let serialized = move || {
+            let _held = STORE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            work()
+        };
+        match self.tasks.spawn_blocking_task(serialized).await {
             Ok(result) => result,
             Err(failure) => Err(SecretError::Backend {
                 detail: failure.to_string(),
@@ -327,20 +334,42 @@ mod tests {
         manager.delete_item(item).await.unwrap();
         let gone = manager.load_item(item).await.unwrap();
 
-        let target = manager.item_target(item);
-        let name = wide(&target);
-        // SAFETY: `name` is NUL-terminated and outlives the call.
-        let again = unsafe { CredDeleteW(name.as_ptr(), CRED_TYPE_GENERIC, 0) };
-        // SAFETY: reads the last error CredDeleteW set.
-        let error = unsafe { GetLastError() };
-
         assert_eq!(
             found.map(|secret| secret.expose_secret().to_owned()),
             Some("sk-test".to_owned())
         );
+        assert!(gone.is_none());
+    }
+
+    #[tokio::test]
+    async fn writes_from_many_tasks_at_once_all_hold() {
+        let managers: Vec<CredentialManager> = (0..16).map(|_| manager()).collect();
+        let id = Uuid::new_v4();
+
+        let found = futures::future::join_all(managers.iter().enumerate().map(|(index, manager)| async move {
+            let secret = format!("secret {index}");
+            manager
+                .store(
+                    id,
+                    SecretKind::DatabasePassword,
+                    &SecretString::from(secret.clone()),
+                    "label",
+                )
+                .await
+                .unwrap();
+            let read = manager.load(id, SecretKind::DatabasePassword).await.unwrap();
+            manager.delete_connection(id).await.unwrap();
+            let gone = manager.load(id, SecretKind::DatabasePassword).await.unwrap();
+            (
+                read.found().map(|read| read.expose_secret() == secret),
+                gone.is_stored(),
+            )
+        }))
+        .await;
+
         assert!(
-            gone.is_none(),
-            "{target} is still stored after its delete; deleting it again gave {again} with error {error}"
+            found.iter().all(|(read, gone)| *read == Some(true) && !gone),
+            "{found:?}"
         );
     }
 }
