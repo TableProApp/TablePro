@@ -280,3 +280,17 @@ internal sealed partial class RowWindow : Canvas, IScrollAnchorProvider
     {
     }
 }
+
+// The header row's holder, so its recycled cells are no anchor candidates of the ScrollViewer either.
+internal sealed partial class HeaderRow : Microsoft.UI.Xaml.Controls.Grid, IScrollAnchorProvider
+{
+    public UIElement? CurrentAnchor => null;
+
+    public void RegisterAnchorCandidate(UIElement element)
+    {
+    }
+
+    public void UnregisterAnchorCandidate(UIElement element)
+    {
+    }
+}

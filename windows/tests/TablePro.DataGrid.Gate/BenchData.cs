@@ -81,7 +81,7 @@ internal sealed class BenchData : IAsyncDisposable
 
     // Values the drawing has to get right: right-to-left text, color emoji, NULL, a value past the cap, two lines.
     public const string ContentQuery =
-        "SELECT 'مرحبا بالعالم' AS rtl, 'שלום עולם' AS hebrew, '😀🚀 emoji' AS emoji, NULL AS nothing, " +
+        "SELECT 'مرحبا بالعالم' AS rtl, 'שלום עולם' AS hebrew, '😀🚀 emoji' AS emoji, NULL AS missing, " +
         "printf('%.1000c', 'w') AS long_value, 'line one' || char(10) || 'line two' AS two_lines, " +
         "'Tiếng Việt 你好 日本語' AS mixed";
 

@@ -128,6 +128,7 @@ internal sealed partial class Gate(RunContext ctx)
         var worst = "";
         var worstMs = -1.0;
         var gcSteps = 0;
+        var allocated = new List<double>(frames);
         var samples = await Frames.LoopAsync(frames, i =>
         {
             if (check && i > 0)
@@ -136,10 +137,12 @@ internal sealed partial class Gate(RunContext ctx)
             }
             var (x, y) = next(i);
             int gen0 = GC.CollectionCount(0), gen2 = GC.CollectionCount(2);
+            var bytes = GC.GetAllocatedBytesForCurrentThread();
             var s = Clock.Now();
             _grid.ScrollTo(x, y);
             _grid.UpdateLayout();
             var ms = Clock.MsSince(s);
+            allocated.Add(GC.GetAllocatedBytesForCurrentThread() - bytes);
             var gcs = GC.CollectionCount(0) - gen0;
             gcSteps += gcs > 0 ? 1 : 0;
             if (ms > worstMs)
@@ -170,6 +173,7 @@ internal sealed partial class Gate(RunContext ctx)
             $"measures={c.Layout.Measures} measure_ms={c.Layout.MeasureMilliseconds:F0} get_element_ms={c.Layout.GetElementMilliseconds:F0} elements_requested={c.Layout.ElementsRequested} frozen_measure_ms={c.FrozenLayout.MeasureMilliseconds:F0} draw_ms={c.DrawMilliseconds:F0} rows_drawn={c.RowsDrawn} text_layouts={_grid.Painter.LayoutsCreated} steps={frames} offset_not_applied={notApplied}"));
         _report.Line($"{name}.gc", $"gen0={GC.CollectionCount(0) - gcStart[0]} gen1={GC.CollectionCount(1) - gcStart[1]} gen2={GC.CollectionCount(2) - gcStart[2]} steps_with_gc={gcSteps}");
         _report.Line($"{name}.worst_step", worst);
+        _report.Stats($"{name}.allocated_bytes_per_step", allocated);
         if (check)
         {
             _report.Line($"{name}.verify", verify.Summary());

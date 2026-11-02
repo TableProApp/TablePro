@@ -1,71 +1,68 @@
+using System.Diagnostics;
+using System.Globalization;
 using TerraFX.Interop.DirectX;
-using TerraFX.Interop.Windows;
 using static TerraFX.Interop.DirectX.D2D1_ALPHA_MODE;
+using static TerraFX.Interop.DirectX.D2D1_BITMAP_OPTIONS;
+using static TerraFX.Interop.DirectX.D2D1_DEVICE_CONTEXT_OPTIONS;
 using static TerraFX.Interop.DirectX.D2D1_DRAW_TEXT_OPTIONS;
-using static TerraFX.Interop.DirectX.D2D1_FACTORY_TYPE;
-using static TerraFX.Interop.DirectX.DirectX;
+using static TerraFX.Interop.DirectX.D2D1_TEXT_ANTIALIAS_MODE;
 using static TerraFX.Interop.DirectX.DWRITE_FONT_STRETCH;
 using static TerraFX.Interop.DirectX.DWRITE_FONT_STYLE;
 using static TerraFX.Interop.DirectX.DWRITE_FONT_WEIGHT;
 using static TerraFX.Interop.DirectX.DXGI_FORMAT;
-using static TerraFX.Interop.Windows.COINIT;
-using static TerraFX.Interop.Windows.WICBitmapCreateCacheOption;
-using static TerraFX.Interop.Windows.Windows;
 
 namespace TablePro.Graphics;
 
 // Loading fallback fonts for a first non-Latin text cost the UI thread 316 to 1,346 ms in the grid spike.
 internal static unsafe class FontWarmup
 {
-    public const string Scripts = "Tiếng Việt 你好 日本語 한국어 العربية עברית ไทย Ελληνικά Русский देवनागरी ✓ 😀 🚀";
+    public const string Scripts = "Tiếng Việt 你好 数据库 日本語 한국어 العربية עברית ไทย Ελληνικά Привет देवनागरी Ünïcödé ✓ 😀 🚀";
 
     private static readonly Dictionary<string, Task> s_started = [];
-
-    public static double LastMilliseconds { get; private set; }
     private static readonly Lock s_lock = new();
 
-    public static Task Start(IDWriteFactory* factory, string family, float fontSize)
+    public static double LastMilliseconds { get; private set; }
+
+    public static Task Start(IDWriteFactory* factory, string family, float fontSize, bool forceSoftware = false)
     {
         lock (s_lock)
         {
-            if (s_started.TryGetValue(family, out var started))
+            if (s_started.TryGetValue(family, out var running))
             {
-                return started;
+                return running;
             }
-        }
-        factory->AddRef();
-        var pointer = (nint)factory;
-        var task = Task.Run(() =>
-        {
-            var started = System.Diagnostics.Stopwatch.GetTimestamp();
-            try
+            factory->AddRef();
+            var pointer = (nint)factory;
+            var locale = CultureInfo.CurrentUICulture.Name;
+            var task = Task.Run(() =>
             {
-                Warm((IDWriteFactory*)pointer, family, fontSize);
-                LastMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            }
-            finally
-            {
-                ((IDWriteFactory*)pointer)->Release();
-            }
-        });
-        lock (s_lock)
-        {
+                var started = Stopwatch.GetTimestamp();
+                try
+                {
+                    Warm((IDWriteFactory*)pointer, family, fontSize, locale.Length == 0 ? "en-us" : locale, forceSoftware);
+                    LastMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                }
+                finally
+                {
+                    ((IDWriteFactory*)pointer)->Release();
+                }
+            });
             s_started[family] = task;
+            return task;
         }
-        return task;
     }
 
-    private static void Warm(IDWriteFactory* factory, string family, float fontSize)
+    private static void Warm(IDWriteFactory* factory, string family, float fontSize, string locale, bool forceSoftware)
     {
         IDWriteTextFormat* format = null;
         IDWriteTextLayout* layout = null;
         try
         {
             fixed (char* name = family)
-            fixed (char* locale = "en-us")
+            fixed (char* localeName = locale)
             {
                 if (factory->CreateTextFormat(name, null, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-                    DWRITE_FONT_STRETCH_NORMAL, fontSize, locale, &format).FAILED)
+                    DWRITE_FONT_STRETCH_NORMAL, fontSize, localeName, &format).FAILED)
                 {
                     return;
                 }
@@ -79,7 +76,7 @@ internal static unsafe class FontWarmup
             }
             DWRITE_TEXT_METRICS metrics;
             layout->GetMetrics(&metrics);
-            Draw(layout);
+            Draw(layout, forceSoftware);
         }
         finally
         {
@@ -88,61 +85,50 @@ internal static unsafe class FontWarmup
         }
     }
 
-    // Drawing loads the glyphs of the color and fallback fonts as well. A WIC bitmap needs no device of the UI's.
-    private static void Draw(IDWriteTextLayout* layout)
+    // On a Direct3D device of the same kind as the controls', as they draw: the first draw of a script also builds
+    // glyph and shader caches, which a software target would not touch.
+    private static void Draw(IDWriteTextLayout* layout, bool forceSoftware)
     {
-        var initialized = CoInitializeEx(null, (uint)COINIT_MULTITHREADED).SUCCEEDED;
-        IWICImagingFactory* wic = null;
-        IWICBitmap* bitmap = null;
-        ID2D1Factory* d2d = null;
-        ID2D1RenderTarget* target = null;
+        using var device = new RenderDevice(forceSoftware);
+        ID2D1DeviceContext* context = null;
+        ID2D1Bitmap1* target = null;
         ID2D1SolidColorBrush* brush = null;
         try
         {
-            var clsid = CLSID.CLSID_WICImagingFactory;
-            if (CoCreateInstance(&clsid, null, (uint)CLSCTX.CLSCTX_INPROC_SERVER, NativeCom.Iid<IWICImagingFactory>(),
-                (void**)&wic).FAILED)
+            if (device.Direct2D->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &context).FAILED)
             {
                 return;
             }
-            var pixelFormat = GUID.GUID_WICPixelFormat32bppPBGRA;
-            if (wic->CreateBitmap(1200, 64, &pixelFormat, WICBitmapCacheOnLoad, &bitmap).FAILED)
-            {
-                return;
-            }
-            if (D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, NativeCom.Iid<ID2D1Factory>(), null, (void**)&d2d)
-                .FAILED)
-            {
-                return;
-            }
-            var properties = new D2D1_RENDER_TARGET_PROPERTIES
+            var properties = new D2D1_BITMAP_PROPERTIES1
             {
                 pixelFormat = new D2D1_PIXEL_FORMAT { format = DXGI_FORMAT_B8G8R8A8_UNORM, alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED },
+                dpiX = 96,
+                dpiY = 96,
+                bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET,
             };
-            if (d2d->CreateWicBitmapRenderTarget(bitmap, &properties, &target).FAILED)
+            if (context->CreateBitmap(new D2D_SIZE_U { width = 1600, height = 64 }, null, 0, &properties, &target).FAILED)
             {
                 return;
             }
+            context->SetTarget((ID2D1Image*)target);
             var black = new DXGI_RGBA { a = 1 };
-            if (target->CreateSolidColorBrush(&black, null, &brush).FAILED)
+            if (context->CreateSolidColorBrush(&black, null, &brush).FAILED)
             {
                 return;
             }
-            target->BeginDraw();
-            target->DrawTextLayout(default, layout, (ID2D1Brush*)brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
-            _ = target->EndDraw(null, null);
+            context->BeginDraw();
+            var clear = default(DXGI_RGBA);
+            context->Clear(&clear);
+            context->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+            context->DrawTextLayout(default, layout, (ID2D1Brush*)brush, D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
+            _ = context->EndDraw(null, null);
+            context->SetTarget(null);
         }
         finally
         {
             NativeCom.Release(ref brush);
             NativeCom.Release(ref target);
-            NativeCom.Release(ref d2d);
-            NativeCom.Release(ref bitmap);
-            NativeCom.Release(ref wic);
-            if (initialized)
-            {
-                CoUninitialize();
-            }
+            NativeCom.Release(ref context);
         }
     }
 }

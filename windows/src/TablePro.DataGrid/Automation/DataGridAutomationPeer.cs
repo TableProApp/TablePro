@@ -86,6 +86,12 @@ internal sealed partial class DataGridAutomationPeer(DataGridView owner) : Frame
 
     protected override string GetClassNameCore() => "DataGridView";
 
+    // A client asking for the focus gets the focused cell, as with a grid of elements.
+    protected override object? GetFocusedElementCore() =>
+        owner.FocusState != Microsoft.UI.Xaml.FocusState.Unfocused && owner.RowCount > 0 && owner.ColumnCount > 0
+            ? Cell(owner.FocusedRow, owner.FocusedColumn)
+            : base.GetFocusedElementCore();
+
     protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.DataGrid;
 
     protected override object? GetPatternCore(PatternInterface patternInterface) => patternInterface switch

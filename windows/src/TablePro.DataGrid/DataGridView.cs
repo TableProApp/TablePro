@@ -143,7 +143,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _scroller = new ScrollViewer
         {
             Content = _content,
-            TopHeader = _header,
+            TopHeader = new HeaderRow { HorizontalAlignment = HorizontalAlignment.Left, Children = { _header } },
             LeftHeader = _frozenContent,
             TopLeftHeader = _corner,
             HorizontalScrollMode = ScrollMode.Enabled,
@@ -152,6 +152,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
             VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
             ZoomMode = ZoomMode.Disabled,
             IsTabStop = false,
+            Background = Brushes.Background,
         };
         _scroller.ViewChanging += (_, e) => Follow(e.NextView.HorizontalOffset, e.NextView.VerticalOffset);
         _scroller.ViewChanged += (_, _) => Follow(_scroller.HorizontalOffset, _scroller.VerticalOffset);
@@ -159,7 +160,6 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _header.SizeChanged += (_, _) => MeasureInsets();
         _frozenContent.SizeChanged += (_, _) => MeasureInsets();
         Content = _scroller;
-        Background = Brushes.Background;
 
         IsTabStop = true;
         UseSystemFocusVisuals = false;
@@ -180,7 +180,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         {
             return;
         }
-        FontWarmupTask = FontWarmup.Start(factory, CellPainter.PickFamily(factory), BaseFontSize);
+        FontWarmupTask = FontWarmup.Start(factory, CellPainter.PickFamily(factory), BaseFontSize, PreferSoftwareRendering);
         factory->Release();
     }
 
@@ -438,7 +438,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _textScale = _settings.TextScaleFactor;
         _rowHeight = Math.Ceiling(BaseRowHeight * _textScale);
         var painter = new CellPainter(s_device, (float)(BaseFontSize * _textScale), GridColors.Resolve(ActualTheme));
-        FontWarmupTask = FontWarmup.Start(s_device.DWrite, painter.FamilyName, BaseFontSize);
+        FontWarmupTask = FontWarmup.Start(s_device.DWrite, painter.FamilyName, BaseFontSize, PreferSoftwareRendering);
         Brushes.Apply(painter.Colors);
         return painter;
     }
