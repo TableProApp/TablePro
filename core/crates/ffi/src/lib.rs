@@ -17,6 +17,7 @@ mod results;
 mod run;
 mod runtime;
 mod session;
+mod syntax;
 pub mod window_abi;
 
 pub use cancel_token::CancelToken;
