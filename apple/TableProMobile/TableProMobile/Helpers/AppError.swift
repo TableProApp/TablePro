@@ -168,6 +168,10 @@ nonisolated enum ErrorClassifier {
             return mismatch
         }
 
+        if context.databaseType?.connectionMode == .apiOnly, isAPICredentialFailure(error) {
+            return auth(error, context: context)
+        }
+
         let host = context.host ?? ""
         let mayUseLocalNetwork = context.sshEnabled || LocalNetworkPermission.mayBeLocalNetworkHost(host)
         let timedOut = message.contains("timeout") || message.contains("timed out") || message.contains("operation timed out") || message.contains("system error: 60")
@@ -382,11 +386,27 @@ nonisolated enum ErrorClassifier {
         )
     }
 
+    // The plugin's text is localized, so the English substring rules in `classify` miss it in another language: its
+    // two missing-field errors are matched whole, and a refused request by its status.
+    private static func isAPICredentialFailure(_ error: Error) -> Bool {
+        if let httpError = error as? D1HttpError, let status = httpError.statusCode {
+            return status == 401 || status == 403
+        }
+        let message = error.localizedDescription
+        return message == String(localized: "API Token is required") || message == String(localized: "Account ID is required")
+    }
+
     private static func auth(_ error: Error, context: ErrorContext) -> AppError {
         let dbName = context.databaseType?.rawValue ?? String(localized: "Database")
-        let recovery = context.signsInWithIAM
-            ? String(localized: "This connection signs in with IAM, not a password. Check that the database user is set up for IAM sign-in.")
-            : String(format: String(localized: "Check your %@ username and password."), dbName)
+        let recovery: String
+        if context.signsInWithIAM {
+            recovery = String(localized: "This connection signs in with IAM, not a password. Check that the database user is set up for IAM sign-in.")
+        } else if context.databaseType?.connectionMode == .apiOnly {
+            // An engine reached through an API signs in with a token for an account, never a username.
+            recovery = String(localized: "Check the API token and account of this connection.")
+        } else {
+            recovery = String(format: String(localized: "Check your %@ username and password."), dbName)
+        }
         return AppError(
             category: .auth,
             title: String(localized: "Authentication Failed"),

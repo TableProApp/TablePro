@@ -38,7 +38,8 @@ struct SQLDialectParityTests {
             (.redshift, .caseFoldFunction),
             (.oracle, .caseFoldFunction),
             (.clickhouse, .caseFoldFunction),
-            (.mongodb, .driverManaged)
+            (.mongodb, .driverManaged),
+            (.cloudflareD1, .collationDefined)
         ]
         for (type, style) in expected {
             #expect(

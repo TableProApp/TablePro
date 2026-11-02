@@ -29,6 +29,9 @@
         }
       }
     },
+    "'%@' is not a Cloudflare D1 database name or UUID" : {
+
+    },
     "%1$@ has type %2$@, which MongoDB does not have. Choose a type from the list." : {
 
     },
@@ -50,7 +53,97 @@
     "%@ holds values that cannot be compared, so the row cannot be found again." : {
 
     },
+    "Account ID" : {
+
+    },
+    "Account ID is required" : {
+
+    },
+    "API request failed" : {
+
+    },
+    "API Token" : {
+
+    },
+    "API Token is required" : {
+
+    },
+    "Authentication failed. Check your API token and Account ID." : {
+
+    },
+    "Can't Load Databases" : {
+
+    },
+    "Check the API token and account of this connection." : {
+
+    },
+    "Cloudflare D1 cannot bind a binary value through its API." : {
+
+    },
+    "Copy the Account ID from the Cloudflare dashboard. The API token needs the D1 Edit permission." : {
+
+    },
+    "Database '%@' not found" : {
+
+    },
+    "Database '%@' not found in account" : {
+
+    },
+    "Database name or UUID is required" : {
+
+    },
+    "Empty response from Cloudflare D1" : {
+
+    },
+    "Enter the Account ID and API Token to choose a database." : {
+
+    },
+    "Enter the Account ID and API Token to list the databases in this account." : {
+
+    },
+    "Failed to create database" : {
+
+    },
+    "Failed to fetch database details" : {
+
+    },
+    "Failed to list databases" : {
+
+    },
+    "Index %@ has a key part that is not one SQL expression." : {
+
+    },
+    "Invalid Account ID" : {
+
+    },
+    "Invalid Account ID or database identifier" : {
+
+    },
+    "Name or UUID" : {
+
+    },
+    "No Account" : {
+
+    },
+    "No D1 databases are available to this API token." : {
+
+    },
+    "No Databases" : {
+
+    },
+    "Rate limited by Cloudflare. Please try again later." : {
+
+    },
+    "Rate limited by Cloudflare. Retry after %@ seconds." : {
+
+    },
     "The %@ setting holds a NUL character, which a PostgreSQL connection cannot carry." : {
+
+    },
+    "The condition of index %@ cannot be written as SQL." : {
+
+    },
+    "The default of column %@ cannot be written as SQL." : {
 
     },
     "The SSH host %@ contains characters TablePro does not allow in a host name." : {
@@ -83,6 +176,9 @@
 
     },
     "Refused %@: this statement was not approved to run server-side code, $out or $merge." : {
+
+    },
+    "The type of column %@ cannot be written as SQL." : {
 
     },
     "This request is read only, and the statement is not a read." : {
@@ -27939,6 +28035,9 @@
     "Transaction open on %@" : {
 
     },
+    "Transactions are not supported by Cloudflare D1" : {
+
+    },
     "Transfer" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -28638,6 +28737,9 @@
     "Uptrend" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Use “%@”" : {
+
     },
     "Use Default" : {
       "localizations" : {

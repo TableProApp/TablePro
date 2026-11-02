@@ -21,7 +21,7 @@ struct IOSDriverFactoryRefusalTests {
         "Every type with a driver on iPhone and iPad opens here",
         arguments: [
             DatabaseType.sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,
-            .clickhouse, .mongodb
+            .clickhouse, .mongodb, .cloudflareD1
         ]
     )
     func supportedTypeOpens(type: DatabaseType) {
@@ -123,10 +123,23 @@ struct IOSDriverFactoryRefusalTests {
         #expect(IOSDriverFactory.refusal(for: connection) == nil)
     }
 
-    @Test("A file engine is never refused for an SSL mode left from another engine")
+    @Test("A file or API engine is never refused for an SSL mode left from another engine")
     func fileEngineIgnoresSSLMode() {
         #expect(IOSDriverFactory.refusal(for: tls(.sqlite, .verifyCa)) == nil)
         #expect(IOSDriverFactory.refusal(for: tls(.duckdb, .verifyFull)) == nil)
+        #expect(IOSDriverFactory.refusal(for: tls(.cloudflareD1, .verifyCa)) == nil)
+    }
+
+    @Test("Only a server engine dials the SSH tunnel a record carries", arguments: [
+        (DatabaseType.mysql, true), (.postgresql, true), (.sqlite, false), (.duckdb, false), (.cloudflareD1, false)
+    ])
+    func onlyServerEnginesDialTheTunnel(type: DatabaseType, dials: Bool) {
+        let connection = DatabaseConnection(
+            type: type, sshEnabled: true, sshConfiguration: SSHConfiguration(host: "jump.example.com")
+        )
+        let factory: any DriverFactory = IOSDriverFactory()
+
+        #expect(factory.dialsSSHTunnel(for: connection) == dials)
     }
 
     @Test("The connect path gets the device's answer, socket included, not the protocol default")

@@ -1140,4 +1140,88 @@ struct FilterSQLGeneratorTests {
                 == "\"code\" LIKE '%x''\u{0301})%' ESCAPE '!'"
         )
     }
+
+    // MARK: - LIKE Pattern Byte Limit
+
+    // Cloudflare D1's shape: SQLite's LIKE, which rejects a pattern longer than 50 bytes.
+    private static let cappedPatternDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .unsupported, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .explicit, paginationStyle: .limit,
+        caseSensitivityStyle: .collationDefined,
+        textCastTypeName: nil, functionNamesAreCaseInsensitive: true,
+        likePatternByteLimit: 50
+    )
+
+    private static let uncappedPatternDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .unsupported, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .explicit, paginationStyle: .limit,
+        caseSensitivityStyle: .collationDefined,
+        textCastTypeName: nil, functionNamesAreCaseInsensitive: true
+    )
+
+    @Test("A pattern at the byte limit stays the LIKE it was", arguments: [
+        (FilterOperator.contains, String(repeating: "a", count: 48)),
+        (.notContains, String(repeating: "a", count: 48)),
+        (.startsWith, String(repeating: "a", count: 49)),
+        (.endsWith, String(repeating: "a", count: 49)),
+        (.contains, String(repeating: "a", count: 46) + "%"),
+        (.contains, String(repeating: "é", count: 24))
+    ])
+    func patternAtTheLimitKeepsLike(filterOperator: FilterOperator, value: String) throws {
+        let capped = try #require(condition(Self.cappedPatternDialect, filterOperator, value))
+        #expect(capped == condition(Self.uncappedPatternDialect, filterOperator, value))
+        #expect(capped.contains(" LIKE "))
+    }
+
+    @Test("A pattern past the byte limit matches the value as a substring", arguments: [
+        (FilterOperator.contains, "instr(LOWER(\"code\"), LOWER('V')) > 0"),
+        (.notContains, "instr(LOWER(\"code\"), LOWER('V')) = 0"),
+        (.startsWith, "instr(LOWER(\"code\"), LOWER('V')) = 1"),
+        (.endsWith, "substr(LOWER(\"code\"), -length('V')) = LOWER('V')")
+    ])
+    func patternPastTheLimitMatchesASubstring(filterOperator: FilterOperator, expected: String) {
+        let value = String(repeating: "a", count: 50)
+        #expect(
+            condition(Self.cappedPatternDialect, filterOperator, value)
+                == expected.replacingOccurrences(of: "V", with: value)
+        )
+    }
+
+    @Test("The bytes counted are the pattern as sent, wildcard escapes and multi-byte letters included", arguments: [
+        String(repeating: "a", count: 49),
+        String(repeating: "a", count: 47) + "%",
+        String(repeating: "é", count: 25)
+    ])
+    func limitCountsThePatternAsSent(value: String) throws {
+        let capped = try #require(condition(Self.cappedPatternDialect, .contains, value))
+        #expect(capped.hasPrefix("instr("))
+    }
+
+    @Test("A long value past the limit is a plain literal, with no LIKE escape")
+    func substringLiteralKeepsWildcardsLiteral() {
+        let value = String(repeating: "a", count: 45) + "50%_'s!"
+        let literal = "'" + String(repeating: "a", count: 45) + "50%_''s!'"
+        #expect(
+            condition(Self.cappedPatternDialect, .contains, value)
+                == "instr(LOWER(\"code\"), LOWER(\(literal))) > 0"
+        )
+    }
+
+    @Test("A regex an engine without one turns into LIKE matches a substring past the byte limit")
+    func regexFallbackPastTheLimitMatchesASubstring() {
+        let value = String(repeating: "a", count: 49)
+        #expect(condition(Self.cappedPatternDialect, .regex, value) == "instr(LOWER(\"code\"), LOWER('\(value)')) > 0")
+        #expect(condition(Self.cappedPatternDialect, .regex, "abc") == condition(Self.uncappedPatternDialect, .regex, "abc"))
+    }
+
+    @Test("A dialect with no byte limit keeps LIKE for any length")
+    func uncappedDialectKeepsLike() {
+        let value = String(repeating: "a", count: 200)
+        #expect(
+            condition(Self.uncappedPatternDialect, .contains, value)
+                == "\"code\" LIKE '%\(value)%' ESCAPE '!'"
+        )
+    }
 }

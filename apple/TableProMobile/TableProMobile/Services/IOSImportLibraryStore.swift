@@ -189,11 +189,16 @@ nonisolated extension DatabaseConnection {
     init(importedSettings settings: ExportableConnection, id: UUID = UUID(), groupId: UUID? = nil, tagIds: [UUID] = []) {
         let safeModeLevel = SafeModeLevel(wireValue: settings.safeModeLevel, isReadOnly: false)
         let sslMode = settings.sslConfig.map { SSLConfiguration.SSLMode(importing: $0.portableMode) } ?? .disable
+        let type = DatabaseType(rawValue: settings.type)
+        // Only a server dials a host: an empty one there means this machine, while a file or API connection has none.
+        let host = settings.host.trimmingCharacters(in: .whitespaces).isEmpty && type.dialsServer
+            ? "localhost"
+            : settings.host
         self.init(
             id: id,
             name: settings.name,
-            type: DatabaseType(rawValue: settings.type),
-            host: settings.host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : settings.host,
+            type: type,
+            host: host,
             port: settings.port,
             username: settings.username,
             database: settings.database,

@@ -14,19 +14,23 @@ nonisolated final class IOSDriverFactory: DriverFactory {
     private let localFiles: LocalDatabaseFileLocator
     private let mint: IAMPasswordMint
     private let secureStore: any SecureStore
+    // The session configuration of an engine reached over HTTPS, which a test points at its own URLProtocol.
+    private let apiSessionConfiguration: @Sendable () -> URLSessionConfiguration
 
     init(
         bookmarkStore: FileBookmarkStore = FileBookmarkStore(),
         materializer: CertificateMaterializer = CertificateMaterializer(),
         localFiles: LocalDatabaseFileLocator = .live,
         mint: IAMPasswordMint = IAMPasswordMint(),
-        secureStore: any SecureStore = KeychainSecureStore()
+        secureStore: any SecureStore = KeychainSecureStore(),
+        apiSessionConfiguration: @escaping @Sendable () -> URLSessionConfiguration = { .default }
     ) {
         self.bookmarkStore = bookmarkStore
         self.materializer = materializer
         self.localFiles = localFiles
         self.mint = mint
         self.secureStore = secureStore
+        self.apiSessionConfiguration = apiSessionConfiguration
     }
 
     private func sqliteSource(for connection: DatabaseConnection) throws -> LocalDatabaseFileSource {
@@ -169,7 +173,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         case .oracle:
             return OracleDriver(connection: connection, password: password, serverName: preTunnelHost)
         case .clickhouse:
-            return PluginBackedDriver(
+            return PluginRowWritingDriver(
                 plugin: ClickHousePluginDriver(config: pluginConfig(
                     for: connection,
                     password: password,
@@ -202,6 +206,14 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 dialedHosts: preTunnelHost == nil ? MongoDBDialPlan.seedHosts(of: connection) : [connection.host],
                 queryTimeoutSeconds: connection.queryTimeoutSeconds
             )
+        case .cloudflareD1:
+            return CloudflareD1BackedDriver(
+                d1: CloudflareD1PluginDriver(
+                    config: pluginConfig(for: connection, password: password, ssl: .disabled, preTunnelHost: nil),
+                    sessionConfiguration: apiSessionConfiguration()
+                ),
+                queryTimeoutSeconds: connection.queryTimeoutSeconds
+            )
         default:
             throw ConnectionError.driverNotFound(connection.type.rawValue)
         }
@@ -209,7 +221,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
 
     static let supportedTypeList: [DatabaseType] = [
         .sqlite, .duckdb, .mysql, .mariadb, .tidb, .oceanbase, .postgresql, .redshift, .redis, .mssql, .oracle,
-        .clickhouse, .mongodb
+        .clickhouse, .mongodb, .cloudflareD1
     ]
 
     // A plugin reads the server behind a tunnel from its fields; one stored or imported there never stands in for it.
@@ -249,7 +261,8 @@ nonisolated final class IOSDriverFactory: DriverFactory {
         guard connection.macSocketPath == nil else { return .localSocketNotSupported }
         guard !KerberosAuthFields.isSelected(in: connection.additionalFields) else { return .kerberosNotSupported }
         let sslMode = storedSSLMode(of: connection)
-        guard connection.type.isLocalFile || supportedSSLModes(for: connection.type).contains(sslMode) else {
+        // A file engine dials nothing, and an API engine always reaches its API over HTTPS: neither reads the SSL mode.
+        guard !connection.type.dialsServer || supportedSSLModes(for: connection.type).contains(sslMode) else {
             return .sslModeNotSupported(mode: displayName(of: sslMode), typeName: connection.type.mobileDisplayName)
         }
         return nil
@@ -271,6 +284,11 @@ nonisolated final class IOSDriverFactory: DriverFactory {
 
     func refusal(for connection: DatabaseConnection) -> ConnectionError? {
         Self.refusal(for: connection)
+    }
+
+    // An older form kept the tunnel of a server type switched to a file, and a D1 record can carry one from the Mac.
+    func dialsSSHTunnel(for connection: DatabaseConnection) -> Bool {
+        connection.sshEnabled && connection.type.dialsServer
     }
 
     // A second SQLite reader can make the user's COMMIT fail with SQLITE_BUSY, and DuckDB opens a file once per process.

@@ -199,7 +199,8 @@ struct MobileConnectionImportSheet: View {
         if let status = MacOnlyConnection.importStatus(for: row.settings) {
             return status
         }
-        return row.warnings.first ?? "\(row.settings.host):\(row.settings.port)"
+        // The line the connection list will show, so a file or API-only engine is not shown as a host and port.
+        return row.warnings.first ?? ConnectionDetailFormatter.detail(for: DatabaseConnection(importedSettings: row.settings))
     }
 
     private static func needsAttention(_ row: ConnectionRow) -> Bool {

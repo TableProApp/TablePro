@@ -7,13 +7,16 @@ import Foundation
 import os
 import TableProPluginKit
 
-final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
+nonisolated final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Cloudflare D1 Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Cloudflare D1 serverless SQLite-compatible database support via REST API"
     static let capabilities: [PluginCapability] = [.databaseDriver]
 
     static let databaseTypeId = "Cloudflare D1"
+
+    // The Mac app repeats this id in its curated metadata and its d1:// import: it cannot import a registry plugin.
+    static let accountIdFieldId = "cfAccountId"
 
     static let supportsRenameTable = true
     static let supportsRenameView = false
@@ -100,12 +103,14 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
         caseSensitivityStyle: .collationDefined,
         textCastTypeName: nil,
         functionNamesAreCaseInsensitive: true,
-        typeNamesAreCaseInsensitive: true
+        typeNamesAreCaseInsensitive: true,
+        // D1 refuses a LIKE or GLOB pattern over 50 bytes, so a longer search has to match without LIKE.
+        likePatternByteLimit: 50
     )
 
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
-            id: "cfAccountId",
+            id: accountIdFieldId,
             label: String(localized: "Account ID"),
             placeholder: "Cloudflare Account ID",
             required: true,
