@@ -106,15 +106,17 @@ struct TeamLibraryPullResponse: Codable {
 
     static let empty = TeamLibraryPullResponse(connections: [], queryFolders: [], queries: [], fetchedAt: "")
 
-    /// A pulled connection is authored by another account and lands on this device with no
-    /// confirmation step, so anything the app would act on by itself is dropped before caching.
+    // Another account authored these, and nothing confirms them before caching, so anything the app would run by itself
+    // is dropped. The rows are never saved and ask before using a credential this Mac holds, so selectors stay.
     func sanitized() -> TeamLibraryPullResponse {
         TeamLibraryPullResponse(
             connections: connections.filter { $0.payload.refusedSSHDestination == nil }.map {
                 Connection(
                     id: $0.id,
                     sourceConnectionId: $0.sourceConnectionId,
-                    payload: $0.payload.sanitizedForImport().withoutStartupCommands().withoutTunnelCommand(),
+                    payload: $0.payload.sanitizedForImport(keepingLocalCredentials: true)
+                        .withoutStartupCommands()
+                        .withoutTunnelCommand(),
                     publishedBy: $0.publishedBy,
                     publishedAt: $0.publishedAt
                 )

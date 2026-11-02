@@ -49,7 +49,21 @@ final class Neo4jPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             in: config.additionalFields,
             default: Self.defaultConnectTimeoutMilliseconds
         )
-        let connection = Neo4jConnection(host: config.host, port: config.port)
+        // NIOSSL matches an address only against the peer it dialed, which behind a tunnel is the loopback forward.
+        if config.ssl.verifiesHostname, let name = config.tunneledServerName, Neo4jConnection.isIPAddress(name) {
+            throw Neo4jError.connectionFailed(String(
+                format: String(localized: """
+                    Verify Identity through a tunnel checks the certificate against the server's host name, and %@ \
+                    is an IP address. Enter the server's host name, or set SSL Mode to Verify CA.
+                    """),
+                name
+            ))
+        }
+        let connection = Neo4jConnection(
+            host: config.host,
+            port: config.port,
+            tlsServerName: config.tunneledServerName ?? config.host
+        )
         try await connection.open(
             ssl: config.ssl,
             credentials: Neo4jCredentials(username: config.username, password: config.password),

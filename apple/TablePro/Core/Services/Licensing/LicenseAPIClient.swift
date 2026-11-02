@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProHTTP
 
 /// HTTP client for the TablePro license API
 final class LicenseAPIClient: Sendable {
@@ -107,7 +108,7 @@ final class LicenseAPIClient: Sendable {
         let response: URLResponse
 
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         } catch {
             Self.logger.error("Network request failed: \(error.localizedDescription)")
             throw LicenseError.networkError(error)

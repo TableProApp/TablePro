@@ -140,7 +140,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
         // Before sync starts, so a pulled change is never approved as part of the first use.
-        EnvVarReferenceApprovalStore.shared.migrateIfNeeded()
+        for store in ConnectionApprovalStore.all {
+            store.migrateIfNeeded()
+        }
         ConnectionStorage.shared.moveMongoURISecretsToKeychain()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()

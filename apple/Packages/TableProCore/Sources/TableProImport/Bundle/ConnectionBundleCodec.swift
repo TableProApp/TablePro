@@ -6,13 +6,17 @@ public enum ConnectionBundleCodec {
         ConnectionExportCrypto.isEncrypted(data)
     }
 
-    public static func decode(_ data: Data) throws -> ConnectionBundle {
+    public static func decode(_ data: Data, keepingLocalCredentials: Bool = false) throws -> ConnectionBundle {
         guard !isEncrypted(data) else { throw ConnectionBundleError.requiresPassphrase }
-        return try decodeJSON(data).withoutCredentials()
+        return try decodeJSON(data, keepingLocalCredentials: keepingLocalCredentials).withoutCredentials()
     }
 
     @concurrent
-    public static func decode(_ data: Data, passphrase: String) async throws -> ConnectionBundle {
+    public static func decode(
+        _ data: Data,
+        passphrase: String,
+        keepingLocalCredentials: Bool = false
+    ) async throws -> ConnectionBundle {
         let json: Data
         do {
             json = try await ConnectionExportCrypto.decrypt(data: data, passphrase: passphrase)
@@ -21,7 +25,7 @@ public enum ConnectionBundleCodec {
         } catch {
             throw ConnectionBundleError.decodingFailed(error.localizedDescription)
         }
-        return try decodeJSON(json)
+        return try decodeJSON(json, keepingLocalCredentials: keepingLocalCredentials)
     }
 
     public static func encode(_ bundle: ConnectionBundle) throws -> Data {
@@ -45,7 +49,7 @@ public enum ConnectionBundleCodec {
         let formatVersion: Int
     }
 
-    private static func decodeJSON(_ data: Data) throws -> ConnectionBundle {
+    private static func decodeJSON(_ data: Data, keepingLocalCredentials: Bool) throws -> ConnectionBundle {
         guard let probe = try? JSONDecoder().decode(VersionProbe.self, from: data), probe.formatVersion >= 1 else {
             throw ConnectionBundleError.invalidFormat
         }
@@ -54,10 +58,10 @@ public enum ConnectionBundleCodec {
         }
         if probe.formatVersion == ConnectionBundleV1.formatVersion {
             let envelope = try decodeBody(ConnectionBundleV1.Envelope.self, from: data)
-            return try envelope.upgraded().sanitizedForImport()
+            return try envelope.upgraded().sanitizedForImport(keepingLocalCredentials: keepingLocalCredentials)
         }
         let payload = try decodeBody(ConnectionBundlePayload.self, from: data)
-        return try payload.bundle().sanitizedForImport()
+        return try payload.bundle().sanitizedForImport(keepingLocalCredentials: keepingLocalCredentials)
     }
 
     private static func decodeBody<Body: Decodable>(_ type: Body.Type, from data: Data) throws -> Body {

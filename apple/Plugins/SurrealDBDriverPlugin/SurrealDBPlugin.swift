@@ -21,6 +21,7 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let isDownloadable = true
     static let supportsSSH = true
     static let supportsSSL = true
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let supportsImport = false
     static let supportsSchemaEditing = false
     static let supportsForeignKeys = false

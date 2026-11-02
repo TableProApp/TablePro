@@ -182,10 +182,7 @@ nonisolated final class IOSDriverFactory: DriverFactory {
                 readsOnly: { !SQLWriteClassifier.isWriteQuery($0, databaseType: .clickhouse) }
             )
         case .mongodb:
-            let tls = try MongoDBDialPlan.ssl(
-                try ssl(for: connection, serverName: preTunnelHost),
-                tunneled: preTunnelHost != nil
-            )
+            let tls = try MongoDBDialPlan.ssl(try ssl(for: connection, serverName: preTunnelHost))
             let config = pluginConfig(
                 for: connection,
                 password: password,

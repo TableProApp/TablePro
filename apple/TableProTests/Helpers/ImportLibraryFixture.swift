@@ -138,12 +138,13 @@ final class ImportLibraryFixture {
 
     func importDefaults(
         of bundle: ConnectionBundle,
+        registeredTypeIds: Set<String> = ["MySQL", "PostgreSQL", "Redis"],
         makeId: () -> UUID = UUID.init
     ) async throws -> ImportOutcome {
         let preview = ConnectionImportAnalyzer.analyze(
             CollectedImport(bundle: bundle, source: .file(name: "Shared.tablepro")),
             library: try await store.snapshot(),
-            environment: Self.environment()
+            environment: Self.environment(registeredTypeIds: registeredTypeIds)
         )
         let plan = ImportPlanner.plan(preview, selection: ImportSelection.defaults(for: preview), makeId: makeId)
         return await ImportApplier.apply(plan, library: store, savedQueries: favorites)

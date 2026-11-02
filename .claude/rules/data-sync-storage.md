@@ -46,7 +46,8 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Trusted external links (loopback only) | UserDefaults | `ExternalConnectionTrustStore` |
 | Reopen the last session once after Relaunch to Update | UserDefaults, device-local, never synced, cleared by the next launch | `AppRelauncher` |
 | Highest plugin manifest `serial` accepted, so an older signed manifest is refused | UserDefaults, device-local, never synced | `RegistryManifestVerifier` through `RegistryClient` |
-| Approved environment variable references, per connection, names and destination digest | UserDefaults, device-local, never synced | `EnvVarReferenceApprovalStore` |
+| Approved environment variable references, per connection, names and destination digest | UserDefaults, device-local, never synced | `ConnectionApprovalStore.envVarReferences` |
+| Approved sign-ins with this Mac's own credentials (Entra, AWS profile or SSO, Google ADC or OAuth, Kerberos, `~/.pgpass`), per connection, field values and destination digest | UserDefaults `com.TablePro.localCredentialApprovals`, plus `com.TablePro.localCredentialApprovalsMigrated` for the one-time approval of this Mac's rows; device-local, never synced | `ConnectionApprovalStore.localCredentials` |
 | Where a connection came from (`origin`): this Mac, imported, iCloud | `connections.json`, never synced or exported | `ConnectionStorage` |
 | Table load timings (no identifying data, never uploaded) | JSON lines | `TableLoadHistoryStore` |
 | Reopen Last Session list (`LastSession.json`, plus `LastOpenConnections.json` holding only the ids that reconnect, which older builds read) | JSON | `LastOpenConnectionsStorage` |

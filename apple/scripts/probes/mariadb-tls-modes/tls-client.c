@@ -30,7 +30,6 @@ int main(int argc, char **argv) {
     mysql_options(mysql, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
     mysql_options(mysql, MYSQL_OPT_PROTOCOL, &tcp);
 
-    my_bool on = 1;
     my_bool off = 0;
     if (strcmp(mode, "disabled") == 0) {
         mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &off);
@@ -44,23 +43,15 @@ int main(int argc, char **argv) {
     } else if (strcmp(mode, "verify-ca") == 0) {
         tablepro_mysql_require_trusted_chain(mysql);
     } else if (strcmp(mode, "verify-identity") == 0) {
-#ifdef TABLEPRO_IOS
         tablepro_mysql_require_server_identity(mysql);
-#else
-        mysql_options(mysql, MYSQL_OPT_SSL_ENFORCE, &on);
-        mysql_options(mysql, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &on);
-#endif
     } else {
         fprintf(stderr, "unknown mode %s\n", mode);
         return 2;
     }
-#ifdef TABLEPRO_IOS
+    // Both apps hand the name over only for a verify mode dialing a tunnel's forward.
     if (server_name != NULL) {
         tablepro_mysql_set_tunneled_server_name(mysql, server_name);
     }
-#else
-    (void)server_name;
-#endif
     if (ca != NULL) {
         mysql_options(mysql, MYSQL_OPT_SSL_CA, ca);
     }

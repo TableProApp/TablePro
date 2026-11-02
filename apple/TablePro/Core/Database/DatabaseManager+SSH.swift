@@ -13,22 +13,21 @@ import TableProSSHTransport
 // MARK: - SSH Tunnel Helper
 
 extension DatabaseManager {
-    /// Build an effective connection for the given database connection.
-    /// If SSH tunneling is enabled, creates a tunnel and returns a modified connection
-    /// pointing at localhost with the tunnel port. Otherwise returns the original connection.
-    ///
-    /// - Parameters:
-    ///   - connection: The original database connection configuration.
-    ///   - sshPasswordOverride: Optional SSH password to use instead of the stored one (for test connections).
-    /// - Returns: A connection suitable for the database driver (SSH disabled, pointing at tunnel if applicable).
+    // `sshPasswordOverride` is the password Test Connection typed, used instead of the stored one.
     internal func buildEffectiveConnection(
         for original: DatabaseConnection,
         sshPasswordOverride: String? = nil,
         deadline: ConnectionDeadline
     ) async throws -> DatabaseConnection {
         var connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
-        // Only the tunnel this connect opens says it secures the transport; a saved or imported field never does.
+        // Only the tunnel this connect opens says it secures the transport or names the server behind it; a saved or
+        // imported field never does.
         connection.additionalFields[DatabaseConnection.tunnelSecuresTransportKey] = nil
+        connection.additionalFields[DatabaseConnection.preTunnelHostKey] = nil
+        connection.additionalFields[DatabaseConnection.preTunnelPortKey] = nil
+        // Only a remote SQLite session sets these; a stored pair would send every statement to the row's host.
+        connection.additionalFields[RemoteSQLiteWire.backendFieldKey] = nil
+        connection.additionalFields[RemoteSQLiteWire.tokenFieldKey] = nil
         let enabledKinds = connection.enabledTunnelKinds
         guard enabledKinds.count <= 1 else {
             throw ConnectionTunnelError.mutualExclusivityViolation(enabledKinds)

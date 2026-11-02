@@ -39,6 +39,7 @@ final class TrinoPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let systemSchemaNames: [String] = ["information_schema"]
     static let supportsSSH = true
     static let supportsSSL = true
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let supportsHealthMonitor = true
     static let supportsImport = false
     static let supportsExport = true

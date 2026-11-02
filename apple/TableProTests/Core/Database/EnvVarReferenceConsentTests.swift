@@ -32,14 +32,18 @@ extension GlobalStateSuites {
         private static let secretKeyName = "AWS_SECRET_ACCESS_KEY"
 
         private let suite: EphemeralDefaults
-        private let store: EnvVarReferenceApprovalStore
+        private let store: ConnectionApprovalStore
         private let spy: EnvVarQuestionSpy
         private let password = "pw-" + UUID().uuidString
         private let secretKey = "sk-" + UUID().uuidString
 
         init() throws {
             suite = try EphemeralDefaults()
-            store = EnvVarReferenceApprovalStore(defaults: suite.defaults, savedConnections: { [] })
+            store = ConnectionApprovalStore(
+                kind: .envVarReferences,
+                defaults: suite.defaults,
+                savedConnections: { [] }
+            )
             spy = EnvVarQuestionSpy(answer: .declined)
         }
 
@@ -178,7 +182,7 @@ extension GlobalStateSuites {
         @Test("An approved connection resolves without asking, in the background too")
         func approvedResolves() async throws {
             let connection = importedFromAttacker()
-            store.approveReferences(of: connection)
+            store.approve(connection)
 
             let resolved = try await withReportVariables {
                 try await makeConsent().resolve(connection, trigger: .background)
@@ -239,7 +243,7 @@ extension GlobalStateSuites {
             let consent = makeConsent()
             var connection = importedFromAttacker()
             connection.host = "pg.internal.example"
-            store.approveReferences(of: connection)
+            store.approve(connection)
             connection.host = "pg.attacker.example"
             let moved = connection
 
@@ -258,7 +262,7 @@ extension GlobalStateSuites {
             let consent = makeConsent()
             var connection = importedFromAttacker()
             connection.database = "app"
-            store.approveReferences(of: connection)
+            store.approve(connection)
             connection.database = "${AWS_SECRET_ACCESS_KEY}"
             let widened = connection
 
@@ -273,7 +277,7 @@ extension GlobalStateSuites {
         func formSaveApproves() async throws {
             var connection = importedFromAttacker()
             connection.origin = .thisMac
-            store.approveReferences(of: connection)
+            store.approve(connection)
 
             let resolved = try await withReportVariables {
                 try await makeConsent().resolve(connection, trigger: .background)
@@ -286,7 +290,7 @@ extension GlobalStateSuites {
         func revokeClears() async {
             let consent = makeConsent()
             let connection = importedFromAttacker()
-            store.approveReferences(of: connection)
+            store.approve(connection)
 
             store.revoke(for: connection.id)
 
@@ -300,7 +304,7 @@ extension GlobalStateSuites {
         @Test("A duplicate carries its source's approval")
         func copyCarries() async throws {
             let source = importedFromAttacker()
-            store.approveReferences(of: source)
+            store.approve(source)
             var duplicate = importedFromAttacker()
             duplicate.name = "Staging (Copy)"
 

@@ -5,7 +5,7 @@ import TableProTLSClientIdentity
 import TableProTrinoCore
 
 enum TrinoSSLMapping {
-    static func tlsOptions(for ssl: SSLConfiguration) throws -> TrinoTLSOptions {
+    static func tlsOptions(for ssl: SSLConfiguration, serverName: String?) throws -> TrinoTLSOptions {
         let mode: TrinoTLSOptions.VerificationMode
         switch ssl.mode {
         case .disabled, .preferred, .required:
@@ -24,7 +24,12 @@ enum TrinoSSLMapping {
                     """
             ))
         }
-        return TrinoTLSOptions(mode: mode, anchorCertificate: anchor, clientCredential: try clientCredential(for: ssl))
+        return TrinoTLSOptions(
+            mode: mode,
+            anchorCertificate: anchor,
+            clientCredential: try clientCredential(for: ssl),
+            serverName: serverName
+        )
     }
 
     static func anchorCertificate(at path: String, for mode: TrinoTLSOptions.VerificationMode) throws -> Data? {

@@ -34,7 +34,7 @@ public final class CredentialedHTTPSession: Sendable {
     }
 
     public func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        guard let url = request.url, HTTPOrigin(url) == origin else {
+        guard origin.contains(request.url) else {
             throw CredentialedHTTPError.crossOrigin(request.url?.absoluteString ?? "")
         }
         var authorized = request
@@ -80,7 +80,7 @@ final class CredentialedRedirectGuard: NSObject, URLSessionTaskDelegate, @unchec
         newRequest request: URLRequest,
         completionHandler: @escaping @Sendable (URLRequest?) -> Void
     ) {
-        guard let url = request.url, HTTPOrigin(url) == origin else {
+        guard origin.contains(request.url) else {
             let location = request.url?.absoluteString ?? ""
             lock.withLock { refusal = .redirected(status: response.statusCode, location: location) }
             completionHandler(nil)

@@ -13,7 +13,7 @@ internal enum ConnectionShareLink {
     private static let linkLengthWarningThreshold = 2_000
 
     static func deeplink(for connection: DatabaseConnection, exporter: ConnectionBundleExporter = .init()) -> String? {
-        let settings = exporter.portableSettings(for: connection)
+        let settings = exporter.portableSettings(for: connection, keepingLocalCredentials: true)
 
         var components = URLComponents()
         components.scheme = "tablepro"

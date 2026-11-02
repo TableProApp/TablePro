@@ -27,10 +27,11 @@ nonisolated struct RedisTLSOptions: Equatable, Sendable {
         self.clientKeyPath = Self.nonEmpty(clientKeyPath)
     }
 
-    static func make(sslConfig: SSLConfiguration, host: String) -> RedisTLSOptions? {
+    // Through a tunnel's forward, SNI and the hostname check name the server behind it, not the dialed 127.0.0.1.
+    static func make(sslConfig: SSLConfiguration, host: String, serverName: String? = nil) -> RedisTLSOptions? {
         guard sslConfig.isEnabled else { return nil }
         return RedisTLSOptions(
-            host: host,
+            host: serverName ?? host,
             verifiesCertificate: sslConfig.verifiesCertificate,
             verifiesHostname: sslConfig.verifiesHostname,
             caCertificatePath: sslConfig.caCertificatePath,

@@ -79,6 +79,24 @@ struct TeamLibraryModelsTests {
         #expect(response.connections.map { $0.payload.name } == ["Prod"])
     }
 
+    @Test("A pulled connection keeps its sign-in choice for the consent prompt and drops what the host owns")
+    func sanitizedPullKeepsSelectorsBehindTheGate() throws {
+        let json = """
+        {
+          "connections": [
+            {"id":"01A","payload":{"name":"Reports","host":"sql.example.com","port":1433,"database":"app","username":"","type":"SQL Server","additionalFields":{"mssqlAuthMethod":"windows","sqliteBackend":"agent","preConnectScript":"touch /tmp/pwned","zzzFutureSelector":"1","mssqlSchema":"sales"}}}
+          ],
+          "query_folders": [],
+          "queries": [],
+          "fetched_at":"2026-07-08T00:00:00Z"
+        }
+        """
+
+        let response = try JSONDecoder().decode(TeamLibraryPullResponse.self, from: Data(json.utf8)).sanitized()
+
+        #expect(response.connections[0].payload.additionalFields == ["mssqlAuthMethod": "windows", "mssqlSchema": "sales"])
+    }
+
     @Test("publish request encodes snake_case keys and preserves the payload encoding")
     func encodesPublishRequest() throws {
         let payloadJson = """

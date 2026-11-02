@@ -836,4 +836,122 @@ struct NativeDumpRegistryTests {
             #expect(tool.installHint.contains("brew install"), "\(type.rawValue)")
         }
     }
+
+    // What the session hands the tools through a TCP forward: loopback, with the server's name beside it.
+    @MainActor
+    private func throughTunnel(_ connection: DatabaseConnection) -> DatabaseConnection {
+        DatabaseManager.shared.tunneledConnection(from: connection, localPort: 61_000)
+    }
+
+    @Test("pg_dump without a password never reads ~/.pgpass on its own", arguments: [NativeDumpKind.backup, .restore])
+    func postgresWithoutPasswordSkipsPgpass(kind: NativeDumpKind) throws {
+        for password in [nil, ""] as [String?] {
+            let built = try command(.postgresql, kind: kind, password: password)
+            #expect(built.environment["PGPASSFILE"] == "/dev/null/pgpass")
+            #expect(built.environment["PGPASSWORD"] == nil)
+        }
+        let typed = try command(.postgresql, kind: kind, password: "s3cret")
+        #expect(typed.environment["PGPASSWORD"] == "s3cret")
+        #expect(typed.environment["PGPASSFILE"] == nil)
+    }
+
+    @MainActor
+    @Test("Through a tunnel pg_dump checks the certificate against the server and dials the forward", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func postgresThroughTunnelNamesTheServer(kind: NativeDumpKind) throws {
+        var secured = connection(type: .postgresql, host: "db.example.com", sslMode: .verifyIdentity, sslEnabled: true)
+        secured.sslConfig.caCertificatePath = "/certs/ca.pem"
+
+        let tunneled = try command(.postgresql, kind: kind, connection: throughTunnel(secured))
+        #expect(tunneled.arguments.starts(with: ["--no-password", "-h", "db.example.com", "-p", "61000"]))
+        #expect(tunneled.environment["PGHOSTADDR"] == "127.0.0.1")
+        #expect(tunneled.environment["PGSSLMODE"] == "verify-full")
+        #expect(tunneled.environment["PGSSLROOTCERT"] == "/certs/ca.pem")
+
+        let direct = try command(.postgresql, kind: kind, connection: secured)
+        #expect(direct.arguments.starts(with: ["--no-password", "-h", "db.example.com", "-p", "5432"]))
+        #expect(direct.environment["PGHOSTADDR"] == nil)
+    }
+
+    @MainActor
+    @Test("Through a tunnel mysqldump refuses Verify Identity and MariaDB's dump refuses every verify mode", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func mysqlThroughTunnelRefusesUncheckedModes(kind: NativeDumpKind) throws {
+        var identity = connection(type: .mysql, port: 3_306, sslMode: .verifyIdentity, sslEnabled: true)
+        identity.sslConfig.caCertificatePath = "/certs/ca.pem"
+        var chain = identity
+        chain.sslConfig.mode = .verifyCa
+        let tunneledIdentity = throughTunnel(identity)
+        let tunneledChain = throughTunnel(chain)
+
+        #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+            tool: "/usr/bin/tool", mode: .verifyIdentity, supportedModes: [.disabled, .preferred, .required, .verifyCa]
+        )) {
+            try command(.mysql, kind: kind, connection: tunneledIdentity, flavor: .mysql)
+        }
+        let mysqlChain = try command(.mysql, kind: kind, connection: tunneledChain, flavor: .mysql)
+        #expect(mysqlChain.arguments.contains("--ssl-mode=VERIFY_CA"))
+        #expect(mysqlChain.arguments.contains("--ssl-ca=/certs/ca.pem"))
+
+        for (mode, tunneled) in [(SSLMode.verifyCa, tunneledChain), (.verifyIdentity, tunneledIdentity)] {
+            #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+                tool: "/usr/bin/tool", mode: mode, supportedModes: [.disabled, .preferred, .required]
+            )) {
+                try command(.mysql, kind: kind, connection: tunneled, flavor: .mariadb)
+            }
+        }
+
+        let direct = try command(.mysql, kind: kind, connection: identity, flavor: .mysql)
+        #expect(direct.arguments.contains("--ssl-mode=VERIFY_IDENTITY"))
+    }
+
+    @MainActor
+    @Test("Through a tunnel mongodump keeps Verify CA without the name check and refuses Verify Identity", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func mongoThroughTunnel(kind: NativeDumpKind) throws {
+        var chain = connection(type: .mongodb, port: 27_017, sslMode: .verifyCa, sslEnabled: true)
+        chain.sslConfig.caCertificatePath = "/certs/ca.pem"
+        var identity = chain
+        identity.sslConfig.mode = .verifyIdentity
+        let tunneledIdentity = throughTunnel(identity)
+
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, kind: kind, connection: throughTunnel(chain))))
+        #expect(uri.hasPrefix("mongodb://alice@127.0.0.1:61000/?"))
+        #expect(uri.contains("tls=true&tlsAllowInvalidHostnames=true&tlsCAFile=%2Fcerts%2Fca.pem"))
+        #expect(!uri.contains("tlsInsecure"))
+
+        #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+            tool: "/usr/bin/tool", mode: .verifyIdentity, supportedModes: [.disabled, .preferred, .required, .verifyCa]
+        )) {
+            try command(.mongodb, kind: kind, connection: tunneledIdentity)
+        }
+
+        let direct = try configurationValue("uri", in: configuration(of: command(.mongodb, kind: kind, connection: identity)))
+        #expect(direct.contains("tls=true&tlsCAFile=%2Fcerts%2Fca.pem"))
+        #expect(!direct.contains("tlsAllowInvalidHostnames"))
+    }
+
+    @MainActor
+    @Test("Through a tunnel sqlpackage refuses the verify modes and keeps Required", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func sqlServerThroughTunnel(kind: NativeDumpKind) throws {
+        for mode in [SSLMode.verifyCa, .verifyIdentity] {
+            let tunneled = throughTunnel(connection(type: .mssql, port: 1_433, sslMode: mode, sslEnabled: true))
+            #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+                tool: "/usr/bin/tool", mode: mode, supportedModes: [.disabled, .preferred, .required]
+            )) {
+                try command(.mssql, kind: kind, connection: tunneled)
+            }
+        }
+
+        let required = throughTunnel(connection(type: .mssql, port: 1_433, sslMode: .required, sslEnabled: true))
+        let built = try command(.mssql, kind: kind, connection: required)
+        let connectionString = try #require(built.arguments.first { $0.contains("ConnectionString:") })
+        #expect(connectionString.contains(#"Server="127.0.0.1,61000""#))
+        #expect(connectionString.hasSuffix("Encrypt=true;TrustServerCertificate=true"))
+    }
 }

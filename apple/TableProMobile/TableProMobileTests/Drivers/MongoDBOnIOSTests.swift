@@ -288,23 +288,27 @@ struct MongoDBOnIOSTests {
     func verifyNeedsACA() {
         for mode in [TableProModels.SSLConfiguration.SSLMode.verifyCa, .verifyFull] {
             #expect(throws: DatabaseError.self) {
-                try MongoDBDialPlan.ssl(DriverSSLConfiguration(mode: mode), tunneled: false)
+                try MongoDBDialPlan.ssl(DriverSSLConfiguration(mode: mode))
             }
         }
-        #expect((try? MongoDBDialPlan.ssl(DriverSSLConfiguration(mode: .require), tunneled: false))?.mode == .require)
+        #expect((try? MongoDBDialPlan.ssl(DriverSSLConfiguration(mode: .require)))?.mode == .require)
     }
 
-    @Test("Behind a tunnel Verify Identity still checks the chain against the CA, only not the loopback name")
-    func tunnelKeepsTheChainCheck() throws {
+    @Test("Behind a tunnel Verify Identity reaches the plugin as Verify Identity, with the CA and the server's name")
+    func tunnelKeepsVerifyIdentity() throws {
         let ca = try caFile()
         defer { try? FileManager.default.removeItem(atPath: ca) }
+        let forward = DatabaseConnection(type: .mongodb, host: "127.0.0.1", port: 50_123, database: "app")
 
-        let tunneled = try MongoDBDialPlan.ssl(DriverSSLConfiguration(mode: .verifyFull, caCertificatePath: ca), tunneled: true)
-        let direct = try MongoDBDialPlan.ssl(DriverSSLConfiguration(mode: .verifyFull, caCertificatePath: ca), tunneled: false)
+        let tls = try MongoDBDialPlan.ssl(
+            DriverSSLConfiguration(mode: .verifyFull, caCertificatePath: ca, serverName: "db.example.com")
+        )
+        let config = IOSDriverFactory(materializer: CertificateMaterializer(store: InMemoryCertificateStore()))
+            .pluginConfig(for: forward, password: "p", ssl: tls, preTunnelHost: "db.example.com")
 
-        #expect(tunneled.mode == .verifyCa)
-        #expect(tunneled.caCertificatePath == ca)
-        #expect(direct.mode == .verifyFull)
+        #expect(config.ssl.mode == .verifyIdentity)
+        #expect(config.ssl.caCertificatePath == ca)
+        #expect(config.tunneledServerName == "db.example.com")
     }
 
     @Test("A statement is a read only when the shell grammar proves it")

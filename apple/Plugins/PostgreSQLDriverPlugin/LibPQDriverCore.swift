@@ -99,6 +99,7 @@ final class LibPQDriverCore: @unchecked Sendable {
             suppressServerSideCancel: singleConnectionMode,
             connectTimeout: LibPQConnectTimeout(milliseconds: timeout.milliseconds - elapsedMilliseconds),
             kerberos: kerberos,
+            serverName: config.tunneledServerName,
             pinsCatalogSearchPath: pinsCatalogSearchPath
         )
 

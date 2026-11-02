@@ -19,7 +19,8 @@ internal enum FirebaseCredentialFactory {
         case .emulator:
             return (.firebaseEmulator, nil)
         case .serviceAccount:
-            guard let value = trimmed(fields[FirebaseFieldID.serviceAccountJson]) ?? trimmed(config.password) else {
+            guard let value = trimmed(fields[FirebaseFieldID.serviceAccountJson])
+                ?? GoogleServiceAccountKey.inlineDocument(fromPassword: config.password) else {
                 throw FirebaseError.configuration(String(localized: "Choose a service account key file, or paste its JSON."))
             }
             return try GoogleRESTCredential.resolving(.serviceAccountKey(value), scopes: scopes)

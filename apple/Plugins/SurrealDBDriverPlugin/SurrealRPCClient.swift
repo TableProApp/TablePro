@@ -5,6 +5,8 @@
 
 import Foundation
 import os
+import Security
+import TableProPluginKit
 
 private final class TaskBox: @unchecked Sendable {
     private let lock = NSLock()
@@ -50,6 +52,7 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
     private var requestId: Int = 0
     private var timeoutSeconds: Int?
     private var connectDeadline: PluginConnectDeadline?
+    private var trustRefusal: SSLHandshakeError?
 
     public private(set) var serverVersion: String?
 
@@ -243,7 +246,8 @@ public final class SurrealRPCClient: NSObject, @unchecked Sendable {
                     let task = session.dataTask(with: request) { [weak self] data, response, error in
                         self?.finish()
                         if let error {
-                            continuation.resume(throwing: error)
+                            let refusal: Error? = (error as? URLError)?.code == .cancelled ? self?.takeTrustRefusal() : nil
+                            continuation.resume(throwing: refusal ?? error)
                             return
                         }
                         guard let data, let response else {
@@ -336,13 +340,43 @@ extension SurrealRPCClient: URLSessionTaskDelegate {
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        guard config.skipTLSVerify,
-              challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
             return
         }
+        if config.skipTLSVerify {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+            return
+        }
+        guard let serverName = config.tunneledServerName else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        let policy = SecPolicyCreateSSL(true, config.verifiesHostname ? serverName as CFString : nil)
+        var evaluationError: CFError?
+        guard SecTrustSetPolicies(trust, policy) == errSecSuccess,
+              SecTrustEvaluateWithError(trust, &evaluationError) else {
+            lock.withLock { trustRefusal = Self.refusal(for: evaluationError) }
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
         completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+
+    private func takeTrustRefusal() -> SSLHandshakeError? {
+        lock.withLock {
+            defer { trustRefusal = nil }
+            return trustRefusal
+        }
+    }
+
+    private static func refusal(for error: CFError?) -> SSLHandshakeError {
+        let message = error.map { CFErrorCopyDescription($0) as String } ?? ""
+        guard let error, CFErrorGetCode(error) == Int(errSecHostNameMismatch) else {
+            return .untrustedCertificate(serverMessage: message)
+        }
+        return .hostnameMismatch(serverMessage: message)
     }
 
     // A redirect would carry the credentials to wherever it points.

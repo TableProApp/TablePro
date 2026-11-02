@@ -152,6 +152,38 @@ struct MySQLClientArgumentsTests {
         #expect(try MySQLClientArguments.tls(ssl(.disabled), flavor: .unidentified, toolPath: "/t").isEmpty)
     }
 
+    @Test("Through a tunnel MySQL's tools refuse Verify Identity and keep Verify CA, which checks no name")
+    func mysqlThroughTunnelRefusesVerifyIdentity() throws {
+        #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+            tool: "/usr/bin/mysqldump", mode: .verifyIdentity, supportedModes: [.disabled, .preferred, .required, .verifyCa]
+        )) {
+            try MySQLClientArguments.tls(
+                ssl(.verifyIdentity, ca: "/certs/ca.pem"), flavor: .mysql, toolPath: "/usr/bin/mysqldump", throughTunnel: true
+            )
+        }
+        let verifyCa = try MySQLClientArguments.tls(
+            ssl(.verifyCa, ca: "/certs/ca.pem"), flavor: .mysql, toolPath: "/t", throughTunnel: true
+        )
+        #expect(verifyCa == ["--ssl-mode=VERIFY_CA", "--ssl-ca=/certs/ca.pem"])
+        #expect(try MySQLClientArguments.tls(ssl(.verifyIdentity), flavor: .mysql, toolPath: "/t") == ["--ssl-mode=VERIFY_IDENTITY"])
+    }
+
+    @Test("Through a tunnel MariaDB's tools refuse every verify mode, since they accept any certificate from 127.0.0.1")
+    func mariadbThroughTunnelRefusesVerifyModes() throws {
+        for mode in [SSLMode.verifyCa, .verifyIdentity] {
+            #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+                tool: "/usr/bin/mariadb-dump", mode: mode, supportedModes: [.disabled, .preferred, .required]
+            )) {
+                try MySQLClientArguments.tls(
+                    ssl(mode, ca: "/certs/ca.pem"), flavor: .mariadb, toolPath: "/usr/bin/mariadb-dump", throughTunnel: true
+                )
+            }
+            #expect(try MySQLClientArguments.tls(ssl(mode), flavor: .mariadb, toolPath: "/t").contains("--ssl-verify-server-cert"))
+        }
+        let required = try MySQLClientArguments.tls(ssl(.required), flavor: .mariadb, toolPath: "/t", throughTunnel: true)
+        #expect(required == ["--ssl", "--ssl-verify-server-cert"])
+    }
+
     private func tool(_ flavor: NativeDumpToolFlavor, _ versionText: String?) -> NativeDumpResolvedTool {
         NativeDumpResolvedTool(name: "mysqldump", path: "/usr/bin/mysqldump", flavor: flavor, versionText: versionText)
     }

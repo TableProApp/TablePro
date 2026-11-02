@@ -17,9 +17,10 @@ internal enum ScriptConnectGate {
             throw ScriptingError.noSuchObject(String(localized: "No saved connection has that id."))
         }
         guard await ConnectConsent.confirmIfNeeded(for: connection) else {
-            throw ScriptingError.refused(
-                String(localized: "The connection's environment variables, pre-connect script or SQLite extensions were not approved.")
-            )
+            throw ScriptingError.refused(String(localized: """
+                The connection's sign-in with credentials from this Mac, environment variables, pre-connect script \
+                or SQLite extensions were not approved.
+                """))
         }
     }
 }

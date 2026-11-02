@@ -112,6 +112,13 @@ enum NativeDumpRegistry {
                         var environment: [String: String] = [:]
                         if let password = request.password, !password.isEmpty {
                             environment["PGPASSWORD"] = password
+                        } else {
+                            // Without a password libpq reads ~/.pgpass itself. As in the driver, only the Use ~/.pgpass setting
+                            // reaches that file, through the app's own reader.
+                            environment["PGPASSFILE"] = unreadablePassfile
+                        }
+                        if let hostaddr = postgresEndpoint(request).hostaddr {
+                            environment["PGHOSTADDR"] = hostaddr
                         }
                         environment.merge(
                             postgresSSLEnvironment(request.connection.transportSSLConfiguration)
@@ -142,17 +149,32 @@ enum NativeDumpRegistry {
         }
     }
 
-    // A socket goes to `-h` as its directory, the way libpq reads a host starting with `/`.
     private static func connectionFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
-        let socket = request.connection.type.localSocketIsDirectory ? request.connection.localSocketEndpoint : nil
-        let host = socket?.path ?? request.host
-        let port = socket?.port ?? request.connection.port
-        var flags = ["--no-password", "-h", host, "-p", String(port)]
+        let endpoint = postgresEndpoint(request)
+        var flags = ["--no-password", "-h", endpoint.host, "-p", String(endpoint.port)]
         if !request.connection.username.isEmpty {
             flags.append(contentsOf: ["-U", request.connection.username])
         }
         return flags
     }
+
+    // A socket goes to `-h` as its directory, the way libpq reads a host starting with `/`. Through a tunnel libpq
+    // dials `hostaddr` and checks the certificate against `host`, as the driver does, so `host` names the server.
+    private static func postgresEndpoint(
+        _ request: NativeDumpDescriptor.Request
+    ) -> (host: String, port: Int, hostaddr: String?) {
+        if request.connection.type.localSocketIsDirectory, let socket = request.connection.localSocketEndpoint {
+            return (socket.path, socket.port, nil)
+        }
+        if let serverName = request.tunneledServerName, serverName != request.host,
+           request.host.lowercased() != "localhost" {
+            return (serverName, request.connection.port, request.host)
+        }
+        return (request.host, request.connection.port, nil)
+    }
+
+    // Nothing can exist under a device file, so libpq finds no file there and says nothing.
+    static let unreadablePassfile = "/dev/null/pgpass"
 
     static func postgresSSLMode(_ mode: SSLMode) -> String? {
         switch mode {
@@ -353,7 +375,8 @@ enum NativeDumpRegistry {
                 request.connection.transportSSLConfiguration,
                 flavor: resolved.flavor,
                 toolPath: resolved.path,
-                serverOffersTLS: request.serverOffersTLS
+                serverOffersTLS: request.serverOffersTLS,
+                throughTunnel: request.tunneledServerName != nil
             )
         )
         if request.connection.usesIAMToken {
@@ -379,11 +402,19 @@ enum NativeDumpRegistry {
                     installHint: String(localized: "Install it with “brew install mongodb-database-tools”."),
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
-                    backupArguments: { request, _ in
-                        mongoNamespaceFlags(request) + ["--gzip", "--archive=\(request.fileURL.path)"]
+                    backupArguments: { request, resolved in
+                        try refuseUncheckedThroughTunnel(
+                            request, mode: request.connection.sslConfig.mode, toolPath: resolved.path,
+                            keeping: mongoModesThroughTunnel
+                        )
+                        return mongoNamespaceFlags(request) + ["--gzip", "--archive=\(request.fileURL.path)"]
                     },
-                    restoreArguments: { request, _ in
-                        NativeDumpArgumentQuoting.mongoRestoreRenaming(into: request.database)
+                    restoreArguments: { request, resolved in
+                        try refuseUncheckedThroughTunnel(
+                            request, mode: request.connection.sslConfig.mode, toolPath: resolved.path,
+                            keeping: mongoModesThroughTunnel
+                        )
+                        return NativeDumpArgumentQuoting.mongoRestoreRenaming(into: request.database)
                             + ["--gzip", "--archive=\(request.fileURL.path)"]
                     },
                     configurationFileEntries: { request in mongoConfigurationEntries(request) }
@@ -397,6 +428,9 @@ enum NativeDumpRegistry {
             restoreSemantics: .addsToExistingObjects
         )
     }
+
+    // The tools check the name in the URI, 127.0.0.1 through a tunnel, and no option names another. Verify CA skips it.
+    private static let mongoModesThroughTunnel: [SSLMode] = [.disabled, .preferred, .required, .verifyCa]
 
     /// A whole-database dump names the database; a narrowed one names each collection, because
     /// `--db` plus `--collection` takes only one collection at a time while `--nsInclude` repeats.
@@ -441,16 +475,27 @@ enum NativeDumpRegistry {
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
                     exposesPasswordInArguments: true,
-                    backupArguments: { request, _ in
-                        try ["/Action:Export",
-                             "/TargetFile:\(request.fileURL.path)",
-                             "/SourceConnectionString:\(sqlServerConnectionString(request))"]
-                            + request.scope.objects.map { "/p:TableData=\(sqlServerTableData($0))" }
+                    backupArguments: { request, resolved in
+                        try refuseUncheckedThroughTunnel(
+                            request, mode: request.connection.sslConfig.mode, toolPath: resolved.path,
+                            keeping: sqlServerModesThroughTunnel
+                        )
+                        return try [
+                            "/Action:Export",
+                            "/TargetFile:\(request.fileURL.path)",
+                            "/SourceConnectionString:\(sqlServerConnectionString(request))"
+                        ] + request.scope.objects.map { "/p:TableData=\(sqlServerTableData($0))" }
                     },
-                    restoreArguments: { request, _ in
-                        try ["/Action:Import",
-                             "/SourceFile:\(request.fileURL.path)",
-                             "/TargetConnectionString:\(sqlServerConnectionString(request))"]
+                    restoreArguments: { request, resolved in
+                        try refuseUncheckedThroughTunnel(
+                            request, mode: request.connection.sslConfig.mode, toolPath: resolved.path,
+                            keeping: sqlServerModesThroughTunnel
+                        )
+                        return try [
+                            "/Action:Import",
+                            "/SourceFile:\(request.fileURL.path)",
+                            "/TargetConnectionString:\(sqlServerConnectionString(request))"
+                        ]
                     }
                 )
             ),
@@ -468,6 +513,9 @@ enum NativeDumpRegistry {
             restoreSemantics: .requiresEmptyDatabase
         )
     }
+
+    // sqlpackage checks the certificate against the address it dials whenever it verifies, 127.0.0.1 through a tunnel.
+    private static let sqlServerModesThroughTunnel: [SSLMode] = [.disabled, .preferred, .required]
 
     private static func sqlServerTableData(_ object: NativeDumpObject) -> String {
         guard let schema = object.schema else { return object.name }
@@ -495,6 +543,18 @@ enum NativeDumpRegistry {
             parts.append("TrustServerCertificate=true")
         }
         return parts.joined(separator: ";")
+    }
+
+    // A tool dialing a tunnel's forward checks the certificate against that loopback address, so a mode it cannot keep
+    // there is refused before it runs.
+    private static func refuseUncheckedThroughTunnel(
+        _ request: NativeDumpDescriptor.Request,
+        mode: SSLMode,
+        toolPath: String,
+        keeping supportedModes: [SSLMode]
+    ) throws {
+        guard request.tunneledServerName != nil, !supportedModes.contains(mode) else { return }
+        throw NativeDumpError.uncheckedThroughTunnel(tool: toolPath, mode: mode, supportedModes: supportedModes)
     }
 
     // MARK: - SQLite

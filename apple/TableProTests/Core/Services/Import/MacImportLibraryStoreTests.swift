@@ -57,7 +57,10 @@ struct MacImportLibraryStoreTests {
 
         #expect(snapshot.connections.map(\.id) == [existing.id])
         #expect(snapshot.connections.first?.matchKey == ConnectionMatchKey(settings()))
-        #expect(snapshot.connections.first?.settings == library.exporter.portableSettings(for: existing))
+        #expect(
+            snapshot.connections.first?.settings
+                == library.exporter.portableSettings(for: existing, keepingLocalCredentials: false)
+        )
         #expect(snapshot.savedQueries.map(\.name) == ["Locks"])
     }
 
@@ -86,6 +89,27 @@ struct MacImportLibraryStoreTests {
 
         let resolutions = preview.connections.map { $0.resolutions }
         #expect(resolutions == [[.addCopy, .replace(existing.id)], [.addCopy]])
+    }
+
+    @Test("A file exported from a row that signs in with an AWS profile is still offered Replace over that row")
+    func replaceIsOfferedForARowWithALocalCredential() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        var existing = DatabaseConnection(
+            name: "Analytics", host: "db.example.com", port: 5_432,
+            database: "orders", username: "app", type: .postgresql
+        )
+        existing.additionalFields = ["awsAuth": "profile", "awsProfileName": "prod", "awsRegion": "eu-west-1"]
+        #expect(library.connections.addConnection(existing))
+        let data = try await library.exporter.fileData(for: [existing], options: .connectionsOnly, passphrase: nil)
+
+        let preview = ConnectionImportAnalyzer.analyze(
+            CollectedImport(bundle: try ConnectionBundleCodec.decode(data), source: .file(name: "Analytics.tablepro")),
+            library: try await library.store.snapshot(),
+            environment: ImportLibraryFixture.environment()
+        )
+
+        #expect(preview.connections.map { $0.resolutions } == [[.addCopy, .replace(existing.id)]])
     }
 
     @Test("A saved socket connection matches its exported settings, not a TCP connection to the same database")
@@ -248,6 +272,102 @@ struct MacImportLibraryStoreTests {
         #expect(outcome.connectionsAdded == 1)
         #expect(outcome.failure == nil)
         #expect(library.connections.loadPassword(for: importedId) == "secret")
+    }
+
+    @Test("A file's secure values land in the Keychain only for the fields the type declares secure")
+    func credentialsWriteOnlyDeclaredSecureFields() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        let importedId = UUID()
+        let credentials = ExportableCredentials(
+            password: nil,
+            sshPassword: nil,
+            keyPassphrase: nil,
+            sslClientKeyPassphrase: nil,
+            totpSecret: nil,
+            pluginSecureFields: [
+                "awsSecretAccessKey": "s3cr3t",
+                "connectionOptions": "-c search_path=attacker",
+                "zzzFutureSecret": "planted",
+            ]
+        )
+
+        let outcome = try await library.importDefaults(
+            of: bundle(settings(), credentials: credentials),
+            makeId: { importedId }
+        )
+
+        #expect(outcome.connectionsAdded == 1)
+        #expect(library.connections.loadPluginSecureField(fieldId: "awsSecretAccessKey", for: importedId) == "s3cr3t")
+        #expect(library.connections.loadPluginSecureField(fieldId: "connectionOptions", for: importedId) == nil)
+        #expect(library.connections.loadPluginSecureField(fieldId: "zzzFutureSecret", for: importedId) == nil)
+    }
+
+    @Test("A service account key given as a path is never stored; an inline key is")
+    func keyDocumentPathsAreNotStored() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        let pathId = UUID()
+        let inlineId = UUID()
+        let path = "~/.config/gcloud/legacy_credentials/sa/adc.json"
+        let inline = #"{"type":"service_account","client_email":"sa@corp.example"}"#
+
+        let pathOutcome = try await library.importDefaults(
+            of: bundle(Self.bigQuery(name: "Warehouse"), credentials: ExportableCredentials(
+                password: nil, sshPassword: nil, keyPassphrase: nil, sslClientKeyPassphrase: nil, totpSecret: nil,
+                pluginSecureFields: ["bqServiceAccountJson": path]
+            )),
+            registeredTypeIds: ["BigQuery"],
+            makeId: { pathId }
+        )
+        let inlineOutcome = try await library.importDefaults(
+            of: bundle(Self.bigQuery(name: "Reports"), credentials: ExportableCredentials(
+                password: nil, sshPassword: nil, keyPassphrase: nil, sslClientKeyPassphrase: nil, totpSecret: nil,
+                pluginSecureFields: ["bqServiceAccountJson": inline]
+            )),
+            registeredTypeIds: ["BigQuery"],
+            makeId: { inlineId }
+        )
+
+        #expect(pathOutcome.connectionsAdded == 1)
+        #expect(inlineOutcome.connectionsAdded == 1)
+        #expect(library.connections.loadPluginSecureField(fieldId: "bqServiceAccountJson", for: pathId) == nil)
+        #expect(library.connections.loadPluginSecureField(fieldId: "bqServiceAccountJson", for: inlineId) == inline)
+    }
+
+    private static func bigQuery(name: String) -> ExportableConnection {
+        ExportableConnection(
+            name: name,
+            host: "",
+            port: 0,
+            database: name.lowercased(),
+            username: "",
+            type: "BigQuery",
+            additionalFields: ["bqProjectId": "attacker-project"]
+        )
+    }
+
+    @Test("A Keyspaces row keeps its AWS secret before the Cassandra plugin has loaded")
+    func catalogSecretsAreStored() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        let importedId = UUID()
+        var keyspaces = settings(name: "Keyspaces", host: "cassandra.us-east-1.amazonaws.com")
+        keyspaces.type = "Cassandra"
+
+        let outcome = try await library.importDefaults(
+            of: bundle(keyspaces, credentials: ExportableCredentials(
+                password: nil, sshPassword: nil, keyPassphrase: nil, sslClientKeyPassphrase: nil, totpSecret: nil,
+                pluginSecureFields: ["awsSecretAccessKey": "s3cr3t", "zzzFutureSecret": "planted"]
+            )),
+            registeredTypeIds: ["Cassandra"],
+            makeId: { importedId }
+        )
+
+        #expect(outcome.connectionsAdded == 1)
+
+        #expect(library.connections.loadPluginSecureField(fieldId: "awsSecretAccessKey", for: importedId) == "s3cr3t")
+        #expect(library.connections.loadPluginSecureField(fieldId: "zzzFutureSecret", for: importedId) == nil)
     }
 
     @Test("A connections file that cannot be written gets no Keychain item")

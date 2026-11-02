@@ -72,6 +72,7 @@ internal enum ConnectionFailureClassifier {
         if case TabRouterError.userCancelled = error { return true }
         if case PreConnectScriptConsentError.declined = error { return true }
         if case EnvVarReferenceConsentError.declined = error { return true }
+        if case LocalCredentialConsentError.declined = error { return true }
         let nsError = error as NSError
         return nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError
     }
