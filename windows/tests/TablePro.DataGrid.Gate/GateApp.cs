@@ -49,7 +49,6 @@ public sealed partial class GateApp : Application, IXamlMetadataProvider
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        Resources.MergedDictionaries.Add(new XamlControlsResources());
         var options = new Args(Environment.GetCommandLineArgs());
         var outDir = options.Get("out", Path.Combine(Path.GetTempPath(), "grid-gate"));
         var name = options.Get("name", "gate");
@@ -58,6 +57,16 @@ public sealed partial class GateApp : Application, IXamlMetadataProvider
         _report.Line("process_arch", System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString());
         _report.Line("os", Environment.OSVersion.VersionString);
         _report.Line("process_start_to_onlaunched_ms", Clock.SinceProcessStart());
+        try
+        {
+            Resources.MergedDictionaries.Add(new XamlControlsResources());
+        }
+        catch (Exception ex)
+        {
+            _report.Line("error", "XamlControlsResources: " + ex);
+            Exit();
+            return;
+        }
         _window = new Window { Title = "TablePro grid gate " + name };
         _window.AppWindow.MoveAndResize(new RectInt32(40, 40, options.GetInt("width", 1440), options.GetInt("height", 900)));
         _window.Activate();

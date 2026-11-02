@@ -22,7 +22,7 @@ internal static class WinUiHost
 
     public static async Task RunAsync(Func<Task> body)
     {
-        var queue = await s_queue.Value;
+        var queue = await s_queue.Value.WaitAsync(TimeSpan.FromSeconds(90));
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         queue.TryEnqueue(async () =>
         {
@@ -36,7 +36,7 @@ internal static class WinUiHost
                 done.SetException(ex);
             }
         });
-        await done.Task;
+        await done.Task.WaitAsync(TimeSpan.FromMinutes(5));
     }
 
     // A grid with data in the window, laid out and drawn.
@@ -76,17 +76,24 @@ internal static class WinUiHost
         var ready = new TaskCompletionSource<DispatcherQueue>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            WinRT.ComWrappersSupport.InitializeComWrappers();
-            Application.Start(callback =>
+            try
             {
-                var queue = DispatcherQueue.GetForCurrentThread();
-                SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(queue));
-                _ = new TestApp(window =>
+                WinRT.ComWrappersSupport.InitializeComWrappers();
+                Application.Start(callback =>
                 {
-                    Window = window;
-                    ready.SetResult(queue);
+                    var queue = DispatcherQueue.GetForCurrentThread();
+                    SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(queue));
+                    _ = new TestApp(window =>
+                    {
+                        Window = window;
+                        ready.TrySetResult(queue);
+                    }, error => ready.TrySetException(error));
                 });
-            });
+            }
+            catch (Exception ex)
+            {
+                ready.TrySetException(ex);
+            }
         })
         {
             IsBackground = true,
@@ -103,10 +110,12 @@ internal sealed partial class TestApp : Application, IXamlMetadataProvider
 {
     private readonly XamlControlsXamlMetaDataProvider _provider;
     private readonly Action<Window> _ready;
+    private readonly Action<Exception> _failed;
 
-    public TestApp(Action<Window> ready)
+    public TestApp(Action<Window> ready, Action<Exception> failed)
     {
         _ready = ready;
+        _failed = failed;
         XamlControlsXamlMetaDataProvider.Initialize();
         _provider = new XamlControlsXamlMetaDataProvider();
     }
@@ -119,11 +128,18 @@ internal sealed partial class TestApp : Application, IXamlMetadataProvider
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        Resources.MergedDictionaries.Add(new XamlControlsResources());
-        var window = new Window { Title = "TablePro.DataGrid.Tests" };
-        window.AppWindow.MoveAndResize(new RectInt32(40, 40, 1440, 900));
-        window.Activate();
-        _ready(window);
+        try
+        {
+            Resources.MergedDictionaries.Add(new XamlControlsResources());
+            var window = new Window { Title = "TablePro.DataGrid.Tests" };
+            window.AppWindow.MoveAndResize(new RectInt32(40, 40, 1440, 900));
+            window.Activate();
+            _ready(window);
+        }
+        catch (Exception ex)
+        {
+            _failed(ex);
+        }
     }
 }
 
