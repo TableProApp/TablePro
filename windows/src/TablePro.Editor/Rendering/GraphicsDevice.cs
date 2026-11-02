@@ -77,7 +77,7 @@ internal sealed unsafe class GraphicsDevice : IDisposable
             Format = DXGI_FORMAT_B8G8R8A8_UNORM,
             SampleDesc = new DXGI_SAMPLE_DESC { Count = 1, Quality = 0 },
             BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
-            BufferCount = 2,
+            BufferCount = 3,
             Scaling = DXGI_SCALING_STRETCH,
             SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
             AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED,
@@ -86,10 +86,11 @@ internal sealed unsafe class GraphicsDevice : IDisposable
         IDXGISwapChain1* swapChain;
         NativeCom.Check(_dxgiFactory->CreateSwapChainForComposition((IUnknown*)_d3d, &description, null, &swapChain));
         _swapChain = swapChain;
-        // One frame in flight: Present never waits for the screen, and a frame starts only when its buffer is free.
+        // Two frames may wait for the screen. A frame starts only when the swap chain can take it, so Present never
+        // blocks the UI thread, and input drawn right after a frame still reaches the next refresh.
         IDXGISwapChain2* swapChain2;
         NativeCom.Check(_swapChain->QueryInterface(NativeCom.Iid<IDXGISwapChain2>(), (void**)&swapChain2));
-        swapChain2->SetMaximumFrameLatency(1);
+        swapChain2->SetMaximumFrameLatency(2);
         _frameReady = swapChain2->GetFrameLatencyWaitableObject();
         swapChain2->Release();
         ApplyScale();

@@ -35,7 +35,7 @@
 
 ### Drawing
 
-- A SwapChainPanel holds a composition swap chain (flip sequential, two buffers). Direct3D 11 runs on the GPU, or WARP when there is none or software rendering is asked for. Direct2D draws on it, DirectWrite lays out each visible line.
+- A SwapChainPanel holds a composition swap chain (flip sequential, three buffers, at most two frames waiting). A frame starts only when the swap chain can take it, through its frame latency object, so Present never blocks the UI thread. Direct3D 11 runs on the GPU, or WARP when there is none or software rendering is asked for. Direct2D draws on it, DirectWrite lays out each visible line.
 - Line layouts are cached by text and colors, so lines that shift after an edit keep theirs; only the edited line is laid out again. A line over 4,096 characters is laid out in a slice around the visible columns.
 - A frame is drawn on the UI thread when something changed, and many changes before it give one frame. It holds the gutter, current line band, find matches, selections, text, IME marks and carets. The caret blinks at the system rate, with the system caret width.
 - Why a SwapChainPanel and not Composition drawing surfaces: one surface, presented when something changed, and a frame time measured from input to present; the same model as Windows Terminal. Surfaces per line would add their own management for scrolling that this cost does not need.
