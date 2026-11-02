@@ -2,8 +2,7 @@ using System.Text;
 
 namespace TablePro.DataGrid.Model;
 
-// A value reads right to left when its first strong character does, as TextBlock's DetectFromContent decides
-// (Unicode's rules P2 and P3, with letters standing in for strong characters).
+// The first strong character decides, as TextBlock's DetectFromContent does (Unicode bidi rules P2 and P3).
 public static class TextDirection
 {
     public static bool IsRightToLeft(ReadOnlySpan<char> text)
@@ -19,8 +18,7 @@ public static class TextDirection
         return false;
     }
 
-    // Hebrew, Arabic, Syriac, Thaana, N'Ko, Samaritan, Mandaic and their presentation forms, and the right-to-left
-    // blocks past the BMP (Imperial Aramaic to Old Turkic, Adlam, Arabic mathematical letters).
+    // Hebrew to Mandaic and their presentation forms, and the right-to-left blocks past the BMP.
     private static bool IsRightToLeftScript(int value) => value switch
     {
         >= 0x0590 and <= 0x08FF => true,

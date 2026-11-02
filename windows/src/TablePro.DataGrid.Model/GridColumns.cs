@@ -1,7 +1,6 @@
 namespace TablePro.DataGrid.Model;
 
-// Column widths and where each column sits. The grid has two panes: the frozen pane holds the row numbers and the
-// first FrozenCount columns and never scrolls sideways; the scrolling pane holds the rest, from x = 0.
+// Two panes: row numbers and the first FrozenCount columns never scroll sideways; the rest start at x = 0.
 public sealed class GridColumns
 {
     public const double MinimumWidth = 40;
@@ -53,8 +52,7 @@ public sealed class GridColumns
 
     public double Width(int column) => _widths[column];
 
-    // Columns before FrozenCount measure from the frozen pane's left edge, past the row numbers; the others from the
-    // scrolling pane's.
+    // In the column's own pane: frozen columns sit past the row numbers.
     public double PaneX(int column) => column < _frozenCount ? _rowHeaderWidth + _x[column] : _x[column] - _x[_frozenCount];
 
     public void SetWidth(int column, double width)

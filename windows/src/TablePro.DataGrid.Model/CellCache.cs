@@ -2,8 +2,7 @@ using System.Diagnostics;
 
 namespace TablePro.DataGrid.Model;
 
-// The cells the grid has fetched, in blocks of TileRows by TileColumns. When it holds Capacity blocks it refills the
-// one used longest ago, so scrolling allocates nothing once the cache is full.
+// A full cache refills its least recently used block, so scrolling allocates nothing once it is full.
 public sealed class CellCache : IDisposable
 {
     public const int TileRows = 64;

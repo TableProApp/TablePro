@@ -16,8 +16,7 @@ public enum CellState : byte
     // Outside what the data held when the block was read.
     Missing = 8,
 
-    // The core shows control characters as spaces, so text with a space may differ from the value; a copy reads it
-    // whole.
+    // The core shows control characters as spaces, so a copy reads text with a space whole.
     Lossy = 16,
 }
 
@@ -34,8 +33,7 @@ public readonly ref struct CellText(ReadOnlySpan<char> text, CellState state)
     public bool IsRightToLeft => (State & CellState.RightToLeft) != 0;
 }
 
-// One fetched window of cells as UTF-16 in one buffer, column by column as the core packs it. A block is refilled in
-// place, so a grid that has loaded its blocks once makes no string, and no array, per cell.
+// Refilled in place, so a scrolling grid makes no string or array per cell once its blocks exist.
 public sealed class CellBlock
 {
     public const char Ellipsis = '…';
@@ -87,6 +85,15 @@ public sealed class CellBlock
         var start = _length;
         _length += Encoding.UTF8.GetChars(utf8, _chars.AsSpan(_length));
         Finish(start, truncated, lossy);
+    }
+
+    // A cell another block already read, copied as it is.
+    public void Add(CellText cell)
+    {
+        Reserve(cell.Text.Length);
+        cell.Text.CopyTo(_chars.AsSpan(_length));
+        _length += cell.Text.Length;
+        Close(cell.State);
     }
 
     public void Add(ReadOnlySpan<char> text, bool truncated, bool lossy = false)

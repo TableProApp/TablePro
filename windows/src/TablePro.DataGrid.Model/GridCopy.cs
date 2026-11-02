@@ -2,9 +2,7 @@ using System.Text;
 
 namespace TablePro.DataGrid.Model;
 
-// A selection as Excel puts it on the clipboard: tabs between cells, CRLF after each row, and a value that holds a
-// tab, a line break or a quote wrapped in quotes with its quotes doubled. NULL copies as an empty cell. The rows
-// stream from the data in blocks, so a selection of any size copies without the grid holding it.
+// Excel's TSV: values holding a tab, a line break or a quote are quoted with quotes doubled; NULL is an empty cell.
 public static class GridCopy
 {
     // The window's cap; a value the core cut there is read whole.

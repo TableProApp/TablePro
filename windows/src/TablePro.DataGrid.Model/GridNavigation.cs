@@ -12,8 +12,7 @@ public enum GridKey
     End,
 }
 
-// Where a key moves the focused cell, as Excel moves it in a block with no empty cells: Ctrl with an arrow goes to
-// that edge, Home and End to the row's ends, and Ctrl+Home and Ctrl+End to the grid's corners.
+// As Excel moves in a block with no empty cells: Ctrl with an arrow goes to that edge.
 public static class GridNavigation
 {
     public static (int Row, int Column) Move(GridKey key, bool control, int row, int column, int rowCount, int columnCount,
