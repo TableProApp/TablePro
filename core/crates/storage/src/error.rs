@@ -67,6 +67,24 @@ pub enum StorageError {
 
     #[error("the saved connections changed after the import was previewed")]
     ImportOutdated,
+
+    #[error("no saved connection has the id {id}")]
+    ConnectionNotFound { id: uuid::Uuid },
+
+    #[error("no group has the id {id}")]
+    GroupNotFound { id: uuid::Uuid },
+
+    #[error("a group with the id {id} already exists")]
+    GroupExists { id: uuid::Uuid },
+
+    #[error("another group in the same place is named {name}")]
+    GroupNameTaken { name: String },
+
+    #[error("the group {id} cannot move inside itself")]
+    GroupCycle { id: uuid::Uuid },
+
+    #[error("groups nest at most {max} levels deep")]
+    GroupTooDeep { max: usize },
 }
 
 impl StorageError {
@@ -92,6 +110,12 @@ impl StorageError {
             Self::DocumentUnavailable(..) => "storage.document_unavailable",
             Self::DraftNotUtf8 { .. } => "storage.draft_not_utf8",
             Self::ImportOutdated => "storage.import_outdated",
+            Self::ConnectionNotFound { .. } => "storage.connection_not_found",
+            Self::GroupNotFound { .. } => "storage.group_not_found",
+            Self::GroupExists { .. } => "storage.group_exists",
+            Self::GroupNameTaken { .. } => "storage.group_name_taken",
+            Self::GroupCycle { .. } => "storage.group_cycle",
+            Self::GroupTooDeep { .. } => "storage.group_too_deep",
         }
     }
 }
@@ -108,5 +132,33 @@ mod tests {
             "storage.history_newer_than_app"
         );
         assert_eq!(crate::CredentialError::Cancelled.code(), "credential.cancelled");
+    }
+
+    #[test]
+    fn each_library_error_has_a_code_of_its_own() {
+        let id = uuid::Uuid::nil();
+        let codes = [
+            StorageError::ConnectionNotFound { id }.code(),
+            StorageError::GroupNotFound { id }.code(),
+            StorageError::GroupExists { id }.code(),
+            StorageError::GroupNameTaken {
+                name: "Work".to_owned(),
+            }
+            .code(),
+            StorageError::GroupCycle { id }.code(),
+            StorageError::GroupTooDeep { max: 3 }.code(),
+        ];
+
+        assert_eq!(
+            codes,
+            [
+                "storage.connection_not_found",
+                "storage.group_not_found",
+                "storage.group_exists",
+                "storage.group_name_taken",
+                "storage.group_cycle",
+                "storage.group_too_deep",
+            ]
+        );
     }
 }

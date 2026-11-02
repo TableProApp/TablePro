@@ -1,6 +1,6 @@
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag};
+use tablepro_storage::{ConnectionColor, ConnectionTag};
 use uuid::Uuid;
 
 use crate::ui::connection_appearance::color_menu_label;
@@ -55,7 +55,8 @@ pub(crate) fn connect_item(id: Uuid) -> gio::MenuItem {
 /// menu acts on the row it opened on whatever the list does meanwhile.
 /// Delete sits in its own section so a destructive action is never the
 /// neighbour of an ordinary one.
-pub(crate) fn connection_menu(id: Uuid, groups: &[ConnectionGroupName], tags: &[ConnectionTag]) -> gio::Menu {
+/// `groups` are the labels of the list's groups.
+pub(crate) fn connection_menu(id: Uuid, groups: &[String], tags: &[ConnectionTag]) -> gio::Menu {
     let open = gio::Menu::new();
     open.append_item(&connect_item(id));
     connection_menu_with(&open, id, groups, tags)
@@ -64,12 +65,7 @@ pub(crate) fn connection_menu(id: Uuid, groups: &[ConnectionGroupName], tags: &[
 /// `connection_menu` with `lead` in place of its Connect section, as the
 /// window's tree leads with what a connection open or connecting there
 /// offers.
-pub(crate) fn connection_menu_with(
-    lead: &gio::Menu,
-    id: Uuid,
-    groups: &[ConnectionGroupName],
-    tags: &[ConnectionTag],
-) -> gio::Menu {
+pub(crate) fn connection_menu_with(lead: &gio::Menu, id: Uuid, groups: &[String], tags: &[ConnectionTag]) -> gio::Menu {
     let target = id.to_string().to_variant();
     let menu = gio::Menu::new();
     menu.append_section(None, lead);
@@ -123,7 +119,7 @@ fn color_menu() -> gio::Menu {
 
 /// The groups already in the list, as a radio group ticked at the one
 /// the connection is in, with a way to start a new one at the end.
-fn group_menu(target: &glib::Variant, groups: &[ConnectionGroupName]) -> gio::Menu {
+fn group_menu(target: &glib::Variant, groups: &[String]) -> gio::Menu {
     let menu = gio::Menu::new();
     menu.append_item(&item(
         &crate::i18n::gettext("_No Group"),
@@ -134,12 +130,7 @@ fn group_menu(target: &glib::Variant, groups: &[ConnectionGroupName]) -> gio::Me
     if !groups.is_empty() {
         let existing = gio::Menu::new();
         for group in groups {
-            existing.append_item(&item(
-                &menu_label(group.as_str()),
-                ROW,
-                ROW_GROUP,
-                &group.as_str().to_variant(),
-            ));
+            existing.append_item(&item(&menu_label(group), ROW, ROW_GROUP, &group.to_variant()));
         }
         menu.append_section(None, &existing);
     }
@@ -233,8 +224,8 @@ mod tests {
         assert_access_keys(&connection_menu(Uuid::new_v4(), &[], &[]));
     }
 
-    fn group(name: &str) -> ConnectionGroupName {
-        ConnectionGroupName::new(name).expect("a group name")
+    fn group(label: &str) -> String {
+        label.to_owned()
     }
 
     #[test]
@@ -280,11 +271,12 @@ mod tests {
     fn the_group_menu_offers_every_group_the_list_already_has() {
         let labels = labels(&connection_menu(
             Uuid::new_v4(),
-            &[group("Archive"), group("Work")],
+            &[group("Archive"), group("Work"), group("Work / Staging")],
             &[],
         ));
 
         assert!(labels.contains(&"Archive".to_owned()), "{labels:?}");
+        assert!(labels.contains(&"Work / Staging".to_owned()), "{labels:?}");
         assert!(labels.contains(&"Work".to_owned()), "{labels:?}");
         assert!(labels.contains(&"_No Group".to_owned()), "{labels:?}");
         assert!(labels.contains(&"New _Group…".to_owned()), "{labels:?}");
