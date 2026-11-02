@@ -7,6 +7,7 @@ using TablePro.Graphics;
 using TerraFX.Interop.DirectX;
 using Windows.Foundation;
 using Windows.Graphics;
+using static TerraFX.Interop.DirectX.D2D1_ANTIALIAS_MODE;
 using static TerraFX.Interop.DirectX.D2D1_DRAW_TEXT_OPTIONS;
 using static TerraFX.Interop.DirectX.D2D1_TEXT_ANTIALIAS_MODE;
 
@@ -170,6 +171,9 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
             _grid.OnDeviceLost();
             return;
         }
+        // The surface may share an atlas with others, so the clear stays inside it.
+        var bounds = new D2D_RECT_F(0, 0, _surface.Pixels.Width / scale, _surface.Pixels.Height / scale);
+        context->PushAxisAlignedClip(&bounds, D2D1_ANTIALIAS_MODE_ALIASED);
         var clear = default(DXGI_RGBA);
         context->Clear(&clear);
         context->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
@@ -200,6 +204,7 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
             var edge = new D2D_RECT_F((float)width - 1, 0, (float)width, rowHeight);
             context->FillRectangle(&edge, painter.FrozenEdgeBrush);
         }
+        context->PopAxisAlignedClip();
         if (!_surface.End(context) || device.Generation != generation)
         {
             _grid.OnDeviceLost();

@@ -423,6 +423,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _ = Painter;
+        MeasureInsets();
         _settings.TextScaleFactorChanged += OnTextScaleChanged;
         _settings.ColorValuesChanged += OnColorsChanged;
         _accessibility.HighContrastChanged += OnHighContrastChanged;
@@ -545,7 +546,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     // Measured, because how ScrollViewer's headers share its viewport is not documented.
     private void MeasureInsets()
     {
-        if (!_scroller.IsLoaded || _content.XamlRoot is null)
+        if (_content.XamlRoot is null)
         {
             return;
         }
