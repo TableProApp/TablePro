@@ -114,8 +114,8 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="128" />
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Uid="HostBox" x:Name="HostBox" AutomationProperties.AutomationId="HostBox" />
-                        <TextBox x:Uid="PortBox" x:Name="PortBox" Grid.Column="1" AutomationProperties.AutomationId="PortBox" InputScope="Number" />
+                        <TextBox x:Uid="HostBox" x:Name="HostBox" VerticalAlignment="Top" AutomationProperties.AutomationId="HostBox" />
+                        <TextBox x:Uid="PortBox" x:Name="PortBox" Grid.Column="1" VerticalAlignment="Top" AutomationProperties.AutomationId="PortBox" InputScope="Number" />
                     </Grid>
                     <TextBox x:Uid="UserBox" x:Name="UserBox" AutomationProperties.AutomationId="UserBox" />
                     <PasswordBox x:Uid="PasswordInput" x:Name="PasswordInput" AutomationProperties.AutomationId="PasswordInput" />
