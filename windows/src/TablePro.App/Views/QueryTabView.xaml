@@ -18,7 +18,8 @@
             x:Uid="QueryCommands"
             AutomationProperties.AutomationId="QueryCommands"
             DefaultLabelPosition="Right"
-            IsDynamicOverflowEnabled="True">
+            IsDynamicOverflowEnabled="True"
+            VerticalContentAlignment="Center">
             <CommandBar.Content>
                 <TextBlock
                     x:Name="StatusText"

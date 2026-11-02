@@ -16,7 +16,8 @@
             x:Uid="TableCommands"
             AutomationProperties.AutomationId="TableCommands"
             DefaultLabelPosition="Right"
-            IsDynamicOverflowEnabled="True">
+            IsDynamicOverflowEnabled="True"
+            VerticalContentAlignment="Center">
             <CommandBar.Content>
                 <TextBlock
                     x:Name="StatusText"

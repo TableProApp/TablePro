@@ -16,7 +16,6 @@ public sealed partial class LibraryItem(LibraryNode node, string title, string d
 
     public Symbol Icon { get; } = icon;
 
-    // Applied to the row's container once it exists; a binding on TreeViewItem.IsExpanded is not.
     public bool StartsExpanded { get; } = startsExpanded;
 
     public ObservableCollection<LibraryItem> Children { get; } = [];

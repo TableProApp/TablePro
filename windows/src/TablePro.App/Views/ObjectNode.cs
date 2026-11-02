@@ -45,6 +45,8 @@ public sealed partial class ObjectNode : INotifyPropertyChanged
 
     public ObservableCollection<ObjectNode> Children { get; } = [];
 
+    public bool StartsExpanded { get; set; }
+
     public string AccessibleName => string.IsNullOrEmpty(Detail) ? Title : $"{Title}, {Detail}";
 
     public bool HasUnrealizedChildren

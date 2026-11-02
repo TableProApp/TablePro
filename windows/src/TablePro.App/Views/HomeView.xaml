@@ -101,6 +101,7 @@
                         AutomationProperties.Name="{x:Bind AccessibleName}"
                         ContextRequested="OnLibraryContextRequested"
                         DoubleTapped="OnLibraryDoubleTapped"
+                        Loaded="OnLibraryRowLoaded"
                         ItemsSource="{x:Bind Children}">
                         <StackPanel Orientation="Horizontal" Spacing="12" Padding="0,4">
                             <Viewbox Width="16" Height="16">

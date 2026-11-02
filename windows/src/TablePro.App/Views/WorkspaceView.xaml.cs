@@ -21,6 +21,9 @@ public sealed partial class WorkspaceView : UserControl
     private string _failureDetails = string.Empty;
     private int _filterGeneration;
 
+    // Schemas a refresh reads again, the next time each one opens.
+    private readonly HashSet<string> _stale = [];
+
     internal WorkspaceView(Workbench workbench, OpenConnection connection)
     {
         _workbench = workbench;
@@ -312,7 +315,7 @@ public sealed partial class WorkspaceView : UserControl
                 foreach (var folder in Objects.Where(node => node.Folder?.Kind == FolderKind.Tables))
                 {
                     RealizeFolder(folder);
-                    Expand(folder);
+                    folder.StartsExpanded = true;
                 }
 
                 return;
@@ -320,18 +323,19 @@ public sealed partial class WorkspaceView : UserControl
 
             foreach (var schema in shown.OrderByDescending(schema => schema.IsDefault))
             {
-                var node = new ObjectNode(ObjectNodeKind.Schema, schema.Name)
+                if (refresh)
+                {
+                    _stale.Add(schema.Name);
+                }
+
+                // The default schema opens, and its objects load when it does.
+                Objects.Add(new ObjectNode(ObjectNodeKind.Schema, schema.Name)
                 {
                     Icon = Symbol.Folder,
                     Schema = schema.Name,
                     HasUnrealizedChildren = true,
-                };
-                Objects.Add(node);
-                if (schema.IsDefault)
-                {
-                    await RealizeSchemaAsync(node, refresh).ConfigureAwait(true);
-                    Expand(node);
-                }
+                    StartsExpanded = schema.IsDefault,
+                });
             }
         }
         catch (TableProException exception)
@@ -340,17 +344,18 @@ public sealed partial class WorkspaceView : UserControl
         }
     }
 
-    // TreeViewItem.IsExpanded does not take a binding's first value, so a row opens through its container.
-    private void Expand(ObjectNode node)
+    // A bound TreeViewItem.IsExpanded is overwritten when the row joins the tree, so a row opens once it has loaded,
+    // and only the first time.
+    private void OnObjectRowLoaded(object sender, RoutedEventArgs e)
     {
-        ObjectTree.UpdateLayout();
-        if (ObjectTree.ContainerFromItem(node) is TreeViewItem container)
+        if (sender is TreeViewItem row && ObjectTree.ItemFromContainer(row) is ObjectNode { StartsExpanded: true } node)
         {
-            container.IsExpanded = true;
+            node.StartsExpanded = false;
+            row.IsExpanded = true;
         }
     }
 
-    private async Task RealizeSchemaAsync(ObjectNode node, bool refresh = false)
+    private async Task RealizeSchemaAsync(ObjectNode node)
     {
         if (_session is null || node.Schema is null)
         {
@@ -359,7 +364,7 @@ public sealed partial class WorkspaceView : UserControl
 
         node.HasUnrealizedChildren = false;
         var scope = ObjectScope.Schema(node.Schema);
-        var objects = refresh
+        var objects = _stale.Remove(node.Schema)
             ? await _session.RefreshObjectsAsync(scope).ConfigureAwait(true)
             : await _session.GetObjectsAsync(scope).ConfigureAwait(true);
         node.Children.Clear();

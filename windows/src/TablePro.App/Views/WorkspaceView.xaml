@@ -106,6 +106,7 @@
                         <DataTemplate x:DataType="local:ObjectNode">
                             <TreeViewItem
                                 AutomationProperties.Name="{x:Bind AccessibleName}"
+                                Loaded="OnObjectRowLoaded"
                                 HasUnrealizedChildren="{x:Bind HasUnrealizedChildren, Mode=OneWay}"
                                 ItemsSource="{x:Bind Children}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">

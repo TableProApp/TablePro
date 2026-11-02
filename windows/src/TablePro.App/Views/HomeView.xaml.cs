@@ -87,7 +87,6 @@ public sealed partial class HomeView : UserControl
         }
 
         NoResultsText.Visibility = searching && Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        ApplyExpansion(Items);
     }
 
     private LibraryItem ToItem(LibraryNode node, bool searching)
@@ -149,24 +148,14 @@ public sealed partial class HomeView : UserControl
         }
     }
 
-    // Expands the rows that start expanded, a level at a time, since a row's children get containers only once it
-    // is expanded and laid out.
-    private void ApplyExpansion(IEnumerable<LibraryItem> items)
+    // A bound TreeViewItem.IsExpanded is overwritten when the row joins the tree, so a row opens once it has loaded.
+    private void OnLibraryRowLoaded(object sender, RoutedEventArgs e)
     {
-        ConnectionTree.UpdateLayout();
-        var expanded = new List<LibraryItem>();
-        foreach (var item in items.Where(item => item.StartsExpanded && item.Children.Count > 0))
+        if (sender is TreeViewItem row
+            && ConnectionTree.ItemFromContainer(row) is LibraryItem { StartsExpanded: true, Children.Count: > 0 } item
+            && !_collapsed.Contains(item.Node.Key))
         {
-            if (ConnectionTree.ContainerFromItem(item) is TreeViewItem container)
-            {
-                container.IsExpanded = true;
-                expanded.Add(item);
-            }
-        }
-
-        if (expanded.Count > 0)
-        {
-            ApplyExpansion(expanded.SelectMany(item => item.Children));
+            row.IsExpanded = true;
         }
     }
 
