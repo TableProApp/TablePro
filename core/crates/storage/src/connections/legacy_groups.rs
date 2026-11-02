@@ -181,8 +181,8 @@ mod tests {
     }
 
     #[test]
-    fn a_name_too_long_or_with_control_characters_is_cleaned_first() {
-        let long = "g".repeat(ConnectionGroupName::MAX_CHARS + 5);
+    fn a_long_name_is_kept_and_control_characters_are_cleaned_first() {
+        let long = "g".repeat(200);
         let document = upgraded(&format!(
             r#"[{{"name": "a", "group": "{long}"}}, {{"name": "b", "group": "Work\tHome"}}]"#
         ));
@@ -190,10 +190,7 @@ mod tests {
         let names: Vec<&str> = (0..2)
             .map(|at| document["groups"][at]["name"].as_str().unwrap_or_default())
             .collect();
-        assert_eq!(
-            names,
-            ["g".repeat(ConnectionGroupName::MAX_CHARS).as_str(), "Work Home"]
-        );
+        assert_eq!(names, [long.as_str(), "Work Home"]);
     }
 
     #[test]

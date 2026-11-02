@@ -14,21 +14,18 @@ use crate::name_rules::{self, NameFault};
 pub struct ConnectionGroupName(String);
 
 impl ConnectionGroupName {
-    /// Long enough for any real folder name, short enough for a menu.
-    pub const MAX_CHARS: usize = 64;
-
+    // No length limit: a macOS group name has none and has to read back unchanged.
     pub fn new(value: &str) -> Result<Self, GroupNameError> {
-        match name_rules::checked(value, Self::MAX_CHARS) {
+        match name_rules::checked(value) {
             Ok(name) => Ok(Self(name.to_owned())),
             Err(NameFault::Empty) => Err(GroupNameError::Empty),
-            Err(NameFault::TooLong) => Err(GroupNameError::TooLong { max: Self::MAX_CHARS }),
             Err(NameFault::ControlCharacter) => Err(GroupNameError::ControlCharacter),
         }
     }
 
-    /// A name read back from a file. A blank one means no group.
+    // A blank name means no group.
     pub(crate) fn from_stored(value: &str) -> Option<Self> {
-        Self::new(&name_rules::cleaned(value, Self::MAX_CHARS)).ok()
+        Self::new(&name_rules::cleaned(value)).ok()
     }
 
     pub fn as_str(&self) -> &str {
@@ -76,15 +73,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn group_name_rejects_blank_long_and_control_characters() {
+    fn group_name_rejects_blank_and_control_characters() {
         assert_eq!(ConnectionGroupName::new(""), Err(GroupNameError::Empty));
         assert_eq!(ConnectionGroupName::new(" \t "), Err(GroupNameError::Empty));
-        assert_eq!(
-            ConnectionGroupName::new(&"a".repeat(ConnectionGroupName::MAX_CHARS + 1)),
-            Err(GroupNameError::TooLong {
-                max: ConnectionGroupName::MAX_CHARS
-            })
-        );
         assert_eq!(
             ConnectionGroupName::new("Work\nHome"),
             Err(GroupNameError::ControlCharacter)
@@ -96,19 +87,15 @@ mod tests {
     }
 
     #[test]
-    fn the_limit_counts_characters_not_bytes() {
-        let name = "é".repeat(ConnectionGroupName::MAX_CHARS);
+    fn a_name_of_any_length_is_kept_whole() {
+        let name = "é".repeat(1_000);
 
-        assert_eq!(ConnectionGroupName::new(&name).map(String::from), Ok(name));
+        assert_eq!(ConnectionGroupName::new(&name).map(String::from), Ok(name.clone()));
+        assert_eq!(ConnectionGroupName::from_stored(&name).map(String::from), Some(name));
     }
 
     #[test]
     fn a_stored_name_is_cleaned_rather_than_refused() {
-        let long = "a".repeat(ConnectionGroupName::MAX_CHARS + 10);
-        assert_eq!(
-            ConnectionGroupName::from_stored(&long).map(String::from),
-            Some("a".repeat(ConnectionGroupName::MAX_CHARS))
-        );
         assert_eq!(
             ConnectionGroupName::from_stored("Work\tHome\n").map(String::from),
             Some(String::from("Work Home"))
