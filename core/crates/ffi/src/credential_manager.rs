@@ -306,6 +306,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_deleted_item_is_gone() {
+        let manager = manager();
+        let item = SecretItem::McpToken;
+
+        manager.store_item(item, &SecretString::from("token")).await.unwrap();
+        manager.delete_item(item).await.unwrap();
+
+        assert!(manager.load_item(item).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
     async fn an_item_is_kept_apart_from_the_connections() {
         let manager = manager();
         let item = SecretItem::AiKey(AiProvider::OpenAi);
@@ -316,10 +327,20 @@ mod tests {
         manager.delete_item(item).await.unwrap();
         let gone = manager.load_item(item).await.unwrap();
 
+        let target = manager.item_target(item);
+        let name = wide(&target);
+        // SAFETY: `name` is NUL-terminated and outlives the call.
+        let again = unsafe { CredDeleteW(name.as_ptr(), CRED_TYPE_GENERIC, 0) };
+        // SAFETY: reads the last error CredDeleteW set.
+        let error = unsafe { GetLastError() };
+
         assert_eq!(
             found.map(|secret| secret.expose_secret().to_owned()),
             Some("sk-test".to_owned())
         );
-        assert!(gone.is_none());
+        assert!(
+            gone.is_none(),
+            "{target} is still stored after its delete; deleting it again gave {again} with error {error}"
+        );
     }
 }
