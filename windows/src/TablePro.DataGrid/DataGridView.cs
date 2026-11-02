@@ -326,7 +326,6 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _items.Grow(count);
         UpdateRowNumberWidth();
         UpdateExtent();
-        _layoutVersion++;
         Follow(_viewX, _viewY);
     }
 
@@ -351,6 +350,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         {
             s_device.FailNextDraw = true;
         }
+        _layoutVersion++;
         InvalidateRows();
     }
 
@@ -367,6 +367,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _textScale = scale;
         _rowHeight = Math.Ceiling(BaseRowHeight * scale);
         _painter?.Configure((float)(BaseFontSize * scale), _painter.Colors);
+        _rowNumberDigits = 0;
         UpdateRowNumberWidth();
         ColumnsChanged();
     }
@@ -483,6 +484,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         UpdateExtent();
         _columnWindow = (0, -1);
         Follow(_viewX, _viewY);
+        UpdateSelectionBoxes();
+        UpdateFocusBox();
         InvalidateRows();
     }
 
