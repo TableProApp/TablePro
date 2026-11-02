@@ -1,6 +1,6 @@
 # 0001: No plugin system; drivers are statically linked
 
-- **Status**: Accepted
+- **Status**: Superseded by core 0004 (`core/docs/decisions/0004-driver-plugin-abi.md`)
 - **Date**: 2026-04-26
 
 ## Context
