@@ -244,12 +244,9 @@ internal sealed unsafe partial class TsfInput : IDisposable
         }
     }
 
+    // Each update reads the context as it is then, so an extra queued one does no harm, and none is skipped.
     private void RequestUpdate()
     {
-        if (_sessionPending)
-        {
-            return;
-        }
         _sessionPending = true;
         HRESULT result;
         // An edit session asked for from inside one must be asynchronous.
