@@ -45,7 +45,7 @@
 ### Input
 
 - TSF through `ITfContextOwner`, ported from Windows Terminal's `src/tsf` (MIT): TSF owns a transitory store that holds only the text being composed. The editor draws it at the caret with the IME's underlines and moves finished text into the document as typing. The IME never reads the 5 MB document, and composition never reaches the undo history.
-- `CoreTextEditContext` was not used: `CoreTextServicesManager.GetForCurrentView` needs a CoreWindow, which a WinUI 3 desktop app does not have, and its context is not transitory, the reason Terminal left it.
+- `CoreTextEditContext` was not used. In a WinUI 3 desktop app `CoreTextServicesManager.GetForCurrentView()` and `CreateEditContext()` do succeed (gate run 41448673455). Its context is not transitory, so the IME would read the document, the reason Windows Terminal left it. Whether it receives input in a desktop app was not tested.
 - Keys follow Windows text boxes, and VS Code on Windows where a text box has none:
 
 | Keys | Command |
