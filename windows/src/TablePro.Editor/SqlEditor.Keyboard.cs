@@ -16,6 +16,12 @@ public sealed partial class SqlEditor
     protected override void OnKeyDown(KeyRoutedEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
+        // Keys typed into the find box bubble up here; they are the box's.
+        if (!ReferenceEquals(e.OriginalSource, this))
+        {
+            base.OnKeyDown(e);
+            return;
+        }
         _tsf?.FlushPendingComposition();
         // While the IME composes, its keys are its own; it hands back the ones it does not use after.
         if (IsComposing || e.Key == (VirtualKey)229)
@@ -171,7 +177,7 @@ public sealed partial class SqlEditor
     private void OnCharacterReceived(Microsoft.UI.Xaml.UIElement sender, CharacterReceivedRoutedEventArgs e)
     {
         var c = e.Character;
-        if (IsComposing)
+        if (IsComposing || !ReferenceEquals(e.OriginalSource, this))
         {
             return;
         }

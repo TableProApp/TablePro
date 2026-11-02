@@ -15,6 +15,7 @@ public sealed partial class SqlEditor
     private readonly List<StyleRun> _runs = [];
     private long _frameVersion = -1;
     private float _caretWidth = -1;
+    private bool _idleLexingQueued;
 
     private unsafe void Render()
     {
@@ -208,6 +209,26 @@ public sealed partial class SqlEditor
         var presented = Now();
         FramePresented?.Invoke(this, new EditorFrame(presented, Milliseconds(started, presented), lexMilliseconds,
             Document.Version, first, last, created, _device.IsSoftware));
+        ScheduleIdleLexing();
+    }
+
+    // Line facts for the rest of the document fill in at low priority, a few windows at a time, so input and frames
+    // go first.
+    private void ScheduleIdleLexing()
+    {
+        if (_idleLexingQueued || _highlighter is null)
+        {
+            return;
+        }
+        _idleLexingQueued = true;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            _idleLexingQueued = false;
+            if (_highlighter?.AdvanceIdle(4) == true && !_disposed)
+            {
+                ScheduleIdleLexing();
+            }
+        });
     }
 
     // The layout drawn for a line in the last frame, or a plain one with the same geometry.

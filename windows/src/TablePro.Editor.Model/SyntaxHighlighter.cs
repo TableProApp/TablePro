@@ -104,6 +104,17 @@ public sealed class SyntaxHighlighter : IDisposable
         }
     }
 
+    // Lexes a few windows past the frontier while the editor is idle, so a later jump finds its lines known.
+    // False once every line is known.
+    public bool AdvanceIdle(int windows)
+    {
+        for (var i = 0; i < windows && _frontier < _document.LineCount; i++)
+        {
+            AdvanceOnce(Window);
+        }
+        return _frontier < _document.LineCount;
+    }
+
     // Moves the frontier past line, lexing from the last clean line in windows.
     public void EnsureStates(int line)
     {

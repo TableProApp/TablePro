@@ -80,6 +80,28 @@ public sealed class HighlighterTests
         Assert.False(highlighter.IsLineClean(150));
     }
 
+    [Fact]
+    public void IdlePassesReachTheEndWithTheSameFacts()
+    {
+        var text = Script(30_000);
+        var idle = new SyntaxHighlighter(new TextDocument(text), new FakeLexer());
+        var direct = new SyntaxHighlighter(new TextDocument(text), new FakeLexer());
+        direct.EnsureStates(29_999);
+
+        var passes = 0;
+        while (idle.AdvanceIdle(2))
+        {
+            passes++;
+        }
+
+        Assert.True(passes > 1);
+        Assert.Equal(direct.Frontier, idle.Frontier);
+        for (var line = 0; line < 30_000; line += 97)
+        {
+            Assert.Equal(direct.IsLineClean(line), idle.IsLineClean(line));
+        }
+    }
+
     private static string Script(int lines)
     {
         var text = new StringBuilder();
