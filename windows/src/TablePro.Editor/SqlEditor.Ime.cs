@@ -41,6 +41,13 @@ public sealed partial class SqlEditor
         };
     }
 
+    // The primary caret in screen pixels, where an input method's candidates or a completion list go.
+    public Windows.Graphics.RectInt32 CaretScreenRectangle()
+    {
+        var rect = ToScreen(CaretRect(_model.Primary.Active));
+        return new Windows.Graphics.RectInt32(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+    }
+
     internal Point FromScreen(Point screen)
     {
         var scale = XamlRoot?.RasterizationScale ?? 1;
