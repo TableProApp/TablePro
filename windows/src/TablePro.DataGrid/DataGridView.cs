@@ -130,9 +130,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _frozenWindow.Children.Add(_frozenSelectionBox);
         _frozenWindow.Children.Add(_frozenRows);
         _frozenWindow.Children.Add(_frozenFocusBox);
+        // Opaque: ScrollViewer lays its left header over the content, which scrolls on beneath it.
         _frozenContent = new PaneContent(this, frozen: true)
         {
-            Background = Brushes.Clear,
+            Background = Brushes.Background,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
         };
