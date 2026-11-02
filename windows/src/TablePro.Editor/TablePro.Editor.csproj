@@ -10,9 +10,10 @@
     <UseWinUI>true</UseWinUI>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
-    <!-- Lets the macOS CI job and a Mac compile the control. It has no XAML or resources, so it needs no PRI file. -->
+    <!-- Lets the macOS CI job and a Mac compile the control. MakePri runs only on Windows, and an app that references
+         the control merges its PRI file there. -->
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+    <AppxGeneratePriEnabled Condition="'$(OS)' != 'Windows_NT'">false</AppxGeneratePriEnabled>
   </PropertyGroup>
 
   <ItemGroup>
