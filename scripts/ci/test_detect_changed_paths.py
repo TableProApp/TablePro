@@ -168,13 +168,29 @@ class DetectChangedPathsTests(unittest.TestCase):
                 self.assertEqual(self.verdict_after("windows", path), "true")
                 self.assertEqual(self.verdict_after("macos", path), "false")
 
-    def test_windows_skips_the_rest_of_the_core_and_markdown(self):
+    def test_windows_runs_on_every_core_crate_and_the_workspace_files(self):
         for path in [
             "core/crates/session/src/lib.rs",
+            "core/crates/drivers/sqlite/src/driver.rs",
+            "core/crates/core/Cargo.toml",
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("windows", path), "true")
+                self.assertEqual(self.verdict_after("macos", path), "false")
+
+    def test_windows_skips_the_other_apps_markdown_and_other_tool_settings(self):
+        for path in [
             "linux/crates/app/src/main.rs",
+            "linux/Cargo.toml",
             "apple/TablePro/App.swift",
             "windows/AGENTS.md",
-            "core/crates/ffi/README.md",
+            "core/AGENTS.md",
+            "core/docs/decisions/0001-shared-core.md",
+            "rustfmt.toml",
+            "deny.toml",
             ".github/workflows/core.yml",
         ]:
             with self.subTest(path=path):

@@ -99,10 +99,11 @@ case "$SUITE" in
             KEEP='linux/CHANGELOG\.md$|linux/docs/regression-tests\.md$|linux/data/'
         fi ;;
     windows)
-        # The .NET interop library and its tests, and the core's FFI crate they load.
-        PATTERNS=('windows/' 'core/crates/ffi/' 'scripts/ci/detect-changed-paths\.sh$'
-            '\.github/workflows/(ci|windows)\.yml$')
-        SKIP='(windows|core/crates/ffi)/.*\.md$' ;;
+        # The .NET interop library and its tests run the whole core through its FFI crate, so a
+        # change to any core crate or to the workspace it builds in runs them again.
+        PATTERNS=('windows/' 'core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$'
+            'scripts/ci/detect-changed-paths\.sh$' '\.github/workflows/(ci|windows)\.yml$')
+        SKIP='(windows|core)/.*\.md$' ;;
     *)
         echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs or windows, got '$SUITE'" >&2
         exit 2 ;;

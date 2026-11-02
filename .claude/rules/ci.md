@@ -37,7 +37,7 @@ paths:
 ## Change detector
 
 - `scripts/ci/detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <ref>] <suite>` prints `true` or `false`. No base prints true; an all-zero base diffs from the merge base with `origin/main`; `--ref refs/heads/release/*` prints true.
-- Suites: `macos`, `plugins`, `ios`, `oracle`, `hana`, `swiftlint`, `linux` (`linux/`, `core/` and the Cargo workspace files at the top; no Markdown but `linux/CHANGELOG.md`, `linux/docs/regression-tests.md` and `linux/data/`), `linux-docs`, `windows` (`windows/` and `core/crates/ffi/`, no Markdown), `release` (what Release Build reads) and `shipped` (`release` without `.github/`; `version.py check` reads it).
+- Suites: `macos`, `plugins`, `ios`, `oracle`, `hana`, `swiftlint`, `linux` (`linux/`, `core/` and the Cargo workspace files at the top; no Markdown but `linux/CHANGELOG.md`, `linux/docs/regression-tests.md` and `linux/data/`), `linux-docs`, `windows` (`windows/`, `core/`, `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` at the top; no Markdown), `release` (what Release Build reads) and `shipped` (`release` without `.github/`; `version.py check` reads it).
 - Every suite but `shipped` watches `ci.yml` and its own workflow. A path a suite newly reads joins its pattern in the same change.
 
 ## Runners
