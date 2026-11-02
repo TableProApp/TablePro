@@ -361,7 +361,7 @@ private actor PostgreSQLActor {
         }
         close()
 
-        let connStr = PostgreSQLConnectionString.build(
+        let connStr = try PostgreSQLConnectionString.build(
             host: host,
             port: port,
             database: database,

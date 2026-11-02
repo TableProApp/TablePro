@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProProcess
 import TableProUtilities
 
 protocol RegistryPluginInstalling: Sendable {
@@ -178,10 +179,17 @@ actor PluginInstaller: RegistryPluginInstalling {
         return stagedURL
     }
 
+    // --noqtn: the signature check is the gate, and the bundle drops quarantine after it either way.
+    nonisolated static func extractZipCommand(at zipURL: URL, into destDir: URL) -> ProcessCommand {
+        ProcessCommand(
+            executable: URL(fileURLWithPath: "/usr/bin/ditto"),
+            arguments: ["-x", "-k", "--noqtn", "--", zipURL.path, destDir.path],
+            environment: ProcessEnvironment.minimal()
+        )
+    }
+
     nonisolated static func extractZip(at zipURL: URL, into destDir: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
-        process.arguments = ["-xk", zipURL.path, destDir.path]
+        let process = try ProcessLauncher.process(for: extractZipCommand(at: zipURL, into: destDir))
         try process.run()
         process.waitUntilExit()
         if process.terminationStatus != 0 {

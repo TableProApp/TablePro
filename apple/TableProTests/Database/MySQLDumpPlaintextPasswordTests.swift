@@ -392,7 +392,7 @@ struct MySQLDumpPlaintextPasswordTests {
     @Test("The plugin folder is removed when the tool exits and when it cannot launch")
     func runnerRemovesThePluginFolder() async throws {
         let ran = try MariaDBClientPluginFolder.make(from: nil)
-        let runner = ProcessNativeDumpRunner(command: runnerCommand("/bin/sh", folder: ran))
+        let runner = ProcessNativeDumpRunner(command: runnerCommand("/usr/bin/true", folder: ran))
         try runner.start()
         _ = await runner.result
         #expect(!FileManager.default.fileExists(atPath: ran.url.path))

@@ -50,6 +50,7 @@ let package = Package(
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
         .library(name: "TableProSQLQuoting", targets: ["TableProSQLQuoting"]),
+        .library(name: "TableProProcess", targets: ["TableProProcess"]),
         .library(name: "TableProSQLVocabulary", targets: ["TableProSQLVocabulary"]),
         .library(name: "TableProAutocomplete", targets: ["TableProAutocomplete"]),
         .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"]),
@@ -254,6 +255,12 @@ let package = Package(
             name: "TableProSQLQuoting",
             dependencies: [],
             path: "Sources/TableProSQLQuoting"
+        ),
+        // Starts every child process outside PluginKit. Foundation only, so it builds on Linux too.
+        .target(
+            name: "TableProProcess",
+            dependencies: [],
+            path: "Sources/TableProProcess"
         ),
         // Linked by the macOS app, six plugin bundles and the iOS app, so never TableProPluginKit.
         .target(
@@ -489,6 +496,11 @@ let package = Package(
             // CSQLite carries the headers only; the apps link the vendored library. The test reads quoted text
             // back through SQLite's own tokenizer, which the system library shares.
             linkerSettings: [.linkedLibrary("sqlite3")]
+        ),
+        .testTarget(
+            name: "TableProProcessTests",
+            dependencies: ["TableProProcess"],
+            path: "Tests/TableProProcessTests"
         ),
         .testTarget(
             name: "TableProSQLVocabularyTests",

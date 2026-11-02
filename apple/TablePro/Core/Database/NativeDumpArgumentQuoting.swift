@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 /// Turning a picked object name into the argument its tool actually matches on.
 ///
@@ -12,43 +13,29 @@ import Foundation
 /// look right on lowercase names with no punctuation and silently misfires on everything else.
 /// Both were measured against the shipped binaries rather than read off a manual.
 enum NativeDumpArgumentQuoting {
-    /// The `-t` value for one table.
-    ///
-    /// Measured with pg_dump 17.11: `-t 'app.Orders'`, `-t 'order.item'` and `-t 'app.t[1]'` all
-    /// exit with "no matching tables were found", because the pattern folds to lower case, splits
-    /// on the first dot and reads `[` as a character class. `-t '"app"."Orders"'`,
-    /// `-t '"app"."order.item"'`, `-t '"app"."t[1]"'` and `-t '"app"."we""ird"'` all match exactly
-    /// one table. Double quotes stop the folding and every metacharacter, and an embedded quote is
-    /// written twice, which is the same rule SQL identifiers follow.
-    static func postgresTablePattern(_ object: NativeDumpObject) -> String {
-        let table = quotedPatternPart(object.name)
-        guard let schema = object.schema else { return table }
-        return "\(quotedPatternPart(schema)).\(table)"
-    }
-
-    private static func quotedPatternPart(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+    // Measured with pg_dump 17.11: unquoted, `-t` folds case, splits on the first dot and reads `[` as a class.
+    static func postgresTablePattern(_ object: NativeDumpObject) throws -> String {
+        try refusingNUL { try ConnectionStringQuoting.psqlPattern(schema: object.schema, name: object.name) }
     }
 
     // libpq reads a -d value holding `=` or a URI prefix as a whole conninfo, whose host, port and
     // sslmode override -h, -p and PGSSLMODE. As the dbname of a conninfo it is only a name again.
     static func postgresDatabase(_ name: String) throws -> String {
-        try refuseNUL(name)
-        let escaped = name
-            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "'", with: "\\'", options: .literal)
-        return "dbname='\(escaped)'"
+        try "dbname=" + refusingNUL { try ConnectionStringQuoting.libpqValue(name) }
     }
 
     // SqlClient ends a bare value at the next `;` and takes the last of a repeated keyword, so a
     // database name could move the sign-in, password included, to another server.
     static func sqlServerConnectionStringValue(_ value: String) throws -> String {
-        try refuseNUL(value)
-        return "\"\(value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        try refusingNUL { try ConnectionStringQuoting.adoNetValue(value) }
     }
 
-    private static func refuseNUL(_ value: String) throws {
-        if value.unicodeScalars.contains("\0") { throw NativeDumpError.nulInArgument }
+    private static func refusingNUL(_ encode: () throws -> String) throws -> String {
+        do {
+            return try encode()
+        } catch is ConnectionStringQuoting.NULRefusal {
+            throw NativeDumpError.nulInArgument
+        }
     }
 
     /// The whole `.dump` invocation for a narrowed SQLite backup, as ONE process argument.

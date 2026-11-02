@@ -3571,6 +3571,10 @@
     "%@ has no recorded reads." : {
 
     },
+    "%@ holds a character macOS would turn into command line punctuation." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "%@ holds a document or an array, and this text is not valid JSON." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -4091,6 +4095,10 @@
           }
         }
       }
+    },
+    "%@ is not a valid environment variable name." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "%@ is not a Vault address. Use a URL such as https://vault.example.com:8200." : {
 
@@ -17400,6 +17408,10 @@
           }
         }
       }
+    },
+    "A value holds a NUL character, which a command line cannot carry." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "A value was too large to keep." : {
       "localizations" : {
@@ -180085,6 +180097,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro does not pass values through the shell %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro does not run a pre-connect script on its own." : {
 
     },
@@ -180579,6 +180595,10 @@
           }
         }
       }
+    },
+    "TablePro runs a tool only by its full path, not %@." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro runs Anthropic's claude tool in headless mode. Claude Code is built for you to use directly, not as a backend for other apps, so this path can break with any Claude Code release." : {
       "localizations" : {
@@ -183630,6 +183650,10 @@
         }
       }
     },
+    "The %@ setting holds a NUL character, which a PostgreSQL connection cannot carry." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The %1$@ plugin could not be installed: %2$@" : {
       "localizations" : {
         "fr" : {
@@ -184943,6 +184967,9 @@
           }
         }
       }
+    },
+    "The Cloudflare hostname cannot start with a dash or contain spaces or control characters." : {
+
     },
     "The Cloudflare tunnel did not become ready in time: %@" : {
       "localizations" : {
@@ -192144,29 +192171,37 @@
         }
       }
     },
-    "The SSH host %@ contains characters ssh does not allow in a host name." : {
+    "The SSH host %@ contains characters TablePro does not allow in a host name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’hôte SSH %@ contient des caractères que ssh n’accepte pas dans un nom d’hôte."
+            "value" : "L’hôte SSH %@ contient des caractères que TablePro n’accepte pas dans un nom d’hôte."
           }
         }
       }
     },
-    "the SSH host or user of “%@” contains characters ssh does not allow" : {
+    "The SSH host is empty." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "the SSH host, user or port of “%@” is not one TablePro allows" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "l’hôte ou l’utilisateur SSH de « %@ » contient des caractères que ssh n’accepte pas"
+            "value" : "l’hôte, l’utilisateur ou le port SSH de « %@ » n’est pas accepté par TablePro"
           }
         }
       }
+    },
+    "The SSH port %lld is not between 1 and 65535." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The SSH server closed the connection during the handshake." : {
 
@@ -192452,14 +192487,14 @@
         }
       }
     },
-    "The SSH user %@ contains characters ssh does not allow in a user name." : {
+    "The SSH user %@ contains characters TablePro does not allow in a user name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’utilisateur SSH %@ contient des caractères que ssh n’accepte pas dans un nom d’utilisateur."
+            "value" : "L’utilisateur SSH %@ contient des caractères que TablePro n’accepte pas dans un nom d’utilisateur."
           }
         }
       }
@@ -193852,6 +193887,9 @@
           }
         }
       }
+    },
+    "The tunnel was not started: the host %@ is not a DNS name or an IP address." : {
+
     },
     "The two results share no column name, so there is nothing to compare." : {
 

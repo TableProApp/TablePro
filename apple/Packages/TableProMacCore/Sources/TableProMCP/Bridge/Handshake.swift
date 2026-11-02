@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProProcess
 
 public enum MCPHandshakeAcquisitionError: Error, LocalizedError, Equatable {
     case launchFailed(status: Int32)
@@ -83,12 +84,13 @@ public struct MCPHandshakeAcquirer: Sendable {
     // of TablePro: a client did, to answer a question.
     public static func openHostApp(logger: any MCPBridgeLogger) throws {
         logger.log(.info, "No trusted MCP handshake; launching TablePro via \(Self.launchUrl)")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-g", Self.launchUrl]
-        var environment = ProcessInfo.processInfo.environment
+        var environment = ProcessEnvironment.inherited()
         environment[BackgroundLaunchFlag.variable] = BackgroundLaunchFlag.value
-        process.environment = environment
+        let process = try ProcessLauncher.process(for: ProcessCommand(
+            executable: URL(fileURLWithPath: "/usr/bin/open"),
+            arguments: ["-g", Self.launchUrl],
+            environment: environment
+        ))
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {

@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProLogRedaction
+import TableProProcess
 
 enum SSHMatchExecutor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHMatchExecutor")
@@ -8,16 +9,8 @@ enum SSHMatchExecutor {
 
     private static let killGraceSeconds: TimeInterval = 2
 
-    /// Mirrors OpenSSH `Match exec` semantics: runs through `/bin/sh -c`,
-    /// stdin/stdout/stderr suppressed, exit 0 = matched. The 5 second timeout
-    /// bounds runaway commands so a hung script cannot stall the connect path.
-    /// Every invocation is logged at `.notice` so users can audit what their
-    /// `~/.ssh/config` caused TablePro to execute.
-    ///
-    /// The timeout escalates to `SIGKILL`, because `terminate()` sends `SIGTERM` and a command that
-    /// ignores it leaves `waitUntilExit()` blocking the connect path with no way back: measured,
-    /// `trap '' TERM; sleep 300` never returned. A handler that merely traps and exits is fine, so
-    /// the grace period gives it its chance first.
+    // `/bin/sh -c` with exit 0 as a match, as in OpenSSH. SIGTERM alone left `trap '' TERM; sleep 300`
+    // blocking the connect path (measured), so a command that outlives its grace period gets SIGKILL.
     static func evaluate(command: String) -> Bool {
         evaluate(command: command, timeout: timeoutSeconds)
     }
@@ -28,14 +21,14 @@ enum SSHMatchExecutor {
 
         logger.notice("Match exec: \(trimmed, privacy: .private)")
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", trimmed]
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
+        let process: Process
         do {
+            // ssh runs it in the user's environment. A value the launcher refuses never ran, so it did not match.
+            process = try ProcessLauncher.process(
+                for: .userShell(trimmed, shell: .sh, environment: ProcessEnvironment.inherited())
+            )
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
             try process.run()
         } catch {
             logger.warning("Match exec failed to start: \(LogRedaction.publicDescription(of: error), privacy: .public)")

@@ -7,6 +7,7 @@ import Darwin
 import Dispatch
 import Foundation
 import SQLite3
+import TableProProcess
 
 enum BeancountConnectStopReason {
     case cancelled
@@ -220,14 +221,16 @@ final class BeancountRunningProcess: @unchecked Sendable {
     private let lock = NSLock()
     private var stopped = false
 
-    init(executablePath: String, arguments: [String], environment: [String: String]) {
-        process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = arguments
-        if !environment.isEmpty {
-            process.environment = ProcessInfo.processInfo.environment
-                .merging(environment, uniquingKeysWith: { _, override in override })
-        }
+    // Every run, the `import beancount` probe included, gets the same environment and `/` as its folder, so
+    // the probe cannot pass on a PYTHONPATH or a planted module the projection would not see.
+    init(executablePath: String, arguments: [String], environment: [String: String]) throws {
+        process = try ProcessLauncher.process(for: ProcessCommand(
+            executable: URL(fileURLWithPath: executablePath),
+            arguments: arguments,
+            environment: ProcessEnvironment.minimal().merging(environment) { _, override in override },
+            // rledger looks up a module plugin name with the host python3's find_spec, which imports from here.
+            currentDirectory: URL(fileURLWithPath: "/", isDirectory: true)
+        ))
         process.standardOutput = standardOutput
         process.standardError = standardError
     }
@@ -268,7 +271,7 @@ enum BeancountProcessRunner {
         environment: [String: String],
         connectAttempt: BeancountConnectAttempt?
     ) throws -> BeancountProcessOutput {
-        let runningProcess = BeancountRunningProcess(
+        let runningProcess = try BeancountRunningProcess(
             executablePath: executablePath,
             arguments: arguments,
             environment: environment

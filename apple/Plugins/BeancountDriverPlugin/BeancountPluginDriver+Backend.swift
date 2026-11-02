@@ -56,7 +56,8 @@ extension BeancountPluginDriver {
         if try rledgerSupportsNoCache(executablePath: rustledgerPath, connectAttempt: connectAttempt) {
             arguments.append("--no-cache")
         }
-        arguments.append(contentsOf: [ledgerPath, query])
+        // Without `--`, a query such as `-F/path` is an rledger option that reads that file into the error.
+        arguments.append(contentsOf: ["--", ledgerPath, query])
         return arguments
     }
 

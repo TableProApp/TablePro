@@ -40,6 +40,7 @@ let package = Package(
             dependencies: [
                 "TableProUtilities",
                 .product(name: "TableProLogRedaction", package: "TableProCore"),
+                .product(name: "TableProProcess", package: "TableProCore"),
                 .product(name: "TableProSSHTransport", package: "TableProCore")
             ],
             path: "Sources/TableProSSHConfig",
@@ -51,6 +52,7 @@ let package = Package(
                 "TableProUtilities",
                 .product(name: "TableProCoreTypes", package: "TableProCore"),
                 .product(name: "TableProLogRedaction", package: "TableProCore"),
+                .product(name: "TableProProcess", package: "TableProCore"),
                 .product(name: "TableProWireIO", package: "TableProCore")
             ],
             path: "Sources/TableProMCP",

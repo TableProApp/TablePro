@@ -1141,7 +1141,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             let data = try runProcess(
                 executablePath: try rustledgerExecutablePath(),
-                arguments: ["check", "--no-cache", "-f", "json", ledgerPath],
+                arguments: ["check", "--no-cache", "-f", "json", "--", ledgerPath],
                 failureMessage: String(localized: "rustledger validation failed"),
                 allowsNonZeroExit: true,
                 connectAttempt: connectAttempt

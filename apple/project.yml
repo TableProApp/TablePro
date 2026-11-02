@@ -407,7 +407,7 @@ targets:
       - package: Sparkle
       - package: Yams
       - package: TableProCore
-        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
+        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
         products: [TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
@@ -723,6 +723,9 @@ targets:
     templateAttributes:
       folder: SQLExportPlugin
       principalClass: SQLExportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProProcess
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.SQLExportPlugin
@@ -820,7 +823,7 @@ targets:
           - Info.plist
     dependencies:
       - package: TableProCore
-        product: TableProSQLGrammar
+        products: [TableProProcess, TableProSQLGrammar]
 
   ClickHouseDriverTests:
     templates: [PluginTests, ClickHouseLinkage]
@@ -872,7 +875,7 @@ targets:
     dependencies:
       - target: TableProPluginKit
       - package: TableProCore
-        products: [TableProJavaScriptText, TableProNumberFormatting, TableProTabularIO]
+        products: [TableProJavaScriptText, TableProNumberFormatting, TableProProcess, TableProTabularIO]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
@@ -893,7 +896,7 @@ targets:
       principalClass: BeancountPlugin
     dependencies:
       - package: TableProCore
-        product: TableProNumberFormatting
+        products: [TableProNumberFormatting, TableProProcess]
     settings:
       base:
         OTHER_LDFLAGS:
@@ -1040,7 +1043,7 @@ targets:
       principalClass: HanaPlugin
     dependencies:
       - package: TableProCore
-        product: TableProSQLGrammar
+        products: [TableProProcess, TableProSQLGrammar]
 
   ElasticsearchDriverPlugin:
     templates: [DriverPlugin]

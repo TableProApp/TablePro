@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProProcess
 import TableProSQLQuoting
 
 /// How the app plans to take a copy of a remote database, and what it may promise about the result.
@@ -314,7 +315,7 @@ enum RemoteDatabaseFileTransfer {
         let snapshotPath = "\(remotePath).tablepro-snapshot-\(UUID().uuidString)"
         defer { session.remove(snapshotPath, deadline: deadline) }
 
-        let command = remoteSnapshotCommand(
+        let command = try remoteSnapshotCommand(
             executable: executable,
             remotePath: remotePath,
             snapshotPath: snapshotPath,
@@ -344,13 +345,14 @@ enum RemoteDatabaseFileTransfer {
         remotePath: String,
         snapshotPath: String,
         cleanupDelaySeconds: Int = snapshotCleanupDelaySeconds
-    ) -> String {
-        let quotedPath = LibSSH2ExecChannel.shellQuoted(remotePath)
-        let vacuum = "\(executable) \(quotedPath) "
-            + LibSSH2ExecChannel.shellQuoted("VACUUM INTO \(SQLQuoting.stringLiteral(snapshotPath))")
-        let delayedCleanup = "trap '' HUP; sleep \(cleanupDelaySeconds); rm -f -- "
-            + LibSSH2ExecChannel.shellQuoted(snapshotPath)
-        let quotedCleanup = LibSSH2ExecChannel.shellQuoted(delayedCleanup)
+    ) throws -> String {
+        // Remote sqlite3 builds differ on `--`, so a path it would read as an option gets `./` instead.
+        let quotedPath = try ShellQuoting.singleQuoted(remotePath.hasPrefix("-") ? "./" + remotePath : remotePath)
+        let quotedVacuum = try ShellQuoting.singleQuoted("VACUUM INTO \(SQLQuoting.stringLiteral(snapshotPath))")
+        let vacuum = "\(executable) \(quotedPath) \(quotedVacuum)"
+        let quotedSnapshot = try ShellQuoting.singleQuoted(snapshotPath)
+        let delayedCleanup = "trap '' HUP; sleep \(cleanupDelaySeconds); rm -f -- \(quotedSnapshot)"
+        let quotedCleanup = try ShellQuoting.singleQuoted(delayedCleanup)
         return """
         umask 077
         if command -v nohup >/dev/null 2>&1; then

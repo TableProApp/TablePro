@@ -198,8 +198,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 KerberosTicket.discard(cachePath)
             }
         }
+        let conninfo = try connectionString()
         let connection = try signingIn(until: deadline) { () throws -> OpaquePointer in
-            guard let connection = connectionString.withCString({ PQconnectStart($0) }) else {
+            guard let connection = conninfo.withCString({ PQconnectStart($0) }) else {
                 throw LibPQPluginError.connectionFailed
             }
             do {
@@ -575,8 +576,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
         Self.logger.warning("standard_conforming_strings is off; string literals escape backslashes")
     }
 
-    private var connectionString: String {
-        LibPQConnectionString.build(
+    private func connectionString() throws -> String {
+        try LibPQConnectionString.build(
             host: host,
             port: port,
             user: user,

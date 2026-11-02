@@ -287,11 +287,11 @@ public struct ExportableTunnelCommand: Codable, Sendable, Equatable {
 }
 
 public extension ExportableConnection {
-    // Match exec hands the host and user to /bin/sh, and the host key store is one entry per line.
+    // Match exec hands the host, user and port to /bin/sh, and the host key store is one entry per line.
     var refusedSSHDestination: SSHDestinationName.Problem? {
         guard let ssh = sshConfig, ssh.enabled else { return nil }
-        let hops = [(ssh.host, ssh.username)] + (ssh.jumpHosts ?? []).map { ($0.host, $0.username) }
-        return hops.lazy.compactMap { SSHDestinationName.problem(host: $0.0, user: $0.1) }.first
+        let hops = [(ssh.host, ssh.username, ssh.port)] + (ssh.jumpHosts ?? []).map { ($0.host, $0.username, $0.port) }
+        return hops.lazy.compactMap { SSHDestinationName.problem(host: $0.0, user: $0.1, port: $0.2) }.first
     }
 }
 

@@ -6,6 +6,7 @@
 import CryptoKit
 import Foundation
 import os
+import TableProProcess
 import TableProUtilities
 
 struct CopilotBinaryDigests: Sendable, Equatable {
@@ -126,6 +127,11 @@ actor CopilotBinaryManager {
         try await Self.extractBinary(from: archive, into: staging)
 
         let extracted = staging.appendingPathComponent("copilot-language-server")
+        // bsdtar keeps a member that is itself a symlink, and the digest check would read through it.
+        guard Self.isRegularFile(at: extracted) else {
+            Self.logger.error("Extracted Copilot language server is not a regular file, refusing to install")
+            throw CopilotError.binaryNotFound
+        }
         guard DownloadedBinary.sha256Hex(ofFileAt: extracted.path) == digests.binarySHA256 else {
             Self.logger.error("Extracted Copilot language server does not match its pinned digest, refusing to install")
             throw CopilotError.binaryNotFound
@@ -142,12 +148,20 @@ actor CopilotBinaryManager {
         Self.logger.info("Installed Copilot language server \(Self.pinnedVersion, privacy: .public)")
     }
 
+    static func extractCommand(archive: URL, into directory: URL) -> ProcessCommand {
+        ProcessCommand(
+            executable: URL(fileURLWithPath: "/usr/bin/tar"),
+            arguments: [
+                "-x", "-z", "-f", archive.path, "-C", directory.path, "--strip-components=1",
+                "--no-same-owner", "--no-xattrs", "--no-acls", "--no-fflags", "--no-mac-metadata",
+                "--", "package/copilot-language-server"
+            ],
+            environment: ProcessEnvironment.minimal()
+        )
+    }
+
     private static func extractBinary(from archive: URL, into directory: URL) async throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        process.arguments = [
-            "xzf", archive.path, "-C", directory.path, "--strip-components=1", "package/copilot-language-server"
-        ]
+        let process = try ProcessLauncher.process(for: extractCommand(archive: archive, into: directory))
 
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             process.terminationHandler = { proc in
@@ -163,6 +177,11 @@ actor CopilotBinaryManager {
                 continuation.resume(throwing: error)
             }
         }
+    }
+
+    private static func isRegularFile(at url: URL) -> Bool {
+        let type = try? FileManager.default.attributesOfItem(atPath: url.path)[.type] as? FileAttributeType
+        return type == .typeRegular
     }
 
     private static func sha256Hex(of data: Data) -> String {

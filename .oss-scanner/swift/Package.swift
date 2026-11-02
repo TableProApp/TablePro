@@ -8,6 +8,7 @@ let package = Package(
     name: "TableProCoreLinux",
     targets: [
         .target(name: "TableProSQLQuoting"),
+        .target(name: "TableProProcess"),
         .target(name: "TableProSQLGrammar", dependencies: ["TableProSQLQuoting"]),
         .target(name: "CSQLite"),
         .target(name: "TableProSQLiteCore", dependencies: ["CSQLite"]),
@@ -25,6 +26,7 @@ let package = Package(
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .testTarget(name: "TableProLogRedactionTests", dependencies: ["TableProLogRedaction"]),
+        .testTarget(name: "TableProProcessTests", dependencies: ["TableProProcess"]),
         .testTarget(name: "TableProDamengCoreTests", dependencies: ["TableProDamengCore", "TableProSQLGrammar"]),
         .testTarget(name: "TableProWireIOTests", dependencies: ["TableProWireIO"]),
         .testTarget(name: "TableProCassandraCoreTests", dependencies: ["TableProCassandraCore", "TableProSQLGrammar"])

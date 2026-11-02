@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProProcess
 
 /// Turns a tunnel command configuration into the exact argument vector TablePro will run.
 ///
@@ -24,16 +25,18 @@ enum TunnelCommandBuilder {
         remoteHost: String,
         remotePort: Int
     ) throws -> Invocation {
-        try invocation(
+        let built = try invocation(
             for: config,
             localPortToken: String(localPort),
             remoteHost: remoteHost,
             remotePort: remotePort
         )
+        try refuseUnsafeLaunchValues(in: config, remoteHost: remoteHost)
+        return built
     }
 
-    /// The command as the connection form shows it, with the local port left as its placeholder
-    /// because it is allocated at connect time and naming a number here would be a lie.
+    // The local port stays its placeholder, since it is allocated at connect time. A value the launch would
+    // refuse is still shown, quoted: an import asks for consent against this text.
     static func previewCommand(
         for config: TunnelCommandConfiguration,
         remoteHost: String,
@@ -45,7 +48,7 @@ enum TunnelCommandBuilder {
             remoteHost: remoteHost,
             remotePort: remotePort
         ) else { return nil }
-        return ([invocation.executable] + invocation.arguments).map(displayQuoted).joined(separator: " ")
+        return ([invocation.executable] + invocation.arguments).map(ShellQuoting.displayWord).joined(separator: " ")
     }
 
     static func validationIssues(for config: TunnelCommandConfiguration) -> [String] {
@@ -83,12 +86,12 @@ enum TunnelCommandBuilder {
             guard TunnelCommandLine.containsLocalPortPlaceholder(config.command) else {
                 throw TunnelCommandError.missingLocalPortPlaceholder
             }
-            let substituted = tokens.map { token in
-                token
-                    .replacingOccurrences(of: TunnelCommandLine.localPortPlaceholder, with: localPortToken, options: .literal)
-                    .replacingOccurrences(of: TunnelCommandLine.hostPlaceholder, with: remoteHost, options: .literal)
-                    .replacingOccurrences(of: TunnelCommandLine.remotePortPlaceholder, with: String(remotePort), options: .literal)
-            }
+            let substituted = TunnelCommandLine.substitutePlaceholders(
+                in: tokens,
+                localPort: localPortToken,
+                remoteHost: remoteHost,
+                remotePort: remotePort
+            )
             return Invocation(executable: substituted[0], arguments: Array(substituted.dropFirst()))
         case .kubectl:
             return Invocation(
@@ -152,6 +155,40 @@ enum TunnelCommandBuilder {
 
     // MARK: - Private: validation
 
+    // Form validation is not the only way in: an import or a hand-edited connections file skips it.
+    private static func refuseUnsafeLaunchValues(in config: TunnelCommandConfiguration, remoteHost: String) throws {
+        let usesHost: Bool
+        let flagCheckedFields: [(value: String, label: String)]
+        switch config.method {
+        case .custom:
+            usesHost = (try? TunnelCommandLine.tokenize(config.command)).map(TunnelCommandLine.usesHost) ?? false
+            flagCheckedFields = []
+        case .kubectl:
+            usesHost = false
+            flagCheckedFields = kubectlFlagCheckedFields(for: config)
+        case .awsSSM:
+            // A `,` in the host would add keys to the `--parameters` shorthand.
+            usesHost = true
+            flagCheckedFields = [(trimmed(config.awsTarget), String(localized: "Target"))]
+        }
+        if usesHost, !TunnelCommandLine.isSubstitutableHost(remoteHost) {
+            throw TunnelCommandRefusal.hostNotAllowed(remoteHost)
+        }
+        if let field = flagCheckedFields.first(where: { isFlagLike($0.value) }) {
+            throw TunnelCommandRefusal.flagLikeValue(field.label)
+        }
+    }
+
+    private static func kubectlFlagCheckedFields(
+        for config: TunnelCommandConfiguration
+    ) -> [(value: String, label: String)] {
+        [
+            (trimmed(config.kubernetesResource), String(localized: "Resource")),
+            (trimmed(config.kubernetesNamespace), String(localized: "Namespace")),
+            (trimmed(config.kubernetesContext), String(localized: "Context"))
+        ]
+    }
+
     private static func customValidationIssues(for config: TunnelCommandConfiguration) -> [String] {
         var issues: [String] = []
         let command = trimmed(config.command)
@@ -179,11 +216,7 @@ enum TunnelCommandBuilder {
         if resource.isEmpty {
             issues.append(String(localized: "A Kubernetes resource is required, such as service/postgres"))
         }
-        for (value, label) in [
-            (resource, String(localized: "Resource")),
-            (trimmed(config.kubernetesNamespace), String(localized: "Namespace")),
-            (trimmed(config.kubernetesContext), String(localized: "Context"))
-        ] where isFlagLike(value) {
+        for (value, label) in kubectlFlagCheckedFields(for: config) where isFlagLike(value) {
             issues.append(flagLikeIssue(label))
         }
         return issues
@@ -223,9 +256,21 @@ enum TunnelCommandBuilder {
     private static func trimmed(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
 
-    private static func displayQuoted(_ token: String) -> String {
-        guard token.rangeOfCharacter(from: .whitespacesAndNewlines) != nil else { return token }
-        return "'" + token.replacingOccurrences(of: "'", with: "'\\''", options: .literal) + "'"
+enum TunnelCommandRefusal: Error, LocalizedError, Equatable {
+    case hostNotAllowed(String)
+    case flagLikeValue(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .hostNotAllowed(let host):
+            return String(
+                format: String(localized: "The tunnel was not started: the host %@ is not a DNS name or an IP address."),
+                ShellQuoting.displayWord(host)
+            )
+        case .flagLikeValue(let label):
+            return String(format: String(localized: "%@ cannot start with a dash or contain spaces"), label)
+        }
     }
 }

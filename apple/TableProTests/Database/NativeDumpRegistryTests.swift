@@ -7,6 +7,7 @@ import Foundation
 import TableProPluginKit
 import TableProSSHConfig
 import Testing
+import Yams
 
 @testable import TablePro
 
@@ -402,6 +403,40 @@ struct NativeDumpRegistryTests {
         #expect(backup.arguments == ["-safe", "/tmp/turso.db", ".dump"])
     }
 
+    // Measured with sqlite3 3.54.0: `sqlite3 -safe -cmd .dump` reads `-cmd` as an option and dumps an empty
+    // in-memory database with exit 0, and sqlite3 before 3.42 rejects `--`.
+    @Test("A SQLite path that starts with a dash or a tilde reaches sqlite3 absolute", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func sqlitePathIsAbsolute(kind: NativeDumpKind) throws {
+        let dashed = try command(
+            .sqlite, kind: kind, connection: connection(type: .sqlite, host: "", port: 0, database: "-cmd", username: "")
+        )
+        let dashedPath = try #require(dashed.arguments.first { $0 != "-safe" && $0 != "-bail" })
+        #expect(dashedPath == URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("-cmd").path)
+        #expect(dashedPath.hasPrefix("/"))
+        #expect(!dashed.arguments.contains("--"))
+
+        let home = try command(
+            .sqlite, kind: kind, connection: connection(type: .sqlite, host: "", port: 0, database: "~/x.db", username: "")
+        )
+        let homePath = try #require(home.arguments.first { $0 != "-safe" && $0 != "-bail" })
+        #expect(homePath == URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("x.db").path)
+
+        let dotted = try command(
+            .sqlite, kind: kind,
+            connection: connection(type: .sqlite, host: "", port: 0, database: "/tmp/a/../-b.db", username: "")
+        )
+        #expect(dotted.arguments.contains("/tmp/-b.db"))
+    }
+
+    @Test("A SQLite path holding a NUL is refused before anything runs")
+    func sqlitePathWithNULIsRefused() {
+        #expect(throws: NativeDumpError.nulInArgument) {
+            try command(.sqlite, connection: connection(type: .sqlite, host: "", port: 0, database: "/tmp/a\u{0}b", username: ""))
+        }
+    }
+
     /// A libSQL connection to a Turso URL has no local file, so `sqlite3` cannot reach it at all.
     /// Answering by type alone is what offered Backup Dump on one and wrote nothing.
     @Test("A connection with no local file is not offered a dump")
@@ -444,6 +479,32 @@ struct NativeDumpRegistryTests {
         #expect(throws: NativeDumpError.nulInArgument) {
             try command(.postgresql, database: "sa\u{0}les")
         }
+        #expect(throws: NativeDumpError.nulInArgument) {
+            try command(.postgresql, scope: .objects([NativeDumpObject(name: "or\u{0}ders", schema: "app")]))
+        }
+    }
+
+    // Process ends the app on a NUL in an argument, so the runner has to stop it first.
+    @Test("A NUL in a sign-in name is a thrown error, not a crash", arguments: [
+        DatabaseType.postgresql, .mysql
+    ])
+    func nulInTheUsernameIsAnError(type: DatabaseType) throws {
+        let built = try command(type, connection: connection(type: type, username: "a\u{0}b"))
+        let runner = ProcessNativeDumpRunner(command: built)
+        #expect(throws: NativeDumpError.nulInArgument) { try runner.start() }
+    }
+
+    @Test("A PostgreSQL database name with a quote and a table with a double quote reach the tool escaped")
+    func postgresQuotesReachTheTool() throws {
+        let built = try command(
+            .postgresql,
+            database: "o'brien",
+            scope: .objects([NativeDumpObject(name: "a\"b", schema: "app")])
+        )
+        let database = try #require(built.arguments.firstIndex(of: "-d").map { built.arguments[$0 + 1] })
+        #expect(database == "dbname='o\\'brien'")
+        let table = try #require(built.arguments.firstIndex(of: "-t").map { built.arguments[$0 + 1] })
+        #expect(table == "\"app\".\"a\"\"b\"")
     }
 
     // libpq reads a -d value holding `=` as a conninfo whose host overrides -h. Measured with
@@ -700,11 +761,29 @@ struct NativeDumpRegistryTests {
         #expect(tool.restoreBinaries == ["mysql", "mariadb"])
     }
 
-    @Test("A YAML-quoted password survives quotes and backslashes")
-    func yamlQuotingIsLossless() {
-        #expect(NativeDumpService.mongoYAMLQuoted("plain") == "\"plain\"")
-        #expect(NativeDumpService.mongoYAMLQuoted("a\"b") == "\"a\\\"b\"")
-        #expect(NativeDumpService.mongoYAMLQuoted("a\\b") == "\"a\\\\b\"")
+    // A raw line break inside a double-quoted scalar folds to a space, and YAML 1.1 also breaks lines at U+0085,
+    // U+2028 and U+2029, so the tool would sign in with another password.
+    @Test("Every MongoDB config value reads back as written", arguments: [
+        "plain", "a\"b", "a\\b", "é ✓", "a\nb\r\tc", "\u{1}\u{1B}\u{7F}\u{9F}", "\u{85}\u{2028}\u{2029}",
+        "p\nuri: mongodb://evil.example.com",
+    ])
+    func mongoConfigurationRoundTrips(value: String) throws {
+        let text = try NativeDumpService.mongoConfigurationText([
+            NativeDumpDescriptor.ConfigurationEntry(key: "uri", value: "mongodb://db.example.com"),
+            NativeDumpDescriptor.ConfigurationEntry(key: "password", value: value),
+        ])
+        let parsed = try #require(try Yams.load(yaml: text) as? [String: String])
+        #expect(parsed == ["uri": "mongodb://db.example.com", "password": value])
+        #expect(text.split(separator: "\n").count == 2)
+    }
+
+    @Test("A MongoDB password holding a newline stays one line of the config file")
+    func mongoPasswordWithANewlineStaysOneLine() throws {
+        let contents = try configuration(of: command(.mongodb, password: "p\nuri: mongodb://evil.example.com"))
+        let lines = contents.split(separator: "\n")
+        #expect(lines.count == 2)
+        #expect(lines.filter { $0.hasPrefix("uri:") }.count == 1)
+        #expect(try configurationValue("password", in: contents) == #"p\nuri: mongodb://evil.example.com"#)
     }
 
     /// A progress bar showing a percentage of a number nobody measured is worse than an

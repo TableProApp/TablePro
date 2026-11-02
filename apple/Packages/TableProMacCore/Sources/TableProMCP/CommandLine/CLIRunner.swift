@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import TableProProcess
 
 public protocol CLIConsole: AnyObject, Sendable {
     func out(_ text: String)
@@ -309,10 +310,13 @@ public extension CLIRunner {
 
     // The code is only good on the instance serving MCP, not on whichever copy owns `tablepro://`.
     private static func openLink(_ link: URL, in appPath: String?) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = (appPath.map { ["-a", $0] } ?? []) + [link.absoluteString]
+        let process: Process
         do {
+            process = try ProcessLauncher.process(for: ProcessCommand(
+                executable: URL(fileURLWithPath: "/usr/bin/open"),
+                arguments: (appPath.map { ["-a", $0] } ?? []) + [link.absoluteString],
+                environment: ProcessEnvironment.inherited()
+            ))
             try process.run()
         } catch {
             throw CLIFailure(.failure, "Could not open TablePro to pair: \(error.localizedDescription)")
