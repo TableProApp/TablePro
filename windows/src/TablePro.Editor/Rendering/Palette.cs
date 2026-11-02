@@ -6,8 +6,7 @@ using Windows.UI.ViewManagement;
 
 namespace TablePro.Editor.Rendering;
 
-// The colors the editor draws with. Chrome colors come from WinUI's theme resources, and in high contrast from the
-// system's colors, where text, selection and caret take the user's own choices and syntax colors step aside.
+// In high contrast the system colors take over and syntax colors step aside.
 internal sealed class Palette
 {
     public Color Background { get; private init; }

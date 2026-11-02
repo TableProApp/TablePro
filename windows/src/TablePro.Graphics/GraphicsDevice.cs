@@ -6,9 +6,6 @@ using static TerraFX.Interop.DirectX.D2D1_ALPHA_MODE;
 using static TerraFX.Interop.DirectX.D2DERR;
 using static TerraFX.Interop.DirectX.D2D1_BITMAP_OPTIONS;
 using static TerraFX.Interop.DirectX.D2D1_DEVICE_CONTEXT_OPTIONS;
-using static TerraFX.Interop.DirectX.D2D1_FACTORY_TYPE;
-using static TerraFX.Interop.DirectX.D3D_DRIVER_TYPE;
-using static TerraFX.Interop.DirectX.D3D11_CREATE_DEVICE_FLAG;
 using static TerraFX.Interop.DirectX.DirectX;
 using static TerraFX.Interop.DirectX.DWRITE_FACTORY_TYPE;
 using static TerraFX.Interop.DirectX.DXGI;
@@ -18,22 +15,16 @@ using static TerraFX.Interop.DirectX.DXGI_SCALING;
 using static TerraFX.Interop.DirectX.DXGI_SWAP_CHAIN_FLAG;
 using static TerraFX.Interop.DirectX.DXGI_SWAP_EFFECT;
 using static TerraFX.Interop.Windows.Windows;
-using static TerraFX.Interop.Windows.E;
 
 namespace TablePro.Graphics;
 
-// Direct3D 11 for the swap chain, Direct2D on top of it for drawing, DirectWrite for text. The swap chain belongs to
-// a SwapChainPanel, so XAML composes it with the rest of the window and nothing is copied through a XAML surface.
+// The swap chain belongs to a SwapChainPanel, so XAML composes it and nothing is copied through a XAML surface.
 internal sealed unsafe class GraphicsDevice : IDisposable
 {
-    // ISwapChainPanelNative as WinUI 3 declares it (microsoft.ui.xaml.media.dxinterop.h). The system XAML one has
-    // another IID, so TerraFX's struct is used only for its vtable.
+    // WinUI 3's ISwapChainPanelNative IID (microsoft.ui.xaml.media.dxinterop.h); TerraFX's struct gives only the vtable.
     private static readonly Guid SwapChainPanelNativeIid = new("63aad0b8-7c24-40ff-85a8-640d944cc325");
 
-    private ID3D11Device* _d3d;
-    private IDXGIFactory2* _dxgiFactory;
-    private ID2D1Factory1* _d2dFactory;
-    private ID2D1Device* _d2dDevice;
+    private readonly RenderDevice _device;
     private ID2D1DeviceContext* _context;
     private IDXGISwapChain1* _swapChain;
     private ID2D1Bitmap1* _target;
@@ -44,15 +35,18 @@ internal sealed unsafe class GraphicsDevice : IDisposable
 
     public GraphicsDevice(bool forceSoftware)
     {
-        CreateDevice(forceSoftware);
+        _device = new RenderDevice(forceSoftware);
+        ID2D1DeviceContext* context;
+        NativeCom.Check(_device.Direct2D->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &context));
+        _context = context;
         IDWriteFactory* dwrite;
         NativeCom.Check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, NativeCom.Iid<IDWriteFactory>(), (IUnknown**)&dwrite));
         _dwrite = dwrite;
     }
 
-    public bool IsSoftware { get; private set; }
+    public bool IsSoftware => _device.IsSoftware;
 
-    public string AdapterName { get; private set; } = string.Empty;
+    public string AdapterName => _device.AdapterName;
 
     public int PixelWidth { get; private set; }
 
@@ -84,10 +78,10 @@ internal sealed unsafe class GraphicsDevice : IDisposable
             Flags = (uint)DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
         };
         IDXGISwapChain1* swapChain;
-        NativeCom.Check(_dxgiFactory->CreateSwapChainForComposition((IUnknown*)_d3d, &description, null, &swapChain));
+        NativeCom.Check(_device.DxgiFactory->CreateSwapChainForComposition((IUnknown*)_device.Direct3D, &description, null,
+            &swapChain));
         _swapChain = swapChain;
-        // Two frames may wait for the screen. A frame starts only when the swap chain can take it, so Present never
-        // blocks the UI thread, and input drawn right after a frame still reaches the next refresh.
+        // A frame starts only when the swap chain can take it, so Present never blocks the UI thread.
         IDXGISwapChain2* swapChain2;
         NativeCom.Check(_swapChain->QueryInterface(NativeCom.Iid<IDXGISwapChain2>(), (void**)&swapChain2));
         swapChain2->SetMaximumFrameLatency(2);
@@ -170,61 +164,8 @@ internal sealed unsafe class GraphicsDevice : IDisposable
         NativeCom.Release(ref _target);
         NativeCom.Release(ref _swapChain);
         NativeCom.Release(ref _context);
-        NativeCom.Release(ref _d2dDevice);
-        NativeCom.Release(ref _d2dFactory);
-        NativeCom.Release(ref _dxgiFactory);
-        NativeCom.Release(ref _d3d);
+        _device.Dispose();
         NativeCom.Release(ref _dwrite);
-    }
-
-    private void CreateDevice(bool forceSoftware)
-    {
-        var flags = (uint)D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-        ID3D11Device* device = null;
-        HRESULT created = forceSoftware ? E_FAIL : D3D11CreateDevice(null, D3D_DRIVER_TYPE_HARDWARE, HMODULE.NULL, flags, null, 0,
-            D3D11.D3D11_SDK_VERSION, &device, null, null);
-        if (created.FAILED)
-        {
-            NativeCom.Check(D3D11CreateDevice(null, D3D_DRIVER_TYPE_WARP, HMODULE.NULL, flags, null, 0, D3D11.D3D11_SDK_VERSION,
-                &device, null, null));
-            IsSoftware = true;
-        }
-        _d3d = device;
-
-        IDXGIDevice* dxgiDevice;
-        NativeCom.Check(_d3d->QueryInterface(NativeCom.Iid<IDXGIDevice>(), (void**)&dxgiDevice));
-        try
-        {
-            IDXGIAdapter* adapter;
-            NativeCom.Check(dxgiDevice->GetAdapter(&adapter));
-            DXGI_ADAPTER_DESC description;
-            if (adapter->GetDesc(&description).SUCCEEDED)
-            {
-                AdapterName = new string((char*)&description.Description);
-                // The Basic Render Driver is WARP behind a hardware device type, as on VMs without a GPU.
-                IsSoftware |= description.VendorId == 0x1414 && description.DeviceId == 0x8c;
-            }
-            IDXGIFactory2* factory;
-            NativeCom.Check(adapter->GetParent(NativeCom.Iid<IDXGIFactory2>(), (void**)&factory));
-            _dxgiFactory = factory;
-            adapter->Release();
-
-            var options = new D2D1_FACTORY_OPTIONS();
-            ID2D1Factory1* d2dFactory;
-            NativeCom.Check(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, NativeCom.Iid<ID2D1Factory1>(), &options,
-                (void**)&d2dFactory));
-            _d2dFactory = d2dFactory;
-            ID2D1Device* d2dDevice;
-            NativeCom.Check(_d2dFactory->CreateDevice(dxgiDevice, &d2dDevice));
-            _d2dDevice = d2dDevice;
-            ID2D1DeviceContext* context;
-            NativeCom.Check(_d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &context));
-            _context = context;
-        }
-        finally
-        {
-            dxgiDevice->Release();
-        }
     }
 
     // The panel shows the buffer at its own scale, so the buffer is drawn in pixels and shrunk back by the scale.

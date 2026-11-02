@@ -48,8 +48,7 @@ internal sealed unsafe class LineLayout
     }
 }
 
-// The editor's fonts, metrics and cache of line layouts. A layout is keyed by its text and colors, so lines that shift
-// up or down after an edit find theirs again; only the edited line is laid out anew.
+// Keyed by text and colors, so lines that shift after an edit find their layouts again.
 internal sealed unsafe class TextLayouts : IDisposable
 {
     // Past this many characters a line is laid out in a slice around the visible columns.

@@ -14,14 +14,14 @@ using static TerraFX.Interop.Windows.Windows;
 
 namespace TablePro.Graphics;
 
-// The first text in a script the font lacks makes DirectWrite load its fallback fonts, which the grid gate measured at
-// 316 to 1,346 ms on the UI thread (lane wingates2). Laying out and drawing every script once per family on a pool
-// thread pays that before the first row or keystroke needs it.
+// Loading fallback fonts for a first non-Latin text cost the UI thread 316 to 1,346 ms in the grid spike.
 internal static unsafe class FontWarmup
 {
     public const string Scripts = "Tiếng Việt 你好 日本語 한국어 العربية עברית ไทย Ελληνικά Русский देवनागरी ✓ 😀 🚀";
 
     private static readonly HashSet<string> s_started = [];
+
+    public static double LastMilliseconds { get; private set; }
     private static readonly Lock s_lock = new();
 
     public static Task Start(IDWriteFactory* factory, string family, float fontSize)
@@ -37,9 +37,11 @@ internal static unsafe class FontWarmup
         var pointer = (nint)factory;
         return Task.Run(() =>
         {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 Warm((IDWriteFactory*)pointer, family, fontSize);
+                LastMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             }
             finally
             {
