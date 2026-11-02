@@ -28,7 +28,7 @@ internal sealed unsafe class SurfaceDevice : IDisposable
     {
         ArgumentNullException.ThrowIfNull(compositor);
         _forceSoftware = forceSoftware;
-        _device = new RenderDevice(forceSoftware);
+        _device = new RenderDevice(forceSoftware, multithreaded: true);
         _resources = CreateContext(_device);
         IDWriteFactory* dwrite;
         NativeCom.Check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, NativeCom.Iid<IDWriteFactory>(), (IUnknown**)&dwrite));
@@ -48,6 +48,8 @@ internal sealed unsafe class SurfaceDevice : IDisposable
     public string AdapterName => _device.AdapterName;
 
     public IDWriteFactory* DWrite => _dwrite;
+
+    public ID2D1Device* Direct2D => _device.Direct2D;
 
     // For brushes and other device resources, which every context of the same Direct2D device can use.
     public ID2D1DeviceContext* Resources => _resources;
@@ -69,7 +71,7 @@ internal sealed unsafe class SurfaceDevice : IDisposable
         DevicesLost++;
         NativeCom.Release(ref _resources);
         _device.Dispose();
-        _device = new RenderDevice(_forceSoftware);
+        _device = new RenderDevice(_forceSoftware, multithreaded: true);
         _resources = CreateContext(_device);
         var graphics = ((WinRT.IWinRTObject)Graphics).NativeObject.ThisPtr;
         var iid = GraphicsDeviceInteropIid;

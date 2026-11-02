@@ -438,7 +438,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _textScale = _settings.TextScaleFactor;
         _rowHeight = Math.Ceiling(BaseRowHeight * _textScale);
         var painter = new CellPainter(s_device, (float)(BaseFontSize * _textScale), GridColors.Resolve(ActualTheme));
-        FontWarmupTask = FontWarmup.Start(s_device.DWrite, painter.FamilyName, BaseFontSize, PreferSoftwareRendering);
+        FontWarmupTask = FontWarmup.Start(s_device.DWrite, painter.FamilyName, BaseFontSize, PreferSoftwareRendering, s_device.Direct2D);
         Brushes.Apply(painter.Colors);
         return painter;
     }

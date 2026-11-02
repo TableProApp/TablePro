@@ -23,36 +23,50 @@ internal static unsafe class FontWarmup
 
     public static double LastMilliseconds { get; private set; }
 
-    public static Task Start(IDWriteFactory* factory, string family, float fontSize, bool forceSoftware = false)
+    // With a device it draws there: a device's first draw of a script builds its glyph caches, 141 ms in the grid gate.
+    public static Task Start(IDWriteFactory* factory, string family, float fontSize, bool forceSoftware = false,
+        ID2D1Device* device = null)
     {
+        var key = family + "|" + ((nint)device).ToString(CultureInfo.InvariantCulture);
         lock (s_lock)
         {
-            if (s_started.TryGetValue(family, out var running))
+            if (s_started.TryGetValue(key, out var running))
             {
                 return running;
             }
             factory->AddRef();
+            if (device is not null)
+            {
+                device->AddRef();
+            }
             var pointer = (nint)factory;
+            var target = (nint)device;
             var locale = CultureInfo.CurrentUICulture.Name;
             var task = Task.Run(() =>
             {
                 var started = Stopwatch.GetTimestamp();
                 try
                 {
-                    Warm((IDWriteFactory*)pointer, family, fontSize, locale.Length == 0 ? "en-us" : locale, forceSoftware);
+                    Warm((IDWriteFactory*)pointer, family, fontSize, locale.Length == 0 ? "en-us" : locale, forceSoftware,
+                        (ID2D1Device*)target);
                     LastMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
                 }
                 finally
                 {
                     ((IDWriteFactory*)pointer)->Release();
+                    if (target != 0)
+                    {
+                        ((ID2D1Device*)target)->Release();
+                    }
                 }
             });
-            s_started[family] = task;
+            s_started[key] = task;
             return task;
         }
     }
 
-    private static void Warm(IDWriteFactory* factory, string family, float fontSize, string locale, bool forceSoftware)
+    private static void Warm(IDWriteFactory* factory, string family, float fontSize, string locale, bool forceSoftware,
+        ID2D1Device* device)
     {
         IDWriteTextFormat* format = null;
         IDWriteTextLayout* layout = null;
@@ -76,7 +90,15 @@ internal static unsafe class FontWarmup
             }
             DWRITE_TEXT_METRICS metrics;
             layout->GetMetrics(&metrics);
-            Draw(layout, forceSoftware);
+            if (device is not null)
+            {
+                Draw(layout, device);
+            }
+            else
+            {
+                using var own = new RenderDevice(forceSoftware);
+                Draw(layout, own.Direct2D);
+            }
         }
         finally
         {
@@ -85,17 +107,14 @@ internal static unsafe class FontWarmup
         }
     }
 
-    // On a Direct3D device of the same kind as the controls', as they draw: the first draw of a script also builds
-    // glyph and shader caches, which a software target would not touch.
-    private static void Draw(IDWriteTextLayout* layout, bool forceSoftware)
+    private static void Draw(IDWriteTextLayout* layout, ID2D1Device* device)
     {
-        using var device = new RenderDevice(forceSoftware);
         ID2D1DeviceContext* context = null;
         ID2D1Bitmap1* target = null;
         ID2D1SolidColorBrush* brush = null;
         try
         {
-            if (device.Direct2D->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &context).FAILED)
+            if (device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &context).FAILED)
             {
                 return;
             }

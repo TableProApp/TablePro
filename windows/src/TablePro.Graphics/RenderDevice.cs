@@ -16,7 +16,8 @@ internal sealed unsafe class RenderDevice : IDisposable
     private ID2D1Factory1* _d2dFactory;
     private ID2D1Device* _d2dDevice;
 
-    public RenderDevice(bool forceSoftware)
+    // Multithreaded lets another thread draw with the same device, as the font warm-up does.
+    public RenderDevice(bool forceSoftware, bool multithreaded = false)
     {
         var flags = (uint)D3D11_CREATE_DEVICE_BGRA_SUPPORT;
         ID3D11Device* device = null;
@@ -49,8 +50,8 @@ internal sealed unsafe class RenderDevice : IDisposable
 
             var options = new D2D1_FACTORY_OPTIONS();
             ID2D1Factory1* d2dFactory;
-            NativeCom.Check(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, NativeCom.Iid<ID2D1Factory1>(), &options,
-                (void**)&d2dFactory));
+            NativeCom.Check(D2D1CreateFactory(multithreaded ? D2D1_FACTORY_TYPE_MULTI_THREADED : D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                NativeCom.Iid<ID2D1Factory1>(), &options, (void**)&d2dFactory));
             _d2dFactory = d2dFactory;
             ID2D1Device* d2dDevice;
             NativeCom.Check(_d2dFactory->CreateDevice(dxgiDevice, &d2dDevice));

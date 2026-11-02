@@ -63,7 +63,7 @@ public sealed class CellCacheTests
                 }
             }
         }
-        Assert.Equal(4 * 3, data.Reads);
+        Assert.Equal((200 + CellCache.TileRows - 1) / CellCache.TileRows * 3, data.Reads);
     }
 
     [Fact]

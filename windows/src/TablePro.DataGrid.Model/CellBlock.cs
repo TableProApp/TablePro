@@ -38,7 +38,7 @@ public sealed class CellBlock
 {
     public const char Ellipsis = '…';
 
-    private char[] _chars = new char[4096];
+    private char[] _chars = new char[8192];
     private int[] _starts = new int[1];
     private CellState[] _flags = [];
     private int _length;
@@ -78,6 +78,9 @@ public sealed class CellBlock
     }
 
     public void AddNull() => Close(CellState.Null);
+
+    // Grows the buffer once for a window's text, where adding cell by cell would grow it several times.
+    public void EnsureCapacity(int characters) => Reserve(characters - _length, exact: true);
 
     public void Add(ReadOnlySpan<byte> utf8, bool truncated, bool lossy = false)
     {
@@ -143,13 +146,13 @@ public sealed class CellBlock
         _starts[_cells] = _length;
     }
 
-    private void Reserve(int more)
+    private void Reserve(int more, bool exact = false)
     {
         if (_length + more <= _chars.Length)
         {
             return;
         }
-        var grown = new char[Math.Max(_chars.Length * 2, _length + more)];
+        var grown = new char[exact ? _length + more : Math.Max(_chars.Length * 2, _length + more)];
         _chars.AsSpan(0, _length).CopyTo(grown);
         _chars = grown;
     }

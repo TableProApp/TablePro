@@ -5,7 +5,8 @@ namespace TablePro.DataGrid.Model;
 // A full cache refills its least recently used block, so scrolling allocates nothing once it is full.
 public sealed class CellCache : IDisposable
 {
-    public const int TileRows = 64;
+    // Small enough that a block of long text stays off the large object heap, whose allocations start gen2 GCs.
+    public const int TileRows = 32;
     public const int TileColumns = 16;
 
     private readonly IGridReader _reader;
