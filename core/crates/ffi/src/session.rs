@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use tablepro_core::EditorSessionOptions;
+use tablepro_core::meta::TableRef;
 use tablepro_session::Session;
 use tablepro_session::runtime::Tasks;
 
@@ -102,6 +103,20 @@ impl DatabaseSession {
                 .collect())
         })
         .await
+    }
+
+    // The statement a table tab reads its first rows with, quoted and limited as the engine writes it.
+    pub fn browse_sql(&self, table: TableName, limit: u64) -> Result<String, CoreError> {
+        let dialect = self
+            .session
+            .current_dialect()
+            .ok_or_else(|| CoreError::failed("ffi.not_connected", "the session has no connection"))?;
+        let table: TableRef = table.into();
+        Ok(format!(
+            "SELECT * FROM {}{}",
+            dialect.qualify(&table),
+            dialect.row_window(None, limit, 0)
+        ))
     }
 
     /// An editor tab's own connection.

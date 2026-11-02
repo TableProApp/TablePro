@@ -148,6 +148,10 @@ gio-unix = { version = "0.22", features = ["v2_84"] }
 glib = { version = "0.22", features = ["v2_88"] }
 glib-build-tools = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
+url = "2"
+percent-encoding = "2"
+# The Windows Credential Manager, where the core keeps secrets on Windows.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
 zeroize = "1.9"
 # The volume and index that name a file on Windows, which std reads only on nightly.
 winapi-util = "0.1"

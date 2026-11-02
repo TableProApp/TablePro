@@ -68,6 +68,7 @@ fn core() -> Arc<Core> {
     Core::new(
         HostConfig {
             client_version: "test".to_owned(),
+            storage_dir: None,
         },
         Box::new(NoSecrets),
     )
