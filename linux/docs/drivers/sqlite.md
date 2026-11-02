@@ -1,6 +1,6 @@
 # SQLite
 
-Driver id `sqlite`, crate `crates/drivers/sqlite`. It runs on sqlx 0.9 with `sqlite-unbundled`, so it links the system's libsqlite3 rather than a second copy, and calls `libsqlite3-sys` directly twice: `sqlite3_get_autocommit`, until sqlx exposes a connection's transaction state, and `sqlite3_busy_handler`, so a stop reaches a statement waiting for a lock. The library must be SQLite 3.37.0 or newer (`SQLITE_MIN_VERSION`), which the driver checks when it opens the file. The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `sqlite`, crate `core/crates/drivers/sqlite`. It runs on sqlx 0.9 with `sqlite-unbundled` on Linux, so it links the system's libsqlite3 rather than a second copy (the other targets build the copy sqlx ships), and calls `libsqlite3-sys` directly twice: `sqlite3_get_autocommit`, until sqlx exposes a connection's transaction state, and `sqlite3_busy_handler`, so a stop reaches a statement waiting for a lock. The library must be SQLite 3.37.0 or newer (`SQLITE_MIN_VERSION`), which the driver checks when it opens the file. The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 There is no network, login or TLS: the target is a `FileEndpoint`, an absolute path with a `FileOpenMode`.
 

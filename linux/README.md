@@ -1,6 +1,6 @@
 # TablePro Linux
 
-Native Linux database client, the Linux sibling of the macOS TablePro app. The two share no code.
+Native Linux database client, the Linux sibling of the macOS TablePro app. It builds on the shared Rust core in [`../core`](../core/ARCHITECTURE.md), which the macOS app does not use yet.
 
 ## Status
 
@@ -76,7 +76,7 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 |---|---|
 | A port of the macOS app | The macOS app is AppKit and SwiftUI, which Linux does not have, and Swift's GTK bindings are immature. The Linux app shares no source with macOS. |
 | A plugin host | Drivers are statically linked at compile time. Adding a database engine = adding one crate + one register call. See [decisions/0001-no-plugin-system.md](docs/decisions/0001-no-plugin-system.md). |
-| Cross-platform | Linux only. macOS and iOS have separate apps in this monorepo. |
+| Cross-platform | Linux only. The shared core builds for Windows and macOS, whose apps have UIs of their own. |
 | Electron / WebView | Native GTK4 widgets throughout. No HTML rendering of any kind. |
 
 ## Quickstart

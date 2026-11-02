@@ -4,7 +4,7 @@ The native Linux app. Every profile has these seven sections in this order, so a
 
 ## Covers
 
-A report from Linux. The code is `linux/`: a Cargo workspace of crates under `linux/crates/` (the GTK app, the UI-free core, storage, sessions, networking, SSH and one crate per driver), built by Meson. Drivers are linked in at compile time; there are no plugins. A fix lands in one or more crates; name them.
+A report from Linux. The code is `linux/` and the shared core in `core/`: one Cargo workspace at the top of the repository, with the GTK app and the Linux platform crate under `linux/crates/` and the UI-free core, storage, sessions, networking, SSH and one crate per driver under `core/crates/`, built by Meson from `linux/`. Drivers are linked in at compile time; there are no plugins. A fix lands in one or more crates; name them.
 
 ## Base
 
@@ -35,11 +35,11 @@ Pass `--platform linux`, which a Linux machine picks by default. Every step runs
 | `data` | a desktop entry, the GSettings schema, the metainfo or the icons changed |
 | `l10n` | a user-facing string or a file that holds them changed |
 | `docker <package>` | a driver, SSH or anything they connect through changed |
-| `secrets` | `tablepro-storage` secret handling changed |
-| `dist` | `meson.build` install rules changed (commit first) |
+| `secrets` | `tablepro-linux-platform` secret handling changed |
+| `dist` | `meson.build` install rules or the source tarball's contents changed (commit first) |
 
 - The first step after a merge from the base is `setup`.
-- Pick packages by what you changed: `grep -rl <name> linux/crates --include='*.rs'`. Package names are in each crate's `Cargo.toml`.
+- Pick packages by what you changed: `grep -rl <name> core/crates linux/crates --include='*.rs'`. Package names are in each crate's `Cargo.toml`.
 - Extra review pass: none beyond the security pass.
 - Traps and remedies: `references/verification-linux.md`.
 

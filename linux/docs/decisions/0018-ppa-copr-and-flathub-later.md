@@ -1,6 +1,6 @@
 # 0018: A PPA and COPR first, Flathub later
 
-- **Status**: Accepted
+- **Status**: Accepted; the source tarball amended by core 0001 (`core/docs/decisions/0001-shared-core.md`)
 - **Date**: 2026-10-15
 
 ## Context

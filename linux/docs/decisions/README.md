@@ -35,7 +35,7 @@ Brief note on each alternative and why it lost.
 
 Context, Decision and Consequences are always there. Rationale and Alternatives considered are there when other options were weighed. A section an ADR needs beyond these, such as a matrix or a dated note, comes after them.
 
-The Status is `Accepted`, `Superseded by 000M` or `Deprecated`. An accepted ADR that a later one changed in part reads `Accepted; <part> superseded by 000M` (replaced) or `amended by 000M` (extended). The `amended <date>` statuses below predate this rule.
+The Status is `Accepted`, `Superseded by 000M` or `Deprecated`. A decision for every platform is in `core/docs/decisions/`, and a Status names one of those as `core 000M`. An accepted ADR that a later one changed in part reads `Accepted; <part> superseded by 000M` (replaced) or `amended by 000M` (extended). The `amended <date>` statuses below predate this rule.
 
 ADRs are short on purpose. If yours is more than a page, you are probably arguing instead of recording.
 
@@ -54,7 +54,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0003](0003-relm4-architecture.md) | Relm4 for app architecture | Accepted; superseded by 0012 except for the saved-queries and CSV import dialogs | Elm-style components scale to TablePro's view count. |
 | [0004](0004-libsecret-secret-storage.md) | Secret storage through oo7 | Accepted; store API and Flatpak path amended 2026-09-15, the rules for edits 2026-10-15 | The Secret Service on the host, and oo7's own keyring file with a key from the Secret portal inside Flatpak; never a plain-text file. |
 | [0005](0005-supply-chain-policy.md) | Supply-chain policy | Accepted | Maintained crates first; custom code needs recorded evidence and a removal trigger. |
-| [0006](0006-meson-cargo-build.md) | Meson drives Cargo | Accepted; where the version lives amended by 0017 | Meson owns install, data files and the build-time config; Cargo stays the Rust compiler. |
+| [0006](0006-meson-cargo-build.md) | Meson drives Cargo | Accepted; where the version lives amended by 0017, the release tarball and the place of the Cargo workspace amended by core 0001 | Meson owns install, data files and the build-time config; Cargo stays the Rust compiler. |
 | [0007](0007-gsettings-preferences.md) | Preferences and window geometry in GSettings | Accepted; the schema id and path per profile amended 2026-10-15 | A schema with ranges and enums replaces preferences.json and window.json; keyed data stays in files. |
 | [0008](0008-flatpak-sandbox-permissions.md) | Flatpak sandbox permissions | Accepted; the Flathub submission deferred by 0018 | Network, display, home and removable drives for SQLite, the SSH agent and the Kerberos KCM socket; portals for the rest; two Flathub lint exceptions. |
 | [0009](0009-crypto-provider-and-sources.md) | One crypto provider, upstream sources and dependency bans | Accepted; sources and the PostgreSQL and ClickHouse TLS setup superseded by 0016, the ring ban amended by 0023 | aws-lc-rs only; deny.toml enforces sources, licenses, bans and advisory ignores. |
@@ -65,7 +65,7 @@ A fact the repository keeps elsewhere, such as a workflow trigger, a branch, a v
 | [0015](0015-gnome-50-platform-floor.md) | GNOME 50 platform floor | Accepted; the runtime row amended by 0018 | GTK 4.22, libadwaita 1.9, GtkSourceView 5.18, GLib 2.88; AdwShortcutsDialog replaces the shortcuts window. |
 | [0016](0016-driver-contract-v2.md) | Driver contract v2 | Accepted | Owned calls with engine stops, phase-aware write outcomes, server-side row limits; PostgreSQL on tokio-postgres; no forks. |
 | [0017](0017-distribution-channels.md) | Distribution channels | Superseded by 0018 | Flathub, a .deb for Ubuntu 26.04 on GitHub Releases built with rustup, and an .rpm for Fedora 44 on COPR, all from `meson install` and one vendor tarball; no AppImage. |
-| [0018](0018-ppa-copr-and-flathub-later.md) | A PPA and COPR first, Flathub later | Accepted | A Launchpad PPA built with `rustc-1.97` and a COPR project built on each release are the primary channels; Flathub follows as a submission a maintainer writes; Rust 1.97 is the MSRV. |
+| [0018](0018-ppa-copr-and-flathub-later.md) | A PPA and COPR first, Flathub later | Accepted; the source tarball amended by core 0001 | A Launchpad PPA built with `rustc-1.97` and a COPR project built on each release are the primary channels; Flathub follows as a submission a maintainer writes; Rust 1.97 is the MSRV. |
 | [0019](0019-ssh-key-file-identities-only.md) | A chosen SSH key file limits the keys ssh offers | Superseded by 0020 | A key file comes with `IdentitiesOnly=yes`, so the agent's other keys cannot use up `MaxAuthTries` first. |
 | [0020](0020-pin-only-a-key-file-the-agent-lacks.md) | Pin only a key file the agent does not hold | Accepted | `IdentitiesOnly=yes` only for a key file the agent lacks, so an agent-held certificate or encrypted PEM key still signs. |
 | [0021](0021-engines-without-sql.md) | Engines without SQL keep the driver contract and say what they hold | Accepted; amended by 0026 | A key-value engine states `DataModel::KeyValue`, lists keys with `scan_keys` and reads them with `read_key`, has its own `SqlGrammar` variant, and is held read-only by the driver's check where the server cannot. |

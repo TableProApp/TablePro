@@ -1,6 +1,6 @@
 # TablePro for Linux
 
-The native Linux app: Rust, GTK 4 and libadwaita through gtk-rs, built with Meson and Cargo. The platform floor is GNOME 50; `docs/decisions/0015-gnome-50-platform-floor.md` has the library versions. It shares no code with the macOS app.
+The native Linux app: Rust, GTK 4 and libadwaita through gtk-rs, built with Meson and Cargo, over the shared Rust core in `core/` (`core/AGENTS.md`). The platform floor is GNOME 50; `docs/decisions/0015-gnome-50-platform-floor.md` has the library versions.
 
 This is the guide for work under `linux/`. The root `AGENTS.md` holds the rules both apps share, and `apple/AGENTS.md` covers the macOS and iOS apps. Claude Code loads this file through `linux/CLAUDE.md` once a file under `linux/` is read; Codex reads it when started in `linux/`, so otherwise read it yourself.
 
@@ -8,13 +8,14 @@ This is the guide for work under `linux/`. The root `AGENTS.md` holds the rules 
 
 1. **Tests define behavior**, as in the root `AGENTS.md`.
 2. **Native only.** GTK 4 and libadwaita, used the way the GNOME Human Interface Guidelines describe, with the widget the toolkit provides before anything drawn by hand. No web views, no cross-platform toolkit.
-3. **One-directional crates.** The domain crate (`tablepro-core`) never imports the GUI or a driver, and a new database engine is one crate. `ARCHITECTURE.md` has the graph.
+3. **One-directional crates.** The domain crate (`tablepro-core`) never imports the GUI or a driver, and a new database engine is one crate. `core/ARCHITECTURE.md` has the graph.
 4. **Drivers are linked in at compile time.** There is no plugin system and no plugin ABI (`docs/decisions/0001-no-plugin-system.md`).
 5. **Decisions are recorded.** A change that reverses a decision in `docs/decisions/` adds an ADR that supersedes it; the old one changes only its Status line (`docs/decisions/README.md`).
 
 ## Map
 
-- `crates/app`: the binary, the GTK application, its windows and views. `crates/core`: domain types and traits, no GUI. `crates/storage`: secrets, settings and files. `crates/session`, `crates/net`, `crates/ssh`: sessions, the network layer and the OpenSSH transport. `crates/drivers/*`: one crate per engine. `crates/test-fixtures` and `crates/test-support`: test-only.
+- `crates/app`: the binary, the GTK application, its windows and views. `crates/platform`: GSettings, the Secret Service through oo7 and GLib's XDG directories, which the core leaves to each platform.
+- The crates the app builds on are the shared core's, under `core/crates` at the top of the repository (`core/AGENTS.md`). The Cargo workspace is the top of the repository.
 - `data/`: desktop entry, D-Bus service, metainfo and screenshots, GSettings schema, man page, icons, GResource and license notices. `po/`: translations.
 - `build-aux/flatpak/`: the Flatpak manifest. `build-aux/debian/`, `build-aux/rpm/` and `build-aux/packaging/`: the .deb and .rpm and the scripts that build them. `build-aux/about/`: the license templates. `build-aux/tests/`: the packaging tests.
 - `ARCHITECTURE.md`, `CONTRIBUTING.md` and `docs/` (testing, storage, error handling, state management, adding a driver, decisions) are the reference. Read the one for the area you touch.
@@ -34,7 +35,7 @@ From the repository root, through the verification wrapper, which keeps the full
 
 ## Code style
 
-`rustfmt.toml`, `clippy.toml` and the workspace lints in `Cargo.toml` are the source of truth. Beyond them:
+`rustfmt.toml`, `clippy.toml` and the workspace lints in `Cargo.toml`, all at the top of the repository, are the source of truth. Beyond them:
 
 - **Comments say why, never what**, as in the root guide.
 - No `unwrap`, `expect`, `panic!`, `todo!` or `unimplemented!` outside tests; return a real error. Errors cross crate boundaries as `thiserror` enums (`docs/error-handling.md`).

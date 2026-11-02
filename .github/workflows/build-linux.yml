@@ -42,10 +42,10 @@ jobs:
           tar -xzf "$RUNNER_TEMP/lychee.tar.gz" -C "$RUNNER_TEMP/lychee" --strip-components=1 \
             lychee-x86_64-unknown-linux-gnu/lychee
           echo "$RUNNER_TEMP/lychee" >> "$GITHUB_PATH"
-      - name: Links and anchors in the Linux docs resolve
+      - name: Links and anchors in the Linux and core docs resolve
         # Offline, so only links to files and headings in the tree are
         # checked: the ones a rename or a move breaks.
-        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md'
+        run: lychee --offline --include-fragments --no-progress 'linux/**/*.md' 'core/**/*.md'
 
   fast:
     name: Fast checks
