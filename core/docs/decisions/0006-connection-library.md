@@ -41,7 +41,7 @@ The saved-connection list in `tablepro-storage` filed each connection under a gr
 | Bundle format 1 (`groupName`) | a top-level group per name, as the version 2 upgrade does; the core does not read bundles yet |
 | Bundle format 2 (`groups` with `ref` and `parentRef`, `groupRef`) | the same tree; a bundle carries no order or favourites |
 
-What the core cannot hold exactly: a group name over 64 characters or with control characters is cut and cleaned as a Linux one is, and the core's `Teal` has no macOS colour. Linked folders and the team library are not stored in the library, so they stay outside it.
+What the core cannot hold exactly: a group name with control characters is cleaned as a Linux one is, and the core's `Teal` has no macOS colour. Linked folders and the team library are not stored in the library, so they stay outside it.
 
 ## Alternatives considered
 
