@@ -15,7 +15,9 @@ using static TerraFX.Interop.DirectX.DXGI;
 using static TerraFX.Interop.DirectX.DXGI_ALPHA_MODE;
 using static TerraFX.Interop.DirectX.DXGI_FORMAT;
 using static TerraFX.Interop.DirectX.DXGI_SCALING;
+using static TerraFX.Interop.DirectX.DXGI_SWAP_CHAIN_FLAG;
 using static TerraFX.Interop.DirectX.DXGI_SWAP_EFFECT;
+using static TerraFX.Interop.Windows.Windows;
 using static TerraFX.Interop.Windows.E;
 
 namespace TablePro.Editor.Rendering;
@@ -36,6 +38,7 @@ internal sealed unsafe class GraphicsDevice : IDisposable
     private IDXGISwapChain1* _swapChain;
     private ID2D1Bitmap1* _target;
     private IDWriteFactory* _dwrite;
+    private HANDLE _frameReady;
     private float _scaleX = 1;
     private float _scaleY = 1;
 
@@ -78,10 +81,17 @@ internal sealed unsafe class GraphicsDevice : IDisposable
             Scaling = DXGI_SCALING_STRETCH,
             SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
             AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED,
+            Flags = (uint)DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT,
         };
         IDXGISwapChain1* swapChain;
         NativeCom.Check(_dxgiFactory->CreateSwapChainForComposition((IUnknown*)_d3d, &description, null, &swapChain));
         _swapChain = swapChain;
+        // One frame in flight: Present never waits for the screen, and a frame starts only when its buffer is free.
+        IDXGISwapChain2* swapChain2;
+        NativeCom.Check(_swapChain->QueryInterface(NativeCom.Iid<IDXGISwapChain2>(), (void**)&swapChain2));
+        swapChain2->SetMaximumFrameLatency(1);
+        _frameReady = swapChain2->GetFrameLatencyWaitableObject();
+        swapChain2->Release();
         ApplyScale();
 
         var inspectable = ((WinRT.IWinRTObject)panel).NativeObject.ThisPtr;
@@ -116,10 +126,14 @@ internal sealed unsafe class GraphicsDevice : IDisposable
         _scaleY = scaleY;
         _context->SetTarget(null);
         NativeCom.Release(ref _target);
-        NativeCom.Check(_swapChain->ResizeBuffers(0, (uint)pixelWidth, (uint)pixelHeight, DXGI_FORMAT_UNKNOWN, 0));
+        NativeCom.Check(_swapChain->ResizeBuffers(0, (uint)pixelWidth, (uint)pixelHeight, DXGI_FORMAT_UNKNOWN,
+            (uint)DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT));
         ApplyScale();
         CreateTarget();
     }
+
+    // True when the swap chain can take a frame now. It takes the swap chain's signal, so a true is followed by a frame.
+    public bool TryBeginFrame() => _frameReady == HANDLE.NULL || WaitForSingleObjectEx(_frameReady, 0, BOOL.FALSE) == WAIT.WAIT_OBJECT_0;
 
     public void BeginDraw() => _context->BeginDraw();
 
@@ -143,6 +157,11 @@ internal sealed unsafe class GraphicsDevice : IDisposable
 
     public void Dispose()
     {
+        if (_frameReady != HANDLE.NULL)
+        {
+            CloseHandle(_frameReady);
+            _frameReady = HANDLE.NULL;
+        }
         if (_context is not null)
         {
             _context->SetTarget(null);

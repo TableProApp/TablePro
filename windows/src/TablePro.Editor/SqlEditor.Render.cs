@@ -16,12 +16,18 @@ public sealed partial class SqlEditor
     private long _frameVersion = -1;
     private float _caretWidth = -1;
     private bool _idleLexingQueued;
+    private bool _waitingForTick;
 
     private unsafe void Render()
     {
         _renderQueued = false;
         if (_device is null || !_device.HasTarget || _layouts is null || _brushes is null || _disposed)
         {
+            return;
+        }
+        if (!_device.TryBeginFrame())
+        {
+            RenderOnNextTick();
             return;
         }
         var started = Now();
@@ -229,6 +235,24 @@ public sealed partial class SqlEditor
                 ScheduleIdleLexing();
             }
         });
+    }
+
+    // The last frame is still on its way to the screen; draw once the compositor ticks again.
+    private void RenderOnNextTick()
+    {
+        if (_waitingForTick)
+        {
+            return;
+        }
+        _waitingForTick = true;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnRenderingTick;
+    }
+
+    private void OnRenderingTick(object? sender, object e)
+    {
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnRenderingTick;
+        _waitingForTick = false;
+        Invalidate();
     }
 
     // The layout drawn for a line in the last frame, or a plain one with the same geometry.
