@@ -6,10 +6,13 @@ public sealed record TablePage(long Offset, int Size, long Rows, long? Total, bo
     // Past this a typed size is a mistake, not an intent, as macOS caps its Custom size.
     public const int MaximumSize = 1_000_000;
 
+    // All rows can go further; a run's limit is one past the page, so the page stays under int.MaxValue.
+    public const int LargestSize = int.MaxValue - 1;
+
     // The sizes the macOS page size menu offers.
     public static IReadOnlyList<int> Presets { get; } = [5, 10, 20, 100, 500, 1_000];
 
-    public static TablePage First(int size) => new(0, Clamp(size), 0, null, true);
+    public static TablePage First(int size) => new(0, Math.Clamp(size, 1, LargestSize), 0, null, true);
 
     public static int Clamp(int size) => Math.Clamp(size, 1, MaximumSize);
 
@@ -51,9 +54,6 @@ public sealed record TablePage(long Offset, int Size, long Rows, long? Total, bo
         return this with { Size = clamped, Offset = Offset / clamped * clamped, Rows = 0 };
     }
 
-    // The whole counted table on one page; the run's limit is one past the size, so it stays under int.MaxValue.
     public TablePage AllRows() =>
-        Total is { } total
-            ? this with { Size = (int)Math.Clamp(total, 1, int.MaxValue - 1), Offset = 0, Rows = 0 }
-            : this;
+        Total is { } total ? this with { Size = (int)Math.Clamp(total, 1, LargestSize), Offset = 0, Rows = 0 } : this;
 }

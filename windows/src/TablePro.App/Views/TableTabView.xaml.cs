@@ -37,7 +37,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
         _session = share.Session;
         _schema = schema;
         _table = table;
-        _chosenSize = restore?.PageSize is { } size ? TablePage.Clamp(size) : null;
+        _chosenSize = restore?.PageSize is { } size ? Math.Clamp(size, 1, TablePage.LargestSize) : null;
         var first = TablePage.First(PageSize);
         _page = first.At((restore?.Offset ?? 0) / first.Size * first.Size);
         InitializeComponent();

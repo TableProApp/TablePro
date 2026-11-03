@@ -217,6 +217,12 @@ public sealed partial class SqlEditor : UserControl, IDisposable
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // A flyout keeps the window it first opened in (microsoft/microsoft-ui-xaml#10207); a tab can move the editor.
+        if (ContextFlyout?.XamlRoot is { } shown && !ReferenceEquals(shown, XamlRoot))
+        {
+            ContextFlyout = BuildContextMenu();
+        }
+
         CreateDevice();
         _tsf ??= TsfInput.Create(new TsfHost(this));
         var blink = GetCaretBlinkTime();

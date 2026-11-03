@@ -158,7 +158,8 @@ public sealed class ShellModelTests
         Assert.Equal(0, all.Offset);
         Assert.Equal(1, all.Count);
         Assert.Equal(page with { Total = null }, (page with { Total = null }).AllRows());
-        Assert.Equal(int.MaxValue - 1, (page with { Total = long.MaxValue }).AllRows().Size);
+        Assert.Equal(TablePage.LargestSize, (page with { Total = long.MaxValue }).AllRows().Size);
+        Assert.Equal(2_000_000, TablePage.First(2_000_000).Size);
     }
 
     [Fact]
