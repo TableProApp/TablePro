@@ -5,6 +5,7 @@ use tablepro_core::{
     LivenessPolicy, NetworkEndpoint, TimeoutPhase, Transport, TransportError, TransportKind, TransportRoute,
     TransportStream,
 };
+use tokio::sync::oneshot;
 
 use super::session::InProcessSession;
 
@@ -46,9 +47,16 @@ impl Transport for InProcessForward {
         if self.session.is_closed() {
             return Err(self.session.ended());
         }
-        let opening = self.session.open_channel(&self.service);
-        match tokio::time::timeout(self.liveness.ssh_channel_open_timeout, opening).await {
-            Ok(opened) => opened,
+        // russh keeps a channel confirmed after its opener stopped waiting, so the open finishes on a
+        // task of its own and a late channel is dropped there, which closes it.
+        let (opened, waiting) = oneshot::channel();
+        let (session, service) = (self.session.clone(), self.service.clone());
+        tokio::spawn(async move {
+            let _late = opened.send(session.open_channel(&service).await);
+        });
+        match tokio::time::timeout(self.liveness.ssh_channel_open_timeout, waiting).await {
+            Ok(Ok(opened)) => opened,
+            Ok(Err(_)) => Err(self.session.ended()),
             Err(_) => Err(TransportError::Timeout {
                 phase: TimeoutPhase::SshChannelOpen,
             }),

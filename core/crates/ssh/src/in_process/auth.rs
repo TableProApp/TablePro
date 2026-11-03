@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use russh::client::{AuthResult, Handle, KeyboardInteractiveAuthResponse};
-use russh::keys::PrivateKeyWithHashAlg;
 use russh::keys::agent::AgentIdentity;
 use russh::keys::ssh_key::public::KeyData;
 use russh::keys::ssh_key::{Algorithm, Certificate, HashAlg, PrivateKey, PublicKey};
@@ -15,7 +14,7 @@ use tablepro_core::{SshFailure, TransportError};
 use super::agent::{AgentSlot, identity_algorithm, signs_for};
 use super::failure::from_russh;
 use super::handler::{HopHandler, SessionEnd};
-use super::identity::{self, KeySigner, TRIES};
+use super::identity::{self, FileSignError, FileSigner, TRIES};
 use super::prompts::Prompts;
 use super::services::InProcessSsh;
 use crate::SshAuth;
@@ -89,14 +88,14 @@ impl From<AuthResult> for Step {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Offered {
     Key(KeyData),
-    Certificate(KeyData),
+    Certificate(Box<Certificate>),
 }
 
 impl Offered {
     fn of(identity: &AgentIdentity) -> Self {
         match identity {
             AgentIdentity::PublicKey { key, .. } => Self::Key(key.key_data().clone()),
-            AgentIdentity::Certificate { certificate, .. } => Self::Certificate(certificate.public_key().clone()),
+            AgentIdentity::Certificate { certificate, .. } => Self::Certificate(Box::new(certificate.clone())),
         }
     }
 }
@@ -405,64 +404,95 @@ async fn key_file(
     login: &mut Login<'_>,
 ) -> Result<Step, TransportError> {
     let certificate = identity::certificate_beside(path).await;
+    let public = identity::public_half(path).await;
     // A key the agent holds signs there with no passphrase, certificates included (Linux ADR 0020).
-    if let Some(public) = identity::public_half(path).await
-        && login.agent.holds(login.services, &public).await
+    if let Some(public) = &public
+        && login.agent.holds(login.services, public).await
     {
         if let Some(certificate) = &certificate
-            && !login.offered.contains(&Offered::Certificate(public.key_data().clone()))
+            && !login
+                .offered
+                .contains(&Offered::Certificate(Box::new(certificate.clone())))
         {
             match agent_certificate(handle, login, certificate).await? {
                 Step::NotTried => {}
                 Step::Refused(remaining) if remaining.contains(&MethodKind::PublicKey) => {
-                    login.offered.push(Offered::Certificate(public.key_data().clone()));
+                    login.offered.push(Offered::Certificate(Box::new(certificate.clone())));
                 }
                 other => return Ok(other),
             }
         }
-        let step = agent(handle, login, Some(&public)).await?;
+        let step = agent(handle, login, Some(public)).await?;
         if !matches!(step, Step::NotTried) {
             return Ok(step);
         }
     }
-    let key = match login.keys.get(path) {
-        Some(key) => key.clone(),
-        None => {
-            let Some(key) = identity::load(path, chosen, &mut *login.passphrase, login.prompts).await? else {
-                return Ok(Step::NotTried);
-            };
-            let key = Arc::new(key);
-            login.keys.insert(path.to_owned(), key.clone());
-            key
-        }
+    let (user, host, end) = (login.user, login.host, login.end);
+    let mut signer = FileSigner {
+        path,
+        chosen,
+        stored: &mut *login.passphrase,
+        prompts: login.prompts,
+        keys: &mut *login.keys,
     };
-    let data = key.public_key().key_data().clone();
+    // A PEM or PKCS#8 file with no `.pub` beside it shows its public half only once opened.
+    let public = match public {
+        Some(public) => public,
+        None => match signer.key().await? {
+            Some(key) => key.public_key().clone(),
+            None => return Ok(Step::NotTried),
+        },
+    };
     if let Some(certificate) = certificate
-        && !login.offered.contains(&Offered::Certificate(data.clone()))
+        && !login
+            .offered
+            .contains(&Offered::Certificate(Box::new(certificate.clone())))
     {
-        login.offered.push(Offered::Certificate(data.clone()));
         let hash = rsa_hash(handle, certificate.public_key().algorithm()).await;
+        let offered = Offered::Certificate(Box::new(certificate.clone()));
         let result = handle
-            .authenticate_certificate_with(login.user, certificate, hash, &mut KeySigner(key.clone()))
+            .authenticate_certificate_with(user, certificate, hash, &mut signer)
             .await;
-        match result {
-            Ok(result) => match Step::from(result) {
-                Step::Refused(remaining) if remaining.contains(&MethodKind::PublicKey) => {}
-                other => return Ok(other),
-            },
-            Err(error) => tracing::debug!(%error, "the certificate beside the key file did not sign"),
+        match signed(result, host, end)? {
+            Step::NotTried => {}
+            Step::Refused(remaining) if remaining.contains(&MethodKind::PublicKey) => login.offered.push(offered),
+            other => return Ok(other),
         }
     }
-    if login.offered.contains(&Offered::Key(data.clone())) {
+    let offered = Offered::Key(public.key_data().clone());
+    if login.offered.contains(&offered) {
         return Ok(Step::NotTried);
     }
-    login.offered.push(Offered::Key(data));
-    let hash = rsa_hash(handle, key.algorithm()).await;
+    let hash = rsa_hash(handle, public.algorithm()).await;
+    let mut signer = FileSigner {
+        path,
+        chosen,
+        stored: &mut *login.passphrase,
+        prompts: login.prompts,
+        keys: &mut *login.keys,
+    };
     let result = handle
-        .authenticate_publickey(login.user, PrivateKeyWithHashAlg::new(key, hash))
-        .await
-        .map_err(|error| login.failed(error))?;
-    Ok(Step::from(result))
+        .authenticate_publickey_with(user, public, hash, &mut signer)
+        .await;
+    let step = signed(result, host, end)?;
+    if !matches!(step, Step::NotTried) {
+        login.offered.push(offered);
+    }
+    Ok(step)
+}
+
+// A key nobody could open was never offered; a cancel or an unusable file ends the login.
+fn signed(result: Result<AuthResult, FileSignError>, host: &str, end: &SessionEnd) -> Result<Step, TransportError> {
+    match result {
+        Ok(result) => Ok(Step::from(result)),
+        Err(FileSignError::Failure(failure)) => Err(failure.into()),
+        Err(FileSignError::Unanswered) => Ok(Step::NotTried),
+        Err(FileSignError::Send(_)) => Err(from_russh(russh::Error::Disconnect, host, end)),
+        Err(FileSignError::Agent(error)) => {
+            tracing::debug!(%error, "the key file did not sign");
+            Ok(Step::NotTried)
+        }
+    }
 }
 
 // The agent signs with the key a certificate kept on disk certifies.

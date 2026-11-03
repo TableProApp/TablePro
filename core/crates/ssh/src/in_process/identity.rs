@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -104,6 +105,56 @@ impl russh::Signer for KeySigner {
         let blob = signature.encode_vec().map_err(russh::keys::Error::SshEncoding)?;
         blob.encode(&mut to_sign).map_err(russh::keys::Error::SshEncoding)?;
         Ok(to_sign)
+    }
+}
+
+// Opens the key file only once the server says it would take the key, so a passphrase is asked for
+// only then, as OpenSSH asks.
+pub(crate) struct FileSigner<'a> {
+    pub path: &'a Path,
+    pub chosen: bool,
+    pub stored: &'a mut Option<SecretString>,
+    pub prompts: &'a Prompts,
+    pub keys: &'a mut HashMap<PathBuf, Arc<PrivateKey>>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum FileSignError {
+    #[error(transparent)]
+    Send(#[from] russh::SendError),
+    #[error(transparent)]
+    Failure(#[from] SshFailure),
+    #[error("nobody could give the key's passphrase")]
+    Unanswered,
+    #[error(transparent)]
+    Agent(#[from] russh::AgentAuthError),
+}
+
+impl FileSigner<'_> {
+    pub async fn key(&mut self) -> Result<Option<Arc<PrivateKey>>, SshFailure> {
+        if let Some(key) = self.keys.get(self.path) {
+            return Ok(Some(key.clone()));
+        }
+        let Some(key) = load(self.path, self.chosen, self.stored, self.prompts).await? else {
+            return Ok(None);
+        };
+        let key = Arc::new(key);
+        self.keys.insert(self.path.to_owned(), key.clone());
+        Ok(Some(key))
+    }
+}
+
+impl russh::Signer for FileSigner<'_> {
+    type Error = FileSignError;
+
+    async fn auth_sign(
+        &mut self,
+        identity: &AgentIdentity,
+        hash_alg: Option<HashAlg>,
+        to_sign: Vec<u8>,
+    ) -> Result<Vec<u8>, Self::Error> {
+        let key = self.key().await?.ok_or(FileSignError::Unanswered)?;
+        Ok(KeySigner(key).auth_sign(identity, hash_alg, to_sign).await?)
     }
 }
 
