@@ -19,7 +19,8 @@ internal static class Mapping
                 server.Hint,
                 server.Position is { } position ? checked((int)position) : null)
             : null,
-        info.Path);
+        info.Path,
+        info.Secret is { } secret ? Kind(secret) : null);
 
     public static DatabaseEngine Engine(Native.DriverInfo driver) => new(
         driver.Id,
@@ -31,7 +32,15 @@ internal static class Mapping
             _ => DataModel.Relational,
         },
         driver.Endpoint is Native.EndpointInfo.Network network ? network.DefaultPort : null,
-        driver.Endpoint is Native.EndpointInfo.File file ? file.Suffixes : []);
+        driver.Endpoint is Native.EndpointInfo.File file ? file.Suffixes : [],
+        driver.Category switch
+        {
+            Native.EngineCategoryTag.Document => EngineCategory.Document,
+            Native.EngineCategoryTag.KeyValue => EngineCategory.KeyValue,
+            Native.EngineCategoryTag.Analytical => EngineCategory.Analytical,
+            Native.EngineCategoryTag.WideColumn => EngineCategory.WideColumn,
+            _ => EngineCategory.Relational,
+        });
 
     public static SchemaEntry Schema(Native.SchemaEntry schema) =>
         new(schema.Name, schema.IsDefault, schema.IsSystem);
@@ -87,7 +96,8 @@ internal static class Mapping
         Native.RunEvent.CommandCompleted command =>
             new QueryEvent.CommandCompleted(command.RowsAffected is { } affected ? Count(affected) : null),
         Native.RunEvent.Notice notice => new QueryEvent.Notice(notice.Severity, notice.Message, notice.Code),
-        Native.RunEvent.Finished finished => new QueryEvent.Finished(Outcome(finished.Outcome)),
+        Native.RunEvent.Finished finished =>
+            new QueryEvent.Finished(Outcome(finished.Outcome), Transaction(finished.Transaction)),
         _ => throw new InvalidOperationException($"The core sent an event this build does not know: {nativeEvent}"),
     };
 
@@ -100,12 +110,78 @@ internal static class Mapping
         _ => new QueryOutcome.Cancelled(),
     };
 
+    public static TransactionState Transaction(Native.TransactionStateTag state) => state switch
+    {
+        Native.TransactionStateTag.Idle => TransactionState.Idle,
+        Native.TransactionStateTag.InTransaction => TransactionState.InTransaction,
+        Native.TransactionStateTag.Failed => TransactionState.Failed,
+        _ => TransactionState.Unknown,
+    };
+
+    public static SessionHealth Health(Native.SessionHealthTag health) => health switch
+    {
+        Native.SessionHealthTag.Reconnecting reconnecting =>
+            new SessionHealth.Reconnecting(checked((int)reconnecting.Attempt)),
+        Native.SessionHealthTag.Offline => new SessionHealth.Offline(),
+        Native.SessionHealthTag.Failed failed => new SessionHealth.Failed(
+            failed.Cause switch
+            {
+                Native.FailureCauseTag.Tls => FailureCause.Tls,
+                Native.FailureCauseTag.Configuration => FailureCause.Configuration,
+                Native.FailureCauseTag.HostKey => FailureCause.HostKey,
+                _ => FailureCause.Authentication,
+            },
+            failed.Reason is { } reason ? Error(reason) : null),
+        _ => new SessionHealth.Online(),
+    };
+
+    public static Native.SessionHealthTag Health(SessionHealth health) => health switch
+    {
+        SessionHealth.Reconnecting reconnecting =>
+            new Native.SessionHealthTag.Reconnecting(checked((uint)reconnecting.Attempt)),
+        SessionHealth.Offline => new Native.SessionHealthTag.Offline(),
+        SessionHealth.Failed failed => new Native.SessionHealthTag.Failed(
+            failed.Cause switch
+            {
+                FailureCause.Tls => Native.FailureCauseTag.Tls,
+                FailureCause.Configuration => Native.FailureCauseTag.Configuration,
+                FailureCause.HostKey => Native.FailureCauseTag.HostKey,
+                _ => Native.FailureCauseTag.Authentication,
+            },
+            failed.Reason is { } reason ? Error(reason) : null),
+        _ => new Native.SessionHealthTag.Online(),
+    };
+
     public static SecretKind Kind(Native.SecretKindTag kind) => kind switch
     {
         Native.SecretKindTag.SshPassword => SecretKind.SshPassword,
         Native.SecretKindTag.SshPassphrase => SecretKind.SshPassphrase,
         _ => SecretKind.DatabasePassword,
     };
+
+    public static Native.SecretKindTag Kind(SecretKind kind) => kind switch
+    {
+        SecretKind.SshPassword => Native.SecretKindTag.SshPassword,
+        SecretKind.SshPassphrase => Native.SecretKindTag.SshPassphrase,
+        _ => Native.SecretKindTag.DatabasePassword,
+    };
+
+    // A health the app hands back to wait on compares by its fields, and the reason never differs.
+    private static Native.ErrorInfo Error(CoreError error) => new(
+        error.Code,
+        [.. error.Codes],
+        error.Message,
+        error.Server is { } server
+            ? new Native.ServerMessage(
+                server.Message,
+                server.Code,
+                server.SqlState,
+                server.Detail,
+                server.Hint,
+                server.Position is { } position ? checked((uint)position) : null)
+            : null,
+        error.Path,
+        error.Secret is { } secret ? Kind(secret) : null);
 
     public static SecretItem Item(Native.SecretItemTag item) => item switch
     {
@@ -159,7 +235,8 @@ internal static class Mapping
         connection.QueryTimeoutSeconds is { } timeout ? checked((uint)timeout) : null,
         connection.Color,
         connection.GroupId?.ToString(),
-        connection.LastOpened?.ToUnixTimeMilliseconds());
+        connection.LastOpened?.ToUnixTimeMilliseconds(),
+        [.. connection.Tags.Select(tag => tag.ToString())]);
 
     public static SavedConnection Connection(Native.ConnectionRecord record) => new(
         Guid.Parse(record.Id),
@@ -201,7 +278,10 @@ internal static class Mapping
         record.QueryTimeoutSecs is { } seconds ? checked((int)seconds) : null,
         record.Color,
         record.GroupId is { } group ? Guid.Parse(group) : null,
-        record.LastOpenedMs is { } opened ? DateTimeOffset.FromUnixTimeMilliseconds(opened) : null);
+        record.LastOpenedMs is { } opened ? DateTimeOffset.FromUnixTimeMilliseconds(opened) : null)
+    {
+        Tags = [.. record.Tags.Select(Guid.Parse)],
+    };
 
     public static ConnectionGroup Group(Native.GroupRecord group) => new(
         Guid.Parse(group.Id),
@@ -214,7 +294,10 @@ internal static class Mapping
         [.. snapshot.Connections.Select(Connection)],
         [.. snapshot.Groups.Select(Group)],
         [.. snapshot.Favorites.Select(Guid.Parse)],
-        [.. snapshot.Recent.Select(Guid.Parse)]);
+        [.. snapshot.Recent.Select(Guid.Parse)])
+    {
+        Tags = [.. snapshot.Tags.Select(tag => new ConnectionTag(Guid.Parse(tag.Id), tag.Name, tag.Color))],
+    };
 
     public static ParsedConnectionUrl Url(Native.ParsedConnectionUrl url) => new(
         url.DriverId,

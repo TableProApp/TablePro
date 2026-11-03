@@ -46,7 +46,19 @@ public abstract record QueryEvent
     /// <summary>Something the server said that is not an error.</summary>
     public sealed record Notice(string Severity, string Message, string? Code) : QueryEvent;
 
-    public sealed record Finished(QueryOutcome Outcome) : QueryEvent;
+    /// <param name="Transaction">The transaction the editor's connection is left in.</param>
+    public sealed record Finished(QueryOutcome Outcome, TransactionState Transaction = TransactionState.Unknown)
+        : QueryEvent;
+}
+
+public enum TransactionState
+{
+    Idle,
+    InTransaction,
+
+    /// <summary>A statement failed inside the transaction; the rest is refused until it is rolled back.</summary>
+    Failed,
+    Unknown,
 }
 
 /// <summary>How a run ended. A statement the server refused is <see cref="Failed"/>, not an exception.</summary>

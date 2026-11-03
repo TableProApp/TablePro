@@ -56,7 +56,7 @@ public sealed class VerticalPathTests
             new TableName(null, "people"),
             new ColumnSort(1, Ascending: false),
             100,
-            cancellationToken);
+            cancellationToken: cancellationToken);
         var query = database.Session.SortedQuery("SELECT name FROM people LIMIT 2", "name", ascending: true);
         var write = database.Session.SortedQuery("UPDATE people SET note = NULL", "name", ascending: true);
 
@@ -64,6 +64,61 @@ public sealed class VerticalPathTests
         Assert.NotNull(query);
         Assert.Equal(["Ada", "Grace"], await Column(database, query, 0));
         Assert.Null(write);
+    }
+
+    [Fact]
+    public async Task ATablePagesPastItsFirstRowsAndCountsThemAll()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var people = new TableName(null, "people");
+
+        var second = await database.Session.GetTableQueryAsync(people, null, 2, 2, cancellationToken);
+        var count = await database.Session.CountRowsAsync(people, cancellationToken);
+
+        Assert.True(second.CanSeek);
+        Assert.Equal(["3"], await Column(database, second.Sql, 0));
+        Assert.Equal(SqliteDatabase.PeopleRows, count);
+    }
+
+    [Fact]
+    public async Task ARunSaysWhichTransactionItLeavesOpen()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+
+        var began = await Finished(database, "BEGIN");
+        var lost = database.Editor.IsLost;
+        var rolledBack = await Finished(database, "ROLLBACK");
+
+        Assert.Equal(TransactionState.InTransaction, began.Transaction);
+        Assert.Equal(TransactionState.Idle, rolledBack.Transaction);
+        Assert.False(lost);
+    }
+
+    [Fact]
+    public async Task AnOpenFileIsOnlineUntilTheWaitIsCancelled()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+        using var cancel = new CancellationTokenSource();
+
+        var health = database.Session.Health;
+        var wait = database.Session.WaitForHealthChangeAsync(health, cancel.Token);
+        await cancel.CancelAsync();
+
+        Assert.IsType<SessionHealth.Online>(health);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait);
+    }
+
+    private static async Task<QueryEvent.Finished> Finished(SqliteDatabase database, string sql)
+    {
+        using var run = database.Editor.Run(sql, cancellationToken: TestContext.Current.CancellationToken);
+        QueryEvent? last = null;
+        await foreach (var queryEvent in run.ReadEventsAsync(TestContext.Current.CancellationToken))
+        {
+            last = queryEvent;
+        }
+
+        return Assert.IsType<QueryEvent.Finished>(last);
     }
 
     private static async Task<List<string?>> Column(SqliteDatabase database, string sql, int column)
