@@ -31,7 +31,12 @@ internal sealed class AppSession : IDisposable
         var start = new ProcessStartInfo(path) { UseShellExecute = false };
         start.Environment["TABLEPRO_DATA_DIR"] = dataFolder;
         _application = Application.Launch(start);
-        Window = _application.GetMainWindow(_automation, Wait)
+        // A restored tab window can be the process's first visible ownerless window.
+        Window = Retry.WhileNull(
+                () => _application.GetAllTopLevelWindows(_automation)
+                    .FirstOrDefault(window => window.Properties.Name.ValueOrDefault == "TablePro"),
+                Wait,
+                throwOnTimeout: false).Result
             ?? throw new InvalidOperationException("The main window did not open.");
         // The runner's screen is small; a maximized window fits it whole for the screenshots.
         if (maximize)
@@ -400,7 +405,11 @@ internal sealed class AppSession : IDisposable
     {
         if (!_application.HasExited)
         {
-            _application.Close();
+            if (Window.IsAvailable)
+            {
+                Window.Close();
+            }
+
             if (!Retry.WhileFalse(() => _application.HasExited, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
             {
                 _application.Kill();

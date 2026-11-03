@@ -62,6 +62,7 @@ public sealed partial class ShellTests
 
         using (var app = AppSession.Relaunch(folder, theme, maximize: false))
         {
+            Assert.Equal("TablePro", app.Window.Title);
             // The window comes back where it stood, with its own tab.
             var torn = app.WaitForWindow(SampleWindow);
             var bounds = torn.BoundingRectangle;
