@@ -141,10 +141,16 @@ struct ForeignKeyPickerView: View {
     @ViewBuilder
     private var content: some View {
         if let errorMessage {
-            RevealedTextView(errorMessage)
-                .foregroundStyle(.red)
-                .font(.callout)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Label {
+                RevealedTextView(errorMessage)
+                    .foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: NoticeSeverity.error.symbolName)
+                    .foregroundStyle(NoticeSeverity.error.tint)
+                    .accessibilityHidden(true)
+            }
+            .font(.callout)
+            .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
                 .frame(height: Self.listHeight)
         } else if entries.isEmpty {

@@ -160,11 +160,9 @@ struct ColumnJumpPanelContent: View {
 
             if entry.isHidden {
                 Text(String(localized: "Hidden"))
-                    .font(.caption2.weight(.medium))
+                    .font(.caption2)
                     .foregroundStyle(secondaryColor)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(Color(nsColor: .quaternaryFill)))
+                    .lineLimit(1)
             } else if let position = entry.position {
                 Text(positionLabel(position))
                     .font(.callout)

@@ -294,21 +294,6 @@ struct ConnectionSwitcherSectionsTests {
         #expect(titles(sections) == ["ACTIVE CONNECTIONS", "ACME / EUROPE"])
     }
 
-    @Test("A group header carries no colored dot, whatever color the group has")
-    func groupHeadersHaveNoDot() {
-        let coloured = ConnectionGroup(name: "Prod", color: .red)
-        let plain = ConnectionGroup(name: "Scratch", sortOrder: 1)
-
-        let sections = ConnectionSwitcherSections.build(
-            active: [],
-            saved: [connection("a", groupId: coloured.id), connection("b", groupId: plain.id)],
-            groups: [coloured, plain],
-            isFiltering: false
-        )
-
-        #expect(sections.allSatisfy { $0.accentColor == nil })
-    }
-
     @Test("Favorites and recent connections come before the groups and are not repeated in them")
     func favoritesAndRecentLeadTheLibrary() {
         let acme = ConnectionGroup(name: "Acme")

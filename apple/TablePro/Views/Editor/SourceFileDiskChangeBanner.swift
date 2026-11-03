@@ -13,35 +13,17 @@ internal struct SourceFileDiskChangeBanner: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
-                .accessibilityHidden(true)
-
+        PaneNoticeBar(severity: .warning, onDismiss: onDismiss) {
             Text(message)
                 .font(.callout)
                 .lineLimit(1)
                 .truncationMode(.middle)
-
-            Spacer()
-
+                .help(message)
+        } actions: {
             actionButton
-                .controlSize(.small)
-                .buttonStyle(.bordered)
-
-            Button {
-                onDismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .imageScale(.small)
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Dismiss"))
-            .accessibilityLabel(String(localized: "Dismiss"))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.yellow.opacity(0.12))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("source-file-disk-change-banner")
     }
 
     private var message: String {
@@ -57,13 +39,9 @@ internal struct SourceFileDiskChangeBanner: View {
     private var actionButton: some View {
         switch change {
         case .modified:
-            Button(String(localized: "Reload")) {
-                onReload()
-            }
+            Button(String(localized: "Reload"), action: onReload)
         case .missing:
-            Button(String(localized: "Save As…")) {
-                onSaveAs()
-            }
+            Button(String(localized: "Save As…"), action: onSaveAs)
         }
     }
 }

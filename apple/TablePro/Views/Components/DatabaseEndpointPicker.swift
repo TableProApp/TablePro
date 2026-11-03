@@ -152,7 +152,8 @@ internal struct DatabaseEndpointPicker: View {
                         .foregroundStyle(.secondary)
                 }
             } icon: {
-                swatch(connection.color)
+                swatch(connection)
+                    .opacity(0.5)
             }
             .foregroundStyle(.tertiary)
         } else {
@@ -160,7 +161,7 @@ internal struct DatabaseEndpointPicker: View {
                 Label {
                     Text(connection.name)
                 } icon: {
-                    swatch(connection.color)
+                    swatch(connection)
                 }
             }
         }
@@ -318,10 +319,13 @@ internal struct DatabaseEndpointPicker: View {
         }
     }
 
-    private func swatch(_ color: ConnectionColor) -> some View {
-        Circle()
-            .fill(color == .none ? Color.secondary.opacity(0.35) : color.color)
-            .frame(width: 10, height: 10)
+    private func swatch(_ connection: DatabaseConnection) -> some View {
+        ConnectionTile(
+            type: connection.type,
+            iconName: connection.iconName,
+            identityColor: connection.identityColor,
+            size: 16
+        )
     }
 
     private func label(_ database: String, _ connection: DatabaseConnection) -> String {

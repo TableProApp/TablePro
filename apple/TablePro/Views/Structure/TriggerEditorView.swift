@@ -62,10 +62,12 @@ struct TriggerEditorView: View {
                 Divider()
                 Label {
                     RevealedTextView(errorMessage)
+                        .foregroundStyle(.secondary)
                 } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image(systemName: NoticeSeverity.error.symbolName)
+                        .foregroundStyle(NoticeSeverity.error.tint)
+                        .accessibilityHidden(true)
                 }
-                .foregroundStyle(.red)
                 .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
