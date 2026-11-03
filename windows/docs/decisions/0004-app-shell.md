@@ -132,7 +132,12 @@ Facts the CI runs on `windows-2025` and `windows-11-arm` established, which the 
 - Concurrent Credential Manager writes from one process lost each other's changes: a stored secret read back as missing, a deleted one came back. The core serializes its calls.
 - System.Text.Json's source generator sets every init-only property when it builds a record, so a key a file leaves out took the type's default, not the property's initializer. The stored records use settable properties.
 - The signed MSIX, self-contained and not AOT-compiled, is 144.5 MB for x64 and 142.6 MB for Arm64.
-
+- A `ContentDialog` opens in the popup layer, outside the root that carries the app's `RequestedTheme`, so in Dark on a Light system it came up light. Each dialog takes its page's `ActualTheme`.
+- A row's content with `CanDrag` took the press the `TreeViewItem` selects on: a click no longer selected the row. The tree starts the drag instead.
+- The Toolkit's `GridSplitter` in an `Auto` column of its own resized nothing; on the left edge of the star column after the pane, as its page lays it out, it resizes the pane.
+- FlaUI moves the pointer with `SetCursorPos`, which WinUI does not take as a pointer moving with the button down, so neither a tree drag nor the splitter moved. The UI tests drag through `SendInput`.
+- A closed `InfoBar` stays in the UI Automation tree with its content folded away, so the tests read whether a bar shows from its buttons.
+- On `windows-11-arm`, a rebuilt library tree folded rows the page had opened, in a pass of the tree's own after the page's, and the folds read as the user's. The page opens the rows again at low priority and records no fold until then.
 ## Consequences
 
 - The core gained the library and connecting through it: `Core::library`, `connect_saved`, `test_connection`, `parse_connection_url`, `DatabaseSession::table_query` and `sorted_query` with `sql_syntax::with_order_by` and `sort_reference`, `ResultSet::sorted` over `value::order`, and `Core::with_system_secrets`, which keeps secrets in Credential Manager on Windows (`core/ARCHITECTURE.md`, Platforms).
