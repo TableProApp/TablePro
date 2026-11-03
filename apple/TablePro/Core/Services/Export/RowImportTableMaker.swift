@@ -7,13 +7,11 @@ import Foundation
 import TableProPluginKit
 import TableProSQLGrammar
 
-/// Creates the tables a row import fills, or clears one it created on an earlier attempt, behind one gate grant
-/// that the rows reuse. One prompt covers every table of a run, so importing twenty files asks once.
 @MainActor
 internal struct RowImportTableMaker {
     private enum Step {
         case create(TableScope, statements: [String], sql: String)
-        case clear(String)
+        case clear(TableScope, sql: String)
     }
 
     internal let connection: DatabaseConnection
@@ -31,13 +29,36 @@ internal struct RowImportTableMaker {
         )
     }
 
-    /// `onCreated` hears of each table as soon as it exists, so a failure on a later one still leaves the planner
-    /// knowing the earlier ones are this sheet's to reuse.
     internal func prepare(
         _ definitions: [PluginCreateTableDefinition],
         scope: DatabaseScope,
         planner: NewTableImportPlanner,
         description: String? = nil,
+        importRun: ImportRun? = nil,
+        onCreated: (TableScope, String) -> Void
+    ) async throws -> OperationReceipt {
+        do {
+            return try await prepareControlled(definitions, scope: scope, planner: planner, description: description,
+                                               importRun: importRun, onCreated: onCreated)
+        } catch {
+            if error is PluginImportCancellationError || error is CancellationError {
+                importRun?.stop(.rollBack)
+            } else if let importRun, (try? await importRun.admit(.session)) == .proceed {
+                importRun.record { $0.recordError(error) }
+                importRun.release()
+            }
+            await importRun?.complete()
+            if importRun?.stopChoice != nil { throw PluginImportCancellationError() }
+            throw error
+        }
+    }
+
+    private func prepareControlled(
+        _ definitions: [PluginCreateTableDefinition],
+        scope: DatabaseScope,
+        planner: NewTableImportPlanner,
+        description: String? = nil,
+        importRun: ImportRun? = nil,
         onCreated: (TableScope, String) -> Void
     ) async throws -> OperationReceipt {
         guard ImportDataSinkAdapter.canWriteRows(into: connection.type) else {
@@ -53,7 +74,6 @@ internal struct RowImportTableMaker {
 
         let receipt = try await authorize(steps, description: description)
         var createdAny = false
-        /// Also when a later table fails, since the ones before it are in the database.
         defer {
             if createdAny {
                 CatalogChangeService.post(
@@ -65,12 +85,12 @@ internal struct RowImportTableMaker {
             switch step {
             case .create(let table, let statements, let sql):
                 for statement in statements {
-                    try await runOnLeasedDriver(statement, scope: scope)
+                    try await runOnLeasedDriver(statement, scope: scope, table: table, clearing: false, run: importRun)
                     createdAny = true
                 }
                 onCreated(table, sql)
-            case .clear(let sql):
-                try await runOnLeasedDriver(sql, scope: scope)
+            case .clear(let table, let sql):
+                try await runOnLeasedDriver(sql, scope: scope, table: table, clearing: true, run: importRun)
             }
         }
         return receipt
@@ -103,7 +123,7 @@ internal struct RowImportTableMaker {
                 quoteIdentifier: driver?.quoteIdentifier,
                 rowDeleteStatement: driver?.rowDeleteStatement
             )
-            return .clear(generator.deleteAllRowsStatement())
+            return .clear(table, sql: generator.deleteAllRowsStatement())
         case .nameTakenWithDifferentColumns:
             throw PluginImportError.importFailed(
                 String(
@@ -114,9 +134,6 @@ internal struct RowImportTableMaker {
         }
     }
 
-    /// Every statement the sheet issues on its own account goes through the gate. The retry path's `DELETE FROM`
-    /// used to skip it while the `CREATE TABLE` beside it did not, so a connection set to confirm destructive
-    /// statements emptied a table without asking.
     private func authorize(_ steps: [Step], description: String?) async throws -> OperationReceipt {
         var statements: [String] = []
         var clears = false
@@ -124,7 +141,7 @@ internal struct RowImportTableMaker {
             switch step {
             case .create(_, let created, _):
                 statements += created
-            case .clear(let sql):
+            case .clear(_, let sql):
                 statements.append(sql)
                 clears = true
             }
@@ -150,17 +167,64 @@ internal struct RowImportTableMaker {
         return receipt
     }
 
-    /// One statement at a time on the import's own kind of lease, always after `authorize` has returned. Taking it
-    /// earlier would hold the connection's gate open across a confirmation the user has not answered yet, and the
-    /// gate is not reentrant, so the import that follows would then wait on a sheet waiting on the user.
-    private func runOnLeasedDriver(_ sql: String, scope: DatabaseScope) async throws {
+    private func runOnLeasedDriver(
+        _ sql: String, scope: DatabaseScope, table: TableScope, clearing: Bool, run: ImportRun?
+    ) async throws {
+        if let run { _ = try await run.admit(.data) }
+        defer { run?.release() }
         let route = DatabaseManager.shared.executionRoute(for: scope)
-        _ = try await DatabaseManager.shared.withScopedDriver(
-            scope: scope,
-            route: route,
-            cancellation: .protectedWrite
+        try await DatabaseManager.shared.withScopedDriver(
+            scope: scope, route: route, cancellation: .protectedWrite
         ) { driver in
-            try await driver.execute(query: sql)
+            if let run {
+                try await Self.executePreparation(sql, table: table, clearing: clearing, driver: driver, run: run)
+            } else {
+                _ = try await driver.execute(query: sql)
+            }
+        }
+    }
+
+    nonisolated private static func executePreparation(
+        _ sql: String, table: TableScope, clearing: Bool, driver: DatabaseDriver, run: ImportRun
+    ) async throws {
+        let id = UUID()
+        let rollback: ImportTableRollback
+        if !clearing {
+            rollback = .unknown
+        } else if !driver.supportsTransactions {
+            rollback = .nontransactional
+        } else if DataSyncTransactionality.needsStorageEngines(driver.connection.type) {
+            if let engine = try? await driver.fetchTableMetadata(tableName: table.table, schema: table.schema).engine,
+               !engine.isEmpty {
+                rollback = DataSyncTransactionality.cannotRollBack(storageEngine: engine, databaseType: driver.connection.type)
+                    ? .nontransactional : .transactional
+            } else {
+                rollback = .unknown
+            }
+        } else {
+            rollback = .transactional
+        }
+        run.record {
+            $0.preparations[id] = ImportPreparationEffect(table: table, clearing: clearing)
+        }
+        do {
+            _ = try await driver.execute(query: sql)
+            let state = driver.supportsTransactions
+                ? ImportSessionState(await driver.heldSessionTransactionState()) : .idle
+            run.record {
+                $0.currentState = state
+                $0.preparations[id]?.completed = true
+                if clearing, rollback == .nontransactional || (rollback == .transactional && state == .idle) {
+                    $0.preparations[id]?.fate = .kept
+                } else if clearing, rollback == .transactional, state.holdsTransaction {
+                    $0.preparations[id]?.fate = state == .aborted ? .abortedTransaction : .openTransaction
+                }
+            }
+        } catch {
+            let state = driver.supportsTransactions
+                ? ImportSessionState(await driver.heldSessionTransactionState()) : .idle
+            run.record { $0.currentState = state; $0.recordError(error) }
+            throw error
         }
     }
 }

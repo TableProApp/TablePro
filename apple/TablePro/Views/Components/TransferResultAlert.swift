@@ -7,9 +7,6 @@ import AppKit
 import TableProPluginKit
 import UniformTypeIdentifiers
 
-/// Import and export results were three bespoke views with fixed widths and hand-picked green,
-/// yellow and red badges. `NSAlert` supplies the icon from its style, sizes itself to its content,
-/// and is the only one of the two that can carry a real suppression checkbox.
 @MainActor
 internal enum TransferResultAlert {
     internal static let exportSuppressionKey = "hideExportSuccessDialog"
@@ -19,14 +16,6 @@ internal enum TransferResultAlert {
         case close
     }
 
-    /// An export that finished with something to report says so here, the way an import already
-    /// does. The suppression checkbox is offered only on a clean run: the alert the user turned
-    /// off is the routine one, and hiding a warning behind that switch loses it for good.
-    ///
-    /// `notes` are what the export wrote and `warnings` are what went wrong with it, so only the
-    /// second decides the title, the icon and whether the checkbox appears. Both go in the body,
-    /// notes first, which is the order `presentTransferSuccess` and `presentImportSuccess` already
-    /// put their own summaries in.
     internal static func presentExportSuccess(
         warnings: [String],
         notes: [String] = [],
@@ -40,9 +29,6 @@ internal enum TransferResultAlert {
         alert.alertStyle = warnings.isEmpty ? .informational : .warning
         alert.informativeText = (notes + warnings).joined(separator: "\n\n")
         alert.addButton(withTitle: String(localized: "Open in Finder"))
-        /// `NSAlert` binds Escape by matching a button's title against "Cancel", which stops
-        /// matching in every localized build and never matched "Done" at all. Without this the
-        /// alert answers no key but Return, which opens Finder.
         AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
         alert.showsSuppressionButton = warnings.isEmpty
         alert.suppressionButton?.title = String(localized: "Do not show this again")
@@ -57,9 +43,6 @@ internal enum TransferResultAlert {
         AlertHelper.present(alert, in: window, completion: deliver)
     }
 
-    /// A transfer writes into another connection and leaves nothing on disk, so there is no folder
-    /// to open and no file to name. It still has to say how much moved and where, which it did not:
-    /// the sheet used to close on success and report nothing at all.
     internal static func presentTransferSuccess(
         tableCount: Int,
         rowCount: Int,
@@ -91,19 +74,19 @@ internal enum TransferResultAlert {
         return String(format: template, Int64(rowCount), destinationName, Int64(tableCount))
     }
 
-    /// A stopped import used to close its progress sheet without saying what it left behind, so stopping looked the
-    /// same as importing nothing.
     internal static func presentImportCancelled(
-        executedStatements: Int,
-        transaction: ImportTransactionOutcome,
+        result: ImportStopResult,
         window: NSWindow?,
         completion: @escaping @MainActor () -> Void
     ) {
         let alert = NSAlert()
         alert.messageText = String(localized: "Import stopped")
         alert.alertStyle = .warning
-        alert.informativeText = importCancelledText(executedStatements: executedStatements, transaction: transaction)
+        alert.informativeText = String(localized: "The details below show what happened to the import.")
+        if !result.completionNotes.isEmpty { alert.informativeText += "\n" + shownErrors(result.completionNotes) }
+        alert.accessoryView = TransferReportView(shown: result.text, copied: result.details)
         AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
+        alert.layout()
         AlertHelper.present(alert, in: window) { _ in completion() }
     }
 
@@ -125,7 +108,9 @@ internal enum TransferResultAlert {
                     %lld statements had already run. Some were kept, because a statement in the file, such as \
                     COMMIT, CREATE, ALTER or DROP, committed the import's transaction as it ran.
                     """)
-        case .untracked, .committed, .endedByServer, .endedByFile:
+        case .untracked, .endedByServer, .endedByFile:
+            return String(localized: "Anything already imported may stay.")
+        case .committed:
             template = isOne
                 ? String(localized: "%lld statement had already run and stays committed.")
                 : String(localized: "%lld statements had already run and stay committed.")
@@ -136,6 +121,7 @@ internal enum TransferResultAlert {
     internal static func presentImportSuccess(
         result: PluginImportResult?,
         rowTally: ImportRowTally? = nil,
+        runResult: ImportStopResult? = nil,
         window: NSWindow?,
         sourceFileName: String = "",
         targetTable: String? = nil,
@@ -149,13 +135,17 @@ internal enum TransferResultAlert {
         alert.alertStyle = skipped > 0 ? .warning : .informational
         alert.informativeText = importSummary(result, rowTally: rowTally)
         AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
+        if let runResult, !runResult.completionNotes.isEmpty {
+            alert.informativeText += "\n" + shownErrors(runResult.completionNotes)
+            alert.accessoryView = TransferReportView(shown: runResult.text, copied: runResult.details)
+            alert.layout()
+        }
 
         let errors = result?.errors ?? []
         if !errors.isEmpty {
-            /// The alert shows the first few, which is enough to recognise the shape of the
-            /// problem. Anything past that belongs in a file the user can sort and search.
             alert.addButton(withTitle: String(localized: "Save Report…"))
-            alert.accessoryView = TransferReportView(report: failureReport(for: errors))
+            let details = failureReport(for: errors) + (runResult.map { "\n\n" + $0.details } ?? "")
+            alert.accessoryView = TransferReportView(report: details)
             alert.layout()
         }
 
@@ -212,8 +202,6 @@ internal enum TransferResultAlert {
         }
     }
 
-    /// A run of several files says what became of each, with its row count, and whether a failure took back the files
-    /// before it. Copy Details carries every skipped row's error as well.
     internal static func presentBatchImportResult(
         _ report: RowImportBatchReport,
         window: NSWindow?,
@@ -233,12 +221,14 @@ internal enum TransferResultAlert {
             alert.messageText = String(localized: "Import stopped")
             alert.alertStyle = .warning
         }
-        alert.informativeText = batchImportSummary(report)
+        alert.informativeText = shownErrors(batchImportSummary(report))
         AlertHelper.addCancelButton(to: alert, title: String(localized: "Done"))
         let lines = batchImportLines(report)
+        let preparation = report.stopResult?.ledger.preparationNote.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         alert.accessoryView = TransferReportView(
-            shown: lines.joined(separator: "\n"),
-            copied: ([lines.joined(separator: "\n")] + batchImportErrors(report)).joined(separator: "\n\n")
+            shown: ([preparation] + lines).filter { !$0.isEmpty }.joined(separator: "\n"),
+            copied: ([lines.joined(separator: "\n")] + batchImportErrors(report)
+                + [report.stopResult?.details ?? ""]).joined(separator: "\n\n")
         )
         alert.layout()
         AlertHelper.present(alert, in: window) { _ in completion() }
@@ -253,14 +243,26 @@ internal enum TransferResultAlert {
                 Int64(report.importedRowCount),
                 Int64(report.files.count),
                 seconds
-            )
+            ) + (report.stopResult.map { $0.completionNotes.isEmpty ? "" : "\n" + $0.completionNotes } ?? "")
         case .failed(let index):
+            if let result = report.stopResult {
+                return [result.completionNotes,
+                        String(localized: "Each file below reports what happened to its changes."),
+                        String(localized: "Changes a rollback cannot undo stay either way."), result.failureText]
+                    .filter { !$0.isEmpty }.joined(separator: "\n")
+            }
             let failure = importFailureText(for: report.failure)
             let template = report.rowsKept
                 ? String(localized: "%1$@ failed, and the files imported before it were kept. %2$@")
                 : String(localized: "%1$@ failed, so every file was rolled back. %2$@")
             return String(format: template, report.files[index].sourceName, failure)
         case .stopped(let index):
+            if let result = report.stopResult {
+                return [result.completionNotes,
+                        String(localized: "Each file below reports what happened to its changes."),
+                        String(localized: "Changes a rollback cannot undo stay either way."), result.failureText]
+                    .filter { !$0.isEmpty }.joined(separator: "\n")
+            }
             let template = report.rowsKept
                 ? String(localized: "Stopped at %@. The files imported before it were kept.")
                 : String(localized: "Stopped at %@. Every file was rolled back.")
@@ -268,9 +270,14 @@ internal enum TransferResultAlert {
         }
     }
 
-    /// One line per file: where its rows went and how many, or why none did.
     internal static func batchImportLines(_ report: RowImportBatchReport) -> [String] {
-        zip(report.files, report.outcomes).map { file, outcome in
+        if let result = report.stopResult, report.ending != .completed {
+            return report.files.enumerated().map { index, file in
+                String(format: String(localized: "%1$@ to %2$@: %3$@"), file.sourceName, file.targetTable,
+                       result.fileText(for: index))
+            }
+        }
+        return zip(report.files, report.outcomes).map { file, outcome in
             let status: String
             switch outcome {
             case .imported(let result):
@@ -290,7 +297,6 @@ internal enum TransferResultAlert {
         }
     }
 
-    /// A file that stopped part way can already have written batches, which stay or go with the run.
     private static func rowsBefore(_ rows: Int, kept: Bool) -> String? {
         guard rows > 0 else { return nil }
         if rows == 1 {
@@ -318,7 +324,6 @@ internal enum TransferResultAlert {
         return text
     }
 
-    /// Everything the lines cut short: each skipped row's error, and a failed file's whole error and statement.
     private static func batchImportErrors(_ report: RowImportBatchReport) -> [String] {
         zip(report.files, report.outcomes).compactMap { file, outcome in
             switch outcome {
@@ -334,6 +339,7 @@ internal enum TransferResultAlert {
 
     internal static func presentImportFailure(
         error: (any Error)?,
+        result: ImportStopResult? = nil,
         window: NSWindow?,
         completion: @escaping @MainActor () -> Void
     ) {
@@ -341,13 +347,18 @@ internal enum TransferResultAlert {
         alert.messageText = String(localized: "Import failed")
         alert.alertStyle = .critical
         alert.addButton(withTitle: String(localized: "Done"))
-        alert.informativeText = importFailureText(for: error)
+        alert.informativeText = importFailureDisplay(error: error, result: result)
 
-        if let pluginError = error as? PluginImportError,
+        if let result {
+            let details = importFailureSummary(error: error, result: result)
+                + "\n\n" + (failureReport(for: error) ?? "")
+            alert.accessoryView = TransferReportView(shown: details, copied: details + "\n\n" + result.details)
+            alert.layout()
+        } else if let pluginError = error as? PluginImportError,
            case .statementFailed(let statement, _, _) = pluginError {
             alert.accessoryView = TransferReportView(
                 shown: statement,
-                copied: failureReport(for: error) ?? statement
+                copied: (failureReport(for: error) ?? statement) + "\n\n" + (result?.details ?? "")
             )
             alert.layout()
         }
@@ -355,7 +366,15 @@ internal enum TransferResultAlert {
         AlertHelper.present(alert, in: window) { _ in completion() }
     }
 
-    /// The text of a failed import's alert: the line it stopped at and the first of the database's errors.
+    internal static func importFailureDisplay(error: (any Error)?, result: ImportStopResult?) -> String {
+        let parts = [result?.completionNotes ?? "", importFailureText(for: error)]
+        return shownErrors(parts.filter { !$0.isEmpty }.joined(separator: "\n"))
+    }
+
+    internal static func importFailureSummary(error: (any Error)?, result: ImportStopResult?) -> String {
+        importFailureText(for: error) + (result.map { "\n\n" + $0.text } ?? "")
+    }
+
     internal static func importFailureText(for error: (any Error)?) -> String {
         guard let pluginError = error as? PluginImportError,
               case .statementFailed(_, let line, let underlyingError) = pluginError else {
@@ -368,14 +387,9 @@ internal enum TransferResultAlert {
         )).plainText
     }
 
-    /// The most of a failure's errors an alert's text holds, in lines and in UTF-16 units. A SQL Server batch raises
-    /// one error per statement that failed and the driver keeps up to 1,000, one line each, while an alert grows to fit
-    /// its text: measured, 1,000 lines made one 54,135 points tall, its Done button far below the screen, and 1,000
-    /// units on one line keep it at 423 points. Copy Details carries all of it.
     internal static let shownErrorLineLimit = 5
     internal static let shownErrorLengthLimit = 1_000
 
-    /// The start of `description` the alert has room for, and where the rest is.
     internal static func shownErrors(_ description: String) -> String {
         let lines = description.components(separatedBy: "\n")
         let firstLines = lines.prefix(shownErrorLineLimit).joined(separator: "\n")
@@ -384,8 +398,6 @@ internal enum TransferResultAlert {
         return shown + "\n" + String(localized: "Copy Details copies the rest.")
     }
 
-    /// `text` cut to `limit` UTF-16 units on a character boundary, with an ellipsis saying there is more, or nil when
-    /// it already fits.
     internal static func cut(_ text: String, toUnits limit: Int) -> String? {
         let source = text as NSString
         guard source.length > limit else { return nil }
@@ -393,9 +405,6 @@ internal enum TransferResultAlert {
         return source.substring(to: end) + "\u{2026}"
     }
 
-    /// The report a failed import puts in its accessory, so the line, the reason and the failing
-    /// statement can be selected and copied together. Returns nil for an error that carries no
-    /// statement, where the alert's own text already says everything there is to say.
     internal static func failureReport(for error: (any Error)?) -> String? {
         guard let pluginError = error as? PluginImportError,
               case .statementFailed(let statement, let line, let underlyingError) = pluginError else {
@@ -410,8 +419,6 @@ internal enum TransferResultAlert {
         ])
     }
 
-    /// A row import names its failing entry `row 12`, which the line number already says, so only
-    /// a statement that carries something the line number does not is worth repeating.
     internal static func failureReport(for failures: [PluginImportResult.ImportStatementError]) -> String {
         failures.map { failure in
             let heading = String(
@@ -449,25 +456,13 @@ internal enum TransferResultAlert {
     }
 }
 
-/// The failure report is what a user has to act on, so it is selectable text with a copy button
-/// of its own. An `NSAlert` button cannot serve here because any of them dismisses the alert, so
-/// the control belongs to the accessory view instead.
-///
-/// What is copied can say more than what is shown. A single failure shows the statement, because
-/// the alert's own text already names the line and the reason, but copying carries all three so
-/// the pasted text stands on its own.
 internal final class TransferReportView: NSView {
     private static let width: CGFloat = 380
     private static let textHeight: CGFloat = 140
     private static let spacing: CGFloat = 8
 
-    /// The most of a report the box shows. A failed statement can be a whole SQL Server batch, and the text view lays
-    /// out a paragraph whole on the main thread: measured, a 15 million unit batch holding one 5 million unit line
-    /// blocked it for 67 seconds and took 2.7 GB, where the first 10,000 units took 0.1 seconds. Copy Details still
-    /// carries every unit.
     internal static let shownLengthLimit = 10_000
 
-    /// `text` cut to `shownLengthLimit` on a character boundary, with an ellipsis saying there is more.
     internal static func shownText(_ text: String) -> String {
         TransferResultAlert.cut(text, toUnits: shownLengthLimit) ?? text
     }

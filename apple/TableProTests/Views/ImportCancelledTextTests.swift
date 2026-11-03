@@ -7,7 +7,6 @@ import Foundation
 @testable import TablePro
 import Testing
 
-/// A stopped import said what ran "stays committed" even when Wrap in transaction had just rolled all of it back.
 @MainActor
 struct ImportCancelledTextTests {
     @Test("A rolled back import says so")
@@ -22,7 +21,6 @@ struct ImportCancelledTextTests {
         )
     }
 
-    /// Under `autocommit = 0` the rollback still undoes what ran after the DDL, so only some of the work was kept.
     @Test("An import the database committed part way says some of it was kept, and why")
     func committedBeforeRollback() {
         #expect(
@@ -37,11 +35,11 @@ struct ImportCancelledTextTests {
         )
     }
 
-    @Test("An import with no transaction of its own keeps saying what ran stays committed")
+    @Test("An import with no known transaction outcome makes no durability claim")
     func untracked() {
         #expect(
             TransferResultAlert.importCancelledText(executedStatements: 3, transaction: .untracked)
-                == "3 statements had already run and stay committed."
+                == "Anything already imported may stay."
         )
         #expect(
             TransferResultAlert.importCancelledText(executedStatements: 1, transaction: .committed)
@@ -53,11 +51,11 @@ struct ImportCancelledTextTests {
     func endedOutsideTheImport() {
         #expect(
             TransferResultAlert.importCancelledText(executedStatements: 5, transaction: .endedByServer)
-                == "5 statements had already run and stay committed."
+                == "Anything already imported may stay."
         )
         #expect(
             TransferResultAlert.importCancelledText(executedStatements: 5, transaction: .endedByFile)
-                == "5 statements had already run and stay committed."
+                == "Anything already imported may stay."
         )
     }
 }

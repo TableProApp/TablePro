@@ -197,3 +197,34 @@ struct RowImportRunnerTests {
         #expect(sink.calls == ["insertRows(1)"])
     }
 }
+
+
+extension RowImportRunnerTests {
+    @Test("Skip and Continue propagates cancellation from the sink", arguments: [false, true])
+    func skipCancellation(taskCancellation: Bool) async {
+        let sink = MockImportSink()
+        sink.onInsertRow = { _ in
+            if taskCancellation { throw CancellationError() }
+            throw PluginImportCancellationError()
+        }
+        do {
+            _ = try await RowImportRunner.run(configuration: configuration(.skipAndContinue), sink: sink,
+                                              progress: makeProgress(), nextBatch: provider([[entry(1), entry(2)]]))
+            Issue.record("Cancellation must leave the runner")
+        } catch {
+            #expect(error is PluginImportCancellationError || error is CancellationError)
+        }
+        #expect(sink.calls == ["insertRow"])
+    }
+
+    @Test("Task cancellation in a batch never applies Stop and Commit error policy")
+    func batchTaskCancellation() async {
+        let sink = MockImportSink()
+        sink.onInsertRows = { _ in throw CancellationError() }
+        await #expect(throws: CancellationError.self) {
+            try await RowImportRunner.run(configuration: configuration(.stopAndCommit), sink: sink,
+                                          progress: makeProgress(), nextBatch: provider([[entry(1)]]))
+        }
+        #expect(sink.calls == ["begin", "insertRows(1)", "rollback"])
+    }
+}
