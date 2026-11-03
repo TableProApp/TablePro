@@ -131,6 +131,10 @@ internal final class AgentAttentionNotifier {
         do {
             try await presenter.post(request)
             delivered.insert(request.identifier)
+            // An answer that arrived while the post was in flight found nothing to withdraw yet.
+            if Self.body(for: session.status, session: session) == nil {
+                withdraw(sessionId: session.id)
+            }
         } catch {
             Self.logger.error("Could not post the agent notification: \(error.publicLogShape, privacy: .public)")
         }

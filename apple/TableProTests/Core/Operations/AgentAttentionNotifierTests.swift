@@ -19,7 +19,12 @@ private final class RecordingPresenter: UserNotificationPresenting {
 
     func setCategories(_ categories: Set<UNNotificationCategory>) {}
 
-    func post(_ request: UNNotificationRequest) async throws { posted.append(request) }
+    var onPost: (@MainActor () -> Void)?
+
+    func post(_ request: UNNotificationRequest) async throws {
+        posted.append(request)
+        onPost?()
+    }
 
     func removeDelivered(identifiers: [String]) { removed.append(contentsOf: identifiers) }
 }
@@ -139,5 +144,18 @@ struct AgentAttentionNotifierTests {
         await delivery?.value
 
         #expect(presenter.posted.first?.content.body.hasPrefix("The agent's reply failed") == true)
+    }
+
+    @Test("An answer that lands while the post is in flight still removes the notification")
+    func answerDuringPostWithdraws() async {
+        let session = makeSession()
+        session.mark(.waitingOnYou)
+        let notifier = makeNotifier()
+        presenter.onPost = { session.mark(.working) }
+
+        await notifier.statusChanged(session, to: .waitingOnYou)?.value
+
+        #expect(presenter.posted.count == 1)
+        #expect(presenter.removed == [AgentAttentionNotifier.identifier(for: session.id)])
     }
 }

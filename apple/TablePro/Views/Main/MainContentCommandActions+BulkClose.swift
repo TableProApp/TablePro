@@ -83,6 +83,8 @@ extension MainContentCommandActions {
         let victims = tabsToClose(kind: kind)
         guard !victims.isEmpty else { return }
         let work = runningWork(.tabs(Set(victims.map(\.id))))
+        // An open cell editor is unsaved work, so it lands before the question is chosen.
+        coordinator.commitActiveGridEdit()
         if !hasUnsavedWork(among: victims) {
             guard await confirmsStoppingWork(work) else { return }
         }
