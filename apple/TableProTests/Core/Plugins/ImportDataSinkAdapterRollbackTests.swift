@@ -477,6 +477,24 @@ struct ImportStopRollbackTests {
         #expect(sink.transactionOutcome == .committed)
     }
 
+    @Test("A file's own COMMIT ends the promise before it is sent")
+    func fileCommitEndsThePromiseBeforeItRuns() async throws {
+        let driver = StatusFlagDriver(transactionalDDL: true)
+        let hold = AsyncGate()
+        driver.commitHold = hold
+        let (sink, _) = makeRowSink(on: driver, targetRollback: .rollsBack)
+        try await sink.beginTransaction()
+        #expect(sink.rollsBackOnStop)
+
+        let commit = Task { try await sink.execute(statement: "COMMIT") }
+        await hold.arrived(1)
+        #expect(!sink.rollsBackOnStop)
+        await hold.open()
+        try await commit.value
+
+        #expect(!sink.rollsBackOnStop)
+    }
+
     @Test("A table that keeps its rows through a ROLLBACK is never promised one, and a rollback reads as kept")
     func nonTransactionalTableKeepsRows() async throws {
         let driver = StatusFlagDriver()

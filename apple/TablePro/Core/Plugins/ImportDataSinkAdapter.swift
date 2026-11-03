@@ -206,6 +206,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         // The file's own statements change how the session reads the next one.
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
         noteNameHazards(in: statement, grammar: grammar)
+        // The file's COMMIT keeps the rows once it is sent, so the rollback promise goes before it.
+        if ownsTransaction.withLock({ $0 }), fileTransactionEnd(of: statement, grammar: grammar) != nil {
+            transactionRecord.withLock { $0.isCommitting = true }
+            onStopOutcomeChange?()
+        }
         try await send(statement, line: line, grammar: grammar)
         await noteTransactionEnd(after: statement, grammar: grammar)
     }
