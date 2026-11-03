@@ -38,9 +38,15 @@ struct NumberEntryPopover: View {
                     .keyboardShortcut(.defaultAction)
                     .disabled(!isValid)
             }
-            Text(rangeHint)
-                .font(.caption2)
-                .foregroundStyle(isValid ? .secondary : Color.red)
+            Group {
+                if isValid {
+                    Text(rangeHint)
+                        .foregroundStyle(.secondary)
+                } else {
+                    NoticeLabel(rangeHint, severity: .error)
+                }
+            }
+            .font(.caption2)
         }
         .padding(12)
         .onAppear { isFocused.wrappedValue = true }

@@ -54,8 +54,6 @@ final class ConnectionFormCoordinator: ObservableObject {
     var testSucceeded: Bool { testResult?.succeeded == true }
     @Published var testTask: Task<Void, Never>?
 
-    @Published var isInstallingPlugin: Bool = false
-    @Published var pluginInstallError: String?
     @Published var pluginInstallConnection: DatabaseConnection?
     @Published var pluginDiagnostic: PluginDiagnosticItem?
 
@@ -269,16 +267,11 @@ final class ConnectionFormCoordinator: ObservableObject {
             auth.resetForType(newType)
             advanced.resetForType(newType)
         }
-        /// Not `normalizeTransport()`: which transports exist and what they mean both change with
-        /// the type, and keeping the selection would turn a MySQL port forward into SQLite's
-        /// read-only file copy without saying so. The fields each transport holds are kept, so
-        /// re-picking costs nothing.
+        // Not normalizeTransport(): a kept MySQL port forward would silently become SQLite's read-only file copy.
         transport = nil
         if !visibleTabs.contains(selectedTab) {
             selectedTab = .general
         }
-        isInstallingPlugin = false
-        pluginInstallError = nil
     }
 
     func didChangePort() {
@@ -769,8 +762,8 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
     }
 
-    /// Testing tears down first so the sheet never covers a running test, and the result is left
-    /// alone rather than marked failed: the credential was the problem, not the settings.
+    // The test tears down first so the sign-in sheet never covers a running one; a finished
+    // sign-in tests again, so the Test button reports the result in place.
     private func offerSignIn(
         _ provider: ConnectionSignInProvider,
         for error: Error,
@@ -782,11 +775,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         isTesting = false
         testTask = nil
         guard await ConnectionSignInPrompt.offer(provider, for: error, fields: fields, window: window) else { return }
-        AlertHelper.showInfoSheet(
-            title: String(localized: "Signed In"),
-            message: provider.signedInMessage,
-            window: window
-        )
+        test()
     }
 
     private struct TunnelFormStates {
@@ -874,35 +863,6 @@ final class ConnectionFormCoordinator: ObservableObject {
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
         LoadableExtensionApprovalStore.shared.revoke(for: [testId])
         temporaryTestIds.remove(testId)
-    }
-
-    // MARK: - Plugin install
-
-    func installPlugin(for databaseType: DatabaseType) {
-        isInstallingPlugin = true
-        Task { [weak self, services] in
-            do {
-                try await services.pluginManager.installMissingPlugin(for: databaseType) { _ in }
-                await MainActor.run {
-                    guard let self else { return }
-                    if self.network.type == databaseType {
-                        for field in services.pluginManager.additionalConnectionFields(for: databaseType) {
-                            if self.targetValues(for: field.section)[field.id] == nil,
-                               let defaultValue = field.defaultValue
-                            {
-                                self.setFieldValue(defaultValue, fieldId: field.id, section: field.section)
-                            }
-                        }
-                    }
-                    self.isInstallingPlugin = false
-                }
-            } catch {
-                await MainActor.run {
-                    self?.pluginInstallError = error.localizedDescription
-                    self?.isInstallingPlugin = false
-                }
-            }
-        }
     }
 
     /// Every additional field value the form currently holds, across all three panes.

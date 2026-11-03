@@ -146,12 +146,11 @@ struct CustomSlashCommandEditorSheet: View {
                     }
                 } footer: {
                     if SlashCommand.isBuiltIn(name: draft.name) {
-                        Text(String(
+                        NoticeLabel(String(
                             format: String(localized: "/%@ is a built-in command. Typing it runs the built-in; this one runs only from the command menu."),
                             draft.name.trimmingCharacters(in: .whitespaces).lowercased()
                         ))
                         .font(.caption)
-                        .foregroundStyle(.orange)
                     }
                 }
                 Section {

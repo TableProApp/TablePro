@@ -70,10 +70,8 @@ internal struct TableTransferMappingEditor: View {
             .frame(height: 200)
 
             if !contested.isEmpty {
-                Text(Self.contestedMappingMessage)
+                NoticeLabel(Self.contestedMappingMessage, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if !match.unmatchedDestination.isEmpty {

@@ -84,16 +84,7 @@ struct BackupDatabaseFlow: View {
                     onStart: { Task { await start() } }
                 )
             case .running:
-                BackupProgressSheet(
-                    kind: .backup,
-                    database: batch.state.currentDatabase,
-                    bytesWritten: batch.state.bytesProcessed,
-                    totalBytes: batch.state.totalBytes,
-                    isCancelling: batch.state.isCancelling,
-                    itemIndex: batch.state.currentIndex,
-                    itemTotal: batch.state.total,
-                    onCancel: { batch.cancel() }
-                )
+                TransferProgressSheet(progress: batch.state.transferProgress) { batch.cancel() }
             case .finished(let outcomes, let directory):
                 BackupResultSheet(
                     kind: .backup,
@@ -145,7 +136,8 @@ struct BackupDatabaseFlow: View {
                     database: entry.database,
                     scope: expanded.scope,
                     destination: plan[index].url,
-                    blockedReason: expanded.blockedReason
+                    blockedReason: expanded.blockedReason,
+                    label: entry.label
                 )
             )
         }

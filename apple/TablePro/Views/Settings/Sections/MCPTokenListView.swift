@@ -125,19 +125,13 @@ private struct MCPTokenRow: View {
     var body: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(token.name)
-
-                    Text(token.permissions.displayName)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(permissionColor.opacity(0.15))
-                        .foregroundStyle(permissionColor)
-                        .clipShape(Capsule())
-                }
+                Text(token.name)
 
                 HStack(spacing: 8) {
+                    Text(token.permissions.displayName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
                     Text(token.prefix + "…")
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
@@ -178,13 +172,5 @@ private struct MCPTokenRow: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: lastUsed, relativeTo: .now)
-    }
-
-    private var permissionColor: Color {
-        switch token.permissions {
-        case .readOnly: .blue
-        case .readWrite: .orange
-        case .fullAccess: .red
-        }
     }
 }

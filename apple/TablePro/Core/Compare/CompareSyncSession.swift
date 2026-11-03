@@ -89,6 +89,7 @@ internal final class CompareSyncSession: ObservableObject {
     // MARK: - Activity
 
     @Published internal var activity: CompareSyncActivity = .idle
+    internal let workId = UUID()
     @Published internal var errorMessage: String?
     @Published internal var informationalMessage: String?
     @Published internal var lastAction: CompareSyncLastAction = .none

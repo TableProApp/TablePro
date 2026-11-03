@@ -1,0 +1,4 @@
+[bindings.csharp]
+namespace = "TablePro.Interop.Native"
+cdylib_name = "tablepro_ffi"
+global_methods_class_name = "CoreMethods"

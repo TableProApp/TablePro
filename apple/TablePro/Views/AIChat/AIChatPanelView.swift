@@ -10,7 +10,6 @@ import SwiftUI
 /// AI chat panel displayed alongside the main editor content
 struct AIChatPanelView: View {
     @ObservedObject private var slashCommandStorage = CustomSlashCommandStorage.shared
-    private static let warningBackgroundOpacity: Double = 0.1
 
     let connection: DatabaseConnection
     var currentQuery: String?
@@ -53,6 +52,7 @@ struct AIChatPanelView: View {
             }
 
             if let error = viewModel.errorMessage {
+                Divider()
                 errorBanner(error)
             }
 
@@ -107,44 +107,37 @@ struct AIChatPanelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// A transcript outlives the provider that produced it, so removing the active provider leaves
-    /// this pane with messages and nothing to send another. Without this the pane keeps the
-    /// transcript and drops the composer, the model picker and the send button with no reason
-    /// given and no route back: the "Go to Settings…" affordance lives on the empty-transcript
-    /// branch alone.
+    // The empty pane and the footer under a transcript say the same thing.
+    private static let noProviderTitle = String(localized: "No AI Provider")
+    private static let noProviderDetail = String(localized: "Choose an AI provider in Settings to chat.")
+
+    // A transcript outlives the provider that wrote it, so the pane keeps it read-only with a way back.
     private var noProviderFooter: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(spacing: 0) {
             Divider()
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(.secondary)
-                Text("No AI provider is active, so this conversation is read-only.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
+            PaneNoticeBar(severity: .warning, onBar: false) {
+                PaneNoticeText(title: Self.noProviderTitle, detail: Self.noProviderDetail)
+            } actions: {
                 if viewModel.isStreaming {
                     Button(String(localized: "Stop Generating")) {
                         viewModel.cancelStream()
                     }
-                    .controlSize(.small)
                 }
                 Button(String(localized: "Settings…")) {
                     WindowOpener.shared.openSettings(tab: .ai)
                 }
-                .controlSize(.small)
             }
             .chatColumn(contentWidth)
-            .padding(8)
+            .paneBarBackground()
         }
     }
 
     private var noProviderState: some View {
         EmptyStateView(
-            icon: "gear",
-            title: String(localized: "AI Not Configured"),
-            description: String(localized: "Configure an AI provider in Settings to start chatting."),
-            actionTitle: String(localized: "Go to Settings…"),
+            icon: "sparkles",
+            title: Self.noProviderTitle,
+            description: Self.noProviderDetail,
+            actionTitle: String(localized: "Settings…"),
             action: {
                 WindowOpener.shared.openSettings(tab: .ai)
             }
@@ -155,37 +148,28 @@ struct AIChatPanelView: View {
     // MARK: - Error Banner
 
     private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .help(message)
-                if viewModel.onDeviceRefusal != nil, let provider = viewModel.fallbackProviderName {
-                    Button(String(format: String(localized: "Send to %@"), provider)) {
-                        viewModel.sendRefusedTurnToProvider()
-                    }
-                    .controlSize(.small)
+        PaneNoticeBar(
+            severity: .warning,
+            onBar: false,
+            dismissLabel: String(localized: "Dismiss error"),
+            onDismiss: { viewModel.clearError() }
+        ) {
+            Text(message)
+                .font(.callout)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .help(message)
+        } actions: {
+            if viewModel.onDeviceRefusal != nil, let provider = viewModel.fallbackProviderName {
+                Button(String(format: String(localized: "Send to %@"), provider)) {
+                    viewModel.sendRefusedTurnToProvider()
                 }
             }
-            Spacer()
-            Button {
-                viewModel.clearError()
-            } label: {
-                Image(systemName: "xmark")
-                    .frame(width: 24, height: 24)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "Dismiss error"))
         }
+        // Capped like the transcript, while the bar material spans the pane.
         .chatColumn(contentWidth)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.yellow.opacity(Self.warningBackgroundOpacity))
+        .paneBarBackground()
     }
 
     // MARK: - Input Area

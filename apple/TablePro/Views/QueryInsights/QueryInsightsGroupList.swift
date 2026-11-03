@@ -32,7 +32,6 @@ struct QueryInsightsGroupList: View {
                 .font(.system(.callout, design: .monospaced))
                 .fontWeight(.medium)
                 .monospacedDigit()
-                .foregroundStyle(headlineTint(group))
                 .frame(minWidth: 76, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -47,10 +46,16 @@ struct QueryInsightsGroupList: View {
                     .foregroundStyle(.secondary)
 
                 if let error = group.latestErrorMessage, case .failures = metric {
-                    RevealedTextView(error)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .lineLimit(2)
+                    Label {
+                        RevealedTextView(error)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    } icon: {
+                        Image(systemName: NoticeSeverity.warning.symbolName)
+                            .foregroundStyle(NoticeSeverity.warning.tint)
+                            .accessibilityHidden(true)
+                    }
+                    .font(.caption)
                 }
             }
 
@@ -82,14 +87,6 @@ struct QueryInsightsGroupList: View {
                 format: String(localized: "%@ failed", comment: "Failure count, %@ is a count"),
                 group.failureCount.formatted()
             )
-        }
-    }
-
-    private func headlineTint(_ group: QueryInsightsGroup) -> Color {
-        switch metric {
-        case .failures: return .orange
-        case .duration: return .primary
-        case .callCount: return .primary
         }
     }
 
@@ -161,7 +158,6 @@ struct QueryInsightsRegressionList: View {
             .font(.system(.callout, design: .monospaced))
             .fontWeight(.medium)
             .monospacedDigit()
-            .foregroundStyle(.orange)
             .frame(minWidth: 76, alignment: .trailing)
 
             VStack(alignment: .leading, spacing: 3) {

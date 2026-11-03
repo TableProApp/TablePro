@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tablepro_core::{
-    ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError, TimeoutPhase,
-    UnsupportedFeature,
+    ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError, EngineCategory,
+    TimeoutPhase, UnsupportedFeature,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -31,6 +31,10 @@ impl DatabaseDriver for DuckDbDriver {
 
     fn capabilities(&self) -> &'static DriverCapabilities {
         &CAPABILITIES
+    }
+
+    fn category(&self) -> EngineCategory {
+        EngineCategory::Analytical
     }
 
     async fn connect(

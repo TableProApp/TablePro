@@ -112,11 +112,11 @@ struct SettingsView: View {
                 }
             }
         } icon: {
-            Image(systemName: presentation.systemImage)
+            Image(systemName: presentation.symbolName)
                 .foregroundStyle(.orange)
         }
-        /// The iCloud Sync toggle above is already the way to turn sync off.
-        ForEach(presentation.actions.filter { $0 != .turnOffSync }) { action in
+        // The iCloud Sync toggle above is already the way to turn sync off.
+        ForEach(presentation.mobileActions.filter { $0 != .turnOffSync }) { action in
             Button(action.title) {
                 appState.performSyncAction(action)
             }

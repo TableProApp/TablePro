@@ -75,6 +75,7 @@ struct HistoryPanelView: View {
                 onRunInNewTab: { runInNewTab($0) },
                 onCopy: { copy($0) },
                 onSaveAsFavorite: { favoriteDialogQuery = FavoriteDialogQuery(query: $0.query) },
+                canRestorePreviousValues: { canRun($0) && coordinator.canRestoreSave(historyId: $0.id) },
                 onRestorePreviousValues: { coordinator.rewindSave(historyId: $0.id) }
             )
         } secondary: {

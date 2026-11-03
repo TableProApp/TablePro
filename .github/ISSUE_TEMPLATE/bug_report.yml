@@ -69,6 +69,7 @@ body:
         - macOS
         - iOS
         - Linux
+        - Windows
     validations:
       required: true
 

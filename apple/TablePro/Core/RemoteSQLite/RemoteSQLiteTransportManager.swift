@@ -24,6 +24,7 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
     private static let portRangeEnd = 65_000
 
     private var tunnels: [UUID: RemoteSQLiteTunnel] = [:]
+    private var creations = TunnelCreationGenerations()
     private static let tunnelRegistry = OSAllocatedUnfairLock(initialState: [UUID: RemoteSQLiteTunnel]())
     private var appNapActivity: NSObjectProtocol?
 
@@ -35,17 +36,19 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
         credentials: SSHTunnelCredentials,
         deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> RemoteSQLiteEndpoint {
+        let generation = creations.begin(connectionId)
+        defer { creations.finish(generation, for: connectionId) }
         if tunnels[connectionId] != nil {
-            try await closeTunnel(connectionId: connectionId)
+            try await discardTunnel(connectionId: connectionId)
         }
 
         let token = RemoteSQLiteAdmission.newToken()
         let command = RemoteSQLiteAgentSource.launcherCommand()
         let candidatePorts = localPortCandidates()
 
-        /// The tunnel is built inside the detached task and only it, not the authenticated chain of
-        /// raw libssh2 handles it holds, crosses back to the actor. That is what `LibSSH2Tunnel`'s
-        /// factory does too, and it is what keeps the non-Sendable session out of an actor hop.
+        // The tunnel is built inside the detached task and only it, not the authenticated chain of
+        // raw libssh2 handles it holds, crosses back to the actor. That is what `LibSSH2Tunnel`'s
+        // factory does too, and it is what keeps the non-Sendable session out of an actor hop.
         let creationTask = Task.detached {
             let endpoint = ConnectionTimeoutEndpoint.tunnel("\(config.host):\(config.port ?? 22)")
             let attempt = SSHConnectionAttempt(deadline: deadline, endpoint: endpoint)
@@ -101,6 +104,11 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
             tunnel.close()
             throw error
         }
+        // A newer createTunnel or a close for this connection came while this one dialed, so it must not adopt.
+        guard creations.isNewest(generation, for: connectionId) else {
+            tunnel.close()
+            throw CancellationError()
+        }
 
         tunnel.onDeath = { [weak self] id in
             Task { [weak self] in await self?.handleTunnelDeath(connectionId: id) }
@@ -116,7 +124,13 @@ actor RemoteSQLiteTransportManager: TunnelManaging {
         return RemoteSQLiteEndpoint(port: tunnel.localPort, token: token)
     }
 
+    // Also ends a creation still dialing, so nothing it builds is adopted after the close returned.
     func closeTunnel(connectionId: UUID) async throws {
+        creations.invalidate(connectionId)
+        try await discardTunnel(connectionId: connectionId)
+    }
+
+    private func discardTunnel(connectionId: UUID) async throws {
         guard let tunnel = tunnels.removeValue(forKey: connectionId) else { return }
         Self.tunnelRegistry.withLock { $0[connectionId] = nil }
         updateAppNapState()

@@ -370,10 +370,8 @@ private struct StructureTableOptionsSection: View {
         }
         if let message = AutoIncrementEntry(counterText, maximum: maximum, original: original?.autoIncrement).message {
             Group {
-                Text(message)
+                NoticeLabel(message, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("structure-options-auto-increment-error")
             }
         }

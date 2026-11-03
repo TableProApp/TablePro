@@ -8,17 +8,16 @@ import Foundation
 extension DatabaseManager {
     func buildTunnelCommandEffectiveConnection(
         for connection: DatabaseConnection,
-        deadline: ConnectionDeadline
+        deadline: ConnectionDeadline,
+        ownsAttempt: () -> Bool = { true }
     ) async throws -> DatabaseConnection {
         guard let config = connection.resolvedTunnelCommandConfig else { return connection }
 
-        /// The command is the one part of a connection that runs code, and `connections.json` is
-        /// ordinary user-writable storage. `ConnectionStoreIntegrity` already answers whether the
-        /// file is the one TablePro last wrote, and re-saving the connection in the app is the
-        /// confirmation that clears it, exactly as it is for a password source.
+        // The command runs code from user-writable storage; re-saving the connection in the app trusts it again.
         guard await ConnectionStorage.shared.storeIsTrusted else {
             throw TunnelCommandError.storeNotTrusted
         }
+        guard ownsAttempt() else { throw CancellationError() }
 
         let endpoint = connection.tunnelForwardEndpoint
         let tunnelPort = try await TunnelCommandManager.shared.createTunnel(
@@ -33,10 +32,10 @@ extension DatabaseManager {
     }
 
     func handleTunnelCommandDied(connectionId: UUID) async {
-        await recoverDeadTunnel(
+        recoverDeadTunnel(
             connectionId: connectionId,
             kind: "Tunnel command",
-            disconnectedMessage: String(localized: "The tunnel command stopped. Click to reconnect.")
+            disconnectedMessage: String(localized: "The tunnel command stopped.")
         )
     }
 }

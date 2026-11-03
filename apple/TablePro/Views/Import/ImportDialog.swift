@@ -124,7 +124,6 @@ struct ImportDialog: View {
                 ImportProgressView(service: service) {
                     service.cancelImport()
                 }
-                .interactiveDismissDisabled()
             }
         }
         .onChange(of: showSuccessDialog) { isShowing in

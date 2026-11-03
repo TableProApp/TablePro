@@ -45,17 +45,9 @@ internal struct QuickSwitcherKeyHint: View {
                     }
                 }
             }
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 5)
-            .frame(minWidth: 20, minHeight: 17)
-            .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(Color(nsColor: .quaternaryFill))
-            )
             Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 }

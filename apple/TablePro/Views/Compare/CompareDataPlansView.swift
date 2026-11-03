@@ -256,11 +256,12 @@ if #available(macOS 14.0, *) {
         if let reason = plan.unavailableReason ?? plan.comparisonFailure {
             Label {
                 Text(reason)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             } icon: {
                 Image(systemName: "exclamationmark.triangle.fill")
+                    .selectionAwareTint(differentiateWithoutColor ? .primary : CompareStatusStyle.warning)
             }
-            .foregroundStyle(differentiateWithoutColor ? .primary : CompareStatusStyle.warning)
             .help(reason)
         } else {
             Text(plan.keyColumns.joined(separator: ", "))

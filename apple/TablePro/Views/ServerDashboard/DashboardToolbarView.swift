@@ -62,9 +62,9 @@ struct DashboardToolbarView: View {
 
             Text(viewModel.databaseType.rawValue)
                 .font(.caption)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.quaternary, in: Capsule())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

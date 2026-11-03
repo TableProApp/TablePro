@@ -6,10 +6,14 @@
 import Darwin
 import Foundation
 import os
+import TableProPluginKit
 import TableProProcess
 
 actor CloudSQLProxyManager: TunnelManaging {
     static let shared = CloudSQLProxyManager()
+
+    // Set by the connect path, which holds the attempt a stage must be checked against.
+    @TaskLocal static var connectStageReporter: ConnectionStageReporter?
     private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyManager")
 
     private static let readinessPollInterval: UInt64 = 250_000_000
@@ -24,9 +28,10 @@ actor CloudSQLProxyManager: TunnelManaging {
     }
 
     private var tunnels: [UUID: TunnelState] = [:]
+    private var creations = TunnelCreationGenerations()
     private var pidRecords: [UUID: CloudSQLProxyPidRecord] = [:]
     private let runnerFactory: () -> any SupervisedProcessRunner
-    private let binaryManager: CloudSQLProxyBinaryManager
+    private let managedBinary: @Sendable () async throws -> String
     private let systemBinaryLookup: (String) -> String?
     private var staleSweep: Task<Void, Never>?
     private let reaperTimings: StaleProcessReaper.Timings
@@ -38,7 +43,9 @@ actor CloudSQLProxyManager: TunnelManaging {
 
     init(
         runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() },
-        binaryManager: CloudSQLProxyBinaryManager = .shared,
+        managedBinary: @escaping @Sendable () async throws -> String = {
+            try await CloudSQLProxyDownload.shared.ensureBinary()
+        },
         systemBinaryLookup: @escaping (String) -> String? = { CLIExecutableFinder.findExecutable($0) },
         reaperTimings: StaleProcessReaper.Timings = .production,
         ownsListener: @escaping @Sendable (Int32?, Int) -> Bool = { pid, port in
@@ -47,7 +54,7 @@ actor CloudSQLProxyManager: TunnelManaging {
     ) {
         self.runnerFactory = runnerFactory
         self.ownsListener = ownsListener
-        self.binaryManager = binaryManager
+        self.managedBinary = managedBinary
         self.systemBinaryLookup = systemBinaryLookup
         self.reaperTimings = reaperTimings
     }
@@ -59,16 +66,18 @@ actor CloudSQLProxyManager: TunnelManaging {
         deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> Int {
         guard config.isValid else { throw CloudSQLProxyError.invalidInstanceConnectionName }
+        let generation = creations.begin(connectionId)
+        defer { creations.finish(generation, for: connectionId) }
         let timeoutEndpoint = ConnectionTimeoutEndpoint.proxy(config.instanceConnectionName)
         try deadline.check(endpoint: timeoutEndpoint)
 
-        /// A `cloud-sql-proxy` a crashed session left behind still owns the port this is about to
-        /// ask for, and a configuration with a fixed `localPort` gets exactly one attempt at it.
+        // A `cloud-sql-proxy` a crashed session left behind still owns the port this is about to
+        // ask for, and a configuration with a fixed `localPort` gets exactly one attempt at it.
         await sweepStalePidsIfNeeded()
         try deadline.check(endpoint: timeoutEndpoint)
 
         if tunnels[connectionId] != nil {
-            try await closeTunnel(connectionId: connectionId)
+            try await discardTunnel(connectionId: connectionId)
         }
 
         let binaryPath = try await resolveBinaryPath(config: config)
@@ -148,6 +157,12 @@ actor CloudSQLProxyManager: TunnelManaging {
                 throw error
             }
 
+            // A newer createTunnel or a close for this connection came while this one dialed, so it must not adopt.
+            guard creations.isNewest(generation, for: connectionId) else {
+                runner.stop()
+                deleteCredentialsFile(at: credentialsFilePath)
+                throw CancellationError()
+            }
             register(
                 connectionId: connectionId,
                 runner: runner,
@@ -163,7 +178,13 @@ actor CloudSQLProxyManager: TunnelManaging {
         throw lastError
     }
 
+    // Also ends a creation still dialing, so nothing it builds is adopted after the close returned.
     func closeTunnel(connectionId: UUID) async throws {
+        creations.invalidate(connectionId)
+        try await discardTunnel(connectionId: connectionId)
+    }
+
+    private func discardTunnel(connectionId: UUID) async throws {
         guard let state = tunnels.removeValue(forKey: connectionId) else { return }
         Self.runnerRegistry.withLock { $0[connectionId] = nil }
         pidRecords.removeValue(forKey: connectionId)
@@ -174,6 +195,7 @@ actor CloudSQLProxyManager: TunnelManaging {
     }
 
     func closeAllTunnels() async {
+        creations.invalidateAll()
         let current = tunnels
         tunnels.removeAll()
         pidRecords.removeAll()
@@ -328,11 +350,8 @@ actor CloudSQLProxyManager: TunnelManaging {
         if let resolved = systemBinaryLookup("cloud-sql-proxy") {
             return resolved
         }
-        /// The managed binary is ad-hoc signed and lives in a user-writable directory, so its
-        /// pinned checksum is the only thing attesting to what is about to run. Going through
-        /// `ensureBinary()` rather than the path alone means a stale or altered copy is replaced
-        /// here instead of being executed.
-        return try await binaryManager.ensureBinary()
+        // Never the bare path: the checksum check replaces a stale or altered copy instead of running it.
+        return try await managedBinary()
     }
 
     private static func buildArguments(
@@ -365,7 +384,8 @@ actor CloudSQLProxyManager: TunnelManaging {
             throw CloudSQLProxyError.credentialsWriteFailed
         }
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(Self.credentialsFilePrefix)\(connectionId.uuidString).json")
+            // One file per creation: two creations for one connection would otherwise share and delete one path.
+            .appendingPathComponent("\(Self.credentialsFilePrefix)\(connectionId.uuidString)-\(UUID().uuidString).json")
         do {
             try data.write(to: url, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)

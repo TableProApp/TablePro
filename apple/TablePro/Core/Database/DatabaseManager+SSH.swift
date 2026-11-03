@@ -14,10 +14,13 @@ import TableProSSHTransport
 
 extension DatabaseManager {
     // `sshPasswordOverride` is the password Test Connection typed, used instead of the stored one.
+    // `ownsAttempt` is asked with nothing suspending before the tunnel is created: tunnels are keyed by
+    // connection, and creating one closes whatever a newer attempt opened under the same id.
     internal func buildEffectiveConnection(
         for original: DatabaseConnection,
         sshPasswordOverride: String? = nil,
-        deadline: ConnectionDeadline
+        deadline: ConnectionDeadline,
+        ownsAttempt: () -> Bool = { true }
     ) async throws -> DatabaseConnection {
         var connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
         // Only the tunnel this connect opens says it secures the transport or names the server behind it; a saved or
@@ -35,6 +38,9 @@ extension DatabaseManager {
         if let refusal = ConnectionTunnelError.refusal(for: connection) {
             throw refusal
         }
+        if !enabledKinds.isEmpty, !ownsAttempt() {
+            throw CancellationError()
+        }
         switch enabledKinds.first {
         case .cloudflare:
             return try await buildCloudflareEffectiveConnection(for: connection, deadline: deadline)
@@ -43,7 +49,11 @@ extension DatabaseManager {
         case .socksProxy:
             return try await buildSOCKSProxyEffectiveConnection(for: connection, deadline: deadline)
         case .tunnelCommand:
-            return try await buildTunnelCommandEffectiveConnection(for: connection, deadline: deadline)
+            return try await buildTunnelCommandEffectiveConnection(
+                for: connection,
+                deadline: deadline,
+                ownsAttempt: ownsAttempt
+            )
         case .remoteFile:
             return try await buildRemoteFileEffectiveConnection(
                 for: connection,
@@ -83,6 +93,7 @@ extension DatabaseManager {
         let sshPassword = sshPasswordOverride ?? storedSshPassword
         let destination = connection.sshForwardDestination
 
+        guard ownsAttempt() else { throw CancellationError() }
         let tunnelPort = try await SSHTunnelManager.shared.createTunnel(
             connectionId: connection.id,
             sshHost: sshConfig.host,
@@ -117,15 +128,11 @@ extension DatabaseManager {
 
     // MARK: - SSH Tunnel Recovery
 
-    /// Handle SSH tunnel death by attempting reconnection with exponential backoff.
-    /// Guarded by `recoveringConnectionIds` to prevent duplicate concurrent recovery
-    /// when both the keepalive death callback and the wake-from-sleep handler fire
-    /// for the same connection.
     func handleSSHTunnelDied(connectionId: UUID) async {
-        await recoverDeadTunnel(
+        recoverDeadTunnel(
             connectionId: connectionId,
             kind: "SSH",
-            disconnectedMessage: String(localized: "SSH tunnel disconnected. Click to reconnect.")
+            disconnectedMessage: String(localized: "SSH tunnel disconnected.")
         )
     }
 }

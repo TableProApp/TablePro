@@ -5,7 +5,6 @@
 
 import SwiftUI
 
-/// Row view for a single SQL favorite in the sidebar
 internal struct FavoriteRowView: View {
     let favorite: SQLFavorite
 
@@ -30,9 +29,6 @@ internal struct FavoriteRowView: View {
                 Text(keyword)
                     .font(.system(.caption, design: .monospaced).weight(.medium))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(.quaternary))
                     .accessibilityHidden(true)
             }
         }

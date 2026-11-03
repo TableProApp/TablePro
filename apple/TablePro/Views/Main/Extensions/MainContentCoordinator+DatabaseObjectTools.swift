@@ -87,14 +87,12 @@ extension MainContentCoordinator {
     private func runMaterializedViewRefresh(_ target: DatabaseObjectTarget, concurrently: Bool) {
         Task {
             do {
+                // The refresh posts a rows change, which reloads every tab showing the view.
                 try await MaterializedViewRefreshing.refresh(target, concurrently: concurrently, connection: connection)
-                AlertHelper.showInfoSheet(
-                    title: String(localized: "Materialized View Refreshed"),
-                    message: String(format: String(localized: "“%@” now holds the current result of its query."), target.qualifiedName),
-                    window: contentWindow
-                )
+                AccessibilityAnnouncement.post(String(localized: "Materialized View Refreshed"))
             } catch ExecutionGateError.cancelledByUser {
             } catch {
+                Self.objectToolsLogger.error("Materialized view refresh failed: \(error.publicLogShape, privacy: .public)")
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Couldn't Refresh Materialized View"),
                     message: error.localizedDescription,

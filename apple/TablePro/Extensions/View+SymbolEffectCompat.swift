@@ -6,17 +6,6 @@
 import SwiftUI
 
 internal extension View {
-    /// `contentTransition(.symbolEffect(.replace))` is macOS 14. On 13 the symbol swaps
-    /// without the morph, which is what the view did before the effect was added.
-    @ViewBuilder
-    func symbolReplaceTransition() -> some View {
-        if #available(macOS 14.0, *) {
-            contentTransition(.symbolEffect(.replace))
-        } else {
-            self
-        }
-    }
-
     /// `symbolEffect(.pulse, isActive:)` is macOS 14. The fallback pulses the opacity, so a
     /// running sync still reads as running rather than as a static icon.
     @ViewBuilder

@@ -27,10 +27,10 @@ extension DatabaseManager {
     }
 
     func handleCloudSQLProxyTunnelDied(connectionId: UUID) async {
-        await recoverDeadTunnel(
+        recoverDeadTunnel(
             connectionId: connectionId,
             kind: "Cloud SQL Auth Proxy",
-            disconnectedMessage: String(localized: "Cloud SQL Auth Proxy disconnected. Click to reconnect.")
+            disconnectedMessage: String(localized: "Cloud SQL Auth Proxy disconnected.")
         )
     }
 }

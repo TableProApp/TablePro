@@ -223,10 +223,8 @@ internal struct LinkedFolderCommitSheet: View {
 
     private func commitErrorView(_ error: LinkedFolderGitError) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(error.errorDescription ?? "")
+            NoticeLabel(error.errorDescription ?? "", severity: .error)
                 .font(.callout)
-                .foregroundStyle(.red)
-                .fixedSize(horizontal: false, vertical: true)
             if let output = error.output {
                 ScrollView {
                     Text(verbatim: output)

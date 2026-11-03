@@ -16,6 +16,8 @@ import SwiftUI
 /// only the number the span encloses, so a count written before it still rendered "1 rows".
 struct ResultStatusReadoutView: View {
     let readout: ResultStatusReadout
+    // Off while the execution indicator owns the bar's one spinner.
+    var showsLoadingIndicator = true
 
     var body: some View {
         text
@@ -31,17 +33,12 @@ struct ResultStatusReadoutView: View {
     private var text: some View {
         switch readout {
         case .loading:
-            /// Unlabelled, per the HIG: "Avoid labeling a spinning progress indicator." It stands in
-            /// for the sentence rather than sitting beside one, so the readout has a single owner in
-            /// every state and nothing is added to the row.
-            ///
-            /// Held back for the same reason it is unlabelled. A table on a local database answers
-            /// in single-digit milliseconds, and a readout that spins for that long says less than
-            /// the blank it replaces.
-            LoadingReveal(isActive: true) {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel(String(localized: "Loading…"))
+            if showsLoadingIndicator {
+                LoadingReveal(isActive: true) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(String(localized: "Loading…"))
+                }
             }
         case .noRows:
             Text("No rows")
