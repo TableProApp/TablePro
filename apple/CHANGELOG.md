@@ -9,6 +9,68 @@ Unreleased changes are files in `changelog.d/`.
 
 <!-- towncrier release notes start -->
 
+## [0.84.0](https://github.com/TableProApp/TablePro/releases/tag/v0.84.0) - 2026-11-03
+
+Find and Replace work in every data grid, with Match Case, Whole Words, regular expressions and a column scope.
+Click a sorted header to reverse it or Option-click to add a sort key. Frozen columns sort, resize and reorder from their own headers.
+A cell value with a line break or over 256 characters opens in an editor anchored to the cell.
+The sidebar, Open Quickly, autocomplete and AI chat no longer stall on databases with tens of thousands of tables.
+Procedures and Functions load on MySQL 5.x and MariaDB servers with many routines, and MariaDB packages open.
+Save Changes has its own toolbar section, and panes switch views with native tabs.
+
+### Changed
+
+- The AI chat Tables menu lists the first 100 tables; type @ in the message to find any other. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- MCP list_indexes reads a whole schema's indexes in one query where the database supports it. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Find works in every data grid, with Match Case, Whole Words, Regular Expression, a column scope and Replace. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- A cell value with a line break or over 256 characters opens in an editor anchored to the cell. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Clicking a sorted column header reverses the sort; Option-click adds a sort key and Don't Sort is in the header menu. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Right-clicking a cell outside the selection acts on that cell and leaves the selection where it was. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Frozen columns sort, resize and reorder from their own headers at any scroll position. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- A theme that leaves out the data grid header or selected text colors uses the macOS colors instead of its grid colors. ([#3837](https://github.com/TableProApp/TablePro/pull/3837))
+- Connecting with a downloaded driver such as Oracle no longer freezes the window while the driver loads. ([#3842](https://github.com/TableProApp/TablePro/pull/3842))
+- Filtering the sidebar on a database with many schemas or tables responds faster. ([#3842](https://github.com/TableProApp/TablePro/pull/3842))
+- Opening a connection on saved tabs and filtering a large sidebar pause the window less. ([#3846](https://github.com/TableProApp/TablePro/pull/3846))
+- Save Changes sits in its own toolbar section, and panes switch views with native tabs across the app. ([#3851](https://github.com/TableProApp/TablePro/pull/3851))
+- Typing in the sidebar filter no longer redraws the editor and results on every keystroke. ([#3876](https://github.com/TableProApp/TablePro/pull/3876))
+- Open Quickly no longer redraws the whole sidebar when it finishes listing the tables of every schema. ([#3888](https://github.com/TableProApp/TablePro/pull/3888))
+- Open Quickly opens faster after the first time in a window. ([#3888](https://github.com/TableProApp/TablePro/pull/3888))
+- Open Quickly opens faster the first time after launch. ([#3889](https://github.com/TableProApp/TablePro/pull/3889))
+- The sidebar search responds faster on a database with many schemas. ([#3889](https://github.com/TableProApp/TablePro/pull/3889))
+
+### Fixed
+
+- Test Connection and Retry on iPhone and iPad hanging when their screen closed before the SSH server asked. ([#3813](https://github.com/TableProApp/TablePro/pull/3813))
+- Autocomplete offered nothing after a database name and a dot on MySQL, MariaDB and other engines without schemas. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- The sidebar, Open Quickly and autocomplete stalled on databases with tens of thousands of tables. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Sending an AI chat message froze the app on a database with thousands of tables. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Oracle and other one-row-per-schema sidebars could not select a schema row, so the keyboard could not open one. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Autocomplete could leave the best matching table name out on databases with more than 400 tables. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Searching the sidebar on Oracle waited seconds for other schemas' tables, longer over a slow network. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Autocomplete offered nothing after a schema name and a dot typed in another case. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Opening a connection or a query tab paused while every editor built a find bar nobody had opened yet. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- The sidebar's List layout said No Results while the other schemas' tables were still loading. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- Open Quickly said No results for a table in another schema while the sidebar was still loading the tables. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- On Oracle with many schemas, the first sidebar search and Open Quickly waited up to two seconds for the table list. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- A sidebar search read a table list that had failed to load again on every keystroke. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- VoiceOver numbered rows from 1 on every page and did not name the column of the cell being edited. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Find Next selected the matching row but left the cell cursor in the previous column. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- An edit, delete or paste under a value filter could land on a different row. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Copy Rows, Copy with Headers and Copy as JSON did nothing in a data file window. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- After rows reloaded, the grid could show no selection while Delete and the inspector still acted on the old rows. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Switching tabs or Structure sub-tabs with a cell open could save the edit into the other tab. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- A temporary table or the Structure tab could change a table's saved column widths and order. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Display As on a query result went back to the default format after Load More or a switch to another view. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- The first search in a large Oracle or PostgreSQL sidebar waited for every schema's tables to load after the keystroke. ([#3834](https://github.com/TableProApp/TablePro/pull/3834))
+- Opening a connection on a saved query tab froze the window while the tab's editor was built. ([#3834](https://github.com/TableProApp/TablePro/pull/3834))
+- On MySQL 5.7 and earlier and MariaDB, a database listed the routines and events of one named in other letter case. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- MariaDB packages showed under Functions and could not be opened. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- Procedures and Functions failed to load on MySQL 5.x and MariaDB servers holding many routines. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- Routine signatures longer than 1,024 bytes were cut off in the sidebar on MySQL. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- Open Quickly and Jump to Column kept their results in memory after they closed. ([#3842](https://github.com/TableProApp/TablePro/pull/3842))
+- Autocomplete after a schema name and a dot could list a same-named table's columns, or time out on Oracle. ([#3874](https://github.com/TableProApp/TablePro/pull/3874))
+
+
 ## [0.83.1](https://github.com/TableProApp/TablePro/releases/tag/v0.83.1) - 2026-11-01 [CRITICAL]
 
 ### Changed
