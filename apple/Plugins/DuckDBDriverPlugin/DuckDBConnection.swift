@@ -14,6 +14,10 @@ import TableProPluginKit
 struct DuckDBOpenSpec: Sendable, Equatable {
     let path: String
     let accessMode: DuckDBAccessMode
+    /// False for Remote mode, whose token and trust come from the connection form alone. Loaded, a secret
+    /// the user stored in `~/.duckdb` for the server stood in for an empty Token, and its pin replaced the
+    /// CA and name check of the SSL Mode the form chose (measured).
+    var allowsPersistentSecrets = true
 }
 
 /// Why a release did not happen, for the log line that tells a user whose lock never comes back
@@ -258,6 +262,13 @@ actor DuckDBConnectionActor {
             throw DuckDBPluginError.connectionFailed(
                 String(localized: "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x")
             )
+        }
+        if !spec.allowsPersistentSecrets {
+            guard duckdb_set_config(config, "allow_persistent_secrets", "false") != DuckDBError else {
+                throw DuckDBPluginError.connectionFailed(
+                    String(localized: "This build of DuckDB does not accept turning off persistent secrets")
+                )
+            }
         }
         if spec.accessMode == .readOnly {
             /// Measured: a value `duckdb_set_config` rejects leaves the option unset and the open

@@ -243,7 +243,7 @@ struct ConnectionURLParser {
             }
         }
         let effectivePort = isSrv ? nil : port
-        let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, type: dbType)
+        let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, sslFingerprint: ext.sslFingerprint, type: dbType)
 
         return .success(ParsedConnectionURL(
             type: dbType,
@@ -292,10 +292,10 @@ struct ConnectionURLParser {
         percentEncoded: Bool = false
     ) -> (database: String, fields: [String: String]) {
         let path = rawPath.hasPrefix("/") ? String(rawPath.dropFirst()) : rawPath
-        guard type.pluginTypeId == DatabaseType.trino.rawValue, let slash = path.firstIndex(of: "/") else {
-            return (path, [:])
-        }
         let decode: (String) -> String = { percentEncoded ? ($0.removingPercentEncoding ?? $0) : $0 }
+        guard type.pluginTypeId == DatabaseType.trino.rawValue, let slash = path.firstIndex(of: "/") else {
+            return (decode(path), [:])
+        }
         let schema = decode(String(path[path.index(after: slash)...]))
         return (decode(String(path[..<slash])), schema.isEmpty ? [:] : ["trinoSchema": schema])
     }
@@ -316,8 +316,15 @@ struct ConnectionURLParser {
             guard let host = components.host, !host.isEmpty else {
                 return .failure(.missingHost)
             }
-            return .success((host, [:], nil))
+            return .success((bareHost(host), [:], nil))
         }
+    }
+
+    // URLComponents keeps an IPv6 literal's brackets, which are URL syntax: a driver dials the bare address,
+    // as the SSH form already reads it.
+    private static func bareHost(_ host: String) -> String {
+        guard host.hasPrefix("["), host.hasSuffix("]"), host.count > 2 else { return host }
+        return String(host.dropFirst().dropLast())
     }
 
     // libpq's rules: query `host` and `port` win, and a host starting with `/` is the socket directory.
@@ -348,7 +355,7 @@ struct ConnectionURLParser {
         let host: String
         switch queryValue("host") {
         case .none:
-            host = components.host ?? ""
+            host = components.host.map(bareHost) ?? ""
         case .some(.none):
             return .failure(.invalidURL)
         case .some(.some(let raw)):
@@ -545,7 +552,7 @@ struct ConnectionURLParser {
         let ext = parseSSHQueryString(queryString, dbType: dbType)
         let sslMode = ext.resolvedSSLMode(for: dbType, port: port ?? dbType.defaultPort)
         port = significantPort(port, for: dbType, sslMode: sslMode)
-        let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, type: dbType)
+        let tls = ImportedTLS(sslMode: sslMode, disablesTLS: ext.disablesTLS, sslFingerprint: ext.sslFingerprint, type: dbType)
         let catalogPath = databasePath(database, type: dbType, percentEncoded: true)
         database = catalogPath.database
 
@@ -710,6 +717,7 @@ struct ConnectionURLParser {
         var sslMode: SSLMode?
         var disablesTLS = false
         var requestsTLS = false
+        var sslFingerprint: String?
         var tlsVerification: SSLMode?
         var user: String?
         var password: String?
@@ -747,18 +755,26 @@ struct ConnectionURLParser {
         let disablesTLS: Bool
         let additionalFields: [String: String]
 
-        init(sslMode: SSLMode?, disablesTLS: Bool, type: DatabaseType) {
-            guard type == .etcd else {
+        init(sslMode: SSLMode?, disablesTLS: Bool, sslFingerprint: String?, type: DatabaseType) {
+            switch type {
+            case .etcd:
+                self.sslMode = nil
+                self.disablesTLS = false
+                self.additionalFields = [
+                    EtcdTLSModeField.fieldId: EtcdTLSModeField.fieldValue(for: sslMode ?? .disabled)
+                ]
+            // Only quack:// reaches here; duckdb:// is a file path.
+            case .duckdb:
+                self.sslMode = nil
+                self.disablesTLS = false
+                self.additionalFields = DuckDBSSLModeField.fields(
+                    for: sslMode, disablesTLS: disablesTLS, fingerprint: sslFingerprint
+                )
+            default:
                 self.sslMode = sslMode
                 self.disablesTLS = disablesTLS
                 self.additionalFields = [:]
-                return
             }
-            self.sslMode = nil
-            self.disablesTLS = false
-            self.additionalFields = [
-                EtcdTLSModeField.fieldId: EtcdTLSModeField.fieldValue(for: sslMode ?? .disabled)
-            ]
         }
     }
 
@@ -818,6 +834,9 @@ struct ConnectionURLParser {
             } else if let verification = parseTLSVerification(value) {
                 ext.tlsVerification = verification
             }
+        // Quack's own name for a pinned certificate, which no sslmode value expresses.
+        case "ssl_fingerprint" where dbType == .duckdb:
+            ext.sslFingerprint = value
         case "sslverification":
             if let verification = parseTLSVerification(value) {
                 ext.tlsVerification = verification

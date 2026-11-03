@@ -241,6 +241,9 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsDropDatabase = true
     static let supportsDropSchema = true
+    // DROP and TRUNCATE refuse a referenced table even with its constraints set to NOCHECK, and no session
+    // setting suspends the checks, so the option would add no statement.
+    static let supportsForeignKeyDisable = false
     static let supportsTriggers = true
     static let supportsRoutines = true
     static let supportsUserDefinedTypeBrowse = true

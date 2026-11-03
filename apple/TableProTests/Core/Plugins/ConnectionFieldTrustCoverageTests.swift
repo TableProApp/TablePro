@@ -19,6 +19,7 @@ private let hostOwnedKeys: [String] = [
     DatabaseConnection.iamSignInFieldId,
     MySQLLocalSocket.fieldKey,
     EtcdTLSModeField.fieldId,
+    DuckDBSSLModeField.fieldId,
     RemoteSQLiteWire.backendFieldKey,
     RemoteSQLiteWire.tokenFieldKey,
     ConnectionSecretOptions.mongoSessionTokenFieldId,
