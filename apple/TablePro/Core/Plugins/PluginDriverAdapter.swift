@@ -686,6 +686,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchFilteredRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        guard !FilterSQLGenerator.withholdsFromDriver(filters, databaseType: connection.type) else { return nil }
         let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
             .map(\.asPluginQueryFilter)
@@ -697,6 +698,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
     }
 
     func fetchExactRowCount(table: String, filters: [TableFilter], logicMode: FilterLogicMode) async throws -> Int? {
+        guard !FilterSQLGenerator.withholdsFromDriver(filters, databaseType: connection.type) else { return nil }
         let queryFilters = filters
             .filter { $0.isEnabled && !$0.columnName.isEmpty }
             .map(\.asPluginQueryFilter)

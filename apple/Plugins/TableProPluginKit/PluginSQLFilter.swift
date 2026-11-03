@@ -49,6 +49,7 @@ public enum PluginSQLFilter {
         escapeValue: (String) -> String,
         regexCondition: (_ quotedColumn: String, _ value: String) -> String?
     ) -> String? {
+        if column == rawConditionColumn { return rawCondition(value) }
         let quoted = quoteIdentifier(column)
         switch op {
         case "=": return "\(quoted) = \(escapeValue(value))"
@@ -124,6 +125,7 @@ public enum PluginSQLFilter {
         escapeTypedValue: (_ value: String, _ kind: PluginColumnKind?) -> String,
         regexCondition: (_ quotedColumn: String, _ value: String) -> String?
     ) -> String? {
+        if column == rawConditionColumn { return rawCondition(value) }
         let quoted = quoteIdentifier(column)
         switch op {
         case "IS EMPTY":
@@ -142,5 +144,18 @@ public enum PluginSQLFilter {
                 regexCondition: regexCondition
             )
         }
+    }
+}
+
+extension PluginSQLFilter {
+    /// The column the host names for a filter row that holds the reader's own condition, with the
+    /// condition as the value. Read as a column, it became a comparison on a column that does not exist.
+    static let rawConditionColumn = "__RAW__"
+
+    /// The condition stands as written, grouped so an `OR` inside it stays inside. The host refuses
+    /// one that carries a comment or a second statement before any driver is asked to build it.
+    static func rawCondition(_ condition: String) -> String? {
+        let trimmed = condition.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : "(\(trimmed))"
     }
 }
