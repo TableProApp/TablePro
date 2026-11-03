@@ -31,6 +31,7 @@ public sealed partial class WorkspaceView : UserControl
     private readonly HashSet<TabViewItem> _closingTabs = [];
     private CancellationTokenSource? _watching;
     private Windows.Foundation.Point _stripOrigin;
+    private WindowId _tearOutWindow;
 
     internal WorkspaceView(Workbench workbench, OpenConnection connection)
     {
@@ -530,6 +531,28 @@ public sealed partial class WorkspaceView : UserControl
         }
 
         args.Handled = true;
+        ShowTabContextMenu(item, args.TryGetPosition(item, out var point) ? point : null);
+    }
+
+    internal bool ShowTabContextMenu(Windows.Graphics.PointInt32 screenPoint)
+    {
+        var point = XamlRoot.CoordinateConverter.ConvertScreenToLocal(screenPoint);
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>().Where(item => item.IsLoaded))
+        {
+            var bounds = item.TransformToVisual(null).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, item.ActualWidth, item.ActualHeight));
+            if (bounds.Contains(point))
+            {
+                ShowTabContextMenu(item, XamlRoot.Content.TransformToVisual(item).TransformPoint(point));
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void ShowTabContextMenu(TabViewItem item, Windows.Foundation.Point? position)
+    {
         Tabs.SelectedItem = item;
         var menu = new MenuFlyout();
         var move = new MenuFlyoutItem
@@ -544,7 +567,7 @@ public sealed partial class WorkspaceView : UserControl
         menu.Items.Add(move);
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(close);
-        if (args.TryGetPosition(item, out var point))
+        if (position is { } point)
         {
             menu.ShowAt(item, new FlyoutShowOptions { Position = point });
         }
@@ -559,7 +582,8 @@ public sealed partial class WorkspaceView : UserControl
     {
         if (Host is { } host)
         {
-            args.NewWindowId = host.TearOutWindow(_connection);
+            _tearOutWindow = host.TearOutWindow(_connection);
+            args.NewWindowId = _tearOutWindow;
         }
     }
 
@@ -567,7 +591,8 @@ public sealed partial class WorkspaceView : UserControl
     {
         foreach (var tab in args.Tabs.OfType<TabViewItem>())
         {
-            Host?.TearOut(tab, args.NewWindowId);
+            // WinUI 2.6.4 leaves this event's NewWindowId empty; retain the window supplied at drag start.
+            Host?.TearOut(tab, _tearOutWindow);
         }
     }
 
@@ -585,7 +610,13 @@ public sealed partial class WorkspaceView : UserControl
         var index = args.DropIndex;
         foreach (var tab in args.Tabs.OfType<TabViewItem>())
         {
-            HolderOf(tab)?.Release(tab);
+            if (HolderOf(tab) is { } source)
+            {
+                // The drag can leave this strip again before the pointer is released.
+                _tearOutWindow = source.XamlRoot.ContentIslandEnvironment.AppWindowId;
+                source.Release(tab);
+            }
+
             Take(tab, index++);
         }
     }

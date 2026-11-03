@@ -77,6 +77,35 @@ internal sealed class AppSession : IDisposable
     public void Drag(Func<AutomationElement> from, Func<AutomationElement> to, Func<bool> landed) =>
         Again(() => Drag(from(), to()), landed, "The drag");
 
+    public void Drag(Window window, Func<System.Drawing.Point> start, Func<System.Drawing.Point> end, Func<bool> landed) =>
+        Again(() => Drag(start(), end()), landed, "The drag", window);
+
+    public void DragThrough(Window window, Func<System.Drawing.Point> start, Func<System.Drawing.Point> via,
+        Func<bool> reachedVia, Func<System.Drawing.Point> end, Func<bool> landed) =>
+        Again(() =>
+        {
+            var first = start();
+            var middle = via();
+            PointerInput.Move(first);
+            Thread.Sleep(100);
+            PointerInput.Button(down: true);
+            try
+            {
+                MovePointer(first, middle);
+                if (Retry.WhileFalse(reachedVia, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
+                {
+                    MovePointer(middle, end());
+                }
+            }
+            finally
+            {
+                PointerInput.Button(down: false);
+            }
+        }, landed, "The drag through another strip", window);
+
+    public void RightClick(AutomationElement element, Func<bool> landed) =>
+        Again(() => element.RightClick(), landed, "The right-click");
+
     public void Chord(Func<bool> landed, params VirtualKeyShort[] keys) =>
         Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys));
 
@@ -116,6 +145,20 @@ internal sealed class AppSession : IDisposable
         PointerInput.Move(start);
         Thread.Sleep(100);
         PointerInput.Button(down: true);
+        try
+        {
+            MovePointer(start, end);
+        }
+        finally
+        {
+            PointerInput.Button(down: false);
+        }
+
+        Thread.Sleep(300);
+    }
+
+    private static void MovePointer(System.Drawing.Point start, System.Drawing.Point end)
+    {
         Thread.Sleep(200);
         for (var step = 1; step <= 20; step++)
         {
@@ -125,8 +168,6 @@ internal sealed class AppSession : IDisposable
             Thread.Sleep(40);
         }
 
-        Thread.Sleep(300);
-        PointerInput.Button(down: false);
         Thread.Sleep(300);
     }
 

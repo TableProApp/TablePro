@@ -2,7 +2,6 @@ using System.Drawing;
 using System.Text.Json;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
-using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
 
@@ -19,29 +18,11 @@ public sealed partial class ShellTests
     {
         var folder = AppSession.NewDataFolder(theme);
         Rectangle placed;
-        bool rightClick;
         using (var app = AppSession.Relaunch(folder, theme, maximize: false))
         {
             OpenTrack(app);
             var tab = Tab(app.Find("Tabs"), "Track")!;
-            app.Front();
-            tab.RightClick();
-            var byMouse = Retry.WhileNull(
-                    () => app.TryFindMenuItem("Move to new window"),
-                    TimeSpan.FromSeconds(10),
-                    throwOnTimeout: false)
-                .Result;
-            if (byMouse is null)
-            {
-                // What the right-click opened instead, then the menu from the keyboard, so the rest still runs.
-                app.Screenshot("32-tab-right-click", screen: true);
-                Keyboard.Press(VirtualKeyShort.ESCAPE);
-                app.Front();
-                tab.Focus();
-                Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.F10);
-            }
-
-            rightClick = byMouse is not null;
+            app.RightClick(tab, () => app.TryFindMenuItem("Move to new window") is not null);
             app.FindMenuItem("Move to new window").Patterns.Invoke.Pattern.Invoke();
 
             var torn = app.WaitForWindow(SampleWindow);
@@ -76,14 +57,13 @@ public sealed partial class ShellTests
 
             // Its only tab drags the window, and over the main window's strip it joins it and the window closes.
             var strip = AddTabButton(app.Find("Tabs"));
-            app.Front(torn);
-            AppSession.Drag(Center(tab.BoundingRectangle), Center(strip.BoundingRectangle));
+            app.Drag(torn, () => Center(tab.BoundingRectangle), () => Center(strip.BoundingRectangle),
+                () => !app.HasWindow(SampleWindow));
             app.WaitForClose(SampleWindow);
             Assert.NotNull(Retry.WhileNull(() => Tab(app.Find("Tabs"), "Track"), AppSession.Wait, throwOnTimeout: false).Result);
             app.Screenshot("33-tab-merged-back");
         }
 
-        Assert.True(rightClick, "A right-click on a tab did not open its menu.");
     }
 
     [Theory]
@@ -93,10 +73,11 @@ public sealed partial class ShellTests
         using var app = AppSession.Relaunch(AppSession.NewDataFolder(theme), theme, maximize: false);
         OpenTrack(app);
         var tab = Tab(app.Find("Tabs"), "Track")!;
-        var start = Center(tab.BoundingRectangle);
-
-        app.Front();
-        AppSession.Drag(start, new Point(start.X + 40, start.Y + 300));
+        app.Drag(app.Window, () => Center(tab.BoundingRectangle), () =>
+        {
+            var start = Center(tab.BoundingRectangle);
+            return new Point(start.X + 40, start.Y + 300);
+        }, () => app.HasWindow(SampleWindow));
         var torn = app.WaitForWindow(SampleWindow);
         Assert.NotNull(Retry.WhileNull(() => Tab(app.Find("Tabs", torn), "Track"), AppSession.Wait, throwOnTimeout: false).Result);
         Assert.Null(Tab(app.Find("Tabs"), "Track"));
@@ -105,6 +86,31 @@ public sealed partial class ShellTests
         app.Chord(torn, () => !app.HasWindow(SampleWindow), VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_W);
         app.WaitForClose(SampleWindow);
         app.FindByName("Query 1", app.Find("Tabs"));
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void ATabCanMergeAndTearOutAgainDuringOneDrag(string theme)
+    {
+        using var app = AppSession.Relaunch(AppSession.NewDataFolder(theme), theme, maximize: false);
+        OpenTrack(app);
+        app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Move tab to new window") is not null);
+        app.FindMenuItem("Move tab to new window").Patterns.Invoke.Pattern.Invoke();
+        var child = app.WaitForWindow(SampleWindow);
+        var tab = Tab(app.Find("Tabs", child), "Track")!;
+        var strip = AddTabButton(app.Find("Tabs"));
+        var merged = false;
+        app.DragThrough(child, () => Center(tab.BoundingRectangle), () => Center(strip.BoundingRectangle),
+            () => merged = Tab(app.Find("Tabs"), "Track") is not null,
+            () =>
+            {
+                var middle = Center(strip.BoundingRectangle);
+                return new Point(middle.X + 40, middle.Y + 300);
+            },
+            () => merged && child.IsAvailable && Tab(app.Find("Tabs"), "Track") is null
+                && Tab(app.Find("Tabs", child), "Track") is not null);
+        Assert.True(child.IsAvailable);
+        app.Screenshot("35-tab-retorn", screen: true);
     }
 
     [Theory]
@@ -155,8 +161,8 @@ public sealed partial class ShellTests
         app.FindByName("Track", app.Find("ObjectTree"));
         app.TypeInto(app.Find("SqlEditor"), "BEGIN; UPDATE Track SET Name = 'Pending' WHERE TrackId = 1;");
         app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
-        app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Move to new window") is not null);
-        app.FindMenuItem("Move to new window").Patterns.Invoke.Pattern.Invoke();
+        app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Move tab to new window") is not null);
+        app.FindMenuItem("Move tab to new window").Patterns.Invoke.Pattern.Invoke();
         var torn = app.WaitForWindow(SampleWindow);
 
         app.Chord(torn, () => app.TryFind("PrimaryButton", torn) is not null, VirtualKeyShort.ALT, VirtualKeyShort.F4);

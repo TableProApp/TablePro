@@ -28,6 +28,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private readonly bool _restoreMaximized;
     private readonly IReadOnlyList<TabWindowState> _restoreWindows = [];
     private SettingsView? _settings;
+    private WindowContextMenu? _tabContextMenu;
     private OpenConnection? _front;
 
     // A tab window that has not taken a tab yet, kept hidden for the next drag out of a strip.
@@ -325,6 +326,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     {
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        _tabContextMenu = new WindowContextMenu(this, point => Workspace?.ShowTabContextMenu(point) == true);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
         if (MicaController.IsSupported())
         {
@@ -523,10 +525,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     // A tab window is named for its connection in the taskbar and in Alt+Tab, once it shows.
     private void ShowName(OpenConnection open)
     {
-        AppTitleBar.Subtitle = open.Name;
+        AppTitleBar.Subtitle = IsPrimary || _isSpare ? open.Name : string.Empty;
         if (!IsPrimary && !_isSpare)
         {
-            Title = Strings.Format("TabWindowTitle", open.Name);
+            AppTitleBar.Title = Strings.Format("TabWindowTitle", open.Name);
         }
     }
 
@@ -799,6 +801,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        _tabContextMenu?.Dispose();
         _workbench.SettingsChanged -= OnSettingsChanged;
         _workbench.LibraryChanged -= OnLibraryChanged;
         if (IsPrimary)
