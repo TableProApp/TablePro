@@ -7,7 +7,10 @@ public sealed record CoreError(
     string Message,
     ServerMessage? Server,
     string? Path,
-    SecretKind? Secret = null);
+    SecretKind? Secret = null)
+{
+    public TlsFailure? TlsFailure { get; init; }
+}
 
 // What the server said, which the app shows as it came.
 public sealed record ServerMessage(
@@ -29,4 +32,21 @@ public sealed class TableProException : Exception
     public CoreError Error { get; }
 
     public string Code => Error.Code;
+}
+
+public enum TlsFailure
+{
+    UnknownIssuer,
+    NameMismatch,
+    Expired,
+    NotYetValid,
+    Revoked,
+    ServerRefusedTls,
+    ServerRequiresTls,
+    ServerRefusedStrict,
+    ServerRequiresStrict,
+    HandshakeRejected,
+    CaFileInvalid,
+    ClientIdentityInvalid,
+    Other,
 }

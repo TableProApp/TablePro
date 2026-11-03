@@ -5817,7 +5817,10 @@ internal record DriverInfo (
     string DisplayName, 
     DataModelTag DataModel, 
     EngineCategoryTag Category, 
-    EndpointInfo Endpoint
+    EndpointInfo Endpoint, 
+    TlsModeTag[] SupportedTlsModes, 
+    bool SupportsIntegratedAuth, 
+    bool SupportsClientIdentity
 ) {
 }
 
@@ -5830,7 +5833,10 @@ class FfiConverterTypeDriverInfo: FfiConverterRustBuffer<DriverInfo> {
             DisplayName: FfiConverterString.INSTANCE.Read(stream),
             DataModel: FfiConverterTypeDataModelTag.INSTANCE.Read(stream),
             Category: FfiConverterTypeEngineCategoryTag.INSTANCE.Read(stream),
-            Endpoint: FfiConverterTypeEndpointInfo.INSTANCE.Read(stream)
+            Endpoint: FfiConverterTypeEndpointInfo.INSTANCE.Read(stream),
+            SupportedTlsModes: FfiConverterSequenceTypeTlsModeTag.INSTANCE.Read(stream),
+            SupportsIntegratedAuth: FfiConverterBoolean.INSTANCE.Read(stream),
+            SupportsClientIdentity: FfiConverterBoolean.INSTANCE.Read(stream)
         );
     }
 
@@ -5840,7 +5846,10 @@ class FfiConverterTypeDriverInfo: FfiConverterRustBuffer<DriverInfo> {
             + FfiConverterString.INSTANCE.AllocationSize(value.DisplayName)
             + FfiConverterTypeDataModelTag.INSTANCE.AllocationSize(value.DataModel)
             + FfiConverterTypeEngineCategoryTag.INSTANCE.AllocationSize(value.Category)
-            + FfiConverterTypeEndpointInfo.INSTANCE.AllocationSize(value.Endpoint);
+            + FfiConverterTypeEndpointInfo.INSTANCE.AllocationSize(value.Endpoint)
+            + FfiConverterSequenceTypeTlsModeTag.INSTANCE.AllocationSize(value.SupportedTlsModes)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.SupportsIntegratedAuth)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.SupportsClientIdentity);
     }
 
     public override void Write(DriverInfo value, BigEndianStream stream) {
@@ -5849,6 +5858,9 @@ class FfiConverterTypeDriverInfo: FfiConverterRustBuffer<DriverInfo> {
             FfiConverterTypeDataModelTag.INSTANCE.Write(value.DataModel, stream);
             FfiConverterTypeEngineCategoryTag.INSTANCE.Write(value.Category, stream);
             FfiConverterTypeEndpointInfo.INSTANCE.Write(value.Endpoint, stream);
+            FfiConverterSequenceTypeTlsModeTag.INSTANCE.Write(value.SupportedTlsModes, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.SupportsIntegratedAuth, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.SupportsClientIdentity, stream);
     }
 }
 
@@ -5885,7 +5897,8 @@ internal record ErrorInfo (
     /// <summary>
     /// The secret a keyring error is about, so the app can ask for it.
     /// </summary>
-    SecretKindTag? Secret
+    SecretKindTag? Secret, 
+    TlsFailureTag? TlsFailure
 ) {
 }
 
@@ -5899,7 +5912,8 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             Message: FfiConverterString.INSTANCE.Read(stream),
             Server: FfiConverterOptionalTypeServerMessage.INSTANCE.Read(stream),
             Path: FfiConverterOptionalString.INSTANCE.Read(stream),
-            Secret: FfiConverterOptionalTypeSecretKindTag.INSTANCE.Read(stream)
+            Secret: FfiConverterOptionalTypeSecretKindTag.INSTANCE.Read(stream),
+            TlsFailure: FfiConverterOptionalTypeTlsFailureTag.INSTANCE.Read(stream)
         );
     }
 
@@ -5910,7 +5924,8 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             + FfiConverterString.INSTANCE.AllocationSize(value.Message)
             + FfiConverterOptionalTypeServerMessage.INSTANCE.AllocationSize(value.Server)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Path)
-            + FfiConverterOptionalTypeSecretKindTag.INSTANCE.AllocationSize(value.Secret);
+            + FfiConverterOptionalTypeSecretKindTag.INSTANCE.AllocationSize(value.Secret)
+            + FfiConverterOptionalTypeTlsFailureTag.INSTANCE.AllocationSize(value.TlsFailure);
     }
 
     public override void Write(ErrorInfo value, BigEndianStream stream) {
@@ -5920,6 +5935,7 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             FfiConverterOptionalTypeServerMessage.INSTANCE.Write(value.Server, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Path, stream);
             FfiConverterOptionalTypeSecretKindTag.INSTANCE.Write(value.Secret, stream);
+            FfiConverterOptionalTypeTlsFailureTag.INSTANCE.Write(value.TlsFailure, stream);
     }
 }
 
@@ -7732,6 +7748,75 @@ class FfiConverterTypeSshAuthTag : FfiConverterRustBuffer<SshAuthTag>{
 
 
 
+internal enum TlsFailureTag: int {
+    UnknownIssuer,
+    NameMismatch,
+    Expired,
+    NotYetValid,
+    Revoked,
+    ServerRefusedTls,
+    ServerRequiresTls,
+    ServerRefusedStrict,
+    ServerRequiresStrict,
+    HandshakeRejected,
+    CaFileInvalid,
+    ClientIdentityInvalid,
+    Other
+}
+
+class FfiConverterTypeTlsFailureTag: FfiConverterRustBuffer<TlsFailureTag> {
+    public static FfiConverterTypeTlsFailureTag INSTANCE = new FfiConverterTypeTlsFailureTag();
+
+    public override TlsFailureTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1: return TlsFailureTag.UnknownIssuer;
+            case 2: return TlsFailureTag.NameMismatch;
+            case 3: return TlsFailureTag.Expired;
+            case 4: return TlsFailureTag.NotYetValid;
+            case 5: return TlsFailureTag.Revoked;
+            case 6: return TlsFailureTag.ServerRefusedTls;
+            case 7: return TlsFailureTag.ServerRequiresTls;
+            case 8: return TlsFailureTag.ServerRefusedStrict;
+            case 9: return TlsFailureTag.ServerRequiresStrict;
+            case 10: return TlsFailureTag.HandshakeRejected;
+            case 11: return TlsFailureTag.CaFileInvalid;
+            case 12: return TlsFailureTag.ClientIdentityInvalid;
+            case 13: return TlsFailureTag.Other;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTlsFailureTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(TlsFailureTag value) {
+        return 4;
+    }
+
+    public override void Write(TlsFailureTag value, BigEndianStream stream) {
+        switch (value) {
+            case TlsFailureTag.UnknownIssuer: stream.WriteInt(1); break;
+            case TlsFailureTag.NameMismatch: stream.WriteInt(2); break;
+            case TlsFailureTag.Expired: stream.WriteInt(3); break;
+            case TlsFailureTag.NotYetValid: stream.WriteInt(4); break;
+            case TlsFailureTag.Revoked: stream.WriteInt(5); break;
+            case TlsFailureTag.ServerRefusedTls: stream.WriteInt(6); break;
+            case TlsFailureTag.ServerRequiresTls: stream.WriteInt(7); break;
+            case TlsFailureTag.ServerRefusedStrict: stream.WriteInt(8); break;
+            case TlsFailureTag.ServerRequiresStrict: stream.WriteInt(9); break;
+            case TlsFailureTag.HandshakeRejected: stream.WriteInt(10); break;
+            case TlsFailureTag.CaFileInvalid: stream.WriteInt(11); break;
+            case TlsFailureTag.ClientIdentityInvalid: stream.WriteInt(12); break;
+            case TlsFailureTag.Other: stream.WriteInt(13); break;
+            default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTlsFailureTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 internal enum TlsModeTag: int {
     Disable,
     Require,
@@ -8893,6 +8978,37 @@ class FfiConverterOptionalTypeSecretKindTag: FfiConverterRustBuffer<SecretKindTa
 
 
 
+class FfiConverterOptionalTypeTlsFailureTag: FfiConverterRustBuffer<TlsFailureTag?> {
+    public static FfiConverterOptionalTypeTlsFailureTag INSTANCE = new FfiConverterOptionalTypeTlsFailureTag();
+
+    public override TlsFailureTag? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeTlsFailureTag.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(TlsFailureTag? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeTlsFailureTag.INSTANCE.AllocationSize((TlsFailureTag)value);
+        }
+    }
+
+    public override void Write(TlsFailureTag? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeTlsFailureTag.INSTANCE.Write((TlsFailureTag)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag?> {
     public static FfiConverterOptionalTypeTlsModeTag INSTANCE = new FfiConverterOptionalTypeTlsModeTag();
 
@@ -9377,6 +9493,52 @@ class FfiConverterSequenceTypeRunEvent: FfiConverterRustBuffer<RunEvent[]> {
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterTypeRunEvent.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag[]> {
+    public static FfiConverterSequenceTypeTlsModeTag INSTANCE = new FfiConverterSequenceTypeTlsModeTag();
+
+    public override TlsModeTag[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new TlsModeTag[length];
+        var readFn = FfiConverterTypeTlsModeTag.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(TlsModeTag[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeTlsModeTag.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(TlsModeTag[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeTlsModeTag.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }

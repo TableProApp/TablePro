@@ -7,10 +7,15 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tablepro_core::{Connection, Credentials, DriverError, TlsConfig, TlsFailure, TlsMode, Value, WorkspaceSettings};
+use tablepro_core::dialect::BindTarget;
+use tablepro_core::statement::StatementBuilder;
+use tablepro_core::{
+    Connection, Credentials, DriverError, ReadStatement, RowLimit, TlsConfig, TlsFailure, TlsMode, Value,
+    WorkspaceSettings,
+};
 use tablepro_test_support::conformance::test_liveness;
 
-use crate::support::{dial, direct, options_over, rows, run_ok, session};
+use crate::support::{CALL, Events, columns, dbo, dial, direct, options_over, rows, setup, statement, within, write};
 
 const HOST: &str = "localhost";
 const PORT: u16 = 1433;
@@ -47,12 +52,8 @@ async fn open(tls: TlsConfig) -> Result<Arc<dyn Connection>, DriverError> {
     .await
 }
 
-/// Read through an editor session, whose batches go as SQL batches.
-/// SQL Server 2022 RTM answers tiberius's `sp_executesql` with error 8005
-/// over strict TLS, so the workspace's reads are checked on TDS 7.4 only.
 async fn link(connection: &dyn Connection) -> Link {
-    let editor = session(connection).await;
-    let row = run_ok(editor.as_ref(), LINK).await.rows().remove(0);
+    let row = rows(connection, LINK).await.remove(0);
     let text = |value: &Value| match value {
         Value::Text(text) => text.clone(),
         other => format!("not text: {other:?}"),
@@ -78,7 +79,79 @@ async fn signs_in(mode: TlsMode, protocol: &str) {
     assert_eq!(link.protocol, protocol);
     assert_eq!(link.encrypted, "TRUE");
     assert!(link.login.contains('\\'), "a Windows account, not {}", link.login);
+    workspace_round_trip(connection.as_ref()).await;
     connection.close().await.expect("a close");
+}
+
+async fn workspace_round_trip(connection: &dyn Connection) {
+    let name = format!("rpc_{}", uuid::Uuid::new_v4().simple());
+    let table = dbo(&name);
+    let dialect = connection.dialect();
+    let qualified = dialect.qualify(&table);
+    setup(
+        connection,
+        &[&format!(
+            "CREATE TABLE {qualified} (label nvarchar(max), amount decimal(20,4), payload varbinary(max))"
+        )],
+    )
+    .await;
+    let columns = columns(connection, &table).await;
+    let text = "🙂Zoë'; DROP TABLE ignored; --".repeat(300);
+    let values = vec![
+        Value::Text(text),
+        Value::Decimal("1234567890123456.1234".parse().expect("a decimal")),
+        Value::Null,
+    ];
+    let mut insert = StatementBuilder::new();
+    insert.push_sql(&format!("INSERT INTO {qualified} VALUES ("));
+    for (index, (column, value)) in columns.iter().zip(&values).enumerate() {
+        if index > 0 {
+            insert.push_sql(", ");
+        }
+        insert
+            .push_value(dialect.as_ref(), value.clone(), BindTarget::Column(column))
+            .expect("a bound value");
+    }
+    insert.push_sql(")");
+    let report = write(connection, vec![insert.finish()])
+        .await
+        .expect("a parameterized write");
+    assert_eq!(report.rows_affected, vec![Some(1)]);
+
+    let mut select = StatementBuilder::new();
+    select.push_sql(&format!(
+        "SELECT label, amount, payload FROM {qualified} WHERE label = "
+    ));
+    select
+        .push_value(dialect.as_ref(), values[0].clone(), BindTarget::Column(&columns[0]))
+        .expect("a bound filter");
+    let select = select.finish();
+    let read = connection
+        .query_bound(&select, RowLimit::EDITOR_DEFAULT, within(CALL))
+        .await
+        .expect("a parameterized read");
+    assert_eq!(read.rows, vec![values.clone()]);
+    assert_eq!(
+        connection
+            .count_rows(
+                &statement(&format!("SELECT COUNT_BIG(*) FROM {qualified}")),
+                within(CALL)
+            )
+            .await
+            .expect("a count"),
+        1
+    );
+    let events = Events::default();
+    connection
+        .stream_read(
+            &ReadStatement::Generated(select),
+            Box::new(events.clone()),
+            within(CALL),
+        )
+        .await
+        .expect("a streamed read");
+    assert_eq!(events.rows(), vec![values]);
+    setup(connection, &[&format!("DROP TABLE {qualified}")]).await;
 }
 
 /// Run before the server is set to Force Strict Encryption.

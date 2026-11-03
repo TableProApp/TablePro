@@ -21,6 +21,19 @@ public sealed class ConnectionLibraryTests : IDisposable
         new(null, name, "postgres", "db.example.com", 5432, "shop", "app", TlsSettings.Disabled);
 
     [Fact]
+    public void EngineChoicesCarryTheCoreCapabilities()
+    {
+        var sqlServer = Assert.Single(_core.Engines, engine => engine.Id == "mssql");
+        Assert.Contains(TlsMode.Strict, sqlServer.SupportedTlsModes);
+        Assert.All(_core.Engines.Where(engine => engine.Id != "mssql"),
+            engine => Assert.DoesNotContain(TlsMode.Strict, engine.SupportedTlsModes));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.True(sqlServer.SupportsIntegratedAuth);
+        }
+    }
+
+    [Fact]
     public async Task AConnectionComesBackInItsNestedGroupAndAmongTheFavorites()
     {
         var library = _core.Library;

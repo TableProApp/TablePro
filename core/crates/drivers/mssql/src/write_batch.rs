@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
+use futures_util::TryStreamExt;
 use tablepro_core::statement::{RowGuard, Statement};
 use tablepro_core::{DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport};
-use tiberius::Command;
+use tiberius::CommandItem;
 use tokio::time::Instant;
 
 use crate::cancel::{MssqlStop, StopProgress, acknowledged_stop, unconfirmed_stop};
-use crate::encode::{as_sql, encode_params};
+use crate::encode::encode_params;
 use crate::errors::{ends_connection, map_error};
 use crate::in_band_request::{Answer, Halt, Interrupt, StopPolicy, Watch, attention, roll_back_open};
 use crate::mssql_pooled::MssqlPooled;
@@ -116,25 +117,18 @@ impl Write<'_> {
     /// a probe rather than with this number.
     async fn execute(&mut self, statement: &Statement) -> Result<u64, Interrupt> {
         let params = encode_params(statement.params())?;
-        if params.is_empty() {
-            return self.execute_unparameterised(statement.sql()).await;
-        }
-        let refs = as_sql(&params);
-        let executed = self.watch.finish(self.client.execute(statement.sql(), &refs)).await?;
-        Ok(executed.total())
-    }
-
-    /// sp_executesql with its statement alone. tiberius's `execute` always
-    /// passes `@params`, even empty, and with it SQL Server refuses a
-    /// statement that has to start a batch, such as CREATE VIEW or CREATE
-    /// TRIGGER.
-    async fn execute_unparameterised(&mut self, sql: &str) -> Result<u64, Interrupt> {
         let client = &mut *self.client;
         let running = async move {
-            let mut command = Command::new("sp_executesql");
-            command.bind_param("@stmt", sql);
-            let done = command.exec(client).await?.into_command_result().await?;
-            Ok(done.rows_affected().iter().sum())
+            let command = crate::rpc::command(statement.sql(), &params);
+            let mut stream = command.exec(client).await?;
+            let mut affected = 0;
+            // Triggers can return rows; a save needs their counts without retaining their results.
+            while let Some(item) = stream.try_next().await? {
+                if let CommandItem::RowsAffected(rows) = item {
+                    affected += rows;
+                }
+            }
+            Ok(affected)
         };
         self.watch.finish(running).await
     }

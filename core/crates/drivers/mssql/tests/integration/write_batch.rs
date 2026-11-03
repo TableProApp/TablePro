@@ -177,6 +177,35 @@ async fn after_update_trigger_saves_without_false_conflict() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]
+async fn trigger_results_are_drained_and_their_counts_are_kept() {
+    let fixture = start().await;
+    let connection = connect(&fixture, false).await;
+    setup(
+        connection.as_ref(),
+        &[
+            "CREATE TABLE dbo.items (id int PRIMARY KEY, label nvarchar(50) NOT NULL)",
+            "INSERT INTO dbo.items VALUES (1, N'kept')",
+            "CREATE TRIGGER dbo.items_rows ON dbo.items AFTER UPDATE AS \
+             SELECT REPLICATE(N'x', 4000) FROM \
+             (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) a(n) CROSS JOIN \
+             (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) b(n) CROSS JOIN \
+             (VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9)) c(n)",
+        ],
+    )
+    .await;
+    let save = update_label(connection.as_ref(), &dbo("items"), Value::Int(1)).await;
+
+    let report = connection.write_batch(&save, within(CALL)).await.expect("the save");
+
+    assert_eq!(report.rows_affected, vec![Some(1001)]);
+    assert_eq!(
+        scalar(connection.as_ref(), "SELECT label FROM dbo.items WHERE id = 1").await,
+        Value::Text("changed".to_owned())
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
 async fn probe_mismatch_rolls_back() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;

@@ -6,7 +6,7 @@ use tiberius::QueryItem;
 
 use crate::catalog::result_column;
 use crate::decode::decode_row;
-use crate::encode::{as_sql, encode_params};
+use crate::encode::encode_params;
 use crate::in_band_request::{Interrupt, Watch};
 use crate::physical::MssqlClient;
 use crate::read_only_guard::{guarded_error, refuse_writes, wrap};
@@ -30,7 +30,6 @@ pub(crate) async fn stream(
         }
     };
     let guarded = wrap(sql);
-    let refs = as_sql(&params);
     let mut emitter = Emitter {
         sink,
         batch: Vec::new(),
@@ -39,7 +38,7 @@ pub(crate) async fn stream(
         rows: 0,
     };
     let mut stream = watch
-        .start(client.query(guarded.as_str(), &refs))
+        .start(crate::rpc::query(client, guarded.as_str(), &params))
         .await
         .map_err(guard)?;
     while let Some(item) = watch.next(&mut stream).await.map_err(guard)? {

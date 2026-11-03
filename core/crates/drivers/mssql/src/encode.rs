@@ -6,7 +6,7 @@ use tablepro_core::statement::{BoundParam, ParamType};
 use tablepro_core::value::{Temporal, Value};
 use tablepro_core::{DriverError, UnsupportedFeature};
 use tiberius::numeric::Numeric;
-use tiberius::{ColumnData, IntoSql, ToSql};
+use tiberius::{ColumnData, IntoSql};
 
 /// The widest decimal SQL Server stores: 38 digits.
 pub(crate) const MAX_NUMERIC_DIGITS: u32 = 38;
@@ -16,11 +16,6 @@ pub(crate) const MAX_NUMERIC_DIGITS: u32 = 38;
 /// nvarchar, which SQL Server will not convert into varbinary.
 pub(crate) fn encode_params(params: &[BoundParam]) -> Result<Vec<ColumnData<'static>>, DriverError> {
     params.iter().map(encode).collect()
-}
-
-/// The form `Client::query` and `Client::execute` take.
-pub(crate) fn as_sql<'a>(params: &'a [ColumnData<'static>]) -> Vec<&'a dyn ToSql> {
-    params.iter().map(|param| param as &dyn ToSql).collect()
 }
 
 pub(crate) fn encode(param: &BoundParam) -> Result<ColumnData<'static>, DriverError> {
