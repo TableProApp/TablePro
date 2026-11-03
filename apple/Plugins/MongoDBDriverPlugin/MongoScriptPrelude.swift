@@ -32,7 +32,7 @@ nonisolated enum MongoScriptPrelude {
         return { call: call };
     })();
 
-    function __ejson(value) { return JSON.stringify(EJSON.serialize(value)); }
+    function __ejson(value) { return EJSON.__stringifyOrdered(value); }
 
     // The value types inherit `toEJSON` and MinKey and MaxKey are functions; a plain object's own `toEJSON` is a field.
     function __serializesItself(value) {
@@ -848,6 +848,36 @@ nonisolated enum MongoScriptPrelude {
             return document;
         }
 
+        // Maps retain BSON field order, including keys JavaScript objects enumerate as array indices.
+        function stringifyOrdered(value) {
+            if (value instanceof Code) {
+                return '{"$code":' + JSON.stringify(value.code)
+                    + (value.scope === undefined ? '' : ',"$scope":' + stringifyOrdered(value.scope)) + '}';
+            }
+            if (value instanceof Map) {
+                var entries = [];
+                value.forEach(function (member, key) {
+                    if (typeof key !== "string") { throw new Error("Document field names must be strings"); }
+                    entries.push(JSON.stringify(key) + ":" + stringifyOrdered(member));
+                });
+                return "{" + entries.join(",") + "}";
+            }
+            if (Array.isArray(value)) {
+                var elements = [];
+                for (var i = 0; i < value.length; i++) { elements.push(stringifyOrdered(value[i])); }
+                return "[" + elements.join(",") + "]";
+            }
+            if (value !== null && typeof value === "object" && !__serializesItself(value)
+                && !(value instanceof Date) && !(value instanceof RegExp)) {
+                var fields = [];
+                Object.keys(value).forEach(function (key) {
+                    fields.push(JSON.stringify(key) + ":" + stringifyOrdered(value[key]));
+                });
+                return "{" + fields.join(",") + "}";
+            }
+            return JSON.stringify(serialize(value));
+        }
+
         // mongosh sends every whole number outside int32 as a double. Up to 2^53 it is sent as
         // int64 here, the type TablePro always gave it; past 2^53 a number is not an exact integer,
         // so it stays the double it is rather than becoming a different int64.
@@ -918,6 +948,14 @@ nonisolated enum MongoScriptPrelude {
             return __storedRegExp(checked.pattern, checked.options);
         }
 
+        function reviveStrict(value, key) {
+            if (key === "$numberInt") { return Int32(checkedInt32(value.$numberInt)); }
+            if (key === "$numberDouble") { return Double(checkedDouble(value.$numberDouble)); }
+            if (key === "$symbol") { return BSONSymbol(value.$symbol); }
+            return reviveChecked(value, key);
+        }
+
+        var deserializeStrict = deserializer(reviveStrict);
         var deserializeChecked = deserializer(reviveChecked);
         var deserializeFromServer = deserializer(revive);
 
@@ -944,13 +982,15 @@ nonisolated enum MongoScriptPrelude {
 
         return {
             serialize: serialize,
+            __stringifyOrdered: stringifyOrdered,
             deserialize: deserializeChecked,
             __fromServer: deserializeFromServer,
             stringify: function (value, indent) {
                 return JSON.stringify(serialize(value), null, indent === undefined ? 0 : indent);
             },
-            parse: function (text) {
-                return deserializeChecked(typeof text === "string" ? JSON.parse(text) : text);
+            parse: function (text, options) {
+                var parsed = typeof text === "string" ? JSON.parse(text) : text;
+                return options && options.relaxed === false ? deserializeStrict(parsed) : deserializeChecked(parsed);
             }
         };
     })();

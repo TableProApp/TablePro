@@ -1303,21 +1303,13 @@ final class MainContentCoordinator: ObservableObject {
                         source: source,
                         serverOutput: fetchResult.serverOutput,
                         rowLocators: isTableTab ? fetchResult.rowLocators : nil,
+                        exportDocuments: fetchResult.exportDocuments,
                         absentCells: fetchResult.absentCells,
                         unloadedCells: fetchResult.unloadedCells
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
-                    reportQueryOperation(
-                        claim: claim,
-                        trigger: trigger,
-                        outcome: .succeeded(
-                            OperationSummary(
-                                rowsReturned: fetchResult.rows.count,
-                                rowsAffected: fetchResult.rowsAffected
-                            )
-                        )
-                    )
+                    reportFetchedQuery(claim: claim, trigger: trigger, result: fetchResult)
                     return true
                 }
                 // Phase 2 writes onto whatever the tab holds, so only the execution that applied its rows may start it.

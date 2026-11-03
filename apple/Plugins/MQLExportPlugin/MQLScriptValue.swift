@@ -6,6 +6,7 @@
 import Foundation
 import TableProJavaScriptText
 import TableProNumberFormatting
+import TableProPluginKit
 
 /// A literal value read out of shell text, which the export writes again by its own rules rather
 /// than copying the text it came from.
@@ -22,7 +23,7 @@ indirect enum MQLScriptValue: Equatable {
     /// The shell constructors a collection definition writes a typed value with.
     static let constructors: Set<String> = [
         "BinData", "Code", "Double", "ISODate", "MaxKey", "MinKey", "NumberDecimal", "NumberLong", "ObjectId",
-        "Timestamp"
+        "Timestamp", "BSONRegExp", "BSONSymbol", "NumberInt"
     ]
 
     var compactText: String {
@@ -38,10 +39,94 @@ indirect enum MQLScriptValue: Equatable {
         case .array(let elements):
             return "[\(elements.map(\.compactText).joined(separator: ", "))]"
         case .object(let members):
+            if requiresOrderedMap { return mapExpression(members) }
             let pairs = members.map { "\(JavaScriptText.stringLiteral($0.key)): \($0.value.compactText)" }
             return "{\(pairs.joined(separator: ", "))}"
         case .constructor(let name, let arguments):
             return "\(name)(\(arguments.map(\.compactText).joined(separator: ", ")))"
+        }
+    }
+
+    var containsOrderedMap: Bool {
+        switch self {
+        case .object(let members):
+            return requiresOrderedMap || members.contains { $0.value.containsOrderedMap }
+        case .array(let values), .constructor(_, let values):
+            return values.contains { $0.containsOrderedMap }
+        default:
+            return false
+        }
+    }
+
+    var requiresOrderedMap: Bool {
+        guard case .object(let members) = self else { return false }
+        return members.contains { member in
+            if member.key == "__proto__" { return true }
+            guard let index = UInt32(member.key), index < UInt32.max else { return false }
+            return String(index) == member.key
+        }
+    }
+
+    private func mapExpression(_ members: [MQLScriptMember]) -> String {
+        let entries = members.map { "[\(JavaScriptText.stringLiteral($0.key)), \($0.value.compactText)]" }
+        return "new Map([\(entries.joined(separator: ", "))])"
+    }
+
+    func canonicalExpression() throws -> String {
+        switch self {
+        case .object(let members):
+            guard Set(members.map { Data($0.key.utf8) }).count == members.count else {
+                throw PluginExportError.encodingFailed
+            }
+            if members.count == 1, let key = members.first?.key, key == "$undefined" || key == "$dbPointer" {
+                throw PluginExportError.exportFailed(String(
+                    localized: "This BSON value cannot be represented by the shell's Extended JSON reader", bundle: .main
+                ))
+            }
+            if members.count == 1, let member = members.first, member.key == "$date" {
+                guard case .object(let date) = member.value, date.count == 1,
+                      date[0].key == "$numberLong", case .string(let digits) = date[0].value,
+                      let milliseconds = Int64(digits), milliseconds.magnitude <= 8_640_000_000_000_000 else {
+                    throw PluginExportError.exportFailed(String(
+                        localized: "This BSON date is outside the shell's supported date range", bundle: .main
+                    ))
+                }
+            }
+            let wrappers: Set<String> = [
+                "$oid", "$numberInt", "$numberLong", "$numberDouble", "$numberDecimal", "$binary",
+                "$date", "$timestamp", "$regularExpression", "$minKey", "$maxKey", "$symbol", "$dbPointer", "$undefined"
+            ]
+            if members.count == 1, let member = members.first, wrappers.contains(member.key) {
+                return "EJSON.parse(\(JavaScriptText.stringLiteral(try jsonText())), {relaxed: false})"
+            }
+            if let first = members.first, first.key == "$code", case .string(let code) = first.value,
+               members.count == 1 || (members.count == 2 && members[1].key == "$scope") {
+                let scope = members.count == 2 ? ", " + (try members[1].value.canonicalExpression()) : ""
+                return "Code(\(JavaScriptText.stringLiteral(code))\(scope))"
+            }
+            let entries = try members.map {
+                "[\(JavaScriptText.stringLiteral($0.key)), \(try $0.value.canonicalExpression())]"
+            }
+            return "new Map([\(entries.joined(separator: ", "))])"
+        case .array(let values):
+            return "[\(try values.map { try $0.canonicalExpression() }.joined(separator: ", "))]"
+        case .string, .boolean, .null, .number:
+            return compactText
+        case .constructor, .nonFinite:
+            throw PluginExportError.encodingFailed
+        }
+    }
+
+    private func jsonText() throws -> String {
+        switch self {
+        case .object(let members):
+            return "{\(try members.map { "\(JavaScriptText.stringLiteral($0.key)):\(try $0.value.jsonText())" }.joined(separator: ","))}"
+        case .array(let values):
+            return "[\(try values.map { try $0.jsonText() }.joined(separator: ","))]"
+        case .string, .number, .boolean, .null:
+            return compactText
+        case .constructor, .nonFinite:
+            throw PluginExportError.encodingFailed
         }
     }
 
@@ -54,6 +139,7 @@ indirect enum MQLScriptValue: Equatable {
             let lines = elements.map { inner + $0.indentedText(depth: depth + 1) }
             return "[\n\(lines.joined(separator: ",\n"))\n\(outer)]"
         case .object(let members) where !members.isEmpty:
+            if requiresOrderedMap { return mapExpression(members) }
             let lines = members.map {
                 "\(inner)\(JavaScriptText.stringLiteral($0.key)): \($0.value.indentedText(depth: depth + 1))"
             }
@@ -148,6 +234,10 @@ struct MQLScriptReader {
         case "true": return .boolean(true)
         case "false": return .boolean(false)
         case "null": return .null
+        case "new":
+            guard identifier() == "Date", consume("("), let argument = value(), consume(")") else { return nil }
+            guard case .string = argument else { return nil }
+            return .constructor("new Date", [argument])
         case "Infinity", "NaN": return .nonFinite(name)
         default:
             guard MQLScriptValue.constructors.contains(name), consume("(") else { return nil }
@@ -158,7 +248,14 @@ struct MQLScriptReader {
     private mutating func members() -> [MQLScriptMember]? {
         var members: [MQLScriptMember] = []
         while !consume("}") {
-            guard let key = string() ?? identifier(), consume(":"), let value = value() else { return nil }
+            let key: String?
+            if consume("[") {
+                key = string()
+                guard consume("]") else { return nil }
+            } else {
+                key = string() ?? identifier()
+            }
+            guard let key, consume(":"), let value = value() else { return nil }
             members.append(MQLScriptMember(key: key, value: value))
             guard consume(",") || current == .punctuator("}") else { return nil }
         }

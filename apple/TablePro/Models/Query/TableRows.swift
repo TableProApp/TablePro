@@ -37,6 +37,8 @@ struct TableRows: Sendable {
     /// The masking rules matched to these columns. Every fetched value is written through it, and a
     /// masked column never takes an edit, so no reader can see the stored value.
     private(set) var masks: ColumnMasks = .none
+    private var exportPolicy: MaskingPolicy = .none
+    private var exportTable: String?
 
     var maskedColumnNames: Set<String> {
         Set(masks.maskedColumns.compactMap { columns.indices.contains($0) ? columns[$0] : nil })
@@ -155,13 +157,27 @@ struct TableRows: Sendable {
     /// Masks the held values of every column `incoming` adds. A column already masked keeps its mask, since the
     /// value under it is gone until the next fetch.
     @discardableResult
-    mutating func addMasks(_ incoming: ColumnMasks) -> Delta {
+    mutating func addMasks(_ incoming: ColumnMasks, policy: MaskingPolicy? = nil, table: String? = nil) -> Delta {
+        if let policy {
+            exportPolicy = policy
+            exportTable = table
+        }
         let added = incoming.styles.filter { column, _ in column < columns.count && !masks.isMasked(column) }
-        guard !added.isEmpty else { return .none }
+        guard !added.isEmpty || policy != nil else { return .none }
         let addedMasks = ColumnMasks(styles: added)
         for index in rows.indices {
             for column in added.keys where column < rows[index].values.count {
                 rows[index].values[column] = addedMasks.value(rows[index].values[column], column: column)
+            }
+            if var snapshot = rows[index].exportSnapshot {
+                let masked = Self.maskedFields(in: snapshot.document, columns: columns, masks: addedMasks, policy: exportPolicy, table: exportTable)
+                snapshot.document = ExportDocumentMasking.document(
+                    snapshot.document, columns: columns, masks: addedMasks, policy: exportPolicy,
+                    table: exportTable, excluding: snapshot.maskedFields, row: Array(snapshot.values)
+                )
+                snapshot.maskedFields.formUnion(masked)
+                snapshot.values = ContiguousArray(addedMasks.row(Array(snapshot.values)))
+                rows[index].exportSnapshot = snapshot
             }
         }
         masks = ColumnMasks(styles: masks.styles.merging(added) { current, _ in current })
@@ -281,6 +297,8 @@ struct TableRows: Sendable {
         _ pageRows: [[PluginCellValue]],
         startingAt offset: Int,
         rowLocators pageLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
+        absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:]
     ) -> Delta {
         guard !pageRows.isEmpty else { return .none }
@@ -292,7 +310,13 @@ struct TableRows: Sendable {
             let row = Row(
                 id: .existing(offset + idx),
                 values: normalized,
-                unloadedColumns: Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count)
+                absentColumns: Self.clamp(absentCells[idx] ?? [], toCount: columns.count),
+                unloadedColumns: Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count),
+                exportSnapshot: Self.exportSnapshot(
+                    documents: exportDocuments, index: idx, count: pageRows.count,
+                    columns: columns, values: normalized, rawValues: values, absent: absentCells[idx] ?? [], masks: masks,
+                    policy: exportPolicy, table: exportTable
+                )
             )
             let newIndex = firstIndex + idx
             rows.append(row)
@@ -335,6 +359,7 @@ struct TableRows: Sendable {
         rows replacementRows: [[PluginCellValue]],
         offset: Int = 0,
         rowLocators replacementLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:]
     ) -> Delta {
@@ -348,7 +373,12 @@ struct TableRows: Sendable {
                 id: .existing(offset + idx),
                 values: normalized,
                 absentColumns: Self.clamp(absentCells[idx] ?? [], toCount: columns.count),
-                unloadedColumns: Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count)
+                unloadedColumns: Self.clamp(unloadedCells[idx] ?? [:], toCount: columns.count),
+                exportSnapshot: Self.exportSnapshot(
+                    documents: exportDocuments, index: idx, count: replacementRows.count,
+                    columns: columns, values: normalized, rawValues: values, absent: absentCells[idx] ?? [], masks: masks,
+                    policy: exportPolicy, table: exportTable
+                )
             )
             rebuilt.append(row)
             rebuiltIndex[row.id] = idx
@@ -440,9 +470,12 @@ struct TableRows: Sendable {
         hasAuthoritativeSchema: Bool = false,
         foreignKeysFetched: Bool = false,
         rowLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:],
-        masks: ColumnMasks = .none
+        masks: ColumnMasks = .none,
+        exportPolicy: MaskingPolicy = .none,
+        exportTable: String? = nil
     ) -> TableRows {
         var rows = ContiguousArray<Row>()
         rows.reserveCapacity(queryRows.count)
@@ -452,7 +485,12 @@ struct TableRows: Sendable {
                 id: .existing(index),
                 values: normalized,
                 absentColumns: clamp(absentCells[index] ?? [], toCount: columns.count),
-                unloadedColumns: clamp(unloadedCells[index] ?? [:], toCount: columns.count)
+                unloadedColumns: clamp(unloadedCells[index] ?? [:], toCount: columns.count),
+                exportSnapshot: exportSnapshot(
+                    documents: exportDocuments, index: index, count: queryRows.count,
+                    columns: columns, values: normalized, rawValues: values, absent: absentCells[index] ?? [], masks: masks,
+                    policy: exportPolicy, table: exportTable
+                )
             ))
         }
         var tableRows = TableRows(
@@ -473,7 +511,36 @@ struct TableRows: Sendable {
         )
         tableRows.rowLocators = locators(rowLocators, rowCount: queryRows.count, offset: 0)
         tableRows.masks = masks
+        tableRows.exportPolicy = exportPolicy
+        tableRows.exportTable = exportTable
         return tableRows
+    }
+
+    private static func exportSnapshot(
+        documents: [PluginExportDocument]?, index: Int, count: Int,
+        columns: [String], values: ContiguousArray<PluginCellValue>, rawValues: [PluginCellValue],
+        absent: Set<Int>, masks: ColumnMasks,
+        policy: MaskingPolicy, table: String?
+    ) -> ExportRowSnapshot? {
+        guard let documents, documents.count == count else { return nil }
+        return ExportRowSnapshot(
+            document: ExportDocumentMasking.document(
+                documents[index], columns: columns, masks: masks, policy: policy, table: table, row: rawValues
+            ),
+            values: values,
+            absentColumns: clamp(absent, toCount: columns.count),
+            maskedFields: maskedFields(in: documents[index], columns: columns, masks: masks, policy: policy, table: table)
+        )
+    }
+
+    private static func maskedFields(
+        in document: PluginExportDocument, columns: [String], masks: ColumnMasks, policy: MaskingPolicy, table: String?
+    ) -> Set<String> {
+        Set(document.fields.compactMap { field in
+            let columnStyle = columns.firstIndex(of: field.name).flatMap { masks.styles[$0] }
+            let style = columnStyle ?? policy.style(table: table, column: field.name, typeName: field.typeName)
+            return style == nil ? nil : field.name
+        })
     }
 
     /// Locators that do not pair one to one with the rows are dropped rather than guessed at.

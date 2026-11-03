@@ -73,6 +73,14 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        PluginExportStreamElement.cells(streamExportRows(table: table, databaseName: databaseName))
+    }
+
+    func streamRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        PluginExportStreamElement.cells(streamExportRows(for: object))
+    }
+
+    func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         guard let pluginDriver else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
@@ -80,7 +88,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
             // A table export only reads, whatever the statement the driver chose classifies as.
             var context = PluginStatementContext()
             context.readOnly = true
-            return pluginDriver.streamRows(query: customQuery, context: context)
+            return pluginDriver.streamExportRows(query: customQuery, context: context)
         }
         let query = leadingRowsQuery(
             columns: "*",
@@ -120,11 +128,11 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     private func streamLeadingRows(
         query: String,
         table: String
-    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         guard let adapter = driver as? PluginDriverAdapter else {
             return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
         }
-        let stream = adapter.streamRows(query: query)
+        let stream = adapter.streamExportRows(query: query)
         guard let maximum = pagination.maximumRows else { return stream }
         let cappedTables = cappedTables
         return AsyncThrowingStream { continuation in
@@ -132,7 +140,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
                 var rowCount = 0
                 do {
                     for try await element in stream {
-                        if case .rows(let rows) = element { rowCount += rows.count }
+                        if case .rows(let rows, _) = element { rowCount += rows.count }
                         continuation.yield(element)
                     }
                     if rowCount >= maximum {
@@ -147,10 +155,10 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         }
     }
 
-    func streamRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         let scope = object.rowScope
         guard !scope.isUnrestricted else {
-            return streamRows(table: object.name, databaseName: object.databaseName)
+            return streamExportRows(table: object.name, databaseName: object.databaseName)
         }
         guard appliesRowScope else {
             let reason = String(
@@ -498,12 +506,15 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
     }
 
     private func mapToPluginResult(_ result: QueryResult) -> PluginQueryResult {
-        PluginQueryResult(
+        var mapped = PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypes.map { $0.rawType ?? "" },
             rows: result.rows,
             rowsAffected: result.rowsAffected,
             executionTime: result.executionTime
         )
+        mapped.exportDocuments = result.exportDocuments
+        mapped.absentCells = result.absentCells
+        return mapped
     }
 }

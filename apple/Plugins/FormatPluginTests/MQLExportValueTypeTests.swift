@@ -12,10 +12,12 @@ struct MQLExportValueTypeTests {
         let databaseTypeId = "MongoDB"
         let header: PluginStreamHeader
         let rows: [[PluginCellValue]]
+        let documents: [PluginExportDocument]?
 
-        init(header: PluginStreamHeader, rows: [[PluginCellValue]]) {
+        init(header: PluginStreamHeader, rows: [[PluginCellValue]], documents: [PluginExportDocument]?) {
             self.header = header
             self.rows = rows
+            self.documents = documents
         }
 
         func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -26,6 +28,18 @@ struct MQLExportValueTypeTests {
                 continuation.yield(.rows(rows))
                 continuation.finish()
             }
+        }
+
+        func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+            AsyncThrowingStream { continuation in
+                continuation.yield(.header(header))
+                continuation.yield(.rows(rows, documents: documents))
+                continuation.finish()
+            }
+        }
+
+        func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+            streamExportRows(table: object.name, databaseName: object.databaseName)
         }
 
         func fetchTableDDL(table: String, databaseName: String) async throws -> String { "" }
@@ -43,7 +57,7 @@ struct MQLExportValueTypeTests {
 
     private static let uuid = "8cd003eb-4a25-4324-9332-88fce2da0d1a"
 
-    private func exportedScript(header: PluginStreamHeader, rows: [[PluginCellValue]]) async throws -> String {
+    private func exportedScript(header: PluginStreamHeader, rows: [[PluginCellValue]], documents: [PluginExportDocument]?) async throws -> String {
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).js")
         defer { try? FileManager.default.removeItem(at: destination) }
         let table = PluginExportTable(
@@ -56,42 +70,41 @@ struct MQLExportValueTypeTests {
         )
         _ = try await MQLExportPlugin().export(
             tables: [table],
-            dataSource: CollectionDataSource(header: header, rows: rows),
+            dataSource: CollectionDataSource(header: header, rows: rows, documents: documents),
             destination: destination,
             progress: PluginExportProgress(progress: Progress(totalUnitCount: 1))
         )
         return try String(contentsOf: destination, encoding: .utf8)
     }
 
-    @Test("String fields shaped like booleans, numbers, documents or UUIDs are exported as strings")
-    func stringFieldsStayStrings() async throws {
-        let header = PluginStreamHeader(
-            columns: ["_id", "flag", "count", "nothing", "doc", "list", "ref"],
-            columnTypeNames: ["VARCHAR", "VARCHAR", "VARCHAR", "VARCHAR", "VARCHAR", "VARCHAR", "VARCHAR"]
-        )
-        let row: [PluginCellValue] = [
-            .text("42"), .text("true"), .text("-3.5"), .text("null"), .text("{\"a\":1}"), .text("[1,2]"),
-            .text("UUID(\"\(Self.uuid)\")")
-        ]
-        let script = try await exportedScript(header: header, rows: [row])
-        let expected = "  {\"_id\": \"42\", \"flag\": \"true\", \"count\": \"-3.5\", \"nothing\": \"null\", "
-            + "\"doc\": \"{\\\"a\\\":1}\", \"list\": \"[1,2]\", \"ref\": \"UUID(\\\"\(Self.uuid)\\\")\"}"
-        #expect(script.contains("db.people.insertMany([\n\(expected)\n]);"))
+    private func document(_ json: String) -> PluginExportDocument {
+        PluginExportDocument(fields: [PluginExportField(name: "value", canonicalJSON: json, typeName: "VARCHAR", cellValue: .text("display"))])
     }
 
-    @Test("Typed fields are exported as the type their column reports")
-    func typedFieldsKeepTheirTypes() async throws {
-        let header = PluginStreamHeader(
-            columns: ["_id", "flag", "count", "doc", "ref"],
-            columnTypeNames: ["ObjectId", "BOOLEAN", "INTEGER", "JSON", "UUID"]
+    @Test("A mixed field exports every document's stored type instead of its sampled column type")
+    func mixedFieldKeepsTypes() async throws {
+        let header = PluginStreamHeader(columns: ["value"], columnTypeNames: ["VARCHAR"])
+        let script = try await exportedScript(
+            header: header, rows: [[.text("42")], [.text("42")], [.null]],
+            documents: [document(#""42""#), document(#"{"$numberInt":"42"}"#), document("null")]
         )
-        let row: [PluginCellValue] = [
-            .text("507f1f77bcf86cd799439011"), .text("true"), .text("42"), .text("{\"a\":1}"),
-            .text("UUID(\"\(Self.uuid)\")")
-        ]
-        let script = try await exportedScript(header: header, rows: [row])
-        let expected = "  {\"_id\": ObjectId(\"507f1f77bcf86cd799439011\"), \"flag\": true, \"count\": 42, "
-            + "\"doc\": {\"a\":1}, \"ref\": BinData(4, \"jNAD60olQySTMoj84toNGg==\")}"
-        #expect(script.contains("db.people.insertMany([\n\(expected)\n]);"))
+        #expect(script.contains(#"new Map([["value", "42"]])"#))
+        #expect(script.contains(#"new Map([["value", EJSON.parse("{\"$numberInt\":\"42\"}", {relaxed: false})]])"#))
+        #expect(script.contains(#"new Map([["value", null]])"#))
+        #expect(script.contains("db.runCommand({insert: \"people\""))
+        #expect(script.contains("result.writeErrors"))
+    }
+
+    @Test("Cell-only results are refused rather than changing their BSON types")
+    func refusesCellsWithoutDocuments() async {
+        do {
+            _ = try await exportedScript(
+                header: PluginStreamHeader(columns: ["value"], columnTypeNames: ["VARCHAR"]),
+                rows: [[.text("42")]], documents: nil
+            )
+            Issue.record("Expected a typed document error")
+        } catch {
+            #expect(error.localizedDescription.contains("typed documents"))
+        }
     }
 }

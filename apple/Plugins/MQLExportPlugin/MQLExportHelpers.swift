@@ -22,104 +22,42 @@ enum MQLExportHelpers {
         JavaScriptText.lineComment("\(label): \(name)")
     }
 
-    static func documentLiteral(_ fields: [(name: String, value: String)]) -> String {
-        let members = fields.map { "\(JavaScriptText.stringLiteral($0.name)): \($0.value)" }
-        return "  {\(members.joined(separator: ", "))}"
-    }
-
-    static func mqlBinaryValue(for data: Data, subtype: UInt8) -> String {
-        MongoDBUuidCodec.binaryText(for: MongoDBBinaryValue(data: data, subtype: subtype))
-    }
-
-    // The column type is the only record of a cell's BSON type: text in any column that does not name one stays a string.
-    static func mqlTextValue(for value: String, columnTypeName: String) -> String {
-        typedValue(for: value, columnTypeName: columnTypeName) ?? JavaScriptText.stringLiteral(value)
-    }
-
-    private static func typedValue(for value: String, columnTypeName: String) -> String? {
-        switch columnTypeName {
-        case "ObjectId":
-            guard MongoDBObjectId(hex: value).isValid else { return nil }
-            return "ObjectId(\(JavaScriptText.stringLiteral(value)))"
-        case "TIMESTAMP":
-            guard isIso8601(value) else { return nil }
-            return "ISODate(\(JavaScriptText.stringLiteral(value)))"
-        case "DECIMAL":
-            guard NumberText.isJSONNumberLiteral(value) || nonFiniteNumbers.contains(value) else { return nil }
-            return "NumberDecimal(\(JavaScriptText.stringLiteral(value)))"
-        case "BIGINT":
-            guard Int64(value) != nil else { return numberValue(value) }
-            return "NumberLong(\(JavaScriptText.stringLiteral(value)))"
-        case "FLOAT":
-            guard NumberText.isJSONNumber(value), let number = Double(value), readsBackAsInteger(number) else {
-                return numberValue(value)
-            }
-            return "Double(\(value))"
-        case "INTEGER":
-            return numberValue(value)
-        case "BOOLEAN":
-            return value == "true" || value == "false" ? value : nil
-        case "JSON":
-            return containerValue(value)
-        default:
-            guard uuidColumnTypeNames.contains(columnTypeName),
-                  let binary = MongoDBUuidCodec.parseWrapper(value) else { return nil }
-            return MongoDBUuidCodec.binaryText(for: binary)
+    static func documentLiteral(_ document: PluginExportDocument) throws -> String {
+        var names = Set<Data>()
+        let fields = try document.fields.map { field in
+            guard names.insert(Data(field.name.utf8)).inserted else { throw PluginExportError.encodingFailed }
+            let value = try canonicalValue(field.canonicalJSON)
+            return "[\(JavaScriptText.stringLiteral(field.name)), \(value)]"
         }
+        return "  new Map([\(fields.joined(separator: ", "))])"
     }
 
-    private static let nonFiniteNumbers: Set<String> = ["NaN", "Infinity", "-Infinity"]
-
-    // The driver names a decoded UUID column by the wrapper its cells are written in.
-    private static let uuidColumnTypeNames: Set<String> = Set(
-        [MongoDBUuidCodec.standardUuidSubtype, MongoDBUuidCodec.legacyUuidSubtype].flatMap { subtype in
-            MongoDBUuidRepresentation.allCases.compactMap {
-                MongoDBUuidCodec.wrapperTag(forSubtype: subtype, representation: $0)
-            }
+    static func canonicalValue(_ json: String) throws -> String {
+        guard (try? JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed])) != nil else {
+            throw PluginExportError.encodingFailed
         }
-    )
-
-    private static func numberValue(_ value: String) -> String? {
-        NumberText.isJSONNumber(value) || nonFiniteNumbers.contains(value) ? value : nil
+        let escaped = json.unicodeScalars.map { scalar -> String in
+            if scalar == "\n" || scalar == "\r" || scalar == "\t" { return String(scalar) }
+            return JavaScriptText.lineBreakingEscape(scalar) ?? String(scalar)
+        }.joined()
+        var reader = MQLScriptReader(tokens: MQLScriptLexer.lexemes(in: escaped).map(\.token))
+        guard let value = reader.value(), reader.current == nil else { throw PluginExportError.encodingFailed }
+        return try value.canonicalExpression()
     }
 
-    private static let largestExactInteger: Double = 9_007_199_254_740_991
-
-    private static func readsBackAsInteger(_ number: Double) -> Bool {
-        number.rounded(.towardZero) == number && abs(number) <= largestExactInteger
+    static func insertCommand(collection: String, documents: [String]) -> String {
+        let name = JavaScriptText.stringLiteral(collection)
+        return checkedCommand("{insert: \(name), documents: [\n\(documents.joined(separator: ",\n"))\n], ordered: true}") + "\n"
     }
 
-    private static func isIso8601(_ value: String) -> Bool {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if formatter.date(from: value) != nil { return true }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: value) != nil
-    }
-
-    private static func containerValue(_ value: String) -> String? {
-        guard (value.hasPrefix("{") && value.hasSuffix("}")) || (value.hasPrefix("[") && value.hasSuffix("]")),
-              (try? JSONSerialization.jsonObject(with: Data(value.utf8))) != nil else {
-            return nil
+    static func checkedCommand(_ command: String) -> String {
+        """
+        {
+          const result = db.runCommand(\(command));
+          if (!result.ok || (result.writeErrors && result.writeErrors.length) || result.writeConcernError) {
+            throw new Error("Document import failed: " + EJSON.stringify(result));
+          }
         }
-        return escapingLineBreaks(inJSON: value)
-    }
-
-    /// `JSONSerialization` accepts U+2028, U+2029, DEL and the C1 controls raw inside a string,
-    /// and refuses every other character `lineBreakingEscape` answers for outside the whitespace
-    /// between tokens. So in JSON it accepted, each such character stands inside a string, where
-    /// its escape reads back as the same value.
-    private static func escapingLineBreaks(inJSON json: String) -> String {
-        var escaped = String.UnicodeScalarView()
-        for scalar in json.unicodeScalars {
-            if scalar == "\n" || scalar == "\r" || scalar == "\t" {
-                escaped.append(scalar)
-            } else if let escape = JavaScriptText.lineBreakingEscape(scalar) {
-                escaped.append(contentsOf: escape.unicodeScalars)
-            } else {
-                escaped.append(scalar)
-            }
-        }
-        return String(escaped)
+        """
     }
 }

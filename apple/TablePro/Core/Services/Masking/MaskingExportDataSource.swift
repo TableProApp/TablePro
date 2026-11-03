@@ -42,6 +42,56 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
         Self.masking(base.streamRows(for: object), table: sourceTable(object.name), policy: policy)
     }
 
+    func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        maskingDocuments(base.streamExportRows(table: table, databaseName: databaseName), table: sourceTable(table))
+    }
+
+    func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        maskingDocuments(base.streamExportRows(for: object), table: sourceTable(object.name))
+    }
+
+    private func maskingDocuments(
+        _ stream: AsyncThrowingStream<PluginExportStreamElement, Error>,
+        table: String?
+    ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        let policy = self.policy
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                var header: PluginStreamHeader?
+                do {
+                    for try await element in stream {
+                        switch element {
+                        case .header(let value):
+                            header = value
+                            continuation.yield(element)
+                        case .rows(let rows, let documents):
+                            guard let header else {
+                                throw PluginExportError.exportFailed("Rows arrived before their columns")
+                            }
+                            let masks = policy.columnMasks(table: table, columns: header.columns, typeNames: header.columnTypeNames)
+                            if let documents, documents.count != rows.count {
+                                throw PluginExportError.exportFailed("Documents do not match their rows")
+                            }
+                            let masked = documents?.enumerated().map { index, document in
+                                ExportDocumentMasking.document(
+                                    document, columns: header.columns, masks: masks,
+                                    policy: policy, table: table, row: rows[index]
+                                )
+                            }
+                            continuation.yield(.rows(masks.rows(rows), documents: masked))
+                        @unknown default:
+                            throw PluginExportError.encodingFailed
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     private func sourceTable(_ name: String) -> String? {
         streamsTables ? name : nil
     }
@@ -163,5 +213,47 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
 
     func fetchObjectComment(_ object: PluginExportTable) async throws -> String? {
         try await base.fetchObjectComment(object)
+    }
+}
+
+/// Document fields can outlive the sampled columns, so every stored field takes the policy too.
+enum ExportDocumentMasking {
+    static func document(
+        _ document: PluginExportDocument,
+        columns: [String],
+        masks: ColumnMasks,
+        policy: MaskingPolicy = .none,
+        table: String? = nil,
+        excluding: Set<String> = [],
+        row: [PluginCellValue]? = nil
+    ) -> PluginExportDocument {
+        PluginExportDocument(fields: document.fields.map { field in
+            guard !excluding.contains(field.name) else { return field }
+            let index = columns.firstIndex(of: field.name)
+            let style = index.flatMap { masks.styles[$0] }
+                ?? policy.style(table: table, column: field.name, typeName: field.typeName)
+            guard let style else { return field }
+            let cell: PluginCellValue
+            if let index, masks.styles[index] != nil, let row, row.indices.contains(index) {
+                cell = row[index]
+            } else {
+                cell = field.cellValue
+            }
+            return replacing(field, with: MaskedValue.mask(cell, style: style))
+        })
+    }
+
+    static func replacing(_ field: PluginExportField, with value: PluginCellValue) -> PluginExportField {
+        let json: String
+        switch value {
+        case .null:
+            json = "null"
+        case .text(let text):
+            json = PluginExportDocument.jsonString(text)
+        case .bytes:
+            // Every byte mask is text or null. A future mask must not pass original bytes through.
+            json = PluginExportDocument.jsonString(MaskedValue.bullets)
+        }
+        return PluginExportField(name: field.name, canonicalJSON: json, typeName: "VARCHAR", cellValue: value)
     }
 }

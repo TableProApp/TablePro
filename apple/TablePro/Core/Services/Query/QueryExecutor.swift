@@ -23,6 +23,7 @@ struct QueryFetchResult {
     /// Per row, what the driver finds that row by again.
     var rowLocators: [String?]?
     /// Row index to the columns that row has no field for. See `PluginQueryResult.absentCells`.
+    var exportDocuments: [PluginExportDocument]?
     var absentCells: [Int: Set<Int>] = [:]
     var unloadedCells: [Int: [Int: Int]] = [:]
 
@@ -168,6 +169,7 @@ final class QueryExecutor {
             resultColumnMeta: result.columnMeta,
             timing: result.timing,
             rowLocators: result.rowLocators,
+            exportDocuments: result.exportDocuments,
             absentCells: result.absentCells
         )
     }
@@ -215,6 +217,7 @@ final class QueryExecutor {
             resultColumnMeta: result.columnMeta,
             timing: result.timing,
             rowLocators: result.rowLocators,
+            exportDocuments: result.exportDocuments,
             absentCells: result.absentCells
         )
     }
@@ -241,6 +244,7 @@ final class QueryExecutor {
             resultColumnMeta: result.columnMeta,
             timing: result.timing,
             rowLocators: result.rowLocators,
+            exportDocuments: result.exportDocuments,
             absentCells: result.absentCells
         )
     }

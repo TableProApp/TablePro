@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import JavaScriptCore
 import TableProPluginKit
 import Testing
 
@@ -13,198 +14,44 @@ struct MQLExportHelpersTests {
         "\n", "\r", "\u{0B}", "\u{0C}", "\u{85}", "\u{2028}", "\u{2029}"
     ]
 
-    /// The dump is a mongosh script, so a value has to be a constructor call. mongosh reads
-    /// `{"$binary": ...}` as a plain object literal and would insert a subdocument.
-    @Test("A legacy UUID exports as a BinData constructor carrying its subtype")
-    func legacyUuidExportsAsBinData() {
-        let value = MQLExportHelpers.mqlTextValue(
-            for: "LegacyJavaUUID(\"\(Self.uuid)\")", columnTypeName: "LegacyJavaUUID"
-        )
-        #expect(value == "BinData(3, \"JEMlSusD0IwaDdri/Igykw==\")")
-    }
-
-    @Test("A standard UUID exports as a BinData constructor with subtype 4")
-    func standardUuidExportsAsBinData() {
-        let value = MQLExportHelpers.mqlTextValue(for: "UUID(\"\(Self.uuid)\")", columnTypeName: "UUID")
-        #expect(value == "BinData(4, \"jNAD60olQySTMoj84toNGg==\")")
-    }
-
-    @Test("Raw binary keeps the subtype its column reported")
-    func rawBinaryKeepsSubtype() {
-        let data = Data([0xDE, 0xAD, 0xBE, 0xEF])
-        #expect(MQLExportHelpers.mqlBinaryValue(for: data, subtype: 5) == "BinData(5, \"3q2+7w==\")")
-        #expect(MQLExportHelpers.mqlBinaryValue(for: data, subtype: 0) == "BinData(0, \"3q2+7w==\")")
-    }
-
-    @Test("A column type name carries the subtype back out")
-    func columnTypeNameRoundTrip() {
-        #expect(MongoDBUuidCodec.columnTypeName(forSubtype: 0) == "BLOB")
-        #expect(MongoDBUuidCodec.columnTypeName(forSubtype: 5) == "BLOB(5)")
-        #expect(MongoDBUuidCodec.binarySubtype(fromColumnTypeName: "BLOB") == 0)
-        #expect(MongoDBUuidCodec.binarySubtype(fromColumnTypeName: "BLOB(5)") == 5)
-        #expect(MongoDBUuidCodec.binarySubtype(fromColumnTypeName: "BLOB(128)") == 128)
-        #expect(MongoDBUuidCodec.binarySubtype(fromColumnTypeName: "") == 0)
-        #expect(MongoDBUuidCodec.binarySubtype(fromColumnTypeName: "VARCHAR(255)") == 0)
-        #expect(MongoDBUuidCodec.binarySubtype(fromColumnTypeName: "BLOB(999)") == 0)
-    }
-
-    @Test("A string column keeps text shaped like another type a string", arguments: [
-        ("true", "\"true\""),
-        ("false", "\"false\""),
-        ("null", "\"null\""),
-        ("42", "\"42\""),
-        ("-3.5", "\"-3.5\""),
-        ("1e5", "\"1e5\""),
-        ("NaN", "\"NaN\""),
-        ("{\"a\":1}", "\"{\\\"a\\\":1}\""),
-        ("[1,2]", "\"[1,2]\""),
-        ("UUID(\"8cd003eb-4a25-4324-9332-88fce2da0d1a\")", "\"UUID(\\\"8cd003eb-4a25-4324-9332-88fce2da0d1a\\\")\""),
-        ("LegacyJavaUUID(\"8cd003eb-4a25-4324-9332-88fce2da0d1a\")", "\"LegacyJavaUUID(\\\"8cd003eb-4a25-4324-9332-88fce2da0d1a\\\")\""),
-        ("Alice", "\"Alice\""),
+    @Test("Canonical scalar types stay explicit", arguments: [
+        #"{"$oid":"507f1f77bcf86cd799439011"}"#,
+        #"{"$numberLong":"9007199254740993"}"#,
+        #"{"$numberDouble":"1.0"}"#,
+        #"{"$numberDouble":"NaN"}"#,
+        #"{"$numberDecimal":"1847.270000000000000000000000001"}"#,
+        #"{"$date":{"$numberLong":"1767225600123"}}"#,
+        #"{"$binary":{"base64":"JEMlSusD0IwaDdri/Igykw==","subType":"03"}}"#
     ])
-    func stringColumnKeepsStrings(input: String, expected: String) {
-        #expect(MQLExportHelpers.mqlTextValue(for: input, columnTypeName: "VARCHAR") == expected)
+    func canonicalScalarTypes(json: String) throws {
+        let written = try MQLExportHelpers.canonicalValue(json)
+        #expect(written.hasPrefix("EJSON.parse("))
+        #expect(written.hasSuffix(", {relaxed: false})"))
     }
 
-    @Test("A UUID wrapper is binary only in a column the driver typed as a UUID")
-    func uuidWrapperNeedsUuidColumn() {
-        let wrapper = "UUID(\"\(Self.uuid)\")"
-        for typeName in ["VARCHAR", "JSON", "BLOB", "BLOB(4)", ""] {
-            #expect(MQLExportHelpers.mqlTextValue(for: wrapper, columnTypeName: typeName) == "\"UUID(\\\"\(Self.uuid)\\\")\"", "\(typeName)")
-        }
-        let binary = "BinData(4, \"jNAD60olQySTMoj84toNGg==\")"
-        for typeName in ["UUID", "LegacyJavaUUID", "LegacyCSharpUUID", "LegacyPythonUUID"] {
-            #expect(MQLExportHelpers.mqlTextValue(for: wrapper, columnTypeName: typeName) == binary, "\(typeName)")
-        }
-        #expect(MQLExportHelpers.mqlTextValue(for: "abc", columnTypeName: "UUID") == "\"abc\"")
+    @Test("Text shaped like another type remains text", arguments: ["true", "42", "null", "{\"a\":1}", "UUID(\"x\")"])
+    func stringValuesStayStrings(value: String) throws {
+        let json = String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
+        #expect(try MQLExportHelpers.canonicalValue(json) == json)
     }
 
-    @Test("A boolean, integer or document column still writes its own type")
-    func typedColumnsKeepTheirTypes() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "true", columnTypeName: "BOOLEAN") == "true")
-        #expect(MQLExportHelpers.mqlTextValue(for: "false", columnTypeName: "BOOLEAN") == "false")
-        #expect(MQLExportHelpers.mqlTextValue(for: "-7", columnTypeName: "INTEGER") == "-7")
-        #expect(MQLExportHelpers.mqlTextValue(for: "{\"a\":1}", columnTypeName: "JSON") == "{\"a\":1}")
-        #expect(MQLExportHelpers.mqlTextValue(for: "[1,\"x\"]", columnTypeName: "JSON") == "[1,\"x\"]")
+    @Test("A document keeps numeric keys, __proto__ and stored null fields")
+    func orderedDocument() throws {
+        let value = try MQLExportHelpers.canonicalValue(#"{"z":null,"10":"a","2":"b","__proto__":"c"}"#)
+        #expect(value == #"new Map([["z", null], ["10", "a"], ["2", "b"], ["__proto__", "c"]])"#)
     }
 
-    @Test("Text that does not fit its typed column is written as a string")
-    func misfitTextInTypedColumnIsString() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "yes", columnTypeName: "BOOLEAN") == "\"yes\"")
-        #expect(MQLExportHelpers.mqlTextValue(for: "TRUE", columnTypeName: "BOOLEAN") == "\"TRUE\"")
-        #expect(MQLExportHelpers.mqlTextValue(for: "n/a", columnTypeName: "INTEGER") == "\"n/a\"")
-        #expect(MQLExportHelpers.mqlTextValue(for: "{oops", columnTypeName: "JSON") == "\"{oops\"")
-        #expect(MQLExportHelpers.mqlTextValue(for: "Code(\"x\")", columnTypeName: "JSON") == "\"Code(\\\"x\\\")\"")
+    @Test("Nested canonical values are not cut to the display length")
+    func longNestedValue() throws {
+        let text = String(repeating: "x", count: 20_000)
+        let value = try MQLExportHelpers.canonicalValue("{\"child\":[\"\(text)\",{\"$numberLong\":\"5\"}]}")
+        #expect(value.contains(text))
+        #expect(value.contains("EJSON.parse("))
     }
 
-    @Test("A non-finite double or decimal keeps its number type")
-    func nonFiniteNumbersKeepTheirType() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "NaN", columnTypeName: "FLOAT") == "NaN")
-        #expect(MQLExportHelpers.mqlTextValue(for: "Infinity", columnTypeName: "FLOAT") == "Infinity")
-        #expect(MQLExportHelpers.mqlTextValue(for: "-Infinity", columnTypeName: "FLOAT") == "-Infinity")
-        #expect(MQLExportHelpers.mqlTextValue(for: "NaN", columnTypeName: "DECIMAL") == "NumberDecimal(\"NaN\")")
-        #expect(MQLExportHelpers.mqlTextValue(for: "-Infinity", columnTypeName: "DECIMAL") == "NumberDecimal(\"-Infinity\")")
-    }
-
-    @Test("An ObjectId column exports as an ObjectId constructor")
-    func objectIdExportsAsConstructor() {
-        let value = MQLExportHelpers.mqlTextValue(
-            for: "507f1f77bcf86cd799439011", columnTypeName: "ObjectId"
-        )
-        #expect(value == "ObjectId(\"507f1f77bcf86cd799439011\")")
-    }
-
-    @Test("A value that is not a valid ObjectId falls back to a quoted string")
-    func invalidObjectIdFallsBack() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "nope", columnTypeName: "ObjectId") == "\"nope\"")
-    }
-
-    @Test("A timestamp column exports as an ISODate constructor")
-    func timestampExportsAsIsoDate() {
-        let value = MQLExportHelpers.mqlTextValue(
-            for: "2026-01-01T00:00:00Z", columnTypeName: "TIMESTAMP"
-        )
-        #expect(value == "ISODate(\"2026-01-01T00:00:00Z\")")
-
-        let fractional = MQLExportHelpers.mqlTextValue(
-            for: "2026-01-01T00:00:00.123Z", columnTypeName: "TIMESTAMP"
-        )
-        #expect(fractional == "ISODate(\"2026-01-01T00:00:00.123Z\")")
-    }
-
-    @Test("A non-date in a timestamp column falls back to a quoted string")
-    func invalidTimestampFallsBack() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "later", columnTypeName: "TIMESTAMP") == "\"later\"")
-    }
-
-    @Test("An ordinary column is unaffected by the typed-scalar path")
-    func ordinaryColumnUnaffected() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "Alice", columnTypeName: "VARCHAR") == "\"Alice\"")
-        #expect(MQLExportHelpers.mqlTextValue(for: "42", columnTypeName: "INTEGER") == "42")
-        #expect(
-            MQLExportHelpers.mqlTextValue(for: "507f1f77bcf86cd799439011", columnTypeName: "VARCHAR")
-                == "\"507f1f77bcf86cd799439011\""
-        )
-    }
-
-    @Test("An exponential double exports as a number, not a quoted string")
-    func exponentialDoubleStaysNumeric() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "1e-05", columnTypeName: "FLOAT") == "1e-05")
-        #expect(MQLExportHelpers.mqlTextValue(for: "1e+20", columnTypeName: "FLOAT") == "1e+20")
-        #expect(MQLExportHelpers.mqlTextValue(for: "-3.9192320754595876e-07", columnTypeName: "FLOAT")
-            == "-3.9192320754595876e-07")
-    }
-
-    @Test("A 64-bit integer exports as NumberLong so it keeps its type and every digit")
-    func bigintExportsAsNumberLong() {
-        #expect(
-            MQLExportHelpers.mqlTextValue(for: "9007199254740993", columnTypeName: "BIGINT")
-                == "NumberLong(\"9007199254740993\")"
-        )
-        #expect(MQLExportHelpers.mqlTextValue(for: "5", columnTypeName: "BIGINT") == "NumberLong(\"5\")")
-        #expect(
-            MQLExportHelpers.mqlTextValue(for: "-9223372036854775808", columnTypeName: "BIGINT")
-                == "NumberLong(\"-9223372036854775808\")"
-        )
-    }
-
-    @Test("A value that is not a 64-bit integer keeps its own form in a BIGINT column")
-    func nonIntegerInBigintColumnIsNotWrapped() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "3.5", columnTypeName: "BIGINT") == "3.5")
-        #expect(MQLExportHelpers.mqlTextValue(for: "n/a", columnTypeName: "BIGINT") == "\"n/a\"")
-    }
-
-    @Test("A whole double exports as Double, since a shell reads a bare whole number as an integer")
-    func wholeDoubleExportsAsDouble() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "3", columnTypeName: "FLOAT") == "Double(3)")
-        #expect(MQLExportHelpers.mqlTextValue(for: "-0", columnTypeName: "FLOAT") == "Double(-0)")
-        #expect(MQLExportHelpers.mqlTextValue(for: "3000000000", columnTypeName: "FLOAT") == "Double(3000000000)")
-    }
-
-    @Test("A fractional double, or one past the exact integers, is already read back as a double")
-    func doubleThatReadsBackAsDoubleStaysBare() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "3.5", columnTypeName: "FLOAT") == "3.5")
-        #expect(MQLExportHelpers.mqlTextValue(for: "1e+20", columnTypeName: "FLOAT") == "1e+20")
-        #expect(MQLExportHelpers.mqlTextValue(for: "later", columnTypeName: "FLOAT") == "\"later\"")
-    }
-
-    @Test("A decimal column exports as NumberDecimal so it does not land as a double")
-    func decimalColumnExportsAsNumberDecimal() {
-        #expect(
-            MQLExportHelpers.mqlTextValue(for: "1847.270000000000000000000000001", columnTypeName: "DECIMAL")
-                == "NumberDecimal(\"1847.270000000000000000000000001\")"
-        )
-    }
-
-    @Test("A non-number in a decimal column falls back to a quoted string")
-    func invalidDecimalFallsBack() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "n/a", columnTypeName: "DECIMAL") == "\"n/a\"")
-    }
-
-    @Test("A value that is not a JSON number stays a quoted string")
-    func nonNumericStaysQuoted() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "007", columnTypeName: "VARCHAR") == "\"007\"")
-        #expect(MQLExportHelpers.mqlTextValue(for: "1.2.3", columnTypeName: "VARCHAR") == "\"1.2.3\"")
+    @Test("Only JSON data is accepted on the document path", arguments: ["ObjectId(\"x\")", "{}; db.users.drop()", "undefined", "NaN"])
+    func rejectsScriptValue(value: String) {
+        #expect(throws: (any Error).self) { try MQLExportHelpers.canonicalValue(value) }
     }
 
     @Test("A collection is addressed as db.<name> only when mongosh would resolve that to it")
@@ -234,32 +81,31 @@ struct MQLExportHelpersTests {
         #expect(MQLExportHelpers.headerComment(label: "Database", name: "shop */ 'x'") == "// Database: shop */ 'x'")
     }
 
-    @Test("A document's field names and string values read back as they were")
-    func documentLiteralRoundTrips() throws {
-        let names = ["a\u{2028}b", "c\u{85}d", "e\u{2029}f", "g\"h", "i\nj", "k\u{0B}l"]
-        let fields = names.map { (name: $0, value: MQLExportHelpers.mqlTextValue(for: $0, columnTypeName: "VARCHAR")) }
-        let literal = MQLExportHelpers.documentLiteral(fields)
-        #expect(!literal.unicodeScalars.contains { Self.lineTerminators.contains($0) })
-        let document = try #require(try JSONSerialization.jsonObject(with: Data(literal.utf8)) as? [String: String])
-        for name in names {
-            #expect(document[name] == name)
+    @Test("Field names and strings escape line separators")
+    func nestedDocumentEscapesSeparators() throws {
+        let value = try MQLExportHelpers.canonicalValue("{\"a\u{2028}b\":\"c\u{85}d\"}")
+        #expect(value == "new Map([[\"a\\u2028b\", \"c\\u0085d\"]])")
+        #expect(!value.unicodeScalars.contains { Self.lineTerminators.contains($0) })
+    }
+    @Test("Dates outside the shell range fail instead of becoming the Unix epoch", arguments: [
+        "9223372036854775807", "-9223372036854775808", "8640000000000001"
+    ])
+    func refusesUnrepresentableDate(digits: String) {
+        #expect(throws: (any Error).self) {
+            try MQLExportHelpers.canonicalValue("{\"$date\":{\"$numberLong\":\"\(digits)\"}}")
         }
     }
 
-    @Test("A typed value's string argument escapes line separators too")
-    func typedValueEscapesSeparators() {
-        #expect(MQLExportHelpers.mqlTextValue(for: "a\u{2028}b", columnTypeName: "VARCHAR") == "\"a\\u2028b\"")
-        #expect(MQLExportHelpers.mqlTextValue(for: "x\u{85}", columnTypeName: "VARCHAR") == "\"x\\u0085\"")
+    @Test("An insert command checks both command and per-document errors", arguments: [
+        #"{"ok":0,"errmsg":"failed"}"#,
+        #"{"ok":1,"writeErrors":[{"code":11000}]}"#,
+        #"{"ok":1,"writeConcernError":{"code":64}}"#
+    ])
+    func writeFailuresStopScript(reply: String) throws {
+        let context = try #require(JSContext())
+        context.evaluateScript("var db = {runCommand: function() {return \(reply);}}; var EJSON = {stringify: JSON.stringify};")
+        context.evaluateScript(MQLExportHelpers.insertCommand(collection: "people", documents: []))
+        #expect(context.exception != nil)
     }
 
-    @Test("A nested document keeps its text, with separators inside its strings escaped")
-    func nestedDocumentEscapesSeparators() throws {
-        let nested = "{\"k\": \"a\u{2028}b\", \"n\": [1, \"c\u{85}d\u{7F}\"]}"
-        let value = MQLExportHelpers.mqlTextValue(for: nested, columnTypeName: "JSON")
-        #expect(value == "{\"k\": \"a\\u2028b\", \"n\": [1, \"c\\u0085d\\u007f\"]}")
-        let original = try #require(try JSONSerialization.jsonObject(with: Data(nested.utf8)) as? NSDictionary)
-        let written = try #require(try JSONSerialization.jsonObject(with: Data(value.utf8)) as? NSDictionary)
-        #expect(original == written)
-        #expect(MQLExportHelpers.mqlTextValue(for: "{\n  \"k\": 1\n}", columnTypeName: "JSON") == "{\n  \"k\": 1\n}")
-    }
 }

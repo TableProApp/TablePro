@@ -121050,6 +121050,10 @@
         }
       }
     },
+    "No typed documents. Update the database driver, save changes and reload before exporting MQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "No types" : {
       "localizations" : {
         "fr" : {
@@ -195647,6 +195651,14 @@
           }
         }
       }
+    },
+    "This BSON date is outside the shell's supported date range" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This BSON value cannot be represented by the shell's Extended JSON reader" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This build of DuckDB does not accept a read-only access mode" : {
       "extractionState" : "manual",

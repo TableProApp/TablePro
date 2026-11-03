@@ -281,4 +281,25 @@ struct MQLCollectionDefinitionTests {
     func headerOnlyWritesNothing() {
         #expect(MQLCollectionDefinition.script(fromDDL: "// Collection: users", collection: "users").isEmpty)
     }
+    @Test("Index definitions keep number-like and computed prototype keys in stored order")
+    func orderedIndexKeys() {
+        let ddl = #"// Collection: users"# + "\n"
+            + #"db.users.createIndex({"z":1,"10":1,"2":-1,["__proto__"]:1},{"name":"ordered"})"#
+        let script = MQLCollectionDefinition.script(fromDDL: ddl, collection: "users")
+        #expect(script.contains("createIndexes: \"users\""))
+        #expect(script.contains(#"new Map([["z", 1], ["10", 1], ["2", -1], ["__proto__", 1]])"#))
+        #expect(!script.contains(MQLCollectionDefinition.skippedStatementComment))
+    }
+
+    @Test("Index filters retain BSON regex, symbols and extended-year dates")
+    func additionalLiteralConstructors() {
+        let ddl = #"// Collection: users"# + "\n"
+            + #"db.users.createIndex({"k":1},{"name":"k_1","partialFilterExpression":{"r":BSONRegExp("a","i"),"s":BSONSymbol("x"),"d":new Date("+010000-01-01T00:00:00.000Z")}})"#
+        let script = MQLCollectionDefinition.script(fromDDL: ddl, collection: "users")
+        #expect(!script.contains(MQLCollectionDefinition.skippedStatementComment))
+        #expect(script.contains(#"BSONRegExp("a", "i")"#))
+        #expect(script.contains(#"BSONSymbol("x")"#))
+        #expect(script.contains(#"new Date("+010000-01-01T00:00:00.000Z")"#))
+    }
+
 }

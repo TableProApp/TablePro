@@ -883,6 +883,10 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        PluginExportStreamElement.cells(streamExportRows(query: query, context: context))
+    }
+
+    func streamExportRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         guard let conn = mongoConnection else {
             return AsyncThrowingStream { $0.finish(throwing: MongoDBPluginError.notConnected) }
         }
@@ -982,14 +986,14 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
     /// one export never mixes two spellings.
     private func yieldMaterialised(
         _ outcome: MongoScriptStatementResult,
-        into continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+        into continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation
     ) {
         let result = MongoScriptResultBuilder.result(
             for: outcome,
             startTime: Date(),
             documents: { documents, collection, isTruncated in
                 self.buildPluginResult(
-                    from: MongoReadDocuments(dictionaries: documents.dictionaries, texts: []), startTime: Date(),
+                    from: documents, startTime: Date(),
                     isTruncated: isTruncated, collection: collection,
                     recordsKinds: outcome.returnsStoredDocuments(in: self.currentDb),
                     filteredFields: outcome.find?.filteredFields ?? []
@@ -1003,7 +1007,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             )))
         }
         if !result.rows.isEmpty {
-            continuation.yield(.rows(result.rows))
+            continuation.yield(.rows(result.rows, documents: result.exportDocuments))
         }
     }
 
@@ -1057,6 +1061,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             isTruncated: isTruncated
         )
         result.absentCells = BsonDocumentFlattener.absentCells(of: documents, columns: columns)
+        result.exportDocuments = try? MongoExportDocument.read(read, representation: uuidRepresentation)
         return result
     }
 

@@ -102,42 +102,24 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             }
 
             if includeData {
-                var columns: [String] = []
-                var columnTypeNames: [String] = []
                 var documentBatch: [String] = []
 
-                let stream = dataSource.streamRows(for: table)
+                let stream = dataSource.streamExportRows(for: table)
                 for try await element in stream {
                     try progress.checkCancellation()
 
                     switch element {
-                    case .header(let header):
-                        columns = header.columns
-                        columnTypeNames = header.columnTypeNames
-                    case .rows(let rows):
-                        for row in rows {
-                            var fields: [(name: String, value: String)] = []
-                            for (colIndex, column) in columns.enumerated() {
-                                guard colIndex < row.count else { continue }
-                                let cell = row[colIndex]
-                                let typeName = colIndex < columnTypeNames.count ? columnTypeNames[colIndex] : ""
-                                let jsonValue: String
-                                switch cell {
-                                case .null:
-                                    continue
-                                case .bytes(let data):
-                                    jsonValue = MQLExportHelpers.mqlBinaryValue(
-                                        for: data,
-                                        subtype: MongoDBUuidCodec.binarySubtype(fromColumnTypeName: typeName)
-                                    )
-                                case .text(let value):
-                                    jsonValue = MQLExportHelpers.mqlTextValue(
-                                        for: value, columnTypeName: typeName
-                                    )
-                                }
-                                fields.append((name: column, value: jsonValue))
-                            }
-                            documentBatch.append(MQLExportHelpers.documentLiteral(fields))
+                    case .header:
+                        break
+                    case .rows(let rows, let documents):
+                        guard let documents, documents.count == rows.count else {
+                            throw PluginExportError.exportFailed(String(
+                                localized: "No typed documents. Update the database driver, save changes and reload before exporting MQL.",
+                                bundle: .main
+                            ))
+                        }
+                        for document in documents {
+                            documentBatch.append(try MQLExportHelpers.documentLiteral(document))
 
                             if documentBatch.count >= batchSize {
                                 try writeMQLInsertMany(
@@ -150,6 +132,8 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
 
                             progress.incrementRow()
                         }
+                    @unknown default:
+                        throw PluginExportError.encodingFailed
                     }
                 }
 
@@ -196,10 +180,7 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
         documents: [String],
         to fileHandle: FileHandle
     ) throws {
-        let collectionAccessor = MQLExportHelpers.collectionAccessor(for: collection)
-        var statement = "\(collectionAccessor).insertMany([\n"
-        statement += documents.joined(separator: ",\n")
-        statement += "\n]);\n"
+        let statement = MQLExportHelpers.insertCommand(collection: collection, documents: documents)
         try fileHandle.write(contentsOf: statement.toUTF8Data())
     }
 
