@@ -95,6 +95,20 @@ public sealed class StoreTests : IDisposable
     }
 
     [Fact]
+    public void TheWindowPlacementAndThePaneWidthComeBackFromTheFile()
+    {
+        var store = new SessionStore(File("session.json"));
+        var window = new WindowPlacement { X = -1800, Y = 40, Width = 1600, Height = 1000, Maximized = true };
+
+        store.Save(new SessionState { Window = window, ObjectPaneWidth = 344 });
+        var loaded = store.Load();
+
+        Assert.Equal(window, loaded.Window);
+        Assert.Equal(344, loaded.ObjectPaneWidth);
+        Assert.Empty(loaded.Connections);
+    }
+
+    [Fact]
     public void AConnectionThatCannotBeReopenedIsDroppedAndTheFrontFollows()
     {
         var kept = new SessionConnection { FilePath = @"C:\a.db", Name = "a" };

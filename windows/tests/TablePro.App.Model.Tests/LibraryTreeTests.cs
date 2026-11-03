@@ -110,6 +110,109 @@ public sealed class LibraryTreeTests
         Assert.Equal(@"C:\data\app.db", ConnectionSearch.Describe(file, isFileEngine: true));
     }
 
+    [Fact]
+    public void ARowCarriesItsTagsInTheLibraryOrderAndASearchMatchesThem()
+    {
+        var (snapshot, local, _, _) = Library();
+        var billing = new ConnectionTag(Guid.NewGuid(), "billing", "red");
+        var eu = new ConnectionTag(Guid.NewGuid(), "eu", "blue");
+        var tagged = snapshot with
+        {
+            Connections = [.. snapshot.Connections.Select(connection =>
+                connection.Id == local.Id ? connection with { Tags = [eu.Id, billing.Id] } : connection)],
+            Tags = [billing, eu],
+        };
+
+        var roots = LibraryTree.Build(tagged, null, EngineName);
+        var row = Flatten(roots).First(node => node.Id == local.Id);
+        var found = LibraryTree.Build(tagged, "BILLING", EngineName);
+
+        Assert.Equal(["billing", "eu"], row.Tags.Select(tag => tag.Name));
+        Assert.Equal(local.Id, Assert.Single(Flatten(found), node => node.Kind == LibraryNodeKind.Connection).Id);
+    }
+
+    [Fact]
+    public void ADropOnAGroupMovesConnectionsIntoItAndOnARowPlacesThemBeforeIt()
+    {
+        var (snapshot, local, prod, _) = Library();
+        var rows = Flatten(LibraryTree.Build(snapshot, null, EngineName)).ToList();
+        var localRow = rows.First(node => node.Id == local.Id && node.Section == LibraryTree.ConnectionsSection);
+        var prodRow = rows.First(node => node.Id == prod.Id && node.Section == LibraryTree.ConnectionsSection);
+        var staging = rows.First(node => node.Id == Staging);
+        var all = rows.First(node => node.Kind == LibraryNodeKind.AllConnections);
+
+        Assert.Equal(
+            new LibraryDrop.MoveConnections([local.Id!.Value], Staging, null),
+            LibraryDrop.Resolve([localRow], staging, snapshot.Groups),
+            new DropComparer());
+        Assert.Equal(
+            new LibraryDrop.MoveConnections([local.Id.Value], Work, prod.Id),
+            LibraryDrop.Resolve([localRow], prodRow, snapshot.Groups),
+            new DropComparer());
+        Assert.Equal(
+            new LibraryDrop.MoveConnections([prod.Id!.Value], null, null),
+            LibraryDrop.Resolve([prodRow], all, snapshot.Groups),
+            new DropComparer());
+        Assert.Null(LibraryDrop.Resolve([localRow], localRow, snapshot.Groups));
+    }
+
+    [Fact]
+    public void ADropOnFavoritesAddsOrReordersAndRecentTakesNothing()
+    {
+        var (snapshot, local, prod, _) = Library();
+        var rows = Flatten(LibraryTree.Build(snapshot, null, EngineName)).ToList();
+        var favorites = rows.First(node => node.Kind == LibraryNodeKind.Favorites);
+        var favoriteProd = rows.First(node => node.Id == prod.Id && node.Section == LibraryTree.FavoritesSection);
+        var recent = rows.First(node => node.Kind == LibraryNodeKind.Recent);
+        var localRow = rows.First(node => node.Id == local.Id && node.Section == LibraryTree.ConnectionsSection);
+
+        Assert.Equal(
+            new LibraryDrop.AddFavorites([local.Id!.Value], null),
+            LibraryDrop.Resolve([localRow], favorites, snapshot.Groups),
+            new DropComparer());
+        Assert.Equal(
+            new LibraryDrop.AddFavorites([local.Id.Value], prod.Id),
+            LibraryDrop.Resolve([localRow], favoriteProd, snapshot.Groups),
+            new DropComparer());
+        Assert.Null(LibraryDrop.Resolve([localRow], recent, snapshot.Groups));
+    }
+
+    [Fact]
+    public void AGroupGoesIntoAnotherButNotIntoItselfOrOntoAConnection()
+    {
+        var (snapshot, local, _, _) = Library();
+        var rows = Flatten(LibraryTree.Build(snapshot, null, EngineName)).ToList();
+        var work = rows.First(node => node.Id == Work);
+        var staging = rows.First(node => node.Id == Staging);
+        var all = rows.First(node => node.Kind == LibraryNodeKind.AllConnections);
+        var localRow = rows.First(node => node.Id == local.Id && node.Section == LibraryTree.ConnectionsSection);
+
+        Assert.Equal(
+            new LibraryDrop.MoveGroups([Staging], null, []),
+            LibraryDrop.Resolve([staging], all, snapshot.Groups),
+            new DropComparer());
+        Assert.Null(LibraryDrop.Resolve([work], staging, snapshot.Groups));
+        Assert.Null(LibraryDrop.Resolve([work], work, snapshot.Groups));
+        Assert.Null(LibraryDrop.Resolve([staging], localRow, snapshot.Groups));
+    }
+
+    // The records hold lists, which compare by reference.
+    private sealed class DropComparer : IEqualityComparer<LibraryDrop?>
+    {
+        public bool Equals(LibraryDrop? x, LibraryDrop? y) => (x, y) switch
+        {
+            (LibraryDrop.MoveConnections a, LibraryDrop.MoveConnections b) =>
+                a.Ids.SequenceEqual(b.Ids) && a.Group == b.Group && a.Before == b.Before,
+            (LibraryDrop.MoveGroups a, LibraryDrop.MoveGroups b) =>
+                a.Ids.SequenceEqual(b.Ids) && a.Parent == b.Parent && a.Connections.SequenceEqual(b.Connections),
+            (LibraryDrop.AddFavorites a, LibraryDrop.AddFavorites b) => a.Ids.SequenceEqual(b.Ids) && a.Before == b.Before,
+            (null, null) => true,
+            _ => false,
+        };
+
+        public int GetHashCode(LibraryDrop? obj) => 0;
+    }
+
     private static IEnumerable<LibraryNode> Flatten(IEnumerable<LibraryNode> nodes) =>
         nodes.SelectMany(node => Flatten(node.Children).Prepend(node));
 }

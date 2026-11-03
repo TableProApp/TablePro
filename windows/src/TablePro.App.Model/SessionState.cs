@@ -37,12 +37,35 @@ public sealed record SessionConnection
     public bool IsRestorable => ConnectionId is not null || !string.IsNullOrEmpty(FilePath);
 }
 
+// The main window's bounds in physical pixels as it stood restored, and whether it was maximized over them, as
+// GetWindowPlacement reports it. Windows moves a window that would land on a display no longer there.
+public sealed record WindowPlacement
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public int Width { get; set; }
+
+    public int Height { get; set; }
+
+    public bool Maximized { get; set; }
+
+    public bool IsUsable => Width > 0 && Height > 0;
+}
+
 public sealed record SessionState
 {
     public IReadOnlyList<SessionConnection> Connections { get; set; } = [];
 
     // The connection in front when the window closed, which is the only one that connects at launch.
     public int Front { get; set; } = -1;
+
+    // Kept whether or not the connections are reopened.
+    public WindowPlacement? Window { get; set; }
+
+    // In effective pixels; every workspace shares it.
+    public double? ObjectPaneWidth { get; set; }
 
     public static SessionState Empty { get; } = new();
 
@@ -54,8 +77,20 @@ public sealed record SessionState
         {
             Connections = kept,
             Front = front < 0 && kept.Count > 0 ? 0 : front,
+            Window = Window is { IsUsable: true } ? Window : null,
+            ObjectPaneWidth = ObjectPaneWidth is { } width ? ObjectPane.Clamp(width) : null,
         };
     }
+}
+
+public static class ObjectPane
+{
+    public const double DefaultWidth = 280;
+    public const double MinWidth = 180;
+    public const double MaxWidth = 640;
+
+    public static double Clamp(double width) =>
+        double.IsFinite(width) ? Math.Clamp(width, MinWidth, MaxWidth) : DefaultWidth;
 }
 
 // session.json in the app's data folder.
