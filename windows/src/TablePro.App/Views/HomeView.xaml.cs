@@ -26,6 +26,7 @@ public sealed partial class HomeView : UserControl
     private int _rebuild;
     private bool _rebuilding;
     private bool _checking;
+    private bool _windowClosed;
     private List<LibraryNode>? _dragging;
     private LibraryItem? _renaming;
     private string? _reveal;
@@ -64,6 +65,9 @@ public sealed partial class HomeView : UserControl
 
     public void FocusSearch() => LibrarySearch.Focus(FocusState.Keyboard);
 
+    // A pass queued before the window closed ran on its torn-down tree and crashed in UpdateLayout.
+    internal void WindowClosed() => _windowClosed = true;
+
     public async Task ReloadAsync()
     {
         var reload = ++_reload;
@@ -90,6 +94,11 @@ public sealed partial class HomeView : UserControl
 
     private void Rebuild()
     {
+        if (_windowClosed)
+        {
+            return;
+        }
+
         var empty = IsLibraryEmpty;
         GetStarted.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         ConnectionTree.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
@@ -132,7 +141,7 @@ public sealed partial class HomeView : UserControl
         {
             DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
-                if (rebuild != _rebuild)
+                if (rebuild != _rebuild || _windowClosed)
                 {
                     return;
                 }

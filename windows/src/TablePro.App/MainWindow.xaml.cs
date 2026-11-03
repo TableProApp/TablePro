@@ -67,6 +67,7 @@ public sealed partial class MainWindow : Window, IShell
         workbench.SettingsChanged += (_, _) => Themes.Apply(this, workbench.Settings.Theme);
         workbench.LibraryChanged += async (_, _) => await RefreshMarksAsync();
         AppWindow.Closing += OnClosing;
+        Closed += (_, _) => _home.WindowClosed();
         UpdateRail();
         if (workbench.Settings.ReopenSession)
         {
