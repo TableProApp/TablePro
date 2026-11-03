@@ -464,11 +464,12 @@ actor DuckDBConnectionActor {
     private func resolvedResult(
         query: String, parameters: [PluginCellValue], connection: duckdb_connection
     ) throws -> (result: duckdb_result, schema: ColumnSchema, rowsChanged: idx_t) {
-        var result = try Self.runPrepared(query, parameters: parameters, on: connection)
+        let executed = try Self.runPrepared(query, parameters: parameters, on: connection)
+        var result = executed.result
         let schema = Self.schema(of: &result)
         var rowsChanged = duckdb_rows_changed(&result)
         if rowsChanged == 0, duckdb_result_return_type(result) == DUCKDB_RESULT_TYPE_QUERY_RESULT {
-            switch duckdb_result_statement_type(result) {
+            switch executed.statementType {
             case DUCKDB_STATEMENT_TYPE_INSERT, DUCKDB_STATEMENT_TYPE_UPDATE, DUCKDB_STATEMENT_TYPE_DELETE:
                 // RETURNING carries the changed rows themselves instead of a separate count.
                 rowsChanged = duckdb_row_count(&result)
@@ -491,7 +492,7 @@ actor DuckDBConnectionActor {
 
     private static func runPrepared(
         _ sql: String, parameters: [PluginCellValue], on connection: duckdb_connection
-    ) throws -> duckdb_result {
+    ) throws -> (result: duckdb_result, statementType: duckdb_statement_type) {
         var stmtOpt: duckdb_prepared_statement?
         let prepareState = duckdb_prepare(connection, sql, &stmtOpt)
         defer { duckdb_destroy_prepare(&stmtOpt) }
@@ -505,6 +506,8 @@ actor DuckDBConnectionActor {
         }
 
         try bind(parameters, to: stmt)
+        // Result metadata reports EXECUTE, so affected counts need the prepared statement's original kind.
+        let statementType = duckdb_prepared_statement_type(stmt)
 
         var result = duckdb_result()
         guard duckdb_execute_prepared(stmt, &result) != DuckDBError else {
@@ -512,7 +515,7 @@ actor DuckDBConnectionActor {
             duckdb_destroy_result(&result)
             throw DuckDBPluginError.queryFailed(message)
         }
-        return result
+        return (result, statementType)
     }
 
     private static func bind(_ parameters: [PluginCellValue], to stmt: duckdb_prepared_statement) throws {
