@@ -745,10 +745,11 @@ public sealed partial class HomeView : UserControl
     private async void OnDeleteSelected(object sender, RoutedEventArgs e) =>
         await DeleteConnectionsAsync(SelectedConnections()).ConfigureAwait(true);
 
-    // A row drags itself, or every checked connection when it is one of them. The drop goes through the core.
-    private void OnRowDragStarting(UIElement sender, DragStartingEventArgs args)
+    // A row drags itself, or every checked connection when it is one of them; a section stays. The drop goes
+    // through the core.
+    private void OnDragItemsStarting(TreeView sender, TreeViewDragItemsStartingEventArgs args)
     {
-        if (RowItem(sender) is not { CanDrag: true } item || _renaming is not null)
+        if (args.Items.OfType<LibraryItem>().FirstOrDefault() is not { CanDrag: true } item || _renaming is not null)
         {
             args.Cancel = true;
             return;
@@ -764,6 +765,8 @@ public sealed partial class HomeView : UserControl
         args.Data.RequestedOperation = DataPackageOperation.Move;
         args.Data.SetText(string.Join(Environment.NewLine, nodes.Select(node => node.Title)));
     }
+
+    private void OnDragItemsCompleted(TreeView sender, TreeViewDragItemsCompletedEventArgs args) => _dragging = null;
 
     private void OnRowDragOver(object sender, DragEventArgs e)
     {
@@ -816,8 +819,6 @@ public sealed partial class HomeView : UserControl
             await _workbench.Library.MoveToGroupAsync(drop.Connections, drop.Parent).ConfigureAwait(true);
         }
     }
-
-    private void OnRowDropCompleted(UIElement sender, DropCompletedEventArgs args) => _dragging = null;
 
     private static LibraryItem? RowItem(object sender) =>
         sender is FrameworkElement { DataContext: LibraryItem item } ? item : null;

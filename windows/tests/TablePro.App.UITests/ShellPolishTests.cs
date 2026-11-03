@@ -222,24 +222,25 @@ public sealed partial class ShellTests
         Keyboard.Type("BEGIN");
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
 
-        var bar = app.Find("TransactionBar");
+        // A closed InfoBar stays in the tree with its content folded away, so its buttons say whether it shows.
         Assert.True(app.Find("CommitButton").IsEnabled);
         app.Screenshot("20-transaction-open");
 
         app.Front();
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
-        app.Find("TransactionElsewhereBar");
+        var show = app.Find("ShowTransactionTabButton");
         app.Screenshot("21-transaction-elsewhere");
-        app.Find("ShowTransactionTabButton").AsButton().Invoke();
+        show.AsButton().Invoke();
 
         app.Find("RollBackButton").AsButton().Invoke();
         app.Screenshot("22-roll-back-asked");
         app.PressDialogButton();
         var gone = Retry.WhileFalse(
-            () => app.TryFind("TransactionBar") is null or { IsOffscreen: true },
+            () => app.TryFind("RollBackButton") is null or { IsOffscreen: true },
             AppSession.Wait,
             throwOnTimeout: false).Success;
-        Assert.True(gone, bar.Name);
+        Assert.True(gone);
+        Assert.True(app.TryFind("ShowTransactionTabButton") is null or { IsOffscreen: true });
     }
 
     [Theory]

@@ -96,15 +96,18 @@
             </Grid>
         </ScrollViewer>
 
-        <!-- Rows drag as UIElements, so the tree's own reorder stays off and every drop goes through the core. -->
+        <!-- The tree starts each drag; its own reorder stays off, and the rows take the drops, so each goes through the
+             core. -->
         <TreeView
             x:Name="ConnectionTree"
             x:Uid="ConnectionTree"
             Grid.Row="3"
             Margin="0,12,0,0"
             AutomationProperties.AutomationId="ConnectionTree"
-            CanDragItems="False"
+            CanDragItems="True"
             CanReorderItems="False"
+            DragItemsCompleted="OnDragItemsCompleted"
+            DragItemsStarting="OnDragItemsStarting"
             Collapsed="OnLibraryCollapsed"
             Expanding="OnLibraryExpanding"
             ItemsSource="{x:Bind Items}"
@@ -125,13 +128,11 @@
                             Padding="0,4"
                             AllowDrop="{x:Bind AllowDrop}"
                             Background="Transparent"
-                            CanDrag="{x:Bind CanDrag}"
                             ColumnSpacing="12"
+                            DragEnter="OnRowDragOver"
                             DragLeave="OnRowDragLeave"
                             DragOver="OnRowDragOver"
-                            DragStarting="OnRowDragStarting"
-                            Drop="OnRowDrop"
-                            DropCompleted="OnRowDropCompleted">
+                            Drop="OnRowDrop">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />

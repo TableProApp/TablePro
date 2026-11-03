@@ -54,7 +54,6 @@
         <Grid x:Name="WorkspaceGrid" Visibility="Collapsed">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ObjectsColumn" Width="280" MinWidth="180" MaxWidth="640" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
@@ -161,22 +160,7 @@
                     Visibility="Collapsed" />
             </Grid>
 
-            <!-- The Toolkit's splitter resizes the pane's column, as its sizers page lays it out. -->
-            <toolkit:GridSplitter
-                x:Name="ObjectsSplitter"
-                x:Uid="ObjectsSplitter"
-                Grid.Column="1"
-                Width="16"
-                HorizontalAlignment="Left"
-                AutomationProperties.AutomationId="ObjectsSplitter"
-                ResizeBehavior="BasedOnAlignment"
-                ResizeDirection="Auto">
-                <toolkit:GridSplitter.RenderTransform>
-                    <TranslateTransform X="-7" />
-                </toolkit:GridSplitter.RenderTransform>
-            </toolkit:GridSplitter>
-
-            <Grid Grid.Column="2">
+            <Grid Grid.Column="1">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -222,6 +206,22 @@
                     TabWidthMode="Equal"
                     VerticalAlignment="Stretch" />
             </Grid>
+
+            <!-- The Toolkit's splitter, as its sizers page lays it out: on the left edge of the column after the one it
+                 sizes, over the pane's border, so the column it sits in takes what the pane gives up. -->
+            <toolkit:GridSplitter
+                x:Name="ObjectsSplitter"
+                x:Uid="ObjectsSplitter"
+                Grid.Column="1"
+                Width="16"
+                HorizontalAlignment="Left"
+                AutomationProperties.AutomationId="ObjectsSplitter"
+                ResizeBehavior="BasedOnAlignment"
+                ResizeDirection="Auto">
+                <toolkit:GridSplitter.RenderTransform>
+                    <TranslateTransform X="-7" />
+                </toolkit:GridSplitter.RenderTransform>
+            </toolkit:GridSplitter>
         </Grid>
     </Grid>
 </UserControl>
