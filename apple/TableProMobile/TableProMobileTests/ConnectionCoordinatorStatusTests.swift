@@ -140,6 +140,35 @@ struct ConnectionCoordinatorStatusTests {
         #expect(coordinator.displayStatus == .connected)
     }
 
+    @Test("Cancel during a lost session's redial ends it, and a dial that returns late is not adopted")
+    func cancelStopsALostSessionsRedial() async throws {
+        let coordinator = try await lostCoordinator(on: driver(tables: ["orders"]))
+        let late = driver(tables: ["orders"])
+        let dialing = TestGate()
+        late.beforeConnect = { await dialing.enter() }
+        factory.queue(late)
+        let recovery = Task { await coordinator.reconnectIfNeeded() }
+        await dialing.waitUntilEntered()
+        guard case .connecting = ConnectedScreen.resolve(
+            phase: coordinator.phase, isReconnecting: coordinator.isReconnecting, isHeldByEditor: false
+        ) else {
+            Issue.record("Expected the connecting screen while the lost session redials")
+            return
+        }
+
+        coordinator.cancelConnect()
+        await dialing.open()
+        await recovery.value
+
+        #expect(coordinator.session == nil)
+        #expect(coordinator.displayStatus == .notConnected)
+        #expect(!coordinator.isReconnecting)
+        #expect(late.connectSawCancellation)
+
+        await coordinator.reconnectIfNeeded()
+        #expect(coordinator.session == nil)
+    }
+
     @Test("Reconnect on a lost session redials it in place")
     func reconnectRedialsALostSession() async throws {
         let coordinator = try await lostCoordinator(on: driver(tables: ["orders"]))

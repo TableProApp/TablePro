@@ -226,9 +226,11 @@ final class ConnectionCoordinator {
 
     // Never waits on the driver, which ignores `Task.cancel()`. The questions go first: a reconnect or a
     // database switch asks without owning `connectTask`, and a suspended one holds its tunnel open.
+    // A lost session's redial is the session check, not `connectTask`; retiring mints a new attempt token, so a dial
+    // that returns after Cancel is never adopted.
     func cancelConnect() {
         prompts.cancelAll()
-        guard connectTask != nil else { return }
+        guard connectTask != nil || (isLost && isReconnecting) else { return }
         retire()
         phase = .notConnected
     }
