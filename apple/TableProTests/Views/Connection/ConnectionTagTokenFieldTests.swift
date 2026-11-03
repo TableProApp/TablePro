@@ -35,30 +35,52 @@ struct ConnectionTagTokenFieldTests {
     @Test("Typing a name without committing it creates nothing")
     func typingAloneCommitsNothing() throws {
         let recorder = Recorder()
-        let (window, field, _) = makeField(recorder: recorder)
+        let (window, field, coordinator) = makeField(recorder: recorder)
         defer { window.orderOut(nil) }
-        #expect(window.makeFirstResponder(field))
-        let editor = try #require(field.currentEditor() as? NSTextView)
+        // The field holds its delegate weakly.
+        try withExtendedLifetime(coordinator) {
+            #expect(window.makeFirstResponder(field))
+            let editor = try #require(field.currentEditor() as? NSTextView)
 
-        editor.insertText("s", replacementRange: NSRange(location: NSNotFound, length: 0))
-        editor.insertText("t", replacementRange: NSRange(location: NSNotFound, length: 0))
+            editor.insertText("s", replacementRange: NSRange(location: NSNotFound, length: 0))
+            editor.insertText("t", replacementRange: NSRange(location: NSNotFound, length: 0))
 
-        #expect(recorder.reports.isEmpty)
+            #expect(recorder.reports.isEmpty)
+            #expect(coordinator.committed.isEmpty)
+        }
     }
 
     @Test("Return turns the typed name into one committed tag")
     func returnCommitsTheName() throws {
         let recorder = Recorder()
-        let (window, field, _) = makeField(recorder: recorder)
+        let (window, field, coordinator) = makeField(recorder: recorder)
         defer { window.orderOut(nil) }
-        #expect(window.makeFirstResponder(field))
-        let editor = try #require(field.currentEditor() as? NSTextView)
+        try withExtendedLifetime(coordinator) {
+            #expect(window.makeFirstResponder(field))
+            let editor = try #require(field.currentEditor() as? NSTextView)
 
-        editor.insertText("Analytics", replacementRange: NSRange(location: NSNotFound, length: 0))
-        editor.insertNewline(nil)
+            editor.insertText("Analytics", replacementRange: NSRange(location: NSNotFound, length: 0))
+            editor.insertNewline(nil)
 
-        #expect(recorder.reports.last == ["analytics"])
-        #expect(recorder.reports.allSatisfy { $0 == ["analytics"] })
+            #expect(recorder.reports == [["analytics"]])
+        }
+    }
+
+    @Test("Ending editing commits a name still being typed, as a Save click does")
+    func endingEditingCommitsPendingText() throws {
+        let recorder = Recorder()
+        let (window, field, coordinator) = makeField(committed: ["production"], recorder: recorder)
+        defer { window.orderOut(nil) }
+        try withExtendedLifetime(coordinator) {
+            #expect(window.makeFirstResponder(field))
+            let editor = try #require(field.currentEditor() as? NSTextView)
+            editor.moveToEndOfDocument(nil)
+            editor.insertText("billing", replacementRange: NSRange(location: NSNotFound, length: 0))
+
+            #expect(window.makeFirstResponder(nil))
+
+            #expect(recorder.reports.last == ["production", "billing"])
+        }
     }
 
     @Test("Deleting a committed token reports the shorter list")
