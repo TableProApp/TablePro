@@ -10,6 +10,7 @@ import SwiftUI
 internal final class ExportSheetPresenter {
     private var sheetWindow: NSWindow?
     private weak var parentWindow: NSWindow?
+    internal let sheetWork = SheetWorkScope()
 
     internal init() {}
 
@@ -25,7 +26,9 @@ internal final class ExportSheetPresenter {
     @discardableResult
     internal func present(_ mode: ExportMode, on parent: NSWindow) -> Bool {
         guard sheetWindow == nil, parent.attachedSheet == nil else { return false }
-        let hosting = NSHostingController(rootView: ExportDialog(isPresented: presentationBinding, mode: mode))
+        let hosting = NSHostingController(
+            rootView: ExportDialog(isPresented: presentationBinding, mode: mode, sheetWork: sheetWork)
+        )
         let sheet = NSWindow(contentViewController: hosting)
         sheet.isReleasedWhenClosed = false
         sheetWindow = sheet
@@ -34,7 +37,13 @@ internal final class ExportSheetPresenter {
         return true
     }
 
+    // The window closing; the dialog's own close comes through the binding, with nothing running.
     internal func dismiss() {
+        sheetWork.stopAll()
+        endSheet()
+    }
+
+    private func endSheet() {
         guard let sheet = sheetWindow else { return }
         sheetWindow = nil
         let parent = parentWindow
@@ -52,7 +61,7 @@ internal final class ExportSheetPresenter {
             get: { [weak self] in self?.sheetWindow != nil },
             set: { [weak self] isPresented in
                 guard !isPresented else { return }
-                self?.dismiss()
+                self?.endSheet()
             }
         )
     }

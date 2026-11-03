@@ -94,7 +94,6 @@ crates/app/src/services/grid/row_key_builder.rs
 crates/app/src/services/grid/row_snapshot.rs
 crates/app/src/services/grid/selection_summary.rs
 crates/app/src/services/grid/test_columns.rs
-crates/app/src/services/grid/value_order.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_preferences.rs
 crates/app/src/services/history_service.rs

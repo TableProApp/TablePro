@@ -682,6 +682,56 @@ struct WorkspaceRailCellTextTests {
         #expect(failed.renderedTint == .systemRed)
     }
 
+    // The selected row's backing is white, so a symbol drawn in the selection's white vanished into it.
+    @Test("A selected row's lost or failed mark still draws its symbol in its tint", arguments: [
+        (ConnectionDisplayStatus.lost(cause: "closed"), NSAppearance.Name.aqua),
+        (.lost(cause: "closed"), .darkAqua),
+        (.failed(cause: "refused"), .aqua),
+        (.failed(cause: "refused"), .darkAqua),
+    ])
+    func selectedRowMarkKeepsItsSymbol(_ status: ConnectionDisplayStatus, _ appearanceName: NSAppearance.Name) throws {
+        let cell = configuredCell(for: makeEntry(status: status))
+        cell.appearance = NSAppearance(named: appearanceName)
+        let mark = try #require(cell.renderedStatusMark)
+
+        cell.backgroundStyle = .normal
+        let normal = try tintedPixelCount(of: mark)
+        cell.backgroundStyle = .emphasized
+        let selected = try tintedPixelCount(of: mark)
+
+        #expect(normal > 0, "the unselected mark draws its symbol")
+        #expect(selected > 0, "the selected mark draws its symbol, not a plain disc")
+    }
+
+    // Pixels whose channels spread like orange or red do; the white or grey backing never does.
+    private func tintedPixelCount(of view: NSView) throws -> Int {
+        let scale: CGFloat = 2
+        let rep = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: Int(view.bounds.width * scale),
+            pixelsHigh: Int(view.bounds.height * scale),
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 0,
+            bitsPerPixel: 0
+        ))
+        rep.size = view.bounds.size
+        view.layoutSubtreeIfNeeded()
+        view.cacheDisplay(in: view.bounds, to: rep)
+        var count = 0
+        for x in 0 ..< rep.pixelsWide {
+            for y in 0 ..< rep.pixelsHigh {
+                guard let color = rep.colorAt(x: x, y: y), color.alphaComponent > 0.5 else { continue }
+                let channels = [color.redComponent, color.greenComponent, color.blueComponent]
+                if (channels.max() ?? 0) - (channels.min() ?? 0) > 0.35 { count += 1 }
+            }
+        }
+        return count
+    }
+
     @Test("Connected and not connected carry no mark", arguments: [
         ConnectionDisplayStatus.connected,
         .notConnected,

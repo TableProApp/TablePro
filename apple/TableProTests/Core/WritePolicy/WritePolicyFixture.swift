@@ -121,6 +121,9 @@ final class WritePolicyDriver: PluginDriverStub, @unchecked Sendable {
         record(query)
     }
 
+    // Idle, so the disconnect cells reach the session: an MCP disconnect refuses a session that cannot say.
+    func sessionTransactionState() async -> PluginSessionTransactionState { .idle }
+
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         lock.withLock { bound.append(parameters) }
         return record(query)

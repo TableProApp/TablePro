@@ -350,6 +350,7 @@ struct RowDetailView: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .italic()
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else if viewModel.isJSON(at: index) {
                 if let value, !value.isEmpty {
                     JSONFieldPreview(text: value)
