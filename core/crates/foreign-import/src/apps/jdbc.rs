@@ -91,15 +91,9 @@ pub(crate) enum UrlTls {
 
 pub(crate) fn url_tls(url: &str) -> UrlTls {
     let parameters = url_parameters(url);
-    let other_switch = parameters.iter().any(|(key, _)| {
-        key != "sslmode"
-            && (key.starts_with("ssl")
-                || key.starts_with("tls")
-                || matches!(
-                    key.as_str(),
-                    "usessl" | "requiressl" | "encrypt" | "trustservercertificate" | "verifyservercertificate"
-                ))
-    });
+    let other_switch = parameters
+        .iter()
+        .any(|(key, _)| key != "sslmode" && is_tls_parameter(key));
     if other_switch {
         return UrlTls::Unread;
     }
@@ -108,6 +102,40 @@ pub(crate) fn url_tls(url: &str) -> UrlTls {
         None if is_mongo_seed_list(url) || secure_scheme(url) => UrlTls::Mode("verify-full"),
         None => UrlTls::None,
     }
+}
+
+// A driver parameter or property, by its lowercased name, that sets TLS in one driver or another.
+pub(crate) fn is_tls_parameter(key: &str) -> bool {
+    key.starts_with("ssl")
+        || key.starts_with("tls")
+        || matches!(
+            key,
+            "usessl" | "requiressl" | "encrypt" | "trustservercertificate" | "verifyservercertificate"
+        )
+}
+
+// The TLS a driver uses by itself when neither the app, the URL nor a saved driver property sets
+// any. A property that sets TLS is not read, so it marks TLS unread rather than taking the default.
+pub(crate) fn driver_default_ssl(
+    url: &str,
+    property_sets_tls: bool,
+    mode: ForeignSslMode,
+    fields: &mut std::collections::BTreeMap<String, String>,
+) -> Option<ForeignSsl> {
+    if url_tls(url) != UrlTls::None {
+        return None;
+    }
+    if property_sets_tls {
+        fields.insert(crate::TLS_SETTINGS_UNREAD.to_owned(), "true".to_owned());
+        return None;
+    }
+    fields.insert(crate::record::TLS_FROM_DRIVER_DEFAULT.to_owned(), "true".to_owned());
+    Some(ForeignSsl {
+        mode,
+        ca_certificate_path: None,
+        client_certificate_path: None,
+        client_key_path: None,
+    })
 }
 
 // `jdbc:clickhouse:https://` and the like: a scheme that is TLS by itself, verified by default.
@@ -565,6 +593,32 @@ mod tests {
             assert_eq!(url_tls(unread), UrlTls::Unread, "{unread}");
         }
         assert_eq!(url_ssl("jdbc:postgresql://db/app?sslmode=disable"), None);
+    }
+
+    #[test]
+    fn a_driver_default_applies_only_when_neither_url_nor_property_sets_tls() {
+        let default = |url: &str, property_sets_tls: bool| {
+            let mut fields = std::collections::BTreeMap::new();
+            let ssl = driver_default_ssl(url, property_sets_tls, ForeignSslMode::Preferred, &mut fields);
+            (ssl.map(|ssl| ssl.mode), fields.into_keys().collect::<Vec<_>>())
+        };
+        assert_eq!(
+            default("jdbc:postgresql://db/app", false),
+            (
+                Some(ForeignSslMode::Preferred),
+                vec![crate::record::TLS_FROM_DRIVER_DEFAULT.to_owned()]
+            )
+        );
+        assert_eq!(
+            default("jdbc:postgresql://db/app", true),
+            (None, vec![crate::TLS_SETTINGS_UNREAD.to_owned()])
+        );
+        assert_eq!(
+            default("jdbc:postgresql://db/app?sslmode=disable", false),
+            (None, vec![])
+        );
+        assert_eq!(default("jdbc:postgresql://db/app?ssl=true", true), (None, vec![]));
+        assert!(is_tls_parameter("usessl") && is_tls_parameter("sslrootcert") && !is_tls_parameter("user"));
     }
 
     #[test]

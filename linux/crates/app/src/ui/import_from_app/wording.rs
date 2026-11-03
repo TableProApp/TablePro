@@ -187,6 +187,10 @@ pub(super) fn note_text(note: &RowNote) -> String {
             &[("from", &ssl_mode_name(*from)), ("to", &tls_mode_name(*to))],
         ),
         RowNote::TlsSettingsNotRead => gettext("Its TLS settings could not be read, so it would connect without TLS"),
+        RowNote::TlsFromDriverDefault { mode } => gettext_f(
+            "SSL {mode} is on because the other app encrypts this connection by default",
+            &[("mode", &ssl_mode_name(*mode))],
+        ),
         RowNote::TlsNotKept { from } => gettext_f(
             "SSL {mode} is not kept: this engine connects without TLS",
             &[("mode", &ssl_mode_name(*from))],

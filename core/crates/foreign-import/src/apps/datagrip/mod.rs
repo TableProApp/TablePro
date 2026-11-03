@@ -308,7 +308,10 @@ fn make_connection(source: &DataSource, ssh_configs: &HashMap<String, SshConfig>
     // The macOS port read TLS from the XML alone, so a URL that asks for it imported in the clear.
     let ssl = match source.ssl.as_ref() {
         Some(ssl) => Some(make_ssl(ssl)),
-        None => jdbc::url_ssl_or_mark(&source.jdbc_url, &mut additional_fields),
+        None => jdbc::url_ssl_or_mark(&source.jdbc_url, &mut additional_fields).or_else(|| {
+            let mode = driver_default_mode(&engine, &subprotocol)?;
+            jdbc::driver_default_ssl(&source.jdbc_url, source.tls_property, mode, &mut additional_fields)
+        }),
     };
     ForeignConnection {
         name: source.name.clone(),
@@ -382,6 +385,17 @@ fn make_ssl(ssl: &SslProperties) -> ForeignSsl {
         ca_certificate_path: ssl.ca_cert_path.clone(),
         client_certificate_path: ssl.client_cert_path.clone(),
         client_key_path: ssl.client_key_path.clone(),
+    }
+}
+
+// With "Use SSL" off DataGrip passes no TLS property, so the driver's own default applies: pgjdbc
+// prefers TLS, Connector/J too, and mssql-jdbc 10.1 and later encrypts and checks the certificate.
+// MariaDB Connector/J and jTDS start without TLS.
+fn driver_default_mode(engine: &str, subprotocol: &str) -> Option<ForeignSslMode> {
+    match (engine, subprotocol.to_lowercase().as_str()) {
+        ("PostgreSQL", "postgresql") | ("MySQL", "mysql") => Some(ForeignSslMode::Preferred),
+        ("SQL Server", "sqlserver") => Some(ForeignSslMode::VerifyIdentity),
+        _ => None,
     }
 }
 
@@ -459,6 +473,7 @@ mod tests {
             group_name: None,
             ssh: None,
             ssl: None,
+            tls_property: false,
         }
     }
 
@@ -473,8 +488,17 @@ mod tests {
             &source("postgresql", "jdbc:postgresql://db.example.com/app"),
             &HashMap::new(),
         );
-        assert_eq!(plain.ssl, None);
-        assert!(plain.additional_fields.is_empty());
+        assert_eq!(plain.ssl.map(|ssl| ssl.mode), Some(ForeignSslMode::Preferred));
+        assert_eq!(
+            plain.additional_fields.keys().collect::<Vec<_>>(),
+            [crate::record::TLS_FROM_DRIVER_DEFAULT]
+        );
+        let disabled = make_connection(
+            &source("postgresql", "jdbc:postgresql://db.example.com/app?sslmode=disable"),
+            &HashMap::new(),
+        );
+        assert_eq!(disabled.ssl, None);
+        assert!(disabled.additional_fields.is_empty());
         let unread = make_connection(
             &source("postgresql", "jdbc:postgresql://db.example.com/app?ssl=true"),
             &HashMap::new(),

@@ -1,0 +1,113 @@
+{
+	"folders": {},
+	"connections": {
+		"postgres-jdbc-1a2b3c": {
+			"provider": "postgresql",
+			"driver": "postgres-jdbc",
+			"name": "PG no handler",
+			"save-password": true,
+			"configuration": {
+				"host": "pg.example.com",
+				"port": "5432",
+				"database": "app",
+				"url": "jdbc:postgresql://pg.example.com:5432/app",
+				"configurationType": "MANUAL",
+				"type": "dev",
+				"auth-model": "native"
+			}
+		},
+		"postgres-jdbc-4d5e6f": {
+			"provider": "postgresql",
+			"driver": "postgres-jdbc",
+			"name": "PG handler off",
+			"configuration": {
+				"host": "pg.example.com",
+				"port": "5432",
+				"database": "app",
+				"url": "jdbc:postgresql://pg.example.com:5432/app",
+				"configurationType": "MANUAL",
+				"type": "dev",
+				"auth-model": "native",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": false,
+						"save-password": false,
+						"properties": {
+							"sslMode": "verify-full"
+						}
+					}
+				}
+			}
+		},
+		"postgres-jdbc-7a8b9c": {
+			"provider": "postgresql",
+			"driver": "postgres-jdbc",
+			"name": "PG driver property",
+			"configuration": {
+				"host": "pg.example.com",
+				"port": "5432",
+				"database": "app",
+				"url": "jdbc:postgresql://pg.example.com:5432/app",
+				"configurationType": "MANUAL",
+				"type": "dev",
+				"auth-model": "native",
+				"properties": {
+					"sslmode": "disable"
+				}
+			}
+		},
+		"postgres-jdbc-0d1e2f": {
+			"provider": "postgresql",
+			"driver": "postgres-jdbc",
+			"name": "PG URL off",
+			"configuration": {
+				"url": "jdbc:postgresql://pg.example.com:5432/app?sslmode=disable",
+				"configurationType": "URL",
+				"type": "dev",
+				"auth-model": "native"
+			}
+		},
+		"postgres-redshift-jdbc-3a4b5c": {
+			"provider": "postgresql",
+			"driver": "postgres-redshift-jdbc",
+			"name": "Redshift driver",
+			"configuration": {
+				"host": "cluster.example.com",
+				"port": "5439",
+				"database": "dev",
+				"url": "jdbc:redshift://cluster.example.com:5439/dev",
+				"configurationType": "MANUAL",
+				"type": "dev",
+				"auth-model": "native"
+			}
+		},
+		"mysql8-6d7e8f": {
+			"provider": "mysql",
+			"driver": "mysql8",
+			"name": "MySQL no handler",
+			"configuration": {
+				"host": "my.example.com",
+				"port": "3306",
+				"url": "jdbc:mysql://my.example.com:3306/",
+				"configurationType": "MANUAL",
+				"type": "dev",
+				"auth-model": "native"
+			}
+		},
+		"microsoft-9a0b1c": {
+			"provider": "sqlserver",
+			"driver": "microsoft",
+			"name": "SQL Server no handler",
+			"configuration": {
+				"host": "ms.example.com",
+				"port": "1433",
+				"database": "master",
+				"url": "jdbc:sqlserver://ms.example.com:1433;databaseName=master",
+				"configurationType": "MANUAL",
+				"type": "dev",
+				"auth-model": "native"
+			}
+		}
+	}
+}

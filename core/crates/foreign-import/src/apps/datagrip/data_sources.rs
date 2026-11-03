@@ -6,6 +6,7 @@ use std::path::Path;
 
 use roxmltree::Node;
 
+use crate::apps::jdbc;
 use crate::apps::jetbrains::{expand, xml};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,6 +19,8 @@ pub(crate) struct DataSource {
     pub group_name: Option<String>,
     pub ssh: Option<SshReference>,
     pub ssl: Option<SslProperties>,
+    // An Advanced-tab driver property sets TLS, which the driver reads its own way.
+    pub tls_property: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -30,6 +33,8 @@ pub(crate) struct Fragment {
     pub group_name: Option<String>,
     pub ssh: Section<SshReference>,
     pub ssl: Section<SslProperties>,
+    // None when the fragment has no `driver-properties`.
+    pub tls_property: Option<bool>,
 }
 
 // The local file can turn off a section the shared file turns on; a file without the section leaves it.
@@ -88,6 +93,7 @@ impl Fragment {
         take(&mut self.jdbc_url, other.jdbc_url);
         take(&mut self.username, other.username);
         take(&mut self.group_name, other.group_name);
+        take(&mut self.tls_property, other.tls_property);
         if other.ssh != Section::Absent {
             self.ssh = other.ssh;
         }
@@ -108,6 +114,7 @@ impl Fragment {
             group_name: self.group_name.clone(),
             ssh: self.ssh.enabled(),
             ssl: self.ssl.enabled(),
+            tls_property: self.tls_property.unwrap_or(false),
         })
     }
 }
@@ -154,6 +161,13 @@ fn parse_fragment(element: Node<'_, '_>, uuid: &str, home: &Path) -> Fragment {
         group_name: non_empty(element.attribute("group-name").map(str::to_owned)),
         ssh: parse_ssh_reference(element),
         ssl: parse_ssl_properties(element, home),
+        tls_property: xml::child(element, "driver-properties").map(|properties| {
+            properties
+                .children()
+                .filter(|property| property.is_element() && property.has_tag_name("property"))
+                .filter_map(|property| property.attribute("name"))
+                .any(|name| jdbc::is_tls_parameter(&name.trim().to_lowercase()))
+        }),
     }
 }
 

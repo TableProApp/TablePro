@@ -6,6 +6,10 @@ use secrecy::SecretString;
 // says so and leaves the connection unchecked instead of importing it with TLS off.
 pub const TLS_SETTINGS_UNREAD: &str = "tlsSettingsUnread";
 
+// Set in `additional_fields` when the app's own SSL setting reads off but it or its driver encrypts
+// anyway, so the review says where the imported TLS came from.
+pub const TLS_FROM_DRIVER_DEFAULT: &str = "tlsFromDriverDefault";
+
 // The fields follow the macOS app's exported connection, so every platform maps the same record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ForeignConnection {

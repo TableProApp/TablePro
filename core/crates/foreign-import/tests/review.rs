@@ -1922,3 +1922,54 @@ fn tls_settings_the_importer_could_not_read_are_noted_and_leave_the_row_unchecke
     assert!(!row.selected_by_default);
     assert!(row.connection.is_some(), "the row can still be checked by hand");
 }
+
+#[test]
+fn tls_the_other_app_used_with_its_ssl_setting_off_is_noted_and_keeps_the_row_checked() {
+    let defaulted = |mode| ForeignConnection {
+        ssl: Some(ForeignSsl {
+            mode,
+            ca_certificate_path: None,
+            client_certificate_path: None,
+            client_key_path: None,
+        }),
+        additional_fields: [("tlsFromDriverDefault".to_owned(), "true".to_owned())].into(),
+        ..settings()
+    };
+
+    let preferred = only_row(defaulted(ForeignSslMode::Preferred));
+    assert_eq!(
+        preferred.notes,
+        [
+            RowNote::TlsFromDriverDefault {
+                mode: ForeignSslMode::Preferred
+            },
+            RowNote::TlsModeChanged {
+                from: ForeignSslMode::Preferred,
+                to: TlsMode::Require
+            },
+        ]
+    );
+    assert!(preferred.selected_by_default);
+    assert_eq!(
+        preferred.connection.expect("a supported engine").tls.mode,
+        TlsMode::Require
+    );
+
+    let verified = only_row(defaulted(ForeignSslMode::VerifyIdentity));
+    assert_eq!(
+        verified.notes,
+        [RowNote::TlsFromDriverDefault {
+            mode: ForeignSslMode::VerifyIdentity
+        }]
+    );
+    assert_eq!(
+        verified.connection.expect("a supported engine").tls.mode,
+        TlsMode::VerifyFull
+    );
+
+    let without_tls = only_row(ForeignConnection {
+        ssl: None,
+        ..defaulted(ForeignSslMode::Required)
+    });
+    assert!(without_tls.notes.is_empty(), "{:?}", without_tls.notes);
+}

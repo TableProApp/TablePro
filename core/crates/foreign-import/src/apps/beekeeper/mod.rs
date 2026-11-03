@@ -119,7 +119,12 @@ fn record(
         .port
         .and_then(|port| u16::try_from(port).ok())
         .unwrap_or_else(|| engine::default_port(&engine));
-    let ssl = row.ssl.then(|| ssl(row, &engine));
+    let mut additional_fields = BTreeMap::new();
+    let ssl = if row.ssl {
+        Some(ssl(row, &engine))
+    } else {
+        ssl_with_ssl_off(row, &engine, &mut additional_fields)
+    };
     let settings = ForeignConnection {
         name: if row.name.is_empty() {
             "Untitled".to_owned()
@@ -138,7 +143,7 @@ fn record(
         ssh: row.ssh_enabled.then(|| ssh(row)),
         ssl,
         color: map_color(row.label_color.as_deref()),
-        additional_fields: BTreeMap::new(),
+        additional_fields,
     };
     ForeignConnectionRecord {
         source_id: Some(row.id.to_string()),
@@ -219,7 +224,7 @@ fn ssl(row: &SavedConnectionRow, engine: &str) -> ForeignSsl {
     }
 }
 
-// What each Beekeeper connector hands its driver (`lib/db/clients/*/*Connector.ts`). The saved
+// What each Beekeeper client hands its driver (`apps/studio/src/lib/db/clients/*.ts`). The saved
 // `trustServerCertificate` is SQL Server's alone, and TLS on replaces it there.
 fn ssl_mode(row: &SavedConnectionRow, engine: &str) -> ForeignSslMode {
     let file = |path: &Option<String>| path.as_deref().is_some_and(|path| !path.is_empty());
@@ -241,6 +246,30 @@ fn ssl_mode(row: &SavedConnectionRow, engine: &str) -> ForeignSslMode {
     } else {
         ForeignSslMode::Required
     }
+}
+
+// With SSL off the SQL Server client hands mssql only `trustServerCertificate`, and mssql fills in
+// `encrypt: true`, so tedious encrypts and checks the certificate unless told to trust it. The other
+// clients give their driver no TLS at all.
+fn ssl_with_ssl_off(
+    row: &SavedConnectionRow,
+    engine: &str,
+    fields: &mut BTreeMap<String, String>,
+) -> Option<ForeignSsl> {
+    if engine != "SQL Server" {
+        return None;
+    }
+    fields.insert(crate::record::TLS_FROM_DRIVER_DEFAULT.to_owned(), "true".to_owned());
+    Some(ForeignSsl {
+        mode: if row.trust_server_certificate {
+            ForeignSslMode::Required
+        } else {
+            ForeignSslMode::VerifyIdentity
+        },
+        ca_certificate_path: None,
+        client_certificate_path: None,
+        client_key_path: None,
+    })
 }
 
 fn map_color(raw: Option<&str>) -> Option<ForeignColor> {
@@ -287,6 +316,7 @@ struct SavedConnectionRow {
     ssl_cert_file: Option<String>,
     ssl_key_file: Option<String>,
     ssl_reject_unauthorized: bool,
+    trust_server_certificate: bool,
     ssh_enabled: bool,
     ssh_host: Option<String>,
     ssh_port: Option<i64>,
@@ -310,7 +340,7 @@ const SAVED_CONNECTIONS_SQL: &str = "
            ssl, sslCaFile, sslCertFile, sslKeyFile, sslRejectUnauthorized,
            sshEnabled, sshHost, sshPort, sshUsername, sshMode, sshKeyfile, sshKeyfilePassword, sshPassword,
            sshBastionHost, sshBastionHostPort, sshBastionUsername, sshBastionMode, sshBastionKeyfile,
-           labelColor, connectionFolderId
+           labelColor, connectionFolderId, trustServerCertificate
     FROM saved_connection
     WHERE workspaceId = -1
     ORDER BY id";
@@ -357,6 +387,7 @@ fn saved_connection(row: &Row<'_>) -> SavedConnectionRow {
         ssh_bastion_keyfile: row.text(25),
         label_color: row.text(26),
         connection_folder_id: row.optional_int64(27),
+        trust_server_certificate: flag(28),
     }
 }
 

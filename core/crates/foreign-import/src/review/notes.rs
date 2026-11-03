@@ -16,6 +16,8 @@ pub enum RowNote {
     TlsModeChanged { from: ForeignSslMode, to: TlsMode },
     // The app saved TLS settings the importer cannot read, so the row starts unchecked.
     TlsSettingsNotRead,
+    // The app's SSL setting reads off, but it or its driver encrypted the connection anyway.
+    TlsFromDriverDefault { mode: ForeignSslMode },
     // The engine has no TLS, so the connection opens in the clear.
     TlsNotKept { from: ForeignSslMode },
     CaFileNotKept { path: String, reason: TlsFileReason },

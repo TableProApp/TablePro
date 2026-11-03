@@ -265,7 +265,16 @@ fn settings(
                 additional_fields.insert(crate::TLS_SETTINGS_UNREAD.to_owned(), "true".to_owned());
             }
             // A URL-only connection keeps the TLS its URL asks for, which the macOS port dropped.
-            text("url").and_then(|url| jdbc::url_ssl_or_mark(url, &mut additional_fields))
+            let from_url = text("url").and_then(|url| jdbc::url_ssl_or_mark(url, &mut additional_fields));
+            match driver_default_mode(connection) {
+                Some(mode) if from_url.is_none() && matches!(tls, HandlerTls::Absent) => jdbc::driver_default_ssl(
+                    text("url").unwrap_or_default(),
+                    property_sets_tls(config),
+                    mode,
+                    &mut additional_fields,
+                ),
+                _ => from_url,
+            }
         }
     };
     ForeignConnection {
@@ -282,6 +291,38 @@ fn settings(
         additional_fields,
         engine,
     }
+}
+
+// The PostgreSQL drivers DBeaver ships as pgjdbc (`org.postgresql.Driver` in its plugin.xml).
+const PGJDBC_DRIVERS: &[&str] = &[
+    "postgres-jdbc",
+    "postgresql",
+    "postgres-greenplum-jdbc",
+    "postgres-timescale-jdbc",
+    "postgres-yugabytedb-jdbc",
+    "postgres-cockroach-jdbc",
+    "postgres-materialize-jdbc",
+    "postgres-gcloud-jdbc",
+    "postgres-cratedb-jdbc",
+    "postgres-risingwave-jdbc",
+];
+
+// With its TLS handler off DBeaver hands pgjdbc `ssl=false` and no `sslmode`, which pgjdbc reads
+// as `prefer`. Its MySQL and SQL Server connections turn TLS off outright.
+fn driver_default_mode(connection: &Value) -> Option<ForeignSslMode> {
+    let provider = connection.get("provider").and_then(Value::as_str)?;
+    let driver = connection.get("driver").and_then(Value::as_str)?;
+    (provider.eq_ignore_ascii_case("postgresql") && PGJDBC_DRIVERS.contains(&driver))
+        .then_some(ForeignSslMode::Preferred)
+}
+
+// The driver properties the user set, which DBeaver passes on as they are.
+fn property_sets_tls(config: &Value) -> bool {
+    config
+        .get("properties")
+        .cloned()
+        .and_then(object)
+        .is_some_and(|properties| properties.keys().any(|key| jdbc::is_tls_parameter(&key.to_lowercase())))
 }
 
 fn map_provider(provider: &str) -> String {

@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import TableProImport
+import TableProPluginKit
 
 struct SequelAceImporter: ForeignAppImporter {
     let id = "sequelace"
@@ -13,6 +14,9 @@ struct SequelAceImporter: ForeignAppImporter {
     let symbolName = "cylinder.split.1x2"
     let appBundleIdentifier = "com.sequel-ace.sequel-ace"
     let readsPasswordsFromKeychain = true
+
+    private static let socketType = 1
+    private static let awsIAMType = 3
 
     var resolveAppURL: @Sendable (_ bundleIdentifier: String) -> URL? = {
         NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)
@@ -92,16 +96,11 @@ struct SequelAceImporter: ForeignAppImporter {
         return dict
     }
 
+    // The rule parseChildren reads by, so the count says what an import brings.
     private func countConnections(in children: [[String: Any]]) -> Int {
-        var count = 0
-        for child in children {
-            if child["host"] != nil || (child["id"] is NSNumber && child["Children"] == nil) {
-                count += 1
-            } else if let subChildren = child["Children"] as? [[String: Any]] {
-                count += countConnections(in: subChildren)
-            }
+        children.reduce(0) { total, child in
+            total + ((child["Children"] as? [[String: Any]]).map { countConnections(in: $0) } ?? 1)
         }
-        return count
     }
 
     private func parseChildren(
@@ -127,16 +126,19 @@ struct SequelAceImporter: ForeignAppImporter {
             if includePasswords, !credentialsAborted {
                 credentials = readCredentials(from: child, abortFlag: &credentialsAborted)
             }
+            var notes: [String] = []
+            let settings = parseConnection(child, notes: &notes)
             records.append(ForeignConnectionRecord(
                 sourceId: (child["id"] as? NSNumber)?.stringValue ?? child["id"] as? String,
-                settings: parseConnection(child),
+                settings: settings,
                 groupPath: groupPath,
-                credentials: credentials
+                credentials: credentials,
+                notes: notes
             ))
         }
     }
 
-    private func parseConnection(_ entry: [String: Any]) -> ExportableConnection {
+    private func parseConnection(_ entry: [String: Any], notes: inout [String]) -> ExportableConnection {
         let name = entry["name"] as? String ?? "Untitled"
         let host = entry["host"] as? String ?? "localhost"
         let port: Int
@@ -152,7 +154,7 @@ struct SequelAceImporter: ForeignAppImporter {
 
         let connectionType = entry["type"] as? Int ?? 0
         let sshConfig = parseSSHConfig(entry, connectionType: connectionType)
-        let sslConfig = parseSSLConfig(entry)
+        let sslConfig = parseSSLConfig(entry, connectionType: connectionType, notes: &notes)
 
         return ExportableConnection(
             name: name,
@@ -199,22 +201,27 @@ struct SequelAceImporter: ForeignAppImporter {
         )
     }
 
-    private func parseSSLConfig(_ entry: [String: Any]) -> ExportableSSLConfig? {
-        let useSSL: Bool
-        if let intVal = entry["useSSL"] as? Int {
-            useSSL = intVal != 0
-        } else if let boolVal = entry["useSSL"] as? Bool {
-            useSSL = boolVal
-        } else {
-            useSSL = false
+    // With SSL off Sequel Ace still asks libmysqlclient to prefer TLS, and requires it for the cleartext
+    // plugin and for AWS IAM, which also turns SSL on; over a socket the client leaves TLS off.
+    private func parseSSLConfig(_ entry: [String: Any], connectionType: Int, notes: inout [String]) -> ExportableSSLConfig? {
+        func flag(_ key: String) -> Bool {
+            if let number = entry[key] as? Int {
+                return number != 0
+            }
+            return entry[key] as? Bool ?? false
         }
-        guard useSSL else { return nil }
-
+        let useSSL = flag("useSSL")
+        guard useSSL || connectionType != Self.socketType else { return nil }
+        let required = useSSL || connectionType == Self.awsIAMType
+        let mode: SSLMode = required || flag("enableClearTextPlugin") ? .required : .preferred
+        if !useSSL {
+            notes.append(ForeignImportNote.tlsFromDriverDefault(mode, appName: displayName))
+        }
         return ExportableSSLConfig(
-            mode: "Required",
-            caCertificatePath: entry["sslCACertFileLocation"] as? String,
-            clientCertificatePath: entry["sslCertificateFileLocation"] as? String,
-            clientKeyPath: entry["sslKeyFileLocation"] as? String
+            mode: mode.rawValue,
+            caCertificatePath: required ? entry["sslCACertFileLocation"] as? String : nil,
+            clientCertificatePath: required ? entry["sslCertificateFileLocation"] as? String : nil,
+            clientKeyPath: required ? entry["sslKeyFileLocation"] as? String : nil
         )
     }
 

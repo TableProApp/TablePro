@@ -530,6 +530,42 @@ fn a_tls_handler_whose_mode_is_not_read_marks_the_connection_instead_of_turning_
 }
 
 #[test]
+fn postgres_with_its_tls_handler_off_imports_the_tls_pgjdbc_prefers() {
+    let import = collect(
+        &importer(ForeignPlatform::Linux, &fixture("linux-tls-defaults")),
+        CONNECTIONS_ONLY,
+    );
+    let cases = [
+        (
+            "PG no handler",
+            Some(ForeignSslMode::Preferred),
+            Some("tlsFromDriverDefault"),
+        ),
+        (
+            "PG handler off",
+            Some(ForeignSslMode::Preferred),
+            Some("tlsFromDriverDefault"),
+        ),
+        ("PG driver property", None, Some(TLS_SETTINGS_UNREAD)),
+        ("PG URL off", None, None),
+        ("Redshift driver", None, None),
+        ("MySQL no handler", None, None),
+        ("SQL Server no handler", None, None),
+    ];
+    for (name, mode, marker) in cases {
+        let settings = &connection(&import, name).settings;
+        assert_eq!(settings.ssl.as_ref().map(|ssl| ssl.mode), mode, "{name}");
+        let markers: Vec<&str> = settings
+            .additional_fields
+            .keys()
+            .map(String::as_str)
+            .filter(|key| [TLS_SETTINGS_UNREAD, "tlsFromDriverDefault"].contains(key))
+            .collect();
+        assert_eq!(markers, marker.into_iter().collect::<Vec<_>>(), "{name}");
+    }
+}
+
+#[test]
 fn a_tls_handler_set_to_disable_turns_tls_off() {
     let import = collect(&macos(), CONNECTIONS_ONLY);
     let settings = &connection(&import, "SSL Off").settings;

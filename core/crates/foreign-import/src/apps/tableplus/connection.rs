@@ -217,6 +217,11 @@ impl Mapping<'_> {
         if entry.tls_unread || (entry.tls_mode.is_some() && ssl.is_none()) {
             additional_fields.insert(crate::TLS_SETTINGS_UNREAD.to_owned(), "true".to_owned());
         }
+        // The macOS SQL Server form has no TLS picker, and the app's FreeTDS asks for TLS whenever the
+        // server offers it.
+        if self.dialect == Dialect::MacOs && driver == "MicrosoftSQLServer" && ssl.is_some() {
+            additional_fields.insert(crate::record::TLS_FROM_DRIVER_DEFAULT.to_owned(), "true".to_owned());
+        }
 
         Some(ForeignConnection {
             name,

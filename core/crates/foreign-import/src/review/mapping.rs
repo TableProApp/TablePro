@@ -67,6 +67,13 @@ pub(super) fn map(
 ) -> Mapped {
     let caps = driver.capabilities();
     let mut notes = Vec::new();
+    if settings
+        .additional_fields
+        .contains_key(crate::record::TLS_FROM_DRIVER_DEFAULT)
+        && let Some(ssl) = &settings.ssl
+    {
+        notes.push(RowNote::TlsFromDriverDefault { mode: ssl.mode });
+    }
     let file_based = caps.is_file_based();
     let (host, port, database, username, tls, auth_mode, ssh) = if file_based {
         if settings.ssh.is_some() {
@@ -112,6 +119,7 @@ pub(super) fn map(
         (seed_list, MONGO_USE_SRV),
         (auth_database.is_some(), MONGO_AUTH_SOURCE),
         (true, crate::TLS_SETTINGS_UNREAD),
+        (true, crate::record::TLS_FROM_DRIVER_DEFAULT),
     ]
     .into_iter()
     .filter_map(|(kept, key)| kept.then_some(key))

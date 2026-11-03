@@ -368,9 +368,45 @@ fn a_boolean_use_ssl_turns_ssl_on() {
 }
 
 #[test]
-fn there_is_no_ssl_when_use_ssl_is_zero() {
+fn use_ssl_zero_still_prefers_tls_over_tcp_and_has_none_over_a_socket() {
     let import = collect("full", &request(false, false));
-    assert!(connection(&import, "Local").settings.ssl.is_none());
+    let local = &connection(&import, "Local").settings;
+    assert_eq!(local.ssl.as_ref().map(|ssl| ssl.mode), Some(ForeignSslMode::Preferred));
+    assert!(connection(&import, "Socket DB").settings.ssl.is_none());
+}
+
+#[test]
+fn with_ssl_off_the_tls_libmysqlclient_negotiates_is_imported_and_marked() {
+    let import = collect("tls-off", &request(false, false));
+    let cases = [
+        ("TCP off", Some(ForeignSslMode::Preferred), true),
+        ("SSH off", Some(ForeignSslMode::Preferred), true),
+        ("Socket off", None, false),
+        ("Cleartext off", Some(ForeignSslMode::Required), true),
+        ("IAM", Some(ForeignSslMode::Required), true),
+        ("TCP on", Some(ForeignSslMode::Required), false),
+    ];
+    for (name, mode, marked) in cases {
+        let settings = &connection(&import, name).settings;
+        assert_eq!(settings.ssl.as_ref().map(|ssl| ssl.mode), mode, "{name}");
+        assert_eq!(
+            settings.additional_fields.contains_key("tlsFromDriverDefault"),
+            marked,
+            "{name}"
+        );
+    }
+    let ca = |name: &str| {
+        connection(&import, name)
+            .settings
+            .ssl
+            .as_ref()
+            .and_then(|ssl| ssl.ca_certificate_path.clone())
+    };
+    // Sequel Ace hands the certificate files over only with SSL on, which AWS IAM turns on.
+    assert_eq!(ca("TCP off"), None);
+    assert_eq!(ca("Cleartext off"), None);
+    assert_eq!(ca("IAM").as_deref(), Some("/certs/ca.pem"));
+    assert_eq!(ca("TCP on").as_deref(), Some("/certs/ca.pem"));
 }
 
 #[test]

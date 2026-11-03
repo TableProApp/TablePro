@@ -475,6 +475,16 @@ fn collect_keeps_preferred_for_a_driver_whose_form_has_no_tls_picker() {
 }
 
 #[test]
+fn collect_says_sql_server_tls_comes_from_the_apps_freetds_default() {
+    let collected = macos(CONNECTIONS_ONLY);
+    let marker = |name: &str| field(connection(&collected, name), "tlsFromDriverDefault");
+    assert_eq!(marker("SQL Server TLS"), Some("true"));
+    assert_eq!(marker("Snowflake TLS"), None);
+    assert_eq!(ssl_mode(&collected, "Conn MicrosoftSQLServer"), None);
+    assert_eq!(marker("Conn MicrosoftSQLServer"), None);
+}
+
+#[test]
 fn collect_treats_empty_tls_paths_as_none() {
     let collected = macos(CONNECTIONS_ONLY);
     let ssl = connection(&collected, "Empty TLS").settings.ssl.clone().expect("TLS");

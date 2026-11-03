@@ -19,7 +19,9 @@ use crate::{
 };
 
 const DEFAULT_PORT: u16 = 3306;
+const SOCKET_TYPE: i64 = 1;
 const SSH_TUNNEL_TYPE: i64 = 2;
+const AWS_IAM_TYPE: i64 = 3;
 
 pub(crate) struct SequelAce {
     favorites: PathBuf,
@@ -169,6 +171,8 @@ fn parse_children(
 
 fn connection(entry: &Dictionary) -> ForeignConnection {
     let connection_type = integer(entry.get("type")).unwrap_or(0);
+    let mut additional_fields = BTreeMap::new();
+    let ssl = ssl(entry, connection_type, &mut additional_fields);
     ForeignConnection {
         name: text(entry, "name").unwrap_or("Untitled").to_owned(),
         host: text(entry, "host").unwrap_or("localhost").to_owned(),
@@ -177,9 +181,9 @@ fn connection(entry: &Dictionary) -> ForeignConnection {
         username: text(entry, "user").unwrap_or_default().to_owned(),
         engine: "MySQL".to_owned(),
         ssh: ssh(entry, connection_type),
-        ssl: ssl(entry),
+        ssl,
         color: color(integer(entry.get("colorIndex")).unwrap_or(-1)),
-        additional_fields: BTreeMap::new(),
+        additional_fields,
     }
 }
 
@@ -206,16 +210,29 @@ fn ssh(entry: &Dictionary, connection_type: i64) -> Option<ForeignSsh> {
     })
 }
 
-fn ssl(entry: &Dictionary) -> Option<ForeignSsl> {
-    if integer(entry.get("useSSL")).unwrap_or(0) == 0 {
+// With SSL off Sequel Ace still asks libmysqlclient to prefer TLS, and requires it for the cleartext
+// plugin and for AWS IAM, which also turns SSL on; over a socket the client leaves TLS off.
+fn ssl(entry: &Dictionary, connection_type: i64, fields: &mut BTreeMap<String, String>) -> Option<ForeignSsl> {
+    let flag = |key: &str| integer(entry.get(key)).unwrap_or(0) != 0;
+    let path = |key: &str| text(entry, key).map(str::to_owned);
+    let ssl_on = flag("useSSL");
+    if !ssl_on && connection_type == SOCKET_TYPE {
         return None;
     }
-    let path = |key: &str| text(entry, key).map(str::to_owned);
+    let required = ssl_on || connection_type == AWS_IAM_TYPE;
+    if !ssl_on {
+        fields.insert(crate::record::TLS_FROM_DRIVER_DEFAULT.to_owned(), "true".to_owned());
+    }
+    let mode = if required || flag("enableClearTextPlugin") {
+        ForeignSslMode::Required
+    } else {
+        ForeignSslMode::Preferred
+    };
     Some(ForeignSsl {
-        mode: ForeignSslMode::Required,
-        ca_certificate_path: path("sslCACertFileLocation"),
-        client_certificate_path: path("sslCertificateFileLocation"),
-        client_key_path: path("sslKeyFileLocation"),
+        mode,
+        ca_certificate_path: required.then(|| path("sslCACertFileLocation")).flatten(),
+        client_certificate_path: required.then(|| path("sslCertificateFileLocation")).flatten(),
+        client_key_path: required.then(|| path("sslKeyFileLocation")).flatten(),
     })
 }
 

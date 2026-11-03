@@ -243,16 +243,50 @@ fn disabled_ssh_properties_give_no_tunnel() {
 }
 
 #[test]
-fn ssh_and_ssl_the_local_file_disables_stay_off_though_the_shared_file_enables_them() {
+fn ssh_and_ssl_the_local_file_disables_drop_what_the_shared_file_enables() {
     let import = collect(&mac("local-disables", Arc::default()), request(false, false));
     let off = &connection(&import, "turned_off").settings;
-    assert_eq!((&off.ssh, &off.ssl), (&None, &None));
+    assert_eq!(off.ssh, None);
+    // With "Use SSL" off pgjdbc's own default applies, not the shared file's REQUIRE.
+    assert_eq!(off.ssl.as_ref().map(|ssl| ssl.mode), Some(ForeignSslMode::Preferred));
+    assert!(off.additional_fields.contains_key("tlsFromDriverDefault"));
     let on = &connection(&import, "left_on").settings;
     assert_eq!(
         on.ssh.as_ref().map(|ssh| ssh.host.as_str()),
         Some("bastion.example.com")
     );
     assert_eq!(on.ssl.as_ref().map(|ssl| ssl.mode), Some(ForeignSslMode::Required));
+}
+
+#[test]
+fn with_use_ssl_off_each_jdbc_driver_s_own_tls_default_is_imported() {
+    let import = collect(
+        &plain(&fixture("tls-defaults", "linux"), ForeignPlatform::Linux),
+        request(false, false),
+    );
+    let defaulted = Some("tlsFromDriverDefault");
+    let unread = Some("tlsSettingsUnread");
+    let cases = [
+        ("pg_default", Some(ForeignSslMode::Preferred), defaulted),
+        ("pg_ssl_off", Some(ForeignSslMode::Preferred), defaulted),
+        ("mysql_default", Some(ForeignSslMode::Preferred), defaulted),
+        ("mssql_default", Some(ForeignSslMode::VerifyIdentity), defaulted),
+        ("mssql_trusting_url", None, unread),
+        ("pg_property_off", None, unread),
+        ("mariadb_default", None, None),
+        ("jtds_default", None, None),
+    ];
+    for (name, mode, marker) in cases {
+        let settings = &connection(&import, name).settings;
+        assert_eq!(settings.ssl.as_ref().map(|ssl| ssl.mode), mode, "{name}");
+        let markers: Vec<&str> = settings
+            .additional_fields
+            .keys()
+            .map(String::as_str)
+            .filter(|key| ["tlsFromDriverDefault", "tlsSettingsUnread"].contains(key))
+            .collect();
+        assert_eq!(markers, marker.into_iter().collect::<Vec<_>>(), "{name}");
+    }
 }
 
 #[test]

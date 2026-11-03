@@ -531,6 +531,49 @@ fn tls_verification_follows_what_each_engine_s_connector_does() {
 }
 
 #[test]
+fn sql_server_with_ssl_off_imports_the_tls_mssql_turns_on_by_default() {
+    let (_home, importer) = mac_home(&["connections.sql", "queries.sql", "tls_off_connections.sql"]);
+
+    let collected = collect(&importer, &CONNECTIONS_ONLY);
+
+    let cases = [
+        ("SQL Server trusting", Some(ForeignSslMode::Required)),
+        ("SQL Server checking", Some(ForeignSslMode::VerifyIdentity)),
+        ("PG plain", None),
+        ("MySQL plain", None),
+    ];
+    for (name, mode) in cases {
+        let settings = &collected
+            .connections
+            .iter()
+            .find(|connection| connection.settings.name == name)
+            .expect("a connection")
+            .settings;
+        assert_eq!(settings.ssl.as_ref().map(|ssl| ssl.mode), mode, "{name}");
+        assert_eq!(
+            settings
+                .additional_fields
+                .get("tlsFromDriverDefault")
+                .map(String::as_str),
+            mode.map(|_| "true"),
+            "{name}"
+        );
+        if let Some(ssl) = &settings.ssl {
+            // SSL off hands the driver no certificate file.
+            assert_eq!(
+                (
+                    &ssl.ca_certificate_path,
+                    &ssl.client_certificate_path,
+                    &ssl.client_key_path
+                ),
+                (&None, &None, &None),
+                "{name}"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_cancelled_import_stops() {
     let (_home, importer) = mac_home(FULL_DATABASE);
     let cancel = CancellationToken::new();
