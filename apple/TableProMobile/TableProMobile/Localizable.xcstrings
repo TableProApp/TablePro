@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "TablePro does not have this row's stored _id, so it cannot tell which document it is." : {
+
+    },
     "" : {
       "localizations" : {
         "ko" : {
