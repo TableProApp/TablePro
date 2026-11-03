@@ -95,26 +95,10 @@ extension MainContentCoordinator {
         }
     }
 
-    /// Returns false, having explained itself, when the licence does not cover this.
-    ///
-    /// The control is reachable without a licence on purpose, so this is the moment the feature
-    /// gets described to the person who just discovered they want it.
+    // The control is reachable without a license on purpose, so this is where the gate explains itself.
     private func presentUpsellUnlessLicensed() -> Bool {
         guard !isDataRewindLicensed else { return true }
-        Task { @MainActor in
-            let alert = NSAlert()
-            alert.messageText = String(localized: "Data Rewind needs a Pro license")
-            alert.informativeText = String(
-                localized: "Restore the previous values of rows you already saved. Saves are kept on this Mac for 7 days, encrypted, and never leave it."
-            )
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: String(localized: "Purchase License"))
-            AlertHelper.addCancelButton(to: alert, title: String(localized: "Not Now"))
-            AlertHelper.present(alert, in: contentWindow) { response in
-                guard response == .alertFirstButtonReturn else { return }
-                NSWorkspace.shared.open(SupportLinks.pricing(.featureGate(.dataRewind)))
-            }
-        }
+        LicenseGateAlert.present(for: .dataRewind, in: contentWindow)
         return false
     }
 

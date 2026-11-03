@@ -2,12 +2,9 @@
 //  ProFeature.swift
 //  TablePro
 //
-//  Pro feature definitions and access control types
-//
 
 import Foundation
 
-/// Features that require a Pro (active) license
 internal enum ProFeature: String, CaseIterable {
     case iCloudSync
     case encryptedExport
@@ -95,7 +92,6 @@ internal enum ProFeature: String, CaseIterable {
         }
     }
 
-    /// The lowest license tier that unlocks this feature.
     var requiredTier: LicenseTier {
         switch self {
         case .iCloudSync, .encryptedExport, .envVarReferences, .linkedFolders, .queryInsights, .resultCharts,
@@ -106,17 +102,18 @@ internal enum ProFeature: String, CaseIterable {
         }
     }
 
-    /// Names the plan, because the pricing page a gate links to sells Pro and Team by name.
+    // Names the plan, because the pricing page a gate links to sells Pro and Team by name.
     var planRequirement: String {
         String(format: String(localized: "%@ requires the %@ plan"), displayName, requiredTier.displayName)
     }
 }
 
-/// Result of checking Pro feature availability
 internal enum ProFeatureAccess: Equatable {
     case available
     case unlicensed
     case expired
     case validationFailed
+    // Apart from unlicensed, so a customer whose license is suspended is never told to buy the plan.
+    case suspended
     case requiresUpgrade(LicenseTier)
 }

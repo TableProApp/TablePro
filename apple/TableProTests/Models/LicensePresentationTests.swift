@@ -334,7 +334,7 @@ struct LicensePresentationTests {
         let expected: [(LicenseStatus, ProFeatureAccess)] = [
             (.expired, .expired),
             (.validationFailed, .validationFailed),
-            (.suspended, .unlicensed),
+            (.suspended, .suspended),
             (.deactivated, .unlicensed),
         ]
 
@@ -372,5 +372,101 @@ struct LicensePresentationTests {
         #expect(tiers == [.starter, .team])
         #expect(included == [nil, .starter])
         #expect(teamFeatures == [.teamLibrary, .teamCatalog])
+    }
+
+    // MARK: - Gates
+
+    private static let everyAccess: [ProFeatureAccess] = [
+        .unlicensed, .expired, .validationFailed, .suspended, .requiresUpgrade(.team)
+    ]
+
+    @Test("An available feature has no gate")
+    func availableHasNoGate() {
+        #expect(LicensePresentation.gate(for: .compareSync, access: .available) == nil)
+    }
+
+    @Test("A license the server has not reached in 30 days is offered the check, never a purchase")
+    func unverifiedGateOffersTheCheck() {
+        for feature in ProFeature.allCases {
+            let gate = LicensePresentation.gate(for: feature, access: .validationFailed)
+            #expect(gate?.action == .retryValidation, "\(feature)")
+            #expect(gate?.title.contains(feature.requiredTier.displayName) == false, "\(feature) names a plan to buy")
+        }
+    }
+
+    @Test("A license state gates every feature with the License pane's own words")
+    func licenseStatesMatchThePane() {
+        let pairs: [(ProFeatureAccess, LicenseStatus)] = [
+            (.expired, .expired), (.validationFailed, .validationFailed), (.suspended, .suspended)
+        ]
+        for (access, status) in pairs {
+            let pane = LicensePresentation.notice(status: status, daysUntilExpiry: nil, isExpired: false, hasLicense: true)
+            #expect(LicensePresentation.gate(for: .dataRewind, access: access) == pane, "\(status)")
+        }
+    }
+
+    @Test("A suspended license is not asked to buy or activate")
+    func suspendedGateOffersNoPurchase() {
+        let gate = LicensePresentation.gate(for: .compareSync, access: .suspended)
+        #expect(gate?.action == nil)
+        #expect(gate?.tone == .critical)
+    }
+
+    @Test("No license names the plan and offers activation, which also carries the purchase link")
+    func unlicensedGateNamesThePlan() {
+        let gate = LicensePresentation.gate(for: .linkedFolders, access: .unlicensed)
+        #expect(gate?.title == ProFeature.linkedFolders.planRequirement)
+        #expect(gate?.message == ProFeature.linkedFolders.featureDescription)
+        #expect(gate?.action == .activate)
+    }
+
+    @Test("A plan the license lacks offers the upgrade")
+    func upgradeGate() {
+        let gate = LicensePresentation.gate(for: .teamLibrary, access: .requiresUpgrade(.team))
+        #expect(gate?.title == ProFeature.teamLibrary.planRequirement)
+        #expect(gate?.action == .upgrade)
+    }
+
+    @Test("Every gate has a title, a message, and an action unless the state offers none", arguments: everyAccess)
+    func everyGateIsComplete(_ access: ProFeatureAccess) {
+        let gate = LicensePresentation.gate(for: .encryptedExport, access: access)
+        #expect(gate?.title.isEmpty == false)
+        #expect(gate?.message.isEmpty == false)
+        #expect((gate?.action == nil) == (access == .suspended))
+    }
+
+    // MARK: - Welcome line
+
+    @Test("Welcome says nothing about a healthy license")
+    func welcomeQuietWhenActive() {
+        let line = LicensePresentation.welcomeLine(status: .active, daysUntilExpiry: 90, isExpired: false, hasLicense: true)
+        #expect(line == nil)
+    }
+
+    @Test("Welcome carries the License pane notice, the expiry warning included")
+    func welcomeCarriesTheNotice() {
+        let cases: [(LicenseStatus, Int?, Bool)] = [
+            (.active, 3, false), (.expired, -2, true), (.suspended, nil, false), (.validationFailed, nil, false),
+            (.deactivated, nil, false)
+        ]
+        for (status, days, expired) in cases {
+            let hasLicense = status != .deactivated
+            let pane = LicensePresentation.notice(status: status, daysUntilExpiry: days, isExpired: expired, hasLicense: hasLicense)
+            let line = LicensePresentation.welcomeLine(status: status, daysUntilExpiry: days, isExpired: expired, hasLicense: hasLicense)
+            #expect(pane != nil, "\(status)")
+            #expect(line == pane, "\(status)")
+        }
+    }
+
+    @Test("Someone who never had a license is offered activation")
+    func welcomeOffersActivation() {
+        let line = LicensePresentation.welcomeLine(status: .unlicensed, daysUntilExpiry: nil, isExpired: false, hasLicense: false)
+        #expect(line?.action == .activate)
+    }
+
+    @Test("An expired license on Welcome is asked to renew, not to activate a new key")
+    func welcomeRenewsAnExpiredLicense() {
+        let line = LicensePresentation.welcomeLine(status: .expired, daysUntilExpiry: -1, isExpired: true, hasLicense: true)
+        #expect(line?.action == .renew)
     }
 }

@@ -42,8 +42,6 @@ extension LicenseManager {
         )
     }
 
-    /// Pure resolution of feature access from license state. Kept static and side-effect free so
-    /// gating logic can be unit tested without constructing a LicenseManager.
     nonisolated static func resolveAccess(
         status: LicenseStatus,
         tier: LicenseTier,
@@ -55,7 +53,9 @@ extension LicenseManager {
                 return .expired
             case .validationFailed:
                 return .validationFailed
-            default:
+            case .suspended:
+                return .suspended
+            case .unlicensed, .deactivated, .active:
                 return .unlicensed
             }
         }
