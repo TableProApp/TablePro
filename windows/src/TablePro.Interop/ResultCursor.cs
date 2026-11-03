@@ -4,10 +4,7 @@ using TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-/// <summary>
-/// Reads windows of display text from one result set through the core's C ABI. A cursor keeps its buffers
-/// between fetches, so it belongs to one thread at a time, such as the grid's UI thread.
-/// </summary>
+// Keeps its buffers between fetches, so a cursor belongs to one thread at a time, such as the grid's UI thread.
 public sealed unsafe class ResultCursor : IDisposable
 {
     private readonly CursorHandle _handle;
@@ -19,11 +16,7 @@ public sealed unsafe class ResultCursor : IDisposable
 
     internal long Generation { get; private set; }
 
-    /// <summary>
-    /// Packs the rows from <paramref name="firstRow"/> and the columns from <paramref name="firstColumn"/> the
-    /// set holds, up to the counts asked for, each cell cut at <paramref name="maxCharacters"/> on one line.
-    /// The window stays readable until the next fetch or the dispose.
-    /// </summary>
+    // Cells cut at maxCharacters on one line. The window stays readable until the next fetch or the dispose.
     public ResultWindow Fetch(long firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(firstRow);
@@ -86,10 +79,7 @@ public sealed unsafe class ResultCursor : IDisposable
     }
 }
 
-/// <summary>
-/// One fetched window. Rows and columns count from the window's first, and every cell read checks that no
-/// later fetch or dispose has replaced the memory it reads.
-/// </summary>
+// Rows and columns count from the window's first. Each read checks no later fetch or dispose replaced its memory.
 public readonly unsafe ref struct ResultWindow
 {
     private readonly ResultCursor _cursor;
@@ -105,7 +95,7 @@ public readonly unsafe ref struct ResultWindow
 
     public long FirstRow => (long)Window->first_row;
 
-    /// <summary>The set's rows when the window was read, from the same moment as its cells.</summary>
+    // The set's rows at the moment its cells were read.
     public long TotalRows => (long)Window->total_rows;
 
     public int RowCount => (int)Window->row_count;
@@ -114,7 +104,6 @@ public readonly unsafe ref struct ResultWindow
 
     public int ColumnCount => (int)Window->column_count;
 
-    /// <summary>True once the set holds every row it will.</summary>
     public bool IsFinished => Window->finished != 0;
 
     private TpWindow* Window
@@ -137,15 +126,15 @@ public readonly unsafe ref struct ResultWindow
         return (ValueKind)Window->column_kinds[column];
     }
 
-    /// <summary>What the cell holds, which says what <see cref="GetRaw"/> means. A null has the column's.</summary>
+    // Says what GetRaw means. A NULL cell has its column's kind.
     public ValueKind GetKind(int row, int column) => (ValueKind)Window->cell_kinds[Cell(row, column)];
 
     public bool IsNull(int row, int column) => Bit(Window->nulls, Cell(row, column));
 
-    /// <summary>True when the text was cut at the fetch's character cap.</summary>
+    // Cut at the fetch's character cap.
     public bool IsTruncated(int row, int column) => Bit(Window->truncated, Cell(row, column));
 
-    /// <summary>The value as a number, by the cell's <see cref="ValueKind"/>, for locale formatting.</summary>
+    // Read by the cell's ValueKind, for locale formatting.
     public long GetRaw(int row, int column) => Window->raw[Cell(row, column)];
 
     public ReadOnlySpan<byte> GetUtf8(int row, int column)
@@ -156,7 +145,7 @@ public readonly unsafe ref struct ResultWindow
         return new ReadOnlySpan<byte>(window->text + start, (int)(window->offsets[cell + 1] - start));
     }
 
-    /// <summary>The cell's display text, or null for SQL NULL.</summary>
+    // Null for SQL NULL.
     public string? GetText(int row, int column) =>
         IsNull(row, column) ? null : Encoding.UTF8.GetString(GetUtf8(row, column));
 

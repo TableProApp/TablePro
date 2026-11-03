@@ -41,8 +41,7 @@ public sealed record SshSettings(
     string? KeyPath = null,
     bool KeyHasPassphrase = false);
 
-// A saved connection as a form edits it. Saving keeps the fields the core holds that this record leaves out.
-// Id is null for a connection not saved yet. Database is a file engine's file path.
+// Saving keeps the core's fields this record leaves out. Id is null until saved; Database is a file engine's path.
 public sealed record SavedConnection(
     Guid? Id,
     string Name,

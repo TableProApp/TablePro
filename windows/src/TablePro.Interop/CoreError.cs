@@ -1,9 +1,6 @@
 namespace TablePro.Interop;
 
-/// <summary>
-/// The app words an error from <see cref="Code"/>, the innermost of <see cref="Codes"/>, which run from the
-/// outermost error in. <see cref="Message"/> is English, for the log.
-/// </summary>
+// The app words Code, the innermost of Codes, which run from the outermost error in. Message is English, for the log.
 public sealed record CoreError(
     string Code,
     IReadOnlyList<string> Codes,
@@ -12,7 +9,7 @@ public sealed record CoreError(
     string? Path,
     SecretKind? Secret = null);
 
-/// <summary>What the server said, which the app shows as it came.</summary>
+// What the server said, which the app shows as it came.
 public sealed record ServerMessage(
     string Message,
     string? Code,

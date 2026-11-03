@@ -35,9 +35,7 @@ public static class SqlSyntax
 {
     private const int StackTokens = 256;
 
-    // Offsets are UTF-16 units into text. Every token covers at least one unit, so tokens no longer than
-    // text always holds them all; a shorter span gets the first ones. A construct the text leaves open runs
-    // to its end. Redis and MongoDB have no tokens.
+    // UTF-16 offsets. A span as long as text holds every token, a shorter one the first. Redis and MongoDB have none.
     public static unsafe int Tokenize(
         SqlGrammar grammar,
         ReadOnlySpan<char> text,

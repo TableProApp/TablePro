@@ -2,8 +2,7 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-// The saved connections, their group tree and the favourites, in the core's connections.json. Every call reads
-// or writes the file, so a list the app shows is rebuilt from a snapshot after each change.
+// Every call reads or writes connections.json, so a list the app shows is rebuilt from a snapshot after each change.
 public sealed class ConnectionLibrary : IDisposable
 {
     private readonly Native.ConnectionLibrary _library;
@@ -71,7 +70,6 @@ public sealed class ConnectionLibrary : IDisposable
 
     public Task DeleteTagAsync(Guid id) => CoreCall.RunAsync(() => _library.DeleteTag(id.ToString()));
 
-    // Puts the tag on each connection, or takes it off.
     public Task TagAsync(IReadOnlyList<Guid> ids, Guid tag, bool tagged)
     {
         var names = Names(ids);

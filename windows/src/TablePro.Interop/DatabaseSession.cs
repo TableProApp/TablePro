@@ -63,8 +63,7 @@ public sealed class DatabaseSession : IAsyncDisposable
         return [.. columns.Select(Mapping.Column)];
     }
 
-    // The statement for limit rows of a table, offset rows in, in the sort asked for; the core writes the ORDER BY and
-    // the page for the engine.
+    // The core writes the ORDER BY and the page in the engine's own dialect.
     public async Task<TableQuery> GetTableQueryAsync(
         TableName table,
         ColumnSort? sort,
@@ -114,8 +113,7 @@ public sealed class DatabaseSession : IAsyncDisposable
     // Connects again now; the only way out of a failed health.
     public void Reconnect() => _session.Reconnect();
 
-    // Null when the statement is not one read, so running it again could repeat a write, or when the engine can order
-    // by neither the column's name nor its position. ResultSet.SortedAsync sorts the rows held then.
+    // Null when a rerun could repeat a write or the engine cannot order by the column; ResultSet.SortedAsync then.
     public string? SortedQuery(string sql, IReadOnlyList<string> columns, int column, bool ascending)
     {
         ArgumentNullException.ThrowIfNull(sql);

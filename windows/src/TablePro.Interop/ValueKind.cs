@@ -2,10 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace TablePro.Interop;
 
-/// <summary>
-/// What a column or a cell holds. The values are the bytes a <see cref="ResultWindow"/> carries, and a
-/// cell's kind says what its raw value means; core/crates/ffi/src/results/value_kind.rs has each one.
-/// </summary>
+// The bytes a ResultWindow carries; core/crates/ffi/src/results/value_kind.rs says what each raw value means.
 [SuppressMessage("Naming", "CA1720", Justification = "The names are SQL value kinds, not .NET types.")]
 public enum ValueKind : byte
 {

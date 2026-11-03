@@ -2,11 +2,7 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-/// <summary>
-/// The platform's secret store, which the app implements over the Windows Credential Manager. The core calls
-/// it on a thread of its own and lets it block. A failure the user can act on is a
-/// <see cref="SecretStoreException"/>; any other exception reaches the core as <see cref="SecretStoreFailure.Failed"/>.
-/// </summary>
+// The core calls it on a thread it lets block. Throw SecretStoreException for a failure the user can act on.
 public interface ISecretStore
 {
     string? Load(Guid connectionId, SecretKind kind);
@@ -21,7 +17,7 @@ public interface ISecretStore
 
     string? LoadItem(SecretItem item);
 
-    /// <summary>The app names the item in its own words.</summary>
+    // The app names the item in its own words.
     void StoreItem(SecretItem item, string secret);
 
     void DeleteItem(SecretItem item);
@@ -34,7 +30,7 @@ public enum SecretKind
     SshPassphrase,
 }
 
-/// <summary>A secret no connection owns.</summary>
+// A secret no connection owns.
 public enum SecretItem
 {
     McpToken,
@@ -48,7 +44,7 @@ public enum SecretStoreFailure
     Unavailable,
     Locked,
 
-    /// <summary>The user dismissed the unlock prompt.</summary>
+    // The user dismissed the unlock prompt.
     Dismissed,
     Failed,
 }

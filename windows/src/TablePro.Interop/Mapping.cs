@@ -2,8 +2,7 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-// The generated types stay internal, so the app's API is this library's and an upgrade of the generator
-// cannot change it. Counts cross as unsigned and fit a long.
+// Generated types stay internal so a generator upgrade cannot change the API. Counts cross unsigned and fit a long.
 internal static class Mapping
 {
     public static CoreError Error(Native.ErrorInfo info) => new(

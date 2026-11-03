@@ -4,7 +4,7 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-/// <summary>A statement running on the core. Disposing it stops the run.</summary>
+// Disposing it stops the run.
 public sealed class QueryRun : IDisposable
 {
     private readonly Native.QueryRun _run;
@@ -18,14 +18,10 @@ public sealed class QueryRun : IDisposable
         Completion = WaitForOutcomeAsync(cancellationToken);
     }
 
-    /// <summary>Completes when the run ends, with how it ended. A refused statement is not an exception.</summary>
+    // A refused statement completes as Failed, not as an exception.
     public Task<QueryOutcome> Completion { get; }
 
-    /// <summary>
-    /// Every event of the run, in order, ending with <see cref="QueryEvent.Finished"/>. The events are read on
-    /// the context that enumerates, so a UI thread applies them itself, and rows that arrive while it is busy
-    /// come as one <see cref="QueryEvent.RowsAppended"/>. A run's events can be read once.
-    /// </summary>
+    // Events arrive on the enumerating context, and rows that come while it is busy as one RowsAppended. Read once.
     public async IAsyncEnumerable<QueryEvent> ReadEventsAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -50,7 +46,7 @@ public sealed class QueryRun : IDisposable
         }
     }
 
-    /// <summary>The run's result set at <paramref name="index"/>, from 0, once it has started.</summary>
+    // Null until the set at index, from 0, has started.
     public ResultSet? GetResultSet(int index)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
@@ -75,8 +71,7 @@ public sealed class QueryRun : IDisposable
     }
 }
 
-// The core calls it on a runtime thread only when no wake is pending, and a drain clears that, so one slot
-// holds every wake a reader has not taken yet.
+// The core calls it only when no wake is pending and a drain clears that, so one slot holds every wake not taken.
 internal sealed class RunWake : Native.RunListener
 {
     private readonly Channel<bool> _signal = Channel.CreateBounded<bool>(

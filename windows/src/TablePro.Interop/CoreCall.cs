@@ -2,8 +2,7 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-// The generated code polls the core's future on the thread that awaits it, so every call starts on the
-// thread pool. UniFFI cannot cancel a call, so a CancellationToken fires the core's own cancel token.
+// The generated code polls the core's future on the awaiting thread, so every call starts on the thread pool.
 internal static class CoreCall
 {
     public static async Task<T> RunAsync<T>(

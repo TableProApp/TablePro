@@ -2,16 +2,13 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-/// <param name="ClientVersion">Reported to servers next to the application name.</param>
-/// <param name="StorageDirectory">The folder the saved connections live in. Null leaves the library out.</param>
+// ClientVersion goes to servers beside the app's name. A null StorageDirectory leaves the library out.
 public sealed record HostConfiguration(string ClientVersion, string? StorageDirectory = null);
 
-/// <param name="Path">An absolute path.</param>
-/// <param name="EngineId">The engine to open it with. Null lets the file's first bytes decide, then its name.</param>
-/// <param name="Create">Make a new database at <paramref name="Path"/>, which must not exist yet.</param>
+// Path is absolute. A null EngineId lets the file's first bytes decide, then its name. Create needs a new Path.
 public sealed record FileOpenOptions(string Path, string? EngineId = null, bool ReadOnly = false, bool Create = false);
 
-/// <summary>The shared core: its engines and its one runtime. An app makes one and keeps it.</summary>
+// The engines and the one runtime: an app makes one and keeps it.
 public sealed class TableProCore : IDisposable
 {
     private readonly Native.Core _core;

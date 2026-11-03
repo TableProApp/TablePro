@@ -74,8 +74,7 @@ public sealed record TableName(string? Schema, string Name);
 // Column is the table's column position, as the grid numbers its columns.
 public sealed record ColumnSort(int Column, bool Ascending);
 
-// The engine's row address may follow the visible columns; a grid shows the first VisibleColumns. An engine that pages
-// on the server reads a table only from its start, so CanSeek is false and only the first page can be asked for.
+// Any columns past VisibleColumns are the engine's row address; without CanSeek only the first page can be read.
 public sealed record TableQuery(string Sql, int VisibleColumns, bool CanSeek = true);
 
 public enum FailureCause
