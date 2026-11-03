@@ -10,31 +10,19 @@ struct AIChatContextChipView: View {
     var onRemove: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: item.symbolName)
-                .font(.caption2)
-            Text(item.displayLabel)
+        HStack(spacing: 2) {
+            Label(item.displayLabel, systemImage: item.symbolName)
                 .font(.caption)
                 .lineLimit(1)
                 .truncationMode(.middle)
 
             if let onRemove {
-                Button(action: onRemove) {
-                    Image(systemName: "xmark")
-                        .font(.caption2.weight(.semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel(String(localized: "Remove attachment"))
+                Button(String(localized: "Remove attachment"), systemImage: "xmark", action: onRemove)
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.tint.opacity(0.08), in: Capsule())
-        .overlay(
-            Capsule()
-                .stroke(.tint.opacity(0.2), lineWidth: 0.5)
-        )
         .help(item.helpText ?? item.displayLabel)
     }
 }

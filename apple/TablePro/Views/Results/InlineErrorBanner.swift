@@ -2,8 +2,6 @@
 //  InlineErrorBanner.swift
 //  TablePro
 //
-//  Dismissable red error banner for query errors, displayed inline above results.
-//
 
 import AppKit
 import SwiftUI
@@ -12,6 +10,8 @@ struct InlineErrorBanner: View {
     let message: String
     var onFixWithAI: (() -> Void)?
     var onDismiss: (() -> Void)?
+    // A sheet footer shows it without the pane bar material.
+    var onBar = true
 
     private let maxMessageHeight: CGFloat = 96
     private let minMessageHeight: CGFloat = 16
@@ -21,12 +21,16 @@ struct InlineErrorBanner: View {
     private var messageFits: Bool { messageHeight <= shownHeight + 0.5 }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+        PaneNoticeBar(
+            severity: .error,
+            alignment: .top,
+            onBar: onBar,
+            dismissLabel: String(localized: "Dismiss error"),
+            onDismiss: onDismiss
+        ) {
             ScrollView(.vertical) {
                 RevealedTextView(message)
-                    .font(.subheadline)
+                    .font(.callout)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("query-error-message")
@@ -48,33 +52,12 @@ struct InlineErrorBanner: View {
             }
             .scrollDisabled(messageFits)
             .scrollBounceBasedOnSize()
+        } actions: {
             if let onFixWithAI {
-                Button(String(localized: "Fix with AI")) { onFixWithAI() }
-                    .controlSize(.small)
+                Button(String(localized: "Fix with AI"), action: onFixWithAI)
             }
-            Button {
-                ClipboardService.shared.writeText(message)
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .frame(width: 24, height: 24)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help(String(localized: "Copy error message"))
-            .accessibilityLabel(String(localized: "Copy error message"))
-            if let onDismiss {
-                Button { onDismiss() } label: {
-                    Image(systemName: "xmark")
-                        .frame(width: 24, height: 24)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "Dismiss error"))
-            }
+            PaneNoticeCopyButton(text: message, label: String(localized: "Copy error message"))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.red.opacity(0.08))
     }
 }
 

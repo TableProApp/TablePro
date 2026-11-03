@@ -43,9 +43,8 @@ internal struct ExportRowScopeEditor: View {
                     .font(themeEngine.valueFontSwiftUI)
                     .accessibilityIdentifier("row-scope-filter")
                 if hasRejectedFilter {
-                    Text("A filter is one expression. Remove the semicolon.")
+                    NoticeLabel(String(localized: "A filter is one expression. Remove the semicolon."), severity: .error)
                         .font(.caption)
-                        .foregroundStyle(.red)
                 }
             }
 

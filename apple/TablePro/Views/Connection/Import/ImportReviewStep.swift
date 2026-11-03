@@ -77,16 +77,18 @@ internal struct ImportReviewStep: View {
     private func bannerLabel(_ text: String, symbol: String) -> some View {
         Label {
             Text(verbatim: text)
-                .font(.caption)
+                .foregroundStyle(.secondary)
                 .lineLimit(3)
                 .help(text)
         } icon: {
             Image(systemName: symbol)
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
         }
-        .padding(8)
+        .font(.caption)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.orange.opacity(0.12))
     }
 
     private var footer: some View {

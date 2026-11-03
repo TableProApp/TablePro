@@ -10,7 +10,7 @@ import AppKit
 
 internal enum TeamLibraryConnectionPublishOutcome {
     case declined
-    case published(connectionCount: Int)
+    case published
     case failed(Error)
 }
 
@@ -24,12 +24,7 @@ extension WelcomeViewModel {
                 through: TeamLibrarySyncCoordinator.shared,
                 confirm: Self.confirmPublishToTeamLibrary
             )
-            switch outcome {
-            case .declined:
-                return
-            case .published(let connectionCount):
-                presentTeamLibrarySuccess(connectionCount: connectionCount)
-            case .failed(let error):
+            if case .failed(let error) = outcome {
                 presentTeamLibraryError(error)
             }
         }
@@ -42,8 +37,8 @@ extension WelcomeViewModel {
     ) async -> TeamLibraryConnectionPublishOutcome {
         guard await confirm(connections) else { return .declined }
         do {
-            let response = try await coordinator.publish(connections: connections, favorites: [], folders: [])
-            return .published(connectionCount: response.connectionCount)
+            try await coordinator.publish(connections: connections, favorites: [], folders: [])
+            return .published
         } catch {
             return .failed(error)
         }
@@ -72,17 +67,6 @@ extension WelcomeViewModel {
             return String(format: String(localized: "Publish %d connections to your team?"), connections.count)
         }
         return String(format: String(localized: "Publish “%@” to your team?"), connection.name)
-    }
-
-    private func presentTeamLibrarySuccess(connectionCount: Int) {
-        AlertHelper.showInfoSheet(
-            title: String(localized: "Published to the team library"),
-            message: String(
-                format: String(localized: "Your team can now see %d shared connections. Passwords were not included."),
-                connectionCount
-            ),
-            window: nil
-        )
     }
 
     private func presentTeamLibraryError(_ error: Error) {

@@ -30,9 +30,16 @@ struct GeneralSettingsView: View {
             }
 
             if let initial = initialLanguage, settings.language != initial {
-                Text("Restart TablePro for the language change to take full effect.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                LabeledContent {
+                    Button(String(localized: "Relaunch")) {
+                        UpdateCenter.shared.relaunch()
+                    }
+                    .accessibilityIdentifier("language-relaunch-button")
+                } label: {
+                    Text("Relaunch TablePro to finish switching languages.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Picker("When TablePro starts:", selection: $settings.startupBehavior) {

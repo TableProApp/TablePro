@@ -88,10 +88,8 @@ struct DocumentEditorSheet: View {
                         .stroke(Color(nsColor: .separatorColor))
                 )
             if let saveError {
-                Text(saveError)
+                NoticeLabel(saveError, severity: .error)
                     .font(.callout)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
                     .accessibilityIdentifier("document-editor-error")
             } else {

@@ -76,9 +76,6 @@ struct QueryPlanResultView: View {
     @ObservedObject var planState: QueryPlanViewState
     @ObservedObject private var comparison: QueryPlanComparisonModel
 
-    @State private var showCopyConfirmation = false
-    @State private var copyResetTask: Task<Void, Never>?
-
     /// Resolved once per plan rather than per body evaluation. Working it out costs a walk of the
     /// whole tree for each metric, and the toolbar asks for it several times per render, which a
     /// ten-thousand-node MySQL tree plan would feel.
@@ -211,15 +208,6 @@ struct QueryPlanResultView: View {
 
             Spacer()
 
-            if showCopyConfirmation {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    Text(String(localized: "Copied!"))
-                }
-                .transition(.opacity)
-            }
-
             Button(action: copyText) {
                 Label(String(localized: "Copy"), systemImage: "doc.on.doc")
             }
@@ -350,13 +338,7 @@ struct QueryPlanResultView: View {
 
     private func copyText() {
         ClipboardService.shared.writeText(rawText)
-        withMotion { showCopyConfirmation = true }
-        copyResetTask?.cancel()
-        copyResetTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(1_500))
-            guard !Task.isCancelled else { return }
-            withMotion { showCopyConfirmation = false }
-        }
+        AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {

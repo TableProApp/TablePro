@@ -81,9 +81,8 @@ struct CreatePrincipalSheet: View {
 
                 if duplicateName, !trimmedName.isEmpty {
                     LabeledContent("") {
-                        Text("A user or role with this name already exists.")
+                        NoticeLabel(String(localized: "A user or role with this name already exists."), severity: .error)
                             .font(.caption)
-                            .foregroundStyle(.red)
                     }
                 }
 
@@ -161,9 +160,8 @@ struct ChangePasswordSheet: View {
 
                 if mismatch {
                     LabeledContent("") {
-                        Text("The passwords do not match.")
+                        NoticeLabel(String(localized: "The passwords do not match."), severity: .error)
                             .font(.caption)
-                            .foregroundStyle(.red)
                     }
                 }
             }

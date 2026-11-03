@@ -164,10 +164,16 @@ struct TableTransferSheet: View {
                 .toggleStyle(.checkbox)
 
             if let errorMessage {
-                RevealedTextView(errorMessage)
-                    .font(.subheadline)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+                Label {
+                    RevealedTextView(errorMessage)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: NoticeSeverity.error.symbolName)
+                        .foregroundStyle(NoticeSeverity.error.tint)
+                        .accessibilityHidden(true)
+                }
+                .font(.subheadline)
             }
         }
         .padding(16)
@@ -184,9 +190,8 @@ struct TableTransferSheet: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             } else if hasContestedMapping {
-                Text(TableTransferMappingEditor.contestedMappingMessage)
+                NoticeLabel(TableTransferMappingEditor.contestedMappingMessage, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
                     .lineLimit(2)
             }
         } actions: {
@@ -219,8 +224,7 @@ struct TableTransferSheet: View {
         )
     }
 
-    /// Says how a table will map before anything is written, and opens the editor. A table whose
-    /// columns match nothing is called out here rather than failing on its first batch.
+    // A table whose columns match nothing is called out here rather than failing on its first batch.
     @ViewBuilder
     private func mappingSummary(for table: String) -> some View {
         let match = resolvedMatch(for: table)
@@ -230,9 +234,8 @@ struct TableTransferSheet: View {
                 .scaleEffect(0.5)
                 .frame(width: 16)
         } else if destinationColumns[table] == nil {
-            Text("No such table")
+            NoticeLabel(String(localized: "No such table"), severity: .error)
                 .font(.caption)
-                .foregroundStyle(.red)
         } else {
             Button {
                 inspectedTable = table
@@ -240,7 +243,13 @@ struct TableTransferSheet: View {
                 HStack(spacing: 3) {
                     Text(mappingLabel(match))
                         .font(.caption)
-                        .foregroundStyle(cannotTransfer ? Color.red : .secondary)
+                        .foregroundStyle(.secondary)
+                    if cannotTransfer {
+                        Image(systemName: NoticeSeverity.error.symbolName)
+                            .font(.caption)
+                            .foregroundStyle(NoticeSeverity.error.tint)
+                            .accessibilityHidden(true)
+                    }
                     Image(systemName: "arrow.left.arrow.right")
                         .font(.caption)
                 }

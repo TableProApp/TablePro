@@ -21,9 +21,8 @@ internal struct CreateTableFormFieldRow: View {
                 .foregroundStyle(.secondary)
         }
         if let message {
-            Text(message)
+            NoticeLabel(message, severity: .error)
                 .font(.callout)
-                .foregroundStyle(.red)
         }
     }
 

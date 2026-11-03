@@ -74,11 +74,12 @@ internal struct CompareTableScopeEditor: View {
             ) {
                 Label {
                     Text(error)
+                        .foregroundStyle(.secondary)
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(CompareStatusStyle.warning)
                 }
                 .font(.callout)
-                .foregroundStyle(CompareStatusStyle.warning)
                 .fixedSize(horizontal: false, vertical: true)
             }
 

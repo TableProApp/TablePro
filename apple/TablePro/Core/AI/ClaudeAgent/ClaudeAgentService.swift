@@ -64,31 +64,6 @@ final class ClaudeAgentService: ObservableObject {
         }
     }
 
-    var statusDescription: String {
-        switch state {
-        case .unknown:
-            return String(localized: "Checking for the Claude Code command line tool…")
-        case .notInstalled:
-            return String(localized: "Claude Code is not installed.")
-        case .outdated(let version):
-            return String(
-                format: String(localized: "Claude Code %@ is too old. Version %@ or newer is required."),
-                version,
-                ClaudeAgentCLI.minimumVersion
-            )
-        case .signedOut:
-            return String(localized: "Claude Code is installed but not signed in.")
-        case .signedIn(let account, let plan):
-            if let account, let plan {
-                return String(format: String(localized: "Signed in as %@ on the %@ plan."), account, plan)
-            }
-            if let account {
-                return String(format: String(localized: "Signed in as %@."), account)
-            }
-            return String(localized: "Signed in.")
-        }
-    }
-
     var remedyCommand: String? {
         switch state {
         case .notInstalled, .outdated:

@@ -136,9 +136,8 @@ struct CloudSQLProxyTransportSections: View {
             }
 
             if let error = viewModel.downloadError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
+                NoticeLabel(error)
                     .font(.caption)
-                    .foregroundStyle(.orange)
                     .textSelection(.enabled)
             }
 
@@ -147,9 +146,8 @@ struct CloudSQLProxyTransportSections: View {
                     LabeledContent(String(localized: "Detected"), value: resolved)
                         .foregroundStyle(.secondary)
                 } else if viewModel.didResolveBinary {
-                    Label(viewModel.binaryNotFoundMessage, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .textSelection(.enabled)
+                    NoticeLabel(viewModel.binaryNotFoundMessage)
+                        .textSelection(.enabled)
                 }
             }
         } header: {

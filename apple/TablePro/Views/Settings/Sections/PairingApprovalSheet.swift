@@ -125,7 +125,7 @@ struct PairingApprovalSheet: View {
             Text(countdownText)
                 .font(.caption)
                 .monospacedDigit()
-                .foregroundStyle(isExpired ? .red : .secondary)
+                .foregroundStyle(.secondary)
                 .contentTransition(.numericText())
         }
     }

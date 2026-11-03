@@ -79,12 +79,8 @@ struct CredentialProfileEditorSheet: View {
                     TextField(String(localized: "Name"), text: $name, prompt: Text("Production reader"))
                         .accessibilityIdentifier("credential-profile-name")
                     if !trimmedName.isEmpty && !nameIsUnique {
-                        Label(
-                            String(localized: "Another profile already has this name."),
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.yellow)
+                        NoticeLabel(String(localized: "Another profile already has this name."))
+                            .font(.caption)
                     }
                     TextField(
                         String(localized: "Username"),
@@ -97,12 +93,10 @@ struct CredentialProfileEditorSheet: View {
 
                 if !secretsWereReadable {
                     Section {
-                        Label(
-                            String(localized: "The Keychain could not be read, so the stored secrets are not shown. Editing the name is safe; they are left as they are."),
-                            systemImage: "exclamationmark.triangle.fill"
+                        NoticeLabel(
+                            String(localized: "The Keychain could not be read, so the stored secrets are not shown. Editing the name is safe; they are left as they are.")
                         )
                         .font(.caption)
-                        .foregroundStyle(.yellow)
                     }
                 }
                 passwordSection
@@ -356,9 +350,8 @@ struct CredentialProfileEditorSheet: View {
             }
 
             if let saveError {
-                Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                NoticeLabel(saveError, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
                     .lineLimit(2)
             }
 

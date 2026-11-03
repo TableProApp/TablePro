@@ -411,9 +411,8 @@ struct RowImportSheet: View {
     private var footerView: some View {
         DialogFooter {
             if let message = validationMessage {
-                Text(message)
+                NoticeLabel(message, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
                     .lineLimit(2)
             }
         } actions: {

@@ -195,13 +195,10 @@ struct InsertRowView: View {
             }
         } label: {
             Text(stateBadge(for: column))
-                .font(.caption2)
-                .foregroundStyle(fields[column.name] == .null ? .white : .secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(fields[column.name] == .null ? Color.accentColor : Color(.systemFill))
-                .clipShape(Capsule())
         }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .controlSize(.mini)
         .accessibilityLabel(Text(String(format: String(localized: "Value for %@"), column.name)))
     }
 

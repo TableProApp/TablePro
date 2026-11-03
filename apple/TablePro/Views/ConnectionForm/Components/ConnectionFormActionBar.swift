@@ -38,11 +38,13 @@ struct ConnectionFormActionBar: View {
             .keyboardShortcut(.cancelAction)
             if coordinator.isNew {
                 Button(String(localized: "Save")) {
+                    endEditing()
                     coordinator.save()
                 }
                 .disabled(!canCommit)
             }
             Button(defaultActionTitle) {
+                endEditing()
                 coordinator.commit()
             }
             .keyboardShortcut(.defaultAction)
@@ -51,6 +53,11 @@ struct ConnectionFormActionBar: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+    }
+
+    // A click does not end editing, so a tag still being typed in the token field is committed first.
+    private func endEditing() {
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     /// Restores the Delete the editor shipped through 0.38.0.
