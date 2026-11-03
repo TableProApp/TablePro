@@ -75572,6 +75572,9 @@
         }
       }
     },
+    "Execute a SQL query against a connection. The connection's safe mode policy applies. Multi-statement queries are rejected, except on SQL Server, where a whole script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, are blocked here; use confirm_destructive_operation instead." : {
+
+    },
     "Execute All" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -75814,6 +75817,9 @@
           }
         }
       }
+    },
+    "Execute what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, after explicit confirmation: one statement, or on SQL Server a whole script. Pass confirmation_phrase exactly as: I understand this is irreversible" : {
+
     },
     "Execute Without Limit" : {
       "extractionState" : "stale",
@@ -92716,6 +92722,9 @@
           }
         }
       }
+    },
+    "In Agent mode, use confirm_destructive_operation with the explicit confirmation phrase." : {
+
     },
     "IN Clause" : {
       "localizations" : {
@@ -154829,6 +154838,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
+
+    },
     "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. DROP and TRUNCATE go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
       "localizations" : {
         "fr" : {
@@ -155255,6 +155267,9 @@
           }
         }
       }
+    },
+    "Run what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE: one statement, or on SQL Server a whole script. Anything else is refused. The user approves it before it runs: through your elicitation prompt when your client supports elicitation, otherwise through TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a connection the user left writable for external clients." : {
+
     },
     "Run Without Limit" : {
       "localizations" : {
@@ -199928,6 +199943,9 @@
         }
       }
     },
+    "This plan runs the statement. Explain it without analyze, with a variant that only plans it." : {
+
+    },
     "This plugin is not in the registry, so it can't be updated automatically." : {
       "localizations" : {
         "fr" : {
@@ -200854,6 +200872,9 @@
         }
       }
     },
+    "This statement is destructive, like DROP, TRUNCATE or a DELETE with no WHERE." : {
+
+    },
     "This statement is too long to send (%d characters). Select a smaller part of it." : {
       "localizations" : {
         "fr" : {
@@ -201056,6 +201077,9 @@
           }
         }
       }
+    },
+    "This tool runs only destructive statements, like DROP, TRUNCATE or a DELETE with no WHERE. Use execute_query for everything else." : {
+
     },
     "This tool takes your password on its command line." : {
       "localizations" : {
