@@ -105,9 +105,17 @@ pub(crate) fn url_tls(url: &str) -> UrlTls {
     }
     match parameters.iter().rev().find(|(key, _)| key == "sslmode") {
         Some((_, mode)) => named_mode(mode).map_or(UrlTls::Unread, UrlTls::Mode),
-        None if is_mongo_seed_list(url) => UrlTls::Mode("verify-full"),
+        None if is_mongo_seed_list(url) || secure_scheme(url) => UrlTls::Mode("verify-full"),
         None => UrlTls::None,
     }
+}
+
+// `jdbc:clickhouse:https://` and the like: a scheme that is TLS by itself, verified by default.
+fn secure_scheme(url: &str) -> bool {
+    url.split_once("://").is_some_and(|(scheme, _)| {
+        let scheme = scheme.to_lowercase();
+        scheme.ends_with("https") || scheme.ends_with("+tls") || scheme.ends_with("+ssl")
+    })
 }
 
 fn named_mode(mode: &str) -> Option<&'static str> {
@@ -123,6 +131,17 @@ fn named_mode(mode: &str) -> Option<&'static str> {
 }
 
 // Lowercased keys and values after `?` (and SQL Server's `;` properties), in order.
+// One parameter as written, the last of its name, for a value whose case matters.
+fn url_parameter(url: &str, name: &str) -> Option<String> {
+    let (_, query) = url.split_once('?').or_else(|| url.split_once(';'))?;
+    query
+        .split(['&', ';'])
+        .filter_map(|pair| pair.split_once('='))
+        .filter(|(key, _)| key.trim().eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.trim().to_owned())
+        .next_back()
+}
+
 fn url_parameters(url: &str) -> Vec<(String, String)> {
     let Some((_, query)) = url.split_once('?').or_else(|| url.split_once(';')) else {
         return Vec::new();
@@ -173,10 +192,13 @@ fn parse_authority(body: &str) -> Option<Endpoint> {
     let authority = strip_user_info(head);
     let first_host = authority.split(',').next().unwrap_or(authority);
     let (host, port) = parse_host_port(first_host);
+    // The user goes before `@`, or in the standard `user` parameter.
     let username = head
         .rsplit_once('@')
         .map(|(user_info, _)| user_info.split(':').next().unwrap_or_default())
         .map(percent_decoded)
+        .filter(|user| !user.is_empty())
+        .or_else(|| url_parameter(body, "user").map(|user| percent_decoded(&user)))
         .filter(|user| !user.is_empty());
     // A database name escapes a space or a slash, and the drivers take the name as written.
     let database = percent_decoded(tail.unwrap_or_default());
@@ -233,7 +255,8 @@ fn parse_sql_server(body: &str) -> Option<Endpoint> {
             .cloned()
             .unwrap_or_default();
     }
-    endpoint(host, port, &database)
+    let username = url_parameter(body, "user").filter(|user| !user.is_empty());
+    endpoint(host, port, &database).map(|endpoint| Endpoint { username, ..endpoint })
 }
 
 // jdbc:oracle:thin:@host:port:SID, @//host:port/SERVICE and @host:port/SERVICE
@@ -556,6 +579,25 @@ mod tests {
                 .username,
             None
         );
+    }
+
+    #[test]
+    fn a_user_parameter_names_the_user_in_its_own_case() {
+        let endpoint = parse("jdbc:postgresql://db/app?user=Alice&sslmode=require", "postgresql").expect("an endpoint");
+        assert_eq!(endpoint.username.as_deref(), Some("Alice"));
+        let server = parse("jdbc:sqlserver://db:1433;databaseName=app;user=Sales", "sqlserver").expect("an endpoint");
+        assert_eq!(server.username.as_deref(), Some("Sales"));
+    }
+
+    #[test]
+    fn a_secure_scheme_is_tls_verified_by_default() {
+        assert_eq!(
+            url_tls("jdbc:clickhouse:https://db.example:8443/default"),
+            UrlTls::Mode("verify-full")
+        );
+        assert_eq!(url_tls("jdbc:clickhouse:http://db.example:8123/default"), UrlTls::None);
+        let endpoint = parse("jdbc:clickhouse:https://db.example:8443/default", "clickhouse").expect("an endpoint");
+        assert_eq!((endpoint.host.as_str(), endpoint.port), ("db.example", Some(8443)));
     }
 
     #[test]
