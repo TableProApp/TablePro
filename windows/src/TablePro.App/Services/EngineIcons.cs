@@ -6,8 +6,7 @@ using Windows.UI.ViewManagement;
 
 namespace TablePro.App.Services;
 
-// The engine artwork the macOS app ships, as PathIcons in the theme's foreground (Resources/EngineGlyphs.xaml), and
-// a connection's colour on it.
+// The macOS app's engine artwork, as PathIcons that take the theme's foreground (Resources/EngineGlyphs.xaml).
 internal static class EngineIcons
 {
     private static readonly AccessibilitySettings Accessibility = new();

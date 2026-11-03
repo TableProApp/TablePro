@@ -11,8 +11,7 @@ public enum LibraryNodeKind
     Connection,
 }
 
-// One row of the Connections page. A favourite shows twice, under Favorites and in its group, so a row's
-// identity is its section plus its id.
+// A connection can show in several sections, so a row's identity is its section plus its id.
 public sealed class LibraryNode
 {
     public LibraryNode(LibraryNodeKind kind, string section, Guid? id, string title)
@@ -35,7 +34,6 @@ public sealed class LibraryNode
 
     public ConnectionGroup? Group { get; init; }
 
-    // A connection's tags, in the library's order.
     public IReadOnlyList<ConnectionTag> Tags { get; init; } = [];
 
     public List<LibraryNode> Children { get; } = [];
@@ -49,8 +47,7 @@ public static class LibraryTree
     public const string RecentSection = "recent";
     public const string ConnectionsSection = "connections";
 
-    // Sections in the macOS order: Favorites and Recent when they hold something, then every connection in its
-    // group. A search drops Favorites and Recent and keeps the groups that hold a match.
+    // Sections in the macOS order; a search drops Favorites and Recent and keeps only the groups holding a match.
     public static IReadOnlyList<LibraryNode> Build(
         LibrarySnapshot snapshot,
         string? query,
@@ -181,7 +178,6 @@ public static class ConnectionSearch
             field is not null && field.Contains(word, StringComparison.CurrentCultureIgnoreCase)));
     }
 
-    // How a row describes where the connection points, after its name.
     public static string Describe(SavedConnection connection, bool isFileEngine)
     {
         ArgumentNullException.ThrowIfNull(connection);

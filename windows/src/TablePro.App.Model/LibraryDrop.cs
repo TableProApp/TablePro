@@ -2,14 +2,13 @@ using TablePro.Interop;
 
 namespace TablePro.App.Model;
 
-// What a drop on the Connections page does, written through the core.
 public abstract record LibraryDrop
 {
     private LibraryDrop()
     {
     }
 
-    // Into Group, or the top level when it is null, before the connection Before, or at the end.
+    // A null Group is the top level, and a null Before is the end.
     public sealed record MoveConnections(IReadOnlyList<Guid> Ids, Guid? Group, Guid? Before) : LibraryDrop;
 
     // Connections dragged with them go into the same group.

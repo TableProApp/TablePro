@@ -3,9 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace TablePro.App.Services;
 
-// Where the app keeps its files. A packaged app writes to its package's LocalState folder, which Windows removes
-// with the app; an unpackaged development build uses %LOCALAPPDATA%\TablePro. TABLEPRO_DATA_DIR overrides both,
-// which the UI tests use to start from an empty folder.
+// Windows removes a packaged app's LocalState with it; TABLEPRO_DATA_DIR gives each UI test an empty folder.
 internal static partial class AppStorage
 {
     private const int AppModelErrorNoPackage = 15700;

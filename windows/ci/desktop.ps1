@@ -56,8 +56,7 @@ function Clear-FirstLogon {
     $log -join '; '
 }
 
-# A minute after the first logon goes on, the Arm64 image runs wsl.exe, whose update prompt opens over the desktop.
-# A hidden loop stops it and the console it opened, and logs what started it.
+# The Arm64 image runs wsl.exe a minute after first logon, and its update prompt opens over the desktop.
 function Start-WslWatch([string]$Log, [int]$Minutes = 20) {
     $script = @"
 `$end = (Get-Date).AddMinutes($Minutes)

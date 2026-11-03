@@ -17,8 +17,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <Version>0.1.0</Version>
-    <!-- A development build runs unpackaged with the Windows App SDK beside it, which the UI tests launch.
-         The MSIX build passes -p:WindowsPackageType=MSIX (windows/docs/decisions/0004-app-shell.md). -->
+    <!-- Unpackaged by default, which the UI tests launch; the MSIX build passes -p:WindowsPackageType=MSIX. -->
     <WindowsPackageType Condition="'$(WindowsPackageType)' == ''">None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>

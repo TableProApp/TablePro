@@ -5,7 +5,6 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// What the window's commands reach in the front tab of a connection.
 internal interface ITabContent
 {
     event EventHandler? StateChanged;

@@ -2,7 +2,6 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// What the pages ask of the window.
 internal interface IShell
 {
     void NewConnection();

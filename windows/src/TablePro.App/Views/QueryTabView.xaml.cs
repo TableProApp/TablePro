@@ -10,9 +10,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// A query tab: the SQL editor, its run commands and the results. The tab's editor connection is opened on the first
-// run and keeps its transaction from one run to the next. A sort runs the result's statement again with an ORDER BY,
-// as the macOS app does, or sorts the rows held when the statement cannot run again.
+// One editor connection for the tab, so a transaction holds from one run to the next.
 public sealed partial class QueryTabView : UserControl, ITabContent
 {
     private readonly Workbench _workbench;
@@ -75,7 +73,6 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         SqlText.Dispose();
     }
 
-    // The selection when there is one, else the whole text.
     private async Task RunAsync()
     {
         if (IsRunning)
@@ -125,8 +122,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         }
     }
 
-    // A lost connection is never opened again by itself, since its transaction would not come back; the next run
-    // opens a new one. A run that cannot say keeps the state the tab knew.
+    // A lost connection is not reopened by itself, since its transaction would not come back.
     private async Task AfterRunAsync()
     {
         if (_editor is { IsLost: true } lost)
@@ -189,7 +185,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         }
     }
 
-    // Sent as typed SQL is, so the results and the bar follow it, as the Linux app ends one. The editor keeps its text.
+    // Run as typed SQL is, so the results and the bar follow it, as the Linux app ends one.
     private async Task EndTransactionAsync(bool commit)
     {
         if (IsRunning || _editor is null)

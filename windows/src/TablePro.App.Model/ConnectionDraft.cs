@@ -25,7 +25,7 @@ public enum FieldProblem
 
 public sealed record FieldError(FormField Field, FieldProblem Problem);
 
-// What the connection form holds, as text where the user types it. Validate names the fields that stop a save.
+// Numbers stay text as typed, so Validate can name the field that does not parse.
 public sealed class ConnectionDraft
 {
     public Guid? Id { get; set; }
@@ -125,7 +125,6 @@ public sealed class ConnectionDraft
         };
     }
 
-    // A pasted URL fills the fields it names and leaves the rest.
     public void Apply(ParsedConnectionUrl url, DatabaseEngine engine)
     {
         ArgumentNullException.ThrowIfNull(url);
@@ -200,7 +199,6 @@ public sealed class ConnectionDraft
         return errors;
     }
 
-    // The name a connection gets when the field is left empty.
     public string SuggestedName()
     {
         if (IsFileEngine)
@@ -252,8 +250,7 @@ public sealed class ConnectionDraft
             LastOpened: LastOpened);
     }
 
-    // A new connection stores the password as typed, even empty, for a server that takes none; an edit keeps
-    // the stored one unless something was typed.
+    // A new connection saves even an empty password, for a server that takes none; an edit keeps the stored one.
     public ConnectionSecrets Secrets()
     {
         if (IsFileEngine)

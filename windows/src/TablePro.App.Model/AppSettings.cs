@@ -34,8 +34,7 @@ public sealed record AppSettings
     };
 }
 
-// settings.json in the app's data folder. A file that does not read gives the defaults, and the next save
-// replaces it.
+// A file that does not read gives the defaults, and the next save replaces it.
 public sealed class SettingsStore(string path)
 {
     public string Path { get; } = path;

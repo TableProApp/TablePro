@@ -14,8 +14,6 @@ using Windows.System;
 
 namespace TablePro.App;
 
-// The one window: the title bar, the menu bar and a NavigationView whose rail holds the Connections page, one item
-// per open connection and Settings. The rail stays hidden until a connection opens.
 public sealed partial class MainWindow : Window, IShell
 {
     private readonly Workbench _workbench;
@@ -203,7 +201,6 @@ public sealed partial class MainWindow : Window, IShell
         return open;
     }
 
-    // Each saved connection's rail item takes its engine and colour from the library as it is now.
     private async Task RefreshMarksAsync()
     {
         if (!_open.Any(open => open.ConnectionId is not null))

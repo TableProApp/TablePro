@@ -4,8 +4,7 @@ namespace TablePro.App.Model;
 
 public sealed record EngineSection(EngineCategory Category, IReadOnlyList<DatabaseEngine> Engines);
 
-// The connection form's engine chooser: the engines whose names hold the search, by family in the core's order, as
-// the macOS app lists them, and by name inside each.
+// Families in the core's order, as the macOS app lists them.
 public static class EngineCatalog
 {
     public static IReadOnlyList<EngineSection> Sections(IEnumerable<DatabaseEngine> engines, string? query)

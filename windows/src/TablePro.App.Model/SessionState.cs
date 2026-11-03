@@ -19,7 +19,7 @@ public sealed record SessionTab
     public string? Table { get; set; }
 }
 
-// A connection the window had open. A saved one is reopened by id; a file opened without saving, by its path.
+// A saved connection is reopened by id, a file opened without saving by its path.
 public sealed record SessionConnection
 {
     public Guid? ConnectionId { get; set; }
@@ -37,8 +37,7 @@ public sealed record SessionConnection
     public bool IsRestorable => ConnectionId is not null || !string.IsNullOrEmpty(FilePath);
 }
 
-// The main window's bounds in physical pixels as it stood restored, and whether it was maximized over them, as
-// GetWindowPlacement reports it. Windows moves a window that would land on a display no longer there.
+// GetWindowPlacement's restored bounds, in physical pixels; Windows moves a window off a display that is gone.
 public sealed record WindowPlacement
 {
     public int X { get; set; }
@@ -93,7 +92,6 @@ public static class ObjectPane
         double.IsFinite(width) ? Math.Clamp(width, MinWidth, MaxWidth) : DefaultWidth;
 }
 
-// session.json in the app's data folder.
 public sealed class SessionStore(string path)
 {
     public string Path { get; } = path;

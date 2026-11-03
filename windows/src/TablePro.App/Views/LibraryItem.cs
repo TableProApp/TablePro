@@ -8,7 +8,6 @@ using TablePro.App.Services;
 
 namespace TablePro.App.Views;
 
-// One tag on a row: its colour as a dot before its name.
 public sealed partial class TagChip(string name, Brush fill)
 {
     public string Name { get; } = name;
@@ -16,7 +15,6 @@ public sealed partial class TagChip(string name, Brush fill)
     public Brush Fill { get; } = fill;
 }
 
-// A row of the Connections page's tree, over the model's node. A rename edits the title in place.
 public sealed partial class LibraryItem : INotifyPropertyChanged
 {
     private readonly Symbol _symbol;
@@ -46,7 +44,7 @@ public sealed partial class LibraryItem : INotifyPropertyChanged
 
     public ObservableCollection<LibraryItem> Children { get; } = [];
 
-    // A recycled container binds again and gets an icon of its own. A connection shows its engine in its colour.
+    // A recycled container binds again and needs an icon of its own.
     public IconElement Glyph => Node.Connection is { } connection
         ? EngineIcons.Mark(connection.EngineId, connection.Color)
         : new SymbolIcon(_symbol);

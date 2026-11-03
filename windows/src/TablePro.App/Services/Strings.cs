@@ -26,7 +26,7 @@ internal static class Strings
     public static string Format(string name, params object?[] values) =>
         string.Format(CultureInfo.CurrentCulture, Get(name), values);
 
-    // The core sends a code; a code with no wording here falls back to the server's own message, then a general one.
+    // A code with no wording here falls back to the server's own message, then a general one.
     public static string Error(CoreError error)
     {
         ArgumentNullException.ThrowIfNull(error);

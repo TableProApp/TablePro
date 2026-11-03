@@ -207,8 +207,7 @@
                     VerticalAlignment="Stretch" />
             </Grid>
 
-            <!-- The Toolkit's splitter, as its sizers page lays it out: on the left edge of the column after the one it
-                 sizes, over the pane's border, so the column it sits in takes what the pane gives up. -->
+            <!-- On the next column's left edge, over the pane's border, as the Toolkit's sizers page lays it out. -->
             <toolkit:GridSplitter
                 x:Name="ObjectsSplitter"
                 x:Uid="ObjectsSplitter"

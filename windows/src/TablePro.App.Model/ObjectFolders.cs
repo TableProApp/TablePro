@@ -19,8 +19,7 @@ public enum FolderKind
 
 public sealed record ObjectFolder(FolderKind Kind, IReadOnlyList<ObjectEntry> Objects);
 
-// The object tree's folders, and its filter. TreeView is not virtualized, so a folder shows its first PageSize
-// objects until the user asks for all of them, and a filter switches to a virtualized list instead.
+// TreeView is not virtualized, so a folder shows its first PageSize objects and a filter uses a virtualized list.
 public static class ObjectFolders
 {
     public const int PageSize = 500;
@@ -54,11 +53,9 @@ public static class ObjectFolders
         _ => FolderKind.Other,
     };
 
-    // Objects a table tab can show rows of.
     public static bool HasRows(ObjectKind kind) => kind is ObjectKind.Table or ObjectKind.PartitionedTable
         or ObjectKind.View or ObjectKind.MaterializedView or ObjectKind.ForeignTable;
 
-    // Names that start with the text first, then names that contain it, each by name.
     public static IReadOnlyList<ObjectEntry> Filter(IEnumerable<ObjectEntry> objects, string text)
     {
         ArgumentNullException.ThrowIfNull(objects);

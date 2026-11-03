@@ -3,7 +3,6 @@ using System.Runtime.InteropServices;
 
 namespace TablePro.App.UITests;
 
-// Mouse input as the hardware sends it, through SendInput, in absolute coordinates on the primary display.
 internal static partial class PointerInput
 {
     private const uint InputMouse = 0;

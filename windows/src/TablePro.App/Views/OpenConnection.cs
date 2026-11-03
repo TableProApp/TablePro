@@ -15,8 +15,7 @@ internal enum ConnectionState
     Failed,
 }
 
-// One connection open in the window: its rail item, its workspace and its session. A saved connection is
-// reopened by id, a file opened without saving by its path.
+// A saved connection is reopened by id, a file opened without saving by its path.
 internal sealed class OpenConnection
 {
     private readonly Workbench _workbench;
@@ -70,7 +69,7 @@ internal sealed class OpenConnection
 
     public string? Color { get; private set; }
 
-    // The rail item shows the engine's artwork in the connection's colour, as the macOS rail marks it.
+    // The engine's artwork in the connection's colour, as the macOS rail marks it.
     public void Mark(string engineId, string? color)
     {
         if (engineId == Origin.EngineId && color == Color && RailItem.Icon is PathIcon)
@@ -144,8 +143,7 @@ internal sealed class OpenConnection
 
     public void CancelConnect() => _connecting?.Cancel();
 
-    // A secret the core has none saved for is asked for, as macOS asks, and used for this connect; the box under it
-    // saves it too. Closing the dialog cancels the connect.
+    // A secret with none saved is asked for, as macOS asks; closing the dialog cancels the connect.
     private async Task<DatabaseSession> ConnectSavedAsync(Guid id, CancellationToken cancellationToken)
     {
         try

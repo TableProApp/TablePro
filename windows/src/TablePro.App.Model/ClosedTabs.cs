@@ -2,7 +2,6 @@ namespace TablePro.App.Model;
 
 public sealed record ClosedTab(SessionTab Tab, int Index);
 
-// The tabs a workspace closed, newest first, for Reopen closed tab. Each comes back where it stood.
 public sealed class ClosedTabs
 {
     public const int Limit = 20;

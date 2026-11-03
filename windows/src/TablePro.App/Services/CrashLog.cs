@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace TablePro.App.Services;
 
-// crash.log in the data folder: what ended the app, for a report and for the UI tests to print.
+// For a bug report, and for the UI tests to print when the app ends under them.
 internal static class CrashLog
 {
     public static string Path => System.IO.Path.Combine(AppStorage.DataFolder, "crash.log");

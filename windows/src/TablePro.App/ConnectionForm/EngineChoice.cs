@@ -18,8 +18,7 @@ public sealed partial class EngineChoice(DatabaseEngine engine, string detail)
     public string AccessibleName => $"{Name}, {Detail}";
 }
 
-// The chooser's GridView groups through a CollectionViewSource, which reads Items by name; the attribute gives that
-// lookup to a trimmed, AOT-compiled app.
+// CollectionViewSource reads Items by name, which a trimmed AOT app keeps only through this attribute.
 [WinRT.GeneratedBindableCustomProperty]
 public sealed partial class EngineGroup(string title, IList<EngineChoice> items)
 {

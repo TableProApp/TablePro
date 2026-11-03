@@ -4,8 +4,7 @@ namespace TablePro.App.Model;
 
 public sealed record HeldTab(string Title, TransactionState Transaction, bool Selected);
 
-// The bar over the tabs that names another tab holding a transaction. The tab shown says so itself, above its
-// results, where Commit and Roll Back are.
+// The shown tab has its own bar above its results, so this one names another tab holding a transaction.
 public sealed record TransactionElsewhere(int Target, string Title, TransactionState Transaction, int Count);
 
 public enum HealthNoticeKind
@@ -15,7 +14,6 @@ public enum HealthNoticeKind
     Failed,
 }
 
-// The bar over the tabs while the session's connection is not online.
 public sealed record HealthNotice(HealthNoticeKind Kind, int Attempt, CoreError? Reason)
 {
     public bool OffersReconnect => Kind is HealthNoticeKind.Offline or HealthNoticeKind.Failed;
@@ -50,8 +48,7 @@ public static class WorkspaceNotices
         _ => null,
     };
 
-    // The statements that end a transaction in the engine's language: a key-value engine queues commands and runs
-    // them with EXEC, as the Linux app sends them.
+    // A key-value engine queues commands and runs them with EXEC, as the Linux app sends them.
     public static string EndTransaction(DataModel model, bool commit) => (model, commit) switch
     {
         (DataModel.KeyValue, true) => "EXEC",

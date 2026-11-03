@@ -6,8 +6,7 @@ namespace TablePro.App.Services;
 
 internal static class Themes
 {
-    // The content takes the app theme; the caption buttons follow it through the title bar's preferred theme,
-    // which Windows 10 also honours since the buttons are drawn by the app's title bar there.
+    // The caption buttons follow the title bar's preferred theme, which Windows 10 honours too.
     public static void Apply(Window window, AppTheme theme)
     {
         ArgumentNullException.ThrowIfNull(window);

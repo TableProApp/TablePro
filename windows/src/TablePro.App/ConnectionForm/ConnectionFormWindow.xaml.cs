@@ -15,8 +15,7 @@ namespace TablePro.App.ConnectionForm;
 
 internal sealed record FormResult(SavedConnection Saved, bool Connect);
 
-// The connection form: its own window, owned by the main one and not modal, so a dialog elsewhere in the app can
-// still open (only one ContentDialog opens per thread). Page one picks the engine, page two holds every field.
+// Not a ContentDialog: only one opens per thread, and a dialog elsewhere in the app must still open.
 public sealed partial class ConnectionFormWindow : Window
 {
     private static readonly string[] Colors = ["", "blue", "teal", "green", "yellow", "orange", "red", "pink", "purple", "slate"];

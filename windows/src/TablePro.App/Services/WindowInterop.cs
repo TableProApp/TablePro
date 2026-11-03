@@ -12,8 +12,7 @@ internal static partial class WindowInterop
     private const int SwHide = 0;
     private const int SwShowMaximized = 3;
 
-    // A XAML window has no owner property, so the owner is set the Win32 way: an owned window stays above its owner,
-    // minimizes with it and has no taskbar button of its own.
+    // XAML has no owner property; a Win32 owner keeps the window above the main one and off the taskbar.
     public static void SetOwner(Window window, Window owner)
     {
         ArgumentNullException.ThrowIfNull(window);

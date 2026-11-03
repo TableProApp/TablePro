@@ -3,7 +3,6 @@ using TablePro.Interop;
 
 namespace TablePro.App.Services;
 
-// What every view shares: the core, the saved connections, the settings and the session file.
 internal sealed class Workbench : IDisposable
 {
     private readonly SettingsStore _settings;
@@ -34,7 +33,7 @@ internal sealed class Workbench : IDisposable
 
     public AppSettings Settings { get; private set; }
 
-    // The object pane's width every workspace shares, kept in the session file.
+    // Shared by every workspace and kept in the session file.
     public double ObjectPaneWidth { get; set; } = ObjectPane.DefaultWidth;
 
     public DatabaseEngine? Engine(string id) => Engines.FirstOrDefault(engine => engine.Id == id);

@@ -12,8 +12,6 @@ namespace TablePro.App.Views;
 
 internal sealed record SecretAnswer(string Secret, bool Save);
 
-// One open connection's page: connecting, the failure with its actions, or the object tree and the tab strip, with
-// the bars for the connection's health and a transaction another tab holds.
 public sealed partial class WorkspaceView : UserControl
 {
     private readonly Workbench _workbench;
@@ -277,7 +275,6 @@ public sealed partial class WorkspaceView : UserControl
         ObjectsColumn.Width = show ? new GridLength(_workbench.ObjectPaneWidth) : new GridLength(0);
     }
 
-    // The tab comes back where it stood, with its text or its table.
     public void ReopenClosedTab()
     {
         if (_session is null || _closed.Pop() is not { } closed)
@@ -456,7 +453,6 @@ public sealed partial class WorkspaceView : UserControl
         }
     }
 
-    // The core reports each change of the connection's health; the bar shows while it is not online.
     private async void WatchHealth(DatabaseSession session)
     {
         _watching?.Cancel();
@@ -574,8 +570,7 @@ public sealed partial class WorkspaceView : UserControl
         }
     }
 
-    // A bound TreeViewItem.IsExpanded is overwritten when the row joins the tree, so a row opens once it has loaded,
-    // and only the first time.
+    // A bound TreeViewItem.IsExpanded is overwritten when the row joins the tree, so a row opens once it has loaded.
     private void OnObjectRowLoaded(object sender, RoutedEventArgs e)
     {
         if (sender is TreeViewItem row && ObjectTree.ItemFromContainer(row) is ObjectNode { StartsExpanded: true } node)

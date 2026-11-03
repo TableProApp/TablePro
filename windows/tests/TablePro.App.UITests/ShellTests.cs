@@ -79,8 +79,7 @@ public sealed partial class ShellTests
             Assert.Equal("1", AppSession.Cell(grid, 0, 0));
             app.Screenshot("05-table");
 
-            // The table sorts on the server: each click runs the table's query again with an ORDER BY. The header
-            // reports the order as its ItemStatus, and a width the user set stays.
+            // The table sorts on the server, and the header reports the order as its ItemStatus.
             var title = () => app.FindByName("Title", grid);
             Assert.Equal(string.Empty, title().Properties.ItemStatus.ValueOrDefault ?? string.Empty);
             title().Patterns.Transform.Pattern.Resize(300, title().BoundingRectangle.Height);

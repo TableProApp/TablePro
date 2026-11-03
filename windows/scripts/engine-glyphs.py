@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Writes src/TablePro.App/Resources/EngineGlyphs.xaml from the engine artwork the macOS app ships.
-
-The macOS app draws each engine's SVG as a template image, one colour over its shape. WinUI's PathIcon does the
-same with a path in the theme's foreground, so each SVG becomes one path: absolute commands, arcs as curves, the
-group transforms applied, and the shape fitted to a 16 by 16 box so every glyph sits at the same size. Run it from
-windows/ after the macOS artwork changes or an engine is added:
-
-    python3 scripts/engine-glyphs.py
-"""
+# Each macOS template SVG becomes one PathIcon path in a 16 by 16 box, so every glyph sits at the same size.
 
 import math
 import re
@@ -54,8 +46,8 @@ def tokens(data):
             index = match.end()
 
 
+# An arc's two flags may be written without a separator, as 011.
 def commands(data):
-    """Each command with its numbers. An arc's two flags may be written without a separator, as 011."""
     stream = list(tokens(data))
     index = 0
     command = None
@@ -87,8 +79,8 @@ def commands(data):
             command = "l"
 
 
+# After the SVG 1.1 implementation notes, F.6.
 def arc_to_curves(x1, y1, rx, ry, angle, large, sweep, x2, y2):
-    """The SVG arc as cubic curves, after the SVG 1.1 implementation notes, F.6."""
     if (x1, y1) == (x2, y2):
         return []
     if rx == 0 or ry == 0:
@@ -156,7 +148,6 @@ def arc_to_curves(x1, y1, rx, ry, angle, large, sweep, x2, y2):
 
 
 def absolute(data):
-    """The path as absolute M, L, C, Q and Z segments."""
     out = []
     x = y = start_x = start_y = 0.0
     last_control = None
@@ -220,7 +211,6 @@ def absolute(data):
 
 
 def transform_of(element):
-    """The element's own transform as a matrix (a, b, c, d, e, f)."""
     text = element.get("transform")
     matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     if not text:
