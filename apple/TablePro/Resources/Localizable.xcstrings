@@ -36121,7 +36121,8 @@
 
     },
     "Changes Not Saved" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Changes saved" : {
       "localizations" : {
@@ -36961,6 +36962,8 @@
       }
     },
     "Check for Updates…" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -90404,16 +90407,19 @@
 
     },
     "iCloud Is Not Ready" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "iCloud is not ready on this Mac yet. Sync resumes on its own when it is." : {
 
     },
     "iCloud Is Restricted" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "iCloud Storage Is Full" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "iCloud Sync" : {
       "localizations" : {
@@ -106702,7 +106708,8 @@
       }
     },
     "Manage Storage…" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Manage Tags" : {
       "localizations" : {
@@ -122934,7 +122941,8 @@
       }
     },
     "Not Signed In to iCloud" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Not started" : {
       "localizations" : {
@@ -125226,7 +125234,8 @@
       "generatesSymbol" : false
     },
     "Offline" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Offset" : {
       "extractionState" : "stale",
@@ -128313,7 +128322,8 @@
       }
     },
     "Open System Settings…" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Open Table" : {
       "comment" : "A context menu option to open a table in the main view.",
@@ -169304,7 +169314,8 @@
       }
     },
     "Some Changes Not Uploaded" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Some columns in this preset don't exist in the current table" : {
       "localizations" : {
@@ -177158,10 +177169,12 @@
       }
     },
     "Sync Failed" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Sync Is Unavailable" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Sync Now" : {
       "localizations" : {
@@ -177204,6 +177217,8 @@
       }
     },
     "Sync Off" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -177502,6 +177517,8 @@
       }
     },
     "Syncing…" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -180158,7 +180175,8 @@
       }
     },
     "TablePro Data Was Removed from iCloud" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro did not open a window for that connection in time." : {
       "localizations" : {
@@ -204907,6 +204925,8 @@
       }
     },
     "Try Again" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -205107,6 +205127,10 @@
           }
         }
       }
+    },
+    "Turn Off iCloud Sync" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Turn Off Sync" : {
 
@@ -208087,7 +208111,8 @@
 
     },
     "Up to Date" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Update" : {
       "localizations" : {
@@ -208255,7 +208280,8 @@
       }
     },
     "Update Required" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Update row %@ in %@" : {
       "localizations" : {
@@ -208783,7 +208809,8 @@
       }
     },
     "Upload Again" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Upper bound, for BETWEEN" : {
       "localizations" : {
@@ -212838,7 +212865,8 @@
       }
     },
     "Waiting to Retry" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Wand" : {
       "extractionState" : "manual",

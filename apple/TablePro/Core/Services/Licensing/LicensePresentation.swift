@@ -2,35 +2,35 @@
 //  LicensePresentation.swift
 //  TablePro
 //
-//  What the license pane says for a given license state
-//
 
 import Foundation
 
-/// The action a degraded license offers, if any.
 internal enum LicenseNoticeAction: Equatable {
+    case activate
     case renew
-    case retryValidation
     case purchase
+    case upgrade
+    case retryValidation
+
+    var title: String {
+        switch self {
+        case .activate: String(localized: "Activate License…")
+        case .renew: String(localized: "Renew License")
+        case .purchase: String(localized: "Buy a License")
+        case .upgrade: String(localized: "Upgrade Plan")
+        case .retryValidation: String(localized: "Try Again")
+        }
+    }
 }
 
-/// How prominent a notice is, which decides its symbol and tint without the view branching on
-/// status a second time.
+// The tone follows what the reader can do: `.critical` is a state with no way out, which is why a
+// suspended license is red and an expired one, which offers Renew, is not.
 internal enum LicenseNoticeTone: Equatable {
     case informational
     case warning
     case critical
 }
 
-/// A notice shown inside the pane, never as an alert or a floating banner.
-///
-/// The tone follows what the reader can do about the state, not how bad the state sounds.
-/// `.critical` is reserved for a state offering no way out, which is why a suspended license is red
-/// and an expired one, which offers Renew, is not.
-///
-/// Title, body and one action, which is the shape Apple's own settings panes use for a degraded
-/// state (`Action Required` plus `Try Again`), and what the HIG asks for when it says to put status
-/// feedback next to what it describes.
 internal struct LicenseNotice: Equatable {
     let title: String
     let message: String
@@ -38,13 +38,11 @@ internal struct LicenseNotice: Equatable {
     let tone: LicenseNoticeTone
 }
 
-/// A page on tablepro.app that clears an activation failure, offered as a link under its message.
 internal struct LicenseActivationLink: Equatable {
     let title: String
     let destination: URL
 }
 
-/// What the activation form says when activating fails, and where to go about it.
 internal struct LicenseActivationFailure: Equatable {
     let message: String
     let link: LicenseActivationLink?
@@ -59,8 +57,7 @@ internal struct LicenseFeatureGroup: Equatable, Identifiable {
     var id: LicenseTier { tier }
 }
 
-/// Turns license state into what the pane shows. Pure and free of any view type, so the whole grid
-/// of states can be tested without building a view, the same way `LicenseManager.resolveStatus` is.
+// Every surface that shows license state renders this, so a state reads the same everywhere.
 internal enum LicensePresentation {
     static func featureGroups(
         status: LicenseStatus,
@@ -84,20 +81,12 @@ internal enum LicensePresentation {
         }
     }
 
-    /// Whether this license currently entitles anything.
-    ///
-    /// The pane uses it to decide whether a renewal field belongs beside the license, not whether
-    /// the license is shown at all: branching the whole layout on it is what left an expired
-    /// license with no field to type a renewal key into.
     static func showsLicensedLayout(status: LicenseStatus) -> Bool {
         status == .active
     }
 
-    /// Whether typing a new key is the way out of this state.
-    ///
-    /// Not simply "is not entitled": a license the server has not confirmed for 30 days is one the
-    /// owner already holds, and asking them for a key needs the network the state is defined by
-    /// lacking. Their way out is the check, which the notice offers.
+    // An unverified license is one its owner holds, and typing a key needs the network the state
+    // lacks. Its way out is the check.
     static func showsRenewalField(status: LicenseStatus) -> Bool {
         switch status {
         case .expired, .unlicensed, .suspended, .deactivated:
@@ -107,7 +96,6 @@ internal enum LicensePresentation {
         }
     }
 
-    /// The notice for a state that needs saying something, or nil when everything is in order.
     static func notice(
         status: LicenseStatus,
         daysUntilExpiry: Int?,
@@ -119,38 +107,20 @@ internal enum LicensePresentation {
             return expiryNotice(daysUntilExpiry: daysUntilExpiry, isExpired: isExpired)
 
         case .expired:
-            return LicenseNotice(
-                title: String(localized: "License Expired"),
-                message: String(localized: "Renew it to use paid features again. Everything else keeps working."),
-                action: .renew,
-                tone: .warning
-            )
+            return expiredNotice
 
         case .suspended:
-            return LicenseNotice(
-                title: String(localized: "License Suspended"),
-                message: String(localized: "Get in touch and we will sort it out."),
-                action: nil,
-                tone: .critical
-            )
+            return suspendedNotice
 
         case .validationFailed:
-            return LicenseNotice(
-                title: String(localized: "Could Not Check This License"),
-                message: String(
-                    localized: "TablePro has not reached the license server in 30 days, so paid features are paused."
-                ),
-                action: .retryValidation,
-                tone: .warning
-            )
+            return unverifiedNotice
 
         case .deactivated:
+            // Informational: the reader just chose this, and the field below it is the way back.
             return LicenseNotice(
                 title: String(localized: "License Removed"),
                 message: String(localized: "This Mac no longer holds a seat."),
                 action: nil,
-                /// Informational, not a warning: this reports something the reader just chose to
-                /// do, and the field below it is already the way back.
                 tone: .informational
             )
 
@@ -166,10 +136,90 @@ internal enum LicensePresentation {
         }
     }
 
-    /// Warns only inside the last week, and never for a lifetime license, which has no expiry to
-    /// count down to. The window itself is `LicenseManager.isExpiringSoon`, which also refuses a
-    /// license that has already lapsed: whole-day counting leaves one that ran out this morning
-    /// still reporting zero, which read as "expires in 0 days" beside a state saying Expired.
+    // A license state reads exactly as the License pane says it, so a paying customer is never
+    // asked to buy; only a plan the license lacks names the plan.
+    static func gate(for feature: ProFeature, access: ProFeatureAccess) -> LicenseNotice? {
+        switch access {
+        case .available:
+            return nil
+        case .unlicensed:
+            return LicenseNotice(
+                title: feature.planRequirement,
+                message: feature.featureDescription,
+                action: .activate,
+                tone: .informational
+            )
+        case .requiresUpgrade:
+            return LicenseNotice(
+                title: feature.planRequirement,
+                message: feature.featureDescription,
+                action: .upgrade,
+                tone: .informational
+            )
+        case .expired:
+            return expiredNotice
+        case .validationFailed:
+            return unverifiedNotice
+        case .suspended:
+            return suspendedNotice
+        }
+    }
+
+    static func welcomeLine(
+        status: LicenseStatus,
+        daysUntilExpiry: Int?,
+        isExpired: Bool,
+        hasLicense: Bool
+    ) -> LicenseNotice? {
+        if let notice = notice(
+            status: status, daysUntilExpiry: daysUntilExpiry, isExpired: isExpired, hasLicense: hasLicense
+        ) {
+            return notice
+        }
+        guard status != .active else { return nil }
+        return LicenseNotice(
+            title: String(localized: "Activate License"),
+            message: String(localized: "Enter your license key, or a team invite code to join a team."),
+            action: .activate,
+            tone: .informational
+        )
+    }
+
+    static func checkFailureMessage(_ error: LicenseError) -> String {
+        error.friendlyDescription
+    }
+
+    private static var expiredNotice: LicenseNotice {
+        LicenseNotice(
+            title: String(localized: "License Expired"),
+            message: String(localized: "Renew it to use paid features again. Everything else keeps working."),
+            action: .renew,
+            tone: .warning
+        )
+    }
+
+    private static var suspendedNotice: LicenseNotice {
+        LicenseNotice(
+            title: String(localized: "License Suspended"),
+            message: String(localized: "Get in touch and we will sort it out."),
+            action: nil,
+            tone: .critical
+        )
+    }
+
+    private static var unverifiedNotice: LicenseNotice {
+        LicenseNotice(
+            title: String(localized: "Could Not Check This License"),
+            message: String(
+                localized: "TablePro has not reached the license server in 30 days, so paid features are paused."
+            ),
+            action: .retryValidation,
+            tone: .warning
+        )
+    }
+
+    // The window is `LicenseManager.isExpiringSoon`, which refuses a license that already lapsed:
+    // whole-day counting leaves one that ran out this morning at zero days.
     private static func expiryNotice(daysUntilExpiry: Int?, isExpired: Bool) -> LicenseNotice? {
         guard LicenseManager.isExpiringSoon(daysUntilExpiry: daysUntilExpiry, isExpired: isExpired),
               let days = daysUntilExpiry else { return nil }
@@ -182,8 +232,7 @@ internal enum LicensePresentation {
         )
     }
 
-    /// Today and tomorrow are named rather than counted, because a countdown reads "in 0 days" and
-    /// "in 1 days" on exactly the two days the notice exists to act on.
+    // Today and tomorrow are named rather than counted: "in 0 days" and "in 1 days".
     private static func expiryMessage(days: Int) -> String {
         switch days {
         case 0:
@@ -195,11 +244,8 @@ internal enum LicensePresentation {
         }
     }
 
-    /// What the activation form shows after activating `entry` failed.
-    ///
-    /// The Macs link goes with a license key only. An invite code fails with the same status when
-    /// the team has no seat left, which only the team's owner can change, and the Macs page lists
-    /// only the licenses bought with the signed-in email.
+    // The Macs link goes with a license key only: an invite code fails the same way when the team
+    // has no seat left, which only the team's owner can change.
     static func activationFailure(for error: Error, entry: String) -> LicenseActivationFailure {
         let licenseError = error as? LicenseError
         let message = licenseError?.friendlyDescription ?? error.localizedDescription
@@ -217,19 +263,16 @@ internal enum LicensePresentation {
         )
     }
 
-    /// The seat count, as a phrase rather than two numbers glued together, so a translation can put
-    /// them wherever its grammar needs and vary the noun by count.
     static func deviceCount(used: Int, limit: Int) -> String {
         String(format: String(localized: "%1$lld of %2$lld devices"), used, limit)
     }
 
-    /// The Team section lists members, so it counts members. "Seats" is what the Devices list
-    /// spends, and using one noun for both made releasing a Mac look like it freed a person.
+    // Members, not seats: one noun for both made releasing a Mac look like it freed a person.
     static func memberCount(used: Int, limit: Int) -> String {
         String(format: String(localized: "%1$lld of %2$lld members"), used, limit)
     }
 
-    /// A one-time licence's "lifetime" cycle repeats "One-time", so it is dropped.
+    // A one-time license's "lifetime" cycle repeats "One-time", so it is dropped.
     static func planDescription(tier: String, billingCycle: String?, expiry: String?) -> String {
         var parts = [LicenseTier(rawValue: tier).displayName]
 
@@ -245,12 +288,8 @@ internal enum LicensePresentation {
         return parts.joined(separator: ", ")
     }
 
-    /// The first group of a license key, with the rest withheld.
-    ///
-    /// A key is a bearer credential, so it is never on screen in full, and Copy puts the real one on
-    /// the pasteboard instead. Only the first group is shown: a full-length run of dots is identical
-    /// for every licence, so it took the width of a real key to say nothing and then had its own end
-    /// truncated away. One group is enough to tell which licence this is.
+    // A key is a bearer credential, so only its first group is on screen; Copy puts the real one on
+    // the pasteboard.
     static func maskedKey(_ key: String) -> String {
         let parts = key.split(separator: "-")
         guard parts.count == 5, let first = parts.first else { return key }

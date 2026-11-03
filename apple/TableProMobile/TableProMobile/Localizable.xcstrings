@@ -4666,7 +4666,8 @@
       }
     },
     "Changes Not Saved" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Changing a column's type re-reads every value in it. Text that looks like a number becomes one, so '007' is stored as 7." : {
       "extractionState" : "manual",
@@ -4729,6 +4730,10 @@
       }
     },
     "Chat" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Check for Updates…" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -11603,13 +11608,15 @@
 
     },
     "iCloud Is Not Ready" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "iCloud is not ready on this device yet. Sync resumes on its own when it is." : {
 
     },
     "iCloud Is Restricted" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "iCloud rejected %d change(s). They stay on this device and will retry: %@" : {
       "extractionState" : "stale",
@@ -11676,7 +11683,8 @@
       }
     },
     "iCloud Storage Is Full" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "iCloud storage is full. Free up space in iCloud and try again." : {
       "extractionState" : "stale",
@@ -13734,6 +13742,10 @@
         }
       }
     },
+    "Manage Storage…" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Manage Tags" : {
       "localizations" : {
         "ko" : {
@@ -15731,7 +15743,8 @@
 
     },
     "Not Signed In to iCloud" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Not valid" : {
 
@@ -15867,7 +15880,8 @@
       "generatesSymbol" : false
     },
     "Offline" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "OK" : {
       "localizations" : {
@@ -16367,6 +16381,10 @@
           }
         }
       }
+    },
+    "Open System Settings…" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Open Table" : {
 
@@ -21330,7 +21348,8 @@
 
     },
     "Some Changes Not Uploaded" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Some credentials could not be saved to the keychain. You may need to re-enter them later." : {
       "localizations" : {
@@ -22498,7 +22517,8 @@
       }
     },
     "Sync Failed" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Sync from iCloud" : {
       "extractionState" : "stale",
@@ -22530,7 +22550,8 @@
       }
     },
     "Sync Is Unavailable" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Sync Now" : {
       "extractionState" : "stale",
@@ -22560,6 +22581,10 @@
           }
         }
       }
+    },
+    "Sync Off" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Sync Passwords" : {
       "localizations" : {
@@ -22705,6 +22730,8 @@
       }
     },
     "Syncing…" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -23247,7 +23274,8 @@
 
     },
     "TablePro Data Was Removed from iCloud" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro doesn't support “%@” connections" : {
       "extractionState" : "manual",
@@ -28187,6 +28215,8 @@
       "generatesSymbol" : false
     },
     "Try Again" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "ko" : {
           "stringUnit" : {
@@ -28249,7 +28279,8 @@
 
     },
     "Turn Off iCloud Sync" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Turn off the SSH tunnel for this connection." : {
       "localizations" : {
@@ -28739,8 +28770,13 @@
         }
       }
     },
+    "Up to Date" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Update Required" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Update the server's TLS configuration or use a newer database server version that supports modern ciphers." : {
       "extractionState" : "manual",
@@ -28773,7 +28809,8 @@
       }
     },
     "Upload Again" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "UPPERCASE" : {
       "extractionState" : "manual",
@@ -29354,7 +29391,8 @@
       }
     },
     "Waiting to Retry" : {
-
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Wand" : {
       "extractionState" : "manual",
