@@ -783,7 +783,14 @@ fn settle(devices: &mut [Device], server: &mut Server) {
     }
 }
 
-fn shape(list: &ConnectionList) -> (Vec<ConnectionGroup>, Vec<(Uuid, Option<Uuid>, u32)>, Vec<Uuid>) {
+#[derive(Debug, PartialEq, Eq)]
+struct LibraryShape {
+    groups: Vec<ConnectionGroup>,
+    connections: Vec<(Uuid, Option<Uuid>, u32)>,
+    favorites: Vec<Uuid>,
+}
+
+fn shape(list: &ConnectionList) -> LibraryShape {
     let mut groups = list.groups.to_vec();
     groups.sort_by_key(|group| group.id);
     let mut connections: Vec<(Uuid, Option<Uuid>, u32)> = list
@@ -794,7 +801,11 @@ fn shape(list: &ConnectionList) -> (Vec<ConnectionGroup>, Vec<(Uuid, Option<Uuid
     connections.sort();
     let mut favorites = list.favorites.to_vec();
     favorites.sort();
-    (groups, connections, favorites)
+    LibraryShape {
+        groups,
+        connections,
+        favorites,
+    }
 }
 
 #[test]

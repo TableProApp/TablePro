@@ -91,6 +91,8 @@ Each slice ships when all of these pass:
 - **Bindings**: `apple/scripts/build-core.sh` then `swift test --package-path apple/Packages/TableProFFI`, which `core.yml` runs on macOS.
 - **App**: the app's existing suites for the store a slice replaces pass unchanged against the core, with new tests for the Swift side's adapter, and `ProductionSchemaParityTests` shows no new CloudKit field.
 
+The hosted [verification run 41696940325](https://github.com/TableProApp/TablePro/actions/runs/41696940325/job/126129842605) built both macOS architectures with Rust 1.98. The universal archive occupied 43 MiB, and its highest recorded minimum OS was macOS 13.0. The package linked with its declared system libraries and passed all three Swift tests. The Foundation ordering probe passed all 16 pairs.
+
 ## Alternatives considered
 
 - **Move the whole app at once.** One change touching every store, with no release in between to find what broke.
