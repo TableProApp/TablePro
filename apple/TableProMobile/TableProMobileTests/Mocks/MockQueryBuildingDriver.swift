@@ -11,7 +11,9 @@ final class MockQueryBuildingDriver: DriverQueryBuilding, @unchecked Sendable {
 
     private(set) var pageRequests: [(request: TableReadRequest, limit: Int, offset: Int)] = []
     private(set) var countRequests: [TableReadRequest] = []
-    private(set) var lookups: [(table: String, column: String, key: [(column: String, value: String)])] = []
+    private(set) var lookups: [
+        (table: String, column: String, key: [(column: String, value: String)], locator: String?)
+    ] = []
     private(set) var executedQueries: [String] = []
 
     var filterOperators: [FilterOperator] { [.equal, .contains] }
@@ -30,9 +32,10 @@ final class MockQueryBuildingDriver: DriverQueryBuilding, @unchecked Sendable {
         table: String,
         schema: String?,
         column: String,
-        key: [(column: String, value: String)]
+        key: [(column: String, value: String)],
+        locator: String?
     ) async throws -> String? {
-        lookups.append((table, column, key))
+        lookups.append((table, column, key, locator))
         guard !scriptedValues.isEmpty else { throw CellLookupError.rowNotFound }
         return try scriptedValues.removeFirst().get()
     }

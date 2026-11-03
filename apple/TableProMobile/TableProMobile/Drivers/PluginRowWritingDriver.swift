@@ -33,6 +33,7 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
         schema: String?,
         columns: [String],
         originalRow: [String?],
+        documentLocator: String?,
         changes: [(column: String, value: String?)]
     ) throws -> [PluginRowWrite] {
         let original = originalRow.map(PluginCellValue.init(optionalText:))
@@ -42,13 +43,34 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
             return (index, change.column, old, PluginCellValue(optionalText: change.value))
         }
         let rowChange = PluginRowChange(rowIndex: 0, type: .update, cellChanges: cellChanges, originalRow: original)
-        return try generate(table: table, schema: schema, columns: columns, changes: [rowChange])
+        return try generate(
+            table: table, schema: schema, columns: columns, changes: [rowChange],
+            context: Self.context(locating: documentLocator)
+        )
     }
 
-    func deleteWrites(table: String, schema: String?, columns: [String], originalRow: [String?]) throws -> [PluginRowWrite] {
+    func deleteWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        originalRow: [String?],
+        documentLocator: String?
+    ) throws -> [PluginRowWrite] {
         let original = originalRow.map(PluginCellValue.init(optionalText:))
         let rowChange = PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: original)
-        return try generate(table: table, schema: schema, columns: columns, changes: [rowChange], deleted: [0])
+        return try generate(
+            table: table, schema: schema, columns: columns, changes: [rowChange], deleted: [0],
+            context: Self.context(locating: documentLocator)
+        )
+    }
+
+    // The one change these build is row 0.
+    private static func context(locating documentLocator: String?) -> PluginRowWriteContext {
+        var context = PluginRowWriteContext()
+        if let documentLocator {
+            context.rowLocators = [0: documentLocator]
+        }
+        return context
     }
 
     func insertWrites(
@@ -70,7 +92,8 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
         }
         let rowChange = PluginRowChange(rowIndex: 0, type: .insert, cellChanges: [], originalRow: nil)
         return try generate(
-            table: table, schema: schema, columns: columns, changes: [rowChange], inserted: [0: row]
+            table: table, schema: schema, columns: columns, changes: [rowChange], inserted: [0: row],
+            context: PluginRowWriteContext()
         )
     }
 
@@ -144,10 +167,12 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
         columns: [String],
         changes: [PluginRowChange],
         inserted: [Int: [PluginCellValue]] = [:],
-        deleted: Set<Int> = []
+        deleted: Set<Int> = [],
+        context: PluginRowWriteContext
     ) throws -> [PluginRowWrite] {
         guard let writes = try pluginRowWrites(
-            table: table, schema: schema, columns: columns, changes: changes, inserted: inserted, deleted: deleted
+            table: table, schema: schema, columns: columns, changes: changes, inserted: inserted, deleted: deleted,
+            context: context
         ) else {
             throw Self.cannotWrite
         }
@@ -160,7 +185,8 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
         columns: [String],
         changes: [PluginRowChange],
         inserted: [Int: [PluginCellValue]],
-        deleted: Set<Int>
+        deleted: Set<Int>,
+        context: PluginRowWriteContext
     ) throws -> [PluginRowWrite]? {
         try plugin.generateRowWrites(
             table: table,
@@ -171,7 +197,7 @@ nonisolated class PluginRowWritingDriver: PluginBackedDriver, DriverRowWriting, 
             insertedRowData: inserted,
             deletedRowIndices: deleted,
             insertedRowIndices: Set(inserted.keys),
-            context: PluginRowWriteContext()
+            context: context
         )
     }
 }

@@ -734,9 +734,10 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         schema: String?,
         containsTableOperation: Bool,
         rowsWithUnloadedValues: Set<RowID> = [],
-        writesThroughView: Bool = false
+        writesThroughView: Bool = false,
+        rowLocators: [RowID: String] = [:]
     ) throws -> RowWriteBuild {
-        var factory = try statementFactory()
+        var factory = try statementFactory(rowLocators: rowLocators, database: database)
         factory.holdsKeyedWritesToOneRow = writesThroughView
         let operations = RowWriteOperationBuilder.operations(
             from: pending.changes,
@@ -749,7 +750,8 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             generatedColumns: generatedColumns,
             containsTableOperation: containsTableOperation,
             rowsWithUnloadedValues: rowsWithUnloadedValues,
-            writesThroughView: writesThroughView
+            writesThroughView: writesThroughView,
+            rowLocators: rowLocators
         )
 
         let steps = try writeSteps(
@@ -779,11 +781,14 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
         return DataWriteStep.rowWrites(statements, tableName: tableName, primaryKeyColumns: primaryKeyColumns)
     }
 
-    func statementFactory() throws -> RowChangeStatementFactory {
+    func statementFactory(
+        rowLocators: [RowID: String] = [:],
+        database: String? = nil
+    ) throws -> RowChangeStatementFactory {
         guard let databaseType else {
             throw DatabaseError.queryFailed("Cannot generate statements: table dialect not configured")
         }
-        return RowChangeStatementFactory(
+        var factory = RowChangeStatementFactory(
             tableName: tableName,
             schemaName: schemaName,
             columns: columns,
@@ -794,6 +799,9 @@ final class DataChangeManager: ObservableObject, ChangeManaging {
             databaseType: databaseType,
             pluginDriver: pluginDriver
         )
+        factory.rowLocators = rowLocators
+        factory.database = database?.isEmpty == false ? database : nil
+        return factory
     }
 
     // MARK: - Actions

@@ -13,7 +13,7 @@ extension MainContentCoordinator {
         let changes = sidebarEditChanges(editedFields: editState.getEditedFields())
         guard !changes.isEmpty else { return }
         // Held to its row counts as a grid save is, so a write that found no row fails instead of saving nothing.
-        let steps = try changeManager.writeSteps(for: changes)
+        let steps = try changeManager.writeSteps(for: changes, factory: sidebarStatementFactory())
         guard !steps.isEmpty else { return }
         try await executeSidebarChanges(steps: steps)
 
@@ -25,7 +25,14 @@ extension MainContentCoordinator {
     ) throws -> [ParameterizedStatement] {
         let changes = sidebarEditChanges(editedFields: editedFields)
         guard !changes.isEmpty else { return [] }
-        return try changeManager.generateSQL(for: changes)
+        return try sidebarStatementFactory().statements(for: changes)
+    }
+
+    private func sidebarStatementFactory() throws -> RowChangeStatementFactory {
+        try changeManager.statementFactory(
+            rowLocators: activeDataGridModel?.rows.rowLocators ?? [:],
+            database: selectedTabScope?.database
+        )
     }
 
     // Each row keeps its missing fields, so a removal writes as one and a typed value compares against an absent field.

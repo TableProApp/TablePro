@@ -25,10 +25,17 @@ nonisolated protocol DriverRowWriting: DatabaseDriver {
         schema: String?,
         columns: [String],
         originalRow: [String?],
+        documentLocator: String?,
         changes: [(column: String, value: String?)]
     ) throws -> [PluginRowWrite]
 
-    func deleteWrites(table: String, schema: String?, columns: [String], originalRow: [String?]) throws -> [PluginRowWrite]
+    func deleteWrites(
+        table: String,
+        schema: String?,
+        columns: [String],
+        originalRow: [String?],
+        documentLocator: String?
+    ) throws -> [PluginRowWrite]
 
     // A column missing from `values` takes the server's default.
     func insertWrites(

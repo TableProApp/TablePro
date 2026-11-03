@@ -51,11 +51,15 @@ nonisolated final class MongoDBBackedDriver: PluginRowWritingDriver, DriverQuery
         columns: [String],
         changes: [PluginRowChange],
         inserted: [Int: [PluginCellValue]],
-        deleted: Set<Int>
+        deleted: Set<Int>,
+        context: PluginRowWriteContext
     ) throws -> [PluginRowWrite]? {
-        try mongo.generateRowWrites(
-            table: table, columns: columns, changes: changes, insertedRowData: inserted,
-            deletedRowIndices: deleted, insertedRowIndices: Set(inserted.keys), database: pinnedDatabase ?? mongo.currentDb
+        var context = context
+        context.database = pinnedDatabase ?? mongo.currentDb
+        return try mongo.generateRowWrites(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: [], changes: changes,
+            insertedRowData: inserted, deletedRowIndices: deleted, insertedRowIndices: Set(inserted.keys),
+            context: context
         )
     }
 
@@ -77,37 +81,53 @@ nonisolated final class MongoDBBackedDriver: PluginRowWritingDriver, DriverQuery
         table: String,
         schema: String?,
         column: String,
-        key: [(column: String, value: String)]
+        key: [(column: String, value: String)],
+        locator: String?
     ) async throws -> String? {
         let builder = mongo.filterQueryBuilder(for: table, database: pinnedDatabase)
+        let byIdentity = key.count == 1 && key[0].column == MongoDBCollectionDDL.idField
         let filter: String
-        if key.count == 1, let id = key.first, id.column == MongoDBCollectionDDL.idField {
-            do {
-                filter = try mongo.identityFilter(table: table, idText: id.value, database: pinnedDatabase)
-            } catch let refusal as MongoDBWriteRefusal {
-                throw DatabaseError(message: refusal.reason)
-            }
+        if byIdentity {
+            filter = try idFilter(locating: locator)
         } else {
             let matches = key.map { PluginQueryFilter(column: $0.column, op: "=", value: $0.value) }
             filter = builder.buildFilterDocument(from: matches, logicMode: "and")
         }
-        // Two rows mean an ObjectId and a string with the same text, which the grid shows the same.
         let query = builder.buildQuery(collection: table, filterDocument: filter, limit: 2)
         let context = statementContext(query)
         let found = try await inSessionDatabase { try await mongo.execute(query: query, context: context) }
-        guard !found.rows.isEmpty else { throw CellLookupError.rowNotFound }
-        guard found.rows.count == 1 else { throw DatabaseError(message: MongoDBWriteRefusal.ambiguousIdentity.reason) }
-        let row = QueryResult(from: found).rows[0]
+        // The _id filter also matches lenient twins, a double for an int or another case under a collation.
+        let matching = found.rows.indices.filter { rowIndex in
+            guard byIdentity, let locator else { return true }
+            return Self.locator(ofRow: rowIndex, in: found)?.utf8.elementsEqual(locator.utf8) == true
+        }
+        guard let rowIndex = matching.first else { throw CellLookupError.rowNotFound }
+        guard matching.count == 1 else { throw DatabaseError(message: MongoDBWriteRefusal.ambiguousIdentity.reason) }
+        let row = QueryResult(from: found).rows[rowIndex]
         guard let index = found.columns.firstIndex(of: column), index < row.count else { return nil }
         // The plugin cuts a long nested value for display; the stored document holds it whole.
         if let shown = row[index], JSONTruncation.isIncompleteStructure(shown),
-           let locator = found.rowLocators?.first ?? nil,
+           let rowLocator = Self.locator(ofRow: rowIndex, in: found),
            let whole = try await inSessionDatabase({
-               try await mongo.storedNestedText(table: table, locator: locator, field: column)
+               try await mongo.storedNestedText(table: table, locator: rowLocator, field: column)
            }) {
             return whole
         }
         return row[index]
+    }
+
+    private func idFilter(locating locator: String?) throws -> String {
+        guard let locator else { throw DatabaseError(message: MongoDBWriteRefusal.unlocatedRow.reason) }
+        do {
+            return try mongo.identityFilter(locator: locator)
+        } catch let refusal as MongoDBWriteRefusal {
+            throw DatabaseError(message: refusal.reason)
+        }
+    }
+
+    private static func locator(ofRow rowIndex: Int, in result: PluginQueryResult) -> String? {
+        guard let locators = result.rowLocators, locators.indices.contains(rowIndex) else { return nil }
+        return locators[rowIndex]
     }
 
     // A filter with no plugin form matches nothing rather than being dropped, which would show rows it excludes. A field
