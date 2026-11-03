@@ -2,8 +2,9 @@ use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard};
 
 use tablepro_core::Value;
 use tablepro_core::column::ResultColumn;
+use tablepro_core::value::order::{row_order, sorts_as_text};
 
-use super::column_cells::{Cell, ColumnCells};
+use super::column_cells::{Cell, ColumnCells, cell_value};
 use super::{ValueKind, cell_text};
 
 /// Rows per chunk. A full chunk is never written again, so an append
@@ -134,6 +135,26 @@ impl ResultStore {
     }
 }
 
+impl ResultStore {
+    // The rows held now, in a column's order. Rows that arrive later follow them as they came.
+    pub(crate) fn row_order(&self, column: usize, ascending: bool) -> Option<Vec<u64>> {
+        let state = self.read();
+        let as_text = sorts_as_text(&state.columns.get(column)?.column_type);
+        let mut values = Vec::with_capacity(usize::try_from(state.rows).unwrap_or(0));
+        for chunk in &state.chunks {
+            let cells = chunk.columns.get(column)?;
+            values.extend((0..chunk.rows).map(|row| cell_value(cells.cell(row))));
+        }
+        drop(state);
+        Some(
+            row_order(&values, as_text, ascending)
+                .into_iter()
+                .map(|row| row as u64)
+                .collect(),
+        )
+    }
+}
+
 impl StoreState {
     /// The chunk that holds `row`, and the row's index in it.
     pub(super) fn locate(&self, row: u64) -> Option<(&Chunk, usize)> {
@@ -207,6 +228,27 @@ mod tests {
 
         assert_eq!(store.full_text(0, 0), Some(Some("0xcafe".to_owned())));
         assert_eq!(store.full_text(0, 1), Some(None));
+    }
+
+    #[test]
+    fn a_column_orders_the_rows_held_by_value() {
+        let columns: Arc<[ResultColumn]> = vec![
+            ResultColumn::new("n", ColumnType::untyped_text("")),
+            ResultColumn::new("name", ColumnType::untyped_text("")),
+        ]
+        .into();
+        let store = ResultStore::new(columns);
+        store.append(&[
+            vec![Value::Int(10), Value::Text("file10".to_owned())],
+            vec![Value::Null, Value::Text("file2".to_owned())],
+            vec![Value::Float64(2.5), Value::Null],
+            vec![Value::Int(-1), Value::Text("File1".to_owned())],
+        ]);
+
+        assert_eq!(store.row_order(0, true), Some(vec![1, 3, 2, 0]));
+        assert_eq!(store.row_order(1, true), Some(vec![2, 3, 1, 0]));
+        assert_eq!(store.row_order(1, false), Some(vec![0, 1, 3, 2]));
+        assert_eq!(store.row_order(2, true), None);
     }
 
     #[test]

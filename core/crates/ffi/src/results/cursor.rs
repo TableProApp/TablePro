@@ -1,6 +1,7 @@
 use std::ptr::null;
 use std::sync::Arc;
 
+use super::column_cells::Cell;
 use super::store::{ResultStore, StoreState};
 use super::{ValueKind, cell_text};
 use crate::window_abi::TpWindow;
@@ -9,6 +10,7 @@ use crate::window_abi::TpWindow;
 /// scrolling grid allocates nothing once they have grown.
 pub(crate) struct Cursor {
     store: Arc<ResultStore>,
+    order: Option<Arc<[u64]>>,
     column_kinds: Vec<u8>,
     cell_kinds: Vec<u8>,
     nulls: Vec<u8>,
@@ -29,9 +31,10 @@ struct Range {
 }
 
 impl Cursor {
-    pub(crate) fn new(store: Arc<ResultStore>) -> Self {
+    pub(crate) fn new(store: Arc<ResultStore>, order: Option<Arc<[u64]>>) -> Self {
         Self {
             store,
+            order,
             column_kinds: Vec::new(),
             cell_kinds: Vec::new(),
             nulls: Vec::new(),
@@ -122,6 +125,20 @@ impl Cursor {
         let mut cell = column * range.rows;
         let mut row = range.first_row;
         let end = range.first_row + range.rows as u64;
+        if let Some(order) = self.order.clone() {
+            for row in row..end {
+                let stored = usize::try_from(row)
+                    .ok()
+                    .and_then(|row| order.get(row).copied())
+                    .unwrap_or(row);
+                let value = state
+                    .locate(stored)
+                    .and_then(|(chunk, local)| Some(chunk.columns.get(index)?.cell(local)));
+                self.pack_cell(value, column_kind, cell, max_chars);
+                cell += 1;
+            }
+            return;
+        }
         while row < end {
             let Some((chunk, local)) = state.locate(row) else {
                 break;
@@ -131,25 +148,29 @@ impl Cursor {
             };
             let take = (chunk.rows - local).min(usize::try_from(end - row).unwrap_or(usize::MAX));
             for at in local..local + take {
-                // The text never passes u32: fetch checked its bound.
-                self.offsets.push(self.text.len() as u32);
-                let value = cells.cell(at);
-                match value.kind {
-                    None => {
-                        self.cell_kinds[cell] = column_kind as u8;
-                        set_bit(&mut self.nulls, cell);
-                    }
-                    Some(kind) => {
-                        self.cell_kinds[cell] = kind as u8;
-                        self.raw[cell] = value.raw;
-                        if cell_text::display(kind, value.bytes, max_chars, &mut self.text) {
-                            set_bit(&mut self.truncated, cell);
-                        }
-                    }
-                }
+                self.pack_cell(Some(cells.cell(at)), column_kind, cell, max_chars);
                 cell += 1;
             }
             row += take as u64;
+        }
+    }
+
+    // A cell the store cannot find packs as null, so the window keeps its shape.
+    fn pack_cell(&mut self, value: Option<Cell<'_>>, column_kind: ValueKind, cell: usize, max_chars: usize) {
+        // The text never passes u32: fetch checked its bound.
+        self.offsets.push(self.text.len() as u32);
+        match value.and_then(|value| Some((value.kind?, value))) {
+            None => {
+                self.cell_kinds[cell] = column_kind as u8;
+                set_bit(&mut self.nulls, cell);
+            }
+            Some((kind, value)) => {
+                self.cell_kinds[cell] = kind as u8;
+                self.raw[cell] = value.raw;
+                if cell_text::display(kind, value.bytes, max_chars, &mut self.text) {
+                    set_bit(&mut self.truncated, cell);
+                }
+            }
         }
     }
 }
@@ -236,7 +257,7 @@ mod tests {
 
     #[test]
     fn a_window_is_packed_column_by_column() {
-        let mut cursor = Cursor::new(store());
+        let mut cursor = Cursor::new(store(), None);
 
         let window = read(cursor.fetch(0, 50, 0, 10, 5).unwrap());
 
@@ -262,7 +283,7 @@ mod tests {
 
     #[test]
     fn a_window_past_the_end_is_empty_and_a_column_range_is_kept() {
-        let mut cursor = Cursor::new(store());
+        let mut cursor = Cursor::new(store(), None);
 
         let past = read(cursor.fetch(10, 50, 0, 2, 100).unwrap());
         let second = read(cursor.fetch(1, 1, 1, 5, 100).unwrap());
@@ -273,8 +294,35 @@ mod tests {
     }
 
     #[test]
+    fn a_row_order_reads_each_row_from_where_it_is_held() {
+        let store = store();
+        store.append(&[vec![Value::Int(4), Value::Text("later".to_owned())]]);
+        let mut cursor = Cursor::new(store, Some(vec![2, 0, 1].into()));
+
+        let window = read(cursor.fetch(0, 50, 0, 2, 100).unwrap());
+        let tail = read(cursor.fetch(2, 2, 0, 1, 100).unwrap());
+
+        assert_eq!((window.rows, window.total_rows), (4, 4));
+        assert_eq!(
+            window.texts,
+            [
+                Some("3".to_owned()),
+                Some("1".to_owned()),
+                Some("2".to_owned()),
+                Some("4".to_owned()),
+                Some("ünïcode text".to_owned()),
+                Some("first line".to_owned()),
+                None,
+                Some("later".to_owned()),
+            ]
+        );
+        assert_eq!(&window.raw[..4], [3, 1, 2, 4]);
+        assert_eq!(tail.texts, [Some("2".to_owned()), Some("4".to_owned())]);
+    }
+
+    #[test]
     fn a_window_whose_text_could_pass_four_gib_is_refused() {
-        let mut cursor = Cursor::new(store());
+        let mut cursor = Cursor::new(store(), None);
 
         assert!(cursor.fetch(0, 3, 0, 2, u32::MAX).is_none());
     }
