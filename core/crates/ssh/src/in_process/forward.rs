@@ -48,11 +48,17 @@ impl Transport for InProcessForward {
             return Err(self.session.ended());
         }
         // russh keeps a channel confirmed after its opener stopped waiting, so the open finishes on a
-        // task of its own and a late channel is dropped there, which closes it.
+        // task of its own, which drops a late channel to close it and gives up when the session ends.
+        let opener = self.session.opener()?;
         let (opened, waiting) = oneshot::channel();
-        let (session, service) = (self.session.clone(), self.service.clone());
+        let service = self.service.clone();
         tokio::spawn(async move {
-            let _late = opened.send(session.open_channel(&service).await);
+            tokio::select! {
+                () = opener.closed().cancelled() => {}
+                result = opener.open(&service) => {
+                    let _late = opened.send(result);
+                }
+            }
         });
         match tokio::time::timeout(self.liveness.ssh_channel_open_timeout, waiting).await {
             Ok(Ok(opened)) => opened,

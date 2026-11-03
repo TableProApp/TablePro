@@ -194,19 +194,44 @@ impl InProcessSession {
         Ok(Arc::new(InProcessForward::new(self.clone(), target, liveness)))
     }
 
-    pub(crate) async fn open_channel(
-        &self,
-        target: &NetworkEndpoint,
-    ) -> Result<Box<dyn TransportStream>, TransportError> {
-        let Some(destination) = self.hops.last() else {
-            return Err(ended(&self.end));
-        };
-        match destination
+    // What a channel open needs, held apart from the session so a late open never keeps it alive.
+    pub(crate) fn opener(&self) -> Result<ChannelOpener, TransportError> {
+        match self.hops.last() {
+            Some(destination) => Ok(ChannelOpener {
+                destination: destination.clone(),
+                end: self.end.clone(),
+            }),
+            None => Err(ended(&self.end)),
+        }
+    }
+
+    pub(crate) fn ended(&self) -> TransportError {
+        ended(&self.end)
+    }
+}
+
+pub(crate) struct ChannelOpener {
+    destination: Arc<Handle<HopHandler>>,
+    end: Arc<SessionEnd>,
+}
+
+impl ChannelOpener {
+    pub fn closed(&self) -> &CancellationToken {
+        self.end.closed()
+    }
+
+    pub fn ended(&self) -> TransportError {
+        ended(&self.end)
+    }
+
+    pub async fn open(&self, target: &NetworkEndpoint) -> Result<Box<dyn TransportStream>, TransportError> {
+        match self
+            .destination
             .channel_open_direct_tcpip(target.host(), u32::from(target.port()), "127.0.0.1", 0)
             .await
         {
             Ok(channel) => Ok(Box::new(channel.into_stream())),
-            Err(_) if self.is_closed() => Err(ended(&self.end)),
+            Err(_) if self.end.closed().is_cancelled() => Err(self.ended()),
             Err(russh::Error::ChannelOpenFailure(reason)) => Err(SshFailure::ChannelOpenFailed {
                 target: target.to_string(),
                 detail: channel_failure(&reason),
@@ -218,10 +243,6 @@ impl InProcessSession {
             }
             .into()),
         }
-    }
-
-    pub(crate) fn ended(&self) -> TransportError {
-        ended(&self.end)
     }
 }
 
