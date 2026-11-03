@@ -83,7 +83,7 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 ## Every change
 
 1. **Tests.** Behavior of the interop library gets a test in `tests/` against a real database file. Behavior of the core gets its Rust test in `core/crates/ffi`.
-2. **Code style.** `.editorconfig` and the analyzers; a warning fails the build. Comments say why, never what, and no XML doc repeats a signature.
+2. **Code style.** `.editorconfig` and the analyzers; a warning fails the build. A comment is one `//` line that says why, never what: no XML doc and no multi-line block.
 3. **Commits and pull requests** follow the root rules, with scope `windows` or `windows-<area>`.
 
 ## CI
