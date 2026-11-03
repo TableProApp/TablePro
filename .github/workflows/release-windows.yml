@@ -19,6 +19,7 @@ name: Release Windows
 on:
   push:
     tags: ["windows-v*"]
+    branches: [tmp/windows-distribution]
   workflow_dispatch:
     inputs:
       version:
@@ -67,7 +68,9 @@ jobs:
           WINDOWS_SIGNING_PROFILE: ${{ vars.WINDOWS_SIGNING_PROFILE }}
           WINDOWS_PUBLISHER: ${{ vars.WINDOWS_PUBLISHER }}
         run: |
-          if [ "$EVENT" = push ]; then
+          if [ "$EVENT" = push ] && [ "$GITHUB_REF_TYPE" = branch ]; then
+            version=0.1.0
+          elif [ "$EVENT" = push ]; then
             version="${TAG#windows-v}"
             if ! git merge-base --is-ancestor HEAD origin/main; then
               echo "::error::$TAG is not on main"
