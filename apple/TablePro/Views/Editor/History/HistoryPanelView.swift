@@ -75,8 +75,7 @@ struct HistoryPanelView: View {
                 onRunInNewTab: { runInNewTab($0) },
                 onCopy: { copy($0) },
                 onSaveAsFavorite: { favoriteDialogQuery = FavoriteDialogQuery(query: $0.query) },
-                canRestorePreviousValues: { canRestore($0, historyIdsWithSnapshot: $1) },
-                loadHistoryIdsWithSnapshot: { await services.queryHistoryManager.rewindSnapshotHistoryIds() },
+                canRestorePreviousValues: { canRun($0) && coordinator.canRewindSelectedTab },
                 onRestorePreviousValues: { coordinator.rewindSave(historyId: $0.id) }
             )
         } secondary: {
@@ -97,14 +96,6 @@ struct HistoryPanelView: View {
     /// own. A foreign entry still loads, into that connection's window, where the user runs it.
     private func canRun(_ entry: QueryHistoryEntry) -> Bool {
         entry.connectionId == connectionId
-    }
-
-    // Unlicensed saves keep no snapshot, so their item stays enabled and the click explains the licence.
-    // A nil set is a list still loading; the coordinator's sheets cover a snapshot pruned since.
-    private func canRestore(_ entry: QueryHistoryEntry, historyIdsWithSnapshot: Set<UUID>?) -> Bool {
-        guard canRun(entry), coordinator.canRewindSelectedTab else { return false }
-        guard services.licenseManager.isFeatureAvailable(.dataRewind), let historyIdsWithSnapshot else { return true }
-        return historyIdsWithSnapshot.contains(entry.id)
     }
 
     private func load(_ entry: QueryHistoryEntry) {

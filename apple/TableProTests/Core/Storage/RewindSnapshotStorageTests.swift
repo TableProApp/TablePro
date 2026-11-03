@@ -21,13 +21,12 @@ struct RewindSnapshotStorageTests {
         table: String = "users",
         schema: String? = nil,
         capturedAt: Date = Date(timeIntervalSince1970: 1_700_000_000),
-        refusal: RewindRefusal? = nil,
-        historyId: UUID? = nil
+        refusal: RewindRefusal? = nil
     ) -> RewindRecord {
         let target = DataWriteTarget(database: "shop", schema: schema, table: table)
         return RewindRecord(
             id: UUID(),
-            historyId: historyId,
+            historyId: nil,
             connectionId: connectionId,
             databaseType: .sqlite,
             target: target,
@@ -58,44 +57,6 @@ struct RewindSnapshotStorageTests {
         #expect(await storage.recordRewindSnapshot(record, cipher: cipher))
         let read = await storage.rewindSnapshot(id: record.id, cipher: cipher)
         #expect(read == record)
-    }
-
-    private func recordSave(in storage: QueryHistoryStorage) async -> UUID {
-        let id = UUID()
-        _ = await storage.record(QueryHistoryEntry(
-            id: id,
-            query: "UPDATE users SET name = 'Grace' WHERE id = 7",
-            connectionId: connectionId,
-            databaseName: "shop",
-            databaseType: .sqlite,
-            schemaName: nil,
-            source: .rowEdit,
-            executionTime: 0.1,
-            rowCount: 1,
-            wasSuccessful: true
-        ))
-        return id
-    }
-
-    @Test("The drawer learns which saves still have their snapshot, and a deleted one drops out")
-    func historyIdsWithASnapshot() async {
-        let storage = makeStorage()
-        let cipher = RewindCipher(keychain: InMemoryKeychain())
-        let kept = await recordSave(in: storage)
-        let deleted = await recordSave(in: storage)
-        let withoutSnapshot = await recordSave(in: storage)
-        let deletedRecord = makeRecord(historyId: deleted)
-        await storage.recordRewindSnapshot(makeRecord(historyId: kept), cipher: cipher)
-        await storage.recordRewindSnapshot(deletedRecord, cipher: cipher)
-        await storage.recordRewindSnapshot(makeRecord(), cipher: cipher)
-
-        #expect(await storage.rewindSnapshotHistoryIds() == [kept, deleted])
-
-        await storage.deleteRewindSnapshot(id: deletedRecord.id)
-
-        let ids = await storage.rewindSnapshotHistoryIds()
-        #expect(ids == [kept])
-        #expect(ids?.contains(withoutSnapshot) == false)
     }
 
     @Test("Snapshots come back newest first, and only for the table asked for")
