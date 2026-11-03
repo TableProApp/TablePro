@@ -119,6 +119,7 @@ public struct ExplainQueryTool: MCPToolImplementation {
             sql: request.gatedSQL,
             meta: meta,
             allowsDestructive: false,
+            destructiveAlternative: String(localized: "An analyzed plan runs the statement, so explain it without analyze."),
             context: context
         )
 

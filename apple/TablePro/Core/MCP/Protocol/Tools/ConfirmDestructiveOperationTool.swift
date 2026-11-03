@@ -65,6 +65,8 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
 
         let settings = await services.settingsProvider()
         let timeoutSeconds = try MCPLimitResolver.resolveTimeoutSeconds(arguments, settings: settings)
+        // A script holds each result set to this, as execute_query does; 0 would keep one row on SQL Server.
+        let maxRows = settings.effectiveDefaultRowLimit
         let scope = try await MCPScopeArguments.resolve(
             arguments,
             connectionId: connectionId,
@@ -72,7 +74,7 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
         )
         let planned: DatabaseAccessBridge.PlannedText
         do {
-            planned = try await services.connectionBridge.plannedScript(scope: scope, query: query, maxRows: 0)
+            planned = try await services.connectionBridge.plannedScript(scope: scope, query: query, maxRows: maxRows)
         } catch {
             throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
         }
@@ -94,7 +96,7 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,
             operation: operation,
-            maxRows: 0,
+            maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             context: context,
             secrets: meta.redactionSecrets

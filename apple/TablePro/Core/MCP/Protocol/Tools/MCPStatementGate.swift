@@ -12,6 +12,7 @@ enum MCPStatementGate {
         allowsDestructive: Bool,
         allowsMultiStatement: Bool = false,
         readOnly: Bool = false,
+        destructiveAlternative: String = confirmToolAlternative,
         context: MCPRequestContext
     ) throws -> QueryClassification {
         // The caller lowering its own reach, so its refusal names the request rather than the connection.
@@ -50,7 +51,7 @@ enum MCPStatementGate {
         guard kind.declaresWrite else { return }
         try translating { try ExternalStatementGate.refuseWrite(externalAccess: meta.externalAccess) }
         if kind.declaresDestructive, !allowsDestructive {
-            throw MCPToolExecutionError.denied("\(ExternalStatementGate.destructiveRefusal) \(destructiveAlternative)")
+            throw MCPToolExecutionError.denied("\(ExternalStatementGate.destructiveRefusal) \(confirmToolAlternative)")
         }
         try requireWriteScope(context: context)
     }
@@ -60,7 +61,7 @@ enum MCPStatementGate {
         try translating { try ExternalStatementGate.requireDestructive(sql, databaseType: meta.databaseType) }
     }
 
-    private static let destructiveAlternative = String(localized: "Use confirm_destructive_operation for it.")
+    static let confirmToolAlternative = String(localized: "Use confirm_destructive_operation for it.")
 
     // Elicitation, then Safe Mode, on the statements as they will run in `scope`.
     static func approve(

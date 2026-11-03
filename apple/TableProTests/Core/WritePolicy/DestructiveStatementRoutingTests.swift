@@ -48,33 +48,46 @@ extension GlobalStateSuites {
             let text: String
             let prompts: [WritePrompt]
             let received: [String]
+            let rowCaps: [Int?]
+        }
+
+        private struct Rig {
+            let rig: WritePolicyRig
+            let received: () -> [String]
+            let rowCaps: () -> [Int?]
         }
 
         private static let unfilteredDelete = DestructiveRoute(sql: "DELETE FROM matrix_rows", destructive: true)
 
-        private func makeRig(_ prompts: WritePolicyPrompts, _ route: DestructiveRoute) -> (WritePolicyRig, () -> [String]) {
+        private func makeRig(_ prompts: WritePolicyPrompts, _ databaseType: DatabaseType) -> Rig {
             let connection = WritePolicyRig.connection(
-                type: route.databaseType,
+                type: databaseType,
                 externalAccess: .readWrite,
                 aiPolicy: .alwaysAllow,
                 safeMode: .silent
             )
-            guard route.databaseType == .mssql else {
+            guard databaseType == .mssql else {
                 let rig = WritePolicyRig(connection: connection, prompts: prompts, live: true)
-                return (rig, { rig.driver.received })
+                return Rig(rig: rig, received: { rig.driver.received }, rowCaps: { [] })
             }
             let scripts = ScriptAnsweringDriver(connection: connection)
             let rig = WritePolicyRig(connection: connection, prompts: prompts, live: true, sessionDriver: scripts)
-            return (rig, { scripts.sentBatches.map { $0.sql } + scripts.sentStatements })
+            return Rig(
+                rig: rig,
+                received: { scripts.sentBatches.map { $0.sql } + scripts.sentStatements },
+                rowCaps: { scripts.sentBatches.map { $0.rowCap } }
+            )
         }
 
         private func mcp(
             _ tool: String,
             _ route: DestructiveRoute,
+            extra: [String: JsonValue] = [:],
             answer: WritePolicyPrompts.Answer = .approveAll
         ) async -> Outcome {
             let prompts = WritePolicyPrompts(answer)
-            let (rig, received) = makeRig(prompts, route)
+            let setup = makeRig(prompts, route.databaseType)
+            let rig = setup.rig
             defer { rig.tearDown() }
             let handler = ToolsCallHandler(services: MCPToolServices(
                 connectionBridge: MCPConnectionBridge(),
@@ -82,9 +95,10 @@ extension GlobalStateSuites {
                 settingsProvider: { MCPSettings() },
                 queryHistoryManager: ToolTestQueryHistoryStore()
             ))
+            let arguments: [String: JsonValue] = ["connection_id": .string(rig.connection.id.uuidString), "query": .string(route.sql)]
             let params = MCPToolTestHarness.toolCallParams(
                 name: tool,
-                arguments: .object(["connection_id": .string(rig.connection.id.uuidString), "query": .string(route.sql)])
+                arguments: .object(arguments.merging(extra) { first, _ in first })
             )
             let context = MCPToolTestHarness.context(
                 params: params,
@@ -99,7 +113,9 @@ extension GlobalStateSuites {
             } catch {
                 text = "\(error)"
             }
-            return Outcome(ran: ran, text: text, prompts: prompts.prompts, received: received())
+            return Outcome(
+                ran: ran, text: text, prompts: prompts.prompts, received: setup.received(), rowCaps: setup.rowCaps()
+            )
         }
 
         private func assistant(
@@ -108,7 +124,8 @@ extension GlobalStateSuites {
             answer: WritePolicyPrompts.Answer = .approveAll
         ) async -> Outcome {
             let prompts = WritePolicyPrompts(answer)
-            let (rig, received) = makeRig(prompts, route)
+            let setup = makeRig(prompts, route.databaseType)
+            let rig = setup.rig
             defer { rig.tearDown() }
             let context = ChatToolContext(
                 connectionId: rig.connection.id,
@@ -130,7 +147,9 @@ extension GlobalStateSuites {
             } catch {
                 text = error.localizedDescription
             }
-            return Outcome(ran: ran, text: text, prompts: prompts.prompts, received: received())
+            return Outcome(
+                ran: ran, text: text, prompts: prompts.prompts, received: setup.received(), rowCaps: setup.rowCaps()
+            )
         }
 
         private func expectOneRoute(_ route: DestructiveRoute, query: Outcome, confirm: Outcome) {
@@ -140,6 +159,8 @@ extension GlobalStateSuites {
             #expect(runs.ran, "\(runs.text)")
             #expect(runs.received.contains { $0.contains(sent) }, "\(runs.received)")
             #expect(runs.prompts == (route.destructive ? [.confirmation] : []))
+            // A script's result sets keep their rows, as execute_query's do.
+            #expect(runs.rowCaps.allSatisfy { ($0 ?? .max) > 1 }, "\(runs.rowCaps)")
 
             #expect(!refuses.ran)
             #expect(refuses.received.isEmpty)
@@ -164,6 +185,18 @@ extension GlobalStateSuites {
             let confirm = await assistant(ConfirmDestructiveOperationChatTool(), route)
 
             expectOneRoute(route, query: query, confirm: confirm)
+        }
+
+        @Test("An analyzed plan of a DELETE with no WHERE is refused before anything runs, and says why")
+        func analyzedExplainOfUnfilteredDeleteIsRefused() async {
+            let route = DestructiveRoute(sql: "DELETE FROM matrix_rows", destructive: true, databaseType: .cockroachdb)
+            let outcome = await mcp(ExplainQueryTool.name, route, extra: ["analyze": .bool(true)])
+
+            #expect(!outcome.ran)
+            #expect(outcome.text.hasPrefix("\(MCPToolErrorCode.denied.rawValue):"))
+            #expect(outcome.text.contains("without analyze"))
+            #expect(outcome.prompts.isEmpty)
+            #expect(outcome.received.isEmpty)
         }
 
         @Test("A DELETE with no WHERE the user declines never reaches the database")
