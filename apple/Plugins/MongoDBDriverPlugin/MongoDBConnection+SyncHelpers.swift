@@ -436,7 +436,7 @@ nonisolated extension MongoDBConnection {
                 let text = try canonicalText(of: doc)
                 guard let raw = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
                       let dict = Self.unwrapExtendedJson(raw) as? [String: Any] else {
-                    throw PluginExportError.exportFailed("A document could not be read")
+                    throw PluginExportError.exportFailed(String(localized: "A document could not be read", bundle: .main))
                 }
                 if projection == nil, sample.count >= MongoStreamProjection.sampleSize {
                     projection = try openStream(

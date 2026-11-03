@@ -11,7 +11,7 @@ nonisolated enum MongoExportDocument {
         let document = try MongoDocumentText(parsing: canonicalJSON)
         let fields = try document.members.map { member in
             guard let value = dictionary[member.key] else {
-                throw PluginExportError.exportFailed("A document field could not be read")
+                throw PluginExportError.exportFailed(String(localized: "A document field could not be read", bundle: .main))
             }
             let kind = kind(of: member.value, decoded: value, representation: representation)
             let cell: PluginCellValue
@@ -35,7 +35,7 @@ nonisolated enum MongoExportDocument {
 
     static func read(_ documents: MongoReadDocuments, representation: MongoDBUuidRepresentation) throws -> [PluginExportDocument] {
         guard documents.texts.count == documents.dictionaries.count else {
-            throw PluginExportError.exportFailed("The result has no stored documents")
+            throw PluginExportError.exportFailed(String(localized: "The result has no stored documents", bundle: .main))
         }
         return try zip(documents.texts, documents.dictionaries).map {
             try read(canonicalJSON: $0, dictionary: $1, representation: representation)

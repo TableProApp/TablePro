@@ -15702,6 +15702,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A document could not be read" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A document field could not be read" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A document is one JSON object, written between { and }." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -66307,6 +66315,9 @@
         }
       }
     },
+    "Documents do not match their rows" : {
+
+    },
     "does not equal" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -77569,6 +77580,10 @@
           }
         }
       }
+    },
+    "Export documents do not match their columns and rows" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Export ER Diagram" : {
       "localizations" : {
@@ -153709,6 +153724,9 @@
         }
       }
     },
+    "Rows arrived before their columns" : {
+
+    },
     "Rows Compare Data" : {
       "localizations" : {
         "fr" : {
@@ -185812,6 +185830,10 @@
         }
       }
     },
+    "The column stream cannot represent every document field" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the command" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -190840,6 +190862,10 @@
       }
     },
     "the result has far more columns than its rows fill" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The result has no stored documents" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },

@@ -93,13 +93,13 @@ public enum PluginExportStreamElement: Sendable {
                             if let documents {
                                 guard let columns, documents.count == rows.count,
                                       rows.allSatisfy({ $0.count == columnCount }) else {
-                                    throw PluginExportError.exportFailed("Export documents do not match their columns and rows")
+                                    throw PluginExportError.exportFailed(String(localized: "Export documents do not match their columns and rows", bundle: .main))
                                 }
                                 // Fixed columns cannot carry a field the cursor first returned after its sample.
                                 guard documents.allSatisfy({ document in
                                     document.fields.allSatisfy { columns.contains(Data($0.name.utf8)) }
                                 }) else {
-                                    throw PluginExportError.exportFailed("The column stream cannot represent every document field")
+                                    throw PluginExportError.exportFailed(String(localized: "The column stream cannot represent every document field", bundle: .main))
                                 }
                             }
                             continuation.yield(.rows(rows))

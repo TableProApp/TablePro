@@ -1,6 +1,14 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Export documents do not match their columns and rows" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The column stream cannot represent every document field" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "" : {
       "localizations" : {
         "ko" : {

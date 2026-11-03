@@ -66,11 +66,11 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
                             continuation.yield(element)
                         case .rows(let rows, let documents):
                             guard let header else {
-                                throw PluginExportError.exportFailed("Rows arrived before their columns")
+                                throw PluginExportError.exportFailed(String(localized: "Rows arrived before their columns", bundle: .main))
                             }
                             let masks = policy.columnMasks(table: table, columns: header.columns, typeNames: header.columnTypeNames)
                             if let documents, documents.count != rows.count {
-                                throw PluginExportError.exportFailed("Documents do not match their rows")
+                                throw PluginExportError.exportFailed(String(localized: "Documents do not match their rows", bundle: .main))
                             }
                             let masked = documents?.enumerated().map { index, document in
                                 ExportDocumentMasking.document(
@@ -117,7 +117,7 @@ final class MaskingExportDataSource: PluginExportDataSource, @unchecked Sendable
                         case .rows(let rows):
                             // Without a header there are no column names to match, so no row goes out unmatched.
                             guard let masks else {
-                                throw PluginExportError.exportFailed("Rows arrived before their columns")
+                                throw PluginExportError.exportFailed(String(localized: "Rows arrived before their columns", bundle: .main))
                             }
                             continuation.yield(.rows(masks.rows(rows)))
                         }
