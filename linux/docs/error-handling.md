@@ -8,7 +8,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 |---|---|---|
 | `tablepro-core` | `DriverError`, `ConfigError`, `TransportError`, `SshFailure`, `CertificateFileProblem`, `SecretError` | The contract every driver, transport and keyring speaks. |
 | `tablepro-net` | `tls::TlsSetupError` | Wraps a `ConfigError`, a rustls error or a PEM encoding error while a TLS config is built; drivers turn it into `DriverError`. |
-| `tablepro-ssh` | `SshFailure`, inside `TransportError::Ssh` | Classified from OpenSSH's exit status and stderr. |
+| `tablepro-ssh` | `SshFailure`, inside `TransportError::Ssh` | Classified from OpenSSH's exit status and stderr, or in the in-process transport from russh's errors and the server's disconnect ([core ADR 0008](../../core/docs/decisions/0008-in-process-ssh-on-windows.md)). |
 | `drivers/<engine>` | `DriverError` only | The client library's error never leaves the crate. |
 | `tablepro-storage` | `StorageError`, `KeyringError`, `CredentialError` | `KeyringError::Secret` wraps core's `SecretError`. |
 | `tablepro-linux-platform` | `SettingsError` | GSettings. The Secret Service's errors map to core's `SecretError`. |
@@ -97,8 +97,8 @@ A driver maps the codes the app acts on to their own variants and passes everyth
 |---|---|---|
 | `Connect` | `LivenessPolicy::connect_timeout`, 10 s | No TCP connection, or the socket did not open. |
 | `Login` | `login_timeout`, 15 s | Connected, but the login or TLS handshake did not finish. |
-| `SshHandshake` | `ssh_handshake_timeout`, 20 s, paused while a prompt is open | OpenSSH did not authenticate in time. |
-| `SshChannelOpen` | `ssh_channel_open_timeout`, 10 s | `ssh -O forward` did not answer in time. |
+| `SshHandshake` | `ssh_handshake_timeout`, 20 s, paused while a prompt is open | The SSH login, every jump host included, did not finish in time. |
+| `SshChannelOpen` | `ssh_channel_open_timeout`, 10 s | `ssh -O forward`, or the in-process transport's channel open, did not answer in time. |
 | `LockWait` | `WorkspaceSettings::lock_timeout`, 10 s | Another session holds a lock this statement needs. |
 | `Statement` | The call's deadline, or the workspace statement timeout of 60 s | The statement ran too long. `server_cancelled` says whether the server confirmed the stop. |
 | `Probe` | `probe_timeout`, 5 s | The server did not answer a liveness check. |
