@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tablepro_core::{Connection, Credentials, DriverError, TlsConfig, TlsFailure, TlsMode, Value, WorkspaceSettings};
 use tablepro_test_support::conformance::test_liveness;
 
-use crate::support::{dial, direct, options_over, rows};
+use crate::support::{dial, direct, options_over, rows, run_ok, session};
 
 const HOST: &str = "localhost";
 const PORT: u16 = 1433;
@@ -47,8 +47,12 @@ async fn open(tls: TlsConfig) -> Result<Arc<dyn Connection>, DriverError> {
     .await
 }
 
+/// Read through an editor session, whose batches go as SQL batches.
+/// SQL Server 2022 RTM answers tiberius's `sp_executesql` with error 8005
+/// over strict TLS, so the workspace's reads are checked on TDS 7.4 only.
 async fn link(connection: &dyn Connection) -> Link {
-    let row = rows(connection, LINK).await.remove(0);
+    let editor = session(connection).await;
+    let row = run_ok(editor.as_ref(), LINK).await.rows().remove(0);
     let text = |value: &Value| match value {
         Value::Text(text) => text.clone(),
         other => format!("not text: {other:?}"),
@@ -85,6 +89,13 @@ mod sspi {
     #[ignore = "requires a SQL Server on this Windows machine"]
     async fn integrated_login_over_tds_7() {
         signs_in(TlsMode::VerifyFull, "0x74000004").await;
+        let connection = open(checked(TlsMode::VerifyFull)).await.expect("an integrated login");
+        let read = rows(connection.as_ref(), "SELECT SUSER_SNAME()").await;
+        assert!(
+            matches!(&read[0][0], Value::Text(login) if login.contains('\\')),
+            "{read:?}"
+        );
+        connection.close().await.expect("a close");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
