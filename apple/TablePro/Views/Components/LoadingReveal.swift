@@ -3,6 +3,7 @@
 //  TablePro
 //
 
+import Combine
 import SwiftUI
 
 /// Drives which subject's progress UI is revealed from `LoadingRevealPolicy`: none until the work
@@ -96,28 +97,65 @@ internal extension View {
     }
 }
 
-/// Holds progress UI back until the work behind it outlasts `LoadingRevealPolicy.grace`.
-///
-/// The content is not built while it is held back, which is the point: a spinner that exists for
-/// 40ms still costs a view hierarchy to reconcile in and out, and on the startup path that is work
-/// paid for something nobody sees.
-///
-/// The dwell only bites where the alternative to the indicator is a view that was already there,
-/// as it is in the toolbar, where hiding the executing cluster puts the previous duration back.
-/// Where the alternative is the real content, the content wins: holding a loaded table list behind
-/// half a second of spinner would be worse than the flash the dwell exists to prevent.
+// The content is not built until the grace passes. An empty view can host no `.task`, and an anchor view
+// would take its stack's spacing, so the timer lives in a state object driven from `body`.
 internal struct LoadingReveal<Content: View>: View {
     internal let isActive: Bool
     @ViewBuilder internal let content: () -> Content
 
-    @State private var isRevealed = false
+    @StateObject private var clock = LoadingRevealClock()
 
     internal var body: some View {
-        Group {
-            if isRevealed {
-                content()
-            }
+        clock.track(isActive: isActive)
+        return revealed
+    }
+
+    @ViewBuilder
+    private var revealed: some View {
+        if clock.isRevealed {
+            content()
         }
-        .loadingRevealGate(isActive: isActive, isRevealed: $isRevealed)
+    }
+}
+
+// Every change it publishes happens in its own task, never inside the `body` that called `track`.
+@MainActor
+private final class LoadingRevealClock: ObservableObject {
+    @Published private(set) var isRevealed = false
+
+    private var trackedActivity: Bool?
+    private var revealedAt: ContinuousClock.Instant?
+    private var pending: Task<Void, Never>?
+
+    func track(isActive: Bool) {
+        guard trackedActivity != isActive else { return }
+        trackedActivity = isActive
+        pending?.cancel()
+        pending = Task { [weak self] in
+            await self?.settle(isActive: isActive)
+        }
+    }
+
+    private func settle(isActive: Bool) async {
+        guard isActive else {
+            await hideAfterDwell()
+            return
+        }
+        guard revealedAt == nil else { return }
+        try? await Task.sleep(for: LoadingRevealPolicy.grace)
+        guard !Task.isCancelled else { return }
+        revealedAt = .now
+        isRevealed = true
+    }
+
+    private func hideAfterDwell() async {
+        guard let revealedAt else { return }
+        let remaining = LoadingRevealPolicy.remainingDwell(revealedAt: revealedAt, now: .now)
+        if remaining > .zero {
+            try? await Task.sleep(for: remaining)
+            guard !Task.isCancelled else { return }
+        }
+        self.revealedAt = nil
+        isRevealed = false
     }
 }

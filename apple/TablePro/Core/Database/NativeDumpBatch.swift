@@ -21,11 +21,21 @@ struct NativeDumpBatchItem: Sendable, Equatable {
     /// failed instead, so it reaches the same outcome list a refused connection does.
     let blockedReason: String?
 
-    init(database: String, scope: NativeDumpScope, destination: URL, blockedReason: String? = nil) {
+    // What the person picked it as. A file engine's database is its whole path.
+    let label: String
+
+    init(
+        database: String,
+        scope: NativeDumpScope,
+        destination: URL,
+        blockedReason: String? = nil,
+        label: String? = nil
+    ) {
         self.database = database
         self.scope = scope
         self.destination = destination
         self.blockedReason = blockedReason
+        self.label = label ?? database
     }
 }
 
@@ -70,6 +80,7 @@ struct NativeDumpBatchState: Equatable {
     var isRunning = false
     var isCancelling = false
     var currentDatabase = ""
+    var currentLabel = ""
     var currentIndex = 0
     var total = 0
     var bytesProcessed: Int64 = 0
@@ -100,6 +111,7 @@ final class NativeDumpBatch: ObservableObject {
 
     private let makeService: @MainActor () -> any NativeDumpRunning
     private let estimateSize: @MainActor (DatabaseConnection, String) async -> Int64?
+    private let runningWork: RunningWorkRegistry
     private var current: (any NativeDumpRunning)?
     private var cancelled = false
 
@@ -107,10 +119,12 @@ final class NativeDumpBatch: ObservableObject {
         makeService: @escaping @MainActor () -> any NativeDumpRunning = { NativeDumpService(kind: .backup) },
         estimateSize: @escaping @MainActor (DatabaseConnection, String) async -> Int64? = { connection, database in
             await NativeDumpService.estimatedDatabaseSize(connection: connection, database: database)
-        }
+        },
+        runningWork: RunningWorkRegistry = .shared
     ) {
         self.makeService = makeService
         self.estimateSize = estimateSize
+        self.runningWork = runningWork
     }
 
     func cancel() {
@@ -128,10 +142,19 @@ final class NativeDumpBatch: ObservableObject {
         guard !items.isEmpty, !state.isRunning else { return }
         cancelled = false
         state = NativeDumpBatchState(isRunning: true, total: items.count)
+        let workId = runningWork.begin(
+            .backup,
+            subject: items.map(\.label).formatted(.list(type: .and)),
+            connectionName: connection.name,
+            connectionIds: [connection.id]
+        ) { [weak self] in
+            self?.cancel()
+        }
         defer {
             state.isRunning = false
             state.isCancelling = false
             current = nil
+            runningWork.end(workId)
         }
 
         let producesDirectory = NativeDumpRegistry
@@ -144,6 +167,7 @@ final class NativeDumpBatch: ObservableObject {
                 return
             }
             state.currentDatabase = item.database
+            state.currentLabel = item.label
             state.currentIndex = index + 1
             state.bytesProcessed = 0
             state.totalBytes = nil

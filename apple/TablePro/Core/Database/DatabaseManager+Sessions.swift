@@ -79,11 +79,15 @@ extension DatabaseManager {
             if !resolvedConnection.enabledTunnelKinds.isEmpty {
                 reportStage(.resolvingTunnel, attempt: attempt, for: connection.id)
             }
-            effectiveConnection = try await buildEffectiveConnection(
-                for: resolvedConnection,
-                sshPasswordOverride: sshPasswordOverride,
-                deadline: deadline
-            )
+            effectiveConnection = try await CloudSQLProxyManager.$connectStageReporter.withValue(
+                stageReporter(for: connection.id, attempt: attempt)
+            ) {
+                try await buildEffectiveConnection(
+                    for: resolvedConnection,
+                    sshPasswordOverride: sshPasswordOverride,
+                    deadline: deadline
+                )
+            }
         } catch {
             let reportedError = isAttemptCancelled(attempt, for: connection.id)
                 ? error

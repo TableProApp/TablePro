@@ -74,6 +74,7 @@ struct TableTransferSheet: View {
                 loadingView
             } else {
                 content
+                    .disabled(isRunning)
             }
 
             Divider()
@@ -89,6 +90,12 @@ struct TableTransferSheet: View {
         .onExitCommand {
             guard !isRunning else { return }
             isPresented = false
+        }
+        .onDisappear {
+            if isRunning { service.cancel() }
+        }
+        .sheet(isPresented: $isRunning) {
+            TransferProgressSheet(progress: transferProgress) { service.cancel() }
         }
     }
 
@@ -108,7 +115,7 @@ struct TableTransferSheet: View {
         VStack {
             Spacer()
             ProgressView()
-                .scaleEffect(0.8)
+                .controlSize(.small)
             Spacer()
         }
         .frame(maxWidth: .infinity)
@@ -175,28 +182,17 @@ struct TableTransferSheet: View {
 
     private var footer: some View {
         DialogFooter {
-            if isRunning {
-                ProgressView()
-                    .scaleEffect(0.7)
-                Text(progressLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            } else if hasContestedMapping {
+            if hasContestedMapping {
                 Text(TableTransferMappingEditor.contestedMappingMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .lineLimit(2)
             }
         } actions: {
-            Button(isRunning ? String(localized: "Stop") : String(localized: "Cancel")) {
-                if isRunning {
-                    service.cancel()
-                } else {
-                    isPresented = false
-                }
+            Button(String(localized: "Cancel")) {
+                isPresented = false
             }
+            .disabled(isRunning)
 
             Button("Transfer") {
                 Task { await runTransfer() }
@@ -209,13 +205,14 @@ struct TableTransferSheet: View {
         .padding(.vertical, 12)
     }
 
-    private var progressLabel: String {
-        String(
-            format: String(localized: "%1$@ (%2$lld of %3$lld), %4$lld rows"),
-            service.state.currentTable,
-            Int64(service.state.currentTableIndex),
-            Int64(service.state.totalTables),
-            Int64(service.state.transferredRows)
+    private var transferProgress: TransferProgress {
+        let state = service.state
+        return TransferProgress(
+            job: .tableTransfer(wrapsEachTable: wrapInTransaction),
+            item: state.currentTable,
+            step: TransferProgress.Step(index: state.currentTableIndex, count: state.totalTables),
+            completed: Int64(state.transferredRows),
+            unit: .rows
         )
     }
 
@@ -227,8 +224,7 @@ struct TableTransferSheet: View {
         let cannotTransfer = match.isEmpty || !match.contestedDestinations.isEmpty
         if isMatching, destinationColumns[table] == nil {
             ProgressView()
-                .scaleEffect(0.5)
-                .frame(width: 16)
+                .controlSize(.mini)
         } else if destinationColumns[table] == nil {
             Text("No such table")
                 .font(.caption)
@@ -441,7 +437,19 @@ struct TableTransferSheet: View {
         errorMessage = nil
         service.prepareForRun()
         isRunning = true
-        defer { isRunning = false }
+        let transferService = service
+        let workId = RunningWorkRegistry.shared.begin(
+            .tableTransfer,
+            subject: destinationConnection.name,
+            connectionName: sourceConnection.name,
+            connectionIds: [sourceConnection.id, destinationConnection.id]
+        ) {
+            transferService.cancel()
+        }
+        defer {
+            isRunning = false
+            RunningWorkRegistry.shared.end(workId)
+        }
 
         await loadColumnsForSelection()
 
@@ -502,12 +510,11 @@ struct TableTransferSheet: View {
         }
     }
 
-    /// A transfer that finished used to close its sheet and say nothing, so a run that skipped rows
-    /// looked identical to a clean one. The alert closes the sheet once the user has read it.
+    // Counted from the run, since the selection is the form's and could differ from what ran.
     @MainActor
     private func presentResult(destination: DatabaseConnection) {
         TransferResultAlert.presentTransferSuccess(
-            tableCount: selectedTables.count,
+            tableCount: service.state.totalTables,
             rowCount: service.state.transferredRows,
             destinationName: destination.name,
             warnings: service.state.warnings,

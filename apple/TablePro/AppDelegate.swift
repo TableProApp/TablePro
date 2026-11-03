@@ -97,6 +97,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
         PluginNotificationService.shared.setUp()
         OperationCompletionReporter.shared.setUp()
+        AgentAttentionNotifier.shared.setUp()
         ChatToolBootstrap.register()
 
         /// Prerequisites for a connection, not post-launch work: a `cloudflared` or

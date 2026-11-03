@@ -40,10 +40,8 @@ internal struct CopyObjectsSheet: View {
             await session.loadObjects()
             await session.loadCreateDatabaseForm()
         }
-        /// Escape has to leave every step. Three of the four carry a button that owns it, and the
-        /// result step's only button owns Return instead, so the key would otherwise die there.
-        /// A copy in flight is never abandoned by a keystroke that missed its Stop button: the
-        /// sheet is the only thing reporting what the run is doing.
+        // The result step's only button owns Return, so Escape would die there. While copying, Stop owns
+        // Escape and asks first.
         .onExitCommand {
             guard session.step != .copying else { return }
             close()
@@ -146,8 +144,7 @@ internal struct CopyObjectsSheet: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(session.plan == nil)
         case .copying:
-            Button(String(localized: "Stop")) { session.cancel() }
-                .keyboardShortcut(.cancelAction)
+            TransferStopButton(policy: session.transferProgress.stopPolicy) { session.cancel() }
         case .finished:
             Button(String(localized: "Done")) { dismiss() }
                 .keyboardShortcut(.defaultAction)

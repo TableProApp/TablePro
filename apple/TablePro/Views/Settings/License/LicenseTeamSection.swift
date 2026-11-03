@@ -5,12 +5,10 @@
 
 import SwiftUI
 
-/// Who is on a Team license, read-only.
-///
-/// Invites, removals and seat counts are written through a token-authenticated API the app cannot
-/// authenticate against, so this reports the roster and links out for anything that changes it.
+// Read-only: invites, removals and seats go through an API the app cannot sign in to, so this links out for them.
 struct LicenseTeamSection: View {
     @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var teamLibrary = TeamLibrarySyncCoordinator.shared
 
     var body: some View {
         Section {
@@ -23,9 +21,9 @@ struct LicenseTeamSection: View {
                 }
             case .failed(let message):
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(message, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
+                    warning {
+                        Text(message)
+                    }
 
                     Button(String(localized: "Try Again")) {
                         Task { await licenseManager.loadTeam(force: true) }
@@ -33,6 +31,10 @@ struct LicenseTeamSection: View {
                 }
             case .loaded:
                 roster
+            }
+
+            if licenseManager.isFeatureAvailable(.teamLibrary) {
+                teamLibraryRows
             }
         } header: {
             HStack {
@@ -73,8 +75,55 @@ struct LicenseTeamSection: View {
         }
     }
 
-    /// The signed payload carries the licence owner's email for every member, so this marks the
-    /// owner rather than claiming to know which row is the reader on a member's Mac.
+    @ViewBuilder
+    private var teamLibraryRows: some View {
+        LabeledContent(String(localized: "Team Library")) {
+            HStack(spacing: 8) {
+                if teamLibrary.isPulling {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel(String(localized: "Refreshing the team library"))
+                } else if let lastRefreshedAt = teamLibrary.lastRefreshedAt {
+                    Text(Self.refreshedText(lastRefreshedAt))
+                        .foregroundStyle(.secondary)
+                }
+
+                Button(String(localized: "Refresh")) {
+                    teamLibrary.refresh()
+                }
+                .disabled(teamLibrary.isPulling)
+            }
+        }
+
+        if let reason = teamLibrary.lastPullError {
+            warning {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Couldn't refresh the team library")
+                    Text(reason)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private static func refreshedText(_ date: Date) -> String {
+        String(format: String(localized: "Refreshed %@"), date.formatted(.relative(presentation: .named)))
+    }
+
+    private func warning<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        Label {
+            content()
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        }
+    }
+
+    // The signed payload carries only the owner's email, so this marks the owner, not whoever reads it.
     private func isCurrentUser(_ member: LicenseTeamMember) -> Bool {
         member.email == licenseManager.license?.email
     }

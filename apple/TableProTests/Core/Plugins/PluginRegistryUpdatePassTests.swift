@@ -4,6 +4,7 @@ import Foundation
 import TableProPluginKit
 import TableProTestSupport
 import Testing
+import UserNotifications
 
 private final class ManifestStubProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
@@ -146,6 +147,7 @@ struct PluginRegistryUpdatePassTests {
 
     private struct Fixture {
         let manager: PluginManager
+        let tracker: PluginInstallTracker
         let pluginsDir: URL
         let root: URL
     }
@@ -158,13 +160,15 @@ struct PluginRegistryUpdatePassTests {
             .appendingPathComponent("PluginRegistryUpdatePassTests-\(UUID().uuidString)", isDirectory: true)
         let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
         try FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
+        let tracker = PluginInstallTracker(clock: ManualClock())
         let manager = PluginManager(
             builtInPluginsURL: nil,
             userPluginsDir: pluginsDir,
             registryInstaller: installer,
+            installTracker: tracker,
             isUpdatingEnabled: isUpdatingEnabled
         )
-        return Fixture(manager: manager, pluginsDir: pluginsDir, root: root)
+        return Fixture(manager: manager, tracker: tracker, pluginsDir: pluginsDir, root: root)
     }
 
     private func stageUpdate(
@@ -633,6 +637,45 @@ struct PluginRegistryUpdatePassTests {
         #expect(!FileManager.default.fileExists(atPath: stagedDir.path))
         #expect(PluginManager.bundleBuild(at: entry.url) == 840_099)
         #expect(PluginManager.readRegistryMetadata(for: entry.url)?.pluginId == entry.id)
+    }
+
+    @Test("A loaded plugin's failed update stays on its tracker entry and posts one notification")
+    func loadedPluginUpdateFailureReachesTrackerAndNotifier() async throws {
+        let installer = FixtureRegistryInstaller(archiveBuild: 15)
+        let fixture = try makeFixture(installer: installer)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let presenter = RecordingNotificationPresenter()
+        let notifier = PluginNotificationService(
+            presenter: presenter,
+            authorization: NotificationAuthorization(presenter: presenter),
+            categories: NotificationCategoryRegistry(presenter: presenter),
+            tracker: fixture.tracker,
+            settings: { NotificationSettings(isEnabled: true) }
+        )
+        notifier.observeInstalls()
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.example.driver", in: fixture.pluginsDir, build: 16)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        let (client, _) = try makeRegistryClient(servingBuild: 20)
+
+        let result = await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20)
+
+        #expect(result == .retry)
+        let failed = try #require(fixture.tracker.entries[entry.id])
+        #expect(failed.trigger == .update)
+        guard case .failed = failed.phase else {
+            Issue.record("Expected a failure on the plugin's entry, got \(failed.phase)")
+            return
+        }
+        guard case .registry(let retry)? = failed.retry else {
+            Issue.record("Expected a registry retry target")
+            return
+        }
+        #expect(retry.id == entry.id)
+        try await waitUntil { presenter.posted.count == 1 }
+        #expect(presenter.posted.first?.identifier.hasSuffix(entry.id) == true)
+        withExtendedLifetime(notifier) {}
     }
 
     @Test("A manifest with no signature, or one signed by another key, never reaches the installer", arguments: [

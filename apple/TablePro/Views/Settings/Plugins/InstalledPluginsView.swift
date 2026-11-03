@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 struct InstalledPluginsView: View {
     @ObservedObject private var pluginManager = PluginManager.shared
     @ObservedObject private var registryClient: RegistryClient
-    // isInstalling reads the tracker, which the plugin manager does not republish.
+    // Install progress lives in the tracker, which the plugin manager does not republish.
     @ObservedObject private var installTracker = PluginInstallTracker.shared
     @ObservedObject private var navigation = PluginsSettingsNavigation.shared
     @ObservedObject private var modules = AppModuleSettings.shared
@@ -269,6 +269,104 @@ struct InstalledPluginsView: View {
     }
 
     private var listBottomBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let install = bottomBarInstall {
+                bottomBarStatus(install)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 8)
+            }
+            listBottomButtons
+        }
+    }
+
+    // A running install first; then a failure with no plugin row to show it.
+    private var bottomBarInstall: PluginInstallTracker.Entry? {
+        if let running = installTracker.runningEntries.first {
+            return running
+        }
+        return installTracker.failedEntries.last { install in
+            !pluginManager.plugins.contains { $0.id == install.pluginId }
+        }
+    }
+
+    @ViewBuilder
+    private func bottomBarStatus(_ install: PluginInstallTracker.Entry) -> some View {
+        switch install.phase {
+        case .downloading, .installing:
+            let title = String(format: String(localized: "Installing %@…"), install.displayName)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 4)
+                    Button(String(localized: "Cancel")) {
+                        installTracker.cancel(pluginId: install.pluginId)
+                    }
+                    .controlSize(.small)
+                    .disabled(install.phase == .installing)
+                    .accessibilityLabel(String(format: String(localized: "Cancel installing %@"), install.displayName))
+                }
+                installProgress(install.phase)
+                    .accessibilityLabel(Text(title))
+            }
+        case .failed(let reason):
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(format: String(localized: "%@ could not be installed"), install.displayName))
+                    .font(.callout)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                installFailure(install, reason: reason)
+            }
+        case .completed:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func installProgress(_ phase: PluginInstallTracker.Phase) -> some View {
+        if case .downloading(let fraction?) = phase {
+            ProgressView(value: fraction)
+                .controlSize(.small)
+        } else {
+            ProgressView()
+                .progressViewStyle(.linear)
+                .controlSize(.small)
+        }
+    }
+
+    private func installFailure(_ install: PluginInstallTracker.Entry, reason: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .symbolRenderingMode(.multicolor)
+                    .accessibilityHidden(true)
+                Text(reason)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .help(reason)
+            }
+            .font(.caption)
+            .accessibilityElement(children: .combine)
+
+            HStack(spacing: 6) {
+                if install.retry != nil {
+                    Button(String(localized: "Try Again")) {
+                        retryInstall(install)
+                    }
+                    .accessibilityLabel(String(format: String(localized: "Try installing %@ again"), install.displayName))
+                }
+                Button(String(localized: "Dismiss")) {
+                    installTracker.cancel(pluginId: install.pluginId)
+                }
+            }
+            .controlSize(.small)
+        }
+    }
+
+    private var listBottomButtons: some View {
         HStack(spacing: 4) {
             Button {
                 installFromFile()
@@ -296,11 +394,6 @@ struct InstalledPluginsView: View {
             )
 
             Spacer()
-
-            if pluginManager.isInstalling {
-                ProgressView()
-                    .controlSize(.small)
-            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
@@ -329,7 +422,9 @@ struct InstalledPluginsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-                if pluginManager.stagedPluginIds.contains(plugin.id) {
+                if let install = installTracker.entries[plugin.id] {
+                    pluginRowInstallCaption(install)
+                } else if pluginManager.stagedPluginIds.contains(plugin.id) {
                     Text("Updates when TablePro relaunches")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -343,6 +438,28 @@ struct InstalledPluginsView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func pluginRowInstallCaption(_ install: PluginInstallTracker.Entry) -> some View {
+        switch install.phase {
+        case .downloading:
+            Text("Downloading update…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .installing:
+            Text("Installing update…")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .completed:
+            if pluginManager.stagedPluginIds.contains(install.pluginId) {
+                Text("Updates when TablePro relaunches")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .failed(let reason):
+            installFailure(install, reason: reason)
+        }
     }
 
     // MARK: - Detail Pane
@@ -445,14 +562,21 @@ struct InstalledPluginsView: View {
         }
     }
 
+    // A failure shows on the plugin's row or in the list's bottom bar, from the tracker.
     private func updatePlugin(_ registryPlugin: RegistryPlugin) {
         Task {
-            let result = await pluginManager.performRegistryUpdate(registryPlugin)
-            if case .failed(let error) = result {
-                errorAlertTitle = String(localized: "Plugin Update Failed")
-                errorAlertMessage = error.localizedDescription
-                showErrorAlert = true
-            }
+            _ = await pluginManager.performRegistryUpdate(registryPlugin)
+        }
+    }
+
+    private func retryInstall(_ install: PluginInstallTracker.Entry) {
+        switch install.retry {
+        case .registry(let registryPlugin):
+            updatePlugin(registryPlugin)
+        case .file(let url):
+            installPlugin(from: url)
+        case nil:
+            break
         }
     }
 
@@ -484,16 +608,11 @@ struct InstalledPluginsView: View {
         }
     }
 
+    // A failure shows in the list's bottom bar, from the tracker.
     private func installPlugin(from url: URL) {
         Task {
-            do {
-                let entry = try await pluginManager.installPlugin(from: url)
-                selectedPluginId = entry.id
-            } catch {
-                errorAlertTitle = String(localized: "Plugin Installation Failed")
-                errorAlertMessage = error.localizedDescription
-                showErrorAlert = true
-            }
+            guard let entry = try? await pluginManager.installPlugin(from: url) else { return }
+            selectedPluginId = entry.id
         }
     }
 

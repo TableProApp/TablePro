@@ -171,4 +171,36 @@ struct ProcessNativeDumpRunnerTests {
         )
         #expect(throws: (any Error).self) { try runner.start() }
     }
+
+    // The tool reads the dump through a copy of the runner's descriptor, so the runner sees the shared offset move.
+    @Test("A restore fed through standard input reports how far the tool has read", .timeLimit(.minutes(1)))
+    func restoreReportsItsReadOffset() async throws {
+        let dump = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-restore-input-\(UUID().uuidString).sql")
+        try Data(repeating: 0x20, count: 200_000).write(to: dump)
+        defer { try? FileManager.default.removeItem(at: dump) }
+        let script = try tool("head -c 4096 > /dev/null\nexec sleep 30")
+        defer { try? FileManager.default.removeItem(at: script) }
+        let runner = ProcessNativeDumpRunner(
+            command: NativeDumpCommand(
+                executable: script,
+                arguments: [],
+                environment: [:],
+                stderrByteCap: 64_000,
+                delivery: .standardOutput,
+                redirectedFileURL: dump,
+                isRestore: true
+            )
+        )
+
+        try runner.start()
+        try await waitUntil { (runner.bytesRead ?? 0) > 0 }
+        let read = try #require(runner.bytesRead)
+        #expect(read <= 200_000)
+
+        runner.cancel()
+        let result = await runner.result
+        #expect(result.wasCancelled)
+        #expect(runner.bytesRead == nil, "the descriptor is closed with the run")
+    }
 }

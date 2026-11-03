@@ -31,13 +31,10 @@ final class PluginManager: ObservableObject {
 
     @Published internal(set) var stagedPluginIds: Set<String> = []
 
+    internal let installTracker: PluginInstallTracker
+
     var isInstalling: Bool {
-        PluginInstallTracker.shared.activeInstalls.values.contains { progress in
-            switch progress.phase {
-            case .downloading, .installing: true
-            case .completed, .failed: false
-            }
-        }
+        installTracker.isInstalling
     }
 
     internal(set) var hasFinishedInitialLoad = false {
@@ -135,12 +132,14 @@ final class PluginManager: ObservableObject {
         builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
         userPluginsDir: URL = PluginManager.defaultUserPluginsDir(),
         registryInstaller: any RegistryPluginInstalling = PluginInstaller.shared,
+        installTracker: PluginInstallTracker = .shared,
         initialLoadClock: any Clock<Duration> = ContinuousClock(),
         isUpdatingEnabled: Bool = SoftwareUpdater.isUpdatingEnabled
     ) {
         self.builtInPluginsURL = builtInPluginsURL
         self.userPluginsDir = userPluginsDir
         self.registryInstaller = registryInstaller
+        self.installTracker = installTracker
         self.initialLoadClock = initialLoadClock
         self.isUpdatingEnabled = isUpdatingEnabled
     }
