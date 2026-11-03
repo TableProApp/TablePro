@@ -110,6 +110,8 @@ final class PluginManager: ObservableObject {
 
     internal var registryUpdateTask: Task<Void, Never>?
     internal var registryUpdateAttempts = 0
+    // A download the person cancelled waits for the next launch; a retry pass must not start it again.
+    internal var cancelledRegistryUpdateIds: Set<String> = []
     internal var installsInFlight: Set<String> = []
 
     // Held while the pass or a connection installs rejected plugins, never during a manifest fetch or a staging download.

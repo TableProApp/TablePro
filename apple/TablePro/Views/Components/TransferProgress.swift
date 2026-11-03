@@ -75,8 +75,9 @@ internal enum TransferJob: Equatable, Sendable {
                 action: .stop,
                 confirmationTitle: String(localized: "Stop Transfer?"),
                 confirmButton: String(localized: "Stop Transfer"),
+                // The checkbox asks for a transaction; an engine without one cannot roll back, so nothing is promised.
                 consequence: wrapsEachTable
-                    ? String(localized: "Tables already transferred stay. The table in progress is rolled back.")
+                    ? String(localized: "Tables already transferred stay.")
                     : String(localized: "Rows already transferred stay.")
             )
         case .objectCopy:

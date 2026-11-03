@@ -437,6 +437,11 @@ struct PluginRegistryUpdatePassTests {
         #expect(!manager.isRegistryUpdateTarget(loadedTarget))
         manager.stagedPluginIds = []
 
+        manager.cancelledRegistryUpdateIds = [entry.id, "com.example.outdated"]
+        #expect(!manager.isRegistryUpdateTarget(loadedTarget))
+        #expect(!manager.isRegistryUpdateTarget(rejectedTarget))
+        manager.cancelledRegistryUpdateIds = []
+
         manager.plugins = [makeEntry(id: entry.id, in: fixture.pluginsDir, build: 30)]
         #expect(!manager.isRegistryUpdateTarget(loadedTarget))
 

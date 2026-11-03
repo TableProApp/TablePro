@@ -121,6 +121,7 @@ extension PluginManager {
             } catch is CancellationError {
                 guard !Task.isCancelled else { return .finished }
                 // Cancelled from a surface: skipped until the next launch, not retried in this one.
+                cancelledRegistryUpdateIds.insert(update.target.pluginId)
                 Self.logger.info("Updating '\(update.target.pluginId, privacy: .public)' was cancelled")
             } catch {
                 Self.logger.error("Updating '\(update.target.pluginId, privacy: .public)' failed: \(error.publicLogShape, privacy: .public)")
@@ -165,6 +166,7 @@ extension PluginManager {
 
     // The pass suspends on the network, and the user may uninstall or remove a plugin meanwhile.
     func isRegistryUpdateTarget(_ target: RegistryUpdateTarget) -> Bool {
+        guard !cancelledRegistryUpdateIds.contains(target.pluginId) else { return false }
         if let rejectedURL = target.rejectedURL {
             return rejectedPlugins.contains { $0.url == rejectedURL }
         }

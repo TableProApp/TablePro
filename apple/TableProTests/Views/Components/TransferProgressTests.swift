@@ -126,7 +126,7 @@ struct TransferProgressTests {
         #expect(TransferJob.restore.stopPolicy.consequence == "The database may be left partly restored.")
         #expect(
             TransferJob.tableTransfer(wrapsEachTable: true).stopPolicy.consequence
-                == "Tables already transferred stay. The table in progress is rolled back."
+                == "Tables already transferred stay."
         )
         #expect(TransferJob.tableTransfer(wrapsEachTable: false).stopPolicy.consequence == "Rows already transferred stay.")
         #expect(TransferJob.objectCopy.stopPolicy.consequence == "Objects already copied stay.")

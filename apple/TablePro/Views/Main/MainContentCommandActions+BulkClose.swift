@@ -87,10 +87,11 @@ extension MainContentCommandActions {
             guard await confirmsStoppingWork(work) else { return }
         }
         guard case .close(let closable) = await resolveUnsavedWork(in: victims, alsoStopping: work) else { return }
-        stop(work.filter { $0.tabId.map(closable.contains) ?? false })
         // A save can suspend long enough for a victim to be pinned.
         let unpinned = Set(coordinator.tabManager.tabs.filter { !$0.isPinned }.map(\.id))
-        coordinator.closeTabsByUser(ids: victims.map(\.id).filter { closable.contains($0) && unpinned.contains($0) })
+        let closing = Set(victims.map(\.id).filter { closable.contains($0) && unpinned.contains($0) })
+        stop(work.filter { $0.tabId.map(closing.contains) ?? false })
+        coordinator.closeTabsByUser(ids: victims.map(\.id).filter(closing.contains))
     }
 
     internal enum UnsavedWorkOutcome: Equatable {
