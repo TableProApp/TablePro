@@ -1037,6 +1037,131 @@ struct EtcdCommandParserRoundTripTests {
     }
 }
 
+// MARK: - Hosts That Grade Commands Themselves
+
+struct EtcdCommandParserCommandWordTests {
+    @Test("A hex escape in the command word leaves it unknown, as a released host grades it")
+    func escapedCommandWord() throws {
+        let line = #""d\x65l" "" --prefix"#
+        let op = try EtcdCommandParser.parse(line)
+        guard case .unknown(let command, _) = op else {
+            Issue.record("Expected .unknown, got \(op)")
+            return
+        }
+        #expect(command == #""d\x65l""#)
+        // The released classifier treats this unrecognized verb as a plain write.
+        let releasedVerb = ReleasedEtcdTokenizer.tokenize(line).first?.lowercased()
+        #expect(releasedVerb == #"d\x65l"#)
+        let releasedDestructiveVerbs: Set<String> = [
+            "del", "delete", "compaction", "compact", "lease", "member", "auth", "user", "role",
+        ]
+        #expect(!releasedDestructiveVerbs.contains(releasedVerb ?? ""))
+        var releasedContext = PluginStatementContext()
+        releasedContext.allowsDestructive = false
+        #expect(op.refusal(
+            readOnly: releasedContext.readOnly, allowsDestructive: releasedContext.allowsDestructive
+        ) == nil)
+        #expect(op.tier == nil)
+        #expect(QueryClassifier.classifyTier(line, databaseType: .etcd) == .write)
+    }
+
+    @Test("A command name is bare and literal", arguments: [
+        #""del" "" --prefix"#, #"'del' "" --prefix"#, #"d"e"l "" --prefix"#,
+        #"d\x65l "" --prefix"#, #""d\x65l" "" --prefix"#,
+    ])
+    func literalCommand(line: String) throws {
+        guard case .unknown = try EtcdCommandParser.parse(line) else {
+            Issue.record("Expected a literal unknown command")
+            return
+        }
+    }
+
+    @Test(
+        "A hex escape in a subcommand leaves it unknown",
+        arguments: [#"lease "r\x65voke" 1"#, #"user "d\x65lete" bob"#, #"role 'd\x65lete' readers"#, #"auth "disabl\x65""#]
+    )
+    func escapedSubcommand(line: String) {
+        #expect(throws: EtcdParseError.self) { try EtcdCommandParser.parse(line) }
+        #expect(QueryClassifier.classifyTier(line, databaseType: .etcd) == .destructive)
+    }
+
+    @Test("A hex escape in a flag leaves it a different flag")
+    func escapedFlag() throws {
+        let op = try EtcdCommandParser.parse(#"get /a "--pr\x65fix""#)
+        guard case .get(let key, let prefix, _, _, _, _) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
+        }
+        #expect(key == Data("/a".utf8))
+        #expect(!prefix)
+    }
+}
+
+private let etcdReadLines = [
+    "get /a --prefix", "watch /a", "lease timetolive 1", "lease list", "member list", "endpoint status",
+    "endpoint health", "user list", "role list",
+]
+private let etcdWriteLines = [
+    "put /a v", "lease grant 60", "lease keep-alive 1", "auth enable", "user add bob pw", "role add readers",
+    "user grant-role bob readers", "user revoke-role bob readers",
+]
+private let etcdDeleteLines = [
+    "del /a", #"del "" --prefix"#, "del /app/ --prefix", "compaction 5", "lease revoke 1", "auth disable",
+    "user delete bob", "role delete readers",
+]
+
+struct EtcdCommandParserStatementPolicyTests {
+    @Test("A delete runs only when the approval covered deleting data", arguments: etcdDeleteLines)
+    func deleteNeedsApproval(line: String) throws {
+        let op = try EtcdCommandParser.parse(line)
+        #expect(op.tier == .destructive)
+        guard case .destructiveNotApproved? = op.refusal(readOnly: false, allowsDestructive: false) else {
+            Issue.record("\(line) ran without approval to delete")
+            return
+        }
+        guard case .writeWhileReadOnly? = op.refusal(readOnly: true, allowsDestructive: true) else {
+            Issue.record("\(line) ran as a read")
+            return
+        }
+        #expect(op.refusal(readOnly: false, allowsDestructive: true) == nil)
+    }
+
+    @Test("A write runs unless the statement ran as a read", arguments: etcdWriteLines)
+    func writeNeedsWriteAccess(line: String) throws {
+        let op = try EtcdCommandParser.parse(line)
+        #expect(op.tier == .write)
+        guard case .writeWhileReadOnly? = op.refusal(readOnly: true, allowsDestructive: true) else {
+            Issue.record("\(line) ran as a read")
+            return
+        }
+        #expect(op.refusal(readOnly: false, allowsDestructive: false) == nil)
+    }
+
+    @Test("A read always runs", arguments: etcdReadLines)
+    func readAlwaysRuns(line: String) throws {
+        let op = try EtcdCommandParser.parse(line)
+        #expect(op.tier == .read)
+        #expect(op.refusal(readOnly: true, allowsDestructive: false) == nil)
+    }
+
+    @Test(
+        "The classifier grades each command at the tier the driver checks",
+        arguments: etcdReadLines + etcdWriteLines + etcdDeleteLines
+    )
+    func classifierMatchesDriver(line: String) throws {
+        let expected: QueryTier
+        switch try EtcdCommandParser.parse(line).tier {
+        case .read: expected = .safe
+        case .write: expected = .write
+        case .destructive: expected = .destructive
+        case nil:
+            Issue.record("\(line) did not parse to a command")
+            return
+        }
+        #expect(QueryClassifier.classifyTier(line, databaseType: .etcd) == expected)
+    }
+}
+
 // MARK: - Lease ID Parsing
 
 struct EtcdCommandParserLeaseIdTests {

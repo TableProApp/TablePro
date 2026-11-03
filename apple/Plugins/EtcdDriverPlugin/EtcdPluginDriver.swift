@@ -42,7 +42,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     var supportsTransactions: Bool { false }
 
     var capabilities: PluginCapabilities {
-        [.cancelQuery]
+        [.cancelQuery, .statementPolicy]
     }
 
     // etcd has no transactions.
@@ -100,6 +100,12 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Query Execution
 
     func execute(query: String) async throws -> PluginQueryResult {
+        try await execute(query: query, context: PluginStatementContext())
+    }
+
+    // The driver checks the parsed command against what the host approved, since a host can grade the text
+    // differently from how this driver reads it.
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
         let startTime = Date()
 
         guard let client = httpClient else {
@@ -125,6 +131,9 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         let operation = try EtcdCommandParser.parse(trimmed)
+        if let refusal = operation.refusal(readOnly: context.readOnly, allowsDestructive: context.allowsDestructive) {
+            throw refusal
+        }
         return try await dispatch(operation, client: client, startTime: startTime)
     }
 
@@ -132,13 +141,45 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await execute(query: query)
     }
 
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await execute(query: query, context: context)
+    }
+
+    // The default runs the context-free `execute`, which would drop what the host approved.
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        let result = try await execute(query: query, context: context)
+        guard let rowCap, rowCap > 0, result.rows.count > rowCap else { return result }
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: Array(result.rows.prefix(rowCap)),
+            rowsAffected: result.rowsAffected,
+            executionTime: result.executionTime,
+            isTruncated: true,
+            statusMessage: result.statusMessage
+        )
+    }
+
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        streamRows(query: query, context: PluginStatementContext())
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
-                    try await self.performStreamRows(query: query, continuation: continuation)
+                    try await self.performStreamRows(query: query, context: context, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -152,6 +193,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private func performStreamRows(
         query: String,
+        context: PluginStatementContext,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws {
         guard let client = httpClient else {
@@ -171,7 +213,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return
         }
 
-        let result = try await execute(query: query)
+        let result = try await execute(query: query, context: context)
         continuation.yield(.header(PluginStreamHeader(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,

@@ -3,12 +3,16 @@ import Testing
 
 @testable import TableProEtcdCore
 
+private func tokenBytes(_ input: String) -> [Data] {
+    EtcdCommandText.tokenize(input).map { $0.bytes }
+}
+
 struct EtcdCommandTextRoundTripTests {
     @Test("every byte value survives quote then tokenize")
     func everyByteSurvives() {
         for value in UInt8.min ... UInt8.max {
             let argument = Data([value])
-            #expect(EtcdCommandText.tokenize(EtcdCommandText.quoted(argument)) == [argument])
+            #expect(tokenBytes(EtcdCommandText.quoted(argument)) == [argument])
         }
     }
 
@@ -23,7 +27,7 @@ struct EtcdCommandTextRoundTripTests {
         }
         for length in 1 ... 200 {
             let blob = Data((0 ..< length).map { _ in nextByte() })
-            #expect(EtcdCommandText.tokenize(EtcdCommandText.quoted(blob)) == [blob])
+            #expect(tokenBytes(EtcdCommandText.quoted(blob)) == [blob])
         }
     }
 
@@ -32,20 +36,20 @@ struct EtcdCommandTextRoundTripTests {
         let key = Data([0x2F, 0x61, 0xFF, 0xFE, 0x2F, 0x62])
         let quoted = EtcdCommandText.quoted(key)
         #expect(quoted == #""/a\xff\xfe/b""#)
-        #expect(EtcdCommandText.tokenize("del \(quoted)") == [Data("del".utf8), key])
+        #expect(tokenBytes("del \(quoted)") == [Data("del".utf8), key])
     }
 
     @Test("a leading byte order mark is part of the key")
     func byteOrderMark() {
         let key = Data([0xEF, 0xBB, 0xBF, 0x61])
         #expect(EtcdCommandText.text(key)?.unicodeScalars.first == "\u{FEFF}")
-        #expect(EtcdCommandText.tokenize(EtcdCommandText.quoted(key)) == [key])
+        #expect(tokenBytes(EtcdCommandText.quoted(key)) == [key])
     }
 
     @Test("an empty argument survives")
     func emptySurvives() {
         #expect(EtcdCommandText.quoted(Data()) == "\"\"")
-        #expect(EtcdCommandText.tokenize("get \"\" --prefix") == [Data("get".utf8), Data(), Data("--prefix".utf8)])
+        #expect(tokenBytes("get \"\" --prefix") == [Data("get".utf8), Data(), Data("--prefix".utf8)])
     }
 
     @Test("every character a trim, the tokenizer or a text field drops survives at either edge of a key")
@@ -66,9 +70,9 @@ struct EtcdCommandTextRoundTripTests {
             key.append(scalar)
             let argument = Data(String(key).utf8)
             let line = "del " + EtcdCommandText.quoted(argument) + " \n"
-            #expect(EtcdCommandText.tokenize(EtcdCommandText.trimmed(line)) == [Data("del".utf8), argument])
+            #expect(tokenBytes(EtcdCommandText.trimmed(line)) == [Data("del".utf8), argument])
             let hostTrimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            #expect(EtcdCommandText.tokenize(hostTrimmed) == [Data("del".utf8), argument])
+            #expect(tokenBytes(hostTrimmed) == [Data("del".utf8), argument])
         }
         #expect(checked > 4_000)
     }
@@ -116,27 +120,27 @@ struct EtcdCommandTextCommandTests {
             "put", arguments: [Data("--lease".utf8), Data("v".utf8)], flags: ["--lease=0x7b"]
         )
         #expect(line == "put --lease=0x7b -- --lease v")
-        #expect(EtcdCommandText.tokenize(line).count == 5)
+        #expect(tokenBytes(line).count == 5)
     }
 }
 
 struct EtcdCommandTextTokenizerTests {
     @Test("a hex escape inside quotes is one byte")
     func hexEscape() {
-        #expect(EtcdCommandText.tokenize(#""\xff\x00A""#) == [Data([0xFF, 0x00, 0x41])])
-        #expect(EtcdCommandText.tokenize(#"'\x2F'"#) == [Data("/".utf8)])
+        #expect(tokenBytes(#""\xff\x00A""#) == [Data([0xFF, 0x00, 0x41])])
+        #expect(tokenBytes(#"'\x2F'"#) == [Data("/".utf8)])
     }
 
     @Test("a hex escape without two hex digits stays as written")
     func incompleteHexEscape() {
-        #expect(EtcdCommandText.tokenize(#""\xZZ""#) == [Data(#"\xZZ"#.utf8)])
-        #expect(EtcdCommandText.tokenize(#""a\x4""#) == [Data(#"a\x4"#.utf8)])
-        #expect(EtcdCommandText.tokenize(#""\x""#) == [Data(#"\x"#.utf8)])
+        #expect(tokenBytes(#""\xZZ""#) == [Data(#"\xZZ"#.utf8)])
+        #expect(tokenBytes(#""a\x4""#) == [Data(#"a\x4"#.utf8)])
+        #expect(tokenBytes(#""\x""#) == [Data(#"\x"#.utf8)])
     }
 
     @Test("a backslash outside quotes is a literal character")
     func backslashOutsideQuotes() {
-        #expect(EtcdCommandText.tokenize(#"C:\xff"#) == [Data(#"C:\xff"#.utf8)])
+        #expect(tokenBytes(#"C:\xff"#) == [Data(#"C:\xff"#.utf8)])
     }
 
     @Test("the trim drops only Unicode whitespace")

@@ -1,5 +1,19 @@
 import Foundation
 
+// One word of an etcd command line, read two ways.
+public struct EtcdCommandToken: Equatable, Sendable {
+    // As every TablePro release reads the word, with \xHH left as four characters. Commands, flags and names use
+    // this, so an older host grades the same command the driver runs.
+    public let text: String
+    // The bytes of a key or a value, with \xHH as one byte.
+    public let bytes: Data
+
+    public init(text: String, bytes: Data) {
+        self.text = text
+        self.bytes = bytes
+    }
+}
+
 // One etcd command line as text: the trim, the tokenizer and the quoter share one set of blanks, so an
 // argument the quoter leaves bare reads back as the same bytes.
 public enum EtcdCommandText {
@@ -20,11 +34,11 @@ public enum EtcdCommandText {
         return String(kept)
     }
 
-    // Inside quotes, \n, \r, \t, \\, \", \' and \xHH are escapes; \xHH is one byte, so any key can be written.
-    public static func tokenize(_ input: String) -> [Data] {
+    // Inside quotes, \n, \r, \t, \\, \" and \' are escapes, and \xHH is one byte of a key or a value.
+    public static func tokenize(_ input: String) -> [EtcdCommandToken] {
         let scalars = Array(input.unicodeScalars)
-        var tokens: [Data] = []
-        var token: [UInt8] = []
+        var tokens: [EtcdCommandToken] = []
+        var token = TokenBuilder()
         var tokenStarted = false
         var openQuote: Unicode.Scalar?
         var index = 0
@@ -39,25 +53,24 @@ public enum EtcdCommandText {
                 } else if scalar == "\\" {
                     index = appendEscape(in: scalars, at: index, to: &token)
                 } else {
-                    append(scalar, to: &token)
+                    token.append(scalar)
                 }
             } else if scalar == "\"" || scalar == "'" {
                 openQuote = scalar
                 tokenStarted = true
             } else if isBlank(scalar) {
                 if tokenStarted {
-                    tokens.append(Data(token))
-                    token.removeAll()
+                    tokens.append(token.finish())
                     tokenStarted = false
                 }
             } else {
-                append(scalar, to: &token)
+                token.append(scalar)
                 tokenStarted = true
             }
         }
 
         if tokenStarted {
-            tokens.append(Data(token))
+            tokens.append(token.finish())
         }
         return tokens
     }
@@ -89,33 +102,53 @@ public enum EtcdCommandText {
     // MARK: - Private
 
     private static let flagMarker = Data(endOfFlags.utf8)
-    private static let backslash = UInt8(ascii: "\\")
 
-    private static func append(_ scalar: Unicode.Scalar, to token: inout [UInt8]) {
-        UTF8.encode(scalar) { token.append($0) }
+    private struct TokenBuilder {
+        private var text = String.UnicodeScalarView()
+        private var bytes: [UInt8] = []
+
+        mutating func append(_ scalar: Unicode.Scalar) {
+            text.append(scalar)
+            UTF8.encode(scalar) { bytes.append($0) }
+        }
+
+        mutating func appendHexEscape(_ high: Unicode.Scalar, _ low: Unicode.Scalar, byte: UInt8) {
+            text.append(contentsOf: ["\\", "x", high, low])
+            bytes.append(byte)
+        }
+
+        mutating func finish() -> EtcdCommandToken {
+            defer {
+                text = String.UnicodeScalarView()
+                bytes.removeAll()
+            }
+            return EtcdCommandToken(text: String(text), bytes: Data(bytes))
+        }
     }
 
-    private static func appendEscape(in scalars: [Unicode.Scalar], at index: Int, to token: inout [UInt8]) -> Int {
+    private static func appendEscape(in scalars: [Unicode.Scalar], at index: Int, to token: inout TokenBuilder) -> Int {
         guard index < scalars.count else {
-            token.append(backslash)
+            token.append("\\")
             return index
         }
         let escaped = scalars[index]
         switch escaped {
-        case "n": token.append(0x0A)
-        case "r": token.append(0x0D)
-        case "t": token.append(0x09)
-        case "\\", "\"", "'": token.append(UInt8(escaped.value))
+        case "n": token.append("\n")
+        case "r": token.append("\r")
+        case "t": token.append("\t")
+        case "\\", "\"", "'": token.append(escaped)
         case "x" where index + 2 < scalars.count:
-            if let byte = hexByte(scalars[index + 1], scalars[index + 2]) {
-                token.append(byte)
+            let high = scalars[index + 1]
+            let low = scalars[index + 2]
+            if let byte = hexByte(high, low) {
+                token.appendHexEscape(high, low, byte: byte)
                 return index + 3
             }
-            token.append(backslash)
-            append(escaped, to: &token)
+            token.append("\\")
+            token.append(escaped)
         default:
-            token.append(backslash)
-            append(escaped, to: &token)
+            token.append("\\")
+            token.append(escaped)
         }
         return index + 1
     }
@@ -160,7 +193,7 @@ public enum EtcdCommandText {
         var result = "\""
         for byte in bytes {
             switch byte {
-            case backslash: result += "\\\\"
+            case UInt8(ascii: "\\"): result += "\\\\"
             case UInt8(ascii: "\""): result += "\\\""
             case 0x20 ..< 0x7F: result.unicodeScalars.append(Unicode.Scalar(byte))
             default: result += hexEscape(byte)
