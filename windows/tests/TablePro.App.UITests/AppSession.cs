@@ -67,21 +67,27 @@ internal sealed class AppSession : IDisposable
     public void Drag(AutomationElement from, AutomationElement to)
     {
         Front();
-        var start = from.GetClickablePoint();
-        var end = to.GetClickablePoint();
-        Mouse.MoveTo(start);
-        Mouse.Down(MouseButton.Left);
+        Drag(from.GetClickablePoint(), to.GetClickablePoint());
+    }
+
+    // FlaUI moves the pointer with SetCursorPos, which WinUI does not see as a pointer moving with the button down,
+    // so a drag goes through SendInput as a mouse does.
+    public static void Drag(System.Drawing.Point start, System.Drawing.Point end)
+    {
+        PointerInput.Move(start);
+        Thread.Sleep(100);
+        PointerInput.Button(down: true);
         Thread.Sleep(200);
         for (var step = 1; step <= 20; step++)
         {
-            Mouse.MoveTo(new System.Drawing.Point(
+            PointerInput.Move(new System.Drawing.Point(
                 start.X + ((end.X - start.X) * step / 20),
                 start.Y + ((end.Y - start.Y) * step / 20)));
             Thread.Sleep(40);
         }
 
         Thread.Sleep(300);
-        Mouse.Up(MouseButton.Left);
+        PointerInput.Button(down: false);
         Thread.Sleep(300);
     }
 

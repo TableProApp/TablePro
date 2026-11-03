@@ -76,15 +76,7 @@ public sealed partial class ShellTests
             var start = new Point(splitter.Left + (splitter.Width / 2), splitter.Top + (splitter.Height / 2));
 
             app.Front();
-            Mouse.MoveTo(start);
-            Mouse.Down(MouseButton.Left);
-            for (var step = 1; step <= 16; step++)
-            {
-                Mouse.MoveTo(new Point(start.X + (step * 10), start.Y));
-                Thread.Sleep(30);
-            }
-
-            Mouse.Up(MouseButton.Left);
+            AppSession.Drag(start, new Point(start.X + 160, start.Y));
             var grew = Retry.WhileFalse(() => tree.BoundingRectangle.Width > before + 100, AppSession.Wait, throwOnTimeout: false).Success;
             Assert.True(grew, $"The pane stayed {tree.BoundingRectangle.Width} wide from {before}.");
             widened = tree.BoundingRectangle.Width;
