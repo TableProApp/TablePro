@@ -180,6 +180,42 @@ public sealed partial class ShellTests
         Assert.Equal("0", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "0"));
     }
 
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void CancellingCloseSelectsTheConnectionWhoseTransactionWasShown(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme);
+        var first = AppSession.SampleDatabase(folder);
+        var second = Path.Combine(folder, "second.sqlite");
+        File.Copy(first, second);
+        var state = new
+        {
+            connections = new[]
+            {
+                new { filePath = first, name = "First", engineId = "sqlite",
+                    tabs = new[] { new { kind = "Query", title = "Query 1", sql = "BEGIN" } } },
+                new { filePath = second, name = "Second", engineId = "sqlite",
+                    tabs = new[] { new { kind = "Query", title = "Query 1", sql = "SELECT 2" } } },
+            },
+            front = 0,
+        };
+        File.WriteAllText(Path.Combine(folder, "session.json"), JsonSerializer.Serialize(state));
+        using var app = AppSession.Relaunch(folder, theme);
+        app.Find("SqlEditor");
+        app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+        app.Find("Rail_Second").Patterns.SelectionItem.Pattern.Select();
+        Assert.True(Retry.WhileFalse(() => AppSession.EditorText(app.Find("SqlEditor")) == "SELECT 2",
+            AppSession.Wait, throwOnTimeout: false).Success);
+        app.Chord(() => app.TryFind("PrimaryButton") is not null, VirtualKeyShort.ALT, VirtualKeyShort.F4);
+        app.CloseDialog();
+        Assert.True(app.Find("Rail_First").Patterns.SelectionItem.Pattern.IsSelected.Value);
+        app.Find("Rail_Second").Patterns.SelectionItem.Pattern.Select();
+        Assert.Equal("SELECT 2", AppSession.EditorText(app.Find("SqlEditor")));
+        app.Find("Rail_First").Patterns.SelectionItem.Pattern.Select();
+        app.Find("RollBackButton").AsButton().Invoke();
+        app.PressDialogButton();
+    }
+
     private static void OpenTrack(AppSession app)
     {
         app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);

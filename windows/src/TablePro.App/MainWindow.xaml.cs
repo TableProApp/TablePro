@@ -731,7 +731,15 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
                     foreach (var open in window._open.Where(open => open.View.HasUnconfirmedTransactions(confirmed)).ToList())
                     {
                         window.Activate();
-                        window.Show(open);
+                        if (window.IsPrimary)
+                        {
+                            window.Select(open);
+                        }
+                        else
+                        {
+                            window.Show(open);
+                        }
+
                         if (!await open.View.ConfirmCloseAsync(confirmed))
                         {
                             return;
