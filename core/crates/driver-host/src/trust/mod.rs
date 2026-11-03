@@ -41,7 +41,16 @@ pub struct PlatformTrust {
 }
 
 impl PlatformTrust {
-    pub fn new(signers: Vec<Signer>) -> Self {
+    /// # Safety
+    /// Every configured publisher must be trusted to provide native code, initializers and dependencies
+    /// that satisfy `DriverLibrary::load` and the driver ABI's memory, callback and ownership contracts.
+    /// Authenticode proves who signed a file, not whether its code meets those contracts.
+    ///
+    /// ```compile_fail,E0133
+    /// use tablepro_driver_host::PlatformTrust;
+    /// let policy = PlatformTrust::new(Vec::new());
+    /// ```
+    pub unsafe fn new(signers: Vec<Signer>) -> Self {
         Self { signers }
     }
 }
@@ -90,7 +99,8 @@ mod tests {
     fn a_platform_with_no_check_refuses_every_file() {
         let file = tempfile::NamedTempFile::new().unwrap();
 
-        let error = PlatformTrust::new(vec![table_pro()])
+        // The fixture issuer is impossible, so this policy cannot admit executable code.
+        let error = unsafe { PlatformTrust::new(vec![table_pro()]) }
             .verify(file.as_file(), file.path(), Purpose::Install)
             .unwrap_err();
 
@@ -105,7 +115,8 @@ mod tests {
         std::fs::copy(std::env::current_exe().unwrap(), &copy).unwrap();
         let file = open_for_load(&copy).unwrap();
 
-        let error = PlatformTrust::new(vec![table_pro()])
+        // The fixture issuer is impossible, so this policy cannot admit executable code.
+        let error = unsafe { PlatformTrust::new(vec![table_pro()]) }
             .verify(&file, &copy, Purpose::Install)
             .unwrap_err();
 

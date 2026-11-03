@@ -175,10 +175,13 @@ mod tests {
     use super::*;
 
     fn plugins(folder: &std::path::Path) -> DriverPlugins {
-        let trust = Arc::new(PlatformTrust::new(vec![Signer {
-            subject: "CN=TablePro".to_owned(),
-            issuer_sha256: "00".repeat(32),
-        }]));
+        // The fixture issuer is impossible, so this policy cannot admit executable code.
+        let trust = Arc::new(unsafe {
+            PlatformTrust::new(vec![Signer {
+                subject: "CN=TablePro".to_owned(),
+                issuer_sha256: "00".repeat(32),
+            }])
+        });
         let store = Arc::new(DriverStore::new(folder.join("drivers"), trust));
         DriverPlugins::new(store, crate::runtime::tasks().unwrap())
     }

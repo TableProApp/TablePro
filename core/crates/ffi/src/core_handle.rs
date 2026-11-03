@@ -279,7 +279,8 @@ impl Core {
                 issuer_sha256: signer.issuer_sha256,
             })
             .collect();
-        let trust: Arc<dyn Trust> = Arc::new(PlatformTrust::new(signers));
+        // HostConfig makes the host responsible for trusting these publishers and their native code.
+        let trust: Arc<dyn Trust> = Arc::new(unsafe { PlatformTrust::new(signers) });
         let plugins = storage_dir.map(|dir| Arc::new(DriverStore::new(Path::new(&dir).join("drivers"), trust)));
         Arc::new(Self {
             registry: Arc::new(drivers::registry()),

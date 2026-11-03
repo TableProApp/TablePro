@@ -41,6 +41,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: feat/core-driver-plugins
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
@@ -81,7 +82,13 @@ jobs:
         if: matrix.bindings
         working-directory: windows
         run: |
-          dotnet msbuild src/TablePro.Interop -t:GenerateBindings -p:UniffiBindgenCs="$HOME/.uniffi-bindgen-cs/bin/uniffi-bindgen-cs"
+          set +e
+          "$GITHUB_WORKSPACE/.claude/skills/fix-issue/scripts/verify.sh" --root "$GITHUB_WORKSPACE" --platform windows --no-wait bindings
+          result=$?
+          set -e
+          if [ "$result" -ne 0 ] && [ -z "$(git diff --name-only -- src/TablePro.Interop/Generated)" ]; then
+            exit "$result"
+          fi
       - name: Keep generated bindings
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -128,7 +135,7 @@ jobs:
       - name: Test the interop library
         # The test build runs cargo for the core first (windows/AGENTS.md, Commands).
         working-directory: windows
-        run: dotnet test --solution TablePro.slnx
+        run: dotnet test --solution TablePro.slnx --disable-build-servers
 
       # The app and its UI tests build on Windows only (windows/AGENTS.md, Commands).
       - name: Build the app
@@ -159,4 +166,12 @@ jobs:
         with:
           name: windows-screenshots-${{ matrix.name }}
           path: screenshots
+          if-no-files-found: ignore
+      - name: Keep verification logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: plugins-verification-logs
+          path: .analysis/**/*.log
+          include-hidden-files: true
           if-no-files-found: ignore

@@ -14,13 +14,16 @@ pub struct HostConfig {
     pub client_version: String,
     // The folder the saved connections live in. None leaves the library out.
     pub storage_dir: Option<String>,
-    // Who may sign a driver library. Empty refuses every driver.
+    /// The host trusts these publishers to provide safe native code, including initializers and dependencies,
+    /// that obeys the driver ABI's memory, callback, threading and ownership contracts. Empty refuses all drivers.
     pub driver_signers: Vec<DriverSigner>,
 }
 
 /// A certificate allowed to sign a driver library: its subject as
 /// Windows writes it ("CN=TablePro, O=TablePro, C=VN"), and the SHA-256
 /// of the certificate that issued it, which is its own when self-signed.
+/// Configuring a signer asserts the host trusts that publisher's native code to obey the driver ABI;
+/// checking a signature identifies the publisher but does not establish memory safety or ABI conformance.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct DriverSigner {
     pub subject: String,
