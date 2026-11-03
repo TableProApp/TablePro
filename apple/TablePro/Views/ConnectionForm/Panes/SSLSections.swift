@@ -48,8 +48,7 @@ struct SSLSections: View {
                 }
                 .accessibilityIdentifier("connection-form-ssl-mode")
                 if sslMode == .preferred, !databaseType.supportsOpportunisticTLS {
-                    Label(noOpportunisticTLSWarning, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(databaseType == .oracle ? .red : .orange)
+                    NoticeLabel(noOpportunisticTLSWarning, severity: databaseType == .oracle ? .error : .warning)
                         .font(.caption)
                 }
             } footer: {

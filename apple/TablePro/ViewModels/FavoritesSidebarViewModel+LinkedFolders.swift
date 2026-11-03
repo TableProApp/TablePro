@@ -15,7 +15,7 @@ extension FavoritesSidebarViewModel {
     internal enum AddFolderOutcome: Equatable {
         case added
         case reEnabled
-        case alreadyLinked(name: String)
+        case alreadyLinked(folderId: UUID)
     }
 
     internal func startWatchingLinkedFolders() {
@@ -39,8 +39,6 @@ extension FavoritesSidebarViewModel {
         SQLFolderWatcher.shared.reload()
     }
 
-    /// Choosing a folder that is already linked but disabled re-enables it. Refusing it outright,
-    /// which is what happened before, pointed the user at a list the folder was invisible in.
     @discardableResult
     internal func addLinkedFolder(at url: URL) -> AddFolderOutcome {
         let path = PathPortability.contractHome(url.path)
@@ -53,7 +51,7 @@ extension FavoritesSidebarViewModel {
             setLinkedFolder(existing, enabled: true)
             return .reEnabled
         }
-        return .alreadyLinked(name: url.lastPathComponent)
+        return .alreadyLinked(folderId: existing.id)
     }
 
     internal func revealLinkedFolder(_ folder: LinkedSQLFolder) {

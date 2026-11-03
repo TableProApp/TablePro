@@ -169,11 +169,12 @@ internal struct CompareRowDiffPane: View {
         HStack(spacing: 8) {
             Label {
                 Text("Some included tables have not been compared with their current settings.")
+                    .foregroundStyle(.secondary)
             } icon: {
                 Image(systemName: "exclamationmark.arrow.circlepath")
+                    .foregroundStyle(CompareStatusStyle.warning)
             }
             .font(.callout)
-            .foregroundStyle(CompareStatusStyle.warning)
             .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             Button("Compare", action: onCompare)
@@ -259,11 +260,12 @@ internal struct CompareRowDiffPane: View {
     private func notice(_ text: String, systemImage: String) -> some View {
         Label {
             Text(text)
+                .foregroundStyle(.secondary)
         } icon: {
             Image(systemName: systemImage)
+                .foregroundStyle(CompareStatusStyle.warning)
         }
         .font(.callout)
-        .foregroundStyle(CompareStatusStyle.warning)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)

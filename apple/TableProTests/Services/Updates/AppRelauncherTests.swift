@@ -13,6 +13,9 @@ final class AppRelauncherFixture {
 
     let suite: EphemeralDefaults
     var documentsReviewed = true
+    var stoppingWorkApproved = true
+    private(set) var workQuestions = 0
+    private(set) var approvedWhenQuitting: [Bool] = []
     var hasPendingUpdate = false
     var quitOutcome = QuitOutcome.committed
     var reopenFails = false
@@ -25,6 +28,10 @@ final class AppRelauncherFixture {
         suite = try EphemeralDefaults()
         relauncher = AppRelauncher(
             defaults: suite.defaults,
+            approveStoppingWork: { [unowned self] in
+                workQuestions += 1
+                return stoppingWorkApproved
+            },
             reviewUnsavedDocuments: { [unowned self] completion in completion(documentsReviewed) },
             installPendingUpdate: { [unowned self] in
                 guard hasPendingUpdate else { return false }
@@ -33,6 +40,7 @@ final class AppRelauncherFixture {
             },
             terminate: { [unowned self] in
                 terminations += 1
+                approvedWhenQuitting.append(relauncher.hasApprovedRunningWork)
                 switch quitOutcome {
                 case .committed:
                     relauncher.applicationWillTerminate(processIdentifier: 42, bundleURL: Self.bundleURL)
@@ -54,6 +62,52 @@ final class AppRelauncherFixture {
 
 @MainActor
 struct AppRelauncherTests {
+    @Test("Declining to stop running work keeps the app running and asks nothing else")
+    func decliningRunningWorkStopsTheRelaunch() throws {
+        let fixture = try AppRelauncherFixture()
+        fixture.stoppingWorkApproved = false
+
+        fixture.relauncher.relaunch()
+
+        #expect(fixture.workQuestions == 1)
+        #expect(fixture.terminations == 0)
+        #expect(fixture.installs == 0)
+        #expect(!fixture.relauncher.isRelaunchPending)
+    }
+
+    @Test("The quit a relaunch starts already has its answer about running work")
+    func quitAfterARelaunchDoesNotAskAgain() throws {
+        let fixture = try AppRelauncherFixture()
+
+        fixture.relauncher.relaunch()
+
+        #expect(fixture.workQuestions == 1)
+        #expect(fixture.approvedWhenQuitting == [true])
+    }
+
+    @Test("A relaunch Sparkle took over and then dropped stops covering later quits")
+    func abortedSparkleRelaunchForgetsItsApproval() throws {
+        let fixture = try AppRelauncherFixture()
+        fixture.hasPendingUpdate = true
+
+        fixture.relauncher.relaunch()
+        #expect(fixture.relauncher.hasApprovedRunningWork)
+
+        fixture.relauncher.terminationWasCancelled()
+        #expect(!fixture.relauncher.hasApprovedRunningWork)
+    }
+
+    @Test("Running work is asked about after the documents are reviewed, never when the review is cancelled")
+    func cancelledDocumentReviewAsksNothingAboutWork() throws {
+        let fixture = try AppRelauncherFixture()
+        fixture.documentsReviewed = false
+
+        fixture.relauncher.relaunch()
+
+        #expect(fixture.workQuestions == 0)
+        #expect(fixture.terminations == 0)
+    }
+
     @Test("Without an update, the app quits and reopens once the quit is committed")
     func plainRelaunchReopensAfterExit() throws {
         let fixture = try AppRelauncherFixture()

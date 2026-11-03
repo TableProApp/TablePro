@@ -57,7 +57,7 @@ struct LicenseFeaturesSections: View {
         case .requiresUpgrade:
             Link("Upgrade Plan", destination: SupportLinks.pricing(.licenseSettings))
                 .accessibilityIdentifier("license-upgrade-plan")
-        case .unlicensed, .expired, .validationFailed:
+        case .unlicensed, .expired, .validationFailed, .suspended:
             EmptyView()
         }
     }

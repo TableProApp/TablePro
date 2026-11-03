@@ -125,6 +125,9 @@ jobs:
         with:
           workspaces: . -> linux/_build/cargo-target
           cache-directories: linux/_build/cargo-home
+      # rust-cache restores DuckDB's unpacked sources as empty folders, which its build script cannot unpack over.
+      - name: Drop the emptied DuckDB sources
+        run: rm -rf _build/cargo-target/duckdb-sources
       - name: Generate the en_US.UTF-8 locale
         # glibc loads no catalogue under C or C.UTF-8, so the i18n
         # catalogue test needs a real locale on the machine.
@@ -297,7 +300,7 @@ jobs:
             echo "::error::the license files do not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
             exit 1
           fi
-      - name: The Linux and core workflows
+      - name: The Linux, core and Windows workflows
         # Offline, so the verdict depends on these files alone and not on
         # where a branch the pins name has moved since.
         working-directory: .
@@ -307,7 +310,8 @@ jobs:
             .github/workflows/build-linux.yml \
             .github/workflows/core.yml \
             .github/workflows/linux-packages.yml \
-            .github/workflows/release-linux.yml
+            .github/workflows/release-linux.yml \
+            .github/workflows/windows.yml
 
   i18n:
     name: Translations
@@ -650,6 +654,9 @@ jobs:
         with:
           workspaces: .
           key: tablepro-app
+      # As in the fast job: the cache restores DuckDB's sources without files.
+      - name: Drop the emptied DuckDB sources
+        run: rm -rf ../target/duckdb-sources
       - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}

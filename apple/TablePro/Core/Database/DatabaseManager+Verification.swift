@@ -10,29 +10,16 @@ import os
 // MARK: - On-demand connection verification
 
 extension DatabaseManager {
-    /// Whether this connection is one TablePro checks at all.
-    ///
-    /// Asked here as well as in `startHealthMonitor` because the two are the same question: a
-    /// driver that says it holds nothing worth checking must not be checked by the scheduled path
-    /// or by the on-demand one. SQLite and DuckDB hold a file rather than a socket, and a check
-    /// would only run a query against a database that cannot have gone away.
+    // One answer for the scheduled and the on-demand check: a file-backed engine has nothing to lose.
     internal func supportsHealthChecks(_ connectionId: UUID) -> Bool {
         guard let session = activeSessions[connectionId] else { return false }
-        /// A remote SQLite session holds a live socket to the server that can drop, so it is checked
-        /// even though the local SQLite engine, a file that cannot go away, is not. The answer is
-        /// per connection here rather than per type, because the same SQLite type is both.
+        // Per connection, not per type: a remote SQLite session holds a socket that can drop.
         if session.connection.opensRemoteDatabaseSession { return true }
         return PluginMetadataRegistry.shared.snapshot(
             for: session.connection.type
         )?.supportsHealthMonitor ?? true
     }
 
-    /// Records that the server answered for this connection.
-    ///
-    /// Every path that gets a reply out of a driver calls this, the scheduled ping included. Its
-    /// success is otherwise invisible, because the monitor suppresses its own healthy-to-checking
-    /// callback: nothing downstream would learn that the connection had just answered, and the
-    /// on-demand check would run a second query minutes later for no reason.
     internal func markSessionVerified(_ connectionId: UUID, at date: Date = Date()) {
         guard activeSessions[connectionId] != nil else { return }
         lastVerifiedAt[connectionId] = date
@@ -42,42 +29,21 @@ extension DatabaseManager {
         lastVerifiedAt.removeValue(forKey: connectionId)
     }
 
-    /// Makes the app stop believing every connection at once.
-    ///
-    /// A Mac that slept comes back with sockets the server closed hours ago, and the freshness
-    /// window has no way to know that: wall-clock time passed but nothing here observed it. So a
-    /// wake throws the answers away and the next thing anyone does re-asks.
+    // A Mac that slept comes back with sockets the server closed while nothing here observed the clock.
     internal func forgetAllVerifications() {
         lastVerifiedAt.removeAll()
     }
 
-    /// Checks a connection the app has not heard from recently, before the user's own work runs on
-    /// it, and reconnects it if it has gone away.
-    ///
-    /// This is what replaces the poll when the user turns the poll down or off. Without it,
-    /// `ConnectionSession.liveness` would be written only by the health monitor and by the initial
-    /// connect, so a connection whose monitor never runs stays `.live` forever: `ensureConnected`
-    /// returns early on that, the toolbar keeps reporting a healthy connection, and the user's next
-    /// query is the first thing to discover the socket is dead.
-    ///
-    /// It costs nothing on the default setting, where the scheduled check answers every 30 seconds
-    /// and stamps the connection fresh each time.
+    // Replaces the poll when the user turns it down or off (#2700); free on the default setting.
     internal func verifyBeforeUse(_ connectionId: UUID) async {
         guard let session = activeSessions[connectionId], let driver = session.driver else { return }
         // A driver that reports its connection gone answered unasked, so an opted-out engine is reconnected too.
         guard supportsHealthChecks(connectionId) || driver.hasLostConnection else { return }
-        /// A session already known to be in trouble has a reconnect of its own, either the
-        /// monitor's or the one `ensureConnected` is about to run. Checking it again would only
-        /// race them.
+        // A session already in trouble has a reconnect of its own; checking again would race it.
         guard session.liveness == .live else { return }
-        /// A query already on this driver is a better liveness answer than a ping, and pinging
-        /// across it would race on a connection that is not thread-safe.
+        // A query already on this driver answers better than a ping, which would race it.
         guard queriesInFlight[connectionId] == nil else { return }
-        /// No record means no answer, which is a reason to ask rather than a reason to assume.
-        /// That is also what makes waking from sleep work: it throws every answer away, and the
-        /// next thing anyone does pays for one check.
-        /// A driver that reported a lost connection has already answered the question a ping
-        /// would ask, so its stamp says nothing about the socket it is holding now.
+        // No record means ask; a driver that reported its connection lost voids its stamp.
         if let last = lastVerifiedAt[connectionId],
            ConnectionHealthCheck.isFresh(last),
            !driver.hasLostConnection {
@@ -89,29 +55,18 @@ extension DatabaseManager {
         }
     }
 
-    /// Whether the connection is usable right now, for a caller about to run the user's own work
-    /// on it. A check that failed and could not recover leaves the driver installed but
-    /// disconnected, so "a driver is present" is not the question worth asking.
+    // An installed driver is not the question: a failed recovery leaves one disconnected.
     internal func isUsable(_ connectionId: UUID) -> Bool {
         guard let session = activeSessions[connectionId], session.driver != nil else { return false }
         switch session.liveness {
-        case .live, .recovering: return true
+        case .live: return true
+        // A loop redials because the driver stopped answering; without one, `.recovering` is a blip.
+        case .recovering: return recoveryLoops[connectionId] == nil
         case .unreachable: return false
         }
     }
 
-    /// Applies a change to how often TablePro checks its connections.
-    ///
-    /// It only ever *starts* a monitor, never stops or rebuilds one. A running monitor reads the
-    /// interval afresh on every pass, so turning checks down or off reaches it wherever it is,
-    /// including mid-ping and mid-reconnect, and ends its loop on its own. That is what removes
-    /// the three ways a restart could go wrong: stranding a session whose reconnect was cancelled
-    /// without a state transition, orphaning a monitor outside `healthMonitors` when two changes
-    /// raced, and skipping a session that happened not to be idle at the moment the user chose.
-    ///
-    /// The one thing the monitor cannot do for itself is come back, because turning checks off
-    /// ends its task. So a change back to a polling interval starts one for every session that has
-    /// none.
+    // Only ever starts a monitor: a running one rereads the interval and ends itself when checks go off.
     internal func observeHealthCheckSetting() {
         healthCheckSettingCancellable = AppEvents.shared.connectionHealthCheckChanged
             .receive(on: RunLoop.main)
@@ -138,48 +93,26 @@ extension DatabaseManager {
         }
     }
 
-    /// `driver` is the handle the check was made against, and every outcome is fenced on it still
-    /// being the session's. A ping cannot be cancelled once it is inside a C call, so a manual
-    /// reconnect or a close and reopen can replace the driver while this is suspended: applying a
-    /// late failure would then disconnect the driver that replaced it, and applying a late success
-    /// would report a connection healthy on the strength of a handle nobody uses any more.
+    // Fenced on the checked driver and on no recovery having started or been cancelled meanwhile: a ping
+    // blocked in a C call answers late, and its answer must not revive a session the user cancelled.
     private func runVerification(_ connectionId: UUID, driver: DatabaseDriver) async {
         do {
-            /// Counted as an operation for the length of the check, so the scheduled monitor's own
-            /// ping skips at its `queriesInFlight` guard rather than entering the same driver
-            /// alongside this one. Drivers are not thread-safe and the two paths have separate
-            /// schedules, so nothing else stops them meeting.
+            // Counted as an operation, so the scheduled monitor's ping skips instead of entering the same driver.
             try await trackOperation(sessionId: connectionId) {
                 try await driver.ping()
             }
-            guard activeSessions[connectionId]?.driver === driver else { return }
+            guard holdsUnrecoveredDriver(connectionId, driver) else { return }
             markSessionLive(connectionId)
         } catch {
-            guard activeSessions[connectionId]?.driver === driver else { return }
+            guard holdsUnrecoveredDriver(connectionId, driver) else { return }
             Self.logger.info("Connection \(connectionId) did not answer before use, reconnecting")
-            let outcome = await performHealthMonitorReconnect(
-                connectionId: connectionId,
-                failedDriver: ObjectIdentifier(driver)
-            )
-            guard case .retry(let failure) = outcome else { return }
-            /// The reconnect disconnected the installed driver before it failed, so the session is
-            /// holding a handle that cannot work. Saying so is the whole point: `ensureConnected`
-            /// and the window both read liveness, and leaving it `.live` puts the user's own
-            /// operation on a dead socket with nothing scheduled to notice.
-            ///
-            /// Fenced on the driver this check was made against, not on whatever the session holds
-            /// now: reading it back would compare the value to itself and mark a replacement
-            /// unreachable on the strength of an attempt that lost.
-            markSessionUnreachable(
-                connectionId,
-                startedWith: driver,
-                info: failure ?? Self.unreachableBeforeUseInfo
-            )
+            // The session's loop makes the attempt and keeps redialing if it fails.
+            _ = await performHealthMonitorReconnect(connectionId: connectionId, failedDriver: ObjectIdentifier(driver))
         }
     }
 
-    internal static let unreachableBeforeUseInfo = ConnectionFailureInfo(
-        message: String(localized: "The connection stopped responding."),
-        recoverySuggestion: String(localized: "Reconnect to try again.")
-    )
+    private func holdsUnrecoveredDriver(_ connectionId: UUID, _ driver: DatabaseDriver) -> Bool {
+        guard let session = activeSessions[connectionId], recoveryLoops[connectionId] == nil else { return false }
+        return session.driver === driver && session.liveness == .live
+    }
 }

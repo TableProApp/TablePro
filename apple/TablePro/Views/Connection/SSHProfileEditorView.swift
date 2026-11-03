@@ -364,19 +364,16 @@ struct SSHProfileEditorView: View {
             .disabled(isTesting || !isValid)
 
             if let saveError {
-                Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                NoticeLabel(saveError, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
                     .lineLimit(2)
                     .truncationMode(.tail)
             } else if testSucceeded {
-                Text(String(localized: "Connected"))
+                NoticeLabel(String(localized: "Connected"), severity: .success)
                     .font(.caption)
-                    .foregroundStyle(.green)
             } else if let testError {
-                Label(testError, systemImage: "exclamationmark.triangle.fill")
+                NoticeLabel(testError)
                     .font(.caption)
-                    .foregroundStyle(.orange)
                     .lineLimit(2)
                     .truncationMode(.tail)
             }

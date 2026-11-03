@@ -83,6 +83,15 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
         }
     }
 
+    // The child reads the dump through a dup of this descriptor, so they share one file offset.
+    var bytesRead: Int64? {
+        stateLock.withLock {
+            guard command.isRestore, let handle = redirectedHandle else { return nil }
+            let offset = lseek(handle.fileDescriptor, 0, SEEK_CUR)
+            return offset < 0 ? nil : Int64(offset)
+        }
+    }
+
     func cancel() {
         let running = stateLock.withLock {
             wasCancelled = true
@@ -138,7 +147,7 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
                 throw NativeDumpError.sourceUnreadable
             }
             let handle = try FileHandle(forReadingFrom: fileURL)
-            redirectedHandle = handle
+            stateLock.withLock { redirectedHandle = handle }
             process.standardInput = handle
             process.standardOutput = FileHandle.nullDevice
         case false:
@@ -146,16 +155,20 @@ final class ProcessNativeDumpRunner: NativeDumpRunner, @unchecked Sendable {
                 throw NativeDumpError.sourceUnreadable
             }
             let handle = try FileHandle(forWritingTo: fileURL)
-            redirectedHandle = handle
+            stateLock.withLock { redirectedHandle = handle }
             process.standardOutput = handle
         }
     }
 
-    /// Runs however the process ended, including a cancel or a launch that failed, so a credentials
-    /// file never outlives the process that needed it.
+    // Runs however the process ended, so a credentials file never outlives the process that needed it.
+    // The handle leaves under the lock first, so `bytesRead` never seeks a closed descriptor.
     private func releaseRedirection() {
-        try? redirectedHandle?.close()
-        redirectedHandle = nil
+        let handle = stateLock.withLock {
+            let handle = redirectedHandle
+            redirectedHandle = nil
+            return handle
+        }
+        try? handle?.close()
         for url in [credentialsFileURL, pluginFolderURL].compactMap(\.self) {
             try? FileManager.default.removeItem(at: url)
         }

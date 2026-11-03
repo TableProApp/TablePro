@@ -7,6 +7,7 @@ import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProSSHConfig
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -498,40 +499,49 @@ struct DatabaseManagerTunnelTests {
         }
     }
 
-    @Test("Exhausted tunnel recovery removes the session instead of leaving a spinner")
-    func exhaustedRecoveryRemovesTheSession() {
-        let connection = DatabaseConnection(
-            name: "dead tunnel",
-            host: "db.internal",
-            port: 5_432,
-            type: .postgresql
-        )
-        var session = ConnectionSession(connection: connection)
-        session.status = .connecting
-        DatabaseManager.shared.injectSession(session, for: connection.id)
+    @Test("Exhausted tunnel recovery keeps the session and reports it lost, not a failed connect")
+    func exhaustedRecoveryReportsALostSession() async throws {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        let clock = ManualClock()
+        let manager = DatabaseManager(recoveryClock: clock)
+        var connection = TestFixtures.makeConnection(name: "dead tunnel")
+        connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
+        let driver = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        manager.injectSession(session, for: connection.id)
+        FakeMSSQLPlugin.failConnect(for: connection.id, with: TestTunnelFailure(value: 1))
+        defer {
+            FakeMSSQLPlugin.clearConnectFailure(for: connection.id)
+            manager.removeSession(for: connection.id)
+        }
 
-        DatabaseManager.shared.failTunnelRecovery(
-            connectionId: connection.id,
-            disconnectedMessage: "The SSH tunnel closed.",
-            attempts: 10
-        )
+        manager.recoverDeadTunnel(connectionId: connection.id, kind: "SSH", disconnectedMessage: "The SSH tunnel closed.")
+        let loop = try #require(manager.recoveryLoops[connection.id]?.task)
+        for _ in 1...ConnectionRecoveryProgress.maxAttempts {
+            await clock.waitUntilSleeping()
+            clock.advance(by: .seconds(DatabaseManager.maxRecoveryDelay))
+        }
+        await loop.value
 
-        #expect(DatabaseManager.shared.activeSessions[connection.id] == nil)
-
-        let reason = DatabaseManager.shared.disconnectReason(for: connection.id)
+        let current = try #require(manager.session(for: connection.id))
+        #expect(current.driver === driver)
+        #expect(current.recovery == nil)
+        let reason = manager.disconnectReason(for: connection.id)
         guard case .sessionLost(let info) = reason else {
             Issue.record("An exhausted tunnel recovery is a lost session, not a failed connect: \(String(describing: reason))")
             return
         }
         #expect(info.message == "The SSH tunnel closed.")
         #expect(info.failureReason?.contains("10") == true)
+        #expect(current.liveness == .unreachable(info))
 
-        let snapshot = ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: reason)
+        let snapshot = ConnectionSessionSnapshot(exists: true, hasDriver: true, endReason: reason, liveness: current.liveness)
         let phase = ConnectionWindowPhaseMachine.onSessionChanged(
-            phase: .connecting,
+            phase: .connected,
             session: snapshot,
             ownsAttempt: false
         )
-        #expect(phase != .connecting)
+        #expect(phase == .unavailable(.disconnected(info)))
     }
 }

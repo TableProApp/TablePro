@@ -1,6 +1,8 @@
 import AppKit
+import Combine
 import Foundation
 @testable import TablePro
+import TableProConnectionLibrary
 import TableProEditorKit
 import TableProTestSupport
 import Testing
@@ -64,30 +66,64 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         #expect(harness.background.panes.renderedKey?.pane == .unavailable(.disconnected(nil)))
     }
 
-    @Test("A reconnect in the background renders connecting, returns to content, and adopts the new driver")
-    func backgroundReconnectRendersConnectingThenContent() throws {
+    /// A tunnel drop used to nil the driver and swap the rows for the connecting card. The loop keeps
+    /// the driver, so the content stays and only the reconnecting state comes and goes over it.
+    @Test("A reconnect in the background keeps the content and its driver while the loop redials")
+    func backgroundReconnectKeepsTheContent() throws {
         let harness = try Harness()
         defer { harness.tearDown() }
+        let connectionId = harness.background.connectionId
 
-        let first = harness.injectSession(status: .connected, driver: true)
+        let driver = harness.injectSession(status: .connected, driver: true)
         harness.controller.refreshFromActiveSessions()
-        #expect(harness.background.panes.renderedKey?.pane == .content)
-        #expect(harness.background.session?.driver === first)
+        let coordinator = try #require(harness.background.sessionState?.coordinator)
 
-        harness.injectSession(status: .connecting, driver: false)
-        harness.controller.refreshFromActiveSessions()
-        #expect(harness.background.phase == .connecting)
-        #expect(harness.background.panes.renderedKey?.pane == .connecting)
-
-        let replacement = harness.injectSession(status: .connected, driver: true)
+        let progress = ConnectionRecoveryProgress(attempt: 1, cause: "The SSH tunnel closed.")
+        DatabaseManager.shared.markSessionRecovering(connectionId, progress: progress)
         harness.controller.refreshFromActiveSessions()
         #expect(harness.background.phase == .connected)
         #expect(harness.background.panes.renderedKey?.pane == .content)
-        /// A recovered tunnel hands over a session that draws identically and carries a different
-        /// driver. Adopting on the phase alone is what stops the workspace holding the one the
-        /// recovery already disconnected, along with its cached credentials.
-        #expect(replacement !== first)
-        #expect(harness.background.session?.driver === replacement)
+        #expect(harness.background.session?.recovery == progress)
+        #expect(harness.background.session?.driver === driver)
+        #expect(ConnectionStatusResolver.status(of: harness.background) == .reconnecting(attempt: 1, of: 10))
+
+        DatabaseManager.shared.markSessionLive(connectionId)
+        harness.controller.refreshFromActiveSessions()
+        #expect(harness.background.phase == .connected)
+        #expect(harness.background.panes.renderedKey?.pane == .content)
+        #expect(harness.background.session?.recovery == nil)
+        #expect(harness.background.session?.driver === driver)
+        #expect(harness.background.sessionState?.coordinator === coordinator, "the tabs survived the outage")
+        #expect(ConnectionStatusResolver.status(of: harness.background) == .connected)
+    }
+
+    @Test("Cancel on the reconnecting bar stops the loop and leaves the lost state with Reconnect")
+    func cancellingTheLoopLeavesTheLostState() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        let connectionId = harness.background.connectionId
+        harness.controller.workspaces.select(connectionId)
+
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        DatabaseManager.shared.beginRecovery(for: connectionId, cause: .transportClosed("The SSH tunnel closed."))
+        harness.controller.refreshFromActiveSessions()
+        #expect(harness.controller.menuConnectionAction == .cancel)
+        #expect(harness.controller.menuConnectionActionTitle == "Stop Reconnecting")
+        #expect(harness.controller.canDisconnect)
+
+        harness.controller.performConnectionAction(.cancel, for: connectionId)
+        harness.controller.refreshFromActiveSessions()
+
+        #expect(DatabaseManager.shared.recoveryLoops[connectionId] == nil)
+        guard case .unavailable(.disconnected(let info)) = harness.background.phase else {
+            Issue.record("expected the lost state, got \(harness.background.phase)")
+            return
+        }
+        #expect(info?.failureReason == "Reconnecting was cancelled.")
+        #expect(ConnectionStatusResolver.status(of: harness.background) == .lost(cause: info?.message))
+        #expect(harness.controller.menuConnectionAction == .reconnect)
+        #expect(harness.controller.canDisconnect, "the driver is still held")
     }
 
     @Test("Repeated connected status events leave the rendered panes settled")
@@ -585,6 +621,106 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         #expect(harness.background.phase == .connecting)
     }
 
+    // MARK: - Connection status
+
+    /// Nothing outside the window heard a phase move, so the rail kept painting from the session
+    /// alone and could not tell a failed connect from a disconnect.
+    @Test("A phase change is announced once, naming its connection")
+    func phaseChangeIsAnnounced() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        var announced: [UUID] = []
+        let subscription = AppEvents.shared.connectionPhaseChanged.sink { announced.append($0) }
+        defer { subscription.cancel() }
+
+        let failure = ConnectionUnavailableReason.failed(ConnectionFailureInfo(message: "refused"))
+        harness.controller.transition(to: .unavailable(failure), for: harness.background.connectionId)
+        harness.controller.transition(to: .unavailable(failure), for: harness.background.connectionId)
+
+        #expect(announced.filter { $0 == harness.background.connectionId }.count == 1)
+    }
+
+    @Test("A session the loop is redialing keeps its content and carries its progress")
+    func redialingSessionKeepsItsContent() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        harness.injectSession(status: .connected, driver: true)
+        harness.controller.refreshFromActiveSessions()
+        let progress = ConnectionRecoveryProgress(attempt: 2, cause: "The SSH tunnel closed.")
+        harness.injectSession(status: .connecting, driver: true, liveness: .recovering, recovery: progress)
+        harness.controller.refreshFromActiveSessions()
+
+        #expect(harness.background.phase == .connected)
+        #expect(harness.background.panes.renderedKey?.pane == .content)
+        #expect(harness.background.session?.recovery == progress)
+        #expect(ConnectionStatusResolver.status(of: harness.background) == .reconnecting(attempt: 2, of: 10))
+    }
+
+    @Test("The menu bar's connection command follows the state", arguments: [
+        (ConnectionWindowPhase.unavailable(.notConnected), ConnectionStatusAction?.some(.connect), "Connect"),
+        (.unavailable(.failed(ConnectionFailureInfo(message: "refused"))), .connect, "Connect"),
+        (.connecting, .cancel, "Stop Connecting"),
+        (.connected, nil, "Reconnect"),
+    ])
+    func menuBarCommandFollowsTheState(
+        _ phase: ConnectionWindowPhase,
+        _ action: ConnectionStatusAction?,
+        _ title: String
+    ) throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.controller.workspaces.select(harness.background.connectionId)
+
+        harness.controller.transition(to: phase, for: harness.background.connectionId)
+
+        #expect(harness.controller.menuConnectionAction == action)
+        #expect(harness.controller.menuConnectionActionTitle == title)
+        #expect(harness.controller.canReconnect == (action != nil))
+        let item = NSMenuItem(title: "Reconnect", action: #selector(MainSplitViewController.retryConnection), keyEquivalent: "")
+        _ = harness.controller.validateMenuItem(item)
+        #expect(item.title == title)
+    }
+
+    /// Disconnect needed `.connected`, so a session the monitor had given up on could only be closed.
+    @Test("Disconnect stays available over a lost session that still holds its driver")
+    func lostSessionCanBeDisconnected() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+        harness.controller.workspaces.select(harness.background.connectionId)
+
+        let info = ConnectionFailureInfo(message: "timed out")
+        harness.injectSession(status: .connected, driver: true, liveness: .unreachable(info))
+        harness.controller.refreshFromActiveSessions()
+
+        #expect(harness.background.phase == .unavailable(.disconnected(info)))
+        #expect(harness.controller.canDisconnect)
+        #expect(harness.controller.menuConnectionAction == .reconnect)
+
+        DatabaseManager.shared.removeSession(for: harness.background.connectionId)
+        harness.controller.refreshFromActiveSessions()
+        #expect(!harness.controller.canDisconnect, "nothing is left to end once the entry has gone")
+    }
+
+    @Test("Stopping a dial from a menu cancels the attempt at once")
+    func stopConnectingCancelsTheAttempt() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        harness.controller.transition(to: .connecting, for: harness.background.connectionId)
+        harness.controller.performConnectionAction(.cancel, for: harness.background.connectionId)
+
+        #expect(harness.background.phase == .unavailable(.cancelled))
+        #expect(harness.background.attemptToken == nil)
+    }
+
+    @Test("The inspector says Connecting while the connection dials")
+    func inspectorSaysConnecting() {
+        #expect(TrailingPaneUnavailableView.Reason.forPane(.connecting) == .connecting)
+        #expect(TrailingPaneUnavailableView.Reason.forPane(.unavailable(.notConnected)) == .notConnected)
+        #expect(TrailingPaneUnavailableView.Reason.forPane(.empty) == .notConnected)
+    }
+
     /// One window hosting two connections, with the second one in the background. Every case here
     /// asks what that background workspace's panes hold, which is the state the window shows the
     /// moment the user switches to it.
@@ -618,10 +754,17 @@ struct MainSplitViewControllerPaneSynchronizationTests {
         }
 
         @discardableResult
-        func injectSession(status: ConnectionStatus, driver: Bool) -> MockDatabaseDriver? {
+        func injectSession(
+            status: ConnectionStatus,
+            driver: Bool,
+            liveness: ConnectionLiveness = .live,
+            recovery: ConnectionRecoveryProgress? = nil
+        ) -> MockDatabaseDriver? {
             let mock = driver ? MockDatabaseDriver(connection: backgroundConnection) : nil
             var session = ConnectionSession(connection: backgroundConnection, driver: mock)
             session.status = status
+            session.liveness = liveness
+            session.recovery = recovery
             DatabaseManager.shared.injectSession(session, for: backgroundConnection.id)
             return mock
         }

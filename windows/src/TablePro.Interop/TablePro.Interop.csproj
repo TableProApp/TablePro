@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>TablePro.Interop</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <!-- The Rust core, built by cargo for the runtime identifier, or for the SDK's own platform when there is none. -->
+  <PropertyGroup>
+    <CoreRuntimeIdentifier>$(RuntimeIdentifier)</CoreRuntimeIdentifier>
+    <CoreRuntimeIdentifier Condition="'$(CoreRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</CoreRuntimeIdentifier>
+    <CargoTriple Condition="'$(CoreRuntimeIdentifier)' == 'win-x64'">x86_64-pc-windows-msvc</CargoTriple>
+    <CargoTriple Condition="'$(CoreRuntimeIdentifier)' == 'win-arm64'">aarch64-pc-windows-msvc</CargoTriple>
+    <CargoTriple Condition="'$(CoreRuntimeIdentifier)' == 'osx-arm64'">aarch64-apple-darwin</CargoTriple>
+    <CargoTriple Condition="'$(CoreRuntimeIdentifier)' == 'osx-x64'">x86_64-apple-darwin</CargoTriple>
+    <CargoTriple Condition="'$(CoreRuntimeIdentifier)' == 'linux-x64'">x86_64-unknown-linux-gnu</CargoTriple>
+    <CargoTriple Condition="'$(CoreRuntimeIdentifier)' == 'linux-arm64'">aarch64-unknown-linux-gnu</CargoTriple>
+    <CoreLibraryName Condition="$(CoreRuntimeIdentifier.StartsWith('win-'))">tablepro_ffi.dll</CoreLibraryName>
+    <CoreLibraryName Condition="$(CoreRuntimeIdentifier.StartsWith('osx-'))">libtablepro_ffi.dylib</CoreLibraryName>
+    <CoreLibraryName Condition="$(CoreRuntimeIdentifier.StartsWith('linux-'))">libtablepro_ffi.so</CoreLibraryName>
+    <CargoProfile Condition="'$(CargoProfile)' == '' And '$(Configuration)' == 'Release'">release</CargoProfile>
+    <CargoProfile Condition="'$(CargoProfile)' == ''">dev</CargoProfile>
+    <CargoProfileDirectory Condition="'$(CargoProfile)' == 'dev'">debug</CargoProfileDirectory>
+    <CargoProfileDirectory Condition="'$(CargoProfile)' != 'dev'">$(CargoProfile)</CargoProfileDirectory>
+    <CargoTargetDirectory>$(CARGO_TARGET_DIR)</CargoTargetDirectory>
+    <CargoTargetDirectory Condition="'$(CargoTargetDirectory)' == ''">$(RepositoryRoot)target</CargoTargetDirectory>
+    <CoreLibraryPath>$([MSBuild]::NormalizePath('$(CargoTargetDirectory)', '$(CargoTriple)', '$(CargoProfileDirectory)', '$(CoreLibraryName)'))</CoreLibraryPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="$(CoreLibraryPath)" Link="$(CoreLibraryName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+  <!-- Cargo reports its own errors and exits non-zero; its output is not MSBuild's error format. -->
+  <Target Name="BuildCore" BeforeTargets="BeforeBuild" Condition="'$(SkipCoreBuild)' != 'true'">
+    <Error Condition="'$(CargoTriple)' == ''" Text="No Rust target is known for the runtime identifier '$(CoreRuntimeIdentifier)'." />
+    <Exec Command="cargo build --locked -p tablepro-ffi --target $(CargoTriple) --profile $(CargoProfile)"
+          WorkingDirectory="$(RepositoryRoot)"
+          IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+
+  <PropertyGroup>
+    <UniffiBindgenCs Condition="'$(UniffiBindgenCs)' == ''">uniffi-bindgen-cs</UniffiBindgenCs>
+    <UniffiBindgenCsVersion>0.11.1+v0.31.0</UniffiBindgenCsVersion>
+    <GeneratedDirectory>$(MSBuildProjectDirectory)/Generated</GeneratedDirectory>
+  </PropertyGroup>
+
+  <!-- Writes Generated/ from the core this project builds; windows/AGENTS.md, Bindings, says when. -->
+  <Target Name="GenerateBindings" DependsOnTargets="BuildCore">
+    <Exec Command="&quot;$(UniffiBindgenCs)&quot; --version" ConsoleToMSBuild="true" StandardOutputImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="UniffiBindgenCsReported" />
+    </Exec>
+    <Error Condition="!$(UniffiBindgenCsReported.EndsWith(' $(UniffiBindgenCsVersion)'))"
+           Text="uniffi-bindgen-cs $(UniffiBindgenCsVersion) is needed, found '$(UniffiBindgenCsReported)'. windows/AGENTS.md, Bindings, has the install command." />
+    <Exec Command="&quot;$(UniffiBindgenCs)&quot; --library &quot;$(CoreLibraryPath)&quot; --config &quot;$(RepositoryRoot)core/crates/ffi/uniffi.toml&quot; --no-format --out-dir &quot;$(GeneratedDirectory)&quot;" />
+    <Exec Command="cargo run --locked -p tablepro-ffi --example csbindgen -- &quot;$(GeneratedDirectory)/WindowMethods.g.cs&quot;"
+          WorkingDirectory="$(RepositoryRoot)"
+          IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+
+</Project>

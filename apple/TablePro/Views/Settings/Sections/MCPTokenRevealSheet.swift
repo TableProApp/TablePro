@@ -8,7 +8,6 @@ struct MCPTokenRevealSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var isTokenRevealed = false
-    @State private var tokenCopied = false
     @State private var selectedClient: IntegrationClient = .claudeCode
     @FocusState private var doneFocused: Bool
 
@@ -37,21 +36,8 @@ struct MCPTokenRevealSheet: View {
     }
 
     private var warningBanner: some View {
-        Label {
-            Text(String(localized: "This token will not be shown again"))
-                .fontWeight(.medium)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .themeMaterial(.banner, .thinMaterial)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(.orange, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        NoticeLabel(String(localized: "This token will not be shown again"), severity: .warning)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var tokenDisplay: some View {
@@ -86,19 +72,8 @@ struct MCPTokenRevealSheet: View {
 
             Button {
                 copyToClipboard(plaintext)
-                tokenCopied = true
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(1.5))
-                    tokenCopied = false
-                }
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: tokenCopied ? "checkmark" : "doc.on.doc")
-                        .symbolReplaceTransition()
-                    Text(tokenCopied
-                        ? String(localized: "Copied")
-                        : String(localized: "Copy Token"))
-                }
+                Label(String(localized: "Copy Token"), systemImage: "doc.on.doc")
             }
             .buttonStyle(.borderedProminent)
             .accessibilityLabel(String(localized: "Copy token"))
@@ -122,7 +97,7 @@ struct MCPTokenRevealSheet: View {
             .labelsHidden()
             .pickerStyle(.segmented)
 
-            CopyableCodeBlock(text: configSnippet(for: selectedClient))
+            CopyableCodeBlock(text: configSnippet(for: selectedClient), isSecret: true)
         }
     }
 
@@ -163,7 +138,7 @@ struct MCPTokenRevealSheet: View {
     }
 
     private func copyToClipboard(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        ClipboardService.shared.writeSecretText(text)
+        AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
     }
 }

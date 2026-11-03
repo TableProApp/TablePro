@@ -176,7 +176,7 @@ internal struct AlertOperationConfirming: OperationConfirming {
     /// A run started from a sheet, Import or Transfer To, is asked about on that sheet. An alert
     /// begun on the window queues behind the sheet, and the sheet is waiting on the answer. An alert
     /// or a decision still waiting for its own answer is never the parent.
-    private static func frontmostSheet(of window: NSWindow) -> NSWindow {
+    internal static func frontmostSheet(of window: NSWindow) -> NSWindow {
         var frontmost = window
         while let sheet = frontmost.attachedSheet, !(sheet is NSPanel), !(sheet is ModalDecisionWindow) {
             frontmost = sheet

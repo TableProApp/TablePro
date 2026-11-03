@@ -59,6 +59,22 @@ struct RecentConnectionsRecorderTests {
         #expect(store.lastConnected.isEmpty)
     }
 
+    @Test("Writes to a connected session record it once; connecting again after a loss records it again")
+    func recordsOnlyTheStepIntoConnected() {
+        let prod = DatabaseConnection(name: "Prod", type: .mysql)
+        storage.addConnection(prod)
+        let marker = Date(timeIntervalSince1970: 42)
+
+        recorder.handle(ConnectionStatusChange(connectionId: prod.id, status: .connected))
+        store.record(prod.id, at: marker)
+        recorder.handle(ConnectionStatusChange(connectionId: prod.id, status: .connected))
+        #expect(store.lastConnected[prod.id] == marker)
+
+        recorder.handle(ConnectionStatusChange(connectionId: prod.id, status: .error("gone")))
+        recorder.handle(ConnectionStatusChange(connectionId: prod.id, status: .connected))
+        #expect(store.lastConnected[prod.id] != marker)
+    }
+
     @Test("Started, the recorder follows the status events")
     func followsEvents() {
         let prod = DatabaseConnection(name: "Prod", type: .mysql)

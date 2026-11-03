@@ -16,6 +16,8 @@ actor TeamLibraryStore {
 
     private let fileURL: URL
     private var cached: TeamLibraryPullResponse?
+    // Bumped without waiting on the actor, so a write already queued when the license changes or clears is refused.
+    private let writeGeneration = OSAllocatedUnfairLock(initialState: 0)
 
     init(fileURL: URL? = nil) {
         if let fileURL {
@@ -39,14 +41,25 @@ actor TeamLibraryStore {
         return cached
     }
 
-    func replace(_ response: TeamLibraryPullResponse) {
+    nonisolated var generation: Int {
+        writeGeneration.withLock { $0 }
+    }
+
+    nonisolated func invalidatePendingWrites() {
+        writeGeneration.withLock { $0 += 1 }
+    }
+
+    // Nil when a clear or license change came after the pull this response answers.
+    func replace(_ response: TeamLibraryPullResponse, ifGeneration expected: Int) -> TeamLibraryPullResponse? {
+        guard generation == expected else { return nil }
         let sanitized = response.sanitized()
         cached = sanitized
         do {
             try JSONEncoder().encode(sanitized).write(to: fileURL, options: .atomic)
         } catch {
-            Self.logger.error("Failed to cache team library: \(error.localizedDescription)")
+            Self.logger.error("Failed to cache team library: \(error.publicLogShape, privacy: .public)")
         }
+        return sanitized
     }
 
     func clear() {

@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 
@@ -169,39 +170,32 @@ struct ConnectionInfoView: View {
             if coordinator.supportsSchemas, !coordinator.schemas.isEmpty {
                 LabeledContent("Schemas", value: "\(coordinator.schemas.count)")
             }
-            HStack {
-                Text("Status")
-                Spacer()
-                Image(systemName: statusIcon)
-                    .foregroundStyle(statusColor)
-                    .font(.caption)
-                Text(statusText)
-                    .foregroundStyle(statusColor)
+            statusRow
+        }
+    }
+
+    // Connected and not connected carry no mark; the rest name their cause to VoiceOver.
+    private var statusRow: some View {
+        let status = coordinator.displayStatus
+        let presentation = ConnectionStatusPresentation(status)
+        return LabeledContent {
+            if presentation.isBusy {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(presentation.title ?? "")
+                }
+            } else if let title = presentation.title, let symbol = presentation.symbol?.systemName {
+                Label(title, systemImage: symbol)
+                    .foregroundStyle(presentation.tint.color)
+            } else {
+                Text(status.restingTitle ?? "")
             }
+        } label: {
+            Text("Status")
         }
-    }
-
-    private var statusIcon: String {
-        switch coordinator.phase {
-        case .connecting: "arrow.triangle.2.circlepath"
-        case .connected: "circle.fill"
-        case .error: "exclamationmark.circle.fill"
-        }
-    }
-
-    private var statusColor: Color {
-        switch coordinator.phase {
-        case .connecting: .secondary
-        case .connected: .green
-        case .error: .red
-        }
-    }
-
-    private var statusText: String {
-        switch coordinator.phase {
-        case .connecting: String(localized: "Connecting…")
-        case .connected: String(localized: "Connected")
-        case .error: String(localized: "Disconnected")
-        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Status"))
+        .accessibilityValue(Text(presentation.help ?? status.restingTitle ?? ""))
     }
 }

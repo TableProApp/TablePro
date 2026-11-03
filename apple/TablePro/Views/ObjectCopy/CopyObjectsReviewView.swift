@@ -41,10 +41,8 @@ internal struct CopyObjectsReviewView: View {
             VStack(alignment: .leading, spacing: 14) {
                 headline(plan)
                 ForEach(plan.warnings, id: \.self) { warning in
-                    Label(warning, systemImage: "exclamationmark.triangle")
+                    NoticeLabel(warning, severity: .warning)
                         .font(.callout)
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
                 rowPlan(plan)
                 conversions(plan)
@@ -135,17 +133,17 @@ internal struct CopyObjectsReviewView: View {
         }
     }
 
-    /// The table goes beside the reason, as the "Partly copied" and "Left out" rows put it: a
-    /// copy of several tables listed `status: enum(…) → VARCHAR(9)` once per table that had one.
+    // The table goes beside the reason: a copy of several tables listed the same change once per table.
     private func conversion(_ note: CrossEngineConversionNote) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Label {
                 summary(note)
+                    .foregroundStyle(.secondary)
             } icon: {
                 Image(systemName: note.isLossy ? "exclamationmark.triangle" : "arrow.right.circle")
+                    .foregroundStyle(note.isLossy ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
             }
             .font(.callout)
-            .foregroundStyle(note.isLossy ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
             Text(verbatim: "\(note.table): \(note.reason)")
                 .font(.caption)
                 .foregroundStyle(.secondary)

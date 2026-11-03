@@ -77,13 +77,22 @@ internal extension MainSplitViewController {
     @ViewBuilder
     private func buildAgentConversationView(for workspace: ConnectionWorkspace) -> some View {
         if let connection = workspace.connection {
-            AgentConversationView(
-                connection: connection,
-                session: workspace.displayedAgentSession,
-                isConnecting: workspace.resolvedPane == .connecting,
-                safeModeFloor: AgentModeSafeModeFloor.effectiveFloor(for: connection),
-                onStartSession: { [weak self] in self?.startAgentSession(for: connection.id) }
-            )
+            VStack(spacing: 0) {
+                if let recovery = workspace.session?.recovery {
+                    ConnectionRecoveryBar(
+                        content: ConnectionRecoveryBarContent(connectionName: connection.name, progress: recovery)
+                    ) { [weak self] in
+                        self?.cancelRecovery(for: workspace.connectionId)
+                    }
+                }
+                AgentConversationView(
+                    connection: connection,
+                    session: workspace.displayedAgentSession,
+                    isConnecting: workspace.resolvedPane == .connecting,
+                    safeModeFloor: AgentModeSafeModeFloor.effectiveFloor(for: connection),
+                    onStartSession: { [weak self] in self?.startAgentSession(for: connection.id) }
+                )
+            }
             .transaction { $0.animation = nil }
         } else {
             Color.clear

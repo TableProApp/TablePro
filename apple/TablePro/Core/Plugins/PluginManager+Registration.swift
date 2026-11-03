@@ -733,7 +733,8 @@ extension PluginManager {
     func installMissingPlugin(
         for databaseType: DatabaseType,
         registryClient: RegistryClient = .shared,
-        progress: @escaping @MainActor @Sendable (Double) -> Void
+        trigger: PluginInstallTracker.Trigger = .user,
+        onBegin: @MainActor (_ pluginId: String) -> Void
     ) async throws {
         let pluginTypeId = databaseType.pluginTypeId
 
@@ -753,7 +754,11 @@ extension PluginManager {
             }
         }
 
-        let entry = try await installFromManifest(registryClient: registryClient, progress: progress) { manifest in
+        let entry = try await installFromManifest(
+            registryClient: registryClient,
+            trigger: trigger,
+            onBegin: onBegin
+        ) { manifest in
             Self.registryPlugin(forTypeId: pluginTypeId, in: manifest)
         }
         Self.logger.info("Installed missing plugin '\(entry.name)' for database type '\(databaseType.rawValue)'")
@@ -762,10 +767,10 @@ extension PluginManager {
     func installMissingExportFormat(
         _ format: InstallableExportFormat,
         registryClient: RegistryClient = .shared,
-        progress: @escaping @MainActor @Sendable (Double) -> Void
+        onBegin: @MainActor (_ pluginId: String) -> Void
     ) async throws {
         guard !plugins.contains(where: { $0.id == format.registryPluginId }) else { return }
-        let entry = try await installFromManifest(registryClient: registryClient, progress: progress) { manifest in
+        let entry = try await installFromManifest(registryClient: registryClient, trigger: .user, onBegin: onBegin) { manifest in
             manifest?.plugins.first { $0.id == format.registryPluginId }
         }
         Self.logger.info("Installed missing plugin '\(entry.name)' for export format '\(format.formatId)'")
@@ -773,7 +778,8 @@ extension PluginManager {
 
     private func installFromManifest(
         registryClient: RegistryClient,
-        progress: @escaping @MainActor @Sendable (Double) -> Void,
+        trigger: PluginInstallTracker.Trigger,
+        onBegin: @MainActor (_ pluginId: String) -> Void,
         lookup: (RegistryManifest?) -> RegistryPlugin?
     ) async throws -> PluginEntry {
         await registryClient.fetch(policy: .ifStale)
@@ -791,23 +797,15 @@ extension PluginManager {
             throw PluginError.notFound
         }
 
-        // PluginInstallStatusRow reads the fraction only through the tracker.
-        let tracker = PluginInstallTracker.shared
-        tracker.beginInstall(pluginId: registryPlugin.id)
-        do {
-            let entry = try await installFromRegistry(
-                registryPlugin,
-                progress: { fraction in
-                    tracker.updateProgress(pluginId: registryPlugin.id, fraction: fraction)
-                    progress(fraction)
-                }
-            )
-            tracker.completeInstall(pluginId: registryPlugin.id)
+        onBegin(registryPlugin.id)
+        // A second request for a plugin already downloading waits for that install instead of starting another.
+        if try await installTracker.joinRunningInstall(of: registryPlugin.id) {
+            guard let entry = plugins.first(where: { $0.id == registryPlugin.id }) else {
+                throw PluginError.notFound
+            }
             return entry
-        } catch {
-            tracker.failInstall(pluginId: registryPlugin.id, error: error.localizedDescription)
-            throw error
         }
+        return try await installFromRegistry(registryPlugin, trigger: trigger)
     }
 
     nonisolated static func registryPlugin(forTypeId pluginTypeId: String, in manifest: RegistryManifest?) -> RegistryPlugin? {

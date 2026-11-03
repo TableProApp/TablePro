@@ -116,7 +116,6 @@ struct RowImportBatchSheet: View {
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
                 ImportProgressView(service: service) { service.cancelImport() }
-                    .interactiveDismissDisabled()
             }
         }
     }
@@ -212,7 +211,7 @@ struct RowImportBatchSheet: View {
         HStack(spacing: 6) {
             if let problem = batch.problem(of: file), file.isIncluded {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(.orange)
                     .help(problem)
                     .accessibilityLabel(Text(problem))
             }
@@ -366,9 +365,8 @@ struct RowImportBatchSheet: View {
     private var footerView: some View {
         DialogFooter {
             if let message = batch.problem, !batch.isReading || batch.includedFiles.isEmpty {
-                Text(message)
+                NoticeLabel(message, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
                     .lineLimit(2)
             } else if batch.isReading {
                 Text("Reading the files…")

@@ -9,7 +9,6 @@ struct SQLPreviewSheet: View {
     let sql: String
     let databaseType: DatabaseType
     @Environment(\.dismiss) private var dismiss
-    @State private var copied = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -27,12 +26,7 @@ struct SQLPreviewSheet: View {
 
             HStack {
                 Button(action: copyToClipboard) {
-                    HStack(spacing: 4) {
-                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            .font(.subheadline)
-                        Text(copied ? "Copied!" : "Copy")
-                            .font(.callout)
-                    }
+                    Label(String(localized: "Copy"), systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -56,12 +50,6 @@ struct SQLPreviewSheet: View {
 
     private func copyToClipboard() {
         ClipboardService.shared.writeText(sql)
-        copied = true
         AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.5))
-            copied = false
-        }
     }
 }

@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use tablepro_core::{
-    ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError, UnsupportedFeature,
+    ConnectOptions, ConnectTarget, Connection, DatabaseDriver, DriverCapabilities, DriverError, EngineCategory,
+    UnsupportedFeature,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -26,6 +27,10 @@ impl DatabaseDriver for CassandraDriver {
 
     fn capabilities(&self) -> &'static DriverCapabilities {
         &CAPABILITIES
+    }
+
+    fn category(&self) -> EngineCategory {
+        EngineCategory::WideColumn
     }
 
     async fn connect(

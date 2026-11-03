@@ -174,7 +174,8 @@ struct TableTransferSessionScopeTests {
         let source = makeSource()
         let destination = ScopedTransferDriver(onInsert: { await service.cancel() })
 
-        await #expect(throws: TableTransferError.self) {
+        // A Stop stays a cancellation, so the sheet reports it as stopped rather than as a failed transfer.
+        await #expect(throws: PluginImportCancellationError.self) {
             try await service.transfer(
                 request: makeRequest(from: .mysql, to: .mysql),
                 sourceDriver: adapter(source, type: .mysql),

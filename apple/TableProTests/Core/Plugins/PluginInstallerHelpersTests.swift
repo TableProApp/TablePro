@@ -25,6 +25,19 @@ private final class ChunkedDownloadProtocol: URLProtocol, @unchecked Sendable {
     }
 }
 
+private final class InstallTaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<URL, any Error>?
+
+    func hold(_ task: Task<URL, any Error>) {
+        lock.withLock { self.task = task }
+    }
+
+    func cancel() {
+        lock.withLock { task }?.cancel()
+    }
+}
+
 private actor FractionRecorder {
     private(set) var fractions: [Double] = []
 
@@ -296,6 +309,70 @@ struct PluginInstallerHelpersTests {
 
         #expect(data == ChunkedDownloadProtocol.payload)
         #expect(fractions == [1])
+    }
+
+    private func makeInstaller() -> (PluginInstaller, URLSession) {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ChunkedDownloadProtocol.self]
+        let session = URLSession(configuration: config)
+        return (PluginInstaller(session: { session }), session)
+    }
+
+    private func makeRegistryPlugin(archive: String = "sized.zip") -> (RegistryPlugin, RegistryRelease) {
+        let release = RegistryRelease(
+            version: "1.0", build: 2, channel: "stable", pluginKit: PluginManager.currentPluginKitVersion,
+            minimumSystemVersion: "13.0", url: "https://plugins.example.invalid/\(archive)", sha256: "deadbeef"
+        )
+        let plugin = RegistryPlugin(
+            id: "com.example.driver", name: "Driver", databaseTypeIds: [], exportFormatIds: [], releases: [release]
+        )
+        return (plugin, release)
+    }
+
+    private func stagingLeftovers(for pluginsDir: URL) throws -> [String] {
+        let root = PluginInstaller.stagingRoot(for: pluginsDir)
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        return try FileManager.default.contentsOfDirectory(atPath: root.path).filter { $0 != "Updates" }
+    }
+
+    @Test("A download that fails its checksum leaves no working directory behind")
+    func checksumFailureRemovesWorkingDirectory() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
+        let (installer, session) = makeInstaller()
+        defer { session.finishTasksAndInvalidate() }
+        let (plugin, release) = makeRegistryPlugin()
+
+        await #expect(throws: PluginError.self) {
+            try await installer.install(plugin, release: release, into: pluginsDir) { _ in }
+        }
+        #expect(try stagingLeftovers(for: pluginsDir).isEmpty)
+    }
+
+    // Main actor, so the task cannot start before the box holds it. An unsized archive reports only the
+    // final 1, after the download has returned.
+    @Test("A download cancelled as it finishes stops before installing and leaves nothing behind")
+    @MainActor
+    func cancelAfterDownloadStopsBeforeInstall() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
+        let (installer, session) = makeInstaller()
+        defer { session.finishTasksAndInvalidate() }
+        let (plugin, release) = makeRegistryPlugin(archive: "unsized.zip")
+        let box = InstallTaskBox()
+
+        let task = Task {
+            try await installer.install(plugin, release: release, into: pluginsDir) { fraction in
+                if fraction >= 1 { box.cancel() }
+            }
+        }
+        box.hold(task)
+
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(try stagingLeftovers(for: pluginsDir).isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: pluginsDir.path))
     }
 
     @Test("findBundle returns the single .tableplugin in a directory")

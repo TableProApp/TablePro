@@ -8,6 +8,7 @@ struct HistoryListPane: View {
     let onRunInNewTab: (QueryHistoryEntry) -> Void
     let onCopy: (QueryHistoryEntry) -> Void
     let onSaveAsFavorite: (QueryHistoryEntry) -> Void
+    let canRestorePreviousValues: (QueryHistoryEntry) -> Bool
     let onRestorePreviousValues: (QueryHistoryEntry) -> Void
 
     var body: some View {
@@ -148,11 +149,14 @@ struct HistoryListPane: View {
         ]
     }
 
-    /// Only a grid save has rows to put back. Everything else in this list is SQL somebody typed.
+    // Only a grid save has rows to put back. Everything else in this list is SQL somebody typed.
     private func rewindItems(for entry: QueryHistoryEntry) -> [FieldDrivenMenuItem] {
         guard entry.source == .rowEdit else { return [] }
         return [
-            FieldDrivenMenuItem(title: String(localized: "Restore Previous Values…")) {
+            FieldDrivenMenuItem(
+                title: String(localized: "Restore Previous Values…"),
+                isEnabled: canRestorePreviousValues(entry)
+            ) {
                 onRestorePreviousValues(entry)
             },
             .separator,
