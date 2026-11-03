@@ -212,7 +212,9 @@ impl Mapping<'_> {
         {
             additional_fields.insert("promptForPassword".to_owned(), "true".to_owned());
         }
-        if entry.tls_unread {
+        let ssl = ssl(entry, driver);
+        // A saved mode outside the form's list is TLS this cannot read, not TLS off.
+        if entry.tls_unread || (entry.tls_mode.is_some() && ssl.is_none()) {
             additional_fields.insert(crate::TLS_SETTINGS_UNREAD.to_owned(), "true".to_owned());
         }
 
@@ -223,7 +225,7 @@ impl Mapping<'_> {
             database,
             username: entry.user.clone().unwrap_or_default(),
             ssh: self.ssh(entry),
-            ssl: ssl(entry, driver),
+            ssl,
             color: entry.environment.as_deref().and_then(environment_color),
             engine,
             additional_fields,

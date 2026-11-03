@@ -457,11 +457,14 @@ fn collect_carries_no_tls_paths_for_a_driver_whose_form_has_no_file_pickers() {
 }
 
 #[test]
-fn collect_drops_a_tls_mode_past_the_end_of_the_drivers_own_popup() {
+fn collect_marks_a_tls_mode_past_the_end_of_the_drivers_own_popup_as_unread() {
     let collected = macos(CONNECTIONS_ONLY);
     for name in ["Unknown TLS", "Past MySQL", "Past Oracle"] {
-        assert!(connection(&collected, name).settings.ssl.is_none(), "{name}");
+        let found = connection(&collected, name);
+        assert!(found.settings.ssl.is_none(), "{name}");
+        assert_eq!(field(found, "tlsSettingsUnread"), Some("true"), "{name}");
     }
+    assert_eq!(field(connection(&collected, "SSL DB"), "tlsSettingsUnread"), None);
 }
 
 #[test]

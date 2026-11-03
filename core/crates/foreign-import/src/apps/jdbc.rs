@@ -78,35 +78,35 @@ pub(crate) fn is_mongo_seed_list(url: &str) -> bool {
     strip_prefix_ignoring_case(url.trim(), "mongodb+srv://").is_some()
 }
 
-// The TLS a URL asks for, in the macOS SSL mode names, read the way the URL's own driver reads it:
-// an `ssl=true` verifies the server for PostgreSQL, SQL Server and MongoDB but not for MySQL, whose
-// driver checks the certificate only when told to. A seed-list MongoDB URL turns TLS on by itself.
-pub(crate) fn url_ssl_mode(url: &str) -> Option<&'static str> {
-    let protocol = url_protocol(url);
+// What a URL says about TLS. Only `sslmode` and a seed-list scheme say it plainly; the drivers read
+// every other switch their own way and in combination (`ssl`, `useSSL` with `requireSSL`,
+// `encrypt` with `trustServerCertificate`, certificate files), so a URL that uses one is reported
+// as unread rather than guessed at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UrlTls {
+    None,
+    Mode(&'static str),
+    Unread,
+}
+
+pub(crate) fn url_tls(url: &str) -> UrlTls {
     let parameters = url_parameters(url);
-    let flag = |names: &[&str]| {
-        parameters
-            .iter()
-            .rev()
-            .find(|(key, _)| names.contains(&key.as_str()))
-            .map(|(_, value)| matches!(value.as_str(), "true" | "1" | "yes" | "required" | "require" | "strict"))
-    };
-    let unverified = flag(&[
-        "trustservercertificate",
-        "tlsallowinvalidcertificates",
-        "tlsinsecure",
-        "sslallowinvalidcertificates",
-    ]) == Some(true)
-        || (protocol == UrlProtocol::Mysql && flag(&["verifyservercertificate"]) != Some(true));
-    let enabled = match parameters.iter().rev().find(|(key, _)| key == "sslmode") {
-        Some((_, mode)) => return named_mode(mode),
-        None => flag(&["ssl", "tls", "usessl", "requiressl", "encrypt"]),
-    };
-    match (enabled, protocol) {
-        (Some(false), _) => Some("disabled"),
-        (None, UrlProtocol::MongoSeedList) | (Some(true), _) if !unverified => Some("verify-full"),
-        (None, UrlProtocol::MongoSeedList) | (Some(true), _) => Some("required"),
-        (None, _) => None,
+    let other_switch = parameters.iter().any(|(key, _)| {
+        key != "sslmode"
+            && (key.starts_with("ssl")
+                || key.starts_with("tls")
+                || matches!(
+                    key.as_str(),
+                    "usessl" | "requiressl" | "encrypt" | "trustservercertificate" | "verifyservercertificate"
+                ))
+    });
+    if other_switch {
+        return UrlTls::Unread;
+    }
+    match parameters.iter().rev().find(|(key, _)| key == "sslmode") {
+        Some((_, mode)) => named_mode(mode).map_or(UrlTls::Unread, UrlTls::Mode),
+        None if is_mongo_seed_list(url) => UrlTls::Mode("verify-full"),
+        None => UrlTls::None,
     }
 }
 
@@ -122,23 +122,6 @@ fn named_mode(mode: &str) -> Option<&'static str> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UrlProtocol {
-    Mysql,
-    MongoSeedList,
-    Other,
-}
-
-fn url_protocol(url: &str) -> UrlProtocol {
-    if is_mongo_seed_list(url) {
-        return UrlProtocol::MongoSeedList;
-    }
-    match subprotocol(url).to_lowercase().as_str() {
-        "mysql" | "mariadb" => UrlProtocol::Mysql,
-        _ => UrlProtocol::Other,
-    }
-}
-
 // Lowercased keys and values after `?` (and SQL Server's `;` properties), in order.
 fn url_parameters(url: &str) -> Vec<(String, String)> {
     let Some((_, query)) = url.split_once('?').or_else(|| url.split_once(';')) else {
@@ -151,9 +134,24 @@ fn url_parameters(url: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-// The TLS a URL asks for, as a record's SSL settings; none for a URL that asks for none or turns it off.
+// The SSL settings a source keeps in its URL, used when its own settings name none. TLS the URL
+// sets in a way this cannot read marks the record, so the review asks instead of importing it off.
+pub(crate) fn url_ssl_or_mark(
+    url: &str,
+    fields: &mut std::collections::BTreeMap<String, String>,
+) -> Option<ForeignSsl> {
+    if url_tls(url) == UrlTls::Unread {
+        fields.insert(crate::TLS_SETTINGS_UNREAD.to_owned(), "true".to_owned());
+    }
+    url_ssl(url)
+}
+
+// The TLS a URL asks for as a record's SSL settings: none when it asks for none or turns it off.
 pub(crate) fn url_ssl(url: &str) -> Option<ForeignSsl> {
-    let mode = match url_ssl_mode(url)? {
+    let UrlTls::Mode(mode) = url_tls(url) else {
+        return None;
+    };
+    let mode = match mode {
         "disabled" => return None,
         "preferred" => ForeignSslMode::Preferred,
         "required" => ForeignSslMode::Required,
@@ -513,44 +511,37 @@ mod tests {
     }
 
     #[test]
-    fn the_tls_a_url_asks_for_is_read_as_its_own_driver_reads_it() {
+    fn only_sslmode_and_a_seed_list_are_read_and_every_other_tls_switch_is_reported_unread() {
         assert_eq!(
-            url_ssl_mode("jdbc:postgresql://db/app?sslmode=verify-full"),
-            Some("verify-full")
+            url_tls("jdbc:postgresql://db/app?sslmode=verify-full"),
+            UrlTls::Mode("verify-full")
         );
         assert_eq!(
-            url_ssl_mode("jdbc:postgresql://db/app?ssl=true&sslmode=verify-ca"),
-            Some("verify-ca")
+            url_tls("jdbc:postgresql://db/app?sslmode=require"),
+            UrlTls::Mode("required")
         );
-        assert_eq!(url_ssl_mode("jdbc:postgresql://db/app?ssl=true"), Some("verify-full"));
+        assert_eq!(url_tls("jdbc:mariadb://db/app?sslMode=trust"), UrlTls::Mode("required"));
         assert_eq!(
-            url_ssl_mode("jdbc:postgresql://db/app?sslmode=require"),
-            Some("required")
-        );
-        assert_eq!(url_ssl_mode("jdbc:mysql://db/app?sslMode=REQUIRED"), Some("required"));
-        assert_eq!(url_ssl_mode("jdbc:mariadb://db/app?sslMode=trust"), Some("required"));
-        assert_eq!(url_ssl_mode("jdbc:mysql://db/app?useSSL=true"), Some("required"));
-        assert_eq!(
-            url_ssl_mode("jdbc:mysql://db/app?useSSL=true&verifyServerCertificate=true"),
-            Some("verify-full")
-        );
-        assert_eq!(url_ssl_mode("jdbc:mysql://db/app?useSSL=false"), Some("disabled"));
-        assert_eq!(
-            url_ssl_mode("jdbc:sqlserver://db:1433;databaseName=app;encrypt=true"),
-            Some("verify-full")
+            url_tls("jdbc:mysql://db/app?sslMode=VERIFY_IDENTITY"),
+            UrlTls::Mode("verify-full")
         );
         assert_eq!(
-            url_ssl_mode("jdbc:sqlserver://db:1433;encrypt=true;trustServerCertificate=true"),
-            Some("required")
+            url_tls("mongodb+srv://cluster.example/app"),
+            UrlTls::Mode("verify-full")
         );
-        assert_eq!(url_ssl_mode("mongodb://db/app?tls=true"), Some("verify-full"));
-        assert_eq!(url_ssl_mode("mongodb+srv://cluster.example/app"), Some("verify-full"));
-        assert_eq!(
-            url_ssl_mode("mongodb+srv://cluster.example/app?tls=false"),
-            Some("disabled")
-        );
-        assert_eq!(url_ssl_mode("jdbc:postgresql://db/app"), None);
-        assert_eq!(url_ssl_mode("mongodb://db/app"), None);
+        assert_eq!(url_tls("jdbc:postgresql://db/app"), UrlTls::None);
+        assert_eq!(url_tls("mongodb://db/app"), UrlTls::None);
+        for unread in [
+            "jdbc:postgresql://db/app?ssl=true",
+            "jdbc:postgresql://db/app?sslmode=verify-full&sslrootcert=/ca.pem",
+            "jdbc:mysql://db/app?useSSL=true&requireSSL=false",
+            "jdbc:sqlserver://db:1433;databaseName=app;encrypt=true",
+            "mongodb+srv://cluster.example/app?tls=false",
+            "jdbc:postgresql://db/app?sslmode=sometimes",
+        ] {
+            assert_eq!(url_tls(unread), UrlTls::Unread, "{unread}");
+        }
+        assert_eq!(url_ssl("jdbc:postgresql://db/app?sslmode=disable"), None);
     }
 
     #[test]

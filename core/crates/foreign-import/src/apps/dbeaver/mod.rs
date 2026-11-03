@@ -15,7 +15,8 @@ use crate::apps::{jdbc, resolve_key_path};
 use crate::collect::{PasswordOutcome, assemble};
 use crate::{
     CollectedImport, ForeignApp, ForeignAppDirs, ForeignColor, ForeignConnection, ForeignConnectionRecord,
-    ForeignImportError, ForeignSsh, ForeignSshAuth, ForeignSsl, ForeignSslMode, ImportRequest, Inventory, engine,
+    ForeignCredentials, ForeignImportError, ForeignSsh, ForeignSshAuth, ForeignSsl, ForeignSslMode, ImportRequest,
+    Inventory, engine,
 };
 
 pub(crate) struct DBeaver {
@@ -66,14 +67,17 @@ impl AppReader for DBeaver {
         for source in &sources {
             for (id, connection) in &source.connections {
                 check_cancel(cancel)?;
+                let settings = settings(id, connection, source.credentials.username(id));
+                let credentials = request
+                    .include_passwords
+                    .then(|| source.credentials.secrets(id))
+                    .flatten()
+                    .map(|credentials| tunnel_secret_by_auth(credentials, &settings));
                 records.push(ForeignConnectionRecord {
                     source_id: Some(id.clone()),
-                    settings: settings(id, connection, source.credentials.username(id)),
+                    settings,
                     group_path: group_path(connection.get("folder").and_then(Value::as_str), &folders),
-                    credentials: request
-                        .include_passwords
-                        .then(|| source.credentials.secrets(id))
-                        .flatten(),
+                    credentials,
                 });
             }
         }
@@ -195,6 +199,19 @@ fn group_path(folder: Option<&str>, descriptions: &BTreeMap<String, String>) -> 
 
 static NOTHING: Value = Value::Null;
 
+// The tunnel keeps one secret: the password for password sign-in, the key's passphrase for a key.
+// The macOS port always took it as a password, which a key tunnel then dropped.
+fn tunnel_secret_by_auth(mut credentials: ForeignCredentials, settings: &ForeignConnection) -> ForeignCredentials {
+    let key_tunnel = settings
+        .ssh
+        .as_ref()
+        .is_some_and(|ssh| ssh.auth == ForeignSshAuth::PrivateKey);
+    if key_tunnel && credentials.key_passphrase.is_none() {
+        credentials.key_passphrase = credentials.ssh_password.take();
+    }
+    credentials
+}
+
 fn settings(id: &str, connection: &Value, credential_username: Option<&str>) -> ForeignConnection {
     let name = connection.get("name").and_then(Value::as_str).unwrap_or(id).to_owned();
     let engine = map_provider(connection.get("provider").and_then(Value::as_str).unwrap_or(""));
@@ -223,6 +240,13 @@ fn settings(id: &str, connection: &Value, credential_username: Option<&str>) -> 
     .flatten()
     .find(|username| !username.is_empty())
     .unwrap_or("");
+    // Read whether or not the host came from the URL: a seed list and an auth database live only there.
+    let mut additional_fields = text("url").map(jdbc::url_fields).unwrap_or_default();
+    // A URL-only connection keeps the TLS its URL asks for, which the macOS port dropped.
+    let ssl = match ssl(config) {
+        Some(ssl) => Some(ssl),
+        None => text("url").and_then(|url| jdbc::url_ssl_or_mark(url, &mut additional_fields)),
+    };
     ForeignConnection {
         name,
         host,
@@ -232,11 +256,9 @@ fn settings(id: &str, connection: &Value, credential_username: Option<&str>) -> 
         database,
         username: username.to_owned(),
         ssh: ssh(config),
-        // A URL-only connection keeps the TLS its URL asks for, which the macOS port dropped.
-        ssl: ssl(config).or_else(|| text("url").and_then(jdbc::url_ssl)),
+        ssl,
         color: color(config),
-        // Read whether or not the host came from the URL: a seed list and an auth database live only there.
-        additional_fields: text("url").map(jdbc::url_fields).unwrap_or_default(),
+        additional_fields,
         engine,
     }
 }
@@ -402,6 +424,7 @@ mod tests {
         assert!(!format!("{settings:?}").contains("hunter2"));
         assert_eq!(settings.username, "admin");
         assert_eq!(settings.ssl.map(|ssl| ssl.mode), Some(ForeignSslMode::Required));
+        assert_eq!(settings.additional_fields.get(crate::TLS_SETTINGS_UNREAD), None);
     }
 
     #[test]
@@ -431,6 +454,28 @@ mod tests {
         assert_eq!(
             settings.additional_fields.get("mongoAuthSource").map(String::as_str),
             Some("admin")
+        );
+    }
+
+    #[test]
+    fn a_key_tunnels_secret_is_the_keys_passphrase() {
+        use secrecy::{ExposeSecret, SecretString};
+
+        let connection = parsed(
+            r#"{"provider": "postgresql", "name": "tunnelled",
+                "configuration": {"host": "db", "handlers": {"ssh_tunnel": {"enabled": true,
+                  "properties": {"host": "bastion", "authType": "PUBLIC_KEY", "keyPath": "~/.ssh/id"}}}}}"#,
+        );
+        let settings = settings("tunnelled-id", &connection, None);
+        let credentials = ForeignCredentials {
+            ssh_password: Some(SecretString::from("phrase")),
+            ..ForeignCredentials::default()
+        };
+        let routed = tunnel_secret_by_auth(credentials, &settings);
+        assert!(routed.ssh_password.is_none());
+        assert_eq!(
+            routed.key_passphrase.as_ref().map(ExposeSecret::expose_secret),
+            Some("phrase")
         );
     }
 

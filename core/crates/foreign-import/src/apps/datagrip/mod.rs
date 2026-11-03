@@ -304,13 +304,12 @@ fn make_connection(source: &DataSource, ssh_configs: &HashMap<String, SshConfig>
         Some(endpoint) => (endpoint.host, endpoint.database, endpoint.username),
         None => ("localhost".to_owned(), String::new(), None),
     };
-    let additional_fields = jdbc::url_fields(&source.jdbc_url);
+    let mut additional_fields = jdbc::url_fields(&source.jdbc_url);
     // The macOS port read TLS from the XML alone, so a URL that asks for it imported in the clear.
-    let ssl = source
-        .ssl
-        .as_ref()
-        .map(make_ssl)
-        .or_else(|| jdbc::url_ssl(&source.jdbc_url));
+    let ssl = match source.ssl.as_ref() {
+        Some(ssl) => Some(make_ssl(ssl)),
+        None => jdbc::url_ssl_or_mark(&source.jdbc_url, &mut additional_fields),
+    };
     ForeignConnection {
         name: source.name.clone(),
         host,
@@ -475,6 +474,19 @@ mod tests {
             &HashMap::new(),
         );
         assert_eq!(plain.ssl, None);
+        assert!(plain.additional_fields.is_empty());
+        let unread = make_connection(
+            &source("postgresql", "jdbc:postgresql://db.example.com/app?ssl=true"),
+            &HashMap::new(),
+        );
+        assert_eq!(unread.ssl, None);
+        assert_eq!(
+            unread
+                .additional_fields
+                .get(crate::TLS_SETTINGS_UNREAD)
+                .map(String::as_str),
+            Some("true")
+        );
     }
 
     #[test]
