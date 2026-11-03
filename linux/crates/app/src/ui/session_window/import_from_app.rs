@@ -35,17 +35,22 @@ impl SessionWindow {
             return;
         };
         let editor = state.services.saved_connection_editor.clone();
-        let saved_queries = state.services.history().store().map(|history| history.saved_queries());
+        let history = state.services.history().ready_store();
         crate::runtime::spawn_held(&state.services.tasks, &*state.services.hold(), async move {
             let message = match editor.add_imported(review, plan).await {
                 Ok(imported) => {
-                    let queries = match &saved_queries {
-                        Some(store) if !imported.applied.queries.is_empty() => {
-                            Some(editor.save_imported_queries(&imported.applied, store).await)
-                        }
-                        _ => None,
+                    let (queries, queries_available) = if imported.applied.queries.is_empty() {
+                        (None, false)
+                    } else if let Some(history) = history.await {
+                        let store = history.saved_queries();
+                        (
+                            Some(editor.save_imported_queries(&imported.applied, &store).await),
+                            true,
+                        )
+                    } else {
+                        (None, false)
                     };
-                    imported_message(&imported, queries, saved_queries.is_some())
+                    imported_message(&imported, queries, queries_available)
                 }
                 Err(SavedConnectionError::Storage(StorageError::ImportOutdated)) => {
                     gettext("The saved connections changed while you were deciding. Import again.")
