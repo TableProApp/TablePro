@@ -19,9 +19,8 @@ public sealed partial class SettingsView
     // Each card's button, turned off while a driver installs or goes so two never overlap.
     private readonly List<Button> _driverActions = [];
 
-    private async Task LoadDriversAsync()
+    private Task LoadDriversAsync() => RunDriverOperationAsync(async () =>
     {
-        SetDriversBusy(true);
         await RefreshInstalledAsync().ConfigureAwait(true);
         try
         {
@@ -29,14 +28,32 @@ public sealed partial class SettingsView
             _available = _catalog is null ? [] : DriverPlugins.Available(_catalog);
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or TableProException
-            or TaskCanceledException or UnauthorizedAccessException)
+            or OperationCanceledException or UnauthorizedAccessException)
         {
             _catalog = null;
             _available = null;
         }
 
         ShowDrivers();
-        SetDriversBusy(false);
+    });
+
+    private async Task RunDriverOperationAsync(Func<Task> operation)
+    {
+        // Loaded can fire again while this cached page still has a download in progress.
+        if (_driversBusy)
+        {
+            return;
+        }
+
+        SetDriversBusy(true);
+        try
+        {
+            await operation().ConfigureAwait(true);
+        }
+        finally
+        {
+            SetDriversBusy(false);
+        }
     }
 
     private async Task RefreshInstalledAsync()
@@ -73,7 +90,7 @@ public sealed partial class SettingsView
         }
 
         AvailableDriversExpander.Items.Clear();
-        if (_available is null || _available.Count == 0)
+        if (_available is null || _available.Count == 0 || _catalog is not { } catalog)
         {
             var empty = _available is null ? "DriverCatalogUnavailable" : "DriverCatalogEmpty";
             AvailableDriversExpander.Items.Add(Card("NoAvailableDrivers", Strings.Get(empty), null, null));
@@ -92,7 +109,7 @@ public sealed partial class SettingsView
             {
                 var label = Strings.Get(current is null ? "InstallDriver" : "UpdateDriver");
                 var install = DriverButton("InstallDriver_" + driver.Id, label, Strings.Format("InstallDriverName", label, driver.Name));
-                install.Click += async (_, _) => await InstallReleaseAsync(driver).ConfigureAwait(true);
+                install.Click += async (_, _) => await InstallReleaseAsync(driver, catalog).ConfigureAwait(true);
                 action = install;
             }
 
@@ -136,35 +153,35 @@ public sealed partial class SettingsView
         DriversMessage.IsOpen = true;
     }
 
-    private async void OnInstallDriverFile(object sender, RoutedEventArgs e)
-    {
-        var picker = new FileOpenPicker(XamlRoot.ContentIslandEnvironment.AppWindowId);
-        picker.FileTypeFilter.Add(".dll");
-        var file = await picker.PickSingleFileAsync();
-        if (file is not null)
+    private async void OnInstallDriverFile(object sender, RoutedEventArgs e) =>
+        await RunDriverOperationAsync(async () =>
         {
-            await InstallAsync(() => _workbench.Core.Drivers.InstallFileAsync(file.Path)).ConfigureAwait(true);
-        }
-    }
+            var picker = new FileOpenPicker(XamlRoot.ContentIslandEnvironment.AppWindowId);
+            picker.FileTypeFilter.Add(".dll");
+            var file = await picker.PickSingleFileAsync();
+            if (file is not null)
+            {
+                await InstallAsync(() => _workbench.Core.Drivers.InstallFileAsync(file.Path)).ConfigureAwait(true);
+            }
+        }).ConfigureAwait(true);
 
-    private Task InstallReleaseAsync(AvailableDriver driver) =>
-        InstallAsync(async () =>
+    private Task InstallReleaseAsync(AvailableDriver driver, string catalog) =>
+        RunDriverOperationAsync(() => InstallAsync(async () =>
         {
             var download = await DriverCatalog.DownloadAsync(driver, CancellationToken.None).ConfigureAwait(true);
             try
             {
-                return await _workbench.Core.Drivers.InstallReleaseAsync(_catalog!, driver.Id, download)
+                return await _workbench.Core.Drivers.InstallReleaseAsync(catalog, driver.Id, download)
                     .ConfigureAwait(true);
             }
             finally
             {
                 File.Delete(download);
             }
-        });
+        }));
 
     private async Task InstallAsync(Func<Task<InstalledDriver>> install)
     {
-        SetDriversBusy(true);
         try
         {
             var driver = await install().ConfigureAwait(true);
@@ -181,20 +198,12 @@ public sealed partial class SettingsView
         }
         finally
         {
-            try
-            {
-                await RefreshInstalledAsync().ConfigureAwait(true);
-            }
-            finally
-            {
-                SetDriversBusy(false);
-            }
+            await RefreshInstalledAsync().ConfigureAwait(true);
         }
     }
 
-    private async Task RemoveDriverAsync(InstalledDriver driver)
+    private Task RemoveDriverAsync(InstalledDriver driver) => RunDriverOperationAsync(async () =>
     {
-        SetDriversBusy(true);
         try
         {
             await _workbench.Core.Drivers.RemoveAsync(driver.Id).ConfigureAwait(true);
@@ -204,8 +213,9 @@ public sealed partial class SettingsView
         {
             ShowDriversMessage(Strings.Error(exception), InfoBarSeverity.Error);
         }
-
-        await RefreshInstalledAsync().ConfigureAwait(true);
-        SetDriversBusy(false);
-    }
+        finally
+        {
+            await RefreshInstalledAsync().ConfigureAwait(true);
+        }
+    });
 }

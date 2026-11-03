@@ -87,6 +87,10 @@ impl Driver for Unruly {
                 self.handle
                     .spawn(completion.run_guarded_async(async { panic!("boom in a driver task") }));
             }
+            "panic exporting" => completion.finish(panicking_rows()),
+            "panic exporting later" => {
+                self.handle.spawn(async { completion.finish(panicking_rows()) });
+            }
             "drop" => drop(completion),
             "rows" => completion.finish(Outcome::with_rows(
                 Response::of(response::Kind::ReadDone(proto::ReadDone {
@@ -164,6 +168,12 @@ fn the_abi_holds_against_a_driver_that_misbehaves() {
     assert_eq!(panicked_later.status, status::PANIC);
     assert!(format!("{:?}", panicked_later.response).contains("boom in a driver task"));
 
+    for sql in ["panic exporting", "panic exporting later"] {
+        let reply = blocking(&handle, &read(sql));
+        assert_eq!(reply.status, status::PANIC);
+        assert_eq!(code(&reply.response), "abi.panic");
+    }
+
     let dropped = blocking(&handle, &read("drop"));
     assert_eq!(dropped.status, status::DRIVER);
     assert_eq!(code(&dropped.response), "abi.dropped");
@@ -220,7 +230,8 @@ fn block_on<F: std::future::Future>(future: F) -> F::Output {
 fn the_minor_version_negotiates_down_and_another_major_is_refused() {
     let mut newer = host_api();
     newer.abi_minor = ffi::ABI_MINOR + 3;
-    let table = export::driver_api::<Unruly>(&newer).unwrap();
+    // host_api uses a process-lifetime callback that ignores its null context.
+    let table = unsafe { export::driver_api::<Unruly>(&newer) }.unwrap();
     assert_eq!(table.abi_minor, ffi::ABI_MINOR);
     // This successful open transfers its instance to exactly one handle.
     let handle = unsafe { DriverHandle::from_api(table) };
@@ -235,7 +246,8 @@ fn the_minor_version_negotiates_down_and_another_major_is_refused() {
         abi_major: ffi::ABI_MAJOR + 1,
         ..host_api()
     };
-    let (code, message) = export::driver_api::<Unruly>(&older).err().unwrap();
+    // host_api uses a process-lifetime callback that ignores its null context.
+    let (code, message) = unsafe { export::driver_api::<Unruly>(&older) }.err().unwrap();
     assert_eq!(code, status::VERSION);
     assert!(message.contains("ABI 2.0"), "{message}");
     assert_eq!(export::negotiate(5, 2), 2);
@@ -310,4 +322,57 @@ fn open_respects_the_output_capacity_and_short_host_header() {
     // This successful open transfers its instance to exactly one handle.
     let handle = unsafe { DriverHandle::from_api(table) };
     assert!(handle.shutdown(Duration::from_secs(10)));
+}
+
+#[derive(Debug)]
+struct PanickingArray(Int64Array);
+
+// All storage and downcasts use the real array; only exporting its data fails.
+unsafe impl Array for PanickingArray {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self.0.as_any()
+    }
+    fn to_data(&self) -> arrow_data::ArrayData {
+        panic!("boom exporting rows")
+    }
+    fn into_data(self) -> arrow_data::ArrayData {
+        panic!("boom exporting rows")
+    }
+    fn data_type(&self) -> &DataType {
+        self.0.data_type()
+    }
+    fn slice(&self, offset: usize, length: usize) -> arrow_array::ArrayRef {
+        Arc::new(self.0.slice(offset, length))
+    }
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    fn offset(&self) -> usize {
+        self.0.offset()
+    }
+    fn nulls(&self) -> Option<&arrow_buffer::NullBuffer> {
+        self.0.nulls()
+    }
+    fn get_buffer_memory_size(&self) -> usize {
+        self.0.get_buffer_memory_size()
+    }
+    fn get_array_memory_size(&self) -> usize {
+        self.0.get_array_memory_size()
+    }
+}
+
+fn panicking_rows() -> Outcome {
+    let array = PanickingArray(Int64Array::from(vec![1]));
+    let schema = Schema::new(vec![Field::new("n", DataType::Int64, false)]);
+    let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(array)]).unwrap();
+    Outcome::with_rows(
+        Response::of(response::Kind::ReadDone(proto::ReadDone {
+            rows: 1,
+            truncated: false,
+        })),
+        batch,
+    )
 }

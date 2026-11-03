@@ -69,24 +69,30 @@ impl Completion {
         if self.fired {
             return;
         }
-        self.fired = true;
-        let Outcome {
-            mut status,
-            mut response,
-            rows,
-        } = outcome;
-        let mut exported = None;
-        if let Some(batch) = rows {
-            let data = StructArray::from(batch).into_data();
-            match arrow_array::ffi::to_ffi(&data) {
-                Ok(pair) => exported = Some(pair),
-                Err(error) => {
-                    status = status::DRIVER;
-                    response = Response::error("abi.rows_export", error.to_string());
+        let prepared = catch_unwind(AssertUnwindSafe(|| {
+            let Outcome {
+                mut status,
+                mut response,
+                rows,
+            } = outcome;
+            let mut exported = None;
+            if let Some(batch) = rows {
+                let data = StructArray::from(batch).into_data();
+                match arrow_array::ffi::to_ffi(&data) {
+                    Ok(pair) => exported = Some(pair),
+                    Err(error) => {
+                        status = status::DRIVER;
+                        response = Response::error("abi.rows_export", error.to_string());
+                    }
                 }
             }
-        }
-        let bytes = response.encode_to_vec();
+            let bytes = response.encode_to_vec();
+            (status, bytes, exported)
+        }));
+        let (status, bytes, mut exported) = prepared.unwrap_or_else(|payload| {
+            let outcome = Outcome::panicked(&*payload);
+            (outcome.status, outcome.response.encode_to_vec(), None)
+        });
         let mut slot = exported.as_mut().map(|(array, schema)| ArrowBatch {
             schema: std::ptr::from_mut::<FFI_ArrowSchema>(schema),
             array: std::ptr::from_mut::<FFI_ArrowArray>(array),
@@ -94,6 +100,7 @@ impl Completion {
         let rows = slot
             .as_mut()
             .map_or(std::ptr::null_mut(), std::ptr::from_mut::<ArrowBatch>);
+        self.fired = true;
         unsafe { (self.done)(self.ctx.0, self.call_id, status, Bytes::from_slice(&bytes), rows) };
         // What the host did not move out is released here, by this copy of arrow.
         drop(exported);
@@ -213,6 +220,9 @@ pub const fn version_cstr(bytes: &'static [u8]) -> &'static CStr {
 /// # Safety
 /// `host` points to its size header and the bytes it declares; `out` has `out_size` writable bytes.
 /// Both pointers are aligned for their types; `error` is null or valid.
+/// `host.log` must accept `host.ctx` concurrently on any thread without unwinding and use each message only
+/// during that callback. The callback and context must remain valid until all driver work has stopped,
+/// including work that outlives a timed-out shutdown.
 pub unsafe fn open<D: Driver>(host: *const HostApi, out: *mut DriverApi, out_size: usize, error: *mut ErrorBuf) -> i32 {
     let result = catch_unwind(AssertUnwindSafe(|| unsafe {
         open_inner::<D>(host, out, out_size, error)
@@ -342,7 +352,11 @@ unsafe extern "C" fn shutdown<D: Driver>(instance: *mut c_void, timeout_ms: u32)
 }
 
 // The table for a driver linked into the app, through the same entry point a loaded library exports.
-pub fn driver_api<D: Driver>(host: &HostApi) -> Result<DriverApi, (i32, String)> {
+/// # Safety
+/// `host.log` must accept `host.ctx` concurrently on any thread without unwinding and use each message only
+/// during that callback. The callback and context must remain valid until all driver work has stopped,
+/// including work that outlives a timed-out shutdown.
+pub unsafe fn driver_api<D: Driver>(host: &HostApi) -> Result<DriverApi, (i32, String)> {
     let mut out = std::mem::MaybeUninit::<DriverApi>::uninit();
     let mut buffer = vec![0u8; 1024];
     let mut error = ErrorBuf {
@@ -370,7 +384,7 @@ macro_rules! export_driver {
         );
 
         /// # Safety
-        /// The host loader calls it with valid pointers.
+        /// The pointers, callback and context satisfy the safety contract of `export::open`.
         #[unsafe(no_mangle)]
         pub unsafe extern "C" fn tablepro_driver_open(
             host: *const $crate::ffi::HostApi,

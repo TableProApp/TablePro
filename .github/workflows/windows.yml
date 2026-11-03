@@ -19,15 +19,17 @@ jobs:
       matrix:
         include:
           # Also checks that the committed bindings match the library.
-          - name: macOS
-            runner: macos-15
-            target: aarch64-apple-darwin
+          - name: Linux
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
             bindings: true
     runs-on: ${{ matrix.runner }}
     # DuckDB's C++ takes most of it, and MSVC builds it slowly.
     timeout-minutes: 150
     env:
       RUSTFLAGS: -D warnings
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
       # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks; its prebuilt objects stand in.
       AWS_LC_SYS_PREBUILT_NASM: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -53,6 +55,8 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
+      - name: Linux core dependencies
+        run: sudo apt-get update && sudo apt-get install -y libkrb5-dev libclang-dev libssl-dev
       - name: Restore uniffi-bindgen-cs
         if: matrix.bindings
         id: bindgen-cache
