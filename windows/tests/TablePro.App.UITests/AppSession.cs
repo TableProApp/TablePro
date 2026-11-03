@@ -14,6 +14,7 @@ namespace TablePro.App.UITests;
 internal sealed class AppSession : IDisposable
 {
     public static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
+    private static readonly PackageTestState PackageState = new();
 
     private readonly UIA3Automation _automation = new();
     private readonly Application _application;
@@ -54,19 +55,14 @@ internal sealed class AppSession : IDisposable
     // The installed MSIX, started as the Start menu starts it, so it keeps its files in the package's LocalState.
     public static AppSession LaunchPackage(string familyName, string theme)
     {
+        if (string.IsNullOrWhiteSpace(familyName) || familyName.IndexOfAny(['/', '\\', ':']) >= 0 || familyName is "." or "..")
+        {
+            throw new ArgumentException("Expected a package family name, not a path.", nameof(familyName));
+        }
+
         var packages = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages");
         var folder = Path.Combine(packages, familyName, "LocalState");
-        var state = Directory.CreateDirectory(folder);
-        foreach (var file in state.EnumerateFiles())
-        {
-            file.Delete();
-        }
-
-        foreach (var directory in state.EnumerateDirectories())
-        {
-            directory.Delete(recursive: true);
-        }
-
+        PackageState.Prepare(folder);
         WriteSettings(folder, theme);
         return new(folder, theme, () => Application.LaunchStoreApp(familyName + "!App"));
     }
