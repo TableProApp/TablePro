@@ -94,20 +94,23 @@ Parallel implementers (`SKILL.md`, Phase 3) are background `Agent`s in one messa
 
 ## Review: Codex
 
+Codex runs every review pass: each round's review, the adversarial pass on the design, the security pass and the profile's extra pass. A Claude reviewer spends the run's tokens, so `Skill(code-review)`, `Skill(security-review)` and a review `Agent` never stand in for it.
+
 Run the Codex plugin's companion from inside the tree (`cd <tree> &&` on every call), since its job state is keyed by the checkout:
 
 ```bash
 CODEX="$(ls -1d "$HOME"/.claude/plugins/cache/openai-codex/codex/*/scripts/codex-companion.mjs | sort -V | tail -1)"
 node "$CODEX" review --wait --scope working-tree        # --base <base> once the work is committed
 node "$CODEX" adversarial-review --wait --scope working-tree "<the mechanism the fix rests on>"
+node "$CODEX" adversarial-review --wait --scope working-tree "<the pass and what it looks for>"
 node "$CODEX" status
 node "$CODEX" result <job-id>
 ```
 
 - `review` every round; `adversarial-review` in Full mode on the first round. One at a time, each in the background with `--wait`.
+- The security pass is an `adversarial-review` focused on injection, credential exposure, authorization and unsafe execution, reporting only high and medium findings with an exploit scenario. The profile's extra pass, such as ABI, is an `adversarial-review` focused on what that pass checks.
 - Read the findings with `result`, never from stdout, which shows only progress whether the job succeeded or died. `status` says whether it finished.
-- When `status` shows Codex cannot review (not installed, out of credits, a usage limit), use `Skill(code-review)` and say so in the report. A setup or login error goes back to the user with `/codex:setup`.
-- The security pass is a background `Agent` told to review `git -C <tree> diff origin/<base>...HEAD` (the profile's pull request base) for injection, credential exposure, authorization and unsafe execution, reporting only high and medium findings with an exploit scenario. `Skill(security-review)` reads the main checkout, not the tree.
+- When Codex cannot review, the run waits before Phase 6: a usage limit or no credits until it resets, then the same pass again; not installed or not logged in goes back to the user with `/codex:setup`.
 
 ## Screenshots
 
