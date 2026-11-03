@@ -163,7 +163,7 @@ async fn shuts_down_with_a_call_in_flight(handle: DriverHandle, connection: u64)
     );
     let reply = tokio::time::timeout(WAIT, pending.reply()).await.unwrap();
 
-    assert_ne!(reply.status, status::OK);
+    assert_eq!(reply.status, status::CANCELLED, "{:?}", reply.response);
     assert_eq!(
         handle
             .start(&Request::of(request::Kind::Describe(proto::Describe {})))

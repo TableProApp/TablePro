@@ -29,7 +29,7 @@ enum {
 enum { TP_LOG_ERROR = 1, TP_LOG_WARN = 2, TP_LOG_INFO = 3, TP_LOG_DEBUG = 4 };
 
 // Fields up to driver_version keep their offsets in every major version, so a host reads them from a driver
-// built for any major and refuses it before running any of its code.
+// built for any major and refuses it before calling its ABI entry points.
 typedef struct TpDescriptor {
     uint32_t magic;
     uint32_t size;

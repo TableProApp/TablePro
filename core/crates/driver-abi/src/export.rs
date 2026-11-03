@@ -6,6 +6,7 @@ use std::ffi::{CStr, c_void};
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use arrow_array::{Array, RecordBatch, StructArray};
@@ -49,11 +50,17 @@ struct SendPtr(*mut c_void);
 unsafe impl Send for SendPtr {}
 unsafe impl Sync for SendPtr {}
 
+struct Instance<D> {
+    driver: Arc<D>,
+    stopping: Arc<AtomicBool>,
+}
+
 pub struct Completion {
     done: CompletionFn,
     ctx: SendPtr,
     call_id: u64,
     fired: bool,
+    stopping: Arc<AtomicBool>,
 }
 
 impl Completion {
@@ -119,8 +126,16 @@ impl Completion {
 
 impl Drop for Completion {
     fn drop(&mut self) {
-        // A completion dropped without an answer still answers, so the host never waits forever.
-        if std::thread::panicking() {
+        if self.fired {
+            return;
+        }
+        // Runtime shutdown may drop a task before it polls its cancellation token.
+        if self.stopping.load(Ordering::Acquire) {
+            self.fire(Outcome::fail(
+                status::CANCELLED,
+                Response::error("abi.cancelled", "the driver shut down before the call finished"),
+            ));
+        } else if std::thread::panicking() {
             self.fire(Outcome::fail(
                 status::PANIC,
                 Response::error("abi.panic", "the driver panicked while handling the call"),
@@ -271,11 +286,15 @@ unsafe fn open_inner<D: Driver>(
             return status::DRIVER;
         }
     };
+    let instance = Arc::new(Instance {
+        driver,
+        stopping: Arc::new(AtomicBool::new(false)),
+    });
     let api = DriverApi {
         size: size_of::<DriverApi>() as u32,
         abi_major: ffi::ABI_MAJOR,
         abi_minor: negotiated,
-        instance: Arc::into_raw(driver).cast_mut().cast::<c_void>(),
+        instance: Arc::into_raw(instance).cast_mut().cast::<c_void>(),
         call: call::<D>,
         cancel: cancel::<D>,
         shutdown: shutdown::<D>,
@@ -288,8 +307,8 @@ pub fn negotiate(host_minor: u16, driver_minor: u16) -> u16 {
     host_minor.min(driver_minor)
 }
 
-unsafe fn borrow<D: Driver>(instance: *mut c_void) -> Arc<D> {
-    let pointer = instance.cast_const().cast::<D>();
+unsafe fn borrow<D: Driver>(instance: *mut c_void) -> Arc<Instance<D>> {
+    let pointer = instance.cast_const().cast::<Instance<D>>();
     unsafe { Arc::increment_strong_count(pointer) };
     unsafe { Arc::from_raw(pointer) }
 }
@@ -303,7 +322,7 @@ unsafe extern "C" fn call<D: Driver>(
 ) -> i32 {
     let mut handed_over = false;
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let driver = unsafe { borrow::<D>(instance) };
+        let instance = unsafe { borrow::<D>(instance) };
         let Ok(request) = Request::decode(unsafe { request.as_slice() }) else {
             return status::BAD_REQUEST;
         };
@@ -312,11 +331,12 @@ unsafe extern "C" fn call<D: Driver>(
             ctx: SendPtr(done_ctx),
             call_id,
             fired: false,
+            stopping: Arc::clone(&instance.stopping),
         };
         handed_over = true;
         // A kind this build cannot decode reads as none: a newer host learns the driver lacks it.
         match request.kind {
-            Some(kind) => driver.call(call_id, kind, completion),
+            Some(kind) => instance.driver.call(call_id, kind, completion),
             None => completion.finish(Outcome::unsupported()),
         }
         status::OK
@@ -331,8 +351,8 @@ unsafe extern "C" fn call<D: Driver>(
 
 unsafe extern "C" fn cancel<D: Driver>(instance: *mut c_void, call_id: u64) -> i32 {
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let driver = unsafe { borrow::<D>(instance) };
-        if driver.cancel(call_id) {
+        let instance = unsafe { borrow::<D>(instance) };
+        if instance.driver.cancel(call_id) {
             status::OK
         } else {
             status::UNKNOWN_CALL
@@ -343,9 +363,10 @@ unsafe extern "C" fn cancel<D: Driver>(instance: *mut c_void, call_id: u64) -> i
 
 unsafe extern "C" fn shutdown<D: Driver>(instance: *mut c_void, timeout_ms: u32) -> i32 {
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let driver = unsafe { Arc::from_raw(instance.cast_const().cast::<D>()) };
-        let clean = driver.shutdown(Duration::from_millis(u64::from(timeout_ms)));
-        drop(driver);
+        let instance = unsafe { Arc::from_raw(instance.cast_const().cast::<Instance<D>>()) };
+        instance.stopping.store(true, Ordering::Release);
+        let clean = instance.driver.shutdown(Duration::from_millis(u64::from(timeout_ms)));
+        drop(instance);
         if clean { 0 } else { 1 }
     }));
     result.unwrap_or(status::PANIC)

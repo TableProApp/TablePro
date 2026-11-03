@@ -274,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn another_major_is_refused_before_any_driver_code_runs() {
+    fn another_major_is_refused_before_open() {
         let error = check(&descriptor(ffi::MAGIC, ffi::ABI_MAJOR + 1, 1)).unwrap_err();
 
         assert_eq!(

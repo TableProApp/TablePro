@@ -132,7 +132,7 @@ impl Response {
     }
 }
 
-// The version is the descriptor's, which a host reads before any driver code runs.
+// The version is the descriptor's, which a host reads before calling the driver ABI.
 #[derive(Clone, PartialEq, prost::Message)]
 pub struct Description {
     #[prost(string, tag = "1")]
