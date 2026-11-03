@@ -24,7 +24,7 @@ public sealed partial class MainWindow : Window, IShell
     private readonly Dictionary<string, ConnectionFormWindow> _forms = [];
     private SettingsView? _settings;
     private OpenConnection? _front;
-    private bool _restoreMaximized;
+    private readonly bool _restoreMaximized;
 
     internal MainWindow(Workbench workbench)
     {

@@ -464,7 +464,7 @@ public sealed partial class HomeView : UserControl
         _workbench.NotifyLibraryChanged();
     }
 
-    private async Task DeleteConnectionsAsync(IReadOnlyList<SavedConnection> connections)
+    private async Task DeleteConnectionsAsync(List<SavedConnection> connections)
     {
         if (connections.Count == 0)
         {
@@ -536,7 +536,7 @@ public sealed partial class HomeView : UserControl
             name => _workbench.Library.CreateGroupAsync(name, parent));
 
     // A new tag takes the next colour no tag holds yet, and goes on the connections it was made from.
-    private Task NewTagAsync(IReadOnlyList<Guid> connections)
+    private Task NewTagAsync(List<Guid> connections)
     {
         var color = TagColors.FirstOrDefault(color => _snapshot.Tags.All(tag => tag.Color != color))
             ?? TagColors[_snapshot.Tags.Count % TagColors.Length];
@@ -819,7 +819,7 @@ public sealed partial class HomeView : UserControl
 
     private void OnRowDropCompleted(UIElement sender, DropCompletedEventArgs args) => _dragging = null;
 
-    private LibraryItem? RowItem(object sender) =>
+    private static LibraryItem? RowItem(object sender) =>
         sender is FrameworkElement { DataContext: LibraryItem item } ? item : null;
 
     private void OnNewConnection(object sender, RoutedEventArgs e) => _shell.NewConnection();
