@@ -12,7 +12,7 @@ namespace TablePro.App.Views;
 
 // A query tab: the SQL editor, its run commands and the results. The tab's editor connection is opened on the first
 // run and keeps its transaction from one run to the next. A sort runs the result's statement again with an ORDER BY,
-// as the macOS app does.
+// as the macOS app does, or sorts the rows held when the statement cannot run again.
 public sealed partial class QueryTabView : UserControl, ITabContent
 {
     private readonly Workbench _workbench;
@@ -21,6 +21,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
     private QueryRun? _run;
     private string? _statement;
     private GridSort _sort = GridSort.None;
+    private bool _sorting;
 
     internal QueryTabView(Workbench workbench, DatabaseSession session, string title, string? sql)
     {
@@ -212,19 +213,19 @@ public sealed partial class QueryTabView : UserControl, ITabContent
     // Only one query that reads runs again: running a script or a write again would repeat it.
     private async void OnSortRequested(object? sender, GridSort sort)
     {
-        if (IsRunning)
+        if (IsRunning || _sorting)
         {
             Results.Sort = _sort;
             return;
         }
 
-        var sorted = _statement is null || Results.ResultSetCount != 1 || sort.Column >= Results.Columns.Count
+        var columns = Results.Columns.Select(column => column.Name).ToList();
+        var sorted = _statement is null || Results.ResultSetCount != 1 || sort.Column >= columns.Count
             ? null
-            : SortedQuery(_statement, Results.Columns[sort.Column].Name, sort.Direction == SortDirection.Ascending);
+            : SortedQuery(_statement, columns, sort.Column, sort.Direction == SortDirection.Ascending);
         if (sorted is null)
         {
-            Results.Sort = _sort;
-            StatusText.Text = Strings.Get("StatusSortUnavailable");
+            await SortHeldRowsAsync(sort).ConfigureAwait(true);
             return;
         }
 
@@ -232,11 +233,37 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         await RunSqlAsync(sorted).ConfigureAwait(true);
     }
 
-    private string? SortedQuery(string sql, string column, bool ascending)
+    private async Task SortHeldRowsAsync(GridSort sort)
+    {
+        _sorting = true;
+        try
+        {
+            if (await Results.SortHeldRowsAsync(sort).ConfigureAwait(true))
+            {
+                _sort = sort;
+                StatusText.Text = Strings.Format("StatusSortedHeld", Results.ShownRows);
+            }
+            else
+            {
+                Results.Sort = _sort;
+            }
+        }
+        catch (TableProException exception)
+        {
+            Results.Sort = _sort;
+            Results.ShowError(Strings.Error(exception.Error));
+        }
+        finally
+        {
+            _sorting = false;
+        }
+    }
+
+    private string? SortedQuery(string sql, IReadOnlyList<string> columns, int column, bool ascending)
     {
         try
         {
-            return _session.SortedQuery(sql, column, ascending);
+            return _session.SortedQuery(sql, columns, column, ascending);
         }
         catch (TableProException)
         {

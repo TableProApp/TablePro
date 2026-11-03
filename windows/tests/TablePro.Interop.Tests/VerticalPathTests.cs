@@ -57,12 +57,20 @@ public sealed class VerticalPathTests
             new ColumnSort(1, Ascending: false),
             100,
             cancellationToken: cancellationToken);
-        var query = database.Session.SortedQuery("SELECT name FROM people LIMIT 2", "name", ascending: true);
-        var write = database.Session.SortedQuery("UPDATE people SET note = NULL", "name", ascending: true);
+        var query = database.Session.SortedQuery("SELECT name FROM people LIMIT 2", ["name"], 0, ascending: true);
+        var joined = database.Session.SortedQuery(
+            "SELECT a.id, b.id FROM people a JOIN people b ON b.id = 4 - a.id",
+            ["id", "id"],
+            1,
+            ascending: true);
+        var write = database.Session.SortedQuery("UPDATE people SET note = NULL", ["name"], 0, ascending: true);
 
         Assert.Equal(["Zoë 👋", "Grace", "Ada"], await Column(database, table.Sql, 1));
         Assert.NotNull(query);
         Assert.Equal(["Ada", "Grace"], await Column(database, query, 0));
+        Assert.NotNull(joined);
+        Assert.EndsWith("ORDER BY 2 ASC", joined, StringComparison.Ordinal);
+        Assert.Equal(["3", "2", "1"], await Column(database, joined, 0));
         Assert.Null(write);
     }
 
@@ -119,6 +127,31 @@ public sealed class VerticalPathTests
         }
 
         return Assert.IsType<QueryEvent.Finished>(last);
+    }
+
+    [Fact]
+    public async Task AResultThatCannotRunAgainSortsTheRowsItHolds()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+        using var run = database.Editor.Run(
+            "SELECT name, note FROM people",
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.IsType<QueryOutcome.Completed>(await run.Completion);
+        using var set = run.GetResultSet(0);
+        Assert.NotNull(set);
+
+        using var descending = await set.SortedAsync(0, ascending: false);
+        using var byNote = await set.SortedAsync(1, ascending: true);
+        using var cursor = descending.OpenCursor();
+        var window = cursor.Fetch(0, 10, 0, 1, 64);
+
+        Assert.Equal(set.RowCount, descending.RowCount);
+        string?[] names = [window.GetText(0, 0), window.GetText(1, 0), window.GetText(2, 0)];
+        Assert.Equal(["Zoë 👋", "Grace", "Ada"], names);
+        Assert.Null(byNote.GetCellText(0, 1));
+        Assert.Equal("Ada", byNote.GetCellText(0, 0));
+        Assert.Equal("Ada", set.GetCellText(0, 0));
+        await Assert.ThrowsAsync<TableProException>(() => set.SortedAsync(5, ascending: true));
     }
 
     private static async Task<List<string?>> Column(SqliteDatabase database, string sql, int column)

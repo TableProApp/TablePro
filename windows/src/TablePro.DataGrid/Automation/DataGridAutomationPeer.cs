@@ -204,9 +204,16 @@ internal sealed partial class CellAutomationPeer(DataGridView grid, DataGridAuto
     };
 }
 
+// The HeaderItem control type: Invoke sorts, Transform resizes, ItemStatus names the sort order.
 internal sealed partial class HeaderAutomationPeer(HeaderCell owner, DataGridView grid) : FrameworkElementAutomationPeer(owner),
-    IInvokeProvider
+    IInvokeProvider, ITransformProvider
 {
+    public bool CanMove => false;
+
+    public bool CanResize => owner.Column >= 0;
+
+    public bool CanRotate => false;
+
     public void Invoke()
     {
         if (owner.Column >= 0)
@@ -217,7 +224,22 @@ internal sealed partial class HeaderAutomationPeer(HeaderCell owner, DataGridVie
         {
             grid.SelectAll();
         }
+        RaiseAutomationEvent(AutomationEvents.InvokePatternOnInvoked);
     }
+
+    public void Move(double x, double y) => throw new InvalidOperationException("A column header does not move.");
+
+    // UIA sizes in physical pixels, as the bounding rectangle reports them.
+    public void Resize(double width, double height)
+    {
+        if (owner.Column < 0)
+        {
+            throw new InvalidOperationException("The corner header does not resize.");
+        }
+        grid.ResizeColumn(owner.Column, width / (owner.XamlRoot?.RasterizationScale ?? 1));
+    }
+
+    public void Rotate(double degrees) => throw new InvalidOperationException("A column header does not rotate.");
 
     protected override string GetClassNameCore() => "DataGridColumnHeader";
 
@@ -225,8 +247,13 @@ internal sealed partial class HeaderAutomationPeer(HeaderCell owner, DataGridVie
 
     protected override string GetNameCore() => owner.Title;
 
-    protected override object? GetPatternCore(PatternInterface patternInterface) =>
-        patternInterface == PatternInterface.Invoke ? this : base.GetPatternCore(patternInterface);
+    protected override string GetItemStatusCore() => grid.SortStatus(owner.SortDirection);
+
+    protected override object? GetPatternCore(PatternInterface patternInterface) => patternInterface switch
+    {
+        PatternInterface.Invoke or PatternInterface.Transform => this,
+        _ => base.GetPatternCore(patternInterface),
+    };
 
     protected override IList<AutomationPeer>? GetChildrenCore() => null;
 }

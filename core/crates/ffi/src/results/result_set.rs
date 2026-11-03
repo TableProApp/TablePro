@@ -4,11 +4,12 @@ use super::{Cursor, ResultStore, ValueKind};
 use crate::error::CoreError;
 use crate::window_abi::TpCursor;
 
-/// One result set of a run, readable while its rows still arrive.
+// One result set of a run, readable while its rows still arrive. A sorted set reads the same rows through an order.
 #[derive(Debug, uniffi::Object)]
 pub struct ResultSet {
     index: u32,
     store: Arc<ResultStore>,
+    order: Option<Arc<[u64]>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -20,7 +21,18 @@ pub struct ResultColumnInfo {
 
 impl ResultSet {
     pub(crate) fn new(index: u32, store: Arc<ResultStore>) -> Self {
-        Self { index, store }
+        Self {
+            index,
+            store,
+            order: None,
+        }
+    }
+
+    fn stored_row(&self, row: u64) -> u64 {
+        self.order
+            .as_ref()
+            .and_then(|order| order.get(usize::try_from(row).ok()?).copied())
+            .unwrap_or(row)
     }
 }
 
@@ -44,19 +56,34 @@ impl ResultSet {
         self.store.columns().iter().map(ResultColumnInfo::from).collect()
     }
 
-    /// The whole value of one cell, `None` for null.
+    // The whole value, `None` for null.
     pub fn cell_text(&self, row: u64, column: u32) -> Result<Option<String>, CoreError> {
         usize::try_from(column)
             .ok()
-            .and_then(|column| self.store.full_text(row, column))
+            .and_then(|column| self.store.full_text(self.stored_row(row), column))
             .ok_or_else(|| CoreError::failed("ffi.out_of_range", format!("no cell at row {row}, column {column}")))
     }
 
-    /// A cursor for `tablepro_cursor_fetch`, as an address the caller
-    /// frees with `tablepro_cursor_free`.
+    // An address the caller frees with `tablepro_cursor_free`.
     pub fn open_cursor(&self) -> u64 {
-        let cursor = Box::into_raw(Box::new(TpCursor::new(Cursor::new(self.store.clone()))));
+        let cursor = Box::into_raw(Box::new(TpCursor::new(Cursor::new(
+            self.store.clone(),
+            self.order.clone(),
+        ))));
         cursor.expose_provenance() as u64
+    }
+
+    // For a result whose statement cannot run again for a sort: the rows held now, ties in their arrival order.
+    pub fn sorted(&self, column: u32, ascending: bool) -> Result<Arc<ResultSet>, CoreError> {
+        let order = usize::try_from(column)
+            .ok()
+            .and_then(|index| self.store.row_order(index, ascending))
+            .ok_or_else(|| CoreError::failed("ffi.out_of_range", format!("no column {column}")))?;
+        Ok(Arc::new(Self {
+            index: self.index,
+            store: self.store.clone(),
+            order: Some(order.into()),
+        }))
     }
 }
 

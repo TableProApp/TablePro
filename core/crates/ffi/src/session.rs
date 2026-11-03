@@ -4,7 +4,7 @@ use tablepro_core::EditorSessionOptions;
 use tablepro_core::browse::{PageRequest, PagingMode, SortKey, build_count, build_page, paging_mode};
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{PagePosition, TableRef};
-use tablepro_core::sql_syntax::with_order_by;
+use tablepro_core::sql_syntax::{SortReference, sort_reference, with_order_by};
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{FailureCause, MonitorSignal, OperationError, OperationKind, Session, SessionHealth};
 
@@ -288,12 +288,27 @@ impl DatabaseSession {
         self.session.signal(MonitorSignal::RetryNow);
     }
 
-    // macOS sorts a query result the same way. None when the statement cannot run again for a sort.
-    pub fn sorted_query(&self, sql: String, column: String, ascending: bool) -> Result<Option<String>, CoreError> {
+    // The column by name where that names it alone, else by its place in the select list. None when the statement
+    // cannot run again for a sort, or the engine could order by neither: the host then sorts the rows it holds.
+    pub fn sorted_query(
+        &self,
+        sql: String,
+        columns: Vec<String>,
+        column: u32,
+        ascending: bool,
+    ) -> Result<Option<String>, CoreError> {
         let dialect = self.session.current_dialect().ok_or_else(not_connected)?;
+        let grammar = dialect.grammar();
+        let Some(column) = usize::try_from(column).ok() else {
+            return Ok(None);
+        };
+        let target = match sort_reference(&sql, grammar, &columns, column) {
+            Some(SortReference::Name) => dialect.quote_identifier(&columns[column]),
+            Some(SortReference::Position(position)) => position.to_string(),
+            None => return Ok(None),
+        };
         let direction = if ascending { "ASC" } else { "DESC" };
-        let order = format!("{} {direction}", dialect.quote_identifier(&column));
-        Ok(with_order_by(&sql, dialect.grammar(), &order))
+        Ok(with_order_by(&sql, grammar, &format!("{target} {direction}")))
     }
 
     pub async fn open_editor(&self, cancel: Option<Arc<CancelToken>>) -> Result<Arc<QueryEditor>, CoreError> {

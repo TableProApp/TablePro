@@ -195,21 +195,60 @@ public sealed partial class DataGridView
     internal void ResizeColumn(int column, double width)
     {
         _columns.SetWidth(column, width);
+        _sizedByUser[column] = true;
         ColumnsChanged();
     }
 
     // Fits a column to its header and the rows in view; a result set may hold far more rows than can be read here.
     internal void FitColumn(int column)
     {
-        var painter = Painter;
-        var widest = painter.Measure(_names[column]) + 24;
         var (first, last) = _rowWindow;
-        for (var row = first; row <= last; row++)
+        ResizeColumn(column, ContentWidth(column, first, last, int.MaxValue));
+    }
+
+    // As the macOS grid sizes a new result, from its first rows: the rest may still be arriving.
+    private bool SizeToContent()
+    {
+        if (!SizeColumnsToContent || _data is null)
+        {
+            return false;
+        }
+        var rows = Math.Min(RowCount, ColumnCount > ContentSampleWideColumns ? ContentSampleRowsWide : ContentSampleRows);
+        for (var column = 0; column < ColumnCount; column++)
+        {
+            if (!_sizedByUser[column])
+            {
+                _columns.SetWidth(column, Math.Clamp(ContentWidth(column, 0, rows - 1, ContentSampleCharacters),
+                    ContentMinimumWidth, ContentMaximumWidth));
+            }
+        }
+        _sizedToRows = rows > 0;
+        return true;
+    }
+
+    private double ContentWidth(int column, int firstRow, int lastRow, int maxCharacters)
+    {
+        var painter = Painter;
+        // Room for the sort glyph.
+        var widest = painter.Measure(Head(_names[column], maxCharacters)) + 24;
+        for (var row = firstRow; row <= lastRow; row++)
         {
             var cell = Cell(row, column);
-            widest = Math.Max(widest, cell.IsNull ? painter.Measure(CellPainter.NullText, placeholder: true) : painter.Measure(cell.Text));
+            widest = Math.Max(widest, cell.IsNull
+                ? painter.Measure(CellPainter.NullText, placeholder: true)
+                : painter.Measure(Head(cell.Text, maxCharacters)));
         }
-        ResizeColumn(column, Math.Ceiling(widest + (CellPainter.Padding * 2) + 2));
+        return Math.Ceiling(widest + (CellPainter.Padding * 2) + 2);
+    }
+
+    private static ReadOnlySpan<char> Head(ReadOnlySpan<char> text, int maxCharacters)
+    {
+        if (text.Length <= maxCharacters)
+        {
+            return text;
+        }
+        var end = char.IsHighSurrogate(text[maxCharacters - 1]) ? maxCharacters - 1 : maxCharacters;
+        return text[..end];
     }
 
     // The cells in view, row by row, the frozen ones first: what the automation tree lists.

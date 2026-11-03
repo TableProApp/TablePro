@@ -425,31 +425,77 @@ async fn a_table_query_sorts_on_the_server_and_names_the_columns_a_grid_shows() 
 async fn a_query_result_sorts_by_running_its_own_statement_again() {
     let dir = tempfile::tempdir().unwrap();
     let (_core, session, editor) = fixture(dir.path()).await;
+    let sorted = |sql: &str, columns: &[&str], column: u32, ascending: bool| {
+        session
+            .sorted_query(
+                sql.to_owned(),
+                columns.iter().map(|name| (*name).to_owned()).collect(),
+                column,
+                ascending,
+            )
+            .unwrap()
+    };
 
-    let sorted = session
-        .sorted_query(
-            "SELECT name FROM people ORDER BY id LIMIT 2;".to_owned(),
-            "name".to_owned(),
-            false,
-        )
-        .unwrap()
-        .unwrap();
-    let (_, names) = column_texts(&editor, &sorted, 0).await;
+    let by_name = sorted("SELECT name FROM people ORDER BY id LIMIT 2;", &["name"], 0, false).unwrap();
+    let joined = sorted(
+        "SELECT a.id, b.id FROM people a JOIN people b ON b.id = 4 - a.id",
+        &["id", "id"],
+        1,
+        true,
+    )
+    .unwrap();
+    let computed = sorted("SELECT name, id * 10 FROM people", &["name", "id * 10"], 1, false).unwrap();
+    let (_, names) = column_texts(&editor, &by_name, 0).await;
+    let (_, left_ids) = column_texts(&editor, &joined, 0).await;
+    let (_, by_number) = column_texts(&editor, &computed, 0).await;
 
-    assert_eq!(sorted, "SELECT name FROM people ORDER BY \"name\" DESC LIMIT 2");
+    assert_eq!(by_name, "SELECT name FROM people ORDER BY \"name\" DESC LIMIT 2");
     assert_eq!(names, texts(&["Zoë 👋", "Grace"]));
     assert_eq!(
-        session
-            .sorted_query("DELETE FROM people".to_owned(), "name".to_owned(), true)
-            .unwrap(),
-        None
+        joined,
+        "SELECT a.id, b.id FROM people a JOIN people b ON b.id = 4 - a.id ORDER BY 2 ASC"
     );
+    assert_eq!(left_ids, texts(&["3", "2", "1"]));
+    assert_eq!(computed, "SELECT name, id * 10 FROM people ORDER BY 2 DESC");
+    assert_eq!(by_number, texts(&["Zoë 👋", "Grace", "Ada"]));
+    assert_eq!(sorted("DELETE FROM people", &["name"], 0, true), None);
+    assert_eq!(sorted("SELECT 1; SELECT 2", &["1"], 0, true), None);
+    assert_eq!(sorted("SELECT name FROM people", &["name"], 4, true), None);
+}
+
+#[tokio::test]
+async fn a_result_that_cannot_run_again_sorts_the_rows_it_holds() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, _session, editor) = fixture(dir.path()).await;
+    let run = editor.run(
+        "SELECT name, note, id * 10 FROM people".to_owned(),
+        RunSettings::default(),
+        Box::new(Wakes::default()),
+    );
+    assert!(matches!(run.outcome().await.unwrap(), RunOutcome::Completed { .. }));
+    let set = run.result_set(0).unwrap();
+
+    let by_note = set.sorted(1, true).unwrap();
+    let by_number = set.sorted(2, false).unwrap();
+    let notes: Vec<_> = (0..by_note.row_count())
+        .map(|row| by_note.cell_text(row, 1).unwrap())
+        .collect();
+    let cursor = by_number.open_cursor();
+    let numbers = fetch(cursor, 0, 10, 3, 64);
+    free(cursor);
+
     assert_eq!(
-        session
-            .sorted_query("SELECT 1; SELECT 2".to_owned(), "1".to_owned(), true)
-            .unwrap(),
-        None
+        notes,
+        [None, Some("line one\nline two".to_owned()), Some("中文".to_owned())]
     );
+    assert_eq!(numbers.texts[..3], texts(&["Zoë 👋", "Grace", "Ada"]));
+    assert_eq!(numbers.texts[6..], texts(&["30", "20", "10"]));
+    assert_eq!(
+        set.cell_text(0, 0).unwrap().as_deref(),
+        Some("Ada"),
+        "the set itself keeps its order"
+    );
+    assert!(set.sorted(3, true).is_err());
 }
 
 #[tokio::test]

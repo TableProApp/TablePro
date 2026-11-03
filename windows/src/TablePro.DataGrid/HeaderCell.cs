@@ -76,12 +76,20 @@ internal sealed partial class HeaderCell : Microsoft.UI.Xaml.Controls.Grid
 
     public void Bind(int column, string title, SortDirection direction)
     {
+        var (previousColumn, previousDirection) = (Column, SortDirection);
         Column = column;
         if (!string.Equals(_title.Text, title, StringComparison.Ordinal))
         {
             _title.Text = title;
         }
         SortDirection = direction;
+        if (column == previousColumn && direction != previousDirection
+            && AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged)
+            && FrameworkElementAutomationPeer.FromElement(this) is { } peer)
+        {
+            peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemStatusProperty,
+                _grid.SortStatus(previousDirection), _grid.SortStatus(direction));
+        }
         _sort.Visibility = direction == SortDirection.None ? Visibility.Collapsed : Visibility.Visible;
         _sort.Glyph = direction == SortDirection.Descending ? DescendingGlyph : AscendingGlyph;
         _grip.Visibility = column < 0 ? Visibility.Collapsed : Visibility.Visible;

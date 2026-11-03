@@ -744,8 +744,14 @@
   <data name="ResultsNoRows" xml:space="preserve">
     <value>The statement returned no rows</value>
   </data>
-  <data name="StatusSortUnavailable" xml:space="preserve">
-    <value>Sorting runs the query again, so it works only for a single query that reads.</value>
+  <data name="StatusSortedHeld" xml:space="preserve">
+    <value>Rows: {0:N0} · sorted the rows shown</value>
+  </data>
+  <data name="GridSortedAscending" xml:space="preserve">
+    <value>Sorted ascending</value>
+  </data>
+  <data name="GridSortedDescending" xml:space="preserve">
+    <value>Sorted descending</value>
   </data>
   <data name="SectionFavorites" xml:space="preserve">
     <value>Favorites</value>

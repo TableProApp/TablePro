@@ -48,9 +48,9 @@ internal static class WinUiHost
     }
 
     // A grid with data in the window, laid out and drawn.
-    public static async Task<DataGridView> ShowAsync(IGridData data, int frozen = 0)
+    public static async Task<DataGridView> ShowAsync(IGridData data, int frozen = 0, bool sizeToContent = false)
     {
-        var grid = new DataGridView { DefaultColumnWidth = 140 };
+        var grid = new DataGridView { DefaultColumnWidth = 140, SizeColumnsToContent = sizeToContent };
         Window.Content = new Microsoft.UI.Xaml.Controls.Grid
         {
             Background = (Brush)Application.Current.Resources["ApplicationPageBackgroundThemeBrush"],

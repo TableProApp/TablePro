@@ -79,14 +79,22 @@ public sealed partial class ShellTests
             Assert.Equal("1", AppSession.Cell(grid, 0, 0));
             app.Screenshot("05-table");
 
-            // The table sorts on the server: each click runs the table's query again with an ORDER BY.
+            // The table sorts on the server: each click runs the table's query again with an ORDER BY. The header
+            // reports the order as its ItemStatus, and a width the user set stays.
+            var title = () => app.FindByName("Title", grid);
+            Assert.Equal(string.Empty, title().Properties.ItemStatus.ValueOrDefault ?? string.Empty);
+            title().Patterns.Transform.Pattern.Resize(300, title().BoundingRectangle.Height);
+            Assert.Equal(300, AppSession.WaitForWidth(title, 300), 1.0);
             var unsorted = AppSession.Cell(grid, 0, 1);
             app.SortBy(grid, "Title");
             var ascending = app.WaitForCell(grid, 0, 1, value => value.Length > 0 && value != unsorted);
             Assert.True(string.CompareOrdinal(ascending, AppSession.Cell(grid, 1, 1)) <= 0);
+            Assert.Equal("Sorted ascending", AppSession.WaitForItemStatus(title, "Sorted ascending"));
             app.SortBy(grid, "Title");
             var descending = app.WaitForCell(grid, 0, 1, value => value.Length > 0 && value != ascending);
             Assert.True(string.CompareOrdinal(descending, AppSession.Cell(grid, 1, 1)) >= 0);
+            Assert.Equal("Sorted descending", AppSession.WaitForItemStatus(title, "Sorted descending"));
+            Assert.Equal(300, title().BoundingRectangle.Width, 1.0);
             Assert.StartsWith("Rows: 347", app.Find("TableStatus").Name, StringComparison.Ordinal);
             app.Screenshot("05-table-sorted");
 
@@ -101,6 +109,8 @@ public sealed partial class ShellTests
             Assert.StartsWith("Rows: 275", query, StringComparison.Ordinal);
             var results = app.Find("ResultsGrid");
             Assert.Equal("AC/DC", AppSession.Cell(results, 0, 0));
+            // Sized to the header and the first rows, past the default 140.
+            Assert.True(app.FindByName("Name", results).BoundingRectangle.Width > 160);
             app.Screenshot("06-query");
 
             // A query result sorts by running its statement again, as on macOS.
@@ -111,6 +121,20 @@ public sealed partial class ShellTests
                 "Rows: 275",
                 AppSession.WaitForText(app.Find("QueryStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal)),
                 StringComparison.Ordinal);
+
+            // A script cannot run again for a sort, so the rows it returned are sorted where they are.
+            app.Click(editor);
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+            Keyboard.Type("SELECT Name FROM Artist ORDER BY ArtistId; SELECT 1");
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+            app.WaitForCell(results, 0, 0, value => value == "AC/DC");
+            app.SortBy(results, "Name");
+            var held = AppSession.WaitForText(app.Find("QueryStatus"), value => value.Contains("sorted the rows shown", StringComparison.Ordinal));
+            Assert.Equal("Rows: 275 · sorted the rows shown", held);
+            var top = app.WaitForCell(results, 0, 0, value => value.Length > 0 && value != "AC/DC");
+            Assert.True(string.CompareOrdinal(top, AppSession.Cell(results, 1, 0)) <= 0);
+            Assert.Equal("Sorted ascending", AppSession.WaitForItemStatus(() => app.FindByName("Name", results), "Sorted ascending"));
+            app.Screenshot("06-query-sorted-held");
             app.Close();
         }
 

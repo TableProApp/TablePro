@@ -67,6 +67,49 @@ public sealed class AutomationTests
         Assert.Equal(DataGridAutomationPeer.MaxSelectionPeers, peer.GetSelection().Length);
     });
 
+    // UIA's HeaderItem control type gives a header's sort order as its ItemStatus.
+    [Fact]
+    public Task AHeaderReportsItsSortOrderAsItsItemStatus() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+        var status = () => FrameworkElementAutomationPeer.CreatePeerForElement(grid.HeaderCell(2)!).GetItemStatus();
+        var peer = FrameworkElementAutomationPeer.CreatePeerForElement(grid.HeaderCell(2)!);
+        var invoke = (IInvokeProvider)peer.GetPattern(PatternInterface.Invoke);
+
+        var unsorted = status();
+        invoke.Invoke();
+        var ascending = status();
+        invoke.Invoke();
+        var descending = status();
+        grid.SortedAscendingStatus = "Tri croissant";
+        grid.Sort = new Model.GridSort(2, Model.SortDirection.Ascending);
+        var worded = status();
+        grid.Sort = new Model.GridSort(3, Model.SortDirection.Ascending);
+
+        Assert.Equal("", unsorted);
+        Assert.Equal("Sorted ascending", ascending);
+        Assert.Equal("Sorted descending", descending);
+        Assert.Equal("Tri croissant", worded);
+        Assert.Equal("", status());
+        Assert.Equal("Tri croissant", FrameworkElementAutomationPeer.CreatePeerForElement(grid.HeaderCell(3)!).GetItemStatus());
+    });
+
+    [Fact]
+    public Task AHeaderResizesThroughTransformInPhysicalPixels() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData());
+        var peer = FrameworkElementAutomationPeer.CreatePeerForElement(grid.HeaderCell(2)!);
+        var transform = (ITransformProvider)peer.GetPattern(PatternInterface.Transform);
+        var scale = grid.XamlRoot.RasterizationScale;
+
+        transform.Resize(250 * scale, grid.HeaderHeight * scale);
+
+        Assert.True(transform.CanResize);
+        Assert.False(transform.CanMove);
+        Assert.Equal(250, grid.Columns.Width(2), 3);
+        Assert.Throws<InvalidOperationException>(() => transform.Move(0, 0));
+    });
+
     [Fact]
     public Task AHeaderIsAHeaderItemThatSortsWhenInvoked() => WinUiHost.RunAsync(async () =>
     {

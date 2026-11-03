@@ -994,6 +994,8 @@ static class _UniFFILib {
     
     
     
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1517,6 +1519,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ulong uniffi_tablepro_ffi_fn_method_resultset_sorted(ulong @ptr,uint @column,sbyte @ascending,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ulong uniffi_tablepro_ffi_fn_clone_queryrun(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
     );
 
@@ -1748,7 +1761,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_sorted_query(ulong @ptr,RustBuffer @sql,RustBuffer @column,sbyte @ascending,ref UniffiRustCallStatus _uniffi_out_err
+     RustBuffer uniffi_tablepro_ffi_fn_method_databasesession_sorted_query(ulong @ptr,RustBuffer @sql,RustBuffer @columns,uint @column,sbyte @ascending,ref UniffiRustCallStatus _uniffi_out_err
     );
 
     #if NET8_0_OR_GREATER
@@ -2760,6 +2773,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_resultset_sorted(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryrun_cancel(
     );
 
@@ -3294,8 +3318,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_cell_text();
-            if (checksum != 49681) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_cell_text` checksum `49681`, library returned `{checksum}`");
+            if (checksum != 54600) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_cell_text` checksum `54600`, library returned `{checksum}`");
             }
         }
         {
@@ -3318,14 +3342,20 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_open_cursor();
-            if (checksum != 16061) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_open_cursor` checksum `16061`, library returned `{checksum}`");
+            if (checksum != 31812) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_open_cursor` checksum `31812`, library returned `{checksum}`");
             }
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_row_count();
             if (checksum != 46316) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_row_count` checksum `46316`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_resultset_sorted();
+            if (checksum != 38864) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_resultset_sorted` checksum `38864`, library returned `{checksum}`");
             }
         }
         {
@@ -3432,8 +3462,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_databasesession_sorted_query();
-            if (checksum != 46905) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_sorted_query` checksum `46905`, library returned `{checksum}`");
+            if (checksum != 35269) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_databasesession_sorted_query` checksum `35269`, library returned `{checksum}`");
             }
         }
         {
@@ -4610,7 +4640,7 @@ internal interface IDatabaseSession {
     /// <exception cref="CoreException"></exception>
     Task<SchemaEntry[]> Schemas(CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
-    string? SortedQuery(string @sql, string @column, bool @ascending);
+    string? SortedQuery(string @sql, string[] @columns, uint @column, bool @ascending);
     /// <exception cref="CoreException"></exception>
     Task<TableQuery> TableQuery(TableName @table, ColumnSort? @sort, ulong @limit, ulong @offset, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
@@ -4905,10 +4935,10 @@ internal class DatabaseSession : IDatabaseSession, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public string? SortedQuery(string @sql, string @column, bool @ascending) {
+    public string? SortedQuery(string @sql, string[] @columns, uint @column, bool @ascending) {
         return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
     _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
-    _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_sorted_query(thisPtr, FfiConverterString.INSTANCE.Lower(@sql), FfiConverterString.INSTANCE.Lower(@column), FfiConverterBoolean.INSTANCE.Lower(@ascending), ref _status)
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_databasesession_sorted_query(thisPtr, FfiConverterString.INSTANCE.Lower(@sql), FfiConverterSequenceString.INSTANCE.Lower(@columns), FfiConverterUInt32.INSTANCE.Lower(@column), FfiConverterBoolean.INSTANCE.Lower(@ascending), ref _status)
 )));
     }
     
@@ -5369,13 +5399,7 @@ class FfiConverterTypeQueryRun: FfiConverter<QueryRun, ulong> {
 
 
 
-/// <summary>
-/// One result set of a run, readable while its rows still arrive.
-/// </summary>
 internal interface IResultSet {
-    /// <summary>
-    /// The whole value of one cell, `None` for null.
-    /// </summary>
     /// <exception cref="CoreException"></exception>
     string? CellText(ulong @row, uint @column);
     ResultColumnInfo[] Columns();
@@ -5387,16 +5411,11 @@ internal interface IResultSet {
     /// True once every row the set will hold is here.
     /// </summary>
     bool IsFinished();
-    /// <summary>
-    /// A cursor for `tablepro_cursor_fetch`, as an address the caller
-    /// frees with `tablepro_cursor_free`.
-    /// </summary>
     ulong OpenCursor();
     ulong RowCount();
+    /// <exception cref="CoreException"></exception>
+    ResultSet Sorted(uint @column, bool @ascending);
 }
-/// <summary>
-/// One result set of a run, readable while its rows still arrive.
-/// </summary>
 internal class ResultSet : IResultSet, IDisposable {
     protected ulong pointer;
     private int _wasDestroyed = 0;
@@ -5486,9 +5505,6 @@ internal class ResultSet : IResultSet, IDisposable {
     }
 
     
-    /// <summary>
-    /// The whole value of one cell, `None` for null.
-    /// </summary>
     /// <exception cref="CoreException"></exception>
     public string? CellText(ulong @row, uint @column) {
         return CallWithPointer(thisPtr => FfiConverterOptionalString.INSTANCE.Lift(
@@ -5528,10 +5544,6 @@ internal class ResultSet : IResultSet, IDisposable {
     }
     
     
-    /// <summary>
-    /// A cursor for `tablepro_cursor_fetch`, as an address the caller
-    /// frees with `tablepro_cursor_free`.
-    /// </summary>
     public ulong OpenCursor() {
         return CallWithPointer(thisPtr => FfiConverterUInt64.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
@@ -5544,6 +5556,15 @@ internal class ResultSet : IResultSet, IDisposable {
         return CallWithPointer(thisPtr => FfiConverterUInt64.INSTANCE.Lift(
     _UniffiHelpers.RustCall( (ref UniffiRustCallStatus _status) =>
     _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_row_count(thisPtr,  ref _status)
+)));
+    }
+    
+    
+    /// <exception cref="CoreException"></exception>
+    public ResultSet Sorted(uint @column, bool @ascending) {
+        return CallWithPointer(thisPtr => FfiConverterTypeResultSet.INSTANCE.Lift(
+    _UniffiHelpers.RustCallWithError(FfiConverterTypeCoreError.INSTANCE, (ref UniffiRustCallStatus _status) =>
+    _UniFFILib.uniffi_tablepro_ffi_fn_method_resultset_sorted(thisPtr, FfiConverterUInt32.INSTANCE.Lower(@column), FfiConverterBoolean.INSTANCE.Lower(@ascending), ref _status)
 )));
     }
     

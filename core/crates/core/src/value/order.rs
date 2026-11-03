@@ -2,17 +2,10 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::str::FromStr;
 
-use tablepro_core::Value;
-use tablepro_core::value::{SqlDecimal, SqlInterval, Temporal, TimeWithOffset};
+use super::{SqlDecimal, SqlInterval, Temporal, TimeWithOffset, Value};
+use crate::column::{ColumnKind, ColumnType};
 
-/// The order a header click puts a column's values in, for every kind
-/// but text, which `GtkStringSorter` collates in the user's locale.
-///
-/// NULL comes first. Numbers compare by value across their kinds, so
-/// an integer, a float and a decimal in one column interleave as they
-/// would on a number line. Each value is ordered by what it holds
-/// rather than by its column's declared type, since a SQLite column
-/// can hold any kind.
+// Each value is ordered by what it holds, not by its column's declared type, since a SQLite column can hold any kind.
 pub fn compare(a: &Value, b: &Value) -> Ordering {
     match (a, b) {
         (Value::Null, Value::Null) => Ordering::Equal,
@@ -25,10 +18,7 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
     }
 }
 
-/// The order of a column that can hold text: NULL, then numbers by
-/// value, then text, then blobs, then the rest as `compare` orders
-/// them. Two texts are `Equal` here, since the collating sorter orders
-/// them.
+// Two texts are Equal here: a host collates them, or `held_order` does.
 pub fn storage_class_order(a: &Value, b: &Value) -> Ordering {
     let class = storage_class(a);
     match class.cmp(&storage_class(b)) {
@@ -41,14 +31,18 @@ pub fn storage_class_order(a: &Value, b: &Value) -> Ordering {
     }
 }
 
-/// Where `value`'s storage class sorts among the others, as
-/// `storage_class_order` places them.
 pub fn storage_class_rank(value: &Value) -> i32 {
     storage_class(value) as i32
 }
 
-/// The text a collating sorter orders `value` by. `None` for a value
-/// that is not text, which some other sorter has already placed.
+// A column whose rows may hold text orders by storage class first, so a SQLite column of mixed kinds reads as
+// NULL, numbers, text, blobs.
+pub fn sorts_as_text(column: &ColumnType) -> bool {
+    column.dynamic_storage
+        || column.kind.is_textual()
+        || matches!(column.kind, ColumnKind::Json { .. } | ColumnKind::Network(_))
+}
+
 pub fn sort_text(value: &Value) -> Option<&str> {
     let text = match value {
         Value::Text(text) => text,
@@ -59,13 +53,79 @@ pub fn sort_text(value: &Value) -> Option<&str> {
     Some(sort_head(text))
 }
 
-/// A collation key is built from the whole text it is given, so a sort
-/// of large documents would build keys as large as they are. The head
-/// decides any order a person reads.
+// Text as the macOS app orders a result it holds: digit runs by their value, everything else by code point, case
+// counting. UTF-8 bytes order as their code points do, and a digit is never part of a longer character.
+pub fn natural_text_order(a: &str, b: &str) -> Ordering {
+    let (mut a, mut b) = (a.as_bytes(), b.as_bytes());
+    loop {
+        match (a.split_first(), b.split_first()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some((left, _)), Some((right, _))) if left.is_ascii_digit() && right.is_ascii_digit() => {
+                let (left, left_rest) = split_digits(a);
+                let (right, right_rest) = split_digits(b);
+                let order = digits_order(left, right);
+                if order.is_ne() {
+                    return order;
+                }
+                (a, b) = (left_rest, right_rest);
+            }
+            (Some((left, left_rest)), Some((right, right_rest))) => {
+                if left != right {
+                    return left.cmp(right);
+                }
+                (a, b) = (left_rest, right_rest);
+            }
+        }
+    }
+}
+
+// The order a host shows a column of held rows in: stable, so equal values keep the order they arrived in, and
+// descending is the comparison reversed, which puts NULL last.
+pub fn row_order(values: &[Value], as_text: bool, ascending: bool) -> Vec<usize> {
+    let mut rows: Vec<usize> = (0..values.len()).collect();
+    let null = Value::Null;
+    rows.sort_by(|&left, &right| {
+        let left = values.get(left).unwrap_or(&null);
+        let right = values.get(right).unwrap_or(&null);
+        let order = held_order(left, right, as_text);
+        if ascending { order } else { order.reverse() }
+    });
+    rows
+}
+
+fn held_order(a: &Value, b: &Value, as_text: bool) -> Ordering {
+    if !as_text {
+        return compare(a, b);
+    }
+    match (sort_text(a), sort_text(b)) {
+        (Some(left), Some(right)) => natural_text_order(left, right),
+        _ => storage_class_order(a, b),
+    }
+}
+
+fn split_digits(bytes: &[u8]) -> (&[u8], &[u8]) {
+    let end = bytes
+        .iter()
+        .position(|byte| !byte.is_ascii_digit())
+        .unwrap_or(bytes.len());
+    bytes.split_at(end)
+}
+
+fn digits_order(a: &[u8], b: &[u8]) -> Ordering {
+    let (a, b) = (significant(a), significant(b));
+    a.len().cmp(&b.len()).then_with(|| a.cmp(b))
+}
+
+fn significant(digits: &[u8]) -> &[u8] {
+    let start = digits.iter().position(|digit| *digit != b'0').unwrap_or(digits.len());
+    digits.split_at(start).1
+}
+
+// A collation key is built from the whole text it is given; the head decides any order a person reads.
 const SORT_TEXT_MAX_CHARS: usize = 4_096;
 
-/// A text of no more bytes than the cap has no more chars either, so it
-/// is not walked.
 fn sort_head(text: &str) -> &str {
     if text.len() <= SORT_TEXT_MAX_CHARS {
         return text;
@@ -94,8 +154,6 @@ fn storage_class(value: &Value) -> StorageClass {
     }
 }
 
-/// Where a kind of value sorts among the others, for a column that
-/// mixes them.
 fn rank(value: &Value) -> u8 {
     match value {
         Value::Null => 0,
@@ -152,9 +210,7 @@ fn same_rank(a: &Value, b: &Value) -> Ordering {
     }
 }
 
-/// An interval's length the way PostgreSQL compares two: a month is 30
-/// days and a day 24 hours, so `1 mon` equals `30 days` and sorts
-/// before `40 days`.
+// As PostgreSQL compares two: a month is 30 days and a day 24 hours, so `1 mon` equals `30 days`.
 fn interval_span(interval: &SqlInterval) -> i128 {
     const MICROS_PER_DAY: i128 = 86_400_000_000;
     let days = i128::from(interval.months) * 30 + i128::from(interval.days);
@@ -168,8 +224,7 @@ fn is_number(value: &Value) -> bool {
     )
 }
 
-/// Two numbers by value. NaN sorts after every number, as PostgreSQL
-/// sorts it.
+// NaN sorts after every number, as PostgreSQL sorts it.
 fn numeric_order(a: &Value, b: &Value) -> Ordering {
     match (float_of(a), float_of(b)) {
         (Some(a), Some(b)) => return float_order(a, b),
@@ -212,10 +267,9 @@ fn integer_of(value: &Value) -> Option<i128> {
     }
 }
 
-/// The value as an exact decimal, for comparing numbers of different
-/// kinds. A float is taken at the decimal its shortest form spells. A
-/// decimal is borrowed, since a sort compares each one many times.
-pub(crate) fn decimal_of(value: &Value) -> Option<Cow<'_, SqlDecimal>> {
+// A float is taken at the decimal its shortest form spells. A decimal is borrowed: a sort compares each one many
+// times.
+pub fn decimal_of(value: &Value) -> Option<Cow<'_, SqlDecimal>> {
     let owned = match value {
         Value::Decimal(decimal) => return Some(Cow::Borrowed(decimal)),
         Value::Float32(_) | Value::Float64(_) => {
@@ -239,8 +293,7 @@ pub(crate) fn decimal_of(value: &Value) -> Option<Cow<'_, SqlDecimal>> {
     Some(Cow::Owned(owned))
 }
 
-/// A float's shortest decimal spelling at its own width, so `0.1f32`
-/// is `1e-1` rather than the double it widens to.
+// At the float's own width, so `0.1f32` is `1e-1` rather than the double it widens to.
 fn format_float(value: &Value) -> String {
     match value {
         Value::Float32(float) => format!("{float:e}"),
@@ -249,9 +302,7 @@ fn format_float(value: &Value) -> String {
     }
 }
 
-/// Dates and timestamps, with the infinities at either end. A timestamp
-/// with an offset orders by its instant, then by its offset, so two
-/// spellings of one instant keep a stable order.
+// An offset timestamp orders by its instant, then by its offset, so two spellings of one instant keep a stable order.
 fn instant_order(a: &Value, b: &Value) -> Ordering {
     let (Some(a_key), Some(b_key)) = (instant(a), instant(b)) else {
         return rank(a).cmp(&rank(b));
@@ -259,8 +310,7 @@ fn instant_order(a: &Value, b: &Value) -> Ordering {
     a_key.cmp(&b_key)
 }
 
-/// `(end, instant, offset)`: `end` puts -infinity first and infinity
-/// last.
+// The first part puts -infinity first and infinity last.
 fn instant(value: &Value) -> Option<(i8, Option<chrono::NaiveDateTime>, i32)> {
     let midnight = |date: &chrono::NaiveDate| date.and_hms_opt(0, 0, 0);
     match value {
@@ -290,9 +340,10 @@ fn temporal_key<T>(
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, NaiveDate};
-    use tablepro_core::value::{BitString, OffsetTimestamp, WideInteger};
 
     use super::*;
+    use crate::column::ReadForm;
+    use crate::value::{BitString, JsonText, OffsetTimestamp, OtherValue, WideInteger};
 
     fn order(a: &Value, b: &Value) -> Ordering {
         compare(a, b)
@@ -305,6 +356,10 @@ mod tests {
 
     fn decimal(text: &str) -> Value {
         Value::Decimal(SqlDecimal::from_str(text).expect("a decimal"))
+    }
+
+    fn text(text: &str) -> Value {
+        Value::Text(text.to_owned())
     }
 
     #[test]
@@ -464,7 +519,7 @@ mod tests {
     fn dynamic_storage_orders_by_storage_class() {
         let mut values = vec![
             Value::Bytes(vec![0]),
-            Value::Text("apple".to_owned()),
+            text("apple"),
             Value::Float64(2.5),
             Value::Null,
             Value::Int(3),
@@ -479,12 +534,12 @@ mod tests {
                 Value::Int(-1),
                 Value::Float64(2.5),
                 Value::Int(3),
-                Value::Text("apple".to_owned()),
+                text("apple"),
                 Value::Bytes(vec![0]),
             ]
         );
         assert_eq!(
-            storage_class_order(&Value::Text("b".to_owned()), &Value::Text("a".to_owned())),
+            storage_class_order(&text("b"), &text("a")),
             Ordering::Equal,
             "text is the collating sorter's to order"
         );
@@ -498,18 +553,18 @@ mod tests {
             sort_text(&Value::Text(long)),
             Some("é".repeat(SORT_TEXT_MAX_CHARS).as_str())
         );
-        assert_eq!(sort_text(&Value::Text("short".to_owned())), Some("short"));
+        assert_eq!(sort_text(&text("short")), Some("short"));
     }
 
     #[test]
     fn sort_text_covers_text_kinds_only() {
-        let json = tablepro_core::value::JsonText::parse("{\"a\":1}".to_owned()).expect("json");
-        let other = Value::Other(Box::new(tablepro_core::value::OtherValue {
+        let json = JsonText::parse("{\"a\":1}".to_owned()).expect("json");
+        let other = Value::Other(Box::new(OtherValue {
             type_name: "inet".to_owned(),
             text: "10.0.0.1".to_owned(),
         }));
 
-        assert_eq!(sort_text(&Value::Text("plain".to_owned())), Some("plain"));
+        assert_eq!(sort_text(&text("plain")), Some("plain"));
         assert_eq!(sort_text(&Value::Json(json)), Some("{\"a\":1}"));
         assert_eq!(sort_text(&other), Some("10.0.0.1"));
         for value in [
@@ -521,5 +576,81 @@ mod tests {
         ] {
             assert_eq!(sort_text(&value), None, "{value:?}");
         }
+    }
+
+    #[test]
+    fn natural_text_orders_digit_runs_by_value() {
+        let mut names = vec![
+            "file10", "file2", "File1", "file1", "file02b", "file", "file2a", "a1", "ab",
+        ];
+        names.sort_by(|a, b| natural_text_order(a, b));
+
+        assert_eq!(
+            names,
+            [
+                "File1", "a1", "ab", "file", "file1", "file2", "file2a", "file02b", "file10"
+            ]
+        );
+        assert_eq!(natural_text_order("v01", "v1"), Ordering::Equal);
+        assert_eq!(
+            natural_text_order("99999999999999999999999", "100000000000000000000000"),
+            Ordering::Less
+        );
+        assert_eq!(
+            natural_text_order("é", "z"),
+            Ordering::Greater,
+            "code points, not a locale"
+        );
+        assert_eq!(natural_text_order("a!", "a1"), Ordering::Less);
+    }
+
+    #[test]
+    fn held_rows_order_as_text_with_null_first_and_stable_ties() {
+        let values = vec![
+            text("b10"),
+            Value::Null,
+            text("b9"),
+            Value::Int(5),
+            text("a"),
+            text("b9"),
+            Value::Bytes(vec![1]),
+        ];
+
+        assert_eq!(row_order(&values, true, true), [1, 3, 4, 2, 5, 0, 6]);
+        assert_eq!(
+            row_order(&values, true, false),
+            [6, 0, 2, 5, 4, 3, 1],
+            "descending reverses the order, NULL last, and equal values keep their arrival order"
+        );
+    }
+
+    #[test]
+    fn held_rows_of_a_typed_column_order_by_value() {
+        let values = vec![
+            decimal("10.5"),
+            Value::Int(-2),
+            Value::Null,
+            Value::Float64(3.0),
+            Value::Int(10),
+        ];
+
+        assert_eq!(row_order(&values, false, true), [2, 1, 3, 4, 0]);
+        assert_eq!(row_order(&values, false, false), [0, 4, 3, 1, 2]);
+    }
+
+    #[test]
+    fn text_columns_sort_by_storage_class_first() {
+        let typed = |kind| ColumnType {
+            name: "t".to_owned(),
+            kind,
+            catalog: None,
+            dynamic_storage: false,
+            read_form: ReadForm::Native,
+        };
+
+        assert!(sorts_as_text(&ColumnType::untyped_text("")));
+        assert!(sorts_as_text(&typed(ColumnKind::Xml)));
+        assert!(!sorts_as_text(&typed(ColumnKind::Date)));
+        assert!(!sorts_as_text(&typed(ColumnKind::Uuid)));
     }
 }
