@@ -1,17 +1,17 @@
 import Foundation
 import os
 import TableProMCP
-import TableProSQLGrammar
 
 public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
     public static let name = "confirm_destructive_operation"
     public static let title: String? = String(localized: "Confirm Destructive Operation")
     public static let description = String(
         localized: """
-        Run one destructive statement (DROP, TRUNCATE, ALTER...DROP). The user approves it before it \
-        runs: through your elicitation prompt when your client supports elicitation, otherwise through \
-        TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a connection the \
-        user left writable for external clients.
+        Run what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE \
+        with no WHERE: one statement, or on SQL Server a whole script. Anything else is refused. The user \
+        approves it before it runs: through your elicitation prompt when your client supports elicitation, \
+        otherwise through TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a \
+        connection the user left writable for external clients.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsWrite]
@@ -34,7 +34,7 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
         required: ["connection_id", "query"]
     )
 
-    public static let outputSchema: JsonValue? = MCPToolSchema.resultSet
+    public static let outputSchema: JsonValue? = MCPToolSchema.scriptResult
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.Tools")
 
@@ -52,22 +52,16 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
         let connectionId = try MCPArgumentDecoder.requireUuid(arguments, key: "connection_id")
         let query = try MCPArgumentDecoder.requireNonEmptyString(arguments, key: "query")
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
+        let allowsMultiStatement = ExternalStatementGate.acceptsScripts(on: meta.databaseType)
 
-        let classification = try MCPStatementGate.classify(
+        try MCPStatementGate.classify(
             sql: query,
             meta: meta,
             allowsDestructive: true,
+            allowsMultiStatement: allowsMultiStatement,
             context: context
         )
-        guard classification.tier == .destructive else {
-            throw MCPToolExecutionError.invalidArgument(
-                String(
-                    localized: """
-                    This tool only runs destructive statements. Use execute_query for everything else.
-                    """
-                )
-            )
-        }
+        try MCPStatementGate.requireDestructive(sql: query, meta: meta)
 
         let settings = await services.settingsProvider()
         let timeoutSeconds = try MCPLimitResolver.resolveTimeoutSeconds(arguments, settings: settings)
@@ -76,18 +70,20 @@ public struct ConfirmDestructiveOperationTool: MCPToolImplementation {
             connectionId: connectionId,
             services: services
         )
-        let statement: OperationStatement
+        let planned: DatabaseAccessBridge.PlannedText
         do {
-            statement = try await services.connectionBridge.plannedStatement(scope: scope, query: query, maxRows: 0)
+            planned = try await services.connectionBridge.plannedScript(scope: scope, query: query, maxRows: 0)
         } catch {
             throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
         }
         let operation = try await MCPStatementGate.approve(
-            [statement],
-            kind: OperationKind.from(classification.tier),
+            [planned.statement],
+            kind: .destructiveQuery,
+            unit: planned.unit,
             scope: scope,
             meta: meta,
             allowsDestructive: true,
+            allowsMultiStatement: allowsMultiStatement,
             operationLabel: String(localized: "a destructive statement"),
             context: context,
             services: services
