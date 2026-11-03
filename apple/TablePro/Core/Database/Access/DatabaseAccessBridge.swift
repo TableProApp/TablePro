@@ -95,9 +95,13 @@ internal actor DatabaseAccessBridge {
     @MainActor
     private static func disconnectUnlessWorkIsLost(_ connectionId: UUID, manager: DatabaseManager) async throws {
         guard manager.activeSessions[connectionId] != nil else { throw DatabaseAccessError.notConnected(connectionId) }
-        let transactions = await manager.transactionSafety(for: connectionId)
+        let turnRevisionBefore = manager.sessionTransactions.turnRevision(for: connectionId)
+        let probed = await manager.transactionSafety(for: connectionId)
         // Read after the probe and with no suspension before the disconnect, so work that started meanwhile counts.
         guard manager.activeSessions[connectionId] != nil else { throw DatabaseAccessError.notConnected(connectionId) }
+        let transactions = manager.settledTransactionSafety(
+            probed, for: connectionId, turnRevisionBefore: turnRevisionBefore
+        )
         if let refusal = ExternalDisconnectRefusal.message(
             work: RunningWorkRegistry.shared.items(in: .connection(connectionId)),
             transactions: transactions,

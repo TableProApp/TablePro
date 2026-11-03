@@ -48,6 +48,23 @@ extension DatabaseManager {
     }
 
     // Unlike the probe above, a busy session, a timeout or an engine that cannot say is never read as safe.
+    // The probe suspends, so a lane can take a turn meanwhile; what the tracker learned since, or a turn still
+    // running, outranks a stale idle answer.
+    internal func settledTransactionSafety(
+        _ probed: SessionTransactionSafety,
+        for connectionId: UUID,
+        turnRevisionBefore: Int
+    ) -> SessionTransactionSafety {
+        guard activeSessions[connectionId]?.driver?.supportsTransactions ?? true else { return probed }
+        if probed == .holding || !sessionTransactions.holds(for: connectionId).isEmpty { return .holding }
+        guard probed == .noTransaction else { return probed }
+        let laneKeys = [browsedGateKey(for: connectionId)] + sessionLanes.parkedDatabases(for: connectionId).map {
+            SessionDriverGate.Key(connectionId: connectionId, database: $0)
+        }
+        if laneKeys.contains(where: { sessionDriverGate.isHeld($0) }) { return .unknown }
+        return sessionTransactions.turnRevision(for: connectionId) == turnRevisionBefore ? .noTransaction : .unknown
+    }
+
     internal func transactionSafety(
         for connectionId: UUID,
         clock: any Clock<Duration> = ContinuousClock()

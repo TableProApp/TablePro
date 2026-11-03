@@ -117,6 +117,32 @@ struct DisconnectToolTests {
         RunningWorkRegistry.shared.end(driver.startedWork)
     }
 
+    @Test("A transaction another lane opened while the probe ran is seen, and the disconnect is refused")
+    @MainActor
+    func transactionOpenedDuringTheProbeRefuses() async throws {
+        let connection = TestFixtures.makeConnection(name: "Opens a transaction", type: .mysql)
+        let driver = TransactionOpeningDriver(connectionId: connection.id)
+        try await withLiveSession(connection, driver: driver) {
+            let result = try await call(.object(["connection_id": .string(connection.id.uuidString)]))
+
+            #expect(result.isError)
+            #expect(MCPToolTestHarness.errorText(result)?.contains("an open transaction") == true)
+            #expect(DatabaseManager.shared.activeSessions[connection.id] != nil)
+        }
+    }
+
+    @Test("A turn recorded while the probe ran makes an idle answer unknown")
+    @MainActor
+    func turnDuringTheProbeIsUnknown() {
+        let manager = DatabaseManager.shared
+        let connectionId = UUID()
+        let before = manager.sessionTransactions.turnRevision(for: connectionId)
+
+        #expect(manager.settledTransactionSafety(.noTransaction, for: connectionId, turnRevisionBefore: before) == .noTransaction)
+        #expect(manager.settledTransactionSafety(.noTransaction, for: connectionId, turnRevisionBefore: before - 1) == .unknown)
+        #expect(manager.settledTransactionSafety(.holding, for: connectionId, turnRevisionBefore: before) == .holding)
+    }
+
     @Test("A transactional engine that cannot report its state is refused, naming nothing")
     @MainActor
     func unknownTransactionStateRefuses() async throws {
@@ -206,6 +232,29 @@ private final class UnknownStateDriver: PluginDriverStub, @unchecked Sendable {
 
 private final class TransactionlessDriver: PluginDriverStub, @unchecked Sendable {
     var supportsTransactions: Bool { false }
+}
+
+// Another lane's turn finishes with a transaction open while the disconnect still waits on this probe.
+private final class TransactionOpeningDriver: PluginDriverStub, @unchecked Sendable {
+    private let connectionId: UUID
+
+    init(connectionId: UUID) {
+        self.connectionId = connectionId
+    }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        let connectionId = connectionId
+        await MainActor.run {
+            let manager = DatabaseManager.shared
+            guard let driver = manager.activeSessions[connectionId]?.driver else { return }
+            manager.sessionTransactions.record(
+                .inTransaction,
+                on: driver,
+                for: SessionTransactionTracker.Key(connectionId: connectionId, lane: nil)
+            )
+        }
+        return .idle
+    }
 }
 
 // Starts an import on the connection while the disconnect is still asking about transactions.
