@@ -93,7 +93,7 @@ struct TransferProgressTests {
 
     @Test("A job that leaves nothing behind cancels, one that leaves what it did stops")
     func stopActions() {
-        #expect(TransferJob.export.stopPolicy.action == .cancel)
+        #expect(TransferJob.export.stopPolicy.action == .stop)
         #expect(TransferJob.backup(databaseCount: 1).stopPolicy.action == .cancel)
         #expect(TransferJob.dataImport.stopPolicy.action == .stop)
         #expect(TransferJob.backup(databaseCount: 3).stopPolicy.action == .stop)
@@ -101,7 +101,7 @@ struct TransferProgressTests {
         #expect(TransferJob.tableTransfer(wrapsEachTable: true).stopPolicy.action == .stop)
         #expect(TransferJob.objectCopy.stopPolicy.action == .stop)
 
-        let cancel = TransferJob.export.stopPolicy
+        let cancel = TransferJob.backup(databaseCount: 1).stopPolicy
         let stop = TransferJob.restore.stopPolicy
         #expect(cancel.buttonTitle == "Cancel")
         #expect(cancel.stoppingTitle == "Cancelling…")
@@ -111,7 +111,7 @@ struct TransferProgressTests {
 
     @Test("Each confirmation says what the job really leaves")
     func consequences() {
-        #expect(TransferJob.export.stopPolicy.consequence == "No file is saved.")
+        #expect(TransferJob.export.stopPolicy.consequence == "Partial files may remain on disk.")
         #expect(TransferJob.dataImport.stopPolicy.consequence == "Anything already imported may stay.")
         #expect(TransferJob.backup(databaseCount: 1).stopPolicy.consequence == "The partial backup file is removed.")
         #expect(
@@ -125,7 +125,7 @@ struct TransferProgressTests {
         )
         #expect(TransferJob.tableTransfer(wrapsEachTable: false).stopPolicy.consequence == "Rows already transferred stay.")
         #expect(TransferJob.objectCopy.stopPolicy.consequence == "Objects already copied stay.")
-        #expect(TransferJob.export.stopPolicy.confirmationTitle == "Cancel Export?")
+        #expect(TransferJob.export.stopPolicy.confirmationTitle == "Stop Export?")
         #expect(TransferJob.restore.stopPolicy.confirmButton == "Stop Restore")
     }
 

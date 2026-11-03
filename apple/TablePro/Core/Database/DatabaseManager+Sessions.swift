@@ -86,16 +86,12 @@ extension DatabaseManager {
             if !resolvedConnection.enabledTunnelKinds.isEmpty {
                 reportStage(.resolvingTunnel, attempt: attempt, for: connection.id)
             }
-            effectiveConnection = try await CloudSQLProxyManager.$connectStageReporter.withValue(
-                stageReporter(for: connection.id, attempt: attempt)
-            ) {
-                try await buildEffectiveConnection(
-                    for: resolvedConnection,
-                    sshPasswordOverride: sshPasswordOverride,
-                    deadline: deadline,
-                    ownsAttempt: { !self.isAttemptCancelled(attempt, for: connection.id) }
-                )
-            }
+            effectiveConnection = try await buildEffectiveConnectionReportingStages(
+                for: resolvedConnection,
+                sshPasswordOverride: sshPasswordOverride,
+                deadline: deadline,
+                attempt: (attempt, connection.id)
+            )
         } catch {
             let reportedError = isAttemptCancelled(attempt, for: connection.id)
                 ? error
@@ -1049,6 +1045,25 @@ extension DatabaseManager {
     /// behind would seed the next window that opens on this connection with a stale one.
     internal func clearConnectionStage(for connectionId: UUID) {
         connectionStages.removeValue(forKey: connectionId)
+    }
+
+    // The proxy reports its download as a stage of this attempt.
+    private func buildEffectiveConnectionReportingStages(
+        for resolvedConnection: DatabaseConnection,
+        sshPasswordOverride: String?,
+        deadline: ConnectionDeadline,
+        attempt: (number: Int, connectionId: UUID)
+    ) async throws -> DatabaseConnection {
+        try await CloudSQLProxyManager.$connectStageReporter.withValue(
+            stageReporter(for: attempt.connectionId, attempt: attempt.number)
+        ) {
+            try await buildEffectiveConnection(
+                for: resolvedConnection,
+                sshPasswordOverride: sshPasswordOverride,
+                deadline: deadline,
+                ownsAttempt: { !self.isAttemptCancelled(attempt.number, for: attempt.connectionId) }
+            )
+        }
     }
 
     /// Handed to a driver, so it is called from whatever thread the handshake runs on and has

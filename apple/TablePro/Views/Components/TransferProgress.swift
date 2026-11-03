@@ -27,11 +27,12 @@ internal enum TransferJob: Equatable, Sendable {
     internal var stopPolicy: TransferStopPolicy {
         switch self {
         case .export:
+            // Not every format can stop its final write, so nothing is promised about the file.
             return TransferStopPolicy(
-                action: .cancel,
-                confirmationTitle: String(localized: "Cancel Export?"),
-                confirmButton: String(localized: "Cancel Export"),
-                consequence: String(localized: "No file is saved.")
+                action: .stop,
+                confirmationTitle: String(localized: "Stop Export?"),
+                confirmButton: String(localized: "Stop Export"),
+                consequence: String(localized: "Partial files may remain on disk.")
             )
         case .dataImport:
             // Whether a Stop rolls back depends on the engine, the table and the user's own transaction.

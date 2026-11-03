@@ -33635,12 +33635,6 @@
     "Cancel Backup?" : {
 
     },
-    "Cancel Export" : {
-
-    },
-    "Cancel Export?" : {
-
-    },
     "Cancel installing %@" : {
 
     },
@@ -117326,9 +117320,6 @@
         }
       }
     },
-    "No file is saved." : {
-
-    },
     "No filters applied" : {
       "localizations" : {
         "fr" : {
@@ -174813,6 +174804,9 @@
 
     },
     "Stop Debugging" : {
+
+    },
+    "Stop Export" : {
 
     },
     "Stop Export?" : {

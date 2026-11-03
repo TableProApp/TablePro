@@ -105,7 +105,15 @@ internal enum WorkspaceCloseAction {
             }) == true
         }
         if !holdsUnsavedWork, let prompt = RunningWorkPrompt.make(action: .close, work: running) {
-            guard await RunningWorkApproval.confirm(prompt, window: coordinator?.contentWindow) else { return }
+            // Shown, then asked: the first host can be minimized or a background tab.
+            let owner = coordinators.first { coordinator in
+                running.contains { work in work.tabId.map { id in coordinator.tabManager.tabs.contains { $0.id == id } } ?? false }
+            } ?? coordinator
+            if let owner { reveal(workspace, in: owner) }
+            guard await RunningWorkApproval.confirm(prompt, window: owner?.contentWindow) else {
+                WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
+                return
+            }
         }
         guard let closable = await confirm(
             victims, across: coordinators, revealing: workspace, alsoStopping: holdsUnsavedWork ? running : []
