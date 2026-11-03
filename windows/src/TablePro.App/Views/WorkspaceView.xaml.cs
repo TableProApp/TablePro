@@ -95,6 +95,20 @@ public sealed partial class WorkspaceView : UserControl
     // Asked when the core has no secret saved for the connection. Null when the dialog is closed.
     internal async Task<SecretAnswer?> AskSecretAsync(SecretKind kind)
     {
+        // Windows restored together can each need a password; one dialog shows at a time, so they take turns.
+        await _workbench.Dialogs.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            return await AskSecretOnceAsync(kind).ConfigureAwait(true);
+        }
+        finally
+        {
+            _workbench.Dialogs.Release();
+        }
+    }
+
+    private async Task<SecretAnswer?> AskSecretOnceAsync(SecretKind kind)
+    {
         if (XamlRoot is null)
         {
             var loaded = new TaskCompletionSource();
@@ -196,7 +210,8 @@ public sealed partial class WorkspaceView : UserControl
             {
                 if (tab is { Kind: TabKind.Table, Table: { } table })
                 {
-                    OpenTable(tab.Schema, table, restore: tab);
+                    // Tabs merged from two windows can show one table twice; each comes back.
+                    AddTable(tab.Schema, table, null, tab);
                 }
                 else
                 {
@@ -230,7 +245,8 @@ public sealed partial class WorkspaceView : UserControl
     public SessionConnection Snapshot(SessionConnection origin)
     {
         ArgumentNullException.ThrowIfNull(origin);
-        if (Tabs.TabItems.Count == 0)
+        // Until it connects, the tabs it was saved with are still to come; once connected, the strip is the truth.
+        if (_session is null)
         {
             return origin;
         }
@@ -288,6 +304,16 @@ public sealed partial class WorkspaceView : UserControl
         if (open is not null)
         {
             Tabs.SelectedItem = open;
+            return;
+        }
+
+        AddTable(schema, name, index, restore);
+    }
+
+    private void AddTable(string? schema, string name, int? index, SessionTab? restore)
+    {
+        if (_share is null)
+        {
             return;
         }
 

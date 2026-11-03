@@ -84,5 +84,12 @@ internal sealed class Workbench : IDisposable
         return saved;
     }
 
-    public void Dispose() => Core.Dispose();
+    // A ContentDialog opens one at a time on a thread, so prompts that may meet wait for each other.
+    public SemaphoreSlim Dialogs { get; } = new(1, 1);
+
+    public void Dispose()
+    {
+        Dialogs.Dispose();
+        Core.Dispose();
+    }
 }
