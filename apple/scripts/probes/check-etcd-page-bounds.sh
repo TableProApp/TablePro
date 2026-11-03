@@ -31,5 +31,6 @@ SWIFT
 xcrun swiftc -swift-version 6 -I "$WORK" -L "$WORK" -lTableProPluginKit -lTableProEtcdCore \
     -Xlinker -rpath -Xlinker "$WORK" \
     "$PLUGIN/EtcdCommandParser.swift" "$PLUGIN/EtcdRowFilter.swift" "$PLUGIN/EtcdQueryBuilder.swift" \
+    "$PLUGIN/EtcdLeaseID.swift" \
     "$WORK/main.swift" -o "$WORK/probe"
 "$WORK/probe"
