@@ -704,16 +704,23 @@ struct WorkspaceRailCellTextTests {
         #expect(mark.displayedSymbolName == nil)
     }
 
-    @Test("The mark sits before the name and leaves the label's text alone")
-    func markSitsBeforeTheName() throws {
-        let cell = configuredCell(for: makeEntry(status: .failed(cause: "refused")))
-        let mark = try #require(cell.renderedStatusMark)
-        let label = try #require(cell.renderedLabel)
+    /// The mark used to sit before the name and cost it about 15pt of a 70pt column.
+    @Test("The mark is a badge on the tile's bottom-trailing corner and the label keeps the full width")
+    func markSitsOnTheTileCorner() throws {
+        let marked = configuredCell(for: makeEntry(status: .failed(cause: "refused")))
+        let plain = configuredCell(for: makeEntry())
+        let mark = try #require(marked.renderedStatusMark)
+        let tile = try #require(marked.renderedTile)
+        let label = try #require(marked.renderedLabel)
+        let tileBottom = marked.isFlipped ? tile.frame.maxY : tile.frame.minY
+        let markBottom = marked.isFlipped ? mark.frame.maxY : mark.frame.minY
 
         #expect(label.stringValue == "staging\napp")
-        #expect(mark.frame.maxX <= label.frame.minX)
-        #expect(cell.bounds.contains(mark.frame))
+        #expect(abs(mark.frame.midX - tile.frame.maxX) < 0.5)
+        #expect(abs(markBottom - tileBottom) < 0.5)
+        #expect(mark.frame.width == WorkspaceRailCellView.markSize(forIcon: WorkspaceRailMetrics.medium.iconSize))
         #expect(!mark.frame.intersects(label.frame))
+        #expect(label.frame == plain.renderedLabel?.frame)
     }
 
     /// The rail now draws the tile Welcome and the switcher draw, filled with the identity colour,

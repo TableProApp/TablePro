@@ -227,7 +227,26 @@ struct WorkspaceRailCellRenderingTests {
             #expect(cell.bounds.contains(mark.frame), "status mark escaped the \(layout) row")
             #expect(!tile.frame.intersects(label.frame), "tile overlapped the label in \(layout)")
             #expect(!mark.frame.intersects(label.frame), "status mark overlapped the label in \(layout)")
-            #expect((mark.frame.midY > label.frame.midY) == !cell.isFlipped, "mark left the name's line in \(layout)")
+            #expect(abs(mark.frame.midX - tile.frame.maxX) <= rail.pixel, "mark left the tile's corner in \(layout)")
+            #expect(mark.frame.intersects(tile.frame), "mark left the tile in \(layout)")
+        }
+    }
+
+    /// Measured on the shipped rail: an inline mark before the name truncated "analytics" to
+    /// "an…ics" at the medium width.
+    @Test("A status mark leaves a name like analytics untruncated at the medium width")
+    func statusMarkLeavesTheNameItsWidth() throws {
+        let layout = WorkspaceRailMetrics.medium
+        for status in [ConnectionDisplayStatus.failed(cause: "refused"), .lost(cause: nil), .reconnecting(attempt: 1, of: 10)] {
+            let marked = try HostedRail(entries: [entry(name: "analytics", container: "app", status: status)], layout: layout)
+                .cell(atRow: 0)
+            let plain = try HostedRail(entries: [entry(name: "analytics", container: "app")], layout: layout).cell(atRow: 0)
+            let label = try #require(marked.renderedLabel)
+            let needed = try #require(label.cell).cellSize.width
+
+            #expect(try #require(marked.renderedStatusMark).showsMark, "\(status)")
+            #expect(needed <= label.frame.width, "analytics is cut short beside \(status)")
+            #expect(label.frame.width == plain.renderedLabel?.frame.width, "the mark took width from the label: \(status)")
         }
     }
 

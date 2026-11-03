@@ -51,9 +51,13 @@ internal struct ConnectionStatusMark: View {
     }
 }
 
-// AppKit twin of `ConnectionStatusMark` for the rail cell, which is an `NSTableCellView`.
+// AppKit twin of `ConnectionStatusMark` for the rail, drawn as a badge on the tile's corner. The backing
+// punches it out of the tile's fill and of the selection, which an identity colour alone can match.
 @MainActor
 internal final class ConnectionStatusMarkView: NSView {
+    internal static let rim: CGFloat = 1
+
+    private let backing = NSBox()
     private let spinner = NSProgressIndicator()
     private let symbol = NSImageView()
     private var presentation = ConnectionStatusPresentation(.notConnected)
@@ -61,6 +65,11 @@ internal final class ConnectionStatusMarkView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        backing.boxType = .custom
+        backing.borderWidth = 0
+        backing.titlePosition = .noTitle
+        backing.contentViewMargins = .zero
+        backing.translatesAutoresizingMaskIntoConstraints = false
         spinner.style = .spinning
         spinner.controlSize = .mini
         spinner.isIndeterminate = true
@@ -68,17 +77,23 @@ internal final class ConnectionStatusMarkView: NSView {
         spinner.translatesAutoresizingMaskIntoConstraints = false
         symbol.imageScaling = .scaleProportionallyUpOrDown
         symbol.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(backing)
         addSubview(spinner)
         addSubview(symbol)
+        let rim = Self.rim
         NSLayoutConstraint.activate([
-            spinner.centerXAnchor.constraint(equalTo: centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: centerYAnchor),
-            spinner.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor),
-            spinner.heightAnchor.constraint(lessThanOrEqualTo: heightAnchor),
-            symbol.leadingAnchor.constraint(equalTo: leadingAnchor),
-            symbol.trailingAnchor.constraint(equalTo: trailingAnchor),
-            symbol.topAnchor.constraint(equalTo: topAnchor),
-            symbol.bottomAnchor.constraint(equalTo: bottomAnchor),
+            backing.leadingAnchor.constraint(equalTo: leadingAnchor),
+            backing.trailingAnchor.constraint(equalTo: trailingAnchor),
+            backing.topAnchor.constraint(equalTo: topAnchor),
+            backing.bottomAnchor.constraint(equalTo: bottomAnchor),
+            spinner.leadingAnchor.constraint(equalTo: leadingAnchor, constant: rim),
+            spinner.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -rim),
+            spinner.topAnchor.constraint(equalTo: topAnchor, constant: rim),
+            spinner.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -rim),
+            symbol.leadingAnchor.constraint(equalTo: leadingAnchor, constant: rim),
+            symbol.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -rim),
+            symbol.topAnchor.constraint(equalTo: topAnchor, constant: rim),
+            symbol.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -rim),
         ])
         setAccessibilityElement(false)
         apply()
@@ -108,28 +123,25 @@ internal final class ConnectionStatusMarkView: NSView {
         apply()
     }
 
+    override func layout() {
+        super.layout()
+        backing.cornerRadius = bounds.width / 2
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         applyAnimation()
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        applyTint()
     }
 
     private func apply() {
         let name = presentation.symbol?.systemName
         symbol.image = name.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
         symbol.isHidden = name == nil
+        symbol.contentTintColor = presentation.tint.nsColor
         isHidden = presentation.symbol == nil
-        applyTint()
+        // The colour AppKit draws content in on a selection, as the old identity dot's rim did.
+        backing.fillColor = isEmphasized ? .alternateSelectedControlTextColor : .windowBackgroundColor
         applyAnimation()
-    }
-
-    // On the selected row the mark takes the selection's foreground, as the label beside it does.
-    private func applyTint() {
-        symbol.contentTintColor = isEmphasized ? .alternateSelectedControlTextColor : presentation.tint.nsColor
     }
 
     private func applyAnimation() {

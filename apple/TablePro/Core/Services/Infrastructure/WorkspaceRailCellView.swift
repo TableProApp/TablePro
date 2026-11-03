@@ -8,7 +8,7 @@ import SwiftUI
 import TableProConnectionLibrary
 
 // AppKit because the rail is an `NSTableView`. The tile is `ConnectionTile`'s twin, so a connection looks the
-// same in every list; the status mark is its own view so the label stays plain text for type select and tests.
+// same in every list. The status mark is a badge on the tile's corner, so the name keeps the column's full width.
 @MainActor
 internal final class WorkspaceRailCellView: NSTableCellView {
     internal static let reuseIdentifier = NSUserInterfaceItemIdentifier("WorkspaceRailCell")
@@ -23,10 +23,8 @@ internal final class WorkspaceRailCellView: NSTableCellView {
     private var tileHeightConstraint: NSLayoutConstraint?
     private var badgeWidthConstraint: NSLayoutConstraint?
     private var badgeHeightConstraint: NSLayoutConstraint?
-    private var markSizeConstraint: NSLayoutConstraint?
-    private var markCenterYConstraint: NSLayoutConstraint?
-    private var labelCenterXConstraint: NSLayoutConstraint?
-    private var labelLeadingConstraint: NSLayoutConstraint?
+    private var markWidthConstraint: NSLayoutConstraint?
+    private var markHeightConstraint: NSLayoutConstraint?
     private var entry: WorkspaceRailEntry?
 
     override init(frame frameRect: NSRect) {
@@ -61,10 +59,6 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         transactionBadge.imageScaling = .scaleProportionallyUpOrDown
         transactionBadge.isHidden = true
 
-        // Hugging keeps the mark beside the name rather than at the cell's edge.
-        label.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-
         addSubview(tile)
         addSubview(label)
         addSubview(statusMark)
@@ -83,14 +77,10 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         badgeWidthConstraint = badgeWidth
         badgeHeightConstraint = badgeHeight
 
-        let markSize = statusMark.widthAnchor.constraint(equalToConstant: Self.markSize(forFont: 11))
-        markSizeConstraint = markSize
-        let markCenterY = statusMark.centerYAnchor.constraint(equalTo: label.topAnchor)
-        markCenterYConstraint = markCenterY
-        let labelCenterX = label.centerXAnchor.constraint(equalTo: content.centerXAnchor)
-        labelCenterXConstraint = labelCenterX
-        let labelLeading = label.leadingAnchor.constraint(greaterThanOrEqualTo: content.leadingAnchor, constant: 2)
-        labelLeadingConstraint = labelLeading
+        let markWidth = statusMark.widthAnchor.constraint(equalToConstant: Self.markSize(forIcon: 24))
+        let markHeight = statusMark.heightAnchor.constraint(equalToConstant: Self.markSize(forIcon: 24))
+        markWidthConstraint = markWidth
+        markHeightConstraint = markHeight
 
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -103,15 +93,15 @@ internal final class WorkspaceRailCellView: NSTableCellView {
             height,
 
             label.topAnchor.constraint(equalTo: tile.bottomAnchor, constant: WorkspaceRailMetrics.iconLabelGap),
-            labelLeading,
-            label.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -2),
-            labelCenterX,
+            label.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 2),
+            label.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -2),
             label.bottomAnchor.constraint(equalTo: content.bottomAnchor),
 
-            markSize,
-            statusMark.heightAnchor.constraint(equalTo: statusMark.widthAnchor),
-            statusMark.trailingAnchor.constraint(equalTo: label.leadingAnchor, constant: -Self.markGap),
-            markCenterY,
+            // Inside the tile's bottom edge, so it never reaches the label below.
+            markWidth,
+            markHeight,
+            statusMark.centerXAnchor.constraint(equalTo: tile.trailingAnchor),
+            statusMark.bottomAnchor.constraint(equalTo: tile.bottomAnchor),
 
             badgeWidth,
             badgeHeight,
@@ -125,11 +115,10 @@ internal final class WorkspaceRailCellView: NSTableCellView {
         (iconSize * 0.375).rounded()
     }
 
-    internal static func markSize(forFont fontSize: CGFloat) -> CGFloat {
-        fontSize.rounded()
+    // The status glyph is badge-sized; its backing adds a rim on each side.
+    internal static func markSize(forIcon iconSize: CGFloat) -> CGFloat {
+        badgeSize(forIcon: iconSize) + 2 * ConnectionStatusMarkView.rim
     }
-
-    private static let markGap: CGFloat = 3
 
     internal static func secondaryFontSize(for primaryFontSize: CGFloat) -> CGFloat {
         max(10, primaryFontSize - 1)
@@ -163,22 +152,13 @@ internal final class WorkspaceRailCellView: NSTableCellView {
 
         label.attributedStringValue = Self.labelValue(lines: Self.labelLines(for: entry), layout: layout)
 
-        let presentation = entry.presentation
-        let markSize = Self.markSize(forFont: layout.fontSize)
-        markSizeConstraint?.constant = markSize
-        markCenterYConstraint?.constant = Self.firstLineHeight(for: layout) / 2
-        let markWidth = presentation.symbol == nil ? 0 : markSize + Self.markGap
-        labelCenterXConstraint?.constant = markWidth / 2
-        labelLeadingConstraint?.constant = 2 + markWidth
+        let markSize = Self.markSize(forIcon: layout.iconSize)
+        markWidthConstraint?.constant = markSize
+        markHeightConstraint?.constant = markSize
         applyTint()
 
         toolTip = Self.tooltipText(for: entry)
         setAccessibilityLabel(Self.voiceOverLabel(for: entry))
-    }
-
-    private static func firstLineHeight(for layout: WorkspaceRailMetrics.Layout) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: layout.fontSize)
-        return ceil(font.ascender - font.descender + font.leading)
     }
 
     internal static func transactionSymbolName(for state: SessionTransactionTracker.State) -> String {
