@@ -146,21 +146,42 @@ internal sealed partial class CellAutomationPeer(DataGridView grid, DataGridAuto
     public IRawElementProviderSimple SelectionContainer => ContainingGrid;
 
     public IRawElementProviderSimple[] GetColumnHeaderItems() =>
-        grid.HeaderCell(column) is { } header && FrameworkElementAutomationPeer.CreatePeerForElement(header) is { } peer
+        grid.Contains(row, column)
+            && grid.HeaderCell(column) is { } header
+            && FrameworkElementAutomationPeer.CreatePeerForElement(header) is { } peer
             ? [gridPeer.Provider(peer)]
             : [];
 
     public IRawElementProviderSimple[] GetRowHeaderItems() => [];
 
-    public void Select() => grid.SelectCell(row, column, extend: false);
+    // A cell the data no longer holds takes no selection, which the grid would clamp onto another cell.
+    public void Select()
+    {
+        if (grid.Contains(row, column))
+        {
+            grid.SelectCell(row, column, extend: false);
+        }
+    }
 
-    public void AddToSelection() => grid.SelectCell(row, column, extend: true);
+    public void AddToSelection()
+    {
+        if (grid.Contains(row, column))
+        {
+            grid.SelectCell(row, column, extend: true);
+        }
+    }
 
     public void RemoveFromSelection()
     {
     }
 
-    public void ScrollIntoView() => grid.ScrollIntoView(row, column);
+    public void ScrollIntoView()
+    {
+        if (grid.Contains(row, column))
+        {
+            grid.ScrollIntoView(row, column);
+        }
+    }
 
     protected override string GetClassNameCore() => "DataGridCell";
 
@@ -193,7 +214,7 @@ internal sealed partial class CellAutomationPeer(DataGridView grid, DataGridAuto
     protected override void SetFocusCore()
     {
         grid.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
-        grid.SelectCell(row, column, extend: false);
+        Select();
     }
 
     protected override object? GetPatternCore(PatternInterface patternInterface) => patternInterface switch

@@ -163,6 +163,11 @@ internal sealed class SyntheticData(int rows = 1_000_000, int columns = 200) : I
 
     public int ColumnCount => columns;
 
+    // As a result set the app has released: a reader that reads it after this fails, as a disposed cursor does.
+    public bool IsReleased { get; private set; }
+
+    public void Release() => IsReleased = true;
+
     public string GetColumnName(int column) => string.Create(CultureInfo.InvariantCulture, $"column_{column}");
 
     public IGridReader OpenReader() => new Reader(this);
@@ -178,8 +183,11 @@ internal sealed class SyntheticData(int rows = 1_000_000, int columns = 200) : I
 
     private sealed class Reader(SyntheticData data) : IGridReader
     {
+        private bool _disposed;
+
         public void Read(int firstRow, int rowCount, int firstColumn, int columnCount, int maxCharacters, CellBlock block)
         {
+            ObjectDisposedException.ThrowIf(_disposed || data.IsReleased, this);
             var rows = Math.Max(0, Math.Min(rowCount, data.RowCount - firstRow));
             var columns = Math.Max(0, Math.Min(columnCount, data.ColumnCount - firstColumn));
             block.Reset(firstRow, rows, firstColumn, columns, maxCharacters);
@@ -206,8 +214,6 @@ internal sealed class SyntheticData(int rows = 1_000_000, int columns = 200) : I
 
         public string? ReadWhole(int row, int column) => Value(row, column);
 
-        public void Dispose()
-        {
-        }
+        public void Dispose() => _disposed = true;
     }
 }

@@ -51,6 +51,47 @@ public sealed class AutomationTests
         Assert.Equal((999_999, 199), (grid.FocusedRow, grid.FocusedColumn));
     });
 
+    // A client holds a cell's peer across a new result: the peer then reads the new data, and a cell the new data
+    // lacks reads as empty, off screen and with no bounds, without reading the released set.
+    [Fact]
+    public Task ACellPeerReadsTheNewDataAfterTheOldSetIsReleased() => WinUiHost.RunAsync(async () =>
+    {
+        var old = new SyntheticData(rows: 100, columns: 10);
+        var grid = await WinUiHost.ShowAsync(old);
+        var peer = (DataGridAutomationPeer)FrameworkElementAutomationPeer.CreatePeerForElement(grid);
+        var kept = peer.Cell(1, 1);
+        var pastRows = peer.Cell(50, 2);
+        var pastColumns = peer.Cell(2, 8);
+        Assert.Equal("r1c1", kept.GetName());
+        Assert.Equal("r50c2", pastRows.GetName());
+        Assert.Equal("r2c8", pastColumns.GetName());
+
+        grid.SetData(new SyntheticData(rows: 3, columns: 3));
+        old.Release();
+        grid.UpdateLayout();
+
+        Assert.Equal("r1c1", kept.GetName());
+        Assert.True(kept.GetBoundingRectangle().Width > 0);
+        foreach (var gone in new[] { pastRows, pastColumns })
+        {
+            Assert.Equal(string.Empty, gone.GetName());
+            Assert.True(gone.IsOffscreen());
+            Assert.Equal(0, gone.GetBoundingRectangle().Width);
+            Assert.Empty(gone.GetColumnHeaderItems());
+            gone.Select();
+            gone.ScrollIntoView();
+            Assert.False(gone.IsSelected);
+        }
+
+        Assert.Null(peer.GetItem(50, 2));
+        Assert.Null(peer.GetItem(2, 8));
+        Assert.Equal((0, 0), (grid.FocusedRow, grid.FocusedColumn));
+
+        grid.SetData(new SyntheticData(rows: 0, columns: 3));
+        Assert.Equal(string.Empty, kept.GetName());
+        Assert.True(kept.IsOffscreen());
+    });
+
     // GetSelection reads the model, so cells far off the screen are in it.
     [Fact]
     public Task TheSelectionComesFromTheModelNotTheScreen() => WinUiHost.RunAsync(async () =>
