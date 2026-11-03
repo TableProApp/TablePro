@@ -14,8 +14,10 @@ internal enum RunningWorkApproval {
         return makeAlert(prompt).runModal() == .alertFirstButtonReturn
     }
 
+    // On the window's frontmost sheet: a progress sheet for the very work being asked about would hold the alert back.
     internal static func confirm(_ prompt: RunningWorkPrompt, window: NSWindow?) async -> Bool {
-        await AlertHelper.response(to: makeAlert(prompt), in: window) == .alertFirstButtonReturn
+        let parent = AlertHelper.resolveWindow(window).map(AlertOperationConfirming.frontmostSheet(of:))
+        return await AlertHelper.response(to: makeAlert(prompt), in: parent) == .alertFirstButtonReturn
     }
 
     private static func makeAlert(_ prompt: RunningWorkPrompt) -> NSAlert {

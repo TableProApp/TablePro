@@ -85,6 +85,18 @@ struct AppRelauncherTests {
         #expect(fixture.approvedWhenQuitting == [true])
     }
 
+    @Test("A relaunch Sparkle took over and then dropped stops covering later quits")
+    func abortedSparkleRelaunchForgetsItsApproval() throws {
+        let fixture = try AppRelauncherFixture()
+        fixture.hasPendingUpdate = true
+
+        fixture.relauncher.relaunch()
+        #expect(fixture.relauncher.hasApprovedRunningWork)
+
+        fixture.relauncher.terminationWasCancelled()
+        #expect(!fixture.relauncher.hasApprovedRunningWork)
+    }
+
     @Test("Running work is asked about after the documents are reviewed, never when the review is cancelled")
     func cancelledDocumentReviewAsksNothingAboutWork() throws {
         let fixture = try AppRelauncherFixture()
