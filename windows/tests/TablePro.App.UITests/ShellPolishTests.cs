@@ -178,21 +178,11 @@ public sealed partial class ShellTests
         app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
         app.FindByName("Track", app.Find("ObjectTree"));
         var tabs = app.Find("Tabs");
-        app.Front();
-        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
-        app.FindByName("Query 2", tabs);
-        app.Click(app.Find("SqlEditor"));
-        Keyboard.Type("SELECT 42 AS answer");
-        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_W);
-        var closed = Retry.WhileFalse(
-            () => tabs.FindFirstDescendant(condition => condition.ByName("Query 2")) is null,
-            AppSession.Wait,
-            throwOnTimeout: false).Success;
-        Assert.True(closed);
-
-        app.Front();
-        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT, VirtualKeyShort.KEY_T);
-        app.FindByName("Query 2", tabs);
+        bool Open() => tabs.FindFirstDescendant(condition => condition.ByName("Query 2")) is not null;
+        app.Chord(Open, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
+        app.TypeInto(app.Find("SqlEditor"), "SELECT 42 AS answer");
+        app.Chord(() => !Open(), VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_W);
+        app.Chord(Open, VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT, VirtualKeyShort.KEY_T);
         var text = string.Empty;
         Retry.WhileFalse(
             () => (text = AppSession.EditorText(app.Find("SqlEditor"))).Contains("SELECT 42", StringComparison.Ordinal),
@@ -210,16 +200,14 @@ public sealed partial class ShellTests
 
         app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
         app.FindByName("Track", app.Find("ObjectTree"));
-        app.Click(app.Find("SqlEditor"));
-        Keyboard.Type("BEGIN");
-        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+        app.TypeInto(app.Find("SqlEditor"), "BEGIN");
+        app.Chord(() => app.TryFind("CommitButton") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
 
         // A closed InfoBar stays in the tree with its content folded away, so its buttons say whether it shows.
         Assert.True(app.Find("CommitButton").IsEnabled);
         app.Screenshot("20-transaction-open");
 
-        app.Front();
-        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
+        app.Chord(() => app.TryFind("ShowTransactionTabButton") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
         var show = app.Find("ShowTransactionTabButton");
         app.Screenshot("21-transaction-elsewhere");
         show.AsButton().Invoke();
@@ -282,10 +270,10 @@ public sealed partial class ShellTests
 
         // F2 renames the row in place.
         app.Click(app.FindByNamePrefix("Chinook (Sample),", tree));
-        Keyboard.Press(VirtualKeyShort.F2);
+        app.Chord(() => app.TryFind("RenameBox") is not null, VirtualKeyShort.F2);
         app.Find("RenameBox").AsTextBox().Text = "Music";
         app.Screenshot("25-home-renaming");
-        Keyboard.Press(VirtualKeyShort.RETURN);
+        app.Chord(() => app.TryFind("RenameBox") is null, VirtualKeyShort.RETURN);
         var music = app.FindByNamePrefix("Music,", tree);
 
         // A tag made from the row's menu goes on the row.
@@ -304,13 +292,11 @@ public sealed partial class ShellTests
         app.Screenshot("26-home-tagged");
 
         // A row dropped on a group moves into it, through the core.
-        app.Drag(app.FindByNamePrefix("Music,", tree), app.FindByName("Work", tree));
         var group = GroupId(app.DataFolder);
-        var moved = Retry.WhileFalse(
-            () => Regex.IsMatch(File.ReadAllText(AppSession.LibraryFile(app.DataFolder)), $"\"group_id\"\\s*:\\s*\"{group}\""),
-            AppSession.Wait,
-            throwOnTimeout: false).Success;
-        Assert.True(moved, File.ReadAllText(AppSession.LibraryFile(app.DataFolder)));
+        app.Drag(
+            () => app.FindByNamePrefix("Music,", tree),
+            () => app.FindByName("Work", tree),
+            () => Regex.IsMatch(File.ReadAllText(AppSession.LibraryFile(app.DataFolder)), $"\"group_id\"\\s*:\\s*\"{group}\""));
         app.FindByNamePrefix("Music,", tree);
         // The group the row went into opens, so the row shows there as well as under Recent.
         var shown = Retry.WhileFalse(

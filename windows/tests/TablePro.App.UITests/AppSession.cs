@@ -5,6 +5,7 @@ using FlaUI.Core.Capturing;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
+using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
 
 namespace TablePro.App.UITests;
@@ -68,6 +69,41 @@ internal sealed class AppSession : IDisposable
     {
         Front();
         Drag(from.GetClickablePoint(), to.GetClickablePoint());
+    }
+
+    // The Arm64 runner's own windows take keys and drags now and then, as they take clicks, so each goes again until
+    // the app shows it landed.
+    public void Drag(Func<AutomationElement> from, Func<AutomationElement> to, Func<bool> landed) =>
+        Again(() => Drag(from(), to()), landed, "The drag");
+
+    public void Chord(Func<bool> landed, params VirtualKeyShort[] keys) =>
+        Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys));
+
+    // The editor holds exactly text afterwards, whatever it held before.
+    public void TypeInto(AutomationElement editor, string text) =>
+        Again(
+            () =>
+            {
+                Click(editor);
+                Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+                Keyboard.Type(text);
+            },
+            () => EditorText(editor).TrimEnd('\r', '\n') == text,
+            $"Typing {text}");
+
+    private void Again(Action act, Func<bool> landed, string what)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            Front();
+            act();
+            if (Retry.WhileFalse(landed, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
+            {
+                return;
+            }
+        }
+
+        throw Failure($"{what} did nothing.", screen: true);
     }
 
     // FlaUI moves the pointer with SetCursorPos, which WinUI does not see as a pointer moving with the button down,

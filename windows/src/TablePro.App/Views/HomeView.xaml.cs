@@ -124,23 +124,47 @@ public sealed partial class HomeView : UserControl
         // (seen on the Arm64 runner). The rows open again after that pass, and a fold before it is not the user's.
         var reveal = _reveal;
         _reveal = null;
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        void Settle(int passes)
         {
-            if (rebuild != _rebuild)
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
-                return;
-            }
+                if (rebuild != _rebuild)
+                {
+                    return;
+                }
 
-            ApplyExpansion(Items);
-            if (reveal is not null
-                && Flatten(Items).FirstOrDefault(item => item.Node.Key == reveal) is { } group
-                && ConnectionTree.ContainerFromItem(group) is TreeViewItem row)
-            {
-                row.IsExpanded = true;
-            }
+                ApplyExpansion(Items);
+                if (reveal is not null
+                    && Flatten(Items).FirstOrDefault(item => item.Node.Key == reveal) is { } group
+                    && ConnectionTree.ContainerFromItem(group) is TreeViewItem row)
+                {
+                    Expand(row);
+                }
 
-            _rebuilding = false;
-        });
+                // A slower machine lays the rows out over more than one pass.
+                if (passes > 1)
+                {
+                    Settle(passes - 1);
+                }
+                else
+                {
+                    _rebuilding = false;
+                }
+            });
+        }
+
+        Settle(2);
+    }
+
+    // The node holds the state a row's container is given each time the tree prepares it.
+    private void Expand(TreeViewItem row)
+    {
+        if (ConnectionTree.NodeFromContainer(row) is { } node)
+        {
+            node.IsExpanded = true;
+        }
+
+        row.IsExpanded = true;
     }
 
     private LibraryItem ToItem(LibraryNode node, bool searching)
@@ -222,7 +246,7 @@ public sealed partial class HomeView : UserControl
         {
             if (ConnectionTree.ContainerFromItem(item) is TreeViewItem row)
             {
-                row.IsExpanded = true;
+                Expand(row);
                 opened.Add(item);
             }
         }
@@ -238,7 +262,7 @@ public sealed partial class HomeView : UserControl
         if (sender is TreeViewItem row
             && ConnectionTree.ItemFromContainer(row) is LibraryItem { StartsExpanded: true, Children.Count: > 0 })
         {
-            row.IsExpanded = true;
+            Expand(row);
         }
     }
 

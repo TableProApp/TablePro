@@ -99,12 +99,13 @@ public sealed partial class ShellTests
             app.Screenshot("05-table-sorted");
 
             app.Find("Tabs");
-            app.Front();
-            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
+            app.Chord(() => app.TryFind("SqlEditor") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
             var editor = app.Find("SqlEditor");
-            app.Click(editor);
-            Keyboard.Type("SELECT Name FROM Artist");
-            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+            app.TypeInto(editor, "SELECT Name FROM Artist");
+            app.Chord(
+                () => app.Find("QueryStatus").Name.StartsWith("Rows: 275", StringComparison.Ordinal),
+                VirtualKeyShort.CONTROL,
+                VirtualKeyShort.ENTER);
             var query = AppSession.WaitForText(app.Find("QueryStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal));
             Assert.StartsWith("Rows: 275", query, StringComparison.Ordinal);
             var results = app.Find("ResultsGrid");
@@ -123,10 +124,11 @@ public sealed partial class ShellTests
                 StringComparison.Ordinal);
 
             // A script cannot run again for a sort, so the rows it returned are sorted where they are.
-            app.Click(editor);
-            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
-            Keyboard.Type("SELECT Name FROM Artist ORDER BY ArtistId; SELECT 1");
-            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+            app.TypeInto(editor, "SELECT Name FROM Artist ORDER BY ArtistId; SELECT 1");
+            app.Chord(
+                () => results.Patterns.Grid.Pattern.GetItem(0, 0)?.Properties.Name.ValueOrDefault == "AC/DC",
+                VirtualKeyShort.CONTROL,
+                VirtualKeyShort.ENTER);
             app.WaitForCell(results, 0, 0, value => value == "AC/DC");
             app.SortBy(results, "Name");
             var held = AppSession.WaitForText(app.Find("QueryStatus"), value => value.Contains("sorted the rows shown", StringComparison.Ordinal));
