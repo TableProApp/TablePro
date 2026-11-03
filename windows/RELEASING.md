@@ -15,21 +15,21 @@
 
 ## Setup
 
-The maintainer does these once. The workflow's header names the same secrets and variables. Until steps 1 to 4 are done, a run builds and checks unsigned packages and publishes nothing.
+The maintainer does these once, in this order: a tag runs the workflow file at the tagged commit, so the rulesets come before any secret. The workflow's header names the same secrets and variables. Until steps 1 to 5 are done, a run builds and checks unsigned packages and publishes nothing.
 
-1. **Artifact Signing**: an Azure Artifact Signing account, its identity validation, and a Public Trust certificate profile ([quickstart](https://learn.microsoft.com/azure/artifact-signing/quickstart)).
-2. **An app registration** with the Artifact Signing Certificate Profile Signer role on the account, and a federated credential for GitHub Actions: organization `TableProApp`, repository `TablePro`, entity Environment, name `windows-release` ([Authenticating with OpenID Connect](https://github.com/Azure/artifact-signing-action/blob/v2.0.0/docs/OIDC.md)).
-3. **Environment `windows-release`**, deploying from `windows-v*` tags only, with a required reviewer, and the secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`.
-4. **Repository variables**:
+1. **Rulesets**: add `windows-v*` to the tag rulesets, so its tags never move and only admins create them (`.claude/rules/ci.md`, Required checks).
+2. **Artifact Signing**: an Azure Artifact Signing account, its identity validation, and a Public Trust certificate profile ([quickstart](https://learn.microsoft.com/azure/artifact-signing/quickstart)).
+3. **An app registration** with the Artifact Signing Certificate Profile Signer role on the account, and a federated credential for GitHub Actions: organization `TableProApp`, repository `TablePro`, entity Environment, name `windows-release` ([Authenticating with OpenID Connect](https://github.com/Azure/artifact-signing-action/blob/v2.0.0/docs/OIDC.md)).
+4. **Environment `windows-release`**, deploying from `windows-v*` tags only, with a required reviewer, and the secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`.
+5. **Repository variables**:
    - `WINDOWS_SIGNING_ENDPOINT`: the account's regional endpoint, such as `https://eus.codesigning.azure.net/`.
    - `WINDOWS_SIGNING_ACCOUNT` and `WINDOWS_SIGNING_PROFILE`: the account and its certificate profile.
    - `WINDOWS_PUBLISHER`: the certificate profile's subject, exactly as the certificate shows it, such as `CN=Name, O=Name, L=City, S=State, C=Country`. The package's Publisher has to match it, or signing fails. It also fixes the package family name, and Windows takes a package with another publisher for another app, so it never changes after the first release.
-5. **Environment `windows-winget`**, with a required reviewer, and the secret `WINGET_TOKEN`: a classic token with the `public_repo` scope, from the account whose fork of microsoft/winget-pkgs opens the pull request ([wingetcreate, token](https://github.com/microsoft/winget-create/blob/main/doc/token.md)).
-6. **Rulesets**: add `windows-v*` to the tag rulesets, so its tags never move and only admins create them (`.claude/rules/ci.md`, Required checks).
+6. **Environment `windows-winget`**, deploying from `windows-v*` tags only, with a required reviewer, and the secret `WINGET_TOKEN`: a classic token with the `public_repo` scope ([wingetcreate, token](https://github.com/microsoft/winget-create/blob/main/doc/token.md)). That scope writes to every public repository its account can, so the account is one outside TableProApp whose only use is its fork of microsoft/winget-pkgs.
 
 ## A release
 
-1. **Dry run.** It builds, checks, installs and starts both packages as the tag does, and publishes nothing. With `-f sign=true` it signs too, once `windows-release` allows the branch.
+1. **Dry run.** It builds, checks, installs and starts both packages as the tag does, and publishes nothing. With `-f sign=true` it signs too, once `windows-release` also allows `main`; never a branch pattern, since whoever writes the branch writes the workflow that runs with the signing secrets.
 
    ```bash
    gh workflow run release-windows.yml --ref main -f version=X.Y.Z

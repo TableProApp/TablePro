@@ -10,11 +10,13 @@ name: Release Windows
 # WINDOWS_SIGNING_ENDPOINT: the signing account's regional endpoint, https://<region>.codesigning.azure.net/.
 # WINDOWS_SIGNING_ACCOUNT and WINDOWS_SIGNING_PROFILE: the signing account and its certificate profile.
 # WINDOWS_PUBLISHER: the certificate profile's subject, which the package's Publisher has to match.
-# The windows-release environment holds AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID:
+# The windows-release environment, deploying from windows-v* tags with a required reviewer, holds
+# AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID:
 # an app registration with the Artifact Signing Certificate Profile Signer role and a federated
 # credential for that environment.
-# The windows-winget environment, with a required reviewer, holds WINGET_TOKEN: a classic token with
-# the public_repo scope, from the account whose fork of winget-pkgs opens the pull request.
+# The windows-winget environment, deploying from windows-v* tags with a required reviewer, holds
+# WINGET_TOKEN: a classic token with the public_repo scope, from an account outside TableProApp whose
+# only use is its fork of winget-pkgs.
 
 on:
   push:
@@ -27,7 +29,7 @@ on:
         required: true
         type: string
       sign:
-        description: Sign the bundle; the windows-release environment has to allow the branch
+        description: Sign the bundle; the windows-release environment has to allow main
         required: false
         type: boolean
         default: false
