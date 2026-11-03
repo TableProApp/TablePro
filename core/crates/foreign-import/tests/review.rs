@@ -1853,7 +1853,11 @@ fn queries_land_on_their_connections_and_a_name_the_connection_holds_is_left_alo
         ]
     );
 
-    let outcome = sqlx::test_block_on(async {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime");
+    let outcome = runtime.block_on(async {
         let paths = StoragePaths::under(dir.path(), "tablepro", "app.tablepro.TablePro");
         let saved_queries = QueryHistory::open(&paths).await.expect("the history").saved_queries();
         saved_queries

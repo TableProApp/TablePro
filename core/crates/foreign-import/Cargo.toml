@@ -15,8 +15,8 @@ cbc.workspace = true
 chacha20.workspace = true
 flate2.workspace = true
 hex.workspace = true
-# The same SQLite the storage crate links through sqlx, read directly
-# because a Beekeeper Studio database is read once, blocking, read-only.
+# The SQLite the storage crate links through sqlx, read directly because
+# a Beekeeper Studio database is read once, blocking, read-only.
 libsqlite3-sys.workspace = true
 plist.workspace = true
 roxmltree.workspace = true
@@ -31,14 +31,9 @@ tokio-util.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
-[target.'cfg(target_os = "linux")'.dependencies]
-sqlx = { workspace = true, features = ["sqlite-unbundled"] }
-
-[target.'cfg(not(target_os = "linux"))'.dependencies]
-sqlx = { workspace = true, features = ["sqlite"] }
-
 [dev-dependencies]
 tempfile.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 
 [lints]
 workspace = true
