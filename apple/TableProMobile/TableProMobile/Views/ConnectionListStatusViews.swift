@@ -59,7 +59,7 @@ struct ConnectionListStatusView: View {
     private func unavailableView(_ error: SyncError) -> some View {
         let presentation = SyncStatusPresentation(error)
         return ContentUnavailableView {
-            Label(presentation.title, systemImage: presentation.systemImage)
+            Label(presentation.title, systemImage: presentation.symbolName)
         } description: {
             VStack(spacing: 8) {
                 Text(presentation.message)
@@ -68,14 +68,14 @@ struct ConnectionListStatusView: View {
                 }
             }
         } actions: {
-            ForEach(presentation.actions) { action in
+            ForEach(presentation.mobileActions) { action in
                 SyncActionButton(
                     action: action,
-                    isPrimary: action == presentation.actions.first,
+                    isPrimary: action == presentation.mobileActions.first,
                     perform: actions.performSyncAction
                 )
             }
-            if presentation.actions.isEmpty {
+            if presentation.mobileActions.isEmpty {
                 Button("Add Connection", action: actions.addConnection)
                     .buttonStyle(.borderedProminent)
             } else {
@@ -132,10 +132,10 @@ struct ConnectionListSyncProblemRow: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                if !presentation.actions.isEmpty {
+                if !presentation.mobileActions.isEmpty {
                     HStack(spacing: 20) {
-                        ForEach(presentation.actions) { action in
-                            /// Borderless, so each button takes its own taps inside the list row.
+                        ForEach(presentation.mobileActions) { action in
+                            // Borderless, so each button takes its own taps inside the list row.
                             Button(action.title) { perform(action) }
                                 .buttonStyle(.borderless)
                                 .font(.subheadline)
@@ -146,7 +146,7 @@ struct ConnectionListSyncProblemRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } icon: {
-            Image(systemName: presentation.systemImage)
+            Image(systemName: presentation.symbolName)
                 .foregroundStyle(.orange)
         }
     }

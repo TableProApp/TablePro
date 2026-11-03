@@ -488,15 +488,17 @@ final class SyncCoordinator: ObservableObject {
 
     // MARK: - Status
 
+    // The switch before the license: sync that was never turned on is off by choice, whatever the
+    // license says.
     private func evaluateStatus() {
-        if let reason = licenseGate() {
-            decide(.disabled(reason))
-            return
-        }
-
         let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
             decide(.disabled(.userDisabled))
+            return
+        }
+
+        if let reason = licenseGate() {
+            decide(.disabled(reason))
             return
         }
 

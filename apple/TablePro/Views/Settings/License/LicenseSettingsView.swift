@@ -5,10 +5,7 @@
 
 import SwiftUI
 
-/// The License pane: what you hold, whether it is working, and the seats it covers.
-///
-/// The layout is keyed on holding a license, and entitlement decides only whether a renewal field
-/// appears alongside it. A lapsed license still has seats to release and billing to open.
+// Keyed on holding a license; entitlement decides only whether a renewal field appears beside it.
 struct LicenseSettingsView: View {
     @ObservedObject private var licenseManager = LicenseManager.shared
 
@@ -69,6 +66,12 @@ struct LicenseSettingsView: View {
                     Text(planDescription(license))
                         .font(.callout)
                         .foregroundStyle(.secondary)
+
+                    // The notice shows a failed check itself when it offers the retry.
+                    if notice?.action != .retryValidation {
+                        LicenseCheckFailureLine()
+                            .padding(.top, 2)
+                    }
                 }
 
                 Spacer()
@@ -76,9 +79,7 @@ struct LicenseSettingsView: View {
                 Button(String(localized: "Refresh")) {
                     Task { await licenseManager.refreshLicenseAndDevices() }
                 }
-                /// `revalidate` releases `isValidating` before the seat list is even requested, so
-                /// gating on it alone re-enabled the button while the longer half was still running
-                /// and let a second Refresh start on top of the first.
+                // `revalidate` releases `isValidating` before the seat list is requested.
                 .disabled(licenseManager.isValidating || licenseManager.isRefreshingDevices)
                 .accessibilityIdentifier("license-refresh")
             }
@@ -86,9 +87,6 @@ struct LicenseSettingsView: View {
         }
     }
 
-    /// Deliberately short. The header already carries who the license is for and what it is, so
-    /// repeating the email and the plan here is the clutter this pane was rebuilt to remove: every
-    /// fact appears once, and only facts somebody acts on appear at all.
     private func detailsSection(_ license: License) -> some View {
         Section {
             LicenseKeyRow(key: license.key)
@@ -123,8 +121,6 @@ struct LicenseSettingsView: View {
 
     // MARK: - Not entitled
 
-    /// The way back in for somebody who already holds a lapsed licence: just the field and the
-    /// purchase link, without the pitch, which they have plainly already read.
     private var renewalSection: some View {
         Section {
             LicenseActivationForm()
@@ -163,8 +159,7 @@ struct LicenseSettingsView: View {
         LicensePresentation.featureGroups(status: licenseManager.status, tier: licenseManager.currentTier)
     }
 
-    /// A seal that stays green for a license that is not working would be the pane telling a
-    /// comfortable lie, so it follows entitlement.
+    // The seal follows entitlement: a green seal on a license that is not working would mislead.
     private var sealSymbol: String {
         LicensePresentation.showsLicensedLayout(status: licenseManager.status)
             ? "checkmark.seal.fill"
@@ -175,8 +170,6 @@ struct LicenseSettingsView: View {
         LicensePresentation.showsLicensedLayout(status: licenseManager.status) ? .green : .secondary
     }
 
-    /// One line under the email carrying what was bought and how long it runs, so neither needs a
-    /// row of its own further down.
     private func planDescription(_ license: License) -> String {
         LicensePresentation.planDescription(
             tier: license.tier,
@@ -186,23 +179,17 @@ struct LicenseSettingsView: View {
     }
 }
 
-/// The license key, masked, with Copy for the real one.
 struct LicenseKeyRow: View {
     let key: String
 
     var body: some View {
         LabeledContent(String(localized: "License key")) {
             HStack(spacing: 8) {
-                /// Enough of the key to tell which licence this is, and no more. A full-length
-                /// mask is the same secret-shaped run of dots for everyone, so it earned its
-                /// width by being unreadable and then lost the end of itself to truncation.
                 Text(LicensePresentation.maskedKey(key))
                     .font(.system(.body, design: .monospaced))
                     .lineLimit(1)
-                    /// Not `.accessibilityLabel`. On a line-limited `Text` in a `LabeledContent`
-                    /// shown after the first render, SwiftUI reads that label back through the
-                    /// platform element it set it on, which calls the label again until the stack
-                    /// overflows. A replacement element carries no platform element.
+                    // Not `.accessibilityLabel`: on a line-limited Text in a LabeledContent, SwiftUI
+                    // reads that label back through its platform element until the stack overflows.
                     .accessibilityRepresentation {
                         Text(String(localized: "License key, hidden"))
                     }
@@ -217,7 +204,6 @@ struct LicenseKeyRow: View {
     }
 }
 
-/// A degraded state, stated where it applies rather than floated over the pane.
 private struct LicenseNoticeSection: View {
     let notice: LicenseNotice
 
@@ -237,28 +223,18 @@ private struct LicenseNoticeSection: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     if let action = notice.action {
-                        actionControl(action)
+                        LicenseNoticeActionButton(action: action, referrer: .licenseSettings)
                             .padding(.top, 2)
+                    }
+
+                    if notice.action == .retryValidation {
+                        LicenseCheckFailureLine()
                     }
                 }
 
                 Spacer()
             }
             .padding(.vertical, 4)
-        }
-    }
-
-    @ViewBuilder
-    private func actionControl(_ action: LicenseNoticeAction) -> some View {
-        switch action {
-        case .renew:
-            Link(String(localized: "Renew License"), destination: SupportLinks.pricing(.licenseSettings))
-        case .purchase:
-            Link(String(localized: "Buy a License"), destination: SupportLinks.pricing(.licenseSettings))
-        case .retryValidation:
-            Button(String(localized: "Try Again")) {
-                Task { await LicenseManager.shared.revalidate() }
-            }
         }
     }
 
