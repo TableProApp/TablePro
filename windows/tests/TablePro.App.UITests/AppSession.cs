@@ -128,6 +128,35 @@ internal sealed class AppSession : IDisposable
         return text;
     }
 
+    // A header is found again each time: a new run's data can hand its element to another column.
+    public static string WaitForItemStatus(Func<AutomationElement> header, string expected)
+    {
+        var status = string.Empty;
+        Retry.WhileFalse(
+            () =>
+            {
+                status = header().Properties.ItemStatus.ValueOrDefault ?? string.Empty;
+                return status == expected;
+            },
+            Wait,
+            throwOnTimeout: false);
+        return status;
+    }
+
+    public static double WaitForWidth(Func<AutomationElement> element, double expected)
+    {
+        var width = 0.0;
+        Retry.WhileFalse(
+            () =>
+            {
+                width = element().BoundingRectangle.Width;
+                return Math.Abs(width - expected) < 1;
+            },
+            Wait,
+            throwOnTimeout: false);
+        return width;
+    }
+
     public static string Cell(AutomationElement grid, int row, int column) =>
         grid.Patterns.Grid.Pattern.GetItem(row, column)?.Name ?? string.Empty;
 

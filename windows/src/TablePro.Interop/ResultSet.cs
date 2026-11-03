@@ -33,5 +33,14 @@ public sealed class ResultSet : IDisposable
     /// <summary>A cursor for <see cref="ResultCursor.Fetch"/>. Each thread that reads windows opens its own.</summary>
     public ResultCursor OpenCursor() => new(_set.OpenCursor());
 
+    // For a result whose statement cannot run again for a sort: the rows held now in the column's order, equal values
+    // in the order they arrived. A new set over the same rows, which this one keeps in theirs.
+    public Task<ResultSet> SortedAsync(int column, bool ascending)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        return CoreCall.RunAsync(() =>
+            Task.FromResult(new ResultSet(_set.Sorted(checked((uint)column), ascending), Index)));
+    }
+
     public void Dispose() => _set.Dispose();
 }

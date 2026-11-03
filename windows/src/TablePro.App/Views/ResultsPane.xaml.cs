@@ -8,14 +8,19 @@ using TablePro.Interop;
 namespace TablePro.App.Views;
 
 // A run's first result set in the data grid. The grid reads it through ResultSet.OpenCursor while rows still arrive.
+// A sort of the rows held shows a sorted set over the run's own, which stays in arrival order for the next sort.
 public sealed partial class ResultsPane : UserControl
 {
+    private ResultSet? _source;
     private ResultSet? _shown;
 
     public ResultsPane()
     {
         InitializeComponent();
         Placeholder.Text = Strings.Get("ResultsEmpty");
+        ResultGrid.SizeColumnsToContent = true;
+        ResultGrid.SortedAscendingStatus = Strings.Get("GridSortedAscending");
+        ResultGrid.SortedDescendingStatus = Strings.Get("GridSortedDescending");
         ResultGrid.SortRequested += (_, sort) => SortRequested?.Invoke(this, sort);
     }
 
@@ -35,6 +40,37 @@ public sealed partial class ResultsPane : UserControl
     {
         get => ResultGrid.Sort;
         set => ResultGrid.Sort = value;
+    }
+
+    public long ShownRows => _shown?.RowCount ?? 0;
+
+    // False when no set is shown, or a run replaced it while the rows were being sorted.
+    internal async Task<bool> SortHeldRowsAsync(GridSort sort)
+    {
+        var source = _source;
+        if (source is null || sort.Column < 0 || sort.Column >= Columns.Count)
+        {
+            return false;
+        }
+
+        var sorted = await source.SortedAsync(sort.Column, sort.Direction == SortDirection.Ascending)
+            .ConfigureAwait(true);
+        if (!ReferenceEquals(source, _source))
+        {
+            sorted.Dispose();
+            return false;
+        }
+
+        var previous = _shown;
+        _shown = sorted;
+        ResultGrid.SetData(new ResultSetData(sorted, Columns));
+        ResultGrid.Sort = sort;
+        if (!ReferenceEquals(previous, source))
+        {
+            previous?.Dispose();
+        }
+
+        return true;
     }
 
     public void ShowError(string message)
@@ -103,15 +139,16 @@ public sealed partial class ResultsPane : UserControl
 
     private void Show(ResultSet set, IReadOnlyList<ResultColumn> columns, GridSort sort)
     {
-        var previous = _shown;
+        var (shown, source) = (_shown, _source);
         _shown = set;
+        _source = set;
         Columns = columns;
         ResultGrid.SetData(new ResultSetData(set, columns));
         ResultGrid.Sort = sort;
         ResultGrid.Visibility = Visibility.Visible;
         Placeholder.Visibility = Visibility.Collapsed;
         // The grid disposed the old set's cursor in SetData.
-        previous?.Dispose();
+        Dispose(shown, source);
     }
 
     private void Release()
@@ -119,9 +156,20 @@ public sealed partial class ResultsPane : UserControl
         ResultGrid.SetData(null);
         ResultGrid.Visibility = Visibility.Collapsed;
         Placeholder.Visibility = Visibility.Visible;
-        _shown?.Dispose();
+        Dispose(_shown, _source);
         _shown = null;
+        _source = null;
         Columns = [];
+    }
+
+    private static void Dispose(ResultSet? shown, ResultSet? source)
+    {
+        if (!ReferenceEquals(shown, source))
+        {
+            shown?.Dispose();
+        }
+
+        source?.Dispose();
     }
 
     private void Finish(QueryOutcome outcome, bool hasRows, long rows, long? affected, bool truncated)

@@ -25,6 +25,12 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 {
     private const double OriginStep = 4096;
     private const double BaseRowHeight = 32;
+    private const int ContentSampleRows = 30;
+    private const int ContentSampleRowsWide = 10;
+    private const int ContentSampleWideColumns = 50;
+    private const int ContentSampleCharacters = 50;
+    private const double ContentMinimumWidth = 60;
+    private const double ContentMaximumWidth = 800;
     private const float BaseFontSize = 14;
 
     [ThreadStatic]
@@ -58,6 +64,8 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     private IndexList _items = new(0);
     private IndexList _columnItems = new(0);
     private string[] _names = [];
+    private bool[] _sizedByUser = [];
+    private bool _sizedToRows;
     private GridColumns _columns = new(0, 140);
     private GridSort _sort = GridSort.None;
     private CellPainter? _painter;
@@ -199,6 +207,14 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     public double DefaultColumnWidth { get; set; } = 140;
 
+    // Off, every column starts at DefaultColumnWidth; on, at the width of its header and its first rows.
+    public bool SizeColumnsToContent { get; set; }
+
+    // A column header's UIA ItemStatus, which the HeaderItem control type gives its sort order in.
+    public string SortedAscendingStatus { get; set; } = "Sorted ascending";
+
+    public string SortedDescendingStatus { get; set; } = "Sorted descending";
+
     public int FrozenColumnCount
     {
         get => _columns.FrozenCount;
@@ -238,6 +254,13 @@ public sealed partial class DataGridView : UserControl, IGridWindow
     public event EventHandler? FocusedCellChanged;
 
     internal GridColumns Columns => _columns;
+
+    internal string SortStatus(SortDirection direction) => direction switch
+    {
+        SortDirection.Ascending => SortedAscendingStatus,
+        SortDirection.Descending => SortedDescendingStatus,
+        _ => string.Empty,
+    };
 
     internal GridBrushes Brushes { get; }
 
@@ -323,13 +346,24 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         }
         RowCount = data?.RowCount ?? 0;
         var columnCount = data?.ColumnCount ?? 0;
-        _names = new string[columnCount];
+        var names = new string[columnCount];
         for (var column = 0; column < columnCount; column++)
         {
-            _names[column] = data!.GetColumnName(column);
+            names[column] = data!.GetColumnName(column);
         }
-        var frozen = _columns.FrozenCount;
-        _columns = new GridColumns(columnCount, DefaultColumnWidth) { FrozenCount = frozen };
+        // A sort or a refresh of one result keeps the widths, as on macOS.
+        if (!names.AsSpan().SequenceEqual(_names))
+        {
+            _names = names;
+            var frozen = _columns.FrozenCount;
+            _columns = new GridColumns(columnCount, DefaultColumnWidth) { FrozenCount = frozen };
+            _sizedByUser = new bool[columnCount];
+            _sizedToRows = false;
+        }
+        if (!_sizedToRows)
+        {
+            SizeToContent();
+        }
         _selection.Select(0, 0, extend: false);
         _sort = GridSort.None;
         _rowsLayout.Forget();
@@ -364,6 +398,10 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         _items.Grow(count);
         UpdateRowNumberWidth();
         UpdateExtent();
+        if (!_sizedToRows && SizeToContent())
+        {
+            ColumnsChanged();
+        }
         Follow(_viewX, _viewY);
     }
 

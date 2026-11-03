@@ -80,12 +80,14 @@ public sealed class DatabaseSession : IAsyncDisposable
         return new TableQuery(query.Sql, checked((int)query.VisibleColumns));
     }
 
-    // Null when the statement is not one read, so running it again for a sort could repeat a write.
-    public string? SortedQuery(string sql, string column, bool ascending)
+    // Null when the statement is not one read, so running it again could repeat a write, or when the engine can order
+    // by neither the column's name nor its position. ResultSet.SortedAsync sorts the rows held then.
+    public string? SortedQuery(string sql, IReadOnlyList<string> columns, int column, bool ascending)
     {
         ArgumentNullException.ThrowIfNull(sql);
-        ArgumentNullException.ThrowIfNull(column);
-        return CoreCall.Run(() => _session.SortedQuery(sql, column, ascending));
+        ArgumentNullException.ThrowIfNull(columns);
+        ArgumentOutOfRangeException.ThrowIfNegative(column);
+        return CoreCall.Run(() => _session.SortedQuery(sql, [.. columns], checked((uint)column), ascending));
     }
 
     // An editor tab's own connection, which keeps its transaction from one run to the next.
