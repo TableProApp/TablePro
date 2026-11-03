@@ -96,6 +96,16 @@ internal sealed class AppSession : IDisposable
         button.AsButton().Invoke();
     }
 
+    public void CloseDialog()
+    {
+        var button = Retry.WhileNull(
+                () => Window.FindFirstDescendant(condition => condition.ByAutomationId("CloseButton")),
+                Wait,
+                throwOnTimeout: false).Result
+            ?? throw Failure("No dialog opened.", screen: true);
+        button.AsButton().Invoke();
+    }
+
     // A menu flyout's item, which UI Automation lists under the window that opened it.
     public AutomationElement FindMenuItem(string name) =>
         Retry.WhileNull(

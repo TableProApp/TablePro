@@ -216,7 +216,7 @@
                         <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="FontColor" /></toolkit:SettingsExpander.HeaderIcon>
                         <toolkit:SettingsExpander.Items>
                             <toolkit:SettingsCard x:Uid="ColorCard">
-                                <ComboBox x:Name="ColorBox" x:Uid="ColorBox" MinWidth="240" SelectionChanged="OnSummaryChanged" />
+                                <ComboBox x:Name="ColorBox" x:Uid="ColorBox" MinWidth="240" AutomationProperties.AutomationId="ColorBox" SelectionChanged="OnSummaryChanged" />
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="GroupCard">
                                 <ComboBox x:Name="GroupBox" x:Uid="GroupBox" MinWidth="240" SelectionChanged="OnSummaryChanged" />

@@ -166,10 +166,15 @@ public sealed partial class ShellTests
         app.Find("SaveSecretBox").AsCheckBox().IsChecked = true;
         app.PressDialogButton();
 
-        // The password got past the keyring: the connect reached the closed port, and the password was saved.
+        // The password got past the keyring to the closed port. A password that did not log in is not kept, so
+        // Retry asks again, and closing the dialog takes the connection off the rail.
         app.Find("FailureBar");
-        Assert.True(Credentials.Exists(target));
-        Credentials.Delete(target);
+        Assert.False(Credentials.Exists(target));
+        app.Find("RetryButton").AsButton().Invoke();
+        app.Find("SecretBox");
+        app.CloseDialog();
+        var gone = Retry.WhileFalse(() => app.TryFind("Rail_Asks") is null, AppSession.Wait, throwOnTimeout: false).Success;
+        Assert.True(gone);
     }
 
     [Theory]
@@ -184,6 +189,7 @@ public sealed partial class ShellTests
         app.Front();
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
         app.FindByName("Query 2", tabs);
+        app.Click(app.Find("SqlEditor"));
         Keyboard.Type("SELECT 42 AS answer");
         Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_W);
         var closed = Retry.WhileFalse(
