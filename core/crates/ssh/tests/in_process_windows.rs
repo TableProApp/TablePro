@@ -70,6 +70,17 @@ impl Machine {
     }
 }
 
+// What the user was asked says which login step the server refused.
+fn explained(
+    session: Result<Arc<InProcessSession>, TransportError>,
+    prompter: &FakePrompter,
+) -> TestResult<Arc<InProcessSession>> {
+    session.map_err(|error| {
+        let asked: Vec<PromptPurpose> = prompter.requests().into_iter().map(|request| request.purpose).collect();
+        format!("{error:?}, after asking {asked:?}").into()
+    })
+}
+
 fn accept() -> PromptReply {
     PromptReply::Submitted {
         values: Vec::new(),
@@ -99,11 +110,12 @@ async fn a_password_signs_in_after_the_host_key_is_confirmed() -> TestResult {
 
     let (session, prompter) = machine.connect(&config, vec![accept()]).await;
 
+    let session = explained(session, &prompter)?;
     assert!(matches!(
         prompter.requests().first().map(|request| &request.purpose),
         Some(PromptPurpose::SshHostKeyConfirmation { host, .. }) if host == SSHD
     ));
-    assert_tunnel_answers(&session?).await
+    assert_tunnel_answers(&session).await
 }
 
 #[tokio::test]
@@ -115,9 +127,9 @@ async fn a_key_file_with_a_passphrase_signs_in() -> TestResult {
         passphrase: Some(SecretString::from(setting("TABLEPRO_TEST_SSHD_PASSPHRASE")?)),
     })?;
 
-    let (session, _) = machine.connect(&config, vec![accept()]).await;
+    let (session, prompter) = machine.connect(&config, vec![accept()]).await;
 
-    assert_tunnel_answers(&session?).await
+    assert_tunnel_answers(&explained(session, &prompter)?).await
 }
 
 #[tokio::test]
@@ -126,9 +138,9 @@ async fn the_windows_ssh_agent_signs_in() -> TestResult {
     let machine = Machine::new()?;
     let config = machine.config(SshAuth::Agent)?;
 
-    let (session, _) = machine.connect(&config, vec![accept()]).await;
+    let (session, prompter) = machine.connect(&config, vec![accept()]).await;
 
-    assert_tunnel_answers(&session?).await
+    assert_tunnel_answers(&explained(session, &prompter)?).await
 }
 
 #[tokio::test]
@@ -145,6 +157,7 @@ async fn a_key_file_signs_in_through_a_jump_host() -> TestResult {
     };
 
     let (session, prompter) = machine.connect(&config, vec![accept(), accept()]).await;
+    let session = explained(session, &prompter)?;
 
     let hosts: Vec<String> = prompter
         .requests()
@@ -155,7 +168,7 @@ async fn a_key_file_signs_in_through_a_jump_host() -> TestResult {
         })
         .collect();
     assert_eq!(hosts, [SSHD, "localhost"]);
-    assert_tunnel_answers(&session?).await
+    assert_tunnel_answers(&session).await
 }
 
 #[tokio::test]

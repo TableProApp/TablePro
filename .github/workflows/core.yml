@@ -77,3 +77,9 @@ jobs:
       - name: SSH tunnels through Windows' OpenSSH Server
         if: runner.os == 'Windows'
         run: cargo test --locked --target "$TARGET" --features tablepro-ssh/in-process -p tablepro-ssh --test in_process_windows -- --ignored
+      - name: The OpenSSH Server's log
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-Content (Join-Path $env:ProgramData 'ssh\sshd_config') | Where-Object { $_ -notmatch '^\s*(#|$)' }
+          Get-Content (Join-Path $env:ProgramData 'ssh\logs\sshd.log') -Tail 300 -ErrorAction Continue

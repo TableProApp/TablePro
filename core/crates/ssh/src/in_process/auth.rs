@@ -247,22 +247,48 @@ async fn password(handle: &mut Handle<HopHandler>, login: &mut Login<'_>) -> Res
     Ok(last)
 }
 
+// A rejected exchange starts again, as a wrong password does, while someone can answer.
 async fn keyboard_interactive(handle: &mut Handle<HopHandler>, login: &mut Login<'_>) -> Result<Step, TransportError> {
+    let mut last = Step::NotTried;
+    for _ in 0..TRIES {
+        let (step, asked) = keyboard_exchange(handle, login).await?;
+        match step {
+            Step::Refused(remaining) => {
+                let again = asked && remaining.contains(&MethodKind::KeyboardInteractive);
+                last = Step::Refused(remaining);
+                if !again {
+                    break;
+                }
+            }
+            other => return Ok(other),
+        }
+    }
+    Ok(last)
+}
+
+// One exchange, and whether a person gave its answers.
+async fn keyboard_exchange(
+    handle: &mut Handle<HopHandler>,
+    login: &mut Login<'_>,
+) -> Result<(Step, bool), TransportError> {
+    let mut asked = false;
     let mut response = handle
         .authenticate_keyboard_interactive_start(login.user, None)
         .await
         .map_err(|error| login.failed(error))?;
-    for _ in 0..KEYBOARD_ROUNDS {
+    let mut rounds = 0;
+    loop {
         let (name, instructions, prompts) = match response {
-            KeyboardInteractiveAuthResponse::Success => return Ok(Step::Done),
+            KeyboardInteractiveAuthResponse::Success => return Ok((Step::Done, asked)),
             KeyboardInteractiveAuthResponse::Failure {
                 remaining_methods,
                 partial_success,
             } => {
-                return Ok(match partial_success {
+                let step = match partial_success {
                     true => Step::Partial(remaining_methods),
                     false => Step::Refused(remaining_methods),
-                });
+                };
+                return Ok((step, asked));
             }
             KeyboardInteractiveAuthResponse::InfoRequest {
                 name,
@@ -270,6 +296,14 @@ async fn keyboard_interactive(handle: &mut Handle<HopHandler>, login: &mut Login
                 prompts,
             } => (name, instructions, prompts),
         };
+        rounds += 1;
+        if rounds > KEYBOARD_ROUNDS {
+            return Err(SshFailure::Protocol {
+                status: None,
+                detail: format!("keyboard-interactive asked more than {KEYBOARD_ROUNDS} times"),
+            }
+            .into());
+        }
         let answers = if prompts.is_empty() {
             Vec::new()
         } else if let Some(stored) = stored_password_answer(&prompts, login) {
@@ -280,7 +314,10 @@ async fn keyboard_interactive(handle: &mut Handle<HopHandler>, login: &mut Login
                 .keyboard_interactive(&login.user_host(), &name, &instructions, &prompts)
                 .await?
             {
-                Some(answers) => answers,
+                Some(answers) => {
+                    asked = true;
+                    answers
+                }
                 // russh takes nothing but answers until the exchange ends, so nobody to ask answers blank.
                 None => prompts.iter().map(|_| SecretString::from("")).collect(),
             }
@@ -291,7 +328,6 @@ async fn keyboard_interactive(handle: &mut Handle<HopHandler>, login: &mut Login
             .await
             .map_err(|error| login.failed(error))?;
     }
-    Ok(Step::NotTried)
 }
 
 // PAM asks for the password through keyboard-interactive, so the stored one answers its one hidden prompt.
@@ -323,7 +359,7 @@ async fn agent(
         .collect();
     let mut last = Step::NotTried;
     for identity in wanted {
-        login.offered.push(Offered::of(&identity));
+        let offered = Offered::of(&identity);
         let hash = rsa_hash(handle, identity_algorithm(&identity)).await;
         let result = match identity {
             AgentIdentity::PublicKey { key, .. } => handle.authenticate_publickey_with(user, key, hash, agent).await,
@@ -334,7 +370,11 @@ async fn agent(
             }
         };
         let result = match result {
-            Ok(result) => result,
+            // A key the agent could not sign with was not offered, so its file may still be.
+            Ok(result) => {
+                login.offered.push(offered);
+                result
+            }
             Err(error) if handle.is_closed() => {
                 tracing::debug!(%error, "the session ended while the agent signed");
                 return Err(from_russh(russh::Error::Disconnect, host, end));
@@ -372,10 +412,11 @@ async fn key_file(
         if let Some(certificate) = &certificate
             && !login.offered.contains(&Offered::Certificate(public.key_data().clone()))
         {
-            login.offered.push(Offered::Certificate(public.key_data().clone()));
             match agent_certificate(handle, login, certificate).await? {
-                Step::Refused(remaining) if remaining.contains(&MethodKind::PublicKey) => {}
                 Step::NotTried => {}
+                Step::Refused(remaining) if remaining.contains(&MethodKind::PublicKey) => {
+                    login.offered.push(Offered::Certificate(public.key_data().clone()));
+                }
                 other => return Ok(other),
             }
         }

@@ -222,21 +222,32 @@ async fn ecdsa_p256_key_with_a_passphrase_signs_in() -> TestResult {
     key_signs_in(SshKeyType::EcdsaP256, Some(PASSPHRASE), OpenSshOptions::selected()?).await
 }
 
-// The PEM format keeps no public half in the clear, so the passphrase opens it.
-#[tokio::test]
-#[ignore = "requires docker"]
-async fn an_encrypted_pem_rsa_key_signs_in() -> TestResult {
+// PEM and PKCS#8 keep no public half in the clear, so the passphrase opens them.
+async fn rewritten_rsa_key_signs_in(format: &str) -> TestResult {
     let key = SshKeyPair::generate_with(SshKeyType::Rsa, Some(PASSPHRASE), "tablepro-in-process").await?;
     let rewritten = std::process::Command::new("ssh-keygen")
-        .args(["-q", "-p", "-m", "PEM", "-P", PASSPHRASE, "-N", PASSPHRASE, "-f"])
+        .args(["-q", "-p", "-m", format, "-P", PASSPHRASE, "-N", PASSPHRASE, "-f"])
         .arg(key.private_key())
         .status()?;
     assert!(rewritten.success());
+    std::fs::remove_file(key.public_key_file())?;
     let server = Server::start(SshAuthVariant::PublicKey(key), OpenSshOptions::selected()?, None).await?;
 
     let session = server.connect(key_file(server.key()?)).await??;
 
     assert_tunnel_answers(&session).await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_encrypted_pem_rsa_key_signs_in() -> TestResult {
+    rewritten_rsa_key_signs_in("PEM").await
+}
+
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn an_encrypted_pkcs8_rsa_key_signs_in() -> TestResult {
+    rewritten_rsa_key_signs_in("PKCS8").await
 }
 
 #[tokio::test]

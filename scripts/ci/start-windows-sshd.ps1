@@ -44,10 +44,13 @@ $config = Join-Path $programData 'sshd_config'
 if (-not (Test-Path $config)) {
     Copy-Item (Join-Path $openssh 'sshd_config_default') $config
 }
+# The log goes to __PROGRAMDATA__/ssh/logs/sshd.log, which the workflow prints when a test fails.
 $lines = @(
     "AuthorizedKeysFile __PROGRAMDATA__/ssh/tablepro_authorized_keys",
     'PasswordAuthentication yes',
-    'AllowTcpForwarding yes'
+    'AllowTcpForwarding yes',
+    'SyslogFacility LOCAL0',
+    'LogLevel DEBUG2'
 )
 Set-Content -Encoding ascii $config ($lines + (Get-Content $config))
 Set-Service sshd -StartupType Manual

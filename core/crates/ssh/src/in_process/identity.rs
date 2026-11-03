@@ -64,6 +64,7 @@ pub(crate) async fn load(
     match decode(&text, None).await {
         Ok(key) => return usable(key, path, chosen),
         Err(russh::keys::Error::KeyIsEncrypted) => {}
+        Err(_) if encrypted(&text) => {}
         Err(error) => return unusable(&error, path, chosen),
     }
     let mut reason = PromptReason::NotStored;
@@ -112,6 +113,18 @@ fn sign(key: &PrivateKey, hash_alg: Option<HashAlg>, data: &[u8]) -> Result<Sign
         KeypairData::Rsa(rsa) => (rsa, hash_alg).try_sign(data)?,
         keypair => keypair.try_sign(data)?,
     })
+}
+
+// Only OpenSSH and PKCS#5 files report themselves encrypted when opened without a passphrase.
+fn encrypted(text: &str) -> bool {
+    if text.contains("-----BEGIN ENCRYPTED PRIVATE KEY-----") {
+        return true;
+    }
+    text.trim_start().starts_with("PuTTY-User-Key-File-")
+        && text
+            .lines()
+            .filter_map(|line| line.strip_prefix("Encryption:"))
+            .any(|cipher| cipher.trim() != "none")
 }
 
 async fn decode(
@@ -233,6 +246,18 @@ mod tests {
         let signature = Signature::decode(&mut blob.as_slice()).unwrap();
         assert!(appended.is_empty());
         key.public_key().key_data().verify(&data, &signature).unwrap();
+    }
+
+    #[test]
+    fn pkcs8_and_putty_files_say_when_they_are_encrypted() {
+        let pkcs8 = "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIB\n-----END ENCRYPTED PRIVATE KEY-----\n";
+        let putty = "PuTTY-User-Key-File-3: ssh-ed25519\nEncryption: aes256-cbc\nComment: deploy\n";
+        let plain_putty = "PuTTY-User-Key-File-3: ssh-ed25519\nEncryption: none\nComment: deploy\n";
+
+        assert!(encrypted(pkcs8));
+        assert!(encrypted(putty));
+        assert!(!encrypted(plain_putty));
+        assert!(!encrypted("-----BEGIN PRIVATE KEY-----\n"));
     }
 
     #[tokio::test]
