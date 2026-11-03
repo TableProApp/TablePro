@@ -26,6 +26,8 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw`.
 - `src/TablePro.App.Model`: the app's settings and session files, the library tree, the connection form's fields and the object folders. Plain `net10.0`, so `tests/TablePro.App.Model.Tests` runs anywhere.
 - `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own.
+- `ci/desktop.ps1`: readies a hosted runner's desktop for UI work (privacy settings window, WSL console, display size), for `windows.yml` and the grid gate.
+- `scripts/engine-glyphs.py`: writes `src/TablePro.App/Resources/EngineGlyphs.xaml` from the macOS app's engine artwork. Run it after that artwork changes or an engine is added.
 - `docs/decisions/`: the decisions only the Windows app makes.
 - The core's side of the boundary: `core/crates/ffi` (`core/ARCHITECTURE.md`, Bindings).
 
@@ -36,7 +38,8 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `QueryEditor.Run` returns at once. Read the run's events with `ReadEventsAsync` on the UI thread; rows that arrive while it is busy come as one event.
 - A grid reads a `ResultSet` through `ResultCursor.Fetch`, one window per visible range. A cursor belongs to one thread, and a window cannot be read after the cursor's next fetch.
 - `DataGridView.SetData(new ResultSetData(set, columns))` shows a set. Call the grid's `RowsChanged` after each `RowsAppended`. Sorting is the host's: the grid raises `SortRequested` and shows `Sort`.
-- The core writes every sorted statement: `GetTableQueryAsync` for a table, `SortedQuery` for a query result, null when the statement cannot run again.
+- The core writes every sorted statement: `GetTableQueryAsync` for a table, `SortedQuery` for a query result, null when the statement cannot run again. `GetTableQueryAsync` takes the page's offset, and `CanSeek` says whether the engine has later pages; `CountRowsAsync` counts the table.
+- `QueryEvent.Finished.Transaction` is the transaction the editor's connection is left in. A session's `Health` is waited on with `WaitForHealthChangeAsync`, which returns once it differs from the one passed in.
 - The app starts the core with `TableProCore.CreateWithSystemSecrets`, so the core keeps secrets in Credential Manager itself. `ISecretStore` is for tests and hosts with a store of their own; the core calls it on a thread of its own.
 - `TableProCore.Library` reads and writes the saved connections in the storage directory the configuration names. A list the app shows is rebuilt from `GetSnapshotAsync` after each change.
 
