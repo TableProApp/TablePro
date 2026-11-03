@@ -22,6 +22,11 @@ $password = 'Tp-' + [guid]::NewGuid().ToString('N')
 "::add-mask::$password"
 $secure = ConvertTo-SecureString $password -AsPlainText -Force
 New-LocalUser -Name $user -Password $secure -PasswordNeverExpires -AccountNeverExpires | Out-Null
+# The default sshd_config lets in only the Administrators and the OpenSSH Users groups.
+if (-not (Get-LocalGroup -Name 'OpenSSH Users' -ErrorAction SilentlyContinue)) {
+    New-LocalGroup -Name 'OpenSSH Users' | Out-Null
+}
+Add-LocalGroupMember -Group 'OpenSSH Users' -Member $user
 
 $keygen = Join-Path $openssh 'ssh-keygen.exe'
 $plain = Join-Path $Out 'id_ed25519'
@@ -66,6 +71,11 @@ while (-not (Test-NetConnection -ComputerName 127.0.0.1 -Port 22 -InformationLev
     if ((Get-Date) -gt $deadline) { throw 'sshd did not listen on port 22' }
     Start-Sleep -Seconds 1
 }
+
+# The first login makes the user's profile, which takes longer than a channel open may on a slow
+# runner, so Windows' own client logs in once first.
+& (Join-Path $openssh 'ssh.exe') -i $plain -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "$user@127.0.0.1" 'exit 0'
+if ($LASTEXITCODE -ne 0) { throw "the first login failed with $LASTEXITCODE" }
 
 @(
     "TABLEPRO_TEST_SSHD_USER=$user",

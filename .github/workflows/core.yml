@@ -76,7 +76,8 @@ jobs:
         run: scripts/ci/start-windows-sshd.ps1 -Out (Join-Path $env:RUNNER_TEMP 'tablepro-ssh')
       - name: SSH tunnels through Windows' OpenSSH Server
         if: runner.os == 'Windows'
-        run: cargo test --locked --target "$TARGET" --features tablepro-ssh/in-process -p tablepro-ssh --test in_process_windows -- --ignored
+        # One login at a time: the Arm64 runner is slow to start each session's process.
+        run: cargo test --locked --target "$TARGET" --features tablepro-ssh/in-process -p tablepro-ssh --test in_process_windows -- --ignored --test-threads=1
       - name: The OpenSSH Server's log
         if: failure() && runner.os == 'Windows'
         shell: pwsh
