@@ -31,30 +31,56 @@ enum MQLExportHelpers {
         MongoDBUuidCodec.binaryText(for: MongoDBBinaryValue(data: data, subtype: subtype))
     }
 
-    /// A mongosh script inserts a string wherever it sees one, so a typed scalar has to be
-    /// written as its constructor. The column type is the only surviving record of the type.
+    // The column type is the only record of a cell's BSON type: text in any column that does not name one stays a string.
     static func mqlTextValue(for value: String, columnTypeName: String) -> String {
+        typedValue(for: value, columnTypeName: columnTypeName) ?? JavaScriptText.stringLiteral(value)
+    }
+
+    private static func typedValue(for value: String, columnTypeName: String) -> String? {
         switch columnTypeName {
         case "ObjectId":
-            let objectId = MongoDBObjectId(hex: value)
-            guard objectId.isValid else { break }
+            guard MongoDBObjectId(hex: value).isValid else { return nil }
             return "ObjectId(\(JavaScriptText.stringLiteral(value)))"
         case "TIMESTAMP":
-            guard isIso8601(value) else { break }
+            guard isIso8601(value) else { return nil }
             return "ISODate(\(JavaScriptText.stringLiteral(value)))"
         case "DECIMAL":
-            guard NumberText.isJSONNumberLiteral(value) else { break }
+            guard NumberText.isJSONNumberLiteral(value) || nonFiniteNumbers.contains(value) else { return nil }
             return "NumberDecimal(\(JavaScriptText.stringLiteral(value)))"
         case "BIGINT":
-            guard Int64(value) != nil else { break }
+            guard Int64(value) != nil else { return numberValue(value) }
             return "NumberLong(\(JavaScriptText.stringLiteral(value)))"
         case "FLOAT":
-            guard NumberText.isJSONNumber(value), let number = Double(value), readsBackAsInteger(number) else { break }
+            guard NumberText.isJSONNumber(value), let number = Double(value), readsBackAsInteger(number) else {
+                return numberValue(value)
+            }
             return "Double(\(value))"
+        case "INTEGER":
+            return numberValue(value)
+        case "BOOLEAN":
+            return value == "true" || value == "false" ? value : nil
+        case "JSON":
+            return containerValue(value)
         default:
-            break
+            guard uuidColumnTypeNames.contains(columnTypeName),
+                  let binary = MongoDBUuidCodec.parseWrapper(value) else { return nil }
+            return MongoDBUuidCodec.binaryText(for: binary)
         }
-        return mqlJsonValue(for: value)
+    }
+
+    private static let nonFiniteNumbers: Set<String> = ["NaN", "Infinity", "-Infinity"]
+
+    // The driver names a decoded UUID column by the wrapper its cells are written in.
+    private static let uuidColumnTypeNames: Set<String> = Set(
+        [MongoDBUuidCodec.standardUuidSubtype, MongoDBUuidCodec.legacyUuidSubtype].flatMap { subtype in
+            MongoDBUuidRepresentation.allCases.compactMap {
+                MongoDBUuidCodec.wrapperTag(forSubtype: subtype, representation: $0)
+            }
+        }
+    )
+
+    private static func numberValue(_ value: String) -> String? {
+        NumberText.isJSONNumber(value) || nonFiniteNumbers.contains(value) ? value : nil
     }
 
     private static let largestExactInteger: Double = 9_007_199_254_740_991
@@ -71,27 +97,12 @@ enum MQLExportHelpers {
         return formatter.date(from: value) != nil
     }
 
-    static func mqlJsonValue(for value: String) -> String {
-        if value == "true" || value == "false" {
-            return value
+    private static func containerValue(_ value: String) -> String? {
+        guard (value.hasPrefix("{") && value.hasSuffix("}")) || (value.hasPrefix("[") && value.hasSuffix("]")),
+              (try? JSONSerialization.jsonObject(with: Data(value.utf8))) != nil else {
+            return nil
         }
-        if value == "null" {
-            return "null"
-        }
-        if NumberText.isJSONNumber(value) {
-            return value
-        }
-        if let binary = MongoDBUuidCodec.parseWrapper(value) {
-            return MongoDBUuidCodec.binaryText(for: binary)
-        }
-        if (value.hasPrefix("{") && value.hasSuffix("}")) ||
-            (value.hasPrefix("[") && value.hasSuffix("]")) {
-            if let data = value.data(using: .utf8),
-               (try? JSONSerialization.jsonObject(with: data)) != nil {
-                return escapingLineBreaks(inJSON: value)
-            }
-        }
-        return JavaScriptText.stringLiteral(value)
+        return escapingLineBreaks(inJSON: value)
     }
 
     /// `JSONSerialization` accepts U+2028, U+2029, DEL and the C1 controls raw inside a string,
