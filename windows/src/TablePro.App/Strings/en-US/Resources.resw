@@ -1254,10 +1254,10 @@
   <data name="LastPageButton.Label" xml:space="preserve">
     <value>Last page</value>
   </data>
-  <data name="PageRange" xml:space="preserve">
-    <value>Rows {0:N0} to {1:N0}</value>
+  <data name="StatusPage" xml:space="preserve">
+    <value>Rows {0:N0}-{1:N0} · {2:N0} ms</value>
   </data>
-  <data name="PageRangeOf" xml:space="preserve">
-    <value>Rows {0:N0} to {1:N0} of {2:N0}</value>
+  <data name="StatusPageOf" xml:space="preserve">
+    <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
   </data>
 </root>

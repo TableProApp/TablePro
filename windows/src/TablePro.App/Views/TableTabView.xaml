@@ -19,22 +19,14 @@
             IsDynamicOverflowEnabled="True"
             VerticalContentAlignment="Center">
             <CommandBar.Content>
-                <StackPanel Margin="12,0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                    <TextBlock
-                        x:Name="StatusText"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="TableStatus"
-                        AutomationProperties.LiveSetting="Polite"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Style="{StaticResource CaptionTextBlockStyle}" />
-                    <TextBlock
-                        x:Name="PageText"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="PageText"
-                        AutomationProperties.LiveSetting="Polite"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Visibility="Collapsed" />
-                </StackPanel>
+                <TextBlock
+                    x:Name="StatusText"
+                    Margin="12,0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="TableStatus"
+                    AutomationProperties.LiveSetting="Polite"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
             </CommandBar.Content>
             <AppBarButton x:Uid="FirstPageButton" x:Name="FirstPageButton" AutomationProperties.AutomationId="FirstPageButton" Icon="Previous" Click="OnFirstPage" Visibility="Collapsed" />
             <AppBarButton x:Uid="PreviousPageButton" x:Name="PreviousPageButton" AutomationProperties.AutomationId="PreviousPageButton" Click="OnPreviousPage" Visibility="Collapsed">

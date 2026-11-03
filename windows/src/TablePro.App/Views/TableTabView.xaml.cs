@@ -9,9 +9,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// A table tab: a page of the table, read with the statement the core writes for the engine. A sort is an ORDER BY in
-// that statement, so it orders the whole table, not the rows already read. Pages are the row limit long, as macOS
-// pages a table, and the server's count gives the last one.
+// A sort is an ORDER BY in the page's statement, so it orders the whole table, not the rows already read.
 public sealed partial class TableTabView : UserControl, ITabContent
 {
     private readonly Workbench _workbench;
@@ -23,6 +21,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
     private GridSort _sort = GridSort.None;
     private GridSort _shownSort = GridSort.None;
     private TablePage _page;
+    private (long Milliseconds, bool Truncated)? _finished;
     private CancellationTokenSource? _counting;
 
     internal TableTabView(Workbench workbench, DatabaseSession session, string? schema, string table)
@@ -34,6 +33,12 @@ public sealed partial class TableTabView : UserControl, ITabContent
         _page = TablePage.First(workbench.Settings.RowLimit);
         InitializeComponent();
         Results.StatusChanged += (_, status) => StatusText.Text = status;
+        Results.RowsStatus = (rows, milliseconds, truncated) =>
+        {
+            _finished = (milliseconds, truncated);
+            _page = _page with { Rows = rows };
+            return RowsStatus()!;
+        };
         Results.SortRequested += OnSortRequested;
     }
 
@@ -83,6 +88,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
             return;
         }
 
+        _finished = null;
         SetRunning(true);
         try
         {
@@ -94,11 +100,12 @@ public sealed partial class TableTabView : UserControl, ITabContent
             var query = await _session.GetTableQueryAsync(new TableName(_schema, _table), sort, page.Size, page.Offset)
                 .ConfigureAwait(true);
             _run?.Dispose();
+            _page = page with { CanSeek = query.CanSeek };
             // The statement holds the page; a run limit one past it keeps a full page from reading as cut short.
             _run = _editor.Run(query.Sql, new QueryOptions(page.Size + 1));
             await Results.ShowRunAsync(_run, _sort, query.VisibleColumns).ConfigureAwait(true);
             _shownSort = _sort;
-            _page = page with { Rows = Results.RowCount, CanSeek = query.CanSeek };
+            _page = _page with { Rows = Results.RowCount };
             CountIfNeeded();
         }
         catch (TableProException exception)
@@ -156,7 +163,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
     private void UpdatePager()
     {
         var shown = _page.IsPaged ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var element in new UIElement[] { FirstPageButton, PreviousPageButton, NextPageButton, LastPageButton, PageSeparator, PageText })
+        foreach (var element in new UIElement[] { FirstPageButton, PreviousPageButton, NextPageButton, LastPageButton, PageSeparator })
         {
             element.Visibility = shown;
         }
@@ -165,9 +172,28 @@ public sealed partial class TableTabView : UserControl, ITabContent
         PreviousPageButton.IsEnabled = !IsRunning && _page.HasPrevious;
         NextPageButton.IsEnabled = !IsRunning && _page.HasNext;
         LastPageButton.IsEnabled = !IsRunning && _page.HasLast;
-        PageText.Text = _page.Total is { } total
-            ? Strings.Format("PageRangeOf", _page.FirstRow, _page.LastRow, total)
-            : Strings.Format("PageRange", _page.FirstRow, _page.LastRow);
+        if (RowsStatus() is { } status)
+        {
+            StatusText.Text = status;
+        }
+    }
+
+    // Null until a run has read the page; a count that arrives later adds the total, as on macOS.
+    private string? RowsStatus()
+    {
+        if (_finished is not { } run)
+        {
+            return null;
+        }
+
+        if (!_page.IsPaged)
+        {
+            return Strings.Format(run.Truncated ? "StatusRowsLimited" : "StatusRows", _page.Rows, run.Milliseconds);
+        }
+
+        return _page.Total is { } total
+            ? Strings.Format("StatusPageOf", _page.FirstRow, _page.LastRow, total, run.Milliseconds)
+            : Strings.Format("StatusPage", _page.FirstRow, _page.LastRow, run.Milliseconds);
     }
 
     private void SetRunning(bool running)
@@ -199,7 +225,6 @@ public sealed partial class TableTabView : UserControl, ITabContent
         }
 
         _sort = sort;
-        // A new order starts again from the table's first rows.
         _page = _page.At(0);
         Run();
     }

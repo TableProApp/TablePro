@@ -7,8 +7,7 @@ using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
-// A run's first result set in the data grid. The grid reads it through ResultSet.OpenCursor while rows still arrive.
-// A sort of the rows held shows a sorted set over the run's own, which stays in arrival order for the next sort.
+// A sort of the rows held shows a sorted copy, so the run's own set keeps arrival order for the next sort.
 public sealed partial class ResultsPane : UserControl
 {
     private ResultSet? _source;
@@ -33,13 +32,14 @@ public sealed partial class ResultsPane : UserControl
 
     public IReadOnlyList<ResultColumn> Columns { get; private set; } = [];
 
-    // How many result sets the last run produced; only one can be sorted by running its statement again.
+    // Only a run with one result set can be sorted by running its statement again.
     public int ResultSetCount { get; private set; }
 
-    // The rows the shown set holds once the run ends.
     public long RowCount { get; private set; }
 
-    // The transaction the last run left the editor's connection in.
+    // A table tab words its own page of rows from the count, the milliseconds and whether the limit cut it.
+    internal Func<long, long, bool, string>? RowsStatus { get; set; }
+
     public TransactionState Transaction { get; private set; } = TransactionState.Idle;
 
     public GridSort Sort
@@ -94,9 +94,7 @@ public sealed partial class ResultsPane : UserControl
         Placeholder.Text = Strings.Get("ResultsEmpty");
     }
 
-    // Reads the run's events on the UI thread until it ends. The rows shown stay until the run's first set has rows
-    // of its own or ends, so a sort or a refresh does not blank the grid, and a client reading a cell never finds the
-    // grid between the two. A table tab shows only its first visibleColumns.
+    // The rows shown stay until the new set has rows or ends, so a sort or a refresh never blanks the grid.
     internal async Task ShowRunAsync(QueryRun run, GridSort sort, int visibleColumns = int.MaxValue)
     {
         ArgumentNullException.ThrowIfNull(run);
@@ -215,7 +213,8 @@ public sealed partial class ResultsPane : UserControl
                 var milliseconds = (long)completed.Elapsed.TotalMilliseconds;
                 if (hasRows)
                 {
-                    Status(Strings.Format(truncated ? "StatusRowsLimited" : "StatusRows", rows, milliseconds));
+                    Status(RowsStatus?.Invoke(rows, milliseconds, truncated)
+                        ?? Strings.Format(truncated ? "StatusRowsLimited" : "StatusRows", rows, milliseconds));
                 }
                 else
                 {

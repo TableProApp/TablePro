@@ -232,23 +232,31 @@ public sealed partial class ShellTests
 
         app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
         var track = app.FindByName("Track", app.Find("ObjectTree"));
-        app.Click(track, () => app.TryFind("PageText") is { IsOffscreen: false });
-        var page = app.Find("PageText");
-        Assert.Equal("Rows 1 to 1,000 of 3,503", AppSession.WaitForText(page, text => text.EndsWith("of 3,503", StringComparison.Ordinal)));
+        app.Click(track, () => app.TryFind("NextPageButton") is { IsOffscreen: false });
+        var status = app.Find("TableStatus");
+        Assert.Matches(
+            PagedStatus("1-1,000"),
+            AppSession.WaitForText(status, text => text.Contains(" of 3,503", StringComparison.Ordinal)));
         app.Screenshot("23-table-paged");
 
         app.Find("NextPageButton").AsButton().Invoke();
-        Assert.Equal("Rows 1,001 to 2,000 of 3,503", AppSession.WaitForText(page, text => text.StartsWith("Rows 1,001", StringComparison.Ordinal)));
+        Assert.Matches(
+            PagedStatus("1,001-2,000"),
+            AppSession.WaitForText(status, text => text.StartsWith("1,001-", StringComparison.Ordinal)));
         Assert.Equal("1001", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "1001"));
 
         app.Find("LastPageButton").AsButton().Invoke();
-        Assert.Equal("Rows 3,001 to 3,503 of 3,503", AppSession.WaitForText(page, text => text.StartsWith("Rows 3,001", StringComparison.Ordinal)));
+        Assert.Matches(
+            PagedStatus("3,001-3,503"),
+            AppSession.WaitForText(status, text => text.StartsWith("3,001-", StringComparison.Ordinal)));
         Assert.Equal("3001", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "3001"));
         Assert.False(app.Find("NextPageButton").IsEnabled);
         app.Screenshot("24-table-last-page");
 
         app.Find("FirstPageButton").AsButton().Invoke();
-        AppSession.WaitForText(page, text => text.StartsWith("Rows 1 to", StringComparison.Ordinal));
+        Assert.Matches(
+            PagedStatus("1-1,000"),
+            AppSession.WaitForText(status, text => text.StartsWith("1-1,000 ", StringComparison.Ordinal)));
         Assert.False(app.Find("PreviousPageButton").IsEnabled);
     }
 
@@ -315,6 +323,8 @@ public sealed partial class ShellTests
         app.Find("SelectionFavoriteButton").AsButton().Invoke();
         app.FindByName("Favorites", tree);
     }
+
+    private static string PagedStatus(string range) => $@"^{Regex.Escape(range)} of 3,503 rows · [\d,]+ ms$";
 
     private static string ConnectionId(string folder) => Guids(folder).First();
 
