@@ -49,7 +49,7 @@ if ($Install) {
     Invoke-WebRequest 'https://catalog.s.download.windowsupdate.com/c/msdownload/update/software/updt/2023/03/sqlserver2022-kb5022375-x64_ab34fe7633beef56c7bce1e212a6cf56c91f4e57.exe' -OutFile $update
     $updateHash = (Get-FileHash $update -Algorithm SHA256).Hash
     if ($updateHash -ne '589F5609A99EDC07AAAD2C73FFE53E1259B6BC1BCDE3ED950468C8219D2C9594') { throw "SQL Server CU1 has SHA-256 $updateHash" }
-    $patched = Start-Process $update -ArgumentList '/quiet', '/IAcceptSQLServerLicenseTerms', '/Action=Patch', '/InstanceName=MSSQLSERVER', '/UpdateEnabled=False' -Wait -PassThru -NoNewWindow
+    $patched = Start-Process $update -ArgumentList '/quiet', '/IAcceptSQLServerLicenseTerms', '/Action=Patch', '/InstanceName=MSSQLSERVER' -Wait -PassThru -NoNewWindow
     if ($patched.ExitCode -notin @(0, 3010)) {
         Get-Content 'C:\Program Files\Microsoft SQL Server\160\Setup Bootstrap\Log\Summary.txt'
         throw "SQL Server CU1 exited $($patched.ExitCode)"

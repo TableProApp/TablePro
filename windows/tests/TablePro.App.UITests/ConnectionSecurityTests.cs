@@ -1,4 +1,5 @@
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
 using FlaUI.Core.Tools;
 
 namespace TablePro.App.UITests;
@@ -16,6 +17,7 @@ public sealed partial class ShellTests
         app.Find("NameBox", form).AsTextBox().Text = "Strict SQL Server";
         var auth = app.Find("AuthBox", form).AsComboBox();
         auth.Select("Windows authentication");
+        auth.Collapse();
         Assert.True(Retry.WhileFalse(
             () => (app.TryFind("UserBox", form) is null or { IsOffscreen: true })
                 && (app.TryFind("PasswordInput", form) is null or { IsOffscreen: true }),
@@ -26,7 +28,8 @@ public sealed partial class ShellTests
         var tls = app.Find("TlsModeBox", form).AsComboBox();
         tls.Focus();
         tls.Select("Strict (TDS 8.0), verify the certificate and host");
-        app.Click(app.Find("TlsExpander", form), () => app.TryFind("CaFileBox", form) is { IsOffscreen: false }, form);
+        tls.Collapse();
+        ExpandTlsSettings(app, form);
         app.Find("ServerNameBox", form).AsTextBox().Text = "db.example.com";
         app.Find("ServerNameBox", form).Focus();
         app.Screenshot("32-sql-server-strict", form);
@@ -40,7 +43,7 @@ public sealed partial class ShellTests
         var edit = app.WaitForWindow("Edit connection");
         Assert.Equal("Windows authentication", app.Find("AuthBox", edit).AsComboBox().SelectedItem?.Text);
         Assert.Equal("Strict (TDS 8.0), verify the certificate and host", app.Find("TlsModeBox", edit).AsComboBox().SelectedItem?.Text);
-        app.Click(app.Find("TlsExpander", edit), () => app.TryFind("CaFileBox", edit) is { IsOffscreen: false }, edit);
+        ExpandTlsSettings(app, edit);
         Assert.Equal("db.example.com", app.Find("ServerNameBox", edit).AsTextBox().Text);
         app.Find("CancelButton", edit).AsButton().Invoke();
     }
@@ -59,5 +62,20 @@ public sealed partial class ShellTests
         Assert.DoesNotContain(tls.Items, item => item.Text.StartsWith("Strict", StringComparison.Ordinal));
         tls.Collapse();
         app.Find("CancelButton", form).AsButton().Invoke();
+    }
+
+    private static void ExpandTlsSettings(AppSession app, Window form)
+    {
+        // The toolkit's outer peer is a group; its native Expander owns expansion.
+        var expander = app.Find("TlsExpander", form).FindFirstDescendant(condition =>
+            condition.ByControlType(ControlType.Button).And(condition.ByName("SSL/TLS")));
+        Assert.NotNull(expander);
+        var expansion = expander.Patterns.ExpandCollapse.PatternOrDefault;
+        Assert.NotNull(expansion);
+        expansion.Expand();
+        Assert.True(Retry.WhileFalse(
+            () => app.TryFind("CaFileBox", form) is { IsOffscreen: false },
+            AppSession.Wait,
+            throwOnTimeout: false).Success);
     }
 }
