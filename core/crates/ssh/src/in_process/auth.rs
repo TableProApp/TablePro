@@ -11,7 +11,7 @@ use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::credentials::PromptReason;
 use tablepro_core::{SshFailure, TransportError};
 
-use super::agent::{AgentSlot, identity_algorithm, signs_for};
+use super::agent::{Agent, AgentSlot, identity_algorithm, signs_for};
 use super::failure::from_russh;
 use super::handler::{HopHandler, SessionEnd};
 use super::identity::{self, FileSignError, FileSigner, TRIES};
@@ -495,6 +495,30 @@ fn signed(result: Result<AuthResult, FileSignError>, host: &str, end: &SessionEn
     }
 }
 
+// An agent that holds only the plain key does not know the certificate on disk, so it is asked to
+// sign as that key, which is the signature a certificate login carries, as OpenSSH asks it.
+struct AsPlainKey<'a>(&'a mut Agent);
+
+impl russh::Signer for AsPlainKey<'_> {
+    type Error = russh::AgentAuthError;
+
+    async fn auth_sign(
+        &mut self,
+        identity: &AgentIdentity,
+        hash_alg: Option<HashAlg>,
+        to_sign: Vec<u8>,
+    ) -> Result<Vec<u8>, Self::Error> {
+        let plain = match identity {
+            AgentIdentity::Certificate { certificate, comment } => AgentIdentity::PublicKey {
+                key: PublicKey::from(certificate.public_key().clone()),
+                comment: comment.clone(),
+            },
+            other @ AgentIdentity::PublicKey { .. } => other.clone(),
+        };
+        russh::Signer::auth_sign(self.0, &plain, hash_alg, to_sign).await
+    }
+}
+
 // The agent signs with the key a certificate kept on disk certifies.
 async fn agent_certificate(
     handle: &mut Handle<HopHandler>,
@@ -507,7 +531,7 @@ async fn agent_certificate(
     };
     let hash = rsa_hash(handle, certificate.public_key().algorithm()).await;
     match handle
-        .authenticate_certificate_with(user, certificate.clone(), hash, agent)
+        .authenticate_certificate_with(user, certificate.clone(), hash, &mut AsPlainKey(agent))
         .await
     {
         Ok(result) => Ok(Step::from(result)),
