@@ -66,13 +66,24 @@ extension DuckDBLogicalType {
         .geometry,
     ]
 
+    // The value API ends text at a NUL, so a result reads through data chunks when every column is one of these: text,
+    // bytes, or a value with one spelling.
+    static let typesReadFromChunks: Set<DuckDBLogicalType> = [
+        .varchar, .blob, .boolean, .tinyint, .smallint, .integer, .bigint, .utinyint, .usmallint, .uinteger, .ubigint,
+    ]
+
     var isRenderedByValueAPI: Bool {
         !Self.typesTheValueAPICannotRender.contains(self)
     }
 
+    var isReadFromChunks: Bool {
+        Self.typesReadFromChunks.contains(self)
+    }
+
+    // A SELECT casts every other type to text, so DuckDB spells it and the result reads through chunks.
     static func requiresTextProjection(_ type: DuckDBLogicalType?) -> Bool {
         guard let type else { return true }
-        return !type.isRenderedByValueAPI
+        return !type.isReadFromChunks
     }
 
     static func requiresTextProjection(anyOf types: [DuckDBLogicalType?]) -> Bool {

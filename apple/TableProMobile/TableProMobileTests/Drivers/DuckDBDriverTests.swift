@@ -180,6 +180,27 @@ final class DuckDBDriverTests: XCTestCase {
         XCTAssertEqual(result.rows[1], ["2", "second", "false"])
     }
 
+    func testNulTextInsertsAndEditsByItsKeyWhole() async throws {
+        let driver = try XCTUnwrap(driver)
+        _ = try await driver.execute(query: "CREATE TABLE notes (id VARCHAR PRIMARY KEY, body VARCHAR)")
+        let columns = try await driver.fetchColumns(table: "notes", schema: nil)
+        let key = "k\u{0}1"
+        let insert = try XCTUnwrap(SQLBuilder.buildInsert(
+            table: "notes", schema: nil, type: .duckdb, driver: driver, columns: ["id", "body"], values: [key, "a\u{0}b"]
+        ))
+        try await driver.executeWrite([insert, "INSERT INTO notes VALUES ('k', 'other')"])
+        let inserted = try await driver.execute(query: "SELECT body FROM notes WHERE body <> 'other'")
+
+        try await driver.executeWrite([SQLBuilder.buildUpdate(
+            table: "notes", schema: nil, type: .duckdb, driver: driver,
+            changes: [(column: "body", value: "x\u{0}y")], primaryKeys: [(column: "id", value: key)], columns: columns
+        )])
+        let after = try await driver.execute(query: "SELECT id, body FROM notes ORDER BY id")
+
+        XCTAssertEqual(inserted.rows, [["a\u{0}b"]])
+        XCTAssertEqual(after.rows, [["k", "other"], [key, "x\u{0}y"]])
+    }
+
     func testTimestampTzRendersAsText() async throws {
         let driver = try XCTUnwrap(driver)
         let result = try await driver.execute(query: "SELECT TIMESTAMPTZ '2024-01-02 03:04:05+00' AS ts")

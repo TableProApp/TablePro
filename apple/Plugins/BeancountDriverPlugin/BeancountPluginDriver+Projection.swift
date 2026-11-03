@@ -34,7 +34,10 @@ private final class BeancountProjectionWriter {
         for (index, value) in values.enumerated() {
             let position = Int32(index + 1)
             if let value {
-                sqlite3_bind_text(statement, position, value, -1, projectionSQLiteTransient)
+                sqlite3_bind_text64(
+                    statement, position, value, sqlite3_uint64(value.utf8.count), projectionSQLiteTransient,
+                    UInt8(SQLITE_UTF8)
+                )
             } else {
                 sqlite3_bind_null(statement, position)
             }
