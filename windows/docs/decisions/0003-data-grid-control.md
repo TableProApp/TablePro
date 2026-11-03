@@ -65,7 +65,13 @@
 ### Header
 
 - A header cell shows the column name and the sort indicator. Its right edge resizes the column by dragging, with the resize cursor, and fits the column to its header and the rows in view on a double-click.
-- A click asks for a sort: `SortRequested` with the column, ascending, flipping on a repeat, as the macOS grid does. The core has no sort, so the host runs it on the server and sets `Sort`.
+- A click asks for a sort: `SortRequested` with the column, ascending, flipping on a repeat, as the macOS grid does. The host sorts, on the server or with the core's sort of the rows held ([core 0007](../../../core/docs/decisions/0007-sorting-a-result.md)), and sets `Sort`.
+
+### Column widths
+
+- With `SizeColumnsToContent`, a new result's columns start at the width of the header and the first 30 rows, 10 past 50 columns, each value measured to 50 characters, from 60 to 800 px. These are the macOS grid's numbers (`DataGridColumnWidthCalculator`). macOS spreads its sample over the whole result; the grid takes the first rows, since the rest may still be arriving. A result shown before its first rows is sized again when they arrive.
+- Data with the same column names, in order, keeps every width, as macOS keys its widths by name. A sort or a refresh keeps the widths the user set; other names start again.
+- Off, every column starts at `DefaultColumnWidth`. The gate and the control's tests keep it off, so their columns are 140 px.
 
 ### Accessibility
 
@@ -73,6 +79,7 @@
 - `GetItem` reaches any cell without scrolling; the cell's ScrollItem brings it into view. The tree lists the cells on screen, and the grid keeps one peer per cell in use, so both hand a client the same provider.
 - `ISelectionProvider.GetSelection` reads the model, so cells off the screen are in it, up to 10,000 cells.
 - A point query reaches a drawn cell through the pane's peer, which maps the point to the cell.
+- A header is a HeaderItem with Invoke, which sorts and raises the Invoked event, Transform, which resizes in physical pixels, and its sort order as `ItemStatus`, the property the [HeaderItem control type](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-supportheaderitemcontroltype) gives sort orders. A change raises ItemStatus's property-changed event. The host words it through `SortedAscendingStatus` and `SortedDescendingStatus`.
 
 ## Rationale
 
@@ -84,10 +91,10 @@
 
 - Text, hit testing, high contrast, text scale, DPI, device loss, right to left and color fonts are ours to keep right; a TextBlock would do them. Each has a test or a gate check.
 - `TablePattern.ColumnHeaders` reads empty for clients on Windows App SDK 2.6.4: `CUIATableProviderWrapper::GetColumnHeaders` releases its SAFEARRAY before filling it. microsoft/microsoft-ui-xaml#11820 fixed it after 2.6.4. The grid returns the header peers on screen, and a cell's TableItem names its column header while that header is realized.
-- The core has no sort; the grid raises `SortRequested` and the host sorts on the server.
+- The grid raises `SortRequested` and the host sorts: on the server, or with the core's sort of the rows held.
 - A UI in a right-to-left language would need the grid mirrored; only values read right to left today.
 - The gate runs WARP on hosted runners; no machine with a GPU is measured yet.
-- Not yet: editing, column reorder, sizing columns to their content on load, row header peers, find, tooltips for cut cells.
+- Not yet: editing, column reorder, row header peers, find, tooltips for cut cells.
 
 ## Alternatives considered
 
