@@ -96,6 +96,8 @@ struct EtcdQueryBuilder {
               let prefix = decodeSegment(parts[0]),
               let limit = Int(parts[1]),
               let offset = Int(parts[2]),
+              limit >= 0, offset >= 0,
+              !offset.addingReportingOverflow(limit).overflow,
               let filter = decodeFilter(parts[4]) else { return nil }
         return EtcdParsedQuery(
             prefix: prefix, limit: limit, offset: offset, sortAscending: parts[3] == "1", filter: filter
