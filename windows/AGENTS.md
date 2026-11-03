@@ -67,6 +67,8 @@ The build runs `cargo build -p tablepro-ffi` for the runtime identifier, or for 
 
 The core's Rust tests: `cargo test -p tablepro-ffi`, from the top of the repository.
 
+`.claude/skills/fix-issue/scripts/verify.sh --platform windows <step>` runs these with a verdict; its steps and when each runs: `.claude/skills/fix-issue/references/platform-windows.md`, Verify.
+
 ## Bindings
 
 The generated files are committed: the API change is reviewed in the pull request, a build needs no generator, and an editor knows the types before the first build. CI's macOS job generates them again and fails when they differ.
