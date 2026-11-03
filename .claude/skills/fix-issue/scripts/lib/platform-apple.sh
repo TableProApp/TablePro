@@ -425,6 +425,18 @@ platform_step() {
                 "$APPLE_ROOT/scripts/build-hana.sh" "$(uname -m)" >> "$log" 2>&1 \
                     && note "built the HANA helper first: $helper"
             fi
+            helper="$APPLE_ROOT/Native/DamengBridge/lib/libdameng_bridge.a"
+            if [ "$scheme" = "AllPlugins" ] && [ ! -e "$helper" ]; then
+                require_tool rustup
+                "$APPLE_ROOT/scripts/build-dameng.sh" "$(uname -m)" >> "$log" 2>&1
+                code=$?
+                if [ $code -ne 0 ]; then
+                    STATUS=FAIL
+                    note "Dameng bridge build failed; see the log"
+                    emit "$log" "$code"
+                fi
+                note "built the Dameng bridge first: $helper"
+            fi
             # shellcheck disable=SC2046
             xcodebuild -project "$APPLE_ROOT/TablePro.xcodeproj" -scheme "$scheme" \
                 -configuration Debug build $(xcodebuild_flags) >> "$log" 2>&1
