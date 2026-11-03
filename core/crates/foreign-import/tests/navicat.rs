@@ -393,3 +393,31 @@ fn reading_stops_when_cancelled() {
         .collect_blocking(&request(true, false), &cancel);
     assert!(matches!(outcome, Err(ForeignImportError::Cancelled)));
 }
+
+#[test]
+fn a_saved_key_passphrase_is_imported_in_either_spelling_and_alone() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    let file = dir.path().join("keys.ncx");
+    std::fs::write(
+        &file,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<Connections Ver="1.5">
+	<Connection ConnectionName="Lower" ConnType="MYSQL" Host="db" Port="3306" UserName="u" SavePassword="false" SSH="true" SSH_Host="bastion" SSH_UserName="ops" SSH_AuthenMethod="PUBLICKEY" SSH_PrivateKey="/keys/id" SSH_Passphrase="B75D320B6211468D63EB3B67C9E85933" SSH_SavePassphrase="true" SSH_SavePassword="false"/>
+	<Connection ConnectionName="Upper" ConnType="MYSQL" Host="db" Port="3306" UserName="u" SavePassword="false" SSH="true" SSH_Host="bastion" SSH_UserName="ops" SSH_AuthenMethod="PUBLICKEY" SSH_PrivateKey="/keys/id" SSH_PassPhrase="B75D320B6211468D63EB3B67C9E85933" SSH_SavePassPhrase="true" SSH_SavePassword="false"/>
+	<Connection ConnectionName="Unsaved" ConnType="MYSQL" Host="db" Port="3306" UserName="u" SavePassword="false" SSH="true" SSH_Host="bastion" SSH_UserName="ops" SSH_AuthenMethod="PUBLICKEY" SSH_PrivateKey="/keys/id" SSH_Passphrase="B75D320B6211468D63EB3B67C9E85933" SSH_SavePassphrase="false" SSH_SavePassword="false"/>
+</Connections>
+"#,
+    )
+    .expect("an export file");
+    let import = import_of(file, ForeignPlatform::current(), &request(true, false)).expect("an import");
+    let passphrase = |name: &str| {
+        connection(&import, name)
+            .credentials
+            .as_ref()
+            .and_then(|credentials| credentials.key_passphrase.as_ref())
+            .map(|secret| secret.expose_secret().to_owned())
+    };
+    assert_eq!(passphrase("Lower").as_deref(), Some("This is a test"));
+    assert_eq!(passphrase("Upper").as_deref(), Some("This is a test"));
+    assert!(connection(&import, "Unsaved").credentials.is_none());
+}

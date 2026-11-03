@@ -2,8 +2,11 @@ use std::sync::Arc;
 
 use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::{SecretError, SecretKind, SecretLookup, SecretVault};
-use tablepro_foreign_import::review::{AppliedImport, ImportPlan, ImportReview, apply_blocking};
+use tablepro_foreign_import::review::{
+    AppliedImport, ImportPlan, ImportReview, QueryImportOutcome, apply_blocking, save_queries,
+};
 use tablepro_session::runtime::Tasks;
+use tablepro_storage::saved_queries::SavedQueries;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag, ConnectionTagName,
     SavedConnection, StorageError,
@@ -259,6 +262,28 @@ impl SavedConnectionEditor {
             applied,
             secrets_not_kept,
         })
+    }
+
+    // A delete from another window purges a connection's queries once; any this import saves for
+    // it afterwards are removed again here.
+    pub async fn save_imported_queries(&self, applied: &AppliedImport, store: &SavedQueries) -> QueryImportOutcome {
+        let outcome = save_queries(applied, store).await;
+        if let Ok(list) = self.list().await {
+            let mut gone: Vec<Uuid> = applied
+                .queries
+                .iter()
+                .map(|query| query.query.connection_id)
+                .filter(|id| !list.iter().any(|saved| saved.id == *id))
+                .collect();
+            gone.sort_unstable();
+            gone.dedup();
+            for id in gone {
+                if let Err(error) = store.delete_for_connection(id).await {
+                    tracing::warn!(%error, "queries imported for a deleted connection are still saved");
+                }
+            }
+        }
+        outcome
     }
 
     /// A pick of the group it is already in writes nothing.

@@ -178,14 +178,18 @@ fn credentials(element: Node<'_, '_>) -> Option<ForeignCredentials> {
     };
     let password = saved("SavePassword", "Password");
     let ssh_password = saved("SSH_SavePassword", "SSH_Password");
-    if password.is_none() && ssh_password.is_none() {
-        return None;
-    }
-    Some(ForeignCredentials {
+    // The macOS port left a saved key passphrase behind; the export spells it in either case.
+    let key_passphrase = if is_true(attribute_any_case(element, "SSH_SavePassPhrase")) {
+        decrypt_field(attribute_any_case(element, "SSH_PassPhrase"))
+    } else {
+        None
+    };
+    ForeignCredentials {
         password,
         ssh_password,
-        key_passphrase: None,
-    })
+        key_passphrase,
+    }
+    .non_empty()
 }
 
 fn decrypt_field(hex: &str) -> Option<SecretString> {
@@ -226,6 +230,13 @@ fn ssl_mode(raw: &str) -> ForeignSslMode {
 
 fn attribute<'a>(element: Node<'a, '_>, name: &str) -> &'a str {
     element.attribute(name).unwrap_or_default()
+}
+
+fn attribute_any_case<'a>(element: Node<'a, '_>, name: &str) -> &'a str {
+    element
+        .attributes()
+        .find(|attribute| attribute.name().eq_ignore_ascii_case(name))
+        .map_or("", |attribute| attribute.value())
 }
 
 fn is_true(value: &str) -> bool {

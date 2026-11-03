@@ -1,5 +1,5 @@
 use libadwaita::prelude::*;
-use tablepro_foreign_import::review::{ImportPlan, ImportReview, QueryImportOutcome, save_queries};
+use tablepro_foreign_import::review::{ImportPlan, ImportReview, QueryImportOutcome};
 use tablepro_storage::StorageError;
 
 use super::{SessionWindow, SessionWindowInput};
@@ -41,7 +41,7 @@ impl SessionWindow {
                 Ok(imported) => {
                     let queries = match &saved_queries {
                         Some(store) if !imported.applied.queries.is_empty() => {
-                            Some(save_queries(&imported.applied, store).await)
+                            Some(editor.save_imported_queries(&imported.applied, store).await)
                         }
                         _ => None,
                     };
