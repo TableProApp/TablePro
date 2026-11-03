@@ -120,16 +120,19 @@ impl LoginPlan {
         self.tls.login_error(error)
     }
 
-    /// Whether a server that hung up on the login without a byte answers
-    /// the other way to begin one, asked on a stream of its own with no
-    /// credential sent. A transient drop answers neither.
-    async fn takes_the_other_opening(&self, transport: &dyn Transport) -> bool {
+    /// Whether a server that hung up on the login without a byte refuses
+    /// that way to begin one and answers the other, each asked on a
+    /// stream of its own with no credential sent. A transient drop of a
+    /// login the server takes leaves the first answered.
+    async fn refuses_the_opening(&self, transport: &dyn Transport) -> bool {
+        let host = server_host(transport.service_endpoint().host());
+        let (prelogin, strict) = tokio::join!(
+            probe::answers_prelogin(transport, self.login_timeout),
+            probe::answers_strict_hello(transport, self.tls.server_name(host), self.login_timeout),
+        );
         match self.tls.mode() {
-            TlsMode::Strict => probe::answers_prelogin(transport, self.login_timeout).await,
-            TlsMode::Disable | TlsMode::Require | TlsMode::VerifyFull => {
-                let host = server_host(transport.service_endpoint().host());
-                probe::answers_strict_hello(transport, self.tls.server_name(host), self.login_timeout).await
-            }
+            TlsMode::Strict => prelogin && !strict,
+            TlsMode::Disable | TlsMode::Require | TlsMode::VerifyFull => strict && !prelogin,
         }
     }
 
@@ -237,7 +240,7 @@ async fn attempt(plan: &LoginPlan, config: Config, transport: Arc<dyn Transport>
         Ok(Ok(client)) => Ok(MssqlLink::new(client, tally)),
         Ok(Err(Error::Routing { host, port })) => Err(Attempted::Routed { host, port }),
         Ok(Err(error)) => match hung_up(&error).filter(|_| tally.bytes() == 0) {
-            Some(detail) if plan.takes_the_other_opening(transport.as_ref()).await => {
+            Some(detail) if plan.refuses_the_opening(transport.as_ref()).await => {
                 Err(Attempted::Failed(plan.tls.opening_refused(detail.to_owned())))
             }
             Some(_) => Err(Attempted::Failed(DriverError::ConnectionLost {

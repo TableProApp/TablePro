@@ -35,7 +35,7 @@ Up to `VerifyFull`, TLS is negotiated inside the TDS 7.4 pre-login exchange, aft
 
 - `Strict` needs a server that speaks TDS 8.0 with a certificate configured. SQL Server on Windows takes it from 2022, and can require it with Force Strict Encryption. SQL Server on Linux takes it and can require it (`network.forcestrict`) from 2025; 2022 CU14 on Linux closes a strict login, which the integration suite checks. A server that generated its own certificate does not take it either.
 - A server that will not encrypt when asked to is reported as `ServerRefusedTls`.
-- A server that closes the connection before sending a single byte may have refused how the login began, or the connection dropped. The driver counts what it read to know the server sent nothing, then asks once more on a stream of its own, sending no credential: a strict TLS hello after a TDS 7.4 login, a TDS 7 pre-login after a strict one. An answer means the server takes the other opening: `ServerRequiresStrict` (it allows only strict encryption) or `ServerRefusedStrict` (it does not speak TDS 8.0, or has no certificate for it). No answer is `ConnectionLost`, which the transport may still explain, as for an SSH forward whose target refused.
+- A server that closes the connection before sending a single byte may have refused how the login began, or the connection dropped. The driver counts what it read to know the server sent nothing, then asks again on streams of its own, sending no credential: a TDS 7 pre-login and a strict TLS hello. When the opening the login used goes unanswered again and the other is answered, the server refused the mode: `ServerRequiresStrict` (it allows only strict encryption) or `ServerRefusedStrict` (it does not speak TDS 8.0, or has no certificate for it). Anything else is `ConnectionLost`, which the transport may still explain, as for an SSH forward whose target refused.
 - No client certificate: SQL Server logins are not authenticated by one, so a TLS setting that carries one is refused.
 - tiberius takes no rustls `ClientConfig` and keeps only the text of a rustls error, so the driver classifies TLS failures from that text (`UnknownIssuer`, `NameMismatch`, `Expired` and so on). This is coarser than the other engines, which read the rustls error itself, and a phrase rustls changes in a later release falls back to `TlsFailure::Other`.
 - The CA file is checked before the login, because tiberius reads it during the handshake and would report a bad file as an I/O error.
@@ -95,8 +95,8 @@ SQL Server has no session statement timeout. A workspace call's deadline is the 
 | 18456, 18452, 18486, 18487, 18488 | `Auth` |
 | 17809 | `Busy(NoFreeConnection)` |
 | A GSSAPI or SSPI failure | `IntegratedAuth` |
-| The server closed a strict login before any byte and answers a TDS 7 pre-login | `Tls { failure: ServerRefusedStrict }` |
-| The server closed a TDS 7.4 login before any byte and answers a strict TLS hello | `Tls { failure: ServerRequiresStrict }` |
+| The server closed a strict login before any byte, and answers a TDS 7 pre-login but not a strict TLS hello | `Tls { failure: ServerRefusedStrict }` |
+| The server closed a TDS 7.4 login before any byte, and answers a strict TLS hello but not a TDS 7 pre-login | `Tls { failure: ServerRequiresStrict }` |
 
 ## Writes
 
