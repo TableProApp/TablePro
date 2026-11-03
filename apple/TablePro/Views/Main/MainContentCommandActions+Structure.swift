@@ -22,6 +22,7 @@ extension MainContentCommandActions {
     var canDiscardChanges: Bool { discardTarget != nil }
 
     func discardChanges() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         switch discardTarget {
         case .structure(let session):
             session.discardChangesAfterConfirming()

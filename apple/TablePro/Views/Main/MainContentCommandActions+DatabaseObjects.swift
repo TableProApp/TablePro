@@ -6,9 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-/// Commands that act on the object selected in the sidebar. The sidebar's own
-/// context menu reaches the same coordinator methods, so the menu bar is a second
-/// path to them rather than a second implementation.
+// Menu commands use the selected object; contextual menus carry their clicked row.
 extension MainContentCommandActions {
     var canShowTableStructure: Bool {
         selectedObject != nil
@@ -60,6 +58,7 @@ extension MainContentCommandActions {
     }
 
     func refreshMaterializedView() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         guard let ref = selectedObjectRef, canRefreshMaterializedView else { return }
         coordinator?.refreshMaterializedView(ref)
     }
@@ -73,7 +72,8 @@ extension MainContentCommandActions {
     }
 
     func editObjectComment() {
-        guard let ref = selectedObjectRef, canEditObjectComment else { return }
+        guard coordinator?.admitsSheetCommand() == true, let ref = selectedObjectRef, canEditObjectComment
+        else { return }
         coordinator?.editComment(of: ref)
     }
 
@@ -86,7 +86,8 @@ extension MainContentCommandActions {
     }
 
     func setSequenceNextValue() {
-        guard let ref = selectedObjectRef, canSetSequenceNextValue else { return }
+        guard coordinator?.admitsSheetCommand() == true, let ref = selectedObjectRef, canSetSequenceNextValue
+        else { return }
         coordinator?.setSequenceNextValue(of: ref)
     }
 
@@ -99,7 +100,7 @@ extension MainContentCommandActions {
     }
 
     func editSequence() {
-        guard let ref = selectedObjectRef, canEditSequence else { return }
+        guard coordinator?.admitsSheetCommand() == true, let ref = selectedObjectRef, canEditSequence else { return }
         coordinator?.editSequence(ref)
     }
 
@@ -108,8 +109,7 @@ extension MainContentCommandActions {
         return .of(DatabaseManager.shared.driver(for: connectionId))
     }
 
-    /// Narrowed to the selected object's kind, the same rule the sidebar's submenu follows. Asking
-    /// only whether something was selected is how the menu bar offered `REINDEX` on a view.
+    // Match the sidebar submenu by checking the selected object kind.
     var maintenanceOperations: [PluginMaintenanceOperation] {
         guard let object = selectedObject else { return [] }
         return TableOperationEligibility.maintenanceOperations(
@@ -118,11 +118,9 @@ extension MainContentCommandActions {
         )
     }
 
-    /// The menu acts on the object browser's selection, and `TableInfo` carries a schema but no
-    /// database, so this names only the schema and the command falls back to the database being
-    /// browsed. The sidebar's own contextual menu carries the clicked row's database and does not.
+    // Names only the schema: `TableInfo` carries no database, so the command falls back to the one being browsed.
     func runMaintenanceOperation(_ operation: PluginMaintenanceOperation) {
-        guard let object = selectedObject else { return }
+        guard coordinator?.admitsSheetCommand() == true, let object = selectedObject else { return }
         coordinator?.showMaintenanceSheet(
             operation: operation, tableName: object.name, schema: object.schema
         )
@@ -157,11 +155,11 @@ extension MainContentCommandActions {
     }
 
     func createDatabase() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.createDatabase()
     }
 
-    /// The menu-bar mirrors of the sidebar's own commands. With no clicked row to carry, both act
-    /// on the database being browsed and preselect everything in it.
+    // Without a clicked row, these commands use the browsed scope.
     var canCopyObjects: Bool {
         guard let coordinator else { return false }
         return isConnected && ObjectCopyEligibility.supportsCopying(
@@ -181,10 +179,12 @@ extension MainContentCommandActions {
     }
 
     func copyObjectsToAnotherDatabase() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openCopyObjects(mode: .copyTo, database: nil, schema: nil, preselection: .wholeScope)
     }
 
     func duplicateCurrentDatabase() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openCopyObjects(mode: .duplicateDatabase, database: nil, schema: nil, preselection: .wholeScope)
     }
 
@@ -193,17 +193,14 @@ extension MainContentCommandActions {
     }
 
     func searchDatabase() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openDatabaseSearch(database: nil, schema: nil)
     }
 }
 
 @MainActor
 internal extension MainContentCoordinator {
-    /// Opens Copy To or Duplicate Database on the row that was right-clicked.
-    ///
-    /// The database and the schema travel with the request rather than being read from the browsing
-    /// state, for the reason every other sidebar command carries its ref: the tree can show a
-    /// database the session is not currently on, and copying from the wrong one is silent.
+    // Opens Copy To or Duplicate Database on the row that was right-clicked.
     func openCopyObjects(
         mode: ObjectCopyMode,
         database: String?,

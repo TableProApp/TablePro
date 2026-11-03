@@ -23,7 +23,10 @@ extension MainSplitViewController {
     ]
 
     @objc func chooseRoutineToDebug(_ sender: Any?) {
-        guard let coordinator = routineDebugCoordinator, coordinator.canChooseRoutineToDebug() else { return }
+        guard let coordinator = routineDebugCoordinator,
+              coordinator.admitsSheetCommand(),
+              coordinator.canChooseRoutineToDebug()
+        else { return }
         coordinator.chooseRoutineToDebug()
     }
 
