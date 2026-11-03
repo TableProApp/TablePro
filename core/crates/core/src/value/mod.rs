@@ -4,6 +4,7 @@ mod identity;
 mod interval;
 mod json_text;
 mod offset_timestamp;
+pub mod order;
 mod other;
 mod temporal;
 mod time;

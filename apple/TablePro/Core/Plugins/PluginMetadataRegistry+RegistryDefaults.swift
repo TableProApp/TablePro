@@ -296,7 +296,7 @@ extension PluginMetadataRegistry {
                     supportsSSH: true,
                     supportsSSL: true,
                     supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: true,
+                    supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
@@ -593,7 +593,7 @@ extension PluginMetadataRegistry {
                     supportsSSH: true,
                     supportsSSL: true,
                     supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: true,
+                    supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: true,
                     requiresReconnectForDatabaseSwitch: false,
@@ -831,7 +831,8 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsOpportunisticTLS: false,
-                    supportsColumnSort: false
+                    supportsColumnSort: false,
+                    supportsRawFilter: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

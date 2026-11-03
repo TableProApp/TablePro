@@ -118,11 +118,20 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
     let id: UUID
     var columnName: String
     var filterOperator: FilterOperator
+    /// The one text the row holds: the operand of a column condition, or the whole condition of a
+    /// raw row. Switching the row between the two keeps it, so what the reader typed never hides
+    /// behind the other mode.
     var value: String
     var secondValue: String?
     var isEnabled: Bool
-    var rawSQL: String?
     var isCaseSensitive: Bool
+
+    /// Whether the row holds a condition in the engine's own language rather than a comparison on
+    /// `columnName`. Stored, never read from the column name: a table can have a real column named
+    /// `__RAW__`, and a filter built from that name and a cell's text has to stay a comparison, or
+    /// the cell's text would run as SQL. A raw row is made by `rawCondition(_:)` or
+    /// `selectingRawCondition()` only.
+    private(set) var isRawSQL: Bool
 
     /// The array ancestor of `columnName` whose element this condition binds to, for a document
     /// store where several conditions can be required to match the *same* array element. Empty
@@ -139,7 +148,6 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
         value: String = "",
         secondValue: String? = nil,
         isEnabled: Bool = true,
-        rawSQL: String? = nil,
         isCaseSensitive: Bool? = nil,
         elementScope: String? = nil
     ) {
@@ -149,56 +157,98 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
         self.value = value
         self.secondValue = secondValue
         self.isEnabled = isEnabled
-        self.rawSQL = rawSQL
         self.isCaseSensitive = isCaseSensitive ?? filterOperator.defaultIsCaseSensitive
         self.elementScope = elementScope
+        self.isRawSQL = false
     }
 
+    /// A row holding the reader's own condition, which runs as written.
+    static func rawCondition(
+        _ condition: String,
+        id: UUID = UUID(),
+        filterOperator: FilterOperator = .equal,
+        isEnabled: Bool = true
+    ) -> TableFilter {
+        var filter = TableFilter(
+            id: id,
+            columnName: rawSQLColumn,
+            filterOperator: filterOperator,
+            value: condition,
+            isEnabled: isEnabled
+        )
+        filter.isRawSQL = true
+        return filter
+    }
+
+    /// `rawSQL` is where 0.84 and earlier kept a raw row's text, apart from `value`. `isRawCondition`
+    /// is new, so a row from 0.84 is raw by its column name, the only mark that version wrote.
     enum CodingKeys: String, CodingKey {
         case id, columnName, filterOperator, value, secondValue, isEnabled, rawSQL, isCaseSensitive
-        case elementScope
+        case elementScope, isRawCondition
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let decodedOperator = try container.decodeIfPresent(FilterOperator.self, forKey: .filterOperator) ?? .equal
+        let columnName = try container.decodeIfPresent(String.self, forKey: .columnName) ?? ""
+        let value = try container.decodeIfPresent(String.self, forKey: .value) ?? ""
+        let isRaw = try container.decodeIfPresent(Bool.self, forKey: .isRawCondition)
+            ?? (columnName == Self.rawSQLColumn)
         self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        self.columnName = try container.decodeIfPresent(String.self, forKey: .columnName) ?? ""
+        self.columnName = columnName
         self.filterOperator = decodedOperator
-        self.value = try container.decodeIfPresent(String.self, forKey: .value) ?? ""
+        self.isRawSQL = isRaw
+        // A raw row of 0.84 with no `rawSQL` was switched there and never typed into: its `value`
+        // belonged to the column it left, and read as a condition it could match every row.
+        if isRaw {
+            self.value = try container.decodeIfPresent(String.self, forKey: .rawSQL) ?? ""
+        } else {
+            self.value = value
+        }
         self.secondValue = try container.decodeIfPresent(String.self, forKey: .secondValue)
         self.isEnabled = try container.decodeIfPresent(Bool.self, forKey: .isEnabled) ?? true
-        self.rawSQL = try container.decodeIfPresent(String.self, forKey: .rawSQL)
         self.isCaseSensitive = try container.decodeIfPresent(Bool.self, forKey: .isCaseSensitive)
             ?? decodedOperator.defaultIsCaseSensitive
         self.elementScope = try container.decodeIfPresent(String.self, forKey: .elementScope)
     }
 
-    /// Whether this filter is valid (has enough info to apply)
-    var isValid: Bool {
-        if columnName == Self.rawSQLColumn {
-            return rawSQL?.isEmpty == false
+    /// A raw row also writes its text under `rawSQL`, because the previous stable reads a raw
+    /// row's text only from there and would load the row empty and drop it.
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(columnName, forKey: .columnName)
+        try container.encode(filterOperator, forKey: .filterOperator)
+        try container.encode(value, forKey: .value)
+        try container.encodeIfPresent(secondValue, forKey: .secondValue)
+        try container.encode(isEnabled, forKey: .isEnabled)
+        try container.encode(isRawSQL, forKey: .isRawCondition)
+        if isRawSQL {
+            try container.encode(value, forKey: .rawSQL)
         }
-        guard !columnName.isEmpty else { return false }
-        if filterOperator.requiresValue {
-            if filterOperator.requiresSecondValue {
-                return !value.trimmingCharacters(in: .whitespaces).isEmpty
-                    && !(secondValue?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
-            }
-            return !value.trimmingCharacters(in: .whitespaces).isEmpty
-        }
-        return true
+        try container.encode(isCaseSensitive, forKey: .isCaseSensitive)
+        try container.encodeIfPresent(elementScope, forKey: .elementScope)
     }
 
-    /// Whether this is a raw SQL filter
-    var isRawSQL: Bool {
-        columnName == Self.rawSQLColumn
+    /// Whether this filter is valid (has enough info to apply)
+    var isValid: Bool {
+        if isRawSQL {
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard !columnName.isEmpty else { return false }
+        guard filterOperator.requiresValue else { return true }
+        if filterOperator == .inList || filterOperator == .notInList {
+            return !FilterOperand.listItems(value).isEmpty
+        }
+        guard !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        guard filterOperator.requiresSecondValue else { return true }
+        return !(secondValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
     }
 
     /// Validation error message (nil if valid)
     var validationError: String? {
-        if columnName == Self.rawSQLColumn {
-            if rawSQL?.isEmpty ?? true {
+        if isRawSQL {
+            if value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return String(localized: "Raw SQL cannot be empty")
             }
             return nil
@@ -223,14 +273,70 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
 
 extension TableFilter {
     /// Whether both rows select the same rows, whatever their id, position or enabled flag.
+    ///
+    /// Only what the row's kind and operator read takes part. A field the row keeps for a switch
+    /// back, such as the upper bound after leaving BETWEEN, selects nothing, so it cannot make two
+    /// identical conditions look different.
     func hasSameCondition(as other: TableFilter) -> Bool {
-        columnName == other.columnName
-            && filterOperator == other.filterOperator
-            && value == other.value
-            && secondValue == other.secondValue
-            && rawSQL == other.rawSQL
-            && isCaseSensitive == other.isCaseSensitive
-            && elementScope == other.elementScope
+        guard isRawSQL == other.isRawSQL, columnName == other.columnName else { return false }
+        if isRawSQL { return value == other.value }
+        guard filterOperator == other.filterOperator, elementScope == other.elementScope else { return false }
+        if filterOperator.requiresValue, value != other.value { return false }
+        if filterOperator.requiresSecondValue, (secondValue ?? "") != (other.secondValue ?? "") { return false }
+        if filterOperator.supportsCaseSensitivity, isCaseSensitive != other.isCaseSensitive { return false }
+        return true
+    }
+
+    /// The row as a comparison on `name`, from a raw condition or another column. The text stays as
+    /// typed. A scope names an array of the old column, so it cannot carry over.
+    func selectingColumn(_ name: String) -> TableFilter {
+        guard isRawSQL || name != columnName else { return self }
+        var updated = self
+        updated.columnName = name
+        updated.isRawSQL = false
+        updated.elementScope = nil
+        return updated
+    }
+
+    /// The row as the reader's own condition, with the text it holds as that condition.
+    func selectingRawCondition() -> TableFilter {
+        guard !isRawSQL else { return self }
+        var updated = self
+        updated.columnName = Self.rawSQLColumn
+        updated.isRawSQL = true
+        updated.elementScope = nil
+        return updated
+    }
+
+    /// A comparison on a real column that shares the raw row's name. A driver reads that column name
+    /// as a raw condition and would run the value as one, so such a row never reaches a driver.
+    var namesRawConditionColumn: Bool {
+        !isRawSQL && columnName == Self.rawSQLColumn
+    }
+
+    /// Match Case returns to the new operator's usual setting, so a pattern row ignores case
+    /// unless the reader turns it on for that operator.
+    func selectingOperator(_ newOperator: FilterOperator) -> TableFilter {
+        guard newOperator != filterOperator else { return self }
+        var updated = self
+        updated.filterOperator = newOperator
+        updated.isCaseSensitive = newOperator.defaultIsCaseSensitive
+        return updated
+    }
+
+    /// The same row under a new identity, every field it holds carried over.
+    func duplicated() -> TableFilter {
+        var copy = TableFilter(
+            columnName: columnName,
+            filterOperator: filterOperator,
+            value: value,
+            secondValue: secondValue,
+            isEnabled: isEnabled,
+            isCaseSensitive: isCaseSensitive,
+            elementScope: elementScope
+        )
+        copy.isRawSQL = isRawSQL
+        return copy
     }
 
     /// The joined `value` stays as it was for drivers that still read a `BETWEEN` as one
@@ -241,7 +347,7 @@ extension TableFilter {
             return PluginQueryFilter(
                 column: columnName,
                 op: filterOperator.rawValue,
-                value: rawSQL ?? "",
+                value: value,
                 secondValue: nil,
                 elementScope: nil
             )
@@ -281,6 +387,10 @@ struct TabFilterState: Equatable, Hashable, Codable {
     /// deliberately not persisted: a restored tab rebuilds its query on first load, which fills it.
     var executedFilters: [TableFilter] = []
 
+    /// How `executedFilters` were joined, written beside them. Nil until the tab runs its first
+    /// filtered query, so a tab that restored filters and has not loaded yet reruns those.
+    var executedLogicMode: FilterLogicMode?
+
     init(isVisible: Bool = false) {
         self.filters = []
         self.commit = nil
@@ -307,6 +417,21 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var appliedFilters: [TableFilter] {
         guard let commit else { return [] }
         return Self.resolve(commit, in: filters)
+    }
+
+    /// What a page turn, sort, refresh or count runs again: the filters the rows on screen were
+    /// fetched with, never the panel's draft. A row edited after Apply, or switched between a raw
+    /// condition and a column with its text kept, runs only once Apply runs it.
+    var rerunFilters: (filters: [TableFilter], logicMode: FilterLogicMode) {
+        guard commit != nil else { return ([], filterLogicMode) }
+        guard let executedLogicMode else { return (appliedFilters, filterLogicMode) }
+        return (executedFilters, executedLogicMode)
+    }
+
+    /// Records the draft's applied filters as the ones running, for a host that has just run them.
+    mutating func adoptAppliedFiltersAsRunning() {
+        executedFilters = appliedFilters
+        executedLogicMode = commit == nil ? nil : filterLogicMode
     }
 
     /// What a table's saved filters hold: every valid row with its own enabled flag, the logic mode,

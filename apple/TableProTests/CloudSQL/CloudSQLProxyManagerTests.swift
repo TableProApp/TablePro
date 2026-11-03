@@ -369,8 +369,10 @@ struct CloudSQLProxyManagerTests {
             serviceAccountKeyJSON: "{\"type\":\"service_account\"}"
         )
 
-        let path = FileManager.default.temporaryDirectory
-            .appendingPathComponent("com.TablePro.cloudsqlproxy.\(id.uuidString).json")
+        let arguments = fake.startedArguments
+        let flag = try #require(arguments.firstIndex(of: "--credentials-file"))
+        let path = URL(fileURLWithPath: arguments[flag + 1])
+        #expect(path.lastPathComponent.hasPrefix("com.TablePro.cloudsqlproxy.\(id.uuidString)-"))
         #expect(FileManager.default.fileExists(atPath: path.path))
         let perms = try FileManager.default.attributesOfItem(atPath: path.path)[.posixPermissions] as? Int
         #expect(perms == 0o600)

@@ -15402,6 +15402,9 @@
         }
       }
     },
+    "a comparison or sync" : {
+
+    },
     "A composite's fields in declaration order" : {
       "localizations" : {
         "fr" : {
@@ -16566,6 +16569,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A raw SQL filter must be one condition: no comment, no second statement, and every quote and parenthesis closed." : {
+
+    },
     "A raw SurrealDB filter must be one condition that only reads. Run anything else in the SurrealQL editor." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -16732,6 +16738,9 @@
           }
         }
       }
+    },
+    "a running query" : {
+
     },
     "A save is already running in this window." : {
       "localizations" : {
@@ -24351,6 +24360,9 @@
         }
       }
     },
+    "an agent reply" : {
+
+    },
     "An array has no \"items\"." : {
 
     },
@@ -24700,6 +24712,9 @@
         }
       }
     },
+    "an import, export, backup, restore or copy" : {
+
+    },
     "An index name is 3 to 255 characters of letters, digits, underscore, hyphen and period." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -24808,6 +24823,9 @@
     "an object with latitude and longitude" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "an open transaction" : {
+
     },
     "An operation is already running." : {
       "localizations" : {
@@ -29738,6 +29756,10 @@
           }
         }
       }
+    },
+    "Automatic does not work through a tunnel to %@. DuckDB would use HTTPS and check the certificate against 127.0.0.1, not against the server's name. Set SSL Mode to Verify Fingerprint or Required (skip verify), or to Disabled if the server serves plain HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Automatically check for updates" : {
       "localizations" : {
@@ -35306,6 +35328,10 @@
           }
         }
       }
+    },
+    "Certificate Fingerprint" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Certificate Not Available" : {
       "extractionState" : "manual",
@@ -68644,6 +68670,22 @@
         }
       }
     },
+    "DuckDB could not install its %@ extension. It downloads the extension from extensions.duckdb.org the first time it connects to a remote database." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not load its %@ extension." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not read the CA Certificate. It reads PEM files only." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not verify the server's certificate. Either no CA it trusts signed it, or it was not issued for this host name. DuckDB checks certificates against /etc/ssl/cert.pem and the CA Certificate, and does not read the macOS keychain, so a CA added in Keychain Access is not trusted." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "DuckDB database file" : {
       "localizations" : {
         "fr" : {
@@ -68677,6 +68719,10 @@
           }
         }
       }
+    },
+    "DuckDB reported: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "duplicate" : {
       "localizations" : {
@@ -75557,6 +75603,9 @@
         }
       }
     },
+    "Execute a SQL query against a connection. The connection's safe mode policy applies. Multi-statement queries are rejected, except on SQL Server, where a whole script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, are blocked here; use confirm_destructive_operation instead." : {
+
+    },
     "Execute All" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -75799,6 +75848,9 @@
           }
         }
       }
+    },
+    "Execute what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, after explicit confirmation: one statement, or on SQL Server a whole script. Pass confirmation_phrase exactly as: I understand this is irreversible" : {
+
     },
     "Execute Without Limit" : {
       "extractionState" : "stale",
@@ -92701,6 +92753,9 @@
           }
         }
       }
+    },
+    "In Agent mode, use confirm_destructive_operation with the explicit confirmation phrase." : {
+
     },
     "IN Clause" : {
       "localizations" : {
@@ -154814,6 +154869,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
+
+    },
     "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. DROP and TRUNCATE go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
       "localizations" : {
         "fr" : {
@@ -155240,6 +155298,9 @@
           }
         }
       }
+    },
+    "Run what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE: one statement, or on SQL Server a whole script. Anything else is refused. The user approves it before it runs: through your elicitation prompt when your client supports elicitation, otherwise through TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a connection the user left writable for external clients." : {
+
     },
     "Run Without Limit" : {
       "localizations" : {
@@ -163933,6 +163994,18 @@
           }
         }
       }
+    },
+    "Set SSL Mode to Verify Fingerprint, or to Required (skip verify) to encrypt without checking the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Set SSL Mode to Verify Identity and choose the CA that signed the certificate in CA Certificate, or set SSL Mode to Verify Fingerprint and enter the server's Certificate Fingerprint. Required (skip verify) also connects, but does not check the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Set SSL Mode to Verify Identity, or to Verify Fingerprint for a server with a self-signed certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Set the comment" : {
 
@@ -172658,6 +172731,8 @@
       }
     },
     "SSL Mode" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -180152,6 +180227,9 @@
         }
       }
     },
+    "TablePro cannot tell whether this connection holds an open transaction, so it stays connected. Try again once its work is done, or disconnect in TablePro." : {
+
+    },
     "TablePro cannot tell which Redshift cluster or workgroup \"%@\" is. Set Host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or enter that endpoint as the Redshift Endpoint when you connect through a port forward." : {
 
     },
@@ -180368,6 +180446,10 @@
     "TablePro could not reach the Schema Registry: %@" : {
 
     },
+    "TablePro could not read the CA Certificate at %@: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro could not read the database's own name from the connection." : {
       "localizations" : {
         "fr" : {
@@ -180417,6 +180499,10 @@
           }
         }
       }
+    },
+    "TablePro could not write the CA bundle DuckDB reads: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro couldn't check which rows in other tables reference these rows." : {
 
@@ -185017,6 +185103,10 @@
         }
       }
     },
+    "The CA Certificate at %@ is not a PEM certificate. DuckDB reads PEM files only. Convert a DER file with: openssl x509 -inform der -in ca.der -out ca.pem" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The CA certificate path cannot be passed to FreeTDS. Use a shorter path, without “;”, “#” or repeated spaces." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185083,6 +185173,10 @@
           }
         }
       }
+    },
+    "The Certificate Fingerprint is not a SHA-256 fingerprint. Enter the 64 hex digits that quack_server_list() shows on the server, with or without colons." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The change could not be applied: %@" : {
       "localizations" : {
@@ -188187,6 +188281,9 @@
           }
         }
       }
+    },
+    "The installed %@ driver cannot connect through a tunnel yet. Update the database driver in Settings > Extensions, then connect again." : {
+
     },
     "The installed %1$@ does not support %2$@. Update it in Settings > Extensions." : {
 
@@ -191724,6 +191821,10 @@
         }
       }
     },
+    "The server did not answer the TLS handshake. If it serves plain HTTP, set SSL Mode to Disabled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server did not say which InfluxDB version it runs." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -192022,6 +192123,10 @@
         }
       }
     },
+    "The server uses HTTPS, and this connection sent plain HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server writes the file, so it lands where the server can reach, not on this Mac." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -192055,6 +192160,10 @@
       }
     },
     "the server's certificate does not cover the hostname you connected to" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server's certificate does not match the Certificate Fingerprint. If the server has a new certificate, copy its fingerprint again from quack_server_list() on the server." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -195664,6 +195773,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This build of DuckDB does not accept turning off persistent secrets" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This call matches more than one overload of %@, so Oracle can't run it (PLS-00307)." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -195945,6 +196058,9 @@
           }
         }
       }
+    },
+    "This connection has %@ in TablePro, which disconnecting would stop or discard. Finish it first, or disconnect in TablePro, which asks the user." : {
+
     },
     "This connection has a transaction open. Commit or roll it back in TablePro, then try again." : {
       "extractionState" : "manual",
@@ -196250,6 +196366,9 @@
           }
         }
       }
+    },
+    "This connection sets %1$@, which the installed %2$@ driver does not support yet. Update the database driver in Settings > Extensions, then connect again." : {
+
     },
     "This connection signs in with Kerberos, which TablePro on iPhone and iPad can't do." : {
       "extractionState" : "manual",
@@ -197998,6 +198117,9 @@
           }
         }
       }
+    },
+    "This file cannot filter rows with these conditions." : {
+
     },
     "This file has unsaved changes in an editor tab. The commit takes the saved file." : {
 
@@ -199907,6 +200029,9 @@
         }
       }
     },
+    "This plan runs the statement. Explain it without analyze, with a variant that only plans it." : {
+
+    },
     "This plugin is not in the registry, so it can't be updated automatically." : {
       "localizations" : {
         "fr" : {
@@ -200837,6 +200962,9 @@
         }
       }
     },
+    "This statement is destructive, like DROP, TRUNCATE or a DELETE with no WHERE." : {
+
+    },
     "This statement is too long to send (%d characters). Select a smaller part of it." : {
       "localizations" : {
         "fr" : {
@@ -201039,6 +201167,9 @@
           }
         }
       }
+    },
+    "This tool runs only destructive statements, like DROP, TRUNCATE or a DELETE with no WHERE. Use execute_query for everything else." : {
+
     },
     "This tool takes your password on its command line." : {
       "localizations" : {
@@ -203211,6 +203342,10 @@
           }
         }
       }
+    },
+    "Token is required. Enter the token the server was started with, from quack_serve." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Token Name" : {
       "localizations" : {
@@ -207725,6 +207860,9 @@
     "Unpin Tab" : {
 
     },
+    "unsaved changes" : {
+
+    },
     "Unsaved changes" : {
 
     },
@@ -212205,6 +212343,14 @@
         }
       }
     },
+    "Verify Fingerprint" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Verify Fingerprint needs the server's Certificate Fingerprint. Run quack_server_list() on the server to read it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Verify Identity" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -212246,6 +212392,10 @@
           }
         }
       }
+    },
+    "Verify Identity does not work through a tunnel. DuckDB checks the certificate against 127.0.0.1 there, not against the server's name. Set SSL Mode to Verify Fingerprint, or to Required (skip verify)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Verify Identity through a tunnel checks the certificate against the server's host name, and %@ is an IP address. Enter the server's host name, or set SSL Mode to Verify CA." : {
       "extractionState" : "manual",

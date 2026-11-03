@@ -54,8 +54,7 @@ enum TestFixtures {
         op: FilterOperator = .equal,
         value: String = "1",
         secondValue: String? = nil,
-        isEnabled: Bool = true,
-        rawSQL: String? = nil
+        isEnabled: Bool = true
     ) -> TableFilter {
         return TableFilter(
             id: UUID(),
@@ -63,8 +62,7 @@ enum TestFixtures {
             filterOperator: op,
             value: value,
             secondValue: secondValue,
-            isEnabled: isEnabled,
-            rawSQL: rawSQL
+            isEnabled: isEnabled
         )
     }
 

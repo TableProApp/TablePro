@@ -24,7 +24,7 @@ internal struct RunningWork: Identifiable {
     internal let subject: String
     internal let connectionName: String
     internal let connectionIds: Set<UUID>
-    // Only a query sets these: it belongs to one tab in one window.
+    // A query sets both; a sheet's job sets the window, so closing another window on its connection leaves it.
     internal let windowId: UUID?
     internal let tabId: UUID?
     internal let cancel: @MainActor () -> Void
@@ -92,6 +92,7 @@ internal final class RunningWorkRegistry {
         subject: String,
         connectionName: String,
         connectionIds: Set<UUID>,
+        windowId: UUID? = nil,
         cancel: @escaping @MainActor () -> Void
     ) -> UUID {
         let work = RunningWork(
@@ -99,6 +100,7 @@ internal final class RunningWorkRegistry {
             subject: subject,
             connectionName: connectionName,
             connectionIds: connectionIds,
+            windowId: windowId,
             cancel: cancel
         )
         registered[work.id] = work

@@ -40,6 +40,21 @@ struct SSHForwardDestinationTests {
         #expect(connection.sshForwardDestination.isUnixSocket)
     }
 
+    @Test("A server named in plugin fields ignores a stored socket path and forwards to those fields")
+    func pluginServerFieldsIgnoreSocketPath() {
+        var connection = DatabaseConnection(
+            name: "quack",
+            host: "localhost",
+            port: 9_494,
+            type: .duckdb,
+            additionalFields: ["duckdbMode": "remote", "duckdbHost": "quack.internal", "duckdbPort": "9500"]
+        )
+        connection.sshForwardUnixSocketPath = "/tmp/quack.sock"
+
+        #expect(connection.sshForwardUnixSocketPath == nil)
+        #expect(connection.sshForwardDestination == .tcp(host: "quack.internal", port: 9_500))
+    }
+
     @Test("Clearing the socket path falls back to host and port")
     func clearingRestoresTCP() {
         var connection = DatabaseConnection(

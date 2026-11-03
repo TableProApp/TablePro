@@ -765,6 +765,204 @@ struct ConnectionURLFormatterTests {
         #expect(parsed.database == "remotedb")
     }
 
+    private func quackConnection(_ fields: [String: String] = [:], ssh: SSHConfiguration = SSHConfiguration()) -> DatabaseConnection {
+        DatabaseConnection(
+            name: "", host: "localhost", port: 9_494, database: "", type: .duckdb, sshConfig: ssh,
+            sslConfig: SSLConfiguration(mode: .verifyIdentity),
+            additionalFields: [
+                "duckdbMode": "remote",
+                "duckdbHost": "quack.internal",
+                "duckdbPort": "9495",
+                "duckdbAlias": "remotedb"
+            ].merging(fields) { _, field in field }
+        )
+    }
+
+    @Test("A copied quack URL keeps the SSL Mode the DuckDB driver reads when it is opened again")
+    func quackSSLModeRoundTrips() {
+        let cases: [(field: String, query: String)] = [
+            ("disabled", "disable"),
+            ("required", "require"),
+            ("verifyIdentity", "verify-full")
+        ]
+        for (field, query) in cases {
+            let url = ConnectionURLFormatter.format(
+                quackConnection(["duckdbSSLMode": field]), password: nil, sshPassword: nil
+            )
+            #expect(url == "quack://quack.internal:9495/remotedb?sslmode=\(query)")
+            guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+                Issue.record("\(url) did not parse")
+                continue
+            }
+            #expect(parsed.additionalFields["duckdbSSLMode"] == field, "\(url)")
+            #expect(parsed.sslMode == nil, "\(url) set the built-in SSL Mode DuckDB never reads")
+        }
+    }
+
+    @Test("Automatic copies with no TLS parameter, and a stored fingerprint it does not use stays out")
+    func quackAutomaticCarriesNoTLSParameter() {
+        let conn = quackConnection([
+            "duckdbSSLMode": "automatic",
+            "duckdbCertificateFingerprint": "EB:1C:00:8A"
+        ])
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "quack://quack.internal:9495/remotedb")
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.additionalFields["duckdbSSLMode"] == "automatic")
+        #expect(parsed.additionalFields["duckdbCertificateFingerprint"] == nil)
+    }
+
+    @Test("A pinned certificate copies as ssl_fingerprint and opens again pinned, never as Automatic")
+    func quackFingerprintRoundTrips() {
+        let pin = "EB:1C:23:A0:60:D0:AD:A3:E7:7C:B7:4E:9A:E8:DE:84:84:BF:5A:96:9D:43:42:36:34:AB:EE:B4:5F:F8:24:8A"
+        let url = ConnectionURLFormatter.format(
+            quackConnection(["duckdbSSLMode": "verifyFingerprint", "duckdbCertificateFingerprint": pin]),
+            password: nil, sshPassword: nil
+        )
+        #expect(url == "quack://quack.internal:9495/remotedb?ssl_fingerprint=\(pin)")
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.additionalFields["duckdbSSLMode"] == "verifyFingerprint")
+        #expect(parsed.additionalFields["duckdbCertificateFingerprint"] == pin)
+        #expect(parsed.sslMode == nil)
+    }
+
+    @Test("An alias holding a URL delimiter keeps its name and the SSL Mode after it", arguments: ["analysis#1", "a?b", "50%", "me@db"])
+    func quackAliasWithDelimiterRoundTrips(alias: String) {
+        for usesSSH in [false, true] {
+            var sshConfig = SSHConfiguration()
+            sshConfig.enabled = usesSSH
+            sshConfig.host = "bastion.example.com"
+            sshConfig.username = "deploy"
+            let connection = quackConnection(
+                ["duckdbAlias": alias, "duckdbSSLMode": "verifyFingerprint", "duckdbCertificateFingerprint": "AA:BB"],
+                ssh: sshConfig
+            )
+            let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+            guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+                Issue.record("\(url) did not parse")
+                continue
+            }
+            #expect(parsed.database == alias, "\(url)")
+            #expect(parsed.host == "quack.internal", "\(url)")
+            #expect(parsed.additionalFields["duckdbSSLMode"] == "verifyFingerprint", "\(url) lost its pin")
+            #expect(parsed.additionalFields["duckdbCertificateFingerprint"] == "AA:BB", "\(url)")
+        }
+    }
+
+    @Test("An IPv6 DuckDB server keeps its address and port through a copy, direct and behind SSH", arguments: [
+        ("2001:db8::1:9495", "9494"), ("2001:db8::1:9495", "9500"), ("::1", "9494")
+    ])
+    func quackIPv6RoundTrips(host: String, port: String) {
+        for usesSSH in [false, true] {
+            var sshConfig = SSHConfiguration()
+            sshConfig.enabled = usesSSH
+            sshConfig.host = "bastion.example.com"
+            sshConfig.username = "deploy"
+            let url = ConnectionURLFormatter.format(
+                quackConnection(["duckdbHost": host, "duckdbPort": port], ssh: sshConfig),
+                password: nil, sshPassword: nil
+            )
+            guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+                Issue.record("\(url) did not parse")
+                continue
+            }
+            #expect(parsed.host == host, "\(url)")
+            #expect((parsed.port ?? 9_494) == Int(port), "\(url)")
+        }
+    }
+
+    @Test("An IPv6 host on a network type copies bracketed and reads back as the same server")
+    func networkIPv6RoundTrips() {
+        let connection = DatabaseConnection(name: "", host: "2001:db8::5", port: 5_433, database: "app", type: .postgresql)
+        let url = ConnectionURLFormatter.format(connection, password: nil, sshPassword: nil)
+        #expect(url.contains("[2001:db8::5]:5433"))
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.host == "2001:db8::5")
+        #expect(parsed.port == 5_433)
+    }
+
+    @Test("A fingerprint that holds a separator is escaped, so it cannot add a parameter")
+    func quackFingerprintIsEscaped() {
+        let url = ConnectionURLFormatter.format(
+            quackConnection(["duckdbSSLMode": "verifyFingerprint", "duckdbCertificateFingerprint": "AB&sslmode=disable"]),
+            password: nil, sshPassword: nil
+        )
+        #expect(url == "quack://quack.internal:9495/remotedb?ssl_fingerprint=AB%26sslmode%3Ddisable")
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.additionalFields["duckdbSSLMode"] == "verifyFingerprint")
+        #expect(parsed.additionalFields["duckdbCertificateFingerprint"] == "AB&sslmode=disable")
+    }
+
+    @Test("A pinned DuckDB Remote row behind SSH keeps its pin in the quack+ssh URL")
+    func quackSSHURLKeepsFingerprint() {
+        var ssh = SSHConfiguration()
+        ssh.enabled = true
+        ssh.host = "bastion.example.com"
+        ssh.username = "deploy"
+        let url = ConnectionURLFormatter.format(
+            quackConnection(["duckdbSSLMode": "verifyFingerprint", "duckdbCertificateFingerprint": "AA:BB"], ssh: ssh),
+            password: nil, sshPassword: nil
+        )
+        #expect(url.hasPrefix("quack+ssh://"))
+        #expect(url.contains("ssl_fingerprint=AA:BB"))
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse")
+            return
+        }
+        #expect(parsed.additionalFields["duckdbSSLMode"] == "verifyFingerprint")
+        #expect(parsed.additionalFields["duckdbCertificateFingerprint"] == "AA:BB")
+    }
+
+    @Test("A DuckDB Remote row behind SSH copies as a quack+ssh URL naming its own server, and round-trips")
+    func quackSSHURLRoundTrips() {
+        var ssh = SSHConfiguration()
+        ssh.enabled = true
+        ssh.host = "bastion.example.com"
+        ssh.port = 2_222
+        ssh.username = "deploy"
+
+        let url = ConnectionURLFormatter.format(
+            quackConnection(["duckdbSSLMode": "required"], ssh: ssh), password: nil, sshPassword: nil
+        )
+        #expect(url == "quack+ssh://deploy@bastion.example.com:2222/quack.internal:9495/remotedb?sslmode=require")
+
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse"); return
+        }
+        #expect(parsed.type == .duckdb)
+        #expect(parsed.host == "quack.internal")
+        #expect(parsed.port == 9_495)
+        #expect(parsed.database == "remotedb")
+        #expect(parsed.sshHost == "bastion.example.com")
+        #expect(parsed.sshPort == 2_222)
+        #expect(parsed.sshUsername == "deploy")
+        #expect(parsed.additionalFields["duckdbSSLMode"] == "required")
+    }
+
+    @Test("A DuckDB Local File row copies as its file whatever SSH server it still stores")
+    func duckdbLocalIgnoresStoredSSH() {
+        var ssh = SSHConfiguration()
+        ssh.enabled = true
+        ssh.host = "bastion.example.com"
+        let conn = DatabaseConnection(
+            name: "", database: "", type: .duckdb, sshConfig: ssh,
+            additionalFields: ["duckdbMode": "local", "duckdbFilePath": "/Users/me/analytics.duckdb"]
+        )
+        #expect(ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil) == "duckdb:///Users/me/analytics.duckdb")
+    }
+
     // MARK: - Unix socket
 
     private func socketConnection(

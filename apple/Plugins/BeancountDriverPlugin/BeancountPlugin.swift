@@ -27,6 +27,7 @@ final class BeancountPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let fileExtensions: [String] = ["beancount"]
     static let brandColorHex = "#3F7D20"
     static let supportsForeignKeys = false
+    static let supportsForeignKeyDisable = false
     static let supportsSchemaEditing = false
     static let supportsDatabaseSwitching = false
     static let supportsSchemaSwitching = false
@@ -34,6 +35,7 @@ final class BeancountPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsHealthMonitor = false
     static let databaseGroupingStrategy: GroupingStrategy = .flat
     static let tableEntityName = "Ledger Tables"
+    static let containerEntityName = "Ledger"
     static let columnTypesByCategory: [String: [String]] = [
         "Integer": ["INTEGER"],
         "String": ["TEXT"],

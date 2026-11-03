@@ -69,7 +69,8 @@ let package = Package(
         .library(name: "TableProGzip", targets: ["TableProGzip"]),
         .library(name: "TableProKafkaCore", targets: ["TableProKafkaCore"]),
         .library(name: "TableProCassandraCore", targets: ["TableProCassandraCore"]),
-        .library(name: "TableProEtcdCore", targets: ["TableProEtcdCore"])
+        .library(name: "TableProEtcdCore", targets: ["TableProEtcdCore"]),
+        .library(name: "TableProDuckDBCore", targets: ["TableProDuckDBCore"])
     ],
     // Kafka brokers hand back whatever codec the producer stored, and macOS has no zstd.
     dependencies: [
@@ -375,6 +376,13 @@ let package = Package(
             path: "Sources/TableProEtcdCore",
             swiftSettings: pluginCoreSettings
         ),
+        // Linked by a plugin bundle, so never TableProPluginKit.
+        .target(
+            name: "TableProDuckDBCore",
+            dependencies: ["TableProSQLQuoting"],
+            path: "Sources/TableProDuckDBCore",
+            swiftSettings: pluginCoreSettings
+        ),
         .testTarget(
             name: "TableProBigtableCoreTests",
             dependencies: ["TableProBigtableCore", "TableProGoogleCloud"],
@@ -624,6 +632,12 @@ let package = Package(
             name: "TableProEtcdCoreTests",
             dependencies: ["TableProEtcdCore"],
             path: "Tests/TableProEtcdCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProDuckDBCoreTests",
+            dependencies: ["TableProDuckDBCore"],
+            path: "Tests/TableProDuckDBCoreTests",
             swiftSettings: pluginCoreSettings
         )
     ]

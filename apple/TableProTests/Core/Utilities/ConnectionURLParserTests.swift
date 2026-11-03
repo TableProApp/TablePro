@@ -1097,6 +1097,49 @@ struct ConnectionURLParserTests {
         #expect(parsed.port == nil)
     }
 
+    @Test("A quack sslmode sets the DuckDB SSL Mode field, never the built-in SSL Mode its driver ignores", arguments: [
+        ("quack://myhost/remotedb?sslmode=disable", "disabled"),
+        ("quack://myhost/remotedb?sslmode=require", "required"),
+        ("quack://myhost/remotedb?sslmode=prefer", "required"),
+        ("quack://myhost/remotedb?sslmode=verify-ca", "verifyIdentity"),
+        ("quack://myhost/remotedb?sslmode=verify-full", "verifyIdentity"),
+        ("quack://myhost/remotedb?ssl=false", "disabled"),
+        // Asking for TLS with no mode is a checked connection, never Required's unchecked one.
+        ("quack://myhost/remotedb?ssl=true", "verifyIdentity"),
+        ("quack://myhost/remotedb?tls=require", "verifyIdentity"),
+        ("quack://myhost/remotedb?ssl_fingerprint=AA:BB", "verifyFingerprint"),
+        ("quack://myhost/remotedb", "automatic")
+    ])
+    func testQuackSSLModeMapsToTheDriverField(url: String, field: String) {
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) did not parse"); return
+        }
+        #expect(parsed.additionalFields["duckdbSSLMode"] == field)
+        #expect(parsed.sslMode == nil)
+        #expect(!parsed.disablesTLS)
+    }
+
+    @Test("A quack+ssh URL names the DuckDB server behind the SSH server")
+    func testQuackSSHURL() {
+        let result = ConnectionURLParser.parse("quack+ssh://deploy@bastion.example.com/quack.internal:9500/remotedb?sslmode=verify-full")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.type == .duckdb)
+        #expect(parsed.host == "quack.internal")
+        #expect(parsed.port == 9_500)
+        #expect(parsed.sshHost == "bastion.example.com")
+        #expect(parsed.additionalFields["duckdbSSLMode"] == "verifyIdentity")
+    }
+
+    @Test("A duckdb file URL carries no SSL Mode")
+    func testDuckDBFileURLHasNoSSLMode() {
+        guard case .success(let parsed) = ConnectionURLParser.parse("duckdb:///Users/me/analytics.duckdb") else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.additionalFields["duckdbSSLMode"] == nil)
+    }
+
     // MARK: - etcds TLS
 
     @Test("etcds scheme turns on the etcd TLS Mode, not the generic SSL Mode the driver ignores")

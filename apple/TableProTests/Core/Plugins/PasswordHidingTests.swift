@@ -206,4 +206,77 @@ struct PluginManagerPasswordHidingTests {
         #expect(hides("Spanner", ["spAuthMethod": "adc"]))
         #expect(hides("Snowflake", ["snowflakeAuthMethod": "externalBrowser"]))
     }
+
+    private func chainedFields() -> [ConnectionField] {
+        [
+            ConnectionField(
+                id: "mode",
+                label: "Mode",
+                defaultValue: "local",
+                fieldType: .dropdown(options: [.init(value: "local", label: "local"), .init(value: "remote", label: "remote")]),
+                section: .authentication
+            ),
+            ConnectionField(
+                id: "tls",
+                label: "TLS",
+                defaultValue: "automatic",
+                fieldType: .dropdown(options: [.init(value: "automatic", label: "automatic"), .init(value: "pinned", label: "pinned")]),
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "mode", values: ["remote"])
+            ),
+            ConnectionField(
+                id: "pin",
+                label: "Pin",
+                required: true,
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "tls", values: ["pinned"])
+            ),
+        ]
+    }
+
+    @Test("A field whose controller is hidden is hidden, whatever value the controller keeps")
+    func visibilityFollowsAHiddenController() throws {
+        let fields = chainedFields()
+        let pin = try #require(fields.first { $0.id == "pin" })
+
+        #expect(fields.isVisible(pin, forValues: ["mode": "remote", "tls": "pinned"]))
+        #expect(!fields.isVisible(pin, forValues: ["mode": "local", "tls": "pinned"]))
+        #expect(!fields.isVisible(pin, forValues: ["tls": "pinned"]), "The controller's default hides it too")
+        #expect(!fields.isVisible(pin, forValues: ["mode": "remote", "tls": "automatic"]))
+    }
+
+    @Test("A cycle of visibility rules ends, and a controller the list lacks decides nothing")
+    func visibilityStopsOnACycleAndAMissingController() throws {
+        let cycle = [
+            ConnectionField(id: "a", label: "A", visibleWhen: FieldVisibilityRule(fieldId: "b", values: ["on"])),
+            ConnectionField(id: "b", label: "B", visibleWhen: FieldVisibilityRule(fieldId: "a", values: ["on"])),
+            ConnectionField(id: "c", label: "C", visibleWhen: FieldVisibilityRule(fieldId: "c", values: ["on"])),
+        ]
+        let first = try #require(cycle.first)
+        let selfControlled = try #require(cycle.last)
+
+        #expect(cycle.isVisible(first, forValues: ["a": "on", "b": "on"]))
+        #expect(!cycle.isVisible(first, forValues: ["a": "off", "b": "on"]))
+        #expect(cycle.isVisible(selfControlled, forValues: ["c": "on"]))
+
+        let orphan = ConnectionField(id: "d", label: "D", visibleWhen: FieldVisibilityRule(fieldId: "elsewhere", values: ["on"]))
+        #expect([orphan].isVisible(orphan, forValues: ["elsewhere": "on"]))
+        #expect(![orphan].isVisible(orphan, forValues: [:]))
+    }
+
+    @Test("DuckDB's CA and fingerprint fields show only in Remote, under the SSL Mode that uses them")
+    func duckdbTLSFieldsFollowRemoteMode() throws {
+        let fields = PluginManager.shared.additionalConnectionFields(for: .duckdb)
+        let caPath = try #require(fields.first { $0.id == "duckdbCACertificateFilePath" })
+        let fingerprint = try #require(fields.first { $0.id == "duckdbCertificateFingerprint" })
+        let sslMode = try #require(fields.first { $0.id == "duckdbSSLMode" })
+
+        #expect(!fields.isVisible(sslMode, forValues: ["duckdbMode": "local"]))
+        #expect(fields.isVisible(sslMode, forValues: ["duckdbMode": "remote"]))
+        #expect(fields.isVisible(caPath, forValues: ["duckdbMode": "remote", "duckdbSSLMode": "verifyIdentity"]))
+        #expect(!fields.isVisible(caPath, forValues: ["duckdbMode": "local", "duckdbSSLMode": "verifyIdentity"]))
+        #expect(fields.isVisible(fingerprint, forValues: ["duckdbMode": "remote", "duckdbSSLMode": "verifyFingerprint"]))
+        #expect(!fields.isVisible(fingerprint, forValues: ["duckdbMode": "local", "duckdbSSLMode": "verifyFingerprint"]))
+        #expect(!fields.isVisible(fingerprint, forValues: ["duckdbMode": "remote"]), "Automatic is the default")
+    }
 }

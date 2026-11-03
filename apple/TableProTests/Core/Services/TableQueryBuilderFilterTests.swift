@@ -312,3 +312,145 @@ struct TableQueryBuilderQuotingTests {
         #expect(Array(query.unicodeScalars).starts(with: Array("SELECT * FROM `a``\u{301}b`".unicodeScalars)))
     }
 }
+
+private final class SQLWritingDriver: PluginDriverStub, @unchecked Sendable {
+    var wasAsked = false
+    var wasCounted = false
+
+    var supportsSchemas: Bool { false }
+    var supportsTransactions: Bool { false }
+    var currentSchema: String? { nil }
+    var serverVersion: String? { nil }
+
+    func ping() async throws {}
+    func execute(query: String) async throws -> PluginQueryResult {
+        PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
+    }
+
+    func buildFilteredQuery(
+        table: String,
+        filters: [(column: String, op: String, value: String)],
+        logicMode: String,
+        sortColumns: [(columnIndex: Int, ascending: Bool)],
+        columns: [String],
+        limit: Int,
+        offset: Int
+    ) -> String? {
+        wasAsked = true
+        return "plugin"
+    }
+
+    func fetchFilteredRowCount(table: String, queryFilters: [PluginQueryFilter], logicMode: String) async throws -> Int? {
+        wasCounted = true
+        return 1
+    }
+
+    func fetchExactRowCount(
+        table: String,
+        schema: String?,
+        queryFilters: [PluginQueryFilter],
+        logicMode: String
+    ) async throws -> Int? {
+        wasCounted = true
+        return 1
+    }
+}
+
+struct TableQueryBuilderRefusedConditionTests {
+    private static let mysqlDialect = SQLDialectDescriptor(
+        identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexp, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .implicit, paginationStyle: .limit
+    )
+
+    private static let refused = TableFilter.rawCondition("status = 'a' -- temp")
+    private static let column = TableFilter(columnName: "name", value: "Alice")
+
+    private let builder = TableQueryBuilder(
+        databaseType: .mysql, dialect: Self.mysqlDialect, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier
+    )
+
+    @Test("A refused raw condition fails the query rather than running it unfiltered")
+    func refusedRawConditionFailsQuery() {
+        #expect(builder.buildFilteredQuery(tableName: "users", filters: [Self.refused]) == nil)
+        #expect(builder.buildFilteredQuery(tableName: "users", filters: [Self.column, Self.refused]) == nil)
+        #expect(builder.buildFilteredCountQuery(tableName: "users", filters: [Self.refused]) == nil)
+    }
+
+    @Test("A refused raw condition that is switched off does not stop the query")
+    func disabledRefusedConditionIsIgnored() throws {
+        var off = Self.refused
+        off.isEnabled = false
+
+        let query = try #require(builder.buildFilteredQuery(tableName: "users", filters: [Self.column, off]))
+        #expect(query.contains("\"name\" = 'Alice'"))
+        #expect(!query.contains("temp"))
+    }
+
+    @Test("A driver that writes its own SQL is never handed a refused raw condition")
+    func sqlDriverNeverSeesRefusedCondition() {
+        let driver = SQLWritingDriver()
+        let builder = TableQueryBuilder(
+            databaseType: .mssql, pluginDriver: driver, dialect: Self.mysqlDialect,
+            pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier
+        )
+
+        #expect(builder.buildFilteredQuery(tableName: "users", filters: [Self.refused]) == nil)
+        #expect(!driver.wasAsked)
+        #expect(builder.buildFilteredQuery(tableName: "users", filters: [Self.column]) == "plugin")
+    }
+
+    @Test("The reader is told why a raw condition was refused")
+    func refusalMessageNamesTheReason() {
+        #expect(FilterSQLGenerator.refusalMessage(for: [Self.refused], databaseType: .mysql) != nil)
+        #expect(FilterSQLGenerator.refusalMessage(for: [Self.column], databaseType: .mysql) == nil)
+    }
+
+    @Test("A raw condition that closes its parentheses to start a statement never reaches a SQL Server driver", arguments: [
+        "1=1);WITH doomed AS (SELECT * FROM users) DELETE FROM doomed;--",
+        "1=1) DELETE FROM users WHERE (1=1",
+        "1=1)\nGO\nDELETE FROM users WHERE (1=1",
+        "name = 'x",
+    ])
+    func escapingConditionNeverReachesDriver(condition: String) {
+        let driver = SQLWritingDriver()
+        let builder = TableQueryBuilder(
+            databaseType: .mssql, pluginDriver: driver, dialect: Self.mysqlDialect,
+            pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier
+        )
+        let raw = TableFilter.rawCondition(condition)
+
+        #expect(builder.buildFilteredQuery(tableName: "users", filters: [raw]) == nil)
+        #expect(!driver.wasAsked)
+    }
+
+    @Test("A comparison on a real column named __RAW__ is written by the host, never by a driver")
+    func sentinelNamedColumnNeverReachesDriver() async throws {
+        let driver = SQLWritingDriver()
+        let builder = TableQueryBuilder(
+            databaseType: .mysql, pluginDriver: driver, dialect: Self.mysqlDialect,
+            pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier
+        )
+        let cell = TableFilter(columnName: TableFilter.rawSQLColumn, value: "(SELECT 1)")
+
+        let query = try #require(builder.buildFilteredQuery(tableName: "notes", filters: [cell]))
+        #expect(!driver.wasAsked)
+        #expect(query.contains("\"__RAW__\" = '(SELECT 1)'"))
+
+        let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .mysql), pluginDriver: driver)
+        let count = try await adapter.fetchFilteredRowCount(table: "notes", filters: [cell], logicMode: .and)
+        #expect(count == nil)
+        #expect(!driver.wasCounted)
+    }
+
+    @Test("A count never hands a SQL driver a raw condition the page would refuse")
+    func countNeverSeesEscapingCondition() async throws {
+        let driver = SQLWritingDriver()
+        let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .mssql), pluginDriver: driver)
+        let raw = TableFilter.rawCondition("1=1);WITH doomed AS (SELECT * FROM users) DELETE FROM doomed;--")
+
+        #expect(try await adapter.fetchFilteredRowCount(table: "users", filters: [raw], logicMode: .and) == nil)
+        #expect(try await adapter.fetchExactRowCount(table: "users", filters: [raw], logicMode: .and) == nil)
+        #expect(!driver.wasCounted)
+    }
+}

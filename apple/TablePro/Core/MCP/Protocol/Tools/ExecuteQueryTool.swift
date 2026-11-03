@@ -10,10 +10,10 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         localized: """
         Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes \
         needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. \
-        DROP and TRUNCATE go through confirm_destructive_operation instead. Statements that read or write \
-        files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where \
-        a script runs batch by batch at its GO lines and result_sets lists every result set when there is \
-        more than one.
+        Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, go through \
+        confirm_destructive_operation instead. Statements that read or write files, or run server-side code, \
+        are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at \
+        its GO lines and result_sets lists every result set when there is more than one.
         """
     )
     public static let requiredScopes: Set<MCPScope> = [.toolsRead]

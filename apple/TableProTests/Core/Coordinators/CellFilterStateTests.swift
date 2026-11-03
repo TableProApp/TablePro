@@ -198,4 +198,16 @@ struct CellFilterStateTests {
         editedAway.executedFilters = [other]
         #expect(!TabFilterState.isRunning(added, in: editedAway), "only what was fetched counts")
     }
+
+    @Test("A row switched from Raw SQL to a column counts as running when its condition is")
+    func switchedRawRowIsRunning() {
+        let switched = TableFilter.rawCondition("paid")
+            .selectingColumn("status")
+
+        let state = running([switched])
+
+        #expect(TabFilterState.isRunning(added, in: state))
+        let next = TabFilterState.cellFilterState(state, adding: added)
+        #expect(next.filters.map(\.id) == [switched.id], "no second row for the same condition")
+    }
 }
