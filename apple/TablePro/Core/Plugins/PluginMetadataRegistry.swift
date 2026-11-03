@@ -99,6 +99,10 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsColumnSort: Bool = true
         /// Whether filters can ask for rows matching any one of several conditions. CQL has no `OR`.
         var supportsMatchAnyFilters: Bool = true
+        /// Whether a filter row can hold a condition written in the engine's own query language. A
+        /// driver that answers one with an error, such as etcd or DynamoDB, or reads it as a column
+        /// name, is not offered the row at all.
+        var supportsRawFilter: Bool = true
         /// Whether a table's columns are a sample of its rows rather than a declared schema. A
         /// MongoDB collection lists the fields found in its first documents, so a field missing from
         /// one side's list says nothing about whether that side holds it.
@@ -793,6 +797,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 exactRowCountIsFullScan: existingSnapshot?.capabilities.exactRowCountIsFullScan ?? false,
                 supportsColumnSort: existingSnapshot?.capabilities.supportsColumnSort ?? true,
                 supportsMatchAnyFilters: existingSnapshot?.capabilities.supportsMatchAnyFilters ?? true,
+                supportsRawFilter: existingSnapshot?.capabilities.supportsRawFilter ?? true,
                 columnsAreSampled: existingSnapshot?.capabilities.columnsAreSampled ?? false,
                 patternFiltersReadAnyColumn: existingSnapshot?.capabilities.patternFiltersReadAnyColumn ?? false,
                 filtersTypedByReadRows: existingSnapshot?.capabilities.filtersTypedByReadRows ?? false,

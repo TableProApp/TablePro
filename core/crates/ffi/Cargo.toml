@@ -1,0 +1,48 @@
+[package]
+name = "tablepro-ffi"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# No staticlib until an app links the core in: a debug one is 1.9 GB, and every test run would build it.
+[lib]
+name = "tablepro_ffi"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+tablepro-core.workspace = true
+tablepro-driver-cassandra.workspace = true
+tablepro-driver-clickhouse.workspace = true
+tablepro-driver-duckdb.workspace = true
+tablepro-driver-mongodb.workspace = true
+tablepro-driver-mssql.workspace = true
+tablepro-driver-mysql.workspace = true
+tablepro-driver-postgres.workspace = true
+tablepro-driver-redis.workspace = true
+tablepro-driver-sqlite.workspace = true
+tablepro-session.workspace = true
+tablepro-ssh.workspace = true
+tablepro-storage.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+futures.workspace = true
+percent-encoding.workspace = true
+secrecy.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio-util.workspace = true
+tracing.workspace = true
+uniffi.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[dev-dependencies]
+csbindgen.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -29,14 +29,18 @@ internal extension TabFilterState {
         primaryKeyColumn: String?,
         offersRawFilter: Bool
     ) -> TableFilter {
-        var filter = TableFilter()
-        filter.columnName = settings.defaultColumn.columnName(
-            columns: columns,
-            primaryKeyColumn: primaryKeyColumn,
-            offersRawFilter: offersRawFilter
+        let filterOperator = settings.defaultOperator.toFilterOperator()
+        if settings.defaultColumn == .rawSQL, offersRawFilter {
+            return .rawCondition("", filterOperator: filterOperator)
+        }
+        return TableFilter(
+            columnName: settings.defaultColumn.columnName(
+                columns: columns,
+                primaryKeyColumn: primaryKeyColumn,
+                offersRawFilter: offersRawFilter
+            ),
+            filterOperator: filterOperator
         )
-        filter.filterOperator = settings.defaultOperator.toFilterOperator()
-        return filter
     }
 
     @discardableResult
@@ -57,21 +61,16 @@ internal extension TabFilterState {
     }
 
     mutating func addFilter(forColumn columnName: String, settings: FilterSettings) {
-        var filter = TableFilter()
-        filter.columnName = columnName
-        filter.filterOperator = settings.defaultOperator.toFilterOperator()
-        filters.append(filter)
+        filters.append(TableFilter(
+            columnName: columnName,
+            filterOperator: settings.defaultOperator.toFilterOperator()
+        ))
         isVisible = true
     }
 
     static func crossColumnSearchFilters(term: String, columns: [String]) -> [TableFilter] {
         columns.map { column in
-            var filter = TableFilter()
-            filter.columnName = column
-            filter.filterOperator = .contains
-            filter.value = term
-            filter.isEnabled = true
-            return filter
+            TableFilter(columnName: column, filterOperator: .contains, value: term)
         }
     }
 
@@ -91,15 +90,7 @@ internal extension TabFilterState {
 
     @discardableResult
     mutating func duplicateFilter(_ filter: TableFilter) -> UUID {
-        let copy = TableFilter(
-            id: UUID(),
-            columnName: filter.columnName,
-            filterOperator: filter.filterOperator,
-            value: filter.value,
-            secondValue: filter.secondValue,
-            isEnabled: filter.isEnabled,
-            rawSQL: filter.rawSQL
-        )
+        let copy = filter.duplicated()
         if let index = filters.firstIndex(where: { $0.id == filter.id }) {
             filters.insert(copy, at: index + 1)
         } else {
@@ -113,9 +104,11 @@ internal extension TabFilterState {
         filters[index] = filter
     }
 
+    /// Judged against what is running rather than the draft, so a running row whose text was
+    /// erased without Apply still stops running when the reader removes it.
     @discardableResult
     mutating func removeFilter(_ filter: TableFilter) -> RemoveFilterOutcome {
-        let outcome = Self.removeFilterOutcome(removing: filter, from: appliedFilters)
+        let outcome = Self.removeFilterOutcome(removing: filter, from: rerunFilters.filters)
         filters.removeAll { $0.id == filter.id }
         if case .solo(let id) = commit, id == filter.id {
             commit = nil
@@ -130,6 +123,31 @@ internal extension TabFilterState {
         guard appliedFilters.contains(where: { $0.id == filter.id }) else { return .noChange }
         let remaining = appliedFilters.filter { $0.id != filter.id }
         return remaining.isEmpty ? .clear : .reapply(remaining)
+    }
+
+    /// Whether a row in the draft or in what is running compares on one of these columns, so an edit
+    /// to them changes the filters and has to rerun them and be undoable with them.
+    func filtersOnAnyColumn(in names: Set<String>) -> Bool {
+        (filters + executedFilters).contains { !$0.isRawSQL && names.contains($0.columnName) }
+    }
+
+    /// A column the rows filter on was renamed: the draft and what is running both follow it, or a
+    /// rerun would look for the old name and drop the condition.
+    mutating func renameFilterColumn(from oldName: String, to newName: String) {
+        let rename = { (rows: inout [TableFilter]) in
+            for index in rows.indices where !rows[index].isRawSQL && rows[index].columnName == oldName {
+                rows[index].columnName = newName
+            }
+        }
+        rename(&filters)
+        rename(&executedFilters)
+    }
+
+    /// Columns were removed, so no row can filter on them any more, in the draft or what is running.
+    mutating func removeFilters(onColumns names: Set<String>) {
+        let readsRemoved = { (row: TableFilter) in !row.isRawSQL && names.contains(row.columnName) }
+        filters.removeAll(where: readsRemoved)
+        executedFilters.removeAll(where: readsRemoved)
     }
 
     mutating func setAllFiltersEnabled(_ isEnabled: Bool) {
@@ -192,7 +210,7 @@ internal extension TabFilterState {
     /// change nothing but the page.
     static func isRunning(_ filter: TableFilter, in state: TabFilterState) -> Bool {
         guard state.executedFilters.contains(where: { $0.hasSameCondition(as: filter) }) else { return false }
-        return state.filterLogicMode == .and || state.executedFilters.count == 1
+        return (state.executedLogicMode ?? state.filterLogicMode) == .and || state.executedFilters.count == 1
     }
 
     /// The filter state that shows what the grid showed, and only rows matching `filter` too.
@@ -209,7 +227,7 @@ internal extension TabFilterState {
     static func cellFilterState(_ state: TabFilterState, adding filter: TableFilter) -> TabFilterState {
         let executedIDs = Set(state.executedFilters.map(\.id))
         let runningIDs = Set(state.filters.lazy.map(\.id).filter(executedIDs.contains))
-        let keepsRunningRows = state.filterLogicMode == .and || runningIDs.count <= 1
+        let keepsRunningRows = (state.executedLogicMode ?? state.filterLogicMode) == .and || runningIDs.count <= 1
         let keptIDs = keepsRunningRows ? runningIDs : []
         let existingID = state.filters.first { $0.hasSameCondition(as: filter) }?.id
 

@@ -1,13 +1,13 @@
 mod batch_error_policy;
 mod compound_tracker;
 mod directive_scan;
-mod lexer;
+pub(crate) mod lexer;
 mod lexical_settings;
 mod open_construct;
 mod script_batch;
 mod script_diagnostic;
 mod script_plan;
-mod script_rules;
+pub(crate) mod script_rules;
 mod script_statement;
 mod script_token;
 mod script_token_kind;

@@ -137,10 +137,7 @@ struct FilterRowView: View {
     }
 
     private var previewValue: String {
-        if filter.isRawSQL {
-            return filter.rawSQL ?? ""
-        }
-        guard filter.filterOperator.requiresValue else { return "" }
+        guard filter.isRawSQL || filter.filterOperator.requiresValue else { return "" }
         return filter.value
     }
 
@@ -168,23 +165,23 @@ struct FilterRowView: View {
 
     private var columnPicker: some View {
         HStack(spacing: 4) {
-            Picker(String(localized: "Filter column"), selection: $filter.columnName) {
+            Picker(String(localized: "Filter column"), selection: columnSelection) {
                 if offersRawFilter || filter.isRawSQL {
-                    Text(rawFilterLabel).tag(TableFilter.rawSQLColumn)
+                    Text(rawFilterLabel).tag(String?.none)
                     Divider()
                 }
                 ForEach(columns, id: \.self) { column in
-                    Text(column).tag(column)
+                    Text(column).tag(String?.some(column))
                 }
                 ForEach(columnMenu.groups) { group in
                     Divider()
                     ForEach(group.paths, id: \.path) { path in
-                        Text(path.path).tag(path.path)
+                        Text(path.path).tag(String?.some(path.path))
                     }
                 }
                 if let driftedColumn {
                     Divider()
-                    Text(driftedColumn).tag(driftedColumn)
+                    Text(driftedColumn).tag(String?.some(driftedColumn))
                 }
             }
             .pickerStyle(.menu)
@@ -203,9 +200,16 @@ struct FilterRowView: View {
                 nestedFieldPathButton
             }
         }
-        .onChange(of: filter.columnName) { _ in
-            filter.elementScope = nil
-        }
+    }
+
+    /// Nil is the raw condition, so a table column that shares the raw row's name stays a column.
+    private var columnSelection: Binding<String?> {
+        Binding(
+            get: { filter.isRawSQL ? nil : filter.columnName },
+            set: { name in
+                filter = name.map(filter.selectingColumn) ?? filter.selectingRawCondition()
+            }
+        )
     }
 
     private var nestedFieldPathButton: some View {
@@ -224,7 +228,7 @@ struct FilterRowView: View {
             NestedFieldPathPicker(
                 fieldPaths: fieldPaths,
                 currentValue: filter.columnName,
-                onCommit: { filter.columnName = $0 },
+                onCommit: { filter = filter.selectingColumn($0) },
                 onDismiss: { showNestedPathPicker = false }
             )
         }
@@ -267,7 +271,7 @@ struct FilterRowView: View {
 
     private var operatorPicker: some View {
         Menu {
-            Picker(String(localized: "Filter operator"), selection: $filter.filterOperator) {
+            Picker(String(localized: "Filter operator"), selection: operatorSelection) {
                 ForEach(FilterOperator.allCases) { op in
                     OperatorMenuLabel(op: op).tag(op)
                 }
@@ -292,6 +296,13 @@ struct FilterRowView: View {
         .fixedSize()
         .accessibilityValue(operatorAccessibilityValue)
         .help(caseSensitivityHelp)
+    }
+
+    private var operatorSelection: Binding<FilterOperator> {
+        Binding(
+            get: { filter.filterOperator },
+            set: { filter = filter.selectingOperator($0) }
+        )
     }
 
     @ViewBuilder
@@ -335,10 +346,7 @@ struct FilterRowView: View {
     private var valueFields: some View {
         if filter.isRawSQL {
             FilterValueTextField(
-                text: Binding(
-                    get: { filter.rawSQL ?? "" },
-                    set: { filter.rawSQL = $0 }
-                ),
+                text: $filter.value,
                 focusedId: $focusedFilterId,
                 identity: filter.id,
                 placeholder: "e.g. id = 1",

@@ -283,9 +283,9 @@ struct FilterPanelView: View {
 
     private func duplicateFilter(_ filter: TableFilter) {
         var next = state
-        next.duplicateFilter(filter)
+        let copyID = next.duplicateFilter(filter)
         state = next
-        focusedFilterId = next.filters.last?.id
+        focusedFilterId = copyID
     }
 
     private func toggleAllFiltersEnabled() {
@@ -310,9 +310,9 @@ struct FilterPanelView: View {
 
     private func presetColumnsMatch(_ preset: FilterPreset) -> Bool {
         let knownPaths = Set(configuration.fieldPaths.map(\.path))
-        return preset.filters.map(\.columnName).allSatisfy { column in
-            if configuration.offersRawFilter && column == TableFilter.rawSQLColumn { return true }
-            return configuration.columns.contains(column) || knownPaths.contains(column)
+        return preset.filters.allSatisfy { filter in
+            if filter.isRawSQL { return configuration.offersRawFilter }
+            return configuration.columns.contains(filter.columnName) || knownPaths.contains(filter.columnName)
         }
     }
 

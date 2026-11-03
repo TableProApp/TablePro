@@ -15402,6 +15402,9 @@
         }
       }
     },
+    "a comparison or sync" : {
+
+    },
     "A composite's fields in declaration order" : {
       "localizations" : {
         "fr" : {
@@ -16566,6 +16569,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A raw SQL filter must be one condition: no comment, no second statement, and every quote and parenthesis closed." : {
+
+    },
     "A raw SurrealDB filter must be one condition that only reads. Run anything else in the SurrealQL editor." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -16732,6 +16738,9 @@
           }
         }
       }
+    },
+    "a running query" : {
+
     },
     "A save is already running in this window." : {
       "localizations" : {
@@ -24351,6 +24360,9 @@
         }
       }
     },
+    "an agent reply" : {
+
+    },
     "An array has no \"items\"." : {
 
     },
@@ -24700,6 +24712,9 @@
         }
       }
     },
+    "an import, export, backup, restore or copy" : {
+
+    },
     "An index name is 3 to 255 characters of letters, digits, underscore, hyphen and period." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -24808,6 +24823,9 @@
     "an object with latitude and longitude" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "an open transaction" : {
+
     },
     "An operation is already running." : {
       "localizations" : {
@@ -180152,6 +180170,9 @@
         }
       }
     },
+    "TablePro cannot tell whether this connection holds an open transaction, so it stays connected. Try again once its work is done, or disconnect in TablePro." : {
+
+    },
     "TablePro cannot tell which Redshift cluster or workgroup \"%@\" is. Set Host to the endpoint AWS issued, such as my-cluster.abc123.us-east-1.redshift.amazonaws.com, or enter that endpoint as the Redshift Endpoint when you connect through a port forward." : {
 
     },
@@ -195950,6 +195971,9 @@
         }
       }
     },
+    "This connection has %@ in TablePro, which disconnecting would stop or discard. Finish it first, or disconnect in TablePro, which asks the user." : {
+
+    },
     "This connection has a transaction open. Commit or roll it back in TablePro, then try again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -198002,6 +198026,9 @@
           }
         }
       }
+    },
+    "This file cannot filter rows with these conditions." : {
+
     },
     "This file has unsaved changes in an editor tab. The commit takes the saved file." : {
 
@@ -207723,6 +207750,9 @@
       }
     },
     "Unpin Tab" : {
+
+    },
+    "unsaved changes" : {
 
     },
     "Unsaved changes" : {

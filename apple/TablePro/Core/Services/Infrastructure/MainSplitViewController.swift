@@ -858,17 +858,22 @@ internal final class MainSplitViewController: NSSplitViewController {
         if let selected = workspaces.selected { bindSidebarChrome(to: selected) }
     }
 
-    /// Parents the sidebar and detail trees the selected connection's mode draws, and does nothing
-    /// else, so a mode toggle is the same view swap a workspace switch is.
-    ///
-    /// Parenting happens here and in no builder, so a connection put into Agent mode while another
-    /// is on screen has its panes built for the mode at once and parented only when it is selected:
-    /// `applySelectedWorkspace` calls through here after its sync, which is the same repair a
-    /// background connect relies on (#2545).
+    // The only place panes are parented, so a mode toggle is the same view swap a workspace switch is (#2545).
     func showSelectedContentPanes() {
         let selected = workspaces.selected
         navigationSidebar?.objectBrowser.show(selected.map { $0.panes.sidebarPane(for: $0.resolvedContentMode) })
         detailPaneHost?.show(selected.map { $0.panes.detailPane(for: $0.detailMode) })
+        if let selected { clearShownTabMark(of: selected) }
+    }
+
+    // A result that finished behind Agent mode or another connection marked the selected tab; it is in view now.
+    private func clearShownTabMark(of workspace: ConnectionWorkspace) {
+        guard workspace.resolvedPane == .content,
+              workspace.detailMode == .browse,
+              let tabManager = workspace.sessionState?.tabManager,
+              let tabId = tabManager.selectedTabId
+        else { return }
+        OperationUnseenMarker.clear(tabId: tabId, in: tabManager)
     }
 
     /// The scope control and the filter field live above the object list and belong to the window,
