@@ -112,17 +112,16 @@ struct ConnectionExportOptionsSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Toggle("Include Credentials", isOn: $includeCredentials)
-                        .toggleStyle(.checkbox)
-                        .disabled(!isProAvailable)
-                    if !isProAvailable {
-                        ProBadge(feature: .encryptedExport)
-                    }
-                }
+                Toggle("Include Credentials", isOn: $includeCredentials)
+                    .toggleStyle(.checkbox)
+                    .disabled(!isProAvailable)
                 Text("Off by default. Turn it on to encrypt saved passwords with a passphrase.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if !isProAvailable {
+                LicenseGateRow(feature: .encryptedExport)
             }
 
             if includeCredentials {
@@ -210,9 +209,8 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     private func warningLabel(_ text: String) -> some View {
-        Label(text, systemImage: "exclamationmark.triangle.fill")
+        NoticeLabel(text)
             .font(.caption)
-            .foregroundStyle(.orange)
     }
 
     private var footer: some View {

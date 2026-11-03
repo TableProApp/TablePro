@@ -386,7 +386,7 @@ internal struct ObjectCopyRunner {
             } catch {
                 if opened { await closeSettings(of: group, on: driver) }
                 logger.error(
-                    "Copy DDL failed for \(group.selection.qualifiedName, privacy: .public): \(error.publicLogShape, privacy: .public)"
+                    "Copy DDL failed for \(group.selection.qualifiedName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
                 )
                 result.outcomes.append(ObjectCopyObjectOutcome(
                     selection: group.selection, rowsCopied: 0, error: error.localizedDescription
@@ -413,7 +413,7 @@ internal struct ObjectCopyRunner {
                 ranAny = true
             } catch {
                 logger.warning(
-                    "Creation settings for \(group.selection.qualifiedName, privacy: .public) were not applied: \(error.publicLogShape, privacy: .public)"
+                    "Creation settings for \(group.selection.qualifiedName, privacy: .private(mask: .hash)) were not applied: \(error.publicLogShape, privacy: .public)"
                 )
                 break
             }
@@ -466,7 +466,7 @@ internal struct ObjectCopyRunner {
                 try await TaskCancellationShield.run { _ = try await driver.execute(query: statement.sql) }
             } catch {
                 logger.error(
-                    "Restoring settings after \(group.selection.qualifiedName, privacy: .public) failed: \(error.publicLogShape, privacy: .public)"
+                    "Restoring settings after \(group.selection.qualifiedName, privacy: .private(mask: .hash)) failed: \(error.publicLogShape, privacy: .public)"
                 )
             }
         }
@@ -529,7 +529,7 @@ internal struct ObjectCopyRunner {
             progress: ObjectCopyProgress
         ) -> Bool {
             ObjectCopyRunner.logger.error(
-                "Copy rows failed for \(step.qualifiedTargetName, privacy: .public): \(error.publicLogShape, privacy: .public)"
+                "Copy rows failed for \(step.qualifiedTargetName, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
             )
             let written = (error as? ObjectCopyRowCopier.PartialFailure)?.written ?? 0
             rowsCopied += written
@@ -813,7 +813,7 @@ internal struct ObjectCopyRunner {
                 _ = try await driver.execute(query: check.sql)
             } catch {
                 logger.warning(
-                    "Copying with foreign key checks on, \(check.constraint, privacy: .public) cannot be checked: \(error.publicLogShape, privacy: .public)"
+                    "Copying with foreign key checks on, \(check.constraint, privacy: .private(mask: .hash)) cannot be checked: \(error.publicLogShape, privacy: .public)"
                 )
                 return false
             }

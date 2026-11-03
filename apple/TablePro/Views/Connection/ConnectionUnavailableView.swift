@@ -65,21 +65,27 @@ internal struct ConnectionUnavailableView: View {
 
     @ViewBuilder
     private var icon: some View {
+        if let symbol = Self.symbolName(for: reason) {
+            Image(systemName: symbol)
+                .symbolRenderingMode(.hierarchical)
+        } else {
+            ConnectionTypeIcon(type: connection.type, iconName: connection.iconName)
+        }
+    }
+
+    // The outline forms of the marks the rail, Welcome and the switcher draw for the same state.
+    internal static func symbolName(for reason: ConnectionUnavailableReason) -> String? {
         switch reason {
         case .notConnected, .cancelled:
-            ConnectionTypeIcon(type: connection.type, iconName: connection.iconName)
+            return nil
         case .disconnected:
-            Image(systemName: "bolt.horizontal.circle")
-                .symbolRenderingMode(.hierarchical)
+            return "bolt.slash"
         case .disconnectedByUser:
-            Image(systemName: "cable.connector.slash")
-                .symbolRenderingMode(.hierarchical)
+            return "cable.connector.slash"
         case .failed:
-            Image(systemName: "exclamationmark.triangle")
-                .symbolRenderingMode(.hierarchical)
+            return "exclamationmark.triangle"
         case .actionRequired(_, let action):
-            Image(systemName: action.symbolName)
-                .symbolRenderingMode(.hierarchical)
+            return action.symbolName
         }
     }
 

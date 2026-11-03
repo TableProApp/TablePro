@@ -1,6 +1,8 @@
 import Foundation
 @testable import TableProMobile
 import TableProModels
+import TableProSQLGrammar
+import TableProSQLQuoting
 import Testing
 
 struct MySQLForeignKeyCatalogTests {
@@ -42,6 +44,25 @@ struct MySQLForeignKeyCatalogTests {
 
         #expect(query.contains(#"kcu.TABLE_SCHEMA = 'c''r\\m'"#))
         #expect(query.contains(#"kcu.TABLE_NAME = 'o''b\\x'"#))
+    }
+
+    @Test("Under NO_BACKSLASH_ESCAPES the driver writes a backslash as it is, and doubles it otherwise")
+    func literalsFollowTheSession() {
+        let literal = SQLSessionLexicalFacts(
+            determined: [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes], enabled: []
+        )
+        let escaping = SQLSessionLexicalFacts(
+            determined: .backslashEscapesInSingleQuotes, enabled: .backslashEscapesInSingleQuotes
+        )
+
+        #expect(MySQLDriver.stringEscapes(for: .mysql, session: literal, isDatabend: false) == .standard)
+        #expect(MySQLDriver.stringEscapes(for: .mysql, session: escaping, isDatabend: false) == .mysql)
+        #expect(MySQLDriver.stringEscapes(for: .mysql, session: nil, isDatabend: false) == .mysql)
+        #expect(MySQLDriver.stringEscapes(for: .databend, session: nil, isDatabend: true) == .backslash)
+        #expect(
+            MySQLDriver.foreignKeyCatalogQuery(table: #"o'b\x"#, database: nil, escapes: .standard)
+                .contains(#"kcu.TABLE_NAME = 'o''b\x'"#)
+        )
     }
 
     @Test("A key into its own database has no schema, one into another database keeps it")

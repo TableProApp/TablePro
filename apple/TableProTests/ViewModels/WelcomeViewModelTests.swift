@@ -881,6 +881,38 @@ final class WelcomeViewModelTests {
         #expect(linked.id == LinkedFolderWatcher.stableId(folderId: linked.folderId, connection: hostile), "Dropping the command must not change the row's identity")
     }
 
+    // MARK: - Connect failures
+
+    /// A connect that failed from Welcome closed the window it had just opened and raised an alert,
+    /// against the rule that a connect failure shows inline in the window's pane.
+    @Test("A connect failure with a window to show it in raises nothing here")
+    func connectFailureInAWindowRaisesNothing() {
+        let refused = NSError(domain: NSPOSIXErrorDomain, code: Int(ECONNREFUSED))
+
+        #expect(WelcomeViewModel.route(for: refused, isShownInWindow: true) == .window)
+        #expect(WelcomeViewModel.route(for: PluginError.pluginNotInstalled("mysql"), isShownInWindow: true) == .window)
+    }
+
+    @Test("Only an error no window could take is reported from Welcome")
+    func windowlessErrorIsReported() {
+        let missing = TabRouterError.connectionNotFound(UUID())
+
+        #expect(WelcomeViewModel.route(for: missing, isShownInWindow: false) == .alert)
+        #expect(WelcomeViewModel.route(for: PluginError.pluginNotInstalled("mysql"), isShownInWindow: false) == .pluginInstall)
+        #expect(WelcomeViewModel.route(for: CancellationError(), isShownInWindow: false) == .ignore)
+        #expect(WelcomeViewModel.route(for: TabRouterError.userCancelled, isShownInWindow: true) == .ignore)
+    }
+
+    @Test("A failure with no window behind it reaches the alert")
+    func windowlessFailureSetsTheAlert() {
+        let connection = TestFixtures.makeConnection(name: "Gone")
+
+        viewModel.handleConnectError(TabRouterError.connectionNotFound(connection.id), connection: connection)
+
+        #expect(viewModel.showConnectionError)
+        #expect(viewModel.connectionError?.isEmpty == false)
+    }
+
     @MainActor
     private final class InstalledAppFlag {
         var value = false

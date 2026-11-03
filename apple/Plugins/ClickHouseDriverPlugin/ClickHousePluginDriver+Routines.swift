@@ -5,14 +5,13 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// ClickHouse has user-defined functions and no procedures or triggers, so only the Functions
 /// section appears.
 nonisolated public enum ClickHouseObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "'", with: "\\'", options: .literal)
+        SQLQuoting.stringLiteralBody(value, escapes: .backslash)
     }
 
     public static func quoteIdentifier(_ value: String) -> String {

@@ -376,7 +376,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         let delegate: PluginRedirectRefusingDelegate
         switch tlsMode {
         case "Required":
-            // Encryption without certificate verification — matches UI "Required (skip verify)"
+            // The form labels this mode "Required (skip verify)".
             delegate = InsecureTlsDelegate()
         default:
             delegate = try verifyingDelegate(tlsMode: tlsMode) ?? PluginRedirectRefusingDelegate()
@@ -402,6 +402,9 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         } catch {
             invalidateSession()
             Self.logger.error("Connection failed: \(error.localizedDescription)")
+            if (error as? URLError)?.code == .cancelled, let refusal = (delegate as? EtcdTlsDelegate)?.takeTrustRefusal() {
+                throw refusal
+            }
             throw EtcdError.connectionFailed(error.localizedDescription)
         }
     }
@@ -412,7 +415,11 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     private func verifyingDelegate(tlsMode: String) throws -> PluginRedirectRefusingDelegate? {
         let caPath = config.additionalFields["etcdCaCertPath"]
-        guard let serverTrust = try EtcdServerTrust.make(tlsMode: tlsMode, caCertificatePath: caPath) else {
+        guard let serverTrust = try EtcdServerTrust.make(
+            tlsMode: tlsMode,
+            caCertificatePath: caPath,
+            serverName: config.tunneledServerName
+        ) else {
             return nil
         }
         let clientCredential = try Self.clientCredential(
@@ -1097,10 +1104,20 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     private final class EtcdTlsDelegate: PluginRedirectRefusingDelegate {
         private let serverTrust: EtcdServerTrust
         private let clientCredential: URLCredential?
+        private let lock = NSLock()
+        private var refusal: SSLHandshakeError?
 
         init(serverTrust: EtcdServerTrust, clientCredential: URLCredential?) {
             self.serverTrust = serverTrust
             self.clientCredential = clientCredential
+        }
+
+        // A refused certificate reaches the request only as URLError.cancelled.
+        func takeTrustRefusal() -> SSLHandshakeError? {
+            lock.withLock {
+                defer { refusal = nil }
+                return refusal
+            }
         }
 
         func urlSession(
@@ -1123,8 +1140,12 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             challenge: URLAuthenticationChallenge,
             completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
         ) {
-            guard let trust = challenge.protectionSpace.serverTrust,
-                  serverTrust.evaluate(trust, host: challenge.protectionSpace.host) else {
+            guard let trust = challenge.protectionSpace.serverTrust else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+            if let refused = serverTrust.refusal(of: trust, host: challenge.protectionSpace.host) {
+                lock.withLock { refusal = refused }
                 completionHandler(.cancelAuthenticationChallenge, nil)
                 return
             }

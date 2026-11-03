@@ -9,10 +9,32 @@ import Foundation
 internal enum ProtoFileParser {
     static let maxTokens = 2_000_000
     static let maxDepth = 100
+    static let maxPackageComponents = 100
 
     static func parse(_ text: String) throws -> [ProtobufFileDefinition] {
         var parser = Parser(tokens: try Tokenizer.tokens(text))
         return [try parser.file()]
+    }
+
+    // Each field's type is looked up through every part of the package, so a long one costs every field.
+    static func checkPackage(_ package: String) throws {
+        guard package.utf8.count(where: { $0 == UInt8(ascii: ".") }) < maxPackageComponents else {
+            throw error(String(localized: "The package name has too many parts."))
+        }
+    }
+
+    static let maxNameLength = 1_024
+
+    // Every message and enum keeps its full name, so a long scope over many small definitions would copy far
+    // more than the file holds. Both are bounded before the name is built.
+    static func qualifiedName(_ scope: String, _ name: String, defined: Int) throws -> String {
+        guard defined < ProtobufSchema.maxMessages else {
+            throw error(String(localized: "The schema defines more messages than TablePro reads."))
+        }
+        guard scope.utf8.count + name.utf8.count < maxNameLength else {
+            throw error(String(localized: "A type name is too long."))
+        }
+        return scope.isEmpty ? name : "\(scope).\(name)"
     }
 
     fileprivate enum Token: Equatable {
@@ -104,6 +126,7 @@ internal enum ProtoFileParser {
         mutating func file() throws -> ProtobufFileDefinition {
             var file = ProtobufFileDefinition()
             let package = packageName()
+            try ProtoFileParser.checkPackage(package)
             while let token = peek() {
                 switch token {
                 case .identifier("syntax"):
@@ -154,8 +177,8 @@ internal enum ProtoFileParser {
         }
 
         private mutating func message(scope: String, depth: Int) throws -> String {
-            let name = try identifier()
-            let fullName = scope.isEmpty ? name : "\(scope).\(name)"
+            let name = try declaredName()
+            let fullName = try ProtoFileParser.qualifiedName(scope, name, defined: messages.count)
             try expect("{")
             try messageBody(fullName: fullName, depth: depth)
             return fullName
@@ -165,11 +188,17 @@ internal enum ProtoFileParser {
             let slot = messages.count
             messages.append(ProtobufMessageDefinition(fullName: fullName))
             var definition = messages[slot]
-            try body(of: &definition, depth: depth, oneof: nil)
+            var oneofCount = 0
+            try body(of: &definition, depth: depth, oneof: nil, oneofCount: &oneofCount)
             messages[slot] = definition
         }
 
-        private mutating func body(of definition: inout ProtobufMessageDefinition, depth: Int, oneof: Int?) throws {
+        private mutating func body(
+            of definition: inout ProtobufMessageDefinition,
+            depth: Int,
+            oneof: Int?,
+            oneofCount: inout Int
+        ) throws {
             guard depth < ProtoFileParser.maxDepth else { throw ProtoFileParser.error(String(localized: "Messages are nested too deeply.")) }
             while true {
                 guard let token = peek() else { throw ProtoFileParser.error(String(localized: "A message is never closed.")) }
@@ -189,8 +218,9 @@ internal enum ProtoFileParser {
                     advance()
                     _ = try identifier()
                     try expect("{")
-                    let index = (definition.fields.compactMap(\.oneofIndex).max() ?? -1) + 1
-                    try body(of: &definition, depth: depth + 1, oneof: index)
+                    let index = oneofCount
+                    oneofCount += 1
+                    try body(of: &definition, depth: depth + 1, oneof: index, oneofCount: &oneofCount)
                 // A Schema Registry stores a map field as the entry message protoc synthesizes for it.
                 case .identifier("option") where peek(1) == .identifier("map_entry") && peek(3) == .identifier("true"):
                     definition.isMapEntry = true
@@ -218,14 +248,14 @@ internal enum ProtoFileParser {
                 advance()
             }
             let typeName = try identifier()
-            let name = try identifier()
+            let name = try declaredName()
             try expect("=")
             let number = try fieldNumber()
             let features = try fieldOptions()
             let type: ProtobufFieldDefinition.TypeReference
             if typeName == "group" {
                 try expect("{")
-                let fullName = "\(definition.fullName).\(name)"
+                let fullName = try ProtoFileParser.qualifiedName(definition.fullName, name, defined: messages.count)
                 try messageBody(fullName: fullName, depth: depth + 1)
                 definition.nestedMessages.append(fullName)
                 type = .group(fullName)
@@ -252,12 +282,14 @@ internal enum ProtoFileParser {
             try expect(",")
             let valueType = try identifier()
             try expect(">")
-            let name = try identifier()
+            let name = try declaredName()
             try expect("=")
             let number = try fieldNumber()
             _ = try fieldOptions()
             try expect(";")
-            let entryName = "\(definition.fullName).\(Self.camelCased(name))Entry"
+            let entryName = try ProtoFileParser.qualifiedName(
+                definition.fullName, "\(Self.camelCased(name))Entry", defined: messages.count
+            )
             func reference(_ type: String) -> ProtobufFieldDefinition.TypeReference {
                 ProtobufScalarType(rawValue: type).map { .scalar($0) } ?? .named(type)
             }
@@ -274,8 +306,8 @@ internal enum ProtoFileParser {
         }
 
         private mutating func enumeration(scope: String) throws -> String {
-            let name = try identifier()
-            let fullName = scope.isEmpty ? name : "\(scope).\(name)"
+            let name = try declaredName()
+            let fullName = try ProtoFileParser.qualifiedName(scope, name, defined: enums.count)
             try expect("{")
             var enumeration = ProtobufEnumDefinition(fullName: fullName)
             while true {
@@ -434,6 +466,14 @@ internal enum ProtoFileParser {
 
         private mutating func identifier() throws -> String {
             guard case .identifier(let name)? = peek() else { throw unexpected() }
+            advance()
+            return name
+        }
+
+        // protoc takes a declared name as one identifier, and a dotted one would lengthen the scope each field's
+        // type is looked up through.
+        private mutating func declaredName() throws -> String {
+            guard case .identifier(let name)? = peek(), !name.contains(".") else { throw unexpected() }
             advance()
             return name
         }

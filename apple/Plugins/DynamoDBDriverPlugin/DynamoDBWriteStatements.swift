@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// Turns grid edits into PartiQL, one statement per changed row, every value a `?` parameter.
 ///
@@ -142,7 +143,7 @@ struct DynamoDBWriteStatements {
     }
 
     static func literal(_ name: String) -> String {
-        "'\(name.replacingOccurrences(of: "'", with: "''", options: .literal))'"
+        SQLQuoting.stringLiteral(name)
     }
 }
 

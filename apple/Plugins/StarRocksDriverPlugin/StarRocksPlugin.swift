@@ -11,6 +11,8 @@ final class StarRocksPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "StarRocks"
     static let iconName = "starrocks-icon"
     static let defaultPort = 9_030
+    // MySQLPluginDriver checks the pre-tunnel host through a forward, as for MySQL.
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let isDownloadable = true
     static let urlSchemes = ["starrocks"]
     static let brandColorHex = "#01808F"

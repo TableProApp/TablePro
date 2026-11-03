@@ -8,7 +8,9 @@ import CCassandra
 #endif
 import Foundation
 import os
+import TableProCassandraCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 actor CassandraConnectionActor {
     private static let logger = Logger(subsystem: "com.TablePro.CassandraDriver", category: "Connection")
@@ -63,8 +65,7 @@ actor CassandraConnectionActor {
 
         cass_cluster_set_contact_points(cluster, host)
         cass_cluster_set_port(cluster, Int32(port))
-        // Behind a tunnel the peers system.peers names sit outside it, and the tunnel already turned certificate
-        // checks off, so they would get the password unverified.
+        // Behind a tunnel the peers system.peers names sit outside it, so the driver would dial them around it.
         if pinnedToContactPoint {
             cass_cluster_set_whitelist_filtering(cluster, host)
         }
@@ -558,7 +559,7 @@ actor CassandraConnectionActor {
     }
 
     func switchKeyspace(_ keyspace: String) throws {
-        _ = try executeQuery("USE \"\(escapeIdentifier(keyspace))\"", consistency: nil)
+        _ = try executeQuery("USE \(SQLQuoting.identifier(keyspace))", consistency: nil)
         currentKeyspace = keyspace
     }
 
@@ -1069,10 +1070,6 @@ actor CassandraConnectionActor {
                 estimatedRowCount: nil
             )))
         }
-    }
-
-    private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal)
     }
 
     private static func apply(_ consistency: CassandraConsistency?, to statement: OpaquePointer) throws {

@@ -1,12 +1,13 @@
 import Foundation
+import TableProSQLQuoting
 
 public enum TeradataSchemaQueries {
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"" + name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
+        SQLQuoting.identifier(name)
     }
 
     public static func quoteLiteral(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''", options: .literal) + "'"
+        SQLQuoting.stringLiteral(value)
     }
 
     public static func qualifiedName(database: String?, table: String) -> String {

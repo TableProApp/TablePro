@@ -10,14 +10,14 @@ HTTP has no login and no long-lived session, so there is no pool of logins:
 
 - hyper keeps idle HTTP connections for 2 s, shorter than the server's keep-alive (3 s before 23.11, 10 s after), so a reused connection is never one the server is about to close.
 - Every connection is a stream from `Transport::open`. The URL names only the service, for the `Host` header and the TLS name, so an SSH forward never needs a DNS lookup of a name only the far side can resolve.
-- The connect is the first request, `SELECT version(), currentDatabase()`, within the connect and login timeouts together. A refused password or a failed handshake shows up there.
+- The connect is the first request, `SELECT version(), currentDatabase()` and the login's own `readonly` level from `system.settings`, on the control client, within the connect and login timeouts together. A refused password or a failed handshake shows up there.
 - `probe` is one more request, `SELECT 1`, on the control client.
 
 Three clients share that connection pool:
 
 | Client | Used for | Settings beyond the common ones |
 |---|---|---|
-| Workspace | Catalogue reads, pages, counts, exports, write probes, editor sessions | `readonly=2` and `allow_ddl=0` on a read-only connection |
+| Workspace | Catalogue reads, pages, counts, exports, write probes, editor sessions | `readonly=1` and `allow_ddl=0` on a read-only connection |
 | Writes | The statements of a save | `wait_end_of_query=1`, `max_execution_time=0` |
 | Control | `KILL QUERY`, `SYSTEM FLUSH LOGS`, commit resolution | None. It is not held read-only, because a `KILL` is not a read, and it runs only SQL the driver wrote. |
 
@@ -45,7 +45,7 @@ Results stream as `JSONCompactEachRowWithNamesAndTypes`, and each cell is read b
 
 ## Read-only
 
-`ReadOnlyEnforcement::EngineEnforced`. A read-only connection sends `readonly=2` and `allow_ddl=0` with every workspace and editor request, and the server refuses a write whatever the SQL says (error 164, or 392 for DDL). `readonly=2` still lets a session change settings, which the editor needs. Every workspace read also carries `readonly=2`, on any connection, with its time bound. Saves on a read-only connection are refused before anything is sent.
+`ReadOnlyEnforcement::EngineEnforced`. A read-only connection sends `readonly=1` and `allow_ddl=0` with every workspace and editor request, and the server refuses a write whatever the SQL says (error 164, or 392 for DDL). `readonly=2` is not enough: it still lets `INSERT INTO FUNCTION file(...)` write a file on the server (measured on 26.8). Under `readonly=1` a `SET`, a `SETTINGS` clause or a temporary table is refused too; the settings the driver sends with a request still apply. A read of user SQL, such as an MCP read or an export of a query, carries `readonly=1` on any connection; the app's own reads carry `readonly=2`. A login whose profile already sets `readonly` refuses any change of it, so such a login keeps its own level and nothing is sent. Saves on a read-only connection are refused before anything is sent.
 
 ## Stops and timeouts
 

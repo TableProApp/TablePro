@@ -49,12 +49,16 @@ extension MSSQLPluginDriver {
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
+        try await columnRows(table: table, schema: schema).map(\.pluginColumnInfo)
+    }
+
+    private func columnRows(table: String, schema: String?) async throws -> [MSSQLColumnRow] {
         let sql = MSSQLSchemaQueries.namesTemporaryTable(table)
             ? MSSQLSchemaQueries.temporaryColumns(table: table)
             : MSSQLSchemaQueries.columns(schema: effectiveSchema(schema), table: table)
         let result = try await execute(query: sql)
         return result.rows.compactMap { row in
-            MSSQLSchemaQueries.parseColumnRow(row.map(\.asText)).map(\.pluginColumnInfo)
+            MSSQLSchemaQueries.parseColumnRow(row.map(\.asText))
         }
     }
 
@@ -171,21 +175,9 @@ extension MSSQLPluginDriver {
         }.sorted { $0.name < $1.name }
     }
 
-    /// A table can hold exactly one clustered index, and the primary key usually is it, so a
-    /// synthesised statement has to say which kind each index is: scripting them all as
-    /// `CLUSTERED` makes the server reject the second with "Cannot create more than one clustered
-    /// index".
-    ///
-    /// A key column and an `INCLUDE` column are told apart by `is_included_column`, and a filtered
-    /// index's predicate comes from the catalog already parenthesised.
-    ///
-    /// Only the primary key's index is excluded. `fetchTableDDL` declares the primary key inline
-    /// and the foreign keys, but never a `UNIQUE` constraint, so that constraint's index has to
-    /// come through here or `CREATE TABLE t (a INT UNIQUE)` round-trips with no uniqueness at all.
+    // Only the primary key's index is left out: `fetchTableDDL` never declares a `UNIQUE` constraint, so its index comes here.
     func fetchIndexDDL(table: String, schema: String?) async throws -> [String] {
-        /// The bracketed name is spliced into a string literal, so a name carrying a quote needs
-        /// the literal escape as well as the bracket one. SQL Server allows both characters in an
-        /// identifier.
+        // SQL Server allows both `]` and `'` in a name, so it is bracket-quoted and then quoted as a literal.
         let objectLiteral = MSSQLStringLiteral.quoted(
             MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: table))
         let sql = """
@@ -203,17 +195,25 @@ extension MSSQLPluginDriver {
             ORDER BY i.index_id, ic.is_included_column, ic.key_ordinal
             """
         let result = try await execute(query: sql)
-        return MSSQLSchemaQueries.indexStatements(
-            rows: result.rows.map { row in row.map { $0.asText } },
-            schema: effectiveSchema(schema),
-            table: table)
+        do {
+            return try MSSQLSchemaQueries.indexStatements(
+                rows: result.rows.map { row in row.map { $0.asText } },
+                schema: effectiveSchema(schema),
+                table: table)
+        } catch let refusal as MSSQLDefinitionRefusal {
+            throw MSSQLPluginError(refusal)
+        }
     }
 
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo] {
+        try await foreignKeyRows(table: table, schema: schema).map(Self.foreignKey)
+    }
+
+    private func foreignKeyRows(table: String, schema: String?) async throws -> [MSSQLForeignKeyRow] {
         let sql = MSSQLSchemaQueries.foreignKeys(schema: effectiveSchema(schema), table: table)
         let result = try await execute(query: sql)
         return result.rows.compactMap { row in
-            MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText }).map(Self.foreignKey)
+            MSSQLSchemaQueries.parseForeignKeyRow(row.map { $0.asText })
         }
     }
 
@@ -251,9 +251,7 @@ extension MSSQLPluginDriver {
     }
 
     func fetchTriggerDefinition(name: String, table: String, schema: String?) async throws -> String? {
-        let esc = MSSQLSchemaQueries.escapeBracket(effectiveSchema(schema))
-        let bracketedName = name.replacingOccurrences(of: "]", with: "]]", options: .literal)
-        let objectLiteral = MSSQLStringLiteral.quoted("[\(esc)].[\(bracketedName)]")
+        let objectLiteral = MSSQLStringLiteral.quoted(MSSQLSchemaQueries.bracketed(schema: effectiveSchema(schema), table: name))
         let sql = "SELECT OBJECT_DEFINITION(OBJECT_ID(\(objectLiteral)))"
         let result = try await execute(query: sql)
         guard let definition = result.rows.first?[safe: 0]?.asText, !definition.isEmpty else { return nil }
@@ -338,9 +336,7 @@ extension MSSQLPluginDriver {
         }
     }
 
-    /// A view answers with its own definition. Its columns are listed like a table's, and a column
-    /// over an identity column reports `IsIdentity`, so a table rebuilt from them read
-    /// `CREATE TABLE ... IDENTITY(1,1)` for a view that declares nothing of the kind.
+    // A view answers with its own definition: a column over an identity column reports `IsIdentity`.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let resolvedSchema = effectiveSchema(schema)
         let module = try await storedModule(schema: resolvedSchema, name: table)
@@ -348,36 +344,20 @@ extension MSSQLPluginDriver {
             return try MSSQLObjectQueries.viewSource(row: module, schema: resolvedSchema, name: table)
         }
 
-        let qualified = MSSQLSchemaQueries.bracketed(schema: resolvedSchema, table: table)
-        let cols = try await fetchColumns(table: table, schema: schema)
+        let columns = try await columnRows(table: table, schema: schema)
         let indexes = try await fetchIndexes(table: table, schema: schema)
-        let fks = try await fetchForeignKeys(table: table, schema: schema)
-
-        var ddl = "CREATE TABLE \(qualified) (\n"
-        let colDefs = cols.map { col -> String in
-            var def = "    [\(col.name)] \(col.dataType.uppercased())"
-            if col.extra == "IDENTITY" { def += " IDENTITY(1,1)" }
-            def += col.isNullable ? " NULL" : " NOT NULL"
-            if let d = col.defaultValue { def += " DEFAULT \(d)" }
-            return def
+        let foreignKeys = try await foreignKeyRows(table: table, schema: schema)
+        do {
+            return try MSSQLSchemaQueries.createTableStatement(
+                schema: resolvedSchema,
+                table: table,
+                columns: columns,
+                primaryKeyColumns: indexes.filter(\.isPrimary).flatMap(\.columns),
+                foreignKeys: foreignKeys
+            )
+        } catch let refusal as MSSQLDefinitionRefusal {
+            throw MSSQLPluginError(refusal)
         }
-
-        let pkCols = indexes.filter(\.isPrimary).flatMap(\.columns)
-        var parts = colDefs
-        if !pkCols.isEmpty {
-            let pkName = "PK_\(table)"
-            let pkDef = "    CONSTRAINT [\(pkName)] PRIMARY KEY (\(pkCols.map { "[\($0)]" }.joined(separator: ", ")))"
-            parts.append(pkDef)
-        }
-
-        for fk in fks {
-            let fkDef = "    CONSTRAINT [\(fk.name)] FOREIGN KEY ([\(fk.column)]) REFERENCES [\(fk.referencedTable)] ([\(fk.referencedColumn)])"
-            parts.append(fkDef)
-        }
-
-        ddl += parts.joined(separator: ",\n")
-        ddl += "\n);"
-        return ddl
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
@@ -471,18 +451,15 @@ extension MSSQLPluginDriver {
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        let quotedName = "[\(request.name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
-        _ = try await execute(query: "CREATE DATABASE \(quotedName)")
+        _ = try await execute(query: "CREATE DATABASE \(quoteIdentifier(request.name))")
     }
 
     func dropDatabase(name: String) async throws {
-        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
-        _ = try await execute(query: "DROP DATABASE \(quotedName)")
+        _ = try await execute(query: "DROP DATABASE \(quoteIdentifier(name))")
     }
 
     func dropSchema(name: String) async throws {
-        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
-        _ = try await execute(query: "DROP SCHEMA \(quotedName)")
+        _ = try await execute(query: "DROP SCHEMA \(quoteIdentifier(name))")
     }
 
     // MARK: - All Tables Metadata

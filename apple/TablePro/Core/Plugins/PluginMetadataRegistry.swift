@@ -155,6 +155,12 @@ struct PluginMetadataSnapshot: Sendable {
         // Set, a table page reads a large binary value's size through it and loads the value on demand.
         var binaryLengthFunction: String?
 
+        var readOnlyEnforcement: ReadOnlyEnforcement = .loginPrivileges
+
+        // The driver is what refuses a destructive or server-code effect for an external caller, because the host
+        // cannot read its language in full. A loaded driver without `.statementPolicy` runs no external write.
+        var statementPolicyInDriver: Bool = false
+
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
             supportsImport: true,
@@ -800,7 +806,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
                     .supportsPrincipalConnectionLimit ?? true,
                 supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
-                binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction
+                binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction,
+                readOnlyEnforcement: existingSnapshot?.capabilities.readOnlyEnforcement ?? .loginPrivileges,
+                statementPolicyInDriver: existingSnapshot?.capabilities.statementPolicyInDriver ?? false
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

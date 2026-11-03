@@ -63,9 +63,9 @@ extension TypesensePluginDriver {
         let sortBy = TypesenseQueryBuilder.sortBy(parsed.sorts, fields: fields)
 
         Self.logger.debug("""
-        executeSearch collection=\(parsed.collection, privacy: .public) \
+        executeSearch collection=\(parsed.collection, privacy: .private(mask: .hash)) \
         offset=\(parsed.offset) limit=\(parsed.limit) \
-        filterBy=\(filterBy ?? "<none>", privacy: .public) sortBy=\(sortBy ?? "<none>", privacy: .public)
+        filterBy=\(filterBy ?? "<none>", privacy: .private) sortBy=\(sortBy ?? "<none>", privacy: .private)
         """)
 
         let documents = try await fetchDocuments(

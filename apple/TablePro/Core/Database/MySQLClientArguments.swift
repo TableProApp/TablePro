@@ -14,37 +14,37 @@ import TableProPluginKit
 /// against a MariaDB server with TLS off, a MariaDB server with a self-signed certificate and a
 /// MySQL server with its own, using both client families.
 enum MySQLClientArguments {
-    /// | mode | MySQL | MariaDB |
-    /// | --- | --- | --- |
-    /// | disabled | `--ssl-mode=DISABLED` | `--skip-ssl` |
-    /// | preferred | `--ssl-mode=PREFERRED` | `--ssl --skip-ssl-verify-server-cert`, or `--skip-ssl` when the server offers no TLS |
-    /// | required | `--ssl-mode=REQUIRED` | `--ssl --ssl-verify-server-cert` |
-    /// | verifyCa | `--ssl-mode=VERIFY_CA` | `--ssl --ssl-verify-server-cert` |
-    /// | verifyIdentity | `--ssl-mode=VERIFY_IDENTITY` | `--ssl --ssl-verify-server-cert` |
-    ///
-    /// `required` is the one that takes an argument. MariaDB has no flag for "encrypt and do not
-    /// verify": measured, `--ssl` on its own falls back to plaintext against a server without TLS
-    /// and reports success, which is the silent cleartext dump the mode exists to prevent. Only
-    /// `--ssl-verify-server-cert` refuses that server. It is not the stricter choice it reads as:
-    /// with no `--ssl-ca` given, MariaDB 12.3.3 accepted a server whose certificate said
-    /// `CN=totally.other.invalid`, so the flag requires TLS rather than an identity, and the
-    /// identity check is what `--ssl-ca` adds. MariaDB has no hostname-only tier, so `verifyCa` and
-    /// `verifyIdentity` reach it the same way.
-    ///
-    /// MariaDB's `--ssl` without verification also sends the typed password when the server offers no
-    /// TLS and caching_sha2_password asks for full authentication, so Preferred dials in plaintext
-    /// when the server's greeting offered no TLS. Measured with mariadb-dump 13.0.2: `--skip-ssl`
-    /// asks for the server's RSA key instead. Nil means the greeting was not read.
+    // Measured with MariaDB 12.3.3 and MySQL 8.4.11 clients. MariaDB has no "encrypt, do not verify" flag: `--ssl` alone
+    // falls back to plaintext against a server without TLS, so Required sends `--ssl-verify-server-cert`, which with no
+    // `--ssl-ca` still accepted a `CN=totally.other.invalid` certificate. Its Preferred dials with `--skip-ssl` when the
+    // greeting offered no TLS, because `--ssl` unverified sends the typed password to caching_sha2_password
+    // (mariadb-dump 13.0.2). `serverOffersTLS` is nil when the greeting was not read.
     static func tls(
         _ ssl: SSLConfiguration,
         flavor: NativeDumpToolFlavor,
         toolPath: String,
-        serverOffersTLS: Bool? = nil
+        serverOffersTLS: Bool? = nil,
+        throughTunnel: Bool = false
     ) throws -> [String] {
         guard ssl.isEnabled, !(flavor == .mariadb && ssl.mode == .preferred && serverOffersTLS == false) else {
             return disabledFlags(flavor: flavor)
         }
-        return try modeFlags(ssl.mode, flavor: flavor, toolPath: toolPath) + certificateFlags(ssl)
+        let flags = try modeFlags(ssl.mode, flavor: flavor, toolPath: toolPath)
+        let keptThroughTunnel = modesThroughTunnel(flavor: flavor)
+        guard !throughTunnel || keptThroughTunnel.contains(ssl.mode) else {
+            throw NativeDumpError.uncheckedThroughTunnel(tool: toolPath, mode: ssl.mode, supportedModes: keptThroughTunnel)
+        }
+        return flags + certificateFlags(ssl)
+    }
+
+    // Through a tunnel the tool dials 127.0.0.1 and has no option naming the server behind it. MySQL's checks the name
+    // against that address, and MariaDB's accepts any certificate from it.
+    static func modesThroughTunnel(flavor: NativeDumpToolFlavor) -> [SSLMode] {
+        switch flavor {
+        case .mysql: return [.disabled, .preferred, .required, .verifyCa]
+        case .mariadb: return [.disabled, .preferred, .required]
+        case .unidentified: return [.disabled, .preferred]
+        }
     }
 
     // Hidden where the session might run without TLS. MariaDB's tools are the ones measured to send the password as

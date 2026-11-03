@@ -126,7 +126,7 @@ extension MainContentView {
             """
             [tableload] sidebarSelection table=\(table.name, privacy: .private(mask: .hash)) \
             decision=\(String(describing: result), privacy: .public) \
-            currentTab=\(tabManager.selectedTab?.tableContext.tableName ?? "none", privacy: .public) \
+            currentTab=\(tabManager.selectedTab?.tableContext.tableName ?? "none", privacy: .private(mask: .hash)) \
             isExecuting=\(coordinator.tabExecution.isAnyExecuting)
             """
         )

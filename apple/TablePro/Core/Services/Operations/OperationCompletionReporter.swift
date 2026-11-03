@@ -8,11 +8,7 @@ import Foundation
 import os
 import UserNotifications
 
-/// The one place a finished operation is turned into whatever the user should see.
-///
-/// Every long-running surface reports here and nowhere else, so the rules live in
-/// `OperationCompletionPolicy` alone rather than being restated at each of the fifteen places an
-/// operation can end.
+// Every long-running surface reports here, so the rules live in OperationCompletionPolicy alone.
 @MainActor
 internal final class OperationCompletionReporter {
     internal static let shared = OperationCompletionReporter()
@@ -24,7 +20,7 @@ internal final class OperationCompletionReporter {
     private let categories: NotificationCategoryRegistry
     private let settings: () -> NotificationSettings
     private let resolveVisibility: (OperationOwner, UUID) -> ResultVisibility
-    private let markUnseen: (OperationOwner) -> Void
+    private let markUnseen: (OperationOwner, TabUnseenOutcome) -> Void
 
     private var deliveredIdentifiers: Set<String> = []
 
@@ -34,7 +30,7 @@ internal final class OperationCompletionReporter {
         categories: NotificationCategoryRegistry = .shared,
         settings: (() -> NotificationSettings)? = nil,
         resolveVisibility: ((OperationOwner, UUID) -> ResultVisibility)? = nil,
-        markUnseen: ((OperationOwner) -> Void)? = nil
+        markUnseen: ((OperationOwner, TabUnseenOutcome) -> Void)? = nil
     ) {
         self.presenter = presenter
         self.authorization = authorization
@@ -43,7 +39,7 @@ internal final class OperationCompletionReporter {
         self.resolveVisibility = resolveVisibility ?? {
             ResultVisibilityResolver.resolve(owner: $0, connectionId: $1)
         }
-        self.markUnseen = markUnseen ?? { OperationUnseenMarker.mark($0) }
+        self.markUnseen = markUnseen ?? { OperationUnseenMarker.mark($0, outcome: $1) }
     }
 
     internal func setUp() {
@@ -62,8 +58,8 @@ internal final class OperationCompletionReporter {
             settings: settings()
         )
 
-        if decision.marksOwnerUnseen {
-            markUnseen(completion.owner)
+        if decision.marksOwnerUnseen, let outcome = OperationUnseenMarker.outcome(of: completion.outcome) {
+            markUnseen(completion.owner, outcome)
         }
 
         guard let plan = decision.notification else { return nil }
@@ -79,10 +75,7 @@ internal final class OperationCompletionReporter {
             return
         }
 
-        /// The permission dialog is modal and the user may have taken minutes over it, so the
-        /// visibility read from before the await says nothing about now. A user who granted
-        /// permission and then went back to the tab must not be told about the result they are
-        /// looking at.
+        // The permission dialog can take minutes, so visibility is read again after it.
         let current = resolveVisibility(completion.owner, completion.connectionId)
         guard !current.resultIsOnScreen else { return }
 
@@ -94,10 +87,7 @@ internal final class OperationCompletionReporter {
         }
     }
 
-    /// The only honest fallback available. There is no API that reports a notification was
-    /// swallowed by a Focus mode, so this keys on the one state the app can actually observe:
-    /// permission was denied outright. `requestUserAttention` is documented as being for an
-    /// application that is not already active, which is exactly the case the policy just proved.
+    // No API reports a banner swallowed by Focus; a denied permission is the one state the app can see.
     private func requestDockAttention() {
         guard !NSApp.isActive else { return }
         NSApp.requestUserAttention(.informationalRequest)
@@ -118,6 +108,7 @@ internal final class OperationCompletionReporter {
         switch owner {
         case .tab(_, let tabId): return tabId.uuidString
         case .connection(let connectionId): return connectionId.uuidString
+        case .compareWindow(let id): return id.uuidString
         }
     }
 
@@ -134,12 +125,7 @@ internal final class OperationCompletionReporter {
         return UNNotificationRequest(identifier: plan.identifier, content: content, trigger: nil)
     }
 
-    /// No "View Results" action anywhere. The HIG is explicit that you should avoid an action
-    /// that merely opens your app, and the default click already does exactly that.
-    ///
-    /// Three categories rather than one, because a category's actions are fixed at registration
-    /// and only the content picks its category. Sharing one meant a plain success notification
-    /// offered Copy Error and Show in Finder, both of which did nothing at all.
+    // No View Results action: the default click opens the app. A category's actions are fixed at registration, hence three.
     private static func notificationCategories() -> Set<UNNotificationCategory> {
         let copyError = UNNotificationAction(
             identifier: OperationCompletionPolicy.copyErrorActionId,

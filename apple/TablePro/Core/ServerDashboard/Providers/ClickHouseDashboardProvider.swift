@@ -24,7 +24,7 @@ struct ClickHouseDashboardProvider: ServerDashboardQueryProvider {
             let readRows = value(row, at: col["read_rows"])
             let memUsage = value(row, at: col["memory_usage"])
             let stateDescription = "rows: \(readRows), mem: \(formatBytes(memUsage))"
-            let secs = Int(elapsed)
+            let secs = SaturatingArithmetic.int(elapsed)
             return DashboardSession(
                 id: value(row, at: col["query_id"]),
                 user: value(row, at: col["user"]),
@@ -88,7 +88,8 @@ struct ClickHouseDashboardProvider: ServerDashboardQueryProvider {
         let result = try await execute(sql)
         let col = columnIndex(from: result.columns)
         return result.rows.map { row in
-            let secs = Int(value(row, at: col["duration_secs"])) ?? 0
+            // ClickHouse's `/` returns a Float64, such as "1.5".
+            let secs = SaturatingArithmetic.int(Double(value(row, at: col["duration_secs"])) ?? 0)
             return DashboardSlowQuery(
                 duration: formatDuration(seconds: secs),
                 query: value(row, at: col["query"]),

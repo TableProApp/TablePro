@@ -46,8 +46,9 @@ nonisolated public enum FilterColumnKind {
     }
 
     // SQLite keeps 5 and '5' apart in a column with no affinity, and the text the grid read cannot say which one it was.
+    // Every engine that runs SQLite stores values the same way.
     public static func comparesEitherStorageClass(_ column: ColumnInfo?, databaseType: DatabaseType?) -> Bool {
-        databaseType == .sqlite && kind(of: column, databaseType: databaseType) == nil
+        databaseType?.isSQLiteFamily == true && kind(of: column, databaseType: databaseType) == nil
     }
 
     // Character.isNumber takes digits of every script, and no engine parses those as a number.

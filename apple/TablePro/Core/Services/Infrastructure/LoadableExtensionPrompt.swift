@@ -7,10 +7,7 @@ import AppKit
 import Foundation
 import TableProPluginKit
 
-/// Asks before a connect loads SQLite extensions this Mac has not approved for the connection, which
-/// is every list that arrived through an import, a link, a linked folder, the team library or
-/// iCloud rather than being added in the connection form here. It names each file, because the
-/// person is agreeing to run that code, and records the answer so the same list does not ask again.
+// Names each file, since the person is agreeing to run that code.
 @MainActor
 internal enum LoadableExtensionPrompt {
     internal static func confirmIfNeeded(
@@ -45,22 +42,22 @@ internal enum LoadableExtensionPrompt {
         return [intro, files.joined(separator: "\n"), warning].joined(separator: "\n\n")
     }
 
-    /// A connection name arrives with the connection, from an import or another Mac, so it may not
-    /// add lines of its own to an alert whose other lines name the code about to run.
-    private static func singleLine(_ text: String) -> String {
+    // Text that arrived with the connection may not add lines of its own to a consent alert.
+    internal static func singleLine(_ text: String) -> String {
         String(String.UnicodeScalarView(text.unicodeScalars.map {
             CharacterSet.controlCharacters.contains($0) || CharacterSet.newlines.contains($0) ? " " : $0
         }))
     }
 }
 
-/// Everything a connect started by a person has to clear before it may run code the connection
-/// carries: its pre-connect script, then its extensions. One call, so no route can ask for one and
-/// forget the other. A session that is already live runs neither, so it is not asked about.
+// One call for every question a person's connect asks before it starts, so no route skips one.
 @MainActor
 internal enum ConnectConsent {
-    internal static func requiresPrompt(for connection: DatabaseConnection) -> Bool {
-        connection.hasPreConnectScript || !LoadableExtensionGate.pendingApproval(for: connection).isEmpty
+    internal static func requiresPrompt(for connection: DatabaseConnection, manager: DatabaseManager = .shared) -> Bool {
+        connection.hasPreConnectScript
+            || !LoadableExtensionGate.pendingApproval(for: connection).isEmpty
+            || manager.envVarReferenceConsent.requiresApproval(connection)
+            || manager.localCredentialConsent.requiresApproval(connection)
     }
 
     internal static func confirmIfNeeded(
@@ -68,6 +65,9 @@ internal enum ConnectConsent {
         manager: DatabaseManager = .shared
     ) async -> Bool {
         if case .live = manager.connectionState(connection.id) { return true }
+        // First, so the script approval's lifetime does not run down while these prompts are open.
+        guard await manager.localCredentialConsent.confirm(connection) else { return false }
+        guard await manager.envVarReferenceConsent.confirm(connection) else { return false }
         let scriptConsent = manager.preConnectScriptConsent
         guard await scriptConsent.confirm(connection) else { return false }
         guard await LoadableExtensionPrompt.confirmIfNeeded(for: connection) else {

@@ -7,6 +7,7 @@ import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProSSHConfig
+import TableProTestSupport
 import Testing
 
 @MainActor
@@ -204,7 +205,7 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.additionalFields["mongoParam_directConnection"] == nil)
     }
 
-    @Test("A tunneled https:// node keeps TLS with SSL Mode left on Disabled")
+    @Test("A tunneled https:// node with SSL Mode left on Disabled verifies the server, as its direct dial does")
     func tunnelKeepsTLSForHTTPSNode() {
         let connection = DatabaseConnection(
             name: "es",
@@ -218,7 +219,7 @@ struct DatabaseManagerTunnelTests {
 
         #expect(tunneled.additionalFields["esHosts"] == nil)
         #expect(tunneled.preTunnelHost == "es1.internal")
-        #expect(tunneled.sslConfig.mode == .required)
+        #expect(tunneled.sslConfig.mode == .verifyIdentity)
     }
 
     @Test("Tunneled non-MongoDB connection gets no direct-connection override")
@@ -255,7 +256,7 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.sslConfig.mode == .disabled)
     }
 
-    @Test("A TCP forward keeps encryption on")
+    @Test("A TCP forward keeps the SSL mode")
     func tcpForwardKeepsTLS() {
         let connection = DatabaseConnection(
             name: "pg",
@@ -267,7 +268,7 @@ struct DatabaseManagerTunnelTests {
 
         let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
 
-        #expect(tunneled.sslConfig.mode == .required)
+        #expect(tunneled.sslConfig.mode == .verifyIdentity)
     }
 
     @Test("A TCP forward keeps the client certificate and key")
@@ -291,9 +292,9 @@ struct DatabaseManagerTunnelTests {
         #expect(tunneled.sslConfig.clientKeyPath == "/certs/client.key")
     }
 
-    @Test("A TCP forward relaxes Verify Identity and still keeps the client certificate and key")
-    func tcpForwardRelaxesVerificationAndKeepsClientIdentity() {
-        let connection = DatabaseConnection(
+    @Test("Verify Identity through an SSH TCP forward keeps the mode, the CA and the client pair, and names the server")
+    func tcpForwardKeepsVerificationAndClientIdentity() {
+        var connection = DatabaseConnection(
             name: "mysql",
             host: "db.internal",
             port: 3_306,
@@ -305,12 +306,56 @@ struct DatabaseManagerTunnelTests {
                 clientKeyPath: "/certs/client.key"
             )
         )
+        connection.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "ssh.example.com"))
+        #expect(connection.dialsTunnelTCPForward)
 
         let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000)
 
-        #expect(tunneled.sslConfig.mode == .required)
+        #expect(tunneled.sslConfig.mode == .verifyIdentity)
+        #expect(tunneled.sslConfig.caCertificatePath == "/certs/ca.pem")
         #expect(tunneled.sslConfig.clientCertificatePath == "/certs/client.pem")
         #expect(tunneled.sslConfig.clientKeyPath == "/certs/client.key")
+        #expect(tunneled.preTunnelHost == "db.internal")
+        #expect(tunneled.tunneledServerName == "db.internal")
+    }
+
+    @Test("The Cloud SQL Auth Proxy's plaintext listener gets no TLS, whatever mode the connection asks for")
+    func cloudSQLProxyDisablesTLS() {
+        let connection = DatabaseConnection(
+            name: "cloudsql",
+            host: "10.0.0.5",
+            port: 5_432,
+            type: .postgresql,
+            sslConfig: SSLConfiguration(
+                mode: .verifyIdentity,
+                caCertificatePath: "/certs/ca.pem",
+                clientCertificatePath: "/certs/client.pem",
+                clientKeyPath: "/certs/client.key"
+            )
+        )
+
+        let tunneled = DatabaseManager.shared.tunneledConnection(from: connection, localPort: 62_000, securesTransport: true)
+
+        #expect(tunneled.sslConfig.mode == .disabled)
+        #expect(tunneled.sslConfig.caCertificatePath.isEmpty)
+        #expect(tunneled.sslConfig.clientCertificatePath.isEmpty)
+        #expect(tunneled.sslConfig.clientKeyPath.isEmpty)
+        #expect(tunneled.tunnelSecuresTransport)
+    }
+
+    @Test("Only the TCP forwards carry TLS to the server: SSH, Cloudflare, SOCKS and a tunnel command")
+    func tunnelKindsThatDialATCPForward() {
+        let expected: [ConnectionTunnelKind: Bool] = [
+            .ssh: true, .cloudflare: true, .cloudSQLProxy: false, .socksProxy: true, .tunnelCommand: true
+        ]
+        for (kind, connection) in tunnelFixtures() {
+            #expect(connection.dialsTunnelTCPForward == expected[kind], "\(kind)")
+        }
+
+        var socketForward = tunnelFixtures()[0].1
+        socketForward.sshForwardUnixSocketPath = "/var/run/postgresql/.s.PGSQL.5432"
+        #expect(!socketForward.dialsTunnelTCPForward)
+        #expect(!DatabaseConnection(name: "direct", type: .postgresql).dialsTunnelTCPForward)
     }
 
     @Test("A socket forward clears the client certificate and key along with TLS")
@@ -353,6 +398,54 @@ struct DatabaseManagerTunnelTests {
 
         #expect(tunneled.preTunnelHost == "mydb.abc123.us-east-1.rds.amazonaws.com")
         #expect(tunneled.preTunnelPort == 5_432)
+    }
+
+    @Test("A server name saved or imported on a direct connection never reaches the driver")
+    func storedPreTunnelEndpointIsDroppedOnDirectConnect() async throws {
+        let direct = DatabaseConnection(
+            name: "local",
+            host: "127.0.0.1",
+            port: 5_432,
+            type: .postgresql,
+            sslConfig: SSLConfiguration(mode: .verifyIdentity),
+            additionalFields: [
+                DatabaseConnection.preTunnelHostKey: "db.attacker.example",
+                DatabaseConnection.preTunnelPortKey: "5432"
+            ]
+        )
+
+        let effective = try await DatabaseManager.shared.buildEffectiveConnection(
+            for: direct,
+            deadline: ConnectionDeadline(configuredSeconds: 60)
+        )
+
+        #expect(effective.host == "127.0.0.1")
+        #expect(effective.preTunnelHost == nil)
+        #expect(effective.preTunnelPort == nil)
+        #expect(effective.tunneledServerName == nil)
+    }
+
+    @Test("A remote SQLite agent backend saved or imported on a plain row never reaches the driver")
+    func storedRemoteSQLiteBackendIsDropped() async throws {
+        let planted = DatabaseConnection(
+            name: "notes",
+            host: "attacker.example",
+            port: 4_444,
+            database: "/tmp/notes.db",
+            type: .sqlite,
+            additionalFields: [
+                RemoteSQLiteWire.backendFieldKey: RemoteSQLiteWire.agentBackendValue,
+                RemoteSQLiteWire.tokenFieldKey: "planted"
+            ]
+        )
+
+        let effective = try await DatabaseManager.shared.buildEffectiveConnection(
+            for: planted,
+            deadline: ConnectionDeadline(configuredSeconds: 60)
+        )
+
+        #expect(effective.additionalFields[RemoteSQLiteWire.backendFieldKey] == nil)
+        #expect(effective.additionalFields[RemoteSQLiteWire.tokenFieldKey] == nil)
     }
 
     @Test("A connection that is not tunneled has no pre-tunnel endpoint")
@@ -406,40 +499,49 @@ struct DatabaseManagerTunnelTests {
         }
     }
 
-    @Test("Exhausted tunnel recovery removes the session instead of leaving a spinner")
-    func exhaustedRecoveryRemovesTheSession() {
-        let connection = DatabaseConnection(
-            name: "dead tunnel",
-            host: "db.internal",
-            port: 5_432,
-            type: .postgresql
-        )
-        var session = ConnectionSession(connection: connection)
-        session.status = .connecting
-        DatabaseManager.shared.injectSession(session, for: connection.id)
+    @Test("Exhausted tunnel recovery keeps the session and reports it lost, not a failed connect")
+    func exhaustedRecoveryReportsALostSession() async throws {
+        FakeMSSQLPluginRegistration.registerIfNeeded()
+        let clock = ManualClock()
+        let manager = DatabaseManager(recoveryClock: clock)
+        var connection = TestFixtures.makeConnection(name: "dead tunnel")
+        connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
+        let driver = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
+        session.status = .connected
+        manager.injectSession(session, for: connection.id)
+        FakeMSSQLPlugin.failConnect(for: connection.id, with: TestTunnelFailure(value: 1))
+        defer {
+            FakeMSSQLPlugin.clearConnectFailure(for: connection.id)
+            manager.removeSession(for: connection.id)
+        }
 
-        DatabaseManager.shared.failTunnelRecovery(
-            connectionId: connection.id,
-            disconnectedMessage: "The SSH tunnel closed.",
-            attempts: 10
-        )
+        manager.recoverDeadTunnel(connectionId: connection.id, kind: "SSH", disconnectedMessage: "The SSH tunnel closed.")
+        let loop = try #require(manager.recoveryLoops[connection.id]?.task)
+        for _ in 1...ConnectionRecoveryProgress.maxAttempts {
+            await clock.waitUntilSleeping()
+            clock.advance(by: .seconds(DatabaseManager.maxRecoveryDelay))
+        }
+        await loop.value
 
-        #expect(DatabaseManager.shared.activeSessions[connection.id] == nil)
-
-        let reason = DatabaseManager.shared.disconnectReason(for: connection.id)
+        let current = try #require(manager.session(for: connection.id))
+        #expect(current.driver === driver)
+        #expect(current.recovery == nil)
+        let reason = manager.disconnectReason(for: connection.id)
         guard case .sessionLost(let info) = reason else {
             Issue.record("An exhausted tunnel recovery is a lost session, not a failed connect: \(String(describing: reason))")
             return
         }
         #expect(info.message == "The SSH tunnel closed.")
         #expect(info.failureReason?.contains("10") == true)
+        #expect(current.liveness == .unreachable(info))
 
-        let snapshot = ConnectionSessionSnapshot(exists: false, hasDriver: false, endReason: reason)
+        let snapshot = ConnectionSessionSnapshot(exists: true, hasDriver: true, endReason: reason, liveness: current.liveness)
         let phase = ConnectionWindowPhaseMachine.onSessionChanged(
-            phase: .connecting,
+            phase: .connected,
             session: snapshot,
             ownsAttempt: false
         )
-        #expect(phase != .connecting)
+        #expect(phase == .unavailable(.disconnected(info)))
     }
 }

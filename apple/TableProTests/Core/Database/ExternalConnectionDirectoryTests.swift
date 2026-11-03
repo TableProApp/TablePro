@@ -24,6 +24,18 @@ struct ExternalConnectionDirectoryTests {
         )
     }
 
+    @Test("A session the reconnect loop is redialing is not listed as connected")
+    func redialingSessionIsNotConnected() {
+        var session = ConnectionSession(connection: DatabaseConnection(name: "A"))
+        session.status = .connected
+        #expect(ExternalConnectionDirectory.liveState(for: session).isConnected)
+
+        session.liveness = .recovering
+        session.recovery = ConnectionRecoveryProgress(attempt: 1, cause: nil)
+
+        #expect(!ExternalConnectionDirectory.liveState(for: session).isConnected)
+    }
+
     @Test("A Blocked connection is not listed, every other level is")
     func blockedIsDropped() {
         let readOnly = DatabaseConnection(name: "A", externalAccess: .readOnly)

@@ -22,6 +22,8 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "Redis"
     static let iconName = "redis-icon"
     static let defaultPort = 6_379
+    // SNI and SSL_set1_host name the pre-tunnel host through a forward.
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: RedisConnectionMode.fieldId,

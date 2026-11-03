@@ -112,9 +112,7 @@ struct SetSequenceValueSheet: View {
                     .disabled(source != .value)
                     .accessibilityIdentifier("sequence-next-value")
                 if let saveError {
-                    Text(saveError)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
+                    NoticeLabel(saveError, severity: .error)
                         .textSelection(.enabled)
                 }
             }

@@ -2,6 +2,7 @@ import Foundation
 import NIOCore
 import NIOPosix
 import os
+import TableProKafkaCore
 import TableProPluginKit
 
 /// Owns the connections to a cluster: the bootstrap dial, the per-broker pool, and the routing
@@ -23,6 +24,7 @@ actor KafkaCluster {
 
     private let bootstrap: [KafkaEndpoint]
     private let ssl: SSLConfiguration
+    private let tunneledServerName: String?
     private let credentials: KafkaCredentials
     let routing: KafkaBrokerRouting
     private let connectTimeout: KafkaConnectTimeout
@@ -57,12 +59,14 @@ actor KafkaCluster {
     init(
         bootstrap: [KafkaEndpoint],
         ssl: SSLConfiguration,
+        tunneledServerName: String?,
         credentials: KafkaCredentials,
         routing: KafkaBrokerRouting,
         connectTimeout: KafkaConnectTimeout
     ) {
         self.bootstrap = bootstrap
         self.ssl = ssl
+        self.tunneledServerName = tunneledServerName
         self.credentials = credentials
         self.routing = routing
         self.connectTimeout = connectTimeout
@@ -72,15 +76,13 @@ actor KafkaCluster {
         group = NIOSingletons.posixEventLoopGroup
     }
 
-    /// Dials the first bootstrap endpoint that answers. A cluster is usually given as several
-    /// addresses precisely because any one of them may be down.
-    ///
-    /// A bootstrap connection that has since closed is re-dialled rather than kept. The guard
-    /// used to be `bootstrapConnection == nil`, so one cancelled statement closed the channel
-    /// (`send`'s cancellation handler does) and every later call threw `notConnected` for the
-    /// life of the session with nothing able to heal it.
+    // A closed bootstrap connection is dialled again: one cancelled statement closes the channel.
     func connect() async throws {
         if let error = KafkaConnection.tlsConfigurationError(for: ssl) { throw error }
+        // NIOSSL matches an address only against the peer it dialed, which behind a tunnel is the loopback forward.
+        if ssl.verifiesHostname, let tunneledServerName, Self.isIPAddress(tunneledServerName) {
+            throw KafkaError.verifyIdentityNeedsHostName(address: tunneledServerName)
+        }
         if let bootstrapConnection, await bootstrapConnection.isOpen { return }
         bootstrapConnection = nil
         let budgetMilliseconds = hasConnectedBefore
@@ -97,6 +99,7 @@ actor KafkaCluster {
             do {
                 try await connection.open(
                     ssl: ssl,
+                    tlsServerName: tlsServerName(for: endpoint),
                     credentials: credentials,
                     group: group,
                     timeout: .milliseconds(Int64(remainingMilliseconds))
@@ -224,6 +227,7 @@ actor KafkaCluster {
             return try await install(connection, at: endpoint, from: generation)
         }
         let ssl = ssl
+        let serverName = tlsServerName(for: endpoint)
         let credentials = credentials
         let group = group
         let timeoutMilliseconds = connectTimeout.reconnectMilliseconds
@@ -232,6 +236,7 @@ actor KafkaCluster {
             do {
                 try await connection.open(
                     ssl: ssl,
+                    tlsServerName: serverName,
                     credentials: credentials,
                     group: group,
                     timeout: .milliseconds(Int64(timeoutMilliseconds))
@@ -252,6 +257,18 @@ actor KafkaCluster {
         }
         if poolGeneration == generation { dialsInFlight[endpoint] = nil }
         return try await install(connection, at: endpoint, from: generation)
+    }
+
+    // A tunnel forwards only the bootstrap address; an advertised broker is checked against its own host.
+    private func tlsServerName(for endpoint: KafkaEndpoint) -> String {
+        guard let tunneledServerName, bootstrap.contains(endpoint) else { return endpoint.host }
+        return tunneledServerName
+    }
+
+    private static func isIPAddress(_ name: String) -> Bool {
+        var v4 = in_addr()
+        var v6 = in6_addr()
+        return inet_pton(AF_INET, name, &v4) == 1 || inet_pton(AF_INET6, name, &v6) == 1
     }
 
     /// Puts a freshly dialled connection into the pool, unless the pool moved on while it was

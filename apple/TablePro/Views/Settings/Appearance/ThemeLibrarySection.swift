@@ -180,10 +180,8 @@ internal struct ThemeLibrarySection: View {
                 }
                 .accessibilityIdentifier("appearance-theme-rename-field")
             if let renameError {
-                Text(renameError)
+                NoticeLabel(renameError, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("appearance-theme-rename-error")
             }
         }

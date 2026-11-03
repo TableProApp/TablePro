@@ -2,6 +2,9 @@ import Foundation
 
 enum Td2Token {
     static let keyDataOffset = 80
+    // 8,192 bits, the largest standard MODP group; the client token asks for 2,048. The modular
+    // exponentiation costs the square of this, and the connect deadline cannot interrupt it.
+    static let maxKeyByteCount = 1_024
 
     static let clientInitToken: [UInt8] = HexBytes.decode("""
         01 01 01 00 00 00 00 9D 00 00 00 15 02 00 00 00
@@ -46,6 +49,9 @@ enum Td2Token {
         let nY = Int(be32(token, 28))
         let verifyDHKey = be32(token, 32)
         let nQ = (peerCapabilities & 4) != 0 ? Int(be32(token, 36)) : 0
+        for (length, what) in [(nN, "prime"), (nG, "generator"), (nY, "server public key")] where length > maxKeyByteCount {
+            throw TeradataWireError.malformed("TD2 \(what) of \(length) bytes")
+        }
 
         var cursor = keyDataOffset
         func slice(_ length: Int, _ what: String) throws -> [UInt8] {
@@ -54,6 +60,10 @@ enum Td2Token {
             return Array(token[cursor..<cursor + length])
         }
         let prime = try slice(nN, "prime")
+        // Montgomery exponentiation requires a non-zero, odd modulus.
+        guard let lowByte = prime.last, lowByte & 1 == 1 else {
+            throw TeradataWireError.malformed("TD2 prime is empty or even")
+        }
         let generator = try slice(nG, "generator")
         let serverPublicKey = try slice(nY, "serverPublicKey")
         let qopDer = nQ > 0 ? try slice(nQ, "qopDer") : []

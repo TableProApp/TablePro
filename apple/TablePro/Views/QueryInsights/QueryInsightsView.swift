@@ -74,10 +74,17 @@ struct QueryInsightsView: View {
             LazyVStack(alignment: .leading, spacing: 12) {
                 QueryInsightsSummaryBar(totals: viewModel.snapshot.totals)
 
-                QueryInsightsActivityChart(
-                    buckets: viewModel.snapshot.activity,
-                    granularity: viewModel.snapshot.granularity
-                )
+                QueryInsightsSection(
+                    title: String(localized: "Activity"),
+                    systemImage: "chart.bar.xaxis",
+                    isEmpty: viewModel.snapshot.activity.isEmpty,
+                    emptyMessage: String(localized: "No queries in this range.")
+                ) {
+                    QueryInsightsActivityChart(
+                        buckets: viewModel.snapshot.activity,
+                        granularity: viewModel.snapshot.granularity
+                    )
+                }
 
                 QueryInsightsSection(
                     title: String(localized: "Most Run"),

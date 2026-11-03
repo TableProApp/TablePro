@@ -74,7 +74,7 @@ final class TableHealthViewModel: ObservableObject {
             let fresh = try await metadata.withMetadataDriver(scope: scope, workload: .bulk) { driver in
                 let context = TableHealthQueryContext(database: scope.database) { driver.quoteIdentifier($0) }
                 return try await provider.fetchReport(context: context) { query in
-                    try await driver.executeRead(query: query)
+                    try await driver.executeCatalogRead(query: query)
                 }
             }
             report = Self.merging(fresh, over: report)

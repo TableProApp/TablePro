@@ -6,6 +6,7 @@
 import CDuckDB
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// An in-memory DuckDB used only to encode Parquet.
 ///
@@ -53,7 +54,7 @@ final class DuckDBStagingDatabase {
         spillDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-parquet-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: spillDirectory, withIntermediateDirectories: true)
-        try run("SET temp_directory = '\(Self.escapeLiteral(spillDirectory.path(percentEncoded: false)))'")
+        try run("SET temp_directory = \(SQLQuoting.stringLiteral(spillDirectory.path(percentEncoded: false)))")
         try run("SET preserve_insertion_order = false")
     }
 
@@ -66,19 +67,16 @@ final class DuckDBStagingDatabase {
     func createTable(columns: [String], types: [String]) throws {
         guard !columns.isEmpty else { throw StagingError.queryFailed("no columns") }
         let definitions = zip(columns, types)
-            .map { "\(Self.quote($0.0)) \($0.1)" }
+            .map { "\(SQLQuoting.identifier($0.0)) \($0.1)" }
             .joined(separator: ", ")
-        try run("CREATE TABLE \(Self.quote(Self.stagingTable)) (\(definitions))")
+        try run("CREATE TABLE \(SQLQuoting.identifier(Self.stagingTable)) (\(definitions))")
         columnTypes = types
     }
 
-    /// Values arrive as text however the source typed them, so each is wrapped in `TRY_CAST` to its
-    /// own column's type. A plain literal would make DuckDB cast implicitly and fail the whole
-    /// statement on the first value it could not read; `TRY_CAST` writes null for that one value
-    /// instead, so a single unparseable timestamp in a million rows does not cost the file.
+    // TRY_CAST writes null for a value its column cannot read, where an implicit cast fails the whole statement.
     func insert(rows: [[PluginCellValue]], columnCount: Int) throws {
         guard !rows.isEmpty, columnCount > 0 else { return }
-        var statement = "INSERT INTO \(Self.quote(Self.stagingTable)) VALUES "
+        var statement = "INSERT INTO \(SQLQuoting.identifier(Self.stagingTable)) VALUES "
         var tuples: [String] = []
         tuples.reserveCapacity(rows.count)
         for row in rows {
@@ -103,9 +101,9 @@ final class DuckDBStagingDatabase {
     }
 
     func copyToParquet(fileURL: URL, compression: String, rowGroupSize: Int) throws {
-        let path = Self.escapeLiteral(fileURL.path(percentEncoded: false))
+        let path = SQLQuoting.stringLiteral(fileURL.path(percentEncoded: false))
         try run("""
-            COPY \(Self.quote(Self.stagingTable)) TO '\(path)'
+            COPY \(SQLQuoting.identifier(Self.stagingTable)) TO \(path)
             (FORMAT PARQUET, COMPRESSION \(compression), ROW_GROUP_SIZE \(rowGroupSize))
             """)
     }
@@ -117,7 +115,7 @@ final class DuckDBStagingDatabase {
         case .null:
             return "NULL"
         case .text(let text):
-            return "'\(Self.escapeLiteral(text))'"
+            return SQLQuoting.stringLiteral(text)
         case .bytes(let data):
             let hex = data.map { String(format: "%02X", $0) }.joined()
             return hex.isEmpty ? "NULL" : "'\\x\(hex)'::BLOB"
@@ -133,14 +131,6 @@ final class DuckDBStagingDatabase {
             throw StagingError.queryFailed(message)
         }
         duckdb_destroy_result(&result)
-    }
-
-    private static func quote(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
-    }
-
-    private static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''", options: .literal)
     }
 }
 

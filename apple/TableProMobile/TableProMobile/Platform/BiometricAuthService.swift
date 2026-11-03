@@ -1,9 +1,16 @@
 import Foundation
 import LocalAuthentication
 import os
+import TableProLogRedaction
 
 @MainActor
-final class BiometricAuthService {
+protocol DeviceOwnerAuthenticating {
+    var availability: BiometricAuthService.Availability { get }
+    func authenticate(reason: String) async -> Bool
+}
+
+@MainActor
+final class BiometricAuthService: DeviceOwnerAuthenticating {
     enum Availability: Sendable {
         case unavailable
         case faceID
@@ -39,7 +46,7 @@ final class BiometricAuthService {
         } catch let error as LAError where error.code == .userCancel || error.code == .appCancel || error.code == .systemCancel {
             return false
         } catch {
-            Self.logger.warning("Biometric auth failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.warning("Biometric auth failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return false
         }
     }

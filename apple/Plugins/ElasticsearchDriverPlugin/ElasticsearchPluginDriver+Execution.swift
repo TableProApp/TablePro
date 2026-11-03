@@ -186,9 +186,9 @@ extension ElasticsearchPluginDriver {
         executeSearch index=\(parsed.index, privacy: .private(mask: .hash)) from=\(parsed.from) size=\(parsed.size) \
         logic=\(parsed.logicMode, privacy: .public) \
         filters=\(parsed.filters.map { "\($0.column) \($0.op) \($0.value)" }.joined(separator: " | "), privacy: .private) \
-        sorts=\(parsed.sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .public) \
+        sorts=\(parsed.sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .private(mask: .hash)) \
         fieldInfoCount=\(fields.count) \
-        fields=\(fields.map { "\($0.key):\($0.value.type)\($0.value.hasKeywordSubfield ? "+kw" : "")" }.sorted().joined(separator: ","), privacy: .public)
+        fields=\(fields.map { "\($0.key):\($0.value.type)\($0.value.hasKeywordSubfield ? "+kw" : "")" }.sorted().joined(separator: ","), privacy: .private(mask: .hash))
         """)
 
         let hits = try await fetchHits(index: parsed.index, parsed: parsed, fields: fields, conn: conn)

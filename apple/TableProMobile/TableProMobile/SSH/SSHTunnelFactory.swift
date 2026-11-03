@@ -92,19 +92,28 @@ nonisolated enum SSHTunnelFactory {
         var targets: [Target] = []
         for hop in config.jumpHosts {
             guard hasUsername(hop.username) else { throw SSHTunnelError.usernameMissing(host: hop.host) }
+            try requireValidNames(host: hop.host, user: hop.username)
             try requireValidPort(hop.resolvedPort, of: hop.host)
             let key = try hopKey(for: hop, credential: jumpHostCredentials[hop.id], config: config, credentials: credentials)
             targets.append(Target(host: hop.host, port: hop.resolvedPort, username: hop.username, role: .jumpHost(key)))
         }
         guard hasUsername(config.username) else { throw SSHTunnelError.usernameMissing(host: config.host) }
+        try requireValidNames(host: config.host, user: config.username)
         try requireValidPort(config.resolvedPort, of: config.host)
         targets.append(Target(host: config.host, port: config.resolvedPort, username: config.username, role: .sshServer))
         return targets
     }
 
+    // Synced and imported names reach here, and the host key store would refuse them only after the handshake.
+    private static func requireValidNames(host: String, user: String) throws {
+        if let problem = SSHDestinationName.problem(host: host, user: user) {
+            throw SSHTunnelError.connectionFailed(problem.explanation)
+        }
+    }
+
     // A channel takes the port as an Int32, so a larger value would trap instead of failing.
     private static func requireValidPort(_ port: Int, of host: String) throws {
-        guard (1...65_535).contains(port) else {
+        guard SSHDestinationName.isValidPort(port) else {
             throw SSHTunnelError.connectionFailed(
                 "Port \(port) of \(host) is out of range. Use a value between 1 and 65535."
             )

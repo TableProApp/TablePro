@@ -155,6 +155,25 @@ struct Neo4jCypherTests {
         #expect(Neo4jCypher.literal(value) == "'\\\\" + "u0027) DETACH DELETE n //'")
     }
 
+    @Test("A backtick a combining mark follows is still doubled, so the name cannot end early")
+    func quoteSeesBacktickBeforeCombiningMark() {
+        let quoted = Neo4jCypher.quote("a`\u{301}) DETACH DELETE n //")
+        #expect(Array(quoted.unicodeScalars) == Array("`a``\u{301}) DETACH DELETE n //`".unicodeScalars))
+    }
+
+    @Test("A quote or backslash a combining mark follows is still escaped, so the literal cannot end early")
+    func literalSeesQuoteBeforeCombiningMark() {
+        let literal = Neo4jCypher.literal("x'\u{301} OR 1=1 \\\u{301}")
+        #expect(Array(literal.unicodeScalars) == Array("'x\\'\u{301} OR 1=1 \\\\\u{301}'".unicodeScalars))
+    }
+
+    @Test("A unicode escape a combining mark follows is still neutralised and refused")
+    func unicodeEscapeBeforeCombiningMark() {
+        let name = "x\\u\u{301}0060"
+        #expect(!Neo4jCypher.isQuotable(name))
+        #expect(Array(Neo4jCypher.quote(name).unicodeScalars) == Array("`x\\uZZZZ\u{301}0060`".unicodeScalars))
+    }
+
     @Test("An export reads every entity, with no page limit")
     func exportQuery() throws {
         #expect(try Neo4jCypher.exportQuery(kind: .node, name: "Person") == "// TablePro browse: node\nMATCH (n:`Person`)\nRETURN n")

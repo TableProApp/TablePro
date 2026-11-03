@@ -7,7 +7,15 @@ internal enum MCPServerState: Sendable, Equatable {
     case stopped
     case starting
     case running(port: UInt16)
-    case failed(String)
+    case failed(MCPServerFailure)
+}
+
+internal enum MCPServerFailure: Sendable, Equatable {
+    case socketFolderUnusable
+    case listenerUnavailable(detail: String)
+    case noBoundPort
+    case credentialUnavailable
+    case listenerStopped(detail: String)
 }
 
 internal enum MCPServerStartError: Error, LocalizedError, Equatable {
@@ -111,6 +119,11 @@ internal final class MCPServerManager: ObservableObject {
         }
     }
 
+    // Try Again in Settings. performStart still refuses while the server is turned off.
+    internal func retry() {
+        scheduleRestart(port: UInt16(clamping: AppSettingsManager.shared.mcp.port))
+    }
+
     internal func scheduleRestart(port: UInt16) {
         lifecycle.enqueue { [weak self] in
             guard let self else { return }
@@ -119,8 +132,8 @@ internal final class MCPServerManager: ObservableObject {
         }
     }
 
-    /// Grants outlive the composition that recorded them, so the settings pane reads them through a
-    /// policy built on demand when the server is not running.
+    // Grants outlive the composition that recorded them, so the settings pane reads them through a
+    // policy built on demand when the server is not running.
     internal func connectionGrants() async -> [MCPConnectionGrant] {
         await approvalPolicy().grants()
     }
@@ -153,7 +166,7 @@ internal final class MCPServerManager: ObservableObject {
         await refreshClients()
     }
 
-    /// The one check every start path reaches, so no caller can bind a listener while MCP is off.
+    // The one check every start path reaches, so no caller can bind a listener while MCP is off.
     @discardableResult
     private func performStart(port: UInt16) async -> MCPServerStartError? {
         guard isEnabled() else {
@@ -179,10 +192,20 @@ internal final class MCPServerManager: ObservableObject {
         await store.loadFromDisk()
         tokenStore = store
 
+        let socketPath: String
+        do {
+            socketPath = try handshake.prepareSocketPath()
+        } catch {
+            Self.logger.error("MCP socket folder is not usable: \(error.publicLogShape, privacy: .public)")
+            state = .failed(.socketFolderUnusable)
+            tokenStore = nil
+            return nil
+        }
+
         var lastFailure = ""
 
         for candidate in MCPPortAllocator.candidates(preferred: Int(port)) {
-            let built = MCPServerComposition.build(port: candidate, tokenStore: store)
+            let built = MCPServerComposition.build(port: candidate, socketPath: socketPath, tokenStore: store)
             do {
                 try await built.transport.start()
             } catch {
@@ -198,9 +221,8 @@ internal final class MCPServerManager: ObservableObject {
             return nil
         }
 
-        let failure = MCPPortAllocatorError.everyCandidateRejected(lastFailure: lastFailure)
-        Self.logger.error("MCP server failed to start: \(lastFailure, privacy: .public)")
-        state = .failed(failure.localizedDescription)
+        Self.logger.error("MCP server failed to start: \(lastFailure, privacy: .private)")
+        state = .failed(.listenerUnavailable(detail: lastFailure))
         tokenStore = nil
         return nil
     }
@@ -208,14 +230,14 @@ internal final class MCPServerManager: ObservableObject {
     private func activate(_ built: MCPServerComposition, generation: Int, store: MCPTokenStore) async {
         guard let boundPort = await built.transport.listeningPort else {
             await built.transport.stop()
-            state = .failed(String(localized: "The MCP server started without a port"))
+            state = .failed(.noBoundPort)
             tokenStore = nil
             return
         }
 
         guard let credential = await mintBridgeCredential(store: store) else {
             await built.transport.stop()
-            state = .failed(String(localized: "The MCP server could not issue its bridge credential"))
+            state = .failed(.credentialUnavailable)
             tokenStore = nil
             return
         }
@@ -231,7 +253,7 @@ internal final class MCPServerManager: ObservableObject {
         startBridgeCredentialRenewal(generation: generation)
         await registerRevocationObserver(built, store: store, generation: generation)
 
-        writeHandshake(port: boundPort, credential: credential)
+        writeHandshake(socketPath: built.socketPath, credential: credential)
         handshake.removeRefusal()
         state = .running(port: boundPort)
         MCPAuditLogger.logServerStarted(port: boundPort)
@@ -320,7 +342,8 @@ internal final class MCPServerManager: ObservableObject {
     private func renewBridgeCredential(generation: Int) async {
         guard self.generation == generation,
               let store = tokenStore,
-              case .running(let port) = state else { return }
+              let socketPath = composition?.socketPath,
+              case .running = state else { return }
 
         let previous = bridgeCredential
         guard let credential = await mintBridgeCredential(store: store) else { return }
@@ -331,7 +354,7 @@ internal final class MCPServerManager: ObservableObject {
         }
 
         bridgeCredential = credential
-        writeHandshake(port: port, credential: credential)
+        writeHandshake(socketPath: socketPath, credential: credential)
 
         if let previous {
             await store.delete(tokenId: previous.tokenId)
@@ -339,10 +362,10 @@ internal final class MCPServerManager: ObservableObject {
         Self.logger.info("Rotated the MCP bridge credential")
     }
 
-    private func writeHandshake(port: UInt16, credential: BridgeCredential) {
+    private func writeHandshake(socketPath: String, credential: BridgeCredential) {
         handshake.write(
             MCPHandshakePayload(
-                port: Int(port),
+                socketPath: socketPath,
                 token: credential.plaintext,
                 pid: ProcessInfo.processInfo.processIdentifier,
                 instanceId: instanceId,
@@ -425,10 +448,10 @@ internal final class MCPServerManager: ObservableObject {
         case .running(let port):
             state = .running(port: port)
         case .failed(let reason):
-            state = .failed(reason)
+            state = .failed(.listenerStopped(detail: reason))
             lifecycle.enqueue { [weak self] in
                 await self?.performStop()
-                self?.state = .failed(reason)
+                self?.state = .failed(.listenerStopped(detail: reason))
             }
         }
     }

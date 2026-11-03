@@ -98,10 +98,19 @@ struct WritePolicyHistory: QueryHistoryRecording {
 final class WritePolicyDriver: PluginDriverStub, @unchecked Sendable {
     private let lock = NSLock()
     private var log: [String] = []
+    private var bound: [[PluginCellValue]] = []
 
     var received: [String] {
         lock.withLock { log }
     }
+
+    // The values each parameterized statement was sent with, in order.
+    var receivedParameters: [[PluginCellValue]] {
+        lock.withLock { bound }
+    }
+
+    // Columns `fetchColumns` answers with, for a tool that reads a table's shape first.
+    var columns: [PluginColumnInfo] = []
 
     private func record(_ entry: String) -> PluginQueryResult {
         lock.withLock { log.append(entry) }
@@ -113,7 +122,12 @@ final class WritePolicyDriver: PluginDriverStub, @unchecked Sendable {
     }
 
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
-        record(query)
+        lock.withLock { bound.append(parameters) }
+        return record(query)
+    }
+
+    func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
+        columns
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
@@ -153,7 +167,13 @@ final class WritePolicyRig {
     private let savedBefore: [DatabaseConnection]?
 
     // Not live: only the auth policy knows the connection, so a call the gates pass stops at the tool's lookup.
-    init(connection: DatabaseConnection, prompts: WritePolicyPrompts, live: Bool) {
+    // `executionGate` replaces the recording Safe Mode gate when a test reads what the gate was asked.
+    init(
+        connection: DatabaseConnection,
+        prompts: WritePolicyPrompts,
+        live: Bool,
+        executionGate: (any ExecutionGate)? = nil
+    ) {
         self.connection = connection
         self.prompts = prompts
 
@@ -167,7 +187,7 @@ final class WritePolicyRig {
             historyRecorder: WritePolicyHistory(),
             approvalSetting: MCPFixedApprovalReader(.everyTime),
             presenter: WritePolicyPresenter(prompts: prompts),
-            executionGate: DefaultExecutionGate(
+            executionGate: executionGate ?? DefaultExecutionGate(
                 confirming: WritePolicyConfirming(prompts: prompts),
                 authenticating: WritePolicyAuthenticating(prompts: prompts),
                 safeModeLevelResolver: { id in

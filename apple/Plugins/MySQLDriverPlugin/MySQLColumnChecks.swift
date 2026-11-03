@@ -10,6 +10,7 @@ import Foundation
 import os
 import TableProMySQLCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// MariaDB lists a column's own CHECK in `CHECK_CONSTRAINTS` with `LEVEL = 'Column'` and drops it on any
 /// `MODIFY` that does not restate it. Measured on 11.4: the constraint keeps the name the column had when
@@ -106,13 +107,7 @@ internal enum MySQLColumnChecks {
     }
 
     private static func quoted(_ name: String, with quote: Unicode.Scalar) -> String {
-        var text = String.UnicodeScalarView([quote])
-        for scalar in name.unicodeScalars {
-            text.append(scalar)
-            if scalar == quote { text.append(quote) }
-        }
-        text.append(quote)
-        return String(text)
+        SQLQuoting.identifier(name, quote: quote == "`" ? .backtick : .doubleQuote)
     }
 
     /// Scalars, not Characters: a combining mark after a quote would hide it inside one grapheme.

@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 struct KafkaGroupSummary: Sendable {
     let groupId: String

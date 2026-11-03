@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension RowEditingCoordinator {
     // MARK: - Sidebar Transaction

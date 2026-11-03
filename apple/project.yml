@@ -62,11 +62,6 @@ packages:
   PostHog:
     url: https://github.com/PostHog/posthog-ios
     exactVersion: 3.92.7
-  # Kafka brokers hand a consumer whatever codec the producer stored, and never transcode.
-  # macOS supplies no zstd at any layer, so a zstd topic is unreadable without this.
-  zstd:
-    url: https://github.com/facebook/zstd
-    majorVersion: 1.5.0
   # Already in the graph through Packages/TableProOracle. Declared here so the Kafka plugin
   # can link them directly: Kafka is a length-prefixed binary protocol over TCP, and NIOSSL
   # reads the PEM paths SSLConfiguration already carries.
@@ -100,6 +95,8 @@ targetTemplates:
       - target: TableProPluginKit
         embed: false
         link: true
+      - package: TableProCore
+        product: TableProSQLQuoting
     scheme: {}
     settings:
       base:
@@ -146,6 +143,8 @@ targetTemplates:
       - Plugins/${target_name}
     dependencies:
       - target: TableProPluginKit
+      - package: TableProCore
+        product: TableProSQLQuoting
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
@@ -160,7 +159,7 @@ targetTemplates:
   MySQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProCoreTypes, TableProGeometry, TableProKerberos, TableProLogRedaction, TableProMySQLCore, TableProSQLVocabulary]
+        products: [TableProCoreTypes, TableProGeometry, TableProKerberos, TableProLogRedaction, TableProMySQLCore, TableProSQLGrammar, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -189,7 +188,7 @@ targetTemplates:
   PostgreSQLLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProCoreTypes, TableProKerberos, TableProLogRedaction, TableProPostgreSQLCore, TableProSQLVocabulary]
+        products: [TableProCoreTypes, TableProGeometry, TableProKerberos, TableProLogRedaction, TableProPostgreSQLCore, TableProSQLVocabulary]
     settings:
       base:
         HEADER_SEARCH_PATHS:
@@ -248,7 +247,7 @@ targetTemplates:
   SQLiteLinkage:
     dependencies:
       - package: TableProCore
-        products: [CSQLite, TableProSQLiteCore, TableProSQLVocabulary]
+        products: [CSQLite, TableProSQLGrammar, TableProSQLiteCore, TableProSQLVocabulary]
     settings:
       base:
         OTHER_LDFLAGS:
@@ -259,7 +258,7 @@ targetTemplates:
   ClickHouseLinkage:
     dependencies:
       - package: TableProCore
-        products: [TableProNumberFormatting, TableProTLSClientIdentity]
+        products: [TableProNumberFormatting, TableProSQLGrammar, TableProTLSClientIdentity]
 
   # The SAP HANA driver runs go-hdb in tablepro-hana-helper, which scripts/build-hana.sh builds.
   # The plugin looks it up in Contents/MacOS, and the copy there signs it with the plugin's identity.
@@ -413,7 +412,7 @@ targets:
       - package: Yams
       - package: PostHog
       - package: TableProCore
-        products: [TableProAutocomplete, TableProConnectionLibrary, TableProGeometry, TableProGoogleCloud, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme]
+        products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
         products: [TableProCloudAPI, TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
@@ -729,6 +728,9 @@ targets:
     templateAttributes:
       folder: SQLExportPlugin
       principalClass: SQLExportPlugin
+    dependencies:
+      - package: TableProCore
+        product: TableProProcess
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.TablePro.SQLExportPlugin
@@ -826,7 +828,7 @@ targets:
           - Info.plist
     dependencies:
       - package: TableProCore
-        product: TableProSQLGrammar
+        products: [TableProProcess, TableProSQLGrammar]
 
   ClickHouseDriverTests:
     templates: [PluginTests, ClickHouseLinkage]
@@ -878,7 +880,7 @@ targets:
     dependencies:
       - target: TableProPluginKit
       - package: TableProCore
-        products: [TableProJavaScriptText, TableProNumberFormatting, TableProTabularIO]
+        products: [TableProJavaScriptText, TableProNumberFormatting, TableProProcess, TableProTabularIO]
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
@@ -899,7 +901,7 @@ targets:
       principalClass: BeancountPlugin
     dependencies:
       - package: TableProCore
-        product: TableProNumberFormatting
+        products: [TableProNumberFormatting, TableProProcess]
     settings:
       base:
         OTHER_LDFLAGS:
@@ -957,12 +959,18 @@ targets:
           - -lc++
           - -lz
         SWIFT_INCLUDE_PATHS: $(SRCROOT)/Plugins/CassandraDriverPlugin/CCassandra
+    dependencies:
+      - package: TableProCore
+        product: TableProCassandraCore
 
   CloudflareD1DriverPlugin:
     templates: [DriverPlugin]
     templateAttributes:
       folder: CloudflareD1DriverPlugin
       principalClass: CloudflareD1Plugin
+    dependencies:
+      - package: TableProCore
+        product: TableProSQLGrammar
 
   CloudflareR2SQLDriverPlugin:
     templates: [DriverPlugin]
@@ -971,7 +979,7 @@ targets:
       principalClass: CloudflareR2SQLPlugin
     dependencies:
       - package: TableProCore
-        product: TableProR2SQLCore
+        products: [TableProR2SQLCore, TableProSQLGrammar]
 
   DuckDBDriver:
     templates: [DriverPlugin]
@@ -980,7 +988,7 @@ targets:
       principalClass: DuckDBPlugin
     dependencies:
       - package: TableProCore
-        product: TableProSQLVocabulary
+        products: [TableProSQLGrammar, TableProSQLVocabulary]
     settings:
       base:
         # Links no OpenSSL dylib, so no Libs/dylibs search path.
@@ -1038,6 +1046,9 @@ targets:
     templateAttributes:
       folder: HanaDriverPlugin
       principalClass: HanaPlugin
+    dependencies:
+      - package: TableProCore
+        products: [TableProProcess, TableProSQLGrammar]
 
   ElasticsearchDriverPlugin:
     templates: [DriverPlugin]
@@ -1067,8 +1078,10 @@ targets:
     sources:
       - Plugins/SharedNIO
     dependencies:
-      - package: zstd
-        product: libzstd
+      - package: TableProCore
+        product: TableProKafkaCore
+      - package: TableProCore
+        product: TableProWireIO
       - package: swift-nio
         product: NIOCore
       - package: swift-nio
@@ -1110,6 +1123,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: CSQLite
+      - package: TableProCore
+        product: TableProSQLGrammar
       - package: TableProCore
         product: TableProSQLiteCore
     settings:
@@ -1160,6 +1175,8 @@ targets:
     dependencies:
       - package: TableProCore
         product: TableProLogRedaction
+      - package: TableProCore
+        product: TableProSQLGrammar
       - package: TableProCore
         product: TableProNumberFormatting
     settings:
@@ -1213,7 +1230,7 @@ targets:
       principalClass: OraclePlugin
     dependencies:
       - package: TableProCore
-        products: [TableProLogRedaction, TableProSQLVocabulary]
+        products: [TableProLogRedaction, TableProSQLGrammar, TableProSQLVocabulary]
       - package: TableProOracle
         product: TableProOracleCore
 
@@ -1224,7 +1241,7 @@ targets:
       principalClass: SnowflakePlugin
     dependencies:
       - package: TableProCore
-        product: TableProNumberFormatting
+        products: [TableProGzip, TableProHTTP, TableProNumberFormatting, TableProSnowflakeCore]
 
   StarRocksDriverPlugin:
     templates: [DriverPlugin, MySQLLinkage]
@@ -1253,7 +1270,7 @@ targets:
       principalClass: TeradataPlugin
     dependencies:
       - package: TableProCore
-        product: TableProTeradataCore
+        products: [TableProSQLGrammar, TableProTeradataCore]
 
   TrinoDriverPlugin:
     templates: [DriverPlugin]

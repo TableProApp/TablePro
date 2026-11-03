@@ -34,17 +34,12 @@ struct LeadingRowsStatement: Equatable {
         return LeadingRowsStatement(sql: limited, rowCap: cap)
     }
 
-    /// The clause goes on a line of its own, so a trailing `--` comment cannot swallow it.
     private static func appending(limit: Int, to sql: String, style: AutoLimitStyle) -> String? {
-        var statement = StatementBlank.trimming(sql)
-        while statement.hasSuffix(";") {
-            statement = StatementBlank.trimming(String(statement.dropLast()))
-        }
         switch style {
         case .limit:
-            return "\(statement)\nLIMIT \(limit)"
+            return SQLStatementRowLimit.appendingLimit(limit, to: sql)
         case .fetchFirst:
-            return "\(statement)\nFETCH FIRST \(limit) ROWS ONLY"
+            return SQLStatementRowLimit.appendingFetchFirst(limit, to: sql)
         case .top, .none:
             return nil
         @unknown default:

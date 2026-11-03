@@ -68,14 +68,18 @@ internal struct CompareTableScopeEditor: View {
                 )
             }
 
-            if let error = plan.scope.filterValidationError {
+            if let error = plan.scope.filterValidationError(
+                source: session.source?.databaseType,
+                target: session.target?.databaseType
+            ) {
                 Label {
                     Text(error)
+                        .foregroundStyle(.secondary)
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(CompareStatusStyle.warning)
                 }
                 .font(.callout)
-                .foregroundStyle(CompareStatusStyle.warning)
                 .fixedSize(horizontal: false, vertical: true)
             }
 

@@ -4,7 +4,9 @@
 //
 
 import Foundation
+import TableProOracleCore
 import TableProPluginKit
+import TableProSQLGrammar
 
 /// The `CREATE TABLE` and `CREATE VIEW` the Structure DDL view shows and a SQL export replays, built from the catalog.
 ///
@@ -19,8 +21,8 @@ internal enum OracleTableDDL {
         qualifiedTable: String,
         columns: [PluginColumnInfo],
         quote: (String) -> String
-    ) -> String {
-        let definitions = columns.map { "    " + columnDefinition($0, quote: quote) }
+    ) throws -> String {
+        let definitions = try columns.map { "    " + (try columnDefinition($0, quote: quote)) }
         return "CREATE TABLE \(qualifiedTable) (\n" + definitions.joined(separator: ",\n") + "\n);"
     }
 
@@ -32,9 +34,9 @@ internal enum OracleTableDDL {
         return "CREATE OR REPLACE VIEW \(qualifiedView)\(columnList) AS\n\(query)"
     }
 
-    static func columnDefinition(_ column: PluginColumnInfo, quote: (String) -> String) -> String {
+    static func columnDefinition(_ column: PluginColumnInfo, quote: (String) -> String) throws -> String {
         var parts = [quote(column.name), column.ddlSpelling ?? column.dataType]
-        if let clause = valueClause(for: column) {
+        if let clause = try valueClause(for: column) {
             parts.append(clause)
         }
         if !column.isNullable {
@@ -43,15 +45,31 @@ internal enum OracleTableDDL {
         return parts.joined(separator: " ")
     }
 
-    /// An identity column gets no clause: a restore inserts the dump's rows with their keys, which a
-    /// `GENERATED ALWAYS` identity refuses with ORA-32795.
-    private static func valueClause(for column: PluginColumnInfo) -> String? {
+    // An identity column gets no clause: a restore inserts the dump's rows with their keys, which a
+    // `GENERATED ALWAYS` identity refuses with ORA-32795. Catalog text goes in only as one expression.
+    private static func valueClause(for column: PluginColumnInfo) throws -> String? {
         guard column.identityKind == nil else { return nil }
         if column.generationKind == .virtual || column.isGenerated,
            let expression = column.ddlGenerationExpression ?? column.generationExpression {
+            guard isSingleExpression(expression) else {
+                throw refusal(String(localized: "The expression of generated column %@ cannot be written as SQL."), column)
+            }
             return "GENERATED ALWAYS AS (\(expression)) VIRTUAL"
         }
-        guard let defaultValue = column.ddlDefault ?? column.defaultValue, !defaultValue.isEmpty else { return nil }
+        guard let stored = column.ddlDefault ?? column.defaultValue else { return nil }
+        let defaultValue = SQLExpressionFragment.strippingComments(stored, databaseTypeId: "Oracle")
+        guard !defaultValue.isEmpty else { return nil }
+        guard isSingleExpression(defaultValue) else {
+            throw refusal(String(localized: "The default of column %@ cannot be written as SQL."), column)
+        }
         return "DEFAULT \(defaultValue)"
+    }
+
+    private static func isSingleExpression(_ text: String) -> Bool {
+        SQLExpressionFragment.isSingleExpression(text, databaseTypeId: "Oracle")
+    }
+
+    private static func refusal(_ format: String, _ column: PluginColumnInfo) -> OraclePluginError {
+        OraclePluginError(core: .queryFailed(String(format: format, column.name)))
     }
 }

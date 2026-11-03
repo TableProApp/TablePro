@@ -2,11 +2,7 @@ import Foundation
 
 public enum PluginSQLFilter {
     public static func escapeForLike(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "%", with: "\\%", options: .literal)
-            .replacingOccurrences(of: "_", with: "\\_", options: .literal)
-            .replacingOccurrences(of: "'", with: "''", options: .literal)
+        PluginSQLQuoting.stringLiteralBody(PluginSQLQuoting.likePattern(text))
     }
 
     public static func buildOrderByClause(

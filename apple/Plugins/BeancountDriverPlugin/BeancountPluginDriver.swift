@@ -10,6 +10,7 @@ import OSLog
 import SQLite3
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProSQLQuoting
 
 enum BeancountDriverError: LocalizedError {
     case notConnected
@@ -300,11 +301,11 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        SQLQuoting.identifier(name)
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''", options: .literal)
+        SQLQuoting.stringLiteralBody(value)
     }
 
     func execute(query: String) async throws -> PluginQueryResult {
@@ -1031,7 +1032,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return try rows()
         } catch {
             try connectAttempt?.check()
-            logger.warning("Beancount projection left \(table, privacy: .public) empty: \(error)")
+            logger.warning("Beancount projection left \(table, privacy: .private(mask: .hash)) empty: \(error)")
             return []
         }
     }
@@ -1140,7 +1141,7 @@ final class BeancountPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         do {
             let data = try runProcess(
                 executablePath: try rustledgerExecutablePath(),
-                arguments: ["check", "--no-cache", "-f", "json", ledgerPath],
+                arguments: ["check", "--no-cache", "-f", "json", "--", ledgerPath],
                 failureMessage: String(localized: "rustledger validation failed"),
                 allowsNonZeroExit: true,
                 connectAttempt: connectAttempt

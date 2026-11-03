@@ -164,7 +164,7 @@ enum DatabaseFileIntegrity {
         }
         let result = String(cString: text)
         guard result == "ok" else {
-            Self.logger.error("integrity_check on the working copy said \(result, privacy: .public)")
+            Self.logger.error("integrity_check on the working copy said \(result, privacy: .private)")
             return .corrupt(result)
         }
         return .ok

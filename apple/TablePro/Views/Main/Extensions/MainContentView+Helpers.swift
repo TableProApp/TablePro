@@ -27,10 +27,10 @@ extension MainContentView {
     func handleConnectionStatusChange() {
         let sessions = DatabaseManager.shared.activeSessions
         guard let session = sessions[connection.id] else { return }
-        if session.isConnected {
+        if session.reportedStatus.isConnected {
             coordinator.loadSelectedTableTabAfterConnect()
         }
-        toolbarState.updateConnectionState(from: session.reportedStatus)
+        toolbarState.updateConnectionState(from: session.effectiveStatus)
         toolbarState.syncFromSession(for: connection)
     }
 

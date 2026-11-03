@@ -105,12 +105,7 @@ internal struct AccountSettingsContent: Equatable {
         now: Date
     ) -> AccountSettingsContent {
         let entitlement = state.entitlement
-        let isDeviceLimit: Bool
-        if case .deviceLimitReached = state.refresh {
-            isDeviceLimit = true
-        } else {
-            isDeviceLimit = false
-        }
+        let isDeviceLimit = state.refresh.isDeviceLimit
         let ownedTeams = Set((profile?.memberships ?? []).filter { $0.role == "owner" }.map(\.teamID))
         let plans = isDeviceLimit ? [] : (entitlement?.licenses ?? []).map {
             planRow($0, ownedTeams: ownedTeams, configuration: configuration)
@@ -137,6 +132,15 @@ internal struct AccountSettingsContent: Equatable {
             canRefresh: state.isSignedIn || hasLegacyLicense,
             machineID: machineID
         )
+    }
+
+    // Without GET /v2/me, so a team plan's payment notice offers no billing link here.
+    static func notices(state: AccountState, configuration: AccountConfiguration, now: Date) -> [Notice] {
+        let isDeviceLimit = state.refresh.isDeviceLimit
+        let plans = isDeviceLimit ? [] : (state.entitlement?.licenses ?? []).map {
+            planRow($0, ownedTeams: [], configuration: configuration)
+        }
+        return notices(state: state, plans: plans, isDeviceLimit: isDeviceLimit, now: now)
     }
 
     private static func identity(state: AccountState, profile: AccountProfile?, now: Date) -> Identity {
@@ -262,9 +266,69 @@ internal struct AccountSettingsContent: Equatable {
     }
 }
 
+// The pane, the gates and Welcome read a state in the same words.
+extension AccountSettingsContent.Notice {
+    var title: String {
+        switch self {
+        case .deviceLimit:
+            return String(localized: "Device limit reached")
+        case .paymentProblem:
+            return String(localized: "Payment problem")
+        case .canceling:
+            return String(localized: "Your plan is canceling")
+        case .expiringSoon(_, true):
+            return String(localized: "Your offline file expires soon")
+        case .expiringSoon:
+            return String(localized: "Verify your plan soon")
+        case .expired(_, true):
+            return String(localized: "Your offline file has expired")
+        case .expired, .verificationFailed:
+            return String(localized: "Your plan could not be verified")
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .deviceLimit:
+            return String(localized: "Your plan is in use on 3 other devices. Remove one to use it on this Mac. Until then, TablePro works on the Free plan here.")
+        case .paymentProblem(let plan):
+            if plan.billing == nil {
+                return String(format: String(localized: "The last payment for %@ (%@) failed. The team's owner can update the payment method."), plan.title, plan.owner)
+            }
+            return String(format: String(localized: "The last payment for %@ failed. Update your payment method to keep your plan."), plan.title)
+        case .canceling(let plan, let endsAt):
+            guard let endsAt else {
+                return String(format: String(localized: "%@ does not renew."), plan.title)
+            }
+            return String(
+                format: String(localized: "%@ ends on %@ and does not renew."),
+                plan.title,
+                endsAt.formatted(date: .abbreviated, time: .omitted)
+            )
+        case .expiringSoon(let expiresAt, let isOfflineFile):
+            let date = expiresAt.formatted(date: .abbreviated, time: .shortened)
+            return isOfflineFile
+                ? String(format: String(localized: "It expires on %@. Create a new one in your account and import it."), date)
+                : String(format: String(localized: "TablePro has not reached the server for a while. Connect to the internet before %@ to keep your paid features."), date)
+        case .expired(let at, let isOfflineFile):
+            let date = at.formatted(date: .abbreviated, time: .omitted)
+            return isOfflineFile
+                ? String(format: String(localized: "It expired on %@. Create a new one in your account and import it."), date)
+                : String(format: String(localized: "The last check expired on %@. Connect to the internet and refresh."), date)
+        case .verificationFailed(let message):
+            return message ?? String(localized: "Connect to the internet to verify your license.")
+        }
+    }
+}
+
 private extension EntitlementRefreshState {
     var isSucceeded: Bool {
         if case .succeeded = self { return true }
+        return false
+    }
+
+    var isDeviceLimit: Bool {
+        if case .deviceLimitReached = self { return true }
         return false
     }
 }

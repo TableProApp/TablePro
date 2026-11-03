@@ -25,6 +25,19 @@ private final class ChunkedDownloadProtocol: URLProtocol, @unchecked Sendable {
     }
 }
 
+private final class InstallTaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<URL, any Error>?
+
+    func hold(_ task: Task<URL, any Error>) {
+        lock.withLock { self.task = task }
+    }
+
+    func cancel() {
+        lock.withLock { task }?.cancel()
+    }
+}
+
 private actor FractionRecorder {
     private(set) var fractions: [Double] = []
 
@@ -107,18 +120,25 @@ struct PluginInstallerHelpersTests {
         PluginInstaller.stripQuarantine(at: bundle)
     }
 
-    private func makeBundle(in directory: URL, kitVersion: Int?) throws -> Bundle {
+    private func makeBundle(
+        in directory: URL,
+        kitVersion: Int?,
+        build: Int? = nil,
+        bundleId: String = "com.example.Kit"
+    ) throws -> Bundle {
         let bundleURL = directory.appendingPathComponent("Kit.tableplugin", isDirectory: true)
         let contents = bundleURL.appendingPathComponent("Contents", isDirectory: true)
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
         let kitEntry = kitVersion.map { "<key>TableProPluginKitVersion</key><integer>\($0)</integer>" } ?? ""
+        let buildEntry = build.map { "<key>CFBundleVersion</key><string>\($0)</string>" } ?? ""
         let payload = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
         <dict>
-            <key>CFBundleIdentifier</key><string>com.example.Kit</string>
+            <key>CFBundleIdentifier</key><string>\(bundleId)</string>
             \(kitEntry)
+            \(buildEntry)
         </dict>
         </plist>
         """
@@ -173,6 +193,80 @@ struct PluginInstallerHelpersTests {
         try PluginManager.validateBundleVersions(bundle)
     }
 
+    private func makeRelease(build: Int) -> RegistryRelease {
+        RegistryRelease(
+            version: "1.0",
+            build: build,
+            channel: "stable",
+            pluginKit: PluginManager.currentPluginKitVersion,
+            minimumSystemVersion: "13.0",
+            url: "https://x",
+            sha256: "deadbeef"
+        )
+    }
+
+    @Test("validateBundle accepts an archive holding the build and plugin its manifest entry names")
+    func validateBundleAcceptsTheClaimedBuild() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(in: dir, kitVersion: PluginManager.currentPluginKitVersion, build: 99_999_999)
+        try PluginInstaller.validateBundle(bundle, against: makeRelease(build: 99_999_999), pluginId: "com.example.Kit")
+    }
+
+    @Test("validateBundle refuses an archive holding another build than its manifest entry claims", arguments: [
+        (820_099, 99_999_999), (820_000, 820_100), (820_200, 820_100)
+    ])
+    func validateBundleRefusesAnotherBuild(archiveBuild: Int, claimedBuild: Int) throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(in: dir, kitVersion: PluginManager.currentPluginKitVersion, build: archiveBuild)
+        let error = #expect(throws: PluginError.self) {
+            try PluginInstaller.validateBundle(bundle, against: makeRelease(build: claimedBuild), pluginId: "com.example.Kit")
+        }
+        guard case .installFailed(let reason) = error else {
+            Issue.record("Expected installFailed, got \(String(describing: error))")
+            return
+        }
+        #expect(reason.contains(String(archiveBuild)))
+    }
+
+    @Test("validateBundle refuses an archive holding another plugin than its manifest entry names")
+    func validateBundleRefusesAnotherPlugin() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(
+            in: dir,
+            kitVersion: PluginManager.currentPluginKitVersion,
+            build: 840_099,
+            bundleId: "com.TablePro.MSSQLDriver"
+        )
+        let error = #expect(throws: PluginError.self) {
+            try PluginInstaller.validateBundle(
+                bundle, against: makeRelease(build: 840_099), pluginId: "com.TablePro.OracleDriver"
+            )
+        }
+        guard case .installFailed(let reason) = error else {
+            Issue.record("Expected installFailed, got \(String(describing: error))")
+            return
+        }
+        #expect(reason.contains("com.TablePro.MSSQLDriver"))
+    }
+
+    @Test("validateBundle still refuses a bundle below the PluginKit floor")
+    func validateBundleRefusesKitBelowFloor() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bundle = try makeBundle(in: dir, kitVersion: PluginManager.minimumCompatiblePluginKitVersion - 1, build: 820_100)
+        let error = #expect(throws: PluginError.self) {
+            try PluginInstaller.validateBundle(bundle, against: makeRelease(build: 820_100), pluginId: "com.example.Kit")
+        }
+        #expect(error?.isOutdated == true)
+    }
+
     @Test("isCompatibleKit accepts the floor through the current kit and nothing outside it")
     func compatibleKitRange() {
         let minimumKit = PluginManager.minimumCompatiblePluginKitVersion
@@ -215,6 +309,70 @@ struct PluginInstallerHelpersTests {
 
         #expect(data == ChunkedDownloadProtocol.payload)
         #expect(fractions == [1])
+    }
+
+    private func makeInstaller() -> (PluginInstaller, URLSession) {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ChunkedDownloadProtocol.self]
+        let session = URLSession(configuration: config)
+        return (PluginInstaller(session: { session }), session)
+    }
+
+    private func makeRegistryPlugin(archive: String = "sized.zip") -> (RegistryPlugin, RegistryRelease) {
+        let release = RegistryRelease(
+            version: "1.0", build: 2, channel: "stable", pluginKit: PluginManager.currentPluginKitVersion,
+            minimumSystemVersion: "13.0", url: "https://plugins.example.invalid/\(archive)", sha256: "deadbeef"
+        )
+        let plugin = RegistryPlugin(
+            id: "com.example.driver", name: "Driver", databaseTypeIds: [], exportFormatIds: [], releases: [release]
+        )
+        return (plugin, release)
+    }
+
+    private func stagingLeftovers(for pluginsDir: URL) throws -> [String] {
+        let root = PluginInstaller.stagingRoot(for: pluginsDir)
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        return try FileManager.default.contentsOfDirectory(atPath: root.path).filter { $0 != "Updates" }
+    }
+
+    @Test("A download that fails its checksum leaves no working directory behind")
+    func checksumFailureRemovesWorkingDirectory() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
+        let (installer, session) = makeInstaller()
+        defer { session.finishTasksAndInvalidate() }
+        let (plugin, release) = makeRegistryPlugin()
+
+        await #expect(throws: PluginError.self) {
+            try await installer.install(plugin, release: release, into: pluginsDir) { _ in }
+        }
+        #expect(try stagingLeftovers(for: pluginsDir).isEmpty)
+    }
+
+    // Main actor, so the task cannot start before the box holds it. An unsized archive reports only the
+    // final 1, after the download has returned.
+    @Test("A download cancelled as it finishes stops before installing and leaves nothing behind")
+    @MainActor
+    func cancelAfterDownloadStopsBeforeInstall() async throws {
+        let root = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
+        let (installer, session) = makeInstaller()
+        defer { session.finishTasksAndInvalidate() }
+        let (plugin, release) = makeRegistryPlugin(archive: "unsized.zip")
+        let box = InstallTaskBox()
+
+        let task = Task {
+            try await installer.install(plugin, release: release, into: pluginsDir) { fraction in
+                if fraction >= 1 { box.cancel() }
+            }
+        }
+        box.hold(task)
+
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(try stagingLeftovers(for: pluginsDir).isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: pluginsDir.path))
     }
 
     @Test("findBundle returns the single .tableplugin in a directory")

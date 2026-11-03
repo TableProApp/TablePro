@@ -21,15 +21,15 @@ final class DatabaseManager: ObservableObject {
     internal let pluginManager: PluginManager
     internal let aiAccessApprovals: AIAccessApprovals
     internal let preConnectScriptConsent: PreConnectScriptConsent
+    internal let envVarReferenceConsent: EnvVarReferenceConsent
+    internal let localCredentialConsent: LocalCredentialConsent
     internal let postDisconnectScripts: PostDisconnectScripts
     internal let localNetworkProbe: any LocalNetworkAccessProbing
     internal var historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared
 
-    /// Passwords the user has been asked for this launch, keyed by whatever answers for them: the
-    /// credential profile when the connection links to one, the connection otherwise. Held here
-    /// rather than on the session because a profile's answer belongs to every connection using it,
-    /// and one of them being disconnected does not make it wrong for the rest.
-    internal var promptedPasswords: [UUID: String] = [:]
+    // Keyed by the credential profile, or by the connection and where it dials: a linked-folder row keeps its id
+    // when its file changes a host list, the SSH tunnel or TLS, and a team-library row keeps it for any change.
+    internal var promptedPasswords: [PromptedPasswordKey: String] = [:]
 
     /// All active connection sessions
     internal(set) var activeSessions: [UUID: ConnectionSession] = [:] {
@@ -84,10 +84,9 @@ final class DatabaseManager: ObservableObject {
     /// `ensureConnectedDedup` because a verification can run while a connect is in flight.
     internal let verificationDedup = OnceTask<UUID, Void>()
 
-    /// Connection IDs currently undergoing SSH tunnel recovery.
-    /// Prevents duplicate concurrent recovery when both the keepalive death handler
-    /// and the wake-from-sleep handler fire for the same connection.
-    internal var recoveringConnectionIds = Set<UUID>()
+    // One reconnect loop per session, owned by DatabaseManager+Recovery.swift.
+    internal var recoveryLoops: [UUID: SessionRecoveryLoop] = [:]
+    internal let recoveryClock: any Clock<Duration>
 
     /// Why a session was torn down, kept past the session entry so a window that only observes
     /// the entry disappearing can still name the cause. Cleared when a fresh attempt begins.
@@ -188,16 +187,22 @@ final class DatabaseManager: ObservableObject {
         pluginManager: PluginManager = .shared,
         aiAccessApprovals: AIAccessApprovals = .shared,
         preConnectScriptConsent: PreConnectScriptConsent = PreConnectScriptConsent(),
+        envVarReferenceConsent: EnvVarReferenceConsent = EnvVarReferenceConsent(),
+        localCredentialConsent: LocalCredentialConsent = LocalCredentialConsent(),
         postDisconnectScripts: PostDisconnectScripts = PostDisconnectScripts(),
-        localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe()
+        localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe(),
+        recoveryClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.connectionStorage = connectionStorage
         self.appSettingsStorage = appSettingsStorage
         self.pluginManager = pluginManager
         self.aiAccessApprovals = aiAccessApprovals
         self.preConnectScriptConsent = preConnectScriptConsent
+        self.envVarReferenceConsent = envVarReferenceConsent
+        self.localCredentialConsent = localCredentialConsent
         self.postDisconnectScripts = postDisconnectScripts
         self.localNetworkProbe = localNetworkProbe
+        self.recoveryClock = recoveryClock
         sessionLanes.onClose = { [weak self] connectionId in
             self?.sessionTransactions.prune(connectionId)
         }
@@ -205,4 +210,9 @@ final class DatabaseManager: ObservableObject {
         observeHealthCheckSetting()
         observeCredentialLeases()
     }
+}
+
+internal struct PromptedPasswordKey: Hashable, Sendable {
+    let owner: UUID
+    let destination: String
 }

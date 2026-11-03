@@ -6807,7 +6807,7 @@ License: Expat
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
-Files: vendor/pulldown-cmark-0.13.5/*
+Files: vendor/pulldown-cmark-0.13.6/*
 Copyright: 2015 Google Inc. All rights reserved.
 License: Expat
  The MIT License

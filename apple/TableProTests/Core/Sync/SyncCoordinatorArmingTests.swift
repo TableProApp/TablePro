@@ -53,6 +53,17 @@ struct SyncCoordinatorArmingTests {
         #expect(monitors.made == 0)
     }
 
+    @Test("Sync never switched on is off by choice, whatever the license says")
+    func offWithoutALicenseIsOffByChoice() {
+        setSync(false)
+        let coordinator = makeCoordinator(licensed: false)
+
+        coordinator.start()
+
+        #expect(coordinator.syncStatus == .disabled(.userDisabled))
+        #expect(monitors.made == 0)
+    }
+
     @Test("Sync on at launch starts the network monitor")
     func onAtLaunchArms() {
         setSync(true)

@@ -143,46 +143,15 @@ public extension ExportableConnection {
     private static let connectTimeoutSecondsRange = 1 ... 600
     private static let queryTimeoutSecondsRange = 0 ... Int(Int32.max) / 1_000
 
-    static let importBlockedAdditionalFieldKeys: Set<String> = [
-        "beancountrunledgerplugins",
-        "postdisconnectscript",
-        "preconnectscript",
-        "pretunnelhost",
-        "pretunnelport",
-        "promptforpassword",
-        "snowflakeconnectionname",
-        "spendpoint",
-        "sslclientkeypassphrase",
-        "usepgpass",
-    ]
-
-    static let importBlockedAdditionalFieldPrefixes: Set<String> = ["aws", "entra"]
-
-    // Values that pick a credential kept on this Mac, under keys whose other values are plain settings.
-    static let importBlockedAdditionalFieldValues: [String: Set<String>] = [
-        "mongoauthmechanism": ["mongodb-aws"],
-    ]
-
-    static func isImportBlockedAdditionalFieldKey(_ key: String) -> Bool {
-        let normalized = key.lowercased()
-        if importBlockedAdditionalFieldKeys.contains(normalized) { return true }
-        return importBlockedAdditionalFieldPrefixes.contains { normalized.hasPrefix($0) }
-    }
-
-    static func isImportBlockedAdditionalField(key: String, value: String) -> Bool {
-        if isImportBlockedAdditionalFieldKey(key) { return true }
-        if ConnectionSecretOptions.isSecret(key: key, value: value) { return true }
-        let blockedValues = importBlockedAdditionalFieldValues[key.lowercased()] ?? []
-        return blockedValues.contains(value.trimmingCharacters(in: .whitespaces).lowercased())
-    }
-
     static func shareableAdditionalFields(
         _ fields: [String: String],
-        excluding excludedKeys: Set<String> = []
+        excluding excludedKeys: Set<String> = [],
+        keepingLocalCredentials: Bool
     ) -> [String: String]? {
-        let shareable = fields.filter { key, value in
-            !excludedKeys.contains(key) && !isImportBlockedAdditionalField(key: key, value: value)
-        }
+        let shareable = ConnectionFieldCatalog.portable(
+            fields.filter { !excludedKeys.contains($0.key) },
+            keepingLocalCredentials: keepingLocalCredentials
+        )
         return shareable.isEmpty ? nil : shareable
     }
 
@@ -204,9 +173,37 @@ public extension ExportableConnection {
         return copy
     }
 
-    /// An explicit timeout that is out of range is dropped, not replaced by a legacy additional field.
-    func sanitizedForImport() -> ExportableConnection {
-        var allowed = (additionalFields ?? [:]).filter { !Self.isImportBlockedAdditionalField(key: $0.key, value: $0.value) }
+    // The Linux app's connects_like: only how the connection is shown, its timeouts and the startup commands
+    // (asked about at import) are cleared, so a field added later counts until it is listed here. Safe Mode and
+    // the AI policy count. The match key already compared host, port, database and user.
+    func connectsLike(_ other: ExportableConnection) -> Bool {
+        connectionOnly == other.connectionOnly
+    }
+
+    private var connectionOnly: ExportableConnection {
+        var copy = self
+        copy.name = ""
+        copy.host = ""
+        copy.port = 0
+        copy.database = ""
+        copy.username = ""
+        copy.color = nil
+        copy.iconName = nil
+        copy.connectTimeoutSeconds = nil
+        copy.queryTimeoutSeconds = nil
+        copy.startupCommands = nil
+        copy.localOnly = nil
+        copy.redisDatabase = nil
+        // The Mac keeps the Redis index outside the fields and iOS inside them; the key reads both.
+        var fields = additionalFields ?? [:]
+        fields.removeValue(forKey: ConnectionMatchKey.redisDatabaseFieldKey)
+        copy.additionalFields = fields.isEmpty ? nil : fields
+        return copy
+    }
+
+    // An explicit timeout that is out of range is dropped, not replaced by a legacy additional field.
+    func sanitizedForImport(keepingLocalCredentials: Bool = false) -> ExportableConnection {
+        var allowed = ConnectionFieldCatalog.portable(additionalFields ?? [:], keepingLocalCredentials: keepingLocalCredentials)
         let legacyConnectTimeout = allowed.removeValue(forKey: Self.connectTimeoutSecondsKey).flatMap(Int.init)
         let legacyQueryTimeout = allowed.removeValue(forKey: Self.queryTimeoutSecondsKey).flatMap(Int.init)
         var copy = self
@@ -259,11 +256,11 @@ public struct ExportableTunnelCommand: Codable, Sendable, Equatable {
 }
 
 public extension ExportableConnection {
-    // Match exec hands the host and user to /bin/sh, and the host key store is one entry per line.
+    // Match exec hands the host, user and port to /bin/sh, and the host key store is one entry per line.
     var refusedSSHDestination: SSHDestinationName.Problem? {
         guard let ssh = sshConfig, ssh.enabled else { return nil }
-        let hops = [(ssh.host, ssh.username)] + (ssh.jumpHosts ?? []).map { ($0.host, $0.username) }
-        return hops.lazy.compactMap { SSHDestinationName.problem(host: $0.0, user: $0.1) }.first
+        let hops = [(ssh.host, ssh.username, ssh.port)] + (ssh.jumpHosts ?? []).map { ($0.host, $0.username, $0.port) }
+        return hops.lazy.compactMap { SSHDestinationName.problem(host: $0.0, user: $0.1, port: $0.2) }.first
     }
 }
 

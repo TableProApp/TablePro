@@ -8,6 +8,7 @@ import Combine
 import Observation
 import os
 import OSLog
+import TableProConnectionLibrary
 
 /// The window a rail belongs to. A window hosts several connections and shows one at a time, so
 /// which row the rail highlights is a question only the window can answer, and the answer changes.
@@ -120,6 +121,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     private lazy var rowHeight = WorkspaceRailCellView.rowHeight(for: layout)
     private var reportedWidth: CGFloat = 0
     private var changeCancellable: AnyCancellable?
+    private var statusCancellable: AnyCancellable?
     private let activationObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private let scrollObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private var contentTopConstraint: NSLayoutConstraint?
@@ -210,6 +212,11 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        statusCancellable = WorkspaceRailStore.statusChanges
+            .receive(on: RunLoop.main)
+            .sink { [weak self] connectionId in
+                self?.refreshStatus(of: connectionId)
+            }
         changeCancellable = WorkspaceRailStore.changes
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -348,13 +355,26 @@ internal final class WorkspaceRailViewController: NSViewController {
             """
             reload rail=\(self.railName, privacy: .public) \
             entries=\(self.entries.count, privacy: .public) \
-            [\(self.entries.map(\.workspace).map(Self.describe).joined(separator: " "), privacy: .public)]
+            [\(self.entries.map(\.workspace).map(Self.describe).joined(separator: " "), privacy: .private(mask: .hash))]
             """
         )
         tableView.reloadData()
         applyBottomInset()
         applySelection()
         onEntryCountChange?(entries.count)
+    }
+
+    // A phase moves one connection's status and never which rows are listed, so only its rows repaint.
+    private func refreshStatus(of connectionId: UUID) {
+        let rows = IndexSet(entries.indices.filter { entries[$0].workspace.connectionId == connectionId })
+        guard !rows.isEmpty else { return }
+        let latest = WorkspaceRailStore.entries
+        guard latest.map(\.id) == entries.map(\.id) else {
+            reload()
+            return
+        }
+        entries = latest
+        tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
     }
 
     private static func describe(_ workspace: WorkspaceID) -> String {
@@ -437,7 +457,7 @@ internal final class WorkspaceRailViewController: NSViewController {
             Self.logger.debug(
                 """
                 applySelection rail=\(self.railName, privacy: .public) \
-                browsed=\(browsed.map(Self.describe) ?? "none", privacy: .public) row=none
+                browsed=\(browsed.map(Self.describe) ?? "none", privacy: .private(mask: .hash)) row=none
                 """
             )
             appliedSelection = nil
@@ -449,8 +469,8 @@ internal final class WorkspaceRailViewController: NSViewController {
         Self.logger.debug(
             """
             applySelection rail=\(self.railName, privacy: .public) \
-            browsed=\(browsed.map(Self.describe) ?? "none", privacy: .public) \
-            row=\(row, privacy: .public) applied=\(Self.describe(self.entries[row].workspace), privacy: .public)
+            browsed=\(browsed.map(Self.describe) ?? "none", privacy: .private(mask: .hash)) \
+            row=\(row, privacy: .public) applied=\(Self.describe(self.entries[row].workspace), privacy: .private(mask: .hash))
             """
         )
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -500,15 +520,15 @@ internal final class WorkspaceRailViewController: NSViewController {
             || WorkspaceRailStore.browsedWorkspace(for: workspace.connectionId) != workspace
         else {
             Self.logger.debug(
-                "commit rail=\(self.railName, privacy: .public) ignored: already at \(Self.describe(workspace), privacy: .public)"
+                "commit rail=\(self.railName, privacy: .public) ignored: already at \(Self.describe(workspace), privacy: .private(mask: .hash))"
             )
             return
         }
         Self.logger.info(
             """
             commit rail=\(self.railName, privacy: .public) row=\(row, privacy: .public) \
-            was=\(self.appliedSelection.map(Self.describe) ?? "none", privacy: .public) \
-            now=\(Self.describe(workspace), privacy: .public)
+            was=\(self.appliedSelection.map(Self.describe) ?? "none", privacy: .private(mask: .hash)) \
+            now=\(Self.describe(workspace), privacy: .private(mask: .hash))
             """
         )
         appliedSelection = workspace
@@ -527,7 +547,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         guard let window = WindowManager.shared.window(for: workspace.connectionId),
               let host = window.contentViewController as? MainSplitViewController else {
             Self.logger.error(
-                "show has no window target=\(Self.describe(workspace), privacy: .public)"
+                "show has no window target=\(Self.describe(workspace), privacy: .private(mask: .hash))"
             )
             return nil
         }
@@ -541,7 +561,7 @@ internal final class WorkspaceRailViewController: NSViewController {
         Self.logger.info(
             """
             show rail=\(self.railName, privacy: .public) \
-            target=\(Self.describe(workspace), privacy: .public) \
+            target=\(Self.describe(workspace), privacy: .private(mask: .hash)) \
             window=\(window.windowNumber, privacy: .public) visible=\(window.isVisible, privacy: .public) \
             tabs=\(group?.windows.count ?? 0, privacy: .public) \
             wasSelectedTab=\(group?.selectedWindow === window, privacy: .public)
@@ -573,13 +593,13 @@ internal final class WorkspaceRailViewController: NSViewController {
         guard let coordinator = WindowManager.shared.coordinator(for: workspace.connectionId, in: window) else {
             Self.logger.error(
                 """
-                moveBrowseCursor has no coordinator target=\(Self.describe(workspace), privacy: .public) \
+                moveBrowseCursor has no coordinator target=\(Self.describe(workspace), privacy: .private(mask: .hash)) \
                 window=\(window.windowNumber, privacy: .public)
                 """
             )
             return
         }
-        Self.logger.info("moveBrowseCursor to=\(Self.describe(workspace), privacy: .public)")
+        Self.logger.info("moveBrowseCursor to=\(Self.describe(workspace), privacy: .private(mask: .hash))")
         coordinator.browseCursorCoordinator.goToEntry(workspace.container)
     }
 
@@ -719,6 +739,19 @@ internal final class WorkspaceRailViewController: NSViewController {
         }
     }
 
+    // Run by the hosting window so its pane shows the attempt and any failure; re-read, as the menu may have stayed open.
+    @objc
+    private func performWorkspaceConnectionAction(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID,
+              let action = ConnectionMenuPolicy.primaryAction(
+                  status: ConnectionStatusResolver.status(for: workspace.connectionId)
+              ),
+              let shown = show(workspace)
+        else { return }
+        applySelection()
+        shown.host.performConnectionAction(action, for: workspace.connectionId)
+    }
+
     /// Ends the session, which every workspace of the connection shares, so the other rows for it
     /// go quiet too. No window closes: each one repaints from its own phase.
     @objc
@@ -772,6 +805,16 @@ extension WorkspaceRailViewController: NSMenuDelegate {
 
     // Lighter actions first and the one that ends the connection last, the order Finder and Mail keep.
     internal func populate(_ menu: NSMenu, for entry: WorkspaceRailEntry, serverTools: [WorkspaceRailServerTool]) {
+        if let title = entry.presentation.primaryActionTitle {
+            addItem(
+                to: menu,
+                title: title,
+                action: #selector(performWorkspaceConnectionAction(_:)),
+                workspace: entry.workspace
+            )
+            menu.addItem(.separator())
+        }
+
         if WindowManager.shared.canMoveToNewWindow(connectionId: entry.workspace.connectionId) {
             addItem(
                 to: menu,
@@ -801,7 +844,7 @@ extension WorkspaceRailViewController: NSMenuDelegate {
             )
         }
 
-        if ConnectionMenuPolicy.showsDisconnect(status: entry.status) {
+        if ConnectionMenuPolicy.showsDisconnect(status: entry.status, holdsSession: entry.holdsSession) {
             addItem(
                 to: menu,
                 title: String(localized: "Disconnect"),
@@ -956,7 +999,7 @@ extension WorkspaceRailViewController: NSTableViewDelegate {
         Self.logger.debug(
             """
             selectionDidChange rail=\(self.railName, privacy: .public) row=\(row, privacy: .public) \
-            highlight=\(Self.describe(self.entries[row].workspace), privacy: .public)
+            highlight=\(Self.describe(self.entries[row].workspace), privacy: .private(mask: .hash))
             """
         )
     }

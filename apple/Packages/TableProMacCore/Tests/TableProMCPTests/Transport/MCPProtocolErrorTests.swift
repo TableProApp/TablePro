@@ -110,6 +110,13 @@ struct MCPProtocolErrorTests {
         #expect(error.data?["requiredScopes"]?.arrayValue?.compactMap(\.stringValue) == ["tools:read", "tools:write"])
     }
 
+    // A quote a combining mark follows is one Character, so a grapheme replace left it bare and it ended the value.
+    @Test func testChallengeEscapesAQuoteACombiningMarkFollows() {
+        let challenge = MCPAuthChallenge.invalidToken(description: "a\"\u{301}, scope=\"admin").headerValue
+        let expected = "Bearer realm=\"TablePro\", error=\"invalid_token\", error_description=\"a\\\"\u{301}, scope=\\\"admin\""
+        #expect(Array(challenge.unicodeScalars) == Array(expected.unicodeScalars))
+    }
+
     @Test func testForbiddenMapping() {
         let error = MCPProtocolError.forbidden(reason: "policy")
         #expect(error.code == JsonRpcErrorCode.forbidden)

@@ -50,6 +50,17 @@ nonisolated enum MongoScriptText {
         String(format: String(localized: "Refused %@: this statement ran as a read."), operation)
     }
 
+    static func refusedDestructive(_ operation: String) -> String {
+        String(format: String(localized: "Refused %@: this statement was not approved to drop or delete data."), operation)
+    }
+
+    static func refusedServerCode(_ operation: String) -> String {
+        String(
+            format: String(localized: "Refused %@: this statement was not approved to run server-side code, $out or $merge."),
+            operation
+        )
+    }
+
     static var refusedWritingPipelineUnderRead: String {
         String(localized: "Refused a pipeline with $out or $merge: this statement ran as a read.")
     }

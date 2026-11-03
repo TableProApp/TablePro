@@ -56,6 +56,32 @@ struct SQLExportDialectTests {
         #expect(postgres("we\"ird") == "\"we\"\"ird\"")
     }
 
+    @Test("The dialect quoter escapes a closing quote a combining mark follows", arguments: [
+        (DatabaseType.mysql, "we`\u{301}ird", "`we``\u{301}ird`"),
+        (DatabaseType.postgresql, "we\"\u{301}ird", "\"we\"\"\u{301}ird\""),
+        (DatabaseType.mssql, "we]\u{301}ird", "[we]]\u{301}ird]"),
+    ])
+    func dialectQuotesThroughCombiningMarks(type: DatabaseType, name: String, expected: String) throws {
+        let quote = quoteIdentifierFromDialect(try #require(dialect(for: type)), databaseType: type)
+        #expect(Array(quote(name).unicodeScalars) == Array(expected.unicodeScalars))
+    }
+
+    @Test("The dialect literal escaper doubles a quote a combining mark follows")
+    func dialectLiteralThroughCombiningMarks() throws {
+        let mysql = escapeStringLiteralFromDialect(try #require(dialect(for: .mysql)))
+        #expect(Array(mysql("x\\'\u{301} OR 1=1").unicodeScalars) == Array("x\\\\''\u{301} OR 1=1".unicodeScalars))
+        let postgres = escapeStringLiteralFromDialect(try #require(dialect(for: .postgresql)))
+        #expect(Array(postgres("x'\u{301} OR 1=1").unicodeScalars) == Array("x''\u{301} OR 1=1".unicodeScalars))
+    }
+
+    // ClickHouse reads a backslash inside a backtick name as an escape, so a name ending in one ran on.
+    @Test("A ClickHouse name ending in a backslash stays one identifier")
+    func clickHouseNameEndingInBackslash() throws {
+        let quote = quoteIdentifierFromDialect(try #require(dialect(for: .clickhouse)), databaseType: .clickhouse)
+        #expect(quote("a\\") == "`a\\\\`")
+        #expect(quote("a`b") == "`a\\`b`")
+    }
+
     // MARK: - Literal escaping
 
     /// Measured: `C:\temp\next` written with ANSI rules re-imports into MariaDB as hex
@@ -82,6 +108,15 @@ struct SQLExportDialectTests {
         #expect(escape("a\u{1A}b") == "a\\Zb")
         #expect(escape("a\u{08}b") == "a\\bb")
         #expect(escape("a\u{0C}b") == "a\u{0C}b")
+    }
+
+    @Test("ClickHouse and Snowflake keep a SUB character, which they would read back from \\Z as a letter")
+    func backslashEnginesOutsideMySQLWriteNoZ() throws {
+        for type in [DatabaseType.clickhouse, .snowflake] {
+            let escape = escapeStringLiteralFromDialect(try #require(dialect(for: type)), databaseType: type)
+            #expect(escape("a\u{1A}b") == "a\u{1A}b", "\(type.rawValue)")
+            #expect(escape("a\\b") == "a\\\\b", "\(type.rawValue)")
+        }
     }
 
     /// PostgreSQL reads a backslash literally in a standard-conforming string, so doubling it

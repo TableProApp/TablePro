@@ -9,6 +9,7 @@ import AppKit
 import Combine
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProSSHConfig
 
@@ -23,34 +24,38 @@ extension DatabaseManager {
     ) async throws {
         let connection = resolvedConnectionDefinition(for: requestedConnection)
 
-        /// Reusing the installed driver is right only while it still answers. A reconnect that gave
-        /// up leaves one behind, and switching to it here reported success without replacing
-        /// anything, which is how Reconnect came to be a button that returned to the same pane.
+        // Reused only while it answers: a driver a reconnect gave up on would make Reconnect a no-op.
         if let existing = activeSessions[connection.id], existing.driver != nil, existing.liveness == .live {
             switchToSession(connection.id)
             return
         }
 
+        // The loop owns a dropped session's redial; only a connect someone asked for takes it over.
+        if trigger == .background, recoveryLoops[connection.id] != nil {
+            throw DatabaseError.connectionFailed(Self.recoveringConnectMessage)
+        }
+
         Telemetry.shared.connectionAttempted(databaseType: connection.type.rawValue)
         InteractionTracer.shared.begin(.sidebarListing, key: connection.id.uuidString, event: nil)
+
+        // This connect owns the session: no loop or monitor may redial or rebuild the tunnel beside it.
+        supersedeRecovery(for: connection.id)
+        await stopHealthMonitor(for: connection.id)
 
         let attempt = connectionAttempts.begin(for: connection.id)
         disconnectReasons[connection.id] = nil
         userRequestedDisconnects.remove(connection.id)
 
-        let resolvedConnection: DatabaseConnection
-        if FeatureAccess.shared.isAvailable(.envVarReferences) {
-            resolvedConnection = EnvVarResolver.resolveConnection(connection)
-        } else {
-            resolvedConnection = connection
-        }
-
         let effectiveQueryTimeoutSeconds = prepareConnectingSession(for: connection)
         lastActiveSessionId = connection.id
 
+        let resolvedConnection: DatabaseConnection
         do {
+            // Before anything signs in: the host resolves some credentials below, and a plugin the rest in `connect()`.
+            try await localCredentialConsent.check(connection, trigger: trigger)
+            resolvedConnection = try await envVarReferenceConsent.resolve(connection, trigger: trigger)
             try await preConnectScriptConsent.authorize(connection, trigger: trigger)
-            /// The answer can take a minute, long enough for the person to cancel the attempt.
+            // The answer can take a minute, long enough for the person to cancel the attempt.
             guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
             try await runPreConnectScriptIfNeeded(connection, resolvedConnection: resolvedConnection, attempt: attempt)
         } catch {
@@ -81,10 +86,11 @@ extension DatabaseManager {
             if !resolvedConnection.enabledTunnelKinds.isEmpty {
                 reportStage(.resolvingTunnel, attempt: attempt, for: connection.id)
             }
-            effectiveConnection = try await buildEffectiveConnection(
+            effectiveConnection = try await buildEffectiveConnectionReportingStages(
                 for: resolvedConnection,
                 sshPasswordOverride: sshPasswordOverride,
-                deadline: deadline
+                deadline: deadline,
+                attempt: (attempt, connection.id)
             )
         } catch {
             let reportedError = isAttemptCancelled(attempt, for: connection.id)
@@ -162,9 +168,9 @@ extension DatabaseManager {
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
                 session.connectionWarning = driver.connectionWarning
-                /// A connect is the answer to whatever went wrong before it, including a reconnect
-                /// that gave up on this same entry, so the mark and the reason it carried go here.
+                // A connect answers whatever went wrong before it, including a reconnect that gave up on this entry.
                 session.liveness = .live
+                session.recovery = nil
                 disconnectReasons.removeValue(forKey: connection.id)
                 markSessionVerified(connection.id)
                 if let passwordOverride, !connection.usesIAMToken {
@@ -215,15 +221,18 @@ extension DatabaseManager {
         for connection: DatabaseConnection,
         incoming: String?,
         attempt: Int
-    ) async throws -> (String?, Bool, UUID) {
+    ) async throws -> (String?, Bool, PromptedPasswordKey) {
         let promptsForPassword = ConnectionCredentialResolver.promptsForPassword(connection)
-        let promptCacheKey = ConnectionCredentialResolver.promptCacheKey(for: connection)
+        let promptCacheKey = Self.promptCacheKey(for: connection)
         guard incoming == nil, promptsForPassword, !pluginManager.hidesPassword(for: connection) else {
             return (incoming, promptsForPassword, promptCacheKey)
         }
-        /// Keyed by the credential profile when there is one, so a profile set to ask every
-        /// time asks once rather than once per connection using it.
-        if let cached = promptedPasswords[promptCacheKey] ?? activeSessions[connection.id]?.cachedPassword {
+        // A session's answer is reused only while the connection still dials where it was typed for.
+        let session = activeSessions[connection.id]
+        let sessionPassword = session?.connection.destination.digest == connection.destination.digest
+            ? session?.cachedPassword
+            : nil
+        if let cached = promptedPasswords[promptCacheKey] ?? sessionPassword {
             return (cached, promptsForPassword, promptCacheKey)
         }
 
@@ -242,6 +251,16 @@ extension DatabaseManager {
             throw CancellationError()
         }
         return (prompted, promptsForPassword, promptCacheKey)
+    }
+
+    // A profile set to ask every time asks once for every connection on it. Any other answer is kept per
+    // destination, so a linked-folder or team-library row whose file names another server asks again.
+    static func promptCacheKey(for connection: DatabaseConnection) -> PromptedPasswordKey {
+        let sharedByProfile = connection.credentialMode.profileId != nil
+        return PromptedPasswordKey(
+            owner: ConnectionCredentialResolver.promptCacheKey(for: connection),
+            destination: sharedByProfile ? "" : connection.destination.digest
+        )
     }
 
     private func prepareDriverConfiguration(
@@ -385,7 +404,7 @@ extension DatabaseManager {
                         try await adapter.switchDatabase(to: savedDb)
                         activeSessions[connection.id]?.browseDatabase = savedDb
                     } catch {
-                        Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.publicLogShape, privacy: .public)")
+                        Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .private(mask: .hash))' for \(connection.id): \(error.publicLogShape, privacy: .public)")
                     }
                 }
             case .selectDatabaseFromConnectionField(let fieldId):
@@ -408,7 +427,7 @@ extension DatabaseManager {
                         try await schemaDriver.switchSchemaIfNeeded(to: savedSchema)
                         activeSessions[connection.id]?.browseSchema = savedSchema
                     } catch {
-                        Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.publicLogShape, privacy: .public)")
+                        Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .private(mask: .hash))': \(error.publicLogShape, privacy: .public)")
                     }
                 }
             }
@@ -479,7 +498,7 @@ extension DatabaseManager {
             """
             switchDatabase landed conn=\(connectionId, privacy: .public) \
             database=\(database, privacy: .private(mask: .hash)) \
-            browse=\(self.session(for: connectionId)?.resolvedBrowseDatabase ?? "none", privacy: .public)
+            browse=\(self.session(for: connectionId)?.resolvedBrowseDatabase ?? "none", privacy: .private(mask: .hash))
             """
         )
         AppEvents.shared.browseContainerChanged.send(connectionId)
@@ -676,7 +695,7 @@ extension DatabaseManager {
             try await driver.switchSchemaIfNeeded(to: defaultSchemaName)
         } catch {
             Self.logger.warning(
-                "Failed to reset schema to '\(defaultSchemaName, privacy: .public)' after a database switch: \(error.publicLogShape, privacy: .public)"
+                "Failed to reset schema to '\(defaultSchemaName, privacy: .private(mask: .hash))' after a database switch: \(error.publicLogShape, privacy: .public)"
             )
         }
     }
@@ -747,6 +766,8 @@ extension DatabaseManager {
         }
         disconnectsInFlight.insert(sessionId)
         defer { disconnectsInFlight.remove(sessionId) }
+        // Before the tunnel closes, so a reconnect attempt cannot rebuild it behind the teardown.
+        endRecoveryLoop(for: sessionId)
 
         // Before the tunnel goes: a debug target whose client vanishes keeps its locks until someone aborts it.
         await RoutineDebugSessions.shared.stopAll(connectionId: sessionId, tabsCloseAfter: true)
@@ -759,7 +780,7 @@ extension DatabaseManager {
         }
         let totalStart = Date()
         lifecycleLogger.info(
-            "[close] disconnectSession start connId=\(sessionId, privacy: .public) name=\(session.connection.name, privacy: .public) hasSSH=\(session.connection.resolvedSSHConfig.enabled)"
+            "[close] disconnectSession start connId=\(sessionId, privacy: .public) name=\(session.connection.name, privacy: .private(mask: .hash)) hasSSH=\(session.connection.resolvedSSHConfig.enabled)"
         )
 
         if let tunnelManager = activeTunnelManager(for: session.connection) {
@@ -817,6 +838,7 @@ extension DatabaseManager {
     func runPostDisconnectScriptsBeforeQuit() async {
         await postDisconnectScripts.fireAllAndWait { connectionIds in
             for connectionId in connectionIds {
+                self.endRecoveryLoop(for: connectionId)
                 await self.stopHealthMonitor(for: connectionId)
                 self.activeSessions[connectionId]?.driver?.disconnect()
                 MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
@@ -970,7 +992,7 @@ extension DatabaseManager {
         connectionStatusVersions[connectionId, default: 0] &+= 1
         sessionTransactions.prune(connectionId)
         AppEvents.shared.connectionStatusChanged.send(
-            ConnectionStatusChange(connectionId: connectionId, status: session.status)
+            ConnectionStatusChange(connectionId: connectionId, status: session.reportedStatus)
         )
     }
 
@@ -1025,6 +1047,25 @@ extension DatabaseManager {
         connectionStages.removeValue(forKey: connectionId)
     }
 
+    // The proxy reports its download as a stage of this attempt.
+    private func buildEffectiveConnectionReportingStages(
+        for resolvedConnection: DatabaseConnection,
+        sshPasswordOverride: String?,
+        deadline: ConnectionDeadline,
+        attempt: (number: Int, connectionId: UUID)
+    ) async throws -> DatabaseConnection {
+        try await CloudSQLProxyManager.$connectStageReporter.withValue(
+            stageReporter(for: attempt.connectionId, attempt: attempt.number)
+        ) {
+            try await buildEffectiveConnection(
+                for: resolvedConnection,
+                sshPasswordOverride: sshPasswordOverride,
+                deadline: deadline,
+                ownsAttempt: { !self.isAttemptCancelled(attempt.number, for: attempt.connectionId) }
+            )
+        }
+    }
+
     /// Handed to a driver, so it is called from whatever thread the handshake runs on and has
     /// to hop back before touching the main-actor event bus.
     internal func stageReporter(for connectionId: UUID, attempt: Int) -> ConnectionStageReporter {
@@ -1039,14 +1080,8 @@ extension DatabaseManager {
         disconnectReasons[connectionId] = reason
     }
 
-    /// Says that a session's driver has stopped answering, so the window stops presenting rows over
-    /// it. The driver is left installed: it is the handle every metadata read, every query route and
-    /// every reconnect still goes through, and taking it away would make an ordinary database switch
-    /// on the engines that reconnect to perform one look like a dropped connection.
-    ///
-    /// `startedWith` is the generation check. A reconnect cannot be cancelled once the driver is
-    /// inside a blocking connect, so a losing attempt completes late; without this it would mark a
-    /// connection unreachable that a later attempt had already restored.
+    // The driver stays installed: metadata reads, queries and the reconnect still go through it.
+    // `startedWith` fences off a late attempt, since a blocked connect cannot be cancelled.
     internal func markSessionUnreachable(
         _ sessionId: UUID,
         startedWith driver: DatabaseDriver?,
@@ -1054,27 +1089,32 @@ extension DatabaseManager {
     ) {
         guard let current = activeSessions[sessionId] else { return }
         guard current.driver === driver else { return }
+        endRecoveryLoop(for: sessionId)
         if let info { recordDisconnectReason(.sessionLost(info), for: sessionId) }
         updateSession(sessionId) { session in
             session.liveness = .unreachable(info)
+            session.recovery = nil
         }
     }
 
-    /// The one way back. Every path that installs a working driver clears the mark with it, so a
-    /// connection that recovers stops carrying the reason it once failed.
     internal func markSessionLive(_ sessionId: UUID) {
         guard activeSessions[sessionId] != nil else { return }
+        endRecoveryLoop(for: sessionId, resuming: .success)
         disconnectReasons.removeValue(forKey: sessionId)
         markSessionVerified(sessionId)
         updateSession(sessionId) { session in
             session.liveness = .live
+            session.recovery = nil
         }
     }
 
-    internal func markSessionRecovering(_ sessionId: UUID) {
-        guard let current = activeSessions[sessionId], current.liveness == .live else { return }
+    // Keeps the rows on screen: a blip that repairs itself should not blank the window.
+    internal func markSessionRecovering(_ sessionId: UUID, progress: ConnectionRecoveryProgress? = nil) {
+        guard let current = activeSessions[sessionId] else { return }
+        if case .unreachable = current.liveness { return }
         updateSession(sessionId) { session in
             session.liveness = .recovering
+            if let progress { session.recovery = progress }
         }
     }
 
@@ -1089,6 +1129,7 @@ extension DatabaseManager {
     // Every path that ends a session comes through here, so the gate, the pool and the post-disconnect script go with the entry.
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
+        endRecoveryLoop(for: connectionId)
         postDisconnectScripts.fire(for: connectionId)
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         sessionLanes.closeAll(for: connectionId)

@@ -15,8 +15,12 @@
 # array_agg and max over each type. Each lookalike counts its calls in a sequence, which survives a rollback. The
 # planted reads must print exactly what the clean ones did and nothing may count.
 #
+# The statements the app writes against the catalogs (Table Health, the primary key lookup) are read out of its source
+# and sent the way the app sends them. On the owner's path the role also plants an operator of identical signature
+# for each one the driver writes outside the catalog entry, which only a pg_catalog-qualified operator escapes.
+#
 # Also checks PostGIS when the server has it: an enum named geometry with its own st_asewkt in the schema must not
-# take the spatial rendering.
+# take the spatial rendering, and rendering must call no server function at all.
 #
 # Usage: scripts/probes/check-postgresql-catalog-shadowing.sh [host] [port]   (PostgreSQL 11 or later)
 # Environment: PGUSER (default postgres, a superuser: the reader whose privileges are at stake), PGPASSWORD, PSQL,
@@ -73,6 +77,7 @@ let package = Package(
             .product(name: "TableProPluginKit", package: "TableProCore"),
             .product(name: "TableProCoreTypes", package: "TableProCore"),
             .product(name: "TableProKerberos", package: "TableProCore"),
+            .product(name: "TableProGeometry", package: "TableProCore"),
             .product(name: "TableProPostgreSQLCore", package: "TableProCore"),
             .product(name: "TableProSQLVocabulary", package: "TableProCore"),
             .product(name: "TableProLogRedaction", package: "TableProCore")
@@ -151,6 +156,33 @@ INSERT INTO $SCHEMA.orders (customer_id, qty, note, tags) VALUES (1, 7, 'Hello',
 INSERT INTO $SCHEMA.places VALUES (1, 'POINT(0 0)', 'SRID=4326;POINT(1 2)');
 SQL
 
+# Read out of the app's source, so the probe and the app cannot drift.
+HOST_SQL="$WORK/host"
+mkdir -p "$HOST_SQL"
+static_query() {
+    awk -v name="$2" '
+        $0 ~ "static let " name " = \"\"\"$" { inside = 1; next }
+        inside && $0 ~ /^[[:space:]]*"""[[:space:]]*$/ { exit }
+        inside { print }
+    ' "$1"
+}
+HEALTH="$ROOT/TablePro/Core/TableHealth/PostgreSQLTableHealthProvider.swift"
+for name in statisticsQuery bloatQuery unusedIndexQuery missingPrimaryKeyQuery unindexedForeignKeyQuery; do
+    static_query "$HEALTH" "$name" > "$HOST_SQL/health-$name.sql"
+    [[ -s "$HOST_SQL/health-$name.sql" ]] || { echo "FAIL: $name not found in $HEALTH" >&2; exit 2; }
+done
+awk '/let query = """$/ { inside = 1; next } inside && /^[[:space:]]*"""[[:space:]]*$/ { exit } inside { print }' \
+    "$ROOT/TablePro/Core/SchemaTracking/PrimaryKeyConstraintLookup.swift" \
+    | sed -e "s/\\\\(schema)/$SCHEMA/" -e "s/\\\\(driver.escapeStringLiteral(tableName))/orders/" \
+    > "$HOST_SQL/primaryKeyConstraint.sql"
+grep -q "TABLE_SCHEMA = '$SCHEMA'" "$HOST_SQL/primaryKeyConstraint.sql" \
+    || { echo "FAIL: the primary key lookup was not found" >&2; exit 2; }
+export TP_SHADOW_HOST_SQL="$HOST_SQL"
+
+if [[ "$HAS_POSTGIS" == "1" ]]; then
+    as_reader -d postgres -c "ALTER DATABASE $DATABASE SET track_functions = 'all'" > /dev/null
+fi
+
 read_schema() {
     "$WORK/.build/debug/Probe" "$HOST" "$PORT" "$READER" "$DATABASE" "$SCHEMA" pinned > "$1-pinned.txt"
     "$WORK/.build/debug/Probe" "$HOST" "$PORT" "$READER" "$DATABASE" "$SCHEMA" explicit > "$1-explicit.txt"
@@ -171,14 +203,14 @@ END
 CREATE PROCEDURE $LOG_SCHEMA.plant() LANGUAGE plpgsql AS \$plant\$
 DECLARE
     operators text[] := ARRAY['=', '<>', '<', '>', '<=', '>=', '&', '|', '~~', '~~*', '!~~', '!~~*', '~', '~*', '!~',
-                              '||', '+', '-', '*', '/', '@>', '<@', '&&'];
+                              '||', '+', '-', '*', '/', '@>', '<@', '&&', '->>'];
     types regtype[] := ARRAY['oid', 'name', 'text', 'smallint', 'integer', 'bigint', '"char"', 'boolean', 'regclass',
                              'regtype', 'regproc', 'regprocedure', 'regnamespace', 'regrole', 'oidvector', 'int2vector',
                              'oid[]', 'smallint[]', 'text[]', 'name[]', 'aclitem[]', '"char"[]', 'real',
                              'double precision', 'numeric', 'character varying', 'character', 'xid',
                              'timestamp with time zone', 'interval', 'information_schema.sql_identifier',
                              'information_schema.cardinal_number', 'information_schema.character_data',
-                             'information_schema.yes_or_no']::regtype[];
+                             'information_schema.yes_or_no', 'json']::regtype[];
     swaps regtype[] := ARRAY['oid', 'name', 'text', 'smallint', 'integer', 'bigint', '"char"', 'regclass',
                              'character varying', 'information_schema.sql_identifier']::regtype[];
     functions text[] := ARRAY['pg_total_relation_size', 'pg_table_size', 'pg_indexes_size', 'pg_relation_size',
@@ -273,6 +305,16 @@ BEGIN
 END
 \$plant\$;
 CALL $LOG_SCHEMA.plant();
+
+-- Identical to pg_catalog's, so it wins only on a path that lists the schema first.
+CREATE FUNCTION $SCHEMA.plus_bigint_integer(bigint, integer) RETURNS bigint LANGUAGE plpgsql AS \$\$
+BEGIN
+    PERFORM $LOG_SCHEMA.hit('+(bigint, integer) identical');
+    RETURN \$1 OPERATOR(pg_catalog.+) \$2;
+END
+\$\$;
+CREATE OPERATOR $SCHEMA.+ (LEFTARG = bigint, RIGHTARG = integer, FUNCTION = $SCHEMA.plus_bigint_integer);
+
 SELECT pg_catalog.count(*) || ' lookalike functions and operators' FROM pg_catalog.pg_proc
 WHERE pronamespace = '$SCHEMA'::pg_catalog.regnamespace;
 SQL
@@ -285,11 +327,23 @@ HITS="$(as_reader -d "$DATABASE" -Atc "SELECT CASE WHEN is_called THEN last_valu
 CALLS="$(as_reader -d "$DATABASE" -Atc "SELECT signature, pg_catalog.count(*) FROM $LOG_SCHEMA.calls GROUP BY 1 ORDER BY 1")"
 CHANGED="$(diff "$WORK/clean-pinned.txt" "$WORK/planted-pinned.txt"; diff "$WORK/clean-explicit.txt" "$WORK/planted-explicit.txt")" || true
 
+# A backend reports its function counts when it ends, and before PostgreSQL 15 the collector takes a moment more.
+RENDER_CALLS=0
+if [[ "$HAS_POSTGIS" == "1" ]]; then
+    for _ in 1 2 3 4 5; do
+        RENDER_CALLS="$(as_reader -d "$DATABASE" -Atc "SELECT COALESCE(pg_catalog.sum(calls), 0) FROM pg_catalog.pg_stat_user_functions WHERE funcname = 'st_asewkt' AND schemaname = 'public'")"
+        [[ "$RENDER_CALLS" == "0" ]] || break
+        sleep 1
+    done
+    echo "Server ST_AsEWKT calls while rendering: $RENDER_CALLS"
+fi
+
 grep -h '^error|' "$WORK/clean-pinned.txt" "$WORK/clean-explicit.txt" | sed 's/^/clean read failed: /' || true
 echo "Lookalike calls: $HITS"
 [[ -z "$CALLS" ]] || echo "$CALLS" | sed 's/^/  ran: /'
 [[ -z "$CHANGED" ]] || { echo "Lines that changed:"; echo "$CHANGED" | head -60; }
-if [[ "$HITS" == "0" && -z "$CHANGED" ]] && ! grep -q '^error|' "$WORK/clean-pinned.txt" "$WORK/clean-explicit.txt"; then
+if [[ "$HITS" == "0" && "$RENDER_CALLS" == "0" && -z "$CHANGED" ]] \
+    && ! grep -q '^error|' "$WORK/clean-pinned.txt" "$WORK/clean-explicit.txt"; then
     echo "OK"
 else
     echo "BUG"

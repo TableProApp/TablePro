@@ -8,6 +8,7 @@
 import AppKit
 import ImageIO
 import os
+import TableProProcess
 
 internal enum CellImageRender: Equatable {
     case rendered(NSImage, pixelSize: CGSize?)
@@ -122,18 +123,19 @@ internal struct HelperProcessSvgRenderer: SvgImageRendering {
     }
 
     private static func run(executable: URL, data: Data, maxPixelSize: Int) -> Data? {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = [String(maxPixelSize)]
-
         let input = Pipe()
         let output = Pipe()
-        process.standardInput = input
-        process.standardOutput = output
-        /// Nothing reads the helper's stderr, and an undrained pipe deadlocks a child that fills it.
-        process.standardError = FileHandle.nullDevice
-
+        let process: Process
         do {
+            process = try ProcessLauncher.process(for: ProcessCommand(
+                executable: executable,
+                arguments: [String(maxPixelSize)],
+                environment: ProcessEnvironment.minimal()
+            ))
+            process.standardInput = input
+            process.standardOutput = output
+            // Nothing reads the helper's stderr, and an undrained pipe deadlocks a child that fills it.
+            process.standardError = FileHandle.nullDevice
             try process.run()
         } catch {
             logger.error("could not start the image renderer: \(error.publicLogShape, privacy: .public)")

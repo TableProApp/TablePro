@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 /// One Kafka request: an API key, the negotiated version, and a body encoder that is handed a
 /// writer already told whether this version is flexible.

@@ -157,7 +157,7 @@ final class MCPPairingService {
         do {
             approval = try await AlertHelper.runPairingApproval(request: request)
         } catch let error as DatabaseAccessError where error.isUserCancelled {
-            Self.logger.info("Pairing denied for client '\(request.clientName, privacy: .public)'")
+            Self.logger.info("Pairing denied for client '\(request.clientName, privacy: .private(mask: .hash))'")
             if let redirect = PairingRedirectBuilder.denied(
                 base: target.url,
                 state: request.state,
@@ -213,8 +213,8 @@ final class MCPPairingService {
 
         Self.logger.info(
             """
-            Pairing approved for client '\(request.clientName, privacy: .public)' \
-            redirect=\(target.displayValue, privacy: .public)
+            Pairing approved for client '\(request.clientName, privacy: .private(mask: .hash))' \
+            redirect=\(target.displayValue, privacy: .private(mask: .hash))
             """
         )
         NSWorkspace.shared.open(redirect)

@@ -4,12 +4,12 @@
 //
 //  The `CREATE TABLE`, column, index and foreign key clauses the driver writes. Pure, so what a
 //  copied table's DDL says is pinned by a test without a FreeTDS connection.
-//  Compiled into the test target via project.yml.
 //
 
 import Foundation
 import TableProMSSQLCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 enum MSSQLTableDefinitionSQL {
     static func createTable(_ definition: PluginCreateTableDefinition, schema: String) -> String? {
@@ -41,7 +41,11 @@ enum MSSQLTableDefinitionSQL {
         let primaryKey = primaryKeyClause(for: definition.indexes)
         let primaryKeyColumns = definition.columns.filter(\.isPrimaryKey)
         let inlinePrimaryKey = primaryKeyColumns.count == 1 ? primaryKey : nil
-        var parts = definition.columns.map { columnDefinition($0, inlinePrimaryKey: inlinePrimaryKey) }
+        var parts: [String] = []
+        for column in definition.columns {
+            guard let part = columnDefinition(column, inlinePrimaryKey: inlinePrimaryKey) else { return nil }
+            parts.append(part)
+        }
 
         if primaryKeyColumns.count > 1 {
             let columns = primaryKeyColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
@@ -49,7 +53,8 @@ enum MSSQLTableDefinitionSQL {
         }
 
         for foreignKey in definition.foreignKeys {
-            parts.append(foreignKeyDefinition(foreignKey, defaultSchema: schema))
+            guard let part = foreignKeyDefinition(foreignKey, defaultSchema: schema) else { return nil }
+            parts.append(part)
         }
 
         let table = qualifiedTable(definition.tableName, schema: schema)
@@ -121,21 +126,32 @@ enum MSSQLTableDefinitionSQL {
         return hasClusteredIndex ? "PRIMARY KEY NONCLUSTERED" : "PRIMARY KEY"
     }
 
-    /// - Parameter inlinePrimaryKey: the clause written after the column when it is the table's only
-    ///   key column, or nil to write none.
-    static func columnDefinition(_ column: PluginColumnDefinition, inlinePrimaryKey: String?) -> String {
+    // Nil when `refusal(for:)` names a reason. `inlinePrimaryKey` is written after the table's only key column.
+    static func columnDefinition(_ column: PluginColumnDefinition, inlinePrimaryKey: String?) -> String? {
+        guard MSSQLDefinitionText.isColumnType(column.dataType) else { return nil }
         var definition = "\(quoteIdentifier(column.name)) \(column.dataType)"
         if column.autoIncrement {
             definition += " IDENTITY(1,1)"
         }
         definition += column.isNullable ? " NULL" : " NOT NULL"
         if let defaultValue = column.defaultValue {
-            definition += " DEFAULT \(defaultValue)"
+            guard let expression = MSSQLDefinitionText.expression(defaultValue) else { return nil }
+            definition += " DEFAULT \(expression)"
         }
         if let inlinePrimaryKey, column.isPrimaryKey {
             definition += " \(inlinePrimaryKey)"
         }
         return definition
+    }
+
+    static func refusal(for column: PluginColumnDefinition, writesType: Bool = true, writesDefault: Bool = true) -> String? {
+        if writesType, !MSSQLDefinitionText.isColumnType(column.dataType) {
+            return MSSQLDefinitionRefusal.columnType(column.name, column.dataType).reason
+        }
+        if writesDefault, let value = column.defaultValue, MSSQLDefinitionText.expression(value) == nil {
+            return MSSQLDefinitionRefusal.columnDefault(column.name).reason
+        }
+        return nil
     }
 
     static func indexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
@@ -150,11 +166,11 @@ enum MSSQLTableDefinitionSQL {
         return "CREATE \(unique)\(kind)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(columns))"
     }
 
-    /// The referenced table is schema-qualified. An unqualified name resolves against the caller's
-    /// own default schema rather than the schema the table is being created in, so a foreign key
-    /// pointing at `sales.orders` used to be created against whatever `orders` that login could see,
-    /// or to fail with nothing naming the schema as the reason.
-    static func foreignKeyDefinition(_ foreignKey: PluginForeignKeyDefinition, defaultSchema: String) -> String {
+    // The referenced table is schema-qualified: unqualified, it resolves against the login's default schema.
+    static func foreignKeyDefinition(_ foreignKey: PluginForeignKeyDefinition, defaultSchema: String) -> String? {
+        guard let onDelete = MSSQLDefinitionText.referentialAction(foreignKey.onDelete),
+              let onUpdate = MSSQLDefinitionText.referentialAction(foreignKey.onUpdate)
+        else { return nil }
         let columns = foreignKey.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let referencedColumns = foreignKey.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let referencedSchema = foreignKey.referencedSchema.flatMap { $0.isEmpty ? nil : $0 } ?? defaultSchema
@@ -164,11 +180,11 @@ enum MSSQLTableDefinitionSQL {
         if !referencedColumns.isEmpty {
             definition += " (\(referencedColumns))"
         }
-        if foreignKey.onDelete != "NO ACTION" {
-            definition += " ON DELETE \(foreignKey.onDelete)"
+        if onDelete != "NO ACTION" {
+            definition += " ON DELETE \(onDelete)"
         }
-        if foreignKey.onUpdate != "NO ACTION" {
-            definition += " ON UPDATE \(foreignKey.onUpdate)"
+        if onUpdate != "NO ACTION" {
+            definition += " ON UPDATE \(onUpdate)"
         }
         return definition
     }
@@ -178,6 +194,6 @@ enum MSSQLTableDefinitionSQL {
     }
 
     static func quoteIdentifier(_ name: String) -> String {
-        "[\(MSSQLSchemaQueries.escapeBracket(name))]"
+        SQLQuoting.identifier(name, quote: .bracket)
     }
 }

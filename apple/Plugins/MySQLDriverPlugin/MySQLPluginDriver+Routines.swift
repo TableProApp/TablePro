@@ -103,19 +103,20 @@ extension MySQLPluginDriver {
     func fetchTriggerDDL(_ trigger: PluginTriggerInfo) async throws -> String {
         if let definition = trigger.definition, !definition.isEmpty { return definition }
         let listed = try await triggerList(schema: routineSchema(trigger.schema), table: trigger.table)
-        guard let definition = listed.first(where: { $0.name == trigger.name })?.definition,
-              !definition.isEmpty
-        else {
+        guard let match = listed.first(where: { $0.name == trigger.name }) else {
             throw PluginObjectSourceError.notFound(trigger.name)
+        }
+        guard let definition = match.definition, !definition.isEmpty else {
+            throw PluginObjectSourceError.unsupported(trigger.name)
         }
         return definition
     }
 
-    /// The sidebar list, the per-table read and the DDL lookup all come through here, and before
-    /// 5.0.10 there is no `TRIGGERS` table to ask.
+    // The sidebar list, the per-table read and the DDL lookup all come through here. 5.0.10 added `TRIGGERS`.
     func triggerList(schema: String, table: String?) async throws -> [PluginTriggerInfo] {
         guard holdsForServer(MySQLServerVersion.hasTriggerCatalog(banner:flavor:)) else { return [] }
         let result = try await execute(ownStatement: MySQLObjectQueries.triggerList(schema: schema, table: table))
+        let flavor = self.flavor
         return result.rows.compactMap { row -> PluginTriggerInfo? in
             guard let name = row[safe: 0]?.asText,
                   let owningTable = row[safe: 1]?.asText,
@@ -127,6 +128,8 @@ extension MySQLPluginDriver {
             let orientation = row[safe: 5]?.asText
             let condition = row[safe: 7]?.asText
             let definer = row[safe: 8]?.asText
+            // A condition that is not one expression could end the statement it is assembled into.
+            let assembles = condition.map { $0.isEmpty || mysqlIsSingleExpression($0, flavor: flavor) } ?? true
             let header = MySQLObjectQueries.triggerStatement(
                 name: name,
                 table: owningTable,
@@ -152,7 +155,7 @@ extension MySQLPluginDriver {
                 event: event,
                 orientation: orientation,
                 statement: body,
-                definition: "\(header)\n\(body)",
+                definition: assembles ? "\(header)\n\(body)" : nil,
                 enabled: nil,
                 attributes: attributes
             )

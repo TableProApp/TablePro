@@ -1,16 +1,33 @@
 import Foundation
+import TableProSQLGrammar
 
-/// What the host lets one statement do on the server.
-nonisolated enum MongoScriptAccess: Sendable, Equatable {
-    case read
-    case readWrite
+// The app's own statements run as `.read` or `.readWrite`. An external caller's approval can also take away
+// dropping or deleting data and running code on the server, for a read as well as a write.
+nonisolated struct MongoScriptAccess: Sendable, Equatable {
+    var writes: Bool
+    var allowsDestructive: Bool
+    var allowsServerCode: Bool
+
+    static let read = MongoScriptAccess(writes: false, allowsDestructive: false, allowsServerCode: true)
+    static let readWrite = MongoScriptAccess(writes: true, allowsDestructive: true, allowsServerCode: true)
 }
 
-/// The host calls a statement sent as a read may make.
-///
-/// The shell keeps its globals from one statement to the next, so a read's text proves nothing about
-/// the code it runs: an earlier statement can have pointed `find` at `deleteMany`. A read is held to
-/// what the unmodified prelude sends for a statement the app's grammar proves a read.
+nonisolated enum MongoScriptRefusal: Sendable, Equatable {
+    case read(String)
+    case destructive(String)
+    case serverCode(String)
+
+    var message: String {
+        switch self {
+        case .read(let name): return MongoScriptText.refusedUnderRead(name)
+        case .destructive(let name): return MongoScriptText.refusedDestructive(name)
+        case .serverCode(let name): return MongoScriptText.refusedServerCode(name)
+        }
+    }
+}
+
+// Checked at the host op, not on the statement's text: the shell keeps its globals from one statement to the next, so
+// an earlier statement can have pointed `find` at `deleteMany`, and any script can call `__tp_exec` with any op.
 nonisolated enum MongoScriptAccessPolicy {
     static let readOperations: Set<String> = [
         "currentDatabase", "useDatabase", "listCollections", "listIndexes", "countDocuments",
@@ -19,49 +36,138 @@ nonisolated enum MongoScriptAccessPolicy {
         "encodeUuid", "sleep"
     ]
 
-    /// Lowercased. `explain`, `count`, `distinct` and `collStats` have ops of their own, and sent
-    /// through `command` they can wrap a write.
+    // Lowercased. `explain`, `count`, `distinct` and `collStats` have ops of their own, and sent through `command` they
+    // can wrap a write.
     static let readCommands: Set<String> = [
         "listcollections", "dbstats", "buildinfo", "serverstatus", "hostinfo", "currentop", "listdatabases"
     ]
 
     static let writeStages: Set<String> = ["$out", "$merge"]
 
-    static func allows(op: String, request: [String: Any], access: MongoScriptAccess) -> Bool {
-        guard access == .read else { return true }
-        guard op == "command" else { return readOperations.contains(op) }
-        guard let document = MongoScriptJson.rawJson(request["command"]),
-              let name = commandName(of: document) else {
-            return false
-        }
-        return isReadCommand(name)
+    // Server-side JavaScript, plus the two stages that write to a collection the pipeline names.
+    static let serverCodeKeys: Set<String> = ["$where", "$function", "$accumulator", "$out", "$merge"]
+
+    // The server takes its own operators from any client, and rewrites `mapReduce` into two that run a function.
+    static let internalOperatorPrefix = "$_internal"
+
+    // Lowercased. `$eval` and `group` ran JavaScript on servers before 4.2.
+    static let serverCodeCommands = MongoCommandCatalog.serverCodeCommands
+
+    private static let documentMembers: [String: [String]] = [
+        "openCursor": ["filter", "projection", "pipeline", "options"],
+        "cursorConfigure": ["value"],
+        "command": ["command"],
+        "countDocuments": ["filter"],
+        "distinct": ["filter"],
+        "insertOne": ["document", "options"],
+        "insertMany": ["documents", "options"],
+        "update": ["filter", "update", "options"],
+        "replace": ["filter", "update", "options"],
+        "delete": ["filter", "options"],
+        "findAndModify": ["filter", "update", "options"],
+        "bulkWrite": ["operations", "options"],
+        "createIndex": ["keys", "options"],
+        "dropIndex": ["index"]
+    ]
+
+    static func refusal(op: String, request: [String: Any], access: MongoScriptAccess) -> MongoScriptRefusal? {
+        let name = refusedName(op: op, request: request)
+        if !access.writes, !readAllows(op: op, request: request) { return .read(name) }
+        if !access.allowsDestructive, destroys(op: op, request: request) { return .destructive(name) }
+        if !access.allowsServerCode, runsServerCode(op: op, request: request) { return .serverCode(name) }
+        return nil
     }
 
     static func isReadCommand(_ name: String) -> Bool {
         name.unicodeScalars.allSatisfy(\.isASCII) && readCommands.contains(name.lowercased())
     }
 
-    /// The op a refusal names: the command for `command`, since that is what the statement wrote.
+    // The name the statement wrote rather than the host op: the command, the cursor's method, the modifier.
     static func refusedName(op: String, request: [String: Any]) -> String {
-        guard op == "command" else { return op }
-        return MongoScriptJson.rawJson(request["command"]).flatMap(commandName(of:)) ?? op
+        switch op {
+        case "command": return commandName(in: request) ?? op
+        case "openCursor": return (request["kind"] as? String) == "aggregate" ? "aggregate" : "find"
+        case "cursorConfigure": return (request["key"] as? String) ?? op
+        default: return op
+        }
     }
 
-    /// The first member of a command document as libbson reads it, escapes decoded, or nil when the
-    /// text does not open with one.
+    // The first member of a command document as libbson reads it, escapes decoded, or nil when the text does not open
+    // with one.
     static func commandName(of json: String) -> String? {
         StrictJsonKeys.firstKey(of: json)
     }
 
-    /// Whether text sent to the server as a pipeline, aggregate options or a whole command carries a
-    /// `$out` or `$merge` key at any depth. A string value spelled `"$out"` is a field path, not a
-    /// stage. Text that is not strict JSON counts as writing.
+    // `multi` as the host reads it when it builds the delete.
+    static func deletesMany(_ request: [String: Any]) -> Bool {
+        request["multi"] as? Bool ?? false
+    }
+
+    // A string value spelled `"$out"` is a field path, not a stage. Text that is not strict JSON counts as writing.
     static func writesThroughPipeline(_ json: String) -> Bool {
         StrictJsonKeys.holdsKey(from: writeStages, in: json) ?? true
     }
 
     static func writes(pipeline: String, options: String?) -> Bool {
         writesThroughPipeline(pipeline) || options.map(writesThroughPipeline) == true
+    }
+
+    // At any depth. Text that is not strict JSON counts as holding some.
+    static func holdsServerCode(_ json: String) -> Bool {
+        StrictJsonKeys.holdsKey(in: json) { serverCodeKeys.contains($0) || $0.hasPrefix(internalOperatorPrefix) } ?? true
+    }
+
+    private static func commandName(in request: [String: Any]) -> String? {
+        MongoScriptJson.rawJson(request["command"]).flatMap(commandName(of:))
+    }
+
+    private static func readAllows(op: String, request: [String: Any]) -> Bool {
+        guard op == "command" else { return readOperations.contains(op) }
+        return commandName(in: request).map(isReadCommand) == true
+    }
+
+    private static func destroys(op: String, request: [String: Any]) -> Bool {
+        switch op {
+        case "dropCollection", "dropIndex", "renameCollection":
+            return true
+        case "delete":
+            return deletesMany(request)
+        case "bulkWrite":
+            // An operation the host cannot build fails the whole bulkWrite before it sends anything.
+            let statements = try? MongoScriptCommandBuilder.bulkStatements(
+                operations: MongoScriptJson.rawJson(request["operations"]),
+                collection: (request["collection"] as? String) ?? "",
+                writeConcern: nil
+            )
+            return statements?.contains { $0.kind == .delete && $0.touchesMany } ?? true
+        case "command":
+            guard let name = commandName(in: request), MongoCommandCatalog.preserves(name) else { return true }
+            let expiring = ["createindexes", "collmod"].contains(name.lowercased())
+            return expiring && holdsExpiringOption(MongoScriptJson.rawJson(request["command"]))
+        case "createIndex":
+            return holdsExpiringOption(MongoScriptJson.rawJson(request["options"]))
+                || holdsExpiringOption(MongoScriptJson.rawJson(request["keys"]))
+        default:
+            return false
+        }
+    }
+
+    // At any depth; text that is not strict JSON counts as holding one.
+    private static func holdsExpiringOption(_ json: String?) -> Bool {
+        guard let json else { return false }
+        return StrictJsonKeys.holdsKey(in: json) { MongoCommandCatalog.expiringOptions.contains($0) } ?? true
+    }
+
+    private static func runsServerCode(op: String, request: [String: Any]) -> Bool {
+        if op == "command", let command = MongoScriptJson.rawJson(request["command"]) {
+            if let name = commandName(of: command), serverCodeCommands.contains(name.lowercased()) { return true }
+            // `explain` runs the command it wraps, and `executionStats` runs a mapReduce's functions.
+            let wrapsCode = StrictJsonKeys.holdsKey(in: command) { ["mapreduce", "$eval"].contains($0.lowercased()) }
+            if wrapsCode ?? true { return true }
+        }
+        return (documentMembers[op] ?? []).contains { member in
+            MongoScriptJson.rawJson(request[member]).map(holdsServerCode) == true
+        }
     }
 }
 
@@ -90,11 +196,20 @@ nonisolated private struct StrictJsonKeys {
 
     /// Nil when the text is not one strict JSON object or array.
     static func holdsKey(from names: Set<String>, in text: String) -> Bool? {
+        holdsKey(in: text, scalarAllowed: false) { names.contains($0) }
+    }
+
+    // Nil when the text is not one strict JSON value.
+    static func holdsKey(in text: String, where matches: (String) -> Bool) -> Bool? {
+        holdsKey(in: text, scalarAllowed: true, where: matches)
+    }
+
+    private static func holdsKey(in text: String, scalarAllowed: Bool, where matches: (String) -> Bool) -> Bool? {
         var reader = StrictJsonKeys(text)
         do {
             reader.skipWhitespace()
-            guard reader.peek == "{" || reader.peek == "[" else { return nil }
-            if try reader.value(depth: 0, names: names) { return true }
+            guard scalarAllowed || reader.peek == "{" || reader.peek == "[" else { return nil }
+            if try reader.value(depth: 0, matches: matches) { return true }
             reader.skipWhitespace()
             return reader.index == reader.scalars.count ? false : nil
         } catch {
@@ -122,12 +237,12 @@ nonisolated private struct StrictJsonKeys {
         }
     }
 
-    /// True as soon as a key in `names` is found; the rest is not read.
-    private mutating func value(depth: Int, names: Set<String>) throws -> Bool {
+    // True as soon as a matching key is found; the rest is not read.
+    private mutating func value(depth: Int, matches: (String) -> Bool) throws -> Bool {
         guard depth < Self.maximumDepth else { throw Malformed() }
         switch peek {
-        case "{": return try object(depth: depth, names: names)
-        case "[": return try array(depth: depth, names: names)
+        case "{": return try object(depth: depth, matches: matches)
+        case "[": return try array(depth: depth, matches: matches)
         case "\"": _ = try string()
         case "t": try literal("true")
         case "f": try literal("false")
@@ -137,31 +252,31 @@ nonisolated private struct StrictJsonKeys {
         return false
     }
 
-    private mutating func object(depth: Int, names: Set<String>) throws -> Bool {
+    private mutating func object(depth: Int, matches: (String) -> Bool) throws -> Bool {
         try expect("{")
         skipWhitespace()
         if consume("}") { return false }
         while true {
             skipWhitespace()
             let key = try string()
-            if names.contains(key) { return true }
+            if matches(key) { return true }
             skipWhitespace()
             try expect(":")
             skipWhitespace()
-            if try value(depth: depth + 1, names: names) { return true }
+            if try value(depth: depth + 1, matches: matches) { return true }
             skipWhitespace()
             if consume("}") { return false }
             try expect(",")
         }
     }
 
-    private mutating func array(depth: Int, names: Set<String>) throws -> Bool {
+    private mutating func array(depth: Int, matches: (String) -> Bool) throws -> Bool {
         try expect("[")
         skipWhitespace()
         if consume("]") { return false }
         while true {
             skipWhitespace()
-            if try value(depth: depth + 1, names: names) { return true }
+            if try value(depth: depth + 1, matches: matches) { return true }
             skipWhitespace()
             if consume("]") { return false }
             try expect(",")

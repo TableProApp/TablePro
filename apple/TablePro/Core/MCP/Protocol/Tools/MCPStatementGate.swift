@@ -1,19 +1,19 @@
 import Foundation
 import TableProMCP
+import TableProSQLGrammar
 
+// The MCP side of `ExternalStatementGate`. A tool classifies the text before anything connects, resolves the scope,
+// builds the exact statements, then approves them, and runs only the `ApprovedOperation` it gets back.
 enum MCPStatementGate {
     @discardableResult
-    static func authorize(
+    static func classify(
         sql: String,
         meta: ToolConnectionMetadata,
         allowsDestructive: Bool,
         allowsMultiStatement: Bool = false,
         readOnly: Bool = false,
-        forcesUserConsent: Bool = false,
-        operationLabel: String,
-        context: MCPRequestContext,
-        services: MCPToolServices
-    ) async throws -> QueryClassification {
+        context: MCPRequestContext
+    ) throws -> QueryClassification {
         // The caller lowering its own reach, so its refusal names the request rather than the connection.
         if readOnly, QueryClassifier.classify(sql, databaseType: meta.databaseType).tier != .safe {
             throw MCPToolExecutionError.denied(Self.readOnlyRefusal)
@@ -37,22 +37,45 @@ enum MCPStatementGate {
         }
 
         if classification.tier != .safe {
-            try MCPToolAuthorization.requireScope(
-                .toolsWrite,
-                context: context,
-                reason: String(localized: "Writing to a database needs the tools:write scope.")
+            try requireWriteScope(context: context)
+        }
+        return classification
+    }
+
+    // An operation with no text of its own, refused by what it is: creating a database, a transaction.
+    static func classify(
+        kind: OperationKind,
+        meta: ToolConnectionMetadata,
+        allowsDestructive: Bool,
+        context: MCPRequestContext
+    ) throws {
+        guard kind.declaresWrite else { return }
+        try translating { try ExternalStatementGate.refuseWrite(externalAccess: meta.externalAccess) }
+        if kind.declaresDestructive, !allowsDestructive {
+            throw MCPToolExecutionError.denied(
+                "\(String(localized: "This statement drops or truncates data.")) "
+                    + String(localized: "Use confirm_destructive_operation for it.")
             )
         }
+        try requireWriteScope(context: context)
+    }
 
-        let consent = try consentOutcome(
-            classification: classification,
-            sql: sql,
-            meta: meta,
-            forcesUserConsent: forcesUserConsent,
-            operationLabel: operationLabel,
-            context: context
-        )
-
+    // Elicitation, then Safe Mode, on the statements as they will run in `scope`.
+    static func approve(
+        _ statements: [OperationStatement],
+        kind: OperationKind,
+        unit: OperationUnit = .statement,
+        gradedSQL: String? = nil,
+        displayStatements: [String]? = nil,
+        scope: DatabaseScope,
+        meta: ToolConnectionMetadata,
+        allowsDestructive: Bool,
+        allowsMultiStatement: Bool = false,
+        forcesUserConsent: Bool = false,
+        operationLabel: String,
+        context: MCPRequestContext,
+        services: MCPToolServices
+    ) async throws -> ApprovedOperation {
         var capabilities: CallerCapabilities = [.mayWrite]
         if allowsDestructive {
             capabilities.insert(.mayRunDestructive)
@@ -64,18 +87,36 @@ enum MCPStatementGate {
         if forcesUserConsent {
             capabilities.insert(.confirmsWrites)
         }
-        capabilities.formUnion(consent.capabilities)
-
-        try await services.authPolicy.checkSafeModeDialog(
-            principal: context.principal,
-            sql: sql,
-            connectionId: meta.connectionId,
+        let pending = PendingOperation(
+            scope: scope,
             databaseType: meta.databaseType,
+            statements: statements,
+            kind: kind,
+            unit: unit,
+            caller: .mcpClient(label: context.principal.auditLabel),
             capabilities: capabilities,
-            operationLabel: operationLabel
+            operationDescription: MCPAuthPolicy.operationDescription(for: operationLabel),
+            gradedSQL: gradedSQL,
+            displayStatements: displayStatements
         )
 
-        return classification
+        let needed = forcesUserConsent || ExternalStatementGate.requiresUserConsent(
+            kind: kind,
+            sql: pending.gradedSQL,
+            databaseType: meta.databaseType,
+            safeModeLevel: meta.safeModeLevel
+        )
+        let consent = try consentOutcome(
+            needed: needed,
+            pending: pending,
+            meta: meta,
+            operationLabel: operationLabel,
+            context: context
+        )
+
+        var approved = pending
+        approved.capabilities.formUnion(consent.capabilities)
+        return try await services.authPolicy.checkSafeModeDialog(principal: context.principal, operation: approved)
     }
 
     static let readOnlyRefusal = String(localized: "This request is read only, and the statement is not a read.")
@@ -93,8 +134,15 @@ enum MCPStatementGate {
         )
     }
 
-    /// The shared gate speaks in its own vocabulary so it owes nothing to MCP. Its two refusals map
-    /// onto the two tool errors that already mean the same things.
+    private static func requireWriteScope(context: MCPRequestContext) throws {
+        try MCPToolAuthorization.requireScope(
+            .toolsWrite,
+            context: context,
+            reason: String(localized: "Writing to a database needs the tools:write scope.")
+        )
+    }
+
+    // The shared gate speaks in its own vocabulary, mapped onto the two tool errors that mean the same things.
     private static func translating<T>(_ body: () throws -> T) throws -> T {
         do {
             return try body()
@@ -109,39 +157,56 @@ enum MCPStatementGate {
     }
 
     private static func consentOutcome(
-        classification: QueryClassification,
-        sql: String,
+        needed: Bool,
+        pending: PendingOperation,
         meta: ToolConnectionMetadata,
-        forcesUserConsent: Bool,
         operationLabel: String,
         context: MCPRequestContext
     ) throws -> MCPConsentOutcome {
-        let needed = forcesUserConsent
-            || requiresUserConsent(classification: classification, sql: sql, meta: meta)
         guard needed else {
+            return .nativeAlert
+        }
+        let shown = pending.displayStatements.joined(separator: "\n")
+        // A detail the client's form would have to cut is never sent; the Mac dialog shows it whole instead.
+        guard let detail = preview(of: shown) else {
             return .nativeAlert
         }
         return try MCPToolConsent.resolve(
             key: "approve_statement",
-            message: String(
-                format: String(localized: "Allow %@ on '%@'?"),
-                operationLabel,
-                meta.connectionName
-            ),
-            detail: preview(of: sql),
+            message: consentMessage(operationLabel: operationLabel, connectionName: meta.connectionName, scope: pending.scope),
+            detail: detail.isEmpty ? nil : detail,
             context: context
         )
     }
 
-    /// The only text the client shows beside its Approve control, so it is the whole of what the
-    /// user reads before saying yes. It keeps its line breaks: a statement folded onto one line is
-    /// unreadable at the length that matters, and the cut used to land before the `WHERE` clause.
-    /// The cap is sized for a form field in someone else's interface, not for a view we draw.
+    static func consentMessage(operationLabel: String, connectionName: String, scope: DatabaseScope) -> String {
+        guard !scope.isServerScoped else {
+            return String(format: String(localized: "Allow %@ on '%@'?"), operationLabel, connectionName)
+        }
+        guard let schema = scope.schema else {
+            return String(
+                format: String(localized: "Allow %1$@ on '%2$@', database '%3$@'?"),
+                operationLabel,
+                connectionName,
+                scope.database
+            )
+        }
+        return String(
+            format: String(localized: "Allow %1$@ on '%2$@', database '%3$@', schema '%4$@'?"),
+            operationLabel,
+            connectionName,
+            scope.database,
+            schema
+        )
+    }
+
+    // The only text the client shows beside its Approve control, so it keeps its line breaks. The cap is sized for
+    // a form field in someone else's interface; past it there is no detail, and the caller falls back to the dialog.
     static let previewCharacterLimit = 2_000
 
-    static func preview(of sql: String) -> String {
+    static func preview(of sql: String) -> String? {
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (trimmed as NSString).length > previewCharacterLimit else { return trimmed }
-        return (trimmed as NSString).substring(to: previewCharacterLimit) + "…"
+        guard (trimmed as NSString).length <= previewCharacterLimit else { return nil }
+        return trimmed
     }
 }

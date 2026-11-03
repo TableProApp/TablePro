@@ -177,6 +177,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if listsTemporaryTables {
             capabilities.insert(.temporaryTables)
         }
+        if flavor.enforcesReadOnlyTransactions {
+            capabilities.insert(.readOnlyStatements)
+        }
         return capabilities
     }
 
@@ -184,8 +187,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         flavor.isDatabend ? DatabendCatalog.quoteIdentifier(name) : mysqlQuoteIdentifier(name)
     }
 
+    // The backslash form under every session: the host also writes dumps and copied INSERTs with this, and a dump
+    // declares a mode without NO_BACKSLASH_ESCAPES, so the single-quote form would end early on restore.
     func escapeStringLiteral(_ value: String) -> String {
-        mysqlEscapeStringLiteral(value)
+        flavor.isDatabend ? DatabendLiteral.escapeString(value) : mysqlEscapeStringLiteral(value)
     }
 
     init(config: DriverConnectionConfig) {
@@ -221,14 +226,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         // A StarRocks handshake database is read in default_catalog, so the scope is entered after connecting.
         let entersStarRocksScope = Self.initialFlavor(for: config).isStarRocks
+        let transport = MySQLTransport(host: config.host, port: config.port, additionalFields: config.additionalFields)
         let conn = MariaDBPluginConnection(
-            transport: MySQLTransport(host: config.host, port: config.port, additionalFields: config.additionalFields),
+            transport: transport,
             user: config.username,
             password: kerberos == nil ? password : nil,
             database: entersStarRocksScope ? "" : activeDatabaseName,
             sslConfig: sslConfig,
             enableCleartextPlugin: config.additionalFields["enableCleartextPlugin"] == "true",
             tunnelSecuresTransport: config.additionalFields["tunnelSecuresTransport"] == "true",
+            tlsServerName: MariaDBTLSMode.serverName(for: config, transport: transport),
             queryTimeoutSeconds: config.additionalFields["queryTimeoutSeconds"].flatMap { Int($0) } ?? 0,
             connectionEncoding: MySQLConnectionEncoding(additionalFields: config.additionalFields),
             connectTimeoutMilliseconds: connectTimeout.milliseconds,
@@ -397,6 +404,95 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult {
         try await retryingAfterStop {
             try await self.executeParameterizedOnce(query: query, parameters: parameters, rowCap: nil)
+        }
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else {
+            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+        let cap = rowCap.flatMap { $0 > 0 ? $0 : nil }
+        return try await retryingAfterStop {
+            try await self.executeReadOnly(query: query, parameters: parameters, rowCap: cap, isRetry: false)
+        }
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else { return try await execute(query: query) }
+        return try await retryingAfterStop {
+            try await self.executeReadOnly(query: query, parameters: nil, rowCap: nil, isRetry: false)
+        }
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else { return try await executeParameterized(query: query, parameters: parameters) }
+        return try await retryingAfterStop {
+            try await self.executeReadOnly(query: query, parameters: parameters, rowCap: nil, isRetry: false)
+        }
+    }
+
+    private func runsReadOnly(_ context: PluginStatementContext) -> Bool {
+        MySQLReadOnlyTransaction.applies(to: context, flavor: flavor)
+    }
+
+    // The lock comes from the footprint, because the status flags never show it.
+    private var readOnlySessionState: @Sendable (Bool) -> PluginSessionTransactionState {
+        { isInTransaction in
+            self.sessionLock.withLock { self.footprint.transactionState(isInTransaction: isInTransaction) }
+        }
+    }
+
+    // Replays on a lost connection exactly when `executeWithReconnect` would.
+    private func executeReadOnly(
+        query: String,
+        parameters: [PluginCellValue]?,
+        rowCap: Int?,
+        isRetry: Bool
+    ) async throws -> PluginQueryResult {
+        let startTime = Date()
+
+        let conn = try await requireConnection()
+        defer { endOperation(on: conn) }
+        noteActivity(query)
+
+        do {
+            let result = try await conn.executeReadOnly(
+                query,
+                parameters: parameters,
+                rowCap: rowCap,
+                sessionState: readOnlySessionState
+            )
+            return PluginQueryResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                rowsAffected: Int(result.affectedRows),
+                timing: PluginQueryTiming(
+                    total: Date().timeIntervalSince(startTime),
+                    firstRow: result.firstRowTime
+                ),
+                isTruncated: result.isTruncated,
+                columnMeta: result.columnMeta
+            )
+        } catch let error as MariaDBPluginError where !isRetry
+            && parameters == nil
+            && mysqlConnectionLossMayReplay(code: error.code, outlastedSocketTimeout: error.outlastedSocketTimeout)
+            && mayReplay(query) {
+            try await reconnect()
+            return try await executeReadOnly(query: query, parameters: nil, rowCap: rowCap, isRetry: true)
+        } catch {
+            noteFailure(query)
+            await refreshTransactionFlag(after: error, on: conn)
+            throw error
         }
     }
 
@@ -887,7 +983,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard flavor.hasMySQLObjectCatalogs, await !resolvesToTemporaryTable(table, schema: schema) else { return [] }
         let dbName = effectiveSchema(schema)
         let triggers = try await triggerList(schema: dbName, table: table)
-        Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .public) table=\(table, privacy: .public) parsed=\(triggers.count)")
+        Self.logger.info("[trigger] mysql fetchTriggers db=\(dbName, privacy: .private(mask: .hash)) table=\(table, privacy: .private(mask: .hash)) parsed=\(triggers.count)")
         return triggers
     }
 
@@ -1003,11 +1099,23 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Streaming
 
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        streamRows(query: query, readOnlySessionState: nil)
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard runsReadOnly(context) else { return streamRows(query: query) }
+        return streamRows(query: query, readOnlySessionState: readOnlySessionState)
+    }
+
     /// The bridge task is retained and cancelled from `onTermination`. Without that, a consumer
     /// that stops reading, which an export or a copy does on cancel, leaves this task draining the
     /// whole result and holding the connection open: the inner stream's abort never fires because
     /// nothing ever cancels the task awaiting it.
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    private func streamRows(
+        query: String,
+        readOnlySessionState: (@Sendable (Bool) -> PluginSessionTransactionState)?
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -1015,7 +1123,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                         let conn = try await requireConnection()
                         defer { self.endOperation(on: conn) }
                         noteActivity(query)
-                        for try await element in conn.streamQuery(query) {
+                        for try await element in conn.streamQuery(query, readOnlySessionState: readOnlySessionState) {
                             continuation.yield(element)
                         }
                     }
@@ -1155,7 +1263,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 step = installation.refusedAsUnknownVariable()
             } catch {
                 Self.logger.warning(
-                    "Failed to set query timeout with \(statement, privacy: .public): \(error.localizedDescription)"
+                    "Failed to set query timeout with \(statement, privacy: .private): \(error.localizedDescription)"
                 )
                 step = installation.failed()
             }
@@ -1256,7 +1364,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
         guard !flavor.isDatabend else { return nil }
-        return "ALTER TABLE \(quoteIdentifier(table)) ADD \(mysqlIndexDefinitionSQL(index))"
+        return mysqlAddIndexSQL(table: table, index: index, spelling: literalSpelling)
     }
 
     func generateDropIndexSQL(table: String, indexName: String) -> String? {
@@ -1265,14 +1373,23 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func generateModifyIndexSQL(table: String, oldIndexName: String, newIndex: PluginIndexDefinition) -> String? {
-        mysqlModifyIndexSQL(table: table, oldIndexName: oldIndexName, newIndex: newIndex, flavor: flavor)
+        mysqlModifyIndexSQL(
+            table: table, oldIndexName: oldIndexName, newIndex: newIndex, flavor: flavor, spelling: literalSpelling
+        )
     }
 
     func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
-        guard case .addIndex(let index) = operation else { return nil }
         let identity = serverIdentity
-        return mysqlReservedIndexNameRefusal(for: index)
-            ?? MySQLFunctionalKeyParts.refusal(for: index, banner: identity.banner, flavor: identity.flavor)
+        switch operation {
+        case .addIndex(let index):
+            return mysqlReservedIndexNameRefusal(for: index)
+                ?? MySQLFunctionalKeyParts.refusal(for: index, banner: identity.banner, flavor: identity.flavor)
+                ?? mysqlIndexExpressionRefusal(for: index, flavor: identity.flavor)
+        case .addColumn(let column), .modifyColumn(_, let column):
+            return mysqlColumnTextRefusal(for: column, flavor: identity.flavor)
+        default:
+            return nil
+        }
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
@@ -1291,7 +1408,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return nil
         }
         let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        guard !expression.isEmpty, !constraint.name.isEmpty,
+              mysqlIsSingleExpression(expression, flavor: identity.flavor)
+        else { return nil }
         return literalSpelling.respelled(
             "ALTER TABLE \(quoteIdentifier(table)) ADD CONSTRAINT \(quoteIdentifier(constraint.name)) CHECK (\(expression))"
         )
@@ -1341,22 +1460,26 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return literalSpelling.respelled("ALTER TABLE \(tableName) MODIFY COLUMN \(definition) \(position)")
     }
 
-    /// `MODIFY COLUMN` replaces the whole definition, so every move restates the column in full.
-    /// Restating only the type is what drops charset, collation and `ON UPDATE`.
+    // `MODIFY COLUMN` replaces the whole definition, so every move restates the column in full.
     func generateColumnReorderPlan(
         table: String,
         schema: String?,
         columns: [PluginColumnDefinition],
         desiredOrder: [String]
     ) async throws -> PluginColumnReorderPlan? {
+        let flavor = self.flavor
         guard !flavor.isDatabend else { return nil }
         let byName = Dictionary(columns.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
-        let statements = PluginColumnReorderPlanner
+        let moved = PluginColumnReorderPlanner
             .moves(from: columns.map(\.name), to: desiredOrder)
-            .compactMap { move -> String? in
-                guard let column = byName[move.column] else { return nil }
-                return generateMoveColumnSQL(table: table, column: column, afterColumn: move.afterColumn)
-            }
+            .compactMap { move in byName[move.column].map { (column: $0, afterColumn: move.afterColumn) } }
+        // Only a moved column is restated, so only its text has to pass.
+        if let refusal = moved.lazy.compactMap({ mysqlColumnTextRefusal(for: $0.column, flavor: flavor) }).first {
+            throw MariaDBPluginError(code: 0, message: refusal, sqlState: nil)
+        }
+        let statements = moved.compactMap { move in
+            generateMoveColumnSQL(table: table, column: move.column, afterColumn: move.afterColumn)
+        }
         guard !statements.isEmpty else { return nil }
         return PluginColumnReorderPlan(statements: statements, cost: .metadataOnly)
     }

@@ -62,10 +62,10 @@ final class LicenseSignatureVerifier: @unchecked Sendable {
 
     private static func createSecKey(fromPEM pem: String) -> SecKey? {
         let stripped = pem
-            .replacingOccurrences(of: "-----BEGIN PUBLIC KEY-----", with: "")
-            .replacingOccurrences(of: "-----END PUBLIC KEY-----", with: "")
-            .replacingOccurrences(of: "\n", with: "")
-            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "-----BEGIN PUBLIC KEY-----", with: "", options: .literal)
+            .replacingOccurrences(of: "-----END PUBLIC KEY-----", with: "", options: .literal)
+            .replacingOccurrences(of: "\n", with: "", options: .literal)
+            .replacingOccurrences(of: "\r", with: "", options: .literal)
             .trimmingCharacters(in: .whitespaces)
 
         guard let keyData = Data(base64Encoded: stripped) else {

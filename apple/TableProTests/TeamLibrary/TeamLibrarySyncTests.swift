@@ -82,6 +82,27 @@ struct TeamLibrarySyncTests {
         #expect(fixture.sync.content.connections.map(\.settings.name) == ["Prod"])
     }
 
+    @Test("A pulled connection keeps its sign-in choice for the consent prompt and drops what the host owns")
+    func pulledConnectionKeepsSelectorsBehindTheGate() async throws {
+        let fields = [
+            "mssqlAuthMethod": "windows", "sqliteBackend": "agent", "preConnectScript": "touch /tmp/pwned",
+            "zzzFutureSelector": "1", "mssqlSchema": "sales",
+        ]
+        var settings = ExportableConnection(
+            name: "Reports", host: "sql.example.com", port: 1433, database: "app", username: "", type: "SQL Server"
+        )
+        settings.additionalFields = fields
+        let data = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(settings)) as? [String: Any])
+        let fixture = try await TeamLibraryFixture { library in
+            library.write(Self.team, kind: "connection", clientID: "c1", data: data)
+        }
+
+        #expect(await fixture.sync.sync() == .synced)
+
+        let pulled = try #require(fixture.sync.content.connections.first)
+        #expect(pulled.settings.additionalFields == ["mssqlAuthMethod": "windows", "mssqlSchema": "sales"])
+    }
+
     @Test("A query moved to another folder by someone else shows under that folder after the next pull")
     func pulledFolderMove() async throws {
         let fixture = try await TeamLibraryFixture { library in

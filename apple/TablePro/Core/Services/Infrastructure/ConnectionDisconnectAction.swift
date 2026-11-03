@@ -6,17 +6,26 @@
 import AppKit
 import Foundation
 
-/// The one path a user-requested disconnect takes, whatever surface asked for it. The menu bar, the
-/// workspace rail and the connection list all land here so the confirmation exists once and reads
-/// the same everywhere.
+// Every surface's disconnect lands here, so the confirmation exists once.
 @MainActor
 internal enum ConnectionDisconnectAction {
     internal static func disconnect(
         connectionId: UUID,
         connectionName: String,
-        presentingWindow: NSWindow?
+        presentingWindow: NSWindow?,
+        registry: RunningWorkRegistry = .shared
     ) async {
-        if let message = await confirmationMessage(for: connectionId) {
+        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: connectionId)
+        let hasUnsavedWork = MainContentCoordinator.hasUnsavedWork(forConnection: connectionId)
+        let work = registry.items(in: .connection(connectionId))
+        if let prompt = RunningWorkPrompt.make(
+            action: .disconnect,
+            work: work,
+            otherLosses: otherLosses(holdingTransaction: holding, hasUnsavedWork: hasUnsavedWork)
+        ) {
+            guard await RunningWorkApproval.confirm(prompt, window: presentingWindow) else { return }
+            registry.cancel(work)
+        } else if let message = confirmationMessage(holdingTransaction: holding, hasUnsavedWork: hasUnsavedWork) {
             let confirmed = await AlertHelper.confirmDestructive(
                 title: String(format: String(localized: "Disconnect from “%@”?"), connectionName),
                 message: message,
@@ -28,20 +37,20 @@ internal enum ConnectionDisconnectAction {
         await DatabaseManager.shared.disconnectSession(connectionId, origin: .userRequested)
     }
 
-    /// Nil means disconnect without asking. Losing work the user cannot get back is worth an alert;
-    /// ending a session they asked to end is not, which is why a clean connection never sees one.
-    private static func confirmationMessage(for connectionId: UUID) async -> String? {
-        let holding = await DatabaseManager.shared.databasesHoldingTransaction(for: connectionId)
+    // Nil means disconnect without asking: ending a session the user asked to end loses nothing.
+    internal static func confirmationMessage(holdingTransaction holding: [String], hasUnsavedWork: Bool) -> String? {
         if let message = transactionMessage(for: holding) {
             return message
         }
-        if MainContentCoordinator.hasUnsavedWork(forConnection: connectionId) {
-            return String(localized: "Unsaved changes will be lost.")
+        return hasUnsavedWork ? String(localized: "Unsaved changes will be lost.") : nil
+    }
+
+    internal static func otherLosses(holdingTransaction holding: [String], hasUnsavedWork: Bool) -> [String] {
+        var losses = RunningWorkPrompt.transactionLines(for: holding)
+        if hasUnsavedWork {
+            losses.append(String(localized: "Unsaved changes"))
         }
-        if MainContentCoordinator.hasRunningQuery(forConnection: connectionId) {
-            return String(localized: "A query is still running. Disconnecting cancels it.")
-        }
-        return nil
+        return losses
     }
 
     internal static func transactionMessage(for databases: [String]) -> String? {

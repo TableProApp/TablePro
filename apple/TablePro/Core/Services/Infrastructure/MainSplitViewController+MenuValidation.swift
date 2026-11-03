@@ -797,6 +797,8 @@ extension MainSplitViewController: NSMenuItemValidation {
                 commandActions?.openContainerSwitcherTitle ?? String(localized: "Open Database…"),
                 on: menuItem
             )
+        case #selector(retryConnection):
+            setResolvedTitle(menuConnectionActionTitle, on: menuItem)
         // Driver-named because what it releases differs (DuckDB's file lock is not a server slot).
         case #selector(releaseFileLock(_:)):
             setResolvedTitle(

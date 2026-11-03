@@ -43,7 +43,7 @@ extension MySQLPluginDriver {
         return MySQLAccountStatements(
             syntax: MySQLServerVersion.accountSyntax(banner: identity.banner, flavor: identity.flavor),
             account: { self.grantAccount($0) },
-            literal: { self.escapeStringLiteral($0) }
+            literal: mysqlEscapeStringLiteral
         )
     }
 

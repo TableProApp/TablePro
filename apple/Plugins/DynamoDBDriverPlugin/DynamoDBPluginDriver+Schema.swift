@@ -210,11 +210,16 @@ extension DynamoDBPluginDriver {
                 body["Select"] = .string("COUNT")
                 if let startKey { body["ExclusiveStartKey"] = startKey }
                 let response = try await session.client.send(operation, body)
-                total += response["Count"]?.intValue ?? 0
+                total = Self.saturatingSum(total, response["Count"]?.intValue ?? 0)
                 startKey = response["LastEvaluatedKey"]
             } while startKey != nil
         }
         return total
+    }
+
+    static func saturatingSum<Value: FixedWidthInteger>(_ total: Value, _ addition: Value) -> Value {
+        let (sum, overflow) = total.addingReportingOverflow(addition)
+        return overflow ? (addition < 0 ? .min : .max) : sum
     }
 
     // MARK: - DDL and metadata
@@ -262,7 +267,7 @@ extension DynamoDBPluginDriver {
             return PluginTableMetadata(
                 tableName: description.name,
                 dataSize: description.sizeBytes,
-                indexSize: description.indexes.compactMap(\.sizeBytes).reduce(0, +),
+                indexSize: description.indexes.compactMap(\.sizeBytes).reduce(Int64(0), Self.saturatingSum),
                 totalSize: description.sizeBytes,
                 rowCount: description.itemCount,
                 comment: DynamoDBTableDefinition.summary(description),

@@ -2,6 +2,7 @@ import Foundation
 @testable import TableProModels
 @testable import TableProPluginKit
 @testable import TableProQuery
+import TableProSQLGrammar
 import Testing
 
 struct FilterSQLGeneratorTests {
@@ -230,6 +231,48 @@ struct FilterSQLGeneratorTests {
         #expect(clause("code", #"a\b%"#, op: .contains, dialect: mysql) == #"WHERE `code` LIKE '%a\\\\b\\%%'"#)
     }
 
+    private static let backslashSession = SQLSessionLexicalFacts(
+        determined: .backslashEscapesInSingleQuotes, enabled: .backslashEscapesInSingleQuotes
+    )
+
+    // PostgreSQL with standard_conforming_strings off reads `\'` as a quote, though its dialect says no backslash rule.
+    @Test("The session's backslash rule wins over the dialect's, so a backslash cannot escape the closing quote")
+    func sessionBackslashEscapesWin() {
+        let generator = FilterSQLGenerator(dialect: dialect, session: Self.backslashSession)
+        let filter = TableFilter(columnName: "code", filterOperator: .equal, value: #"a\' OR 1=1 -- "#)
+        #expect(generator.generateWhereClause(from: [filter], logicMode: .and) == #"WHERE "code" = 'a\\'' OR 1=1 -- '"#)
+    }
+
+    @Test("A MySQL session with NO_BACKSLASH_ESCAPES writes a backslash as it is and names the LIKE escape")
+    func sessionWithoutBackslashEscapes() {
+        let generator = FilterSQLGenerator(
+            dialect: makeDialect(quote: "`", backslashEscaping: true),
+            session: SQLSessionLexicalFacts(determined: .backslashEscapesInSingleQuotes, enabled: [])
+        )
+        let equal = TableFilter(columnName: "path", filterOperator: .equal, value: #"C:\temp\"#)
+        let contains = TableFilter(columnName: "code", filterOperator: .contains, value: #"50%\"#)
+        #expect(generator.generateWhereClause(from: [equal], logicMode: .and) == #"WHERE `path` = 'C:\temp\'"#)
+        #expect(
+            generator.generateWhereClause(from: [contains], logicMode: .and) == #"WHERE `code` LIKE '%50\%\\%' ESCAPE '\'"#
+        )
+    }
+
+    @Test("A quote or backslash a combining mark follows is still escaped under the session's backslash rule")
+    func sessionBackslashSeesCombiningMark() {
+        let generator = FilterSQLGenerator(dialect: dialect, session: Self.backslashSession)
+        let filter = TableFilter(columnName: "c\"\u{301}", filterOperator: .equal, value: "x\\\u{301}'\u{301}")
+        let sql = generator.generateWhereClause(from: [filter], logicMode: .and)
+        #expect(Array(sql.unicodeScalars) == Array("WHERE \"c\"\"\u{301}\" = 'x\\\\\u{301}''\u{301}'".unicodeScalars))
+    }
+
+    // The profile leaves the backslash open on PostgreSQL, since standard_conforming_strings may be off.
+    @Test("With no session report, a backslash is escaped for every reading the engine may use")
+    func unsettledSessionEscapesForEveryReading() {
+        let generator = FilterSQLGenerator(dialect: dialect, databaseType: .postgresql)
+        let filter = TableFilter(columnName: "code", filterOperator: .equal, value: #"a\' OR 1=1 -- "#)
+        #expect(generator.generateWhereClause(from: [filter], logicMode: .and) == #"WHERE "code" = 'a\\'' OR 1=1 -- '"#)
+    }
+
     @Test("A SQL Server LIKE escapes an opening bracket")
     func mssqlLikeEscapesBracket() {
         let generator = FilterSQLGenerator(dialect: makeDialect(quote: "["), databaseType: .mssql)
@@ -423,6 +466,16 @@ struct FilterSQLGeneratorTests {
         #expect(engineClause(.sqlite, column, "1.0e+20")
             == "WHERE (\"v\" IN (1.0e+20, '1.0e+20') AND CAST(\"v\" AS TEXT) = '1.0e+20')")
         #expect(engineClause(.sqlite, column, "5", op: .greaterThan) == "WHERE \"v\" > 5")
+    }
+
+    // The Mac's FilterSQLGenerator already reads D1 as SQLite through SQLTypeFamily, so the iOS filter must too.
+    @Test("Every engine that runs SQLite matches an untyped column either way it was stored",
+          arguments: [DatabaseType.cloudflareD1, .libsql, .turso])
+    func sqliteFamilyMatchesEitherStorageClass(type: DatabaseType) {
+        let column = ColumnInfo(name: "v", typeName: "")
+        #expect(engineClause(type, column, "5") == "WHERE (\"v\" IN (5, '5') AND CAST(\"v\" AS TEXT) = '5')")
+        #expect(FilterColumnKind.keyLiteral("5", column: nil, databaseType: type) == .numberOrText("5"))
+        #expect(FilterColumnKind.keyLiteral("5", column: nil, databaseType: .duckdb) == .text("5"))
     }
 
     @Test("A typed SQLite column keeps its literal")

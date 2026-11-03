@@ -265,18 +265,19 @@ struct ConnectionSharingTests {
             #expect(!link.contains("aiPolicy="))
         }
 
-        @Test("Includes additional fields with af_ prefix")
+        @Test("Includes known additional fields with af_ prefix and leaves out unknown ones")
         @MainActor
         func testIncludesAdditionalFields() throws {
             let conn = DatabaseConnection(
                 name: "Redis", host: "localhost", port: 6_379,
                 database: "", username: "", type: .redis,
                 redisDatabase: 3,
-                additionalFields: ["customField": "customValue"]
+                additionalFields: ["redisSentinelMasterName": "mymaster", "customField": "customValue"]
             )
             let link = try #require(ConnectionShareLink.deeplink(for: conn))
             #expect(link.contains("redisDatabase=3"))
-            #expect(link.contains("af_customField=customValue"))
+            #expect(link.contains("af_redisSentinelMasterName=mymaster"))
+            #expect(!link.contains("af_customField"))
         }
 
         @Test("Includes startup commands")
@@ -340,7 +341,7 @@ struct ConnectionSharingTests {
             #expect(url?.host() == "import")
         }
 
-        @Test("Leaves out the fields every importer drops")
+        @Test("Leaves out what runs on this Mac and keeps the sign-in choice and the region")
         @MainActor
         func testLeavesOutImportBlockedFields() throws {
             let connection = ConnectionSharingTests.connectionWithLocalOnlyFields()
@@ -349,9 +350,9 @@ struct ConnectionSharingTests {
             let fieldNames = Set((components.queryItems ?? []).map(\.name))
 
             #expect(!fieldNames.contains("af_preConnectScript"))
-            #expect(!fieldNames.contains("af_usePgpass"))
             #expect(!fieldNames.contains("af_promptForPassword"))
-            #expect(!fieldNames.contains("af_awsRegion"))
+            #expect(fieldNames.contains("af_usePgpass"))
+            #expect(fieldNames.contains("af_awsRegion"))
             #expect(fieldNames.contains("af_connectionOptions"))
         }
     }
@@ -360,17 +361,29 @@ struct ConnectionSharingTests {
 
     @Suite("Export envelope")
     struct ExportEnvelopeTests {
-        @Test("Export files and the Team Library leave out the fields every importer drops")
+        @Test("Export files and the Team Library leave out what runs on this Mac and keep the sign-in choice")
         @MainActor
         func testEnvelopeLeavesOutImportBlockedFields() throws {
             let connection = ConnectionSharingTests.connectionWithLocalOnlyFields()
             let fields = try #require(ConnectionBundleExporter().portableSettings(for: connection).additionalFields)
 
             #expect(fields["preConnectScript"] == nil)
-            #expect(fields["usePgpass"] == nil)
             #expect(fields["promptForPassword"] == nil)
-            #expect(fields["awsRegion"] == nil)
+            #expect(fields["usePgpass"] == "true")
+            #expect(fields["awsRegion"] == "us-east-1")
             #expect(fields["connectionOptions"] == "--cluster=prod")
+        }
+
+        @Test("The Replace check reads a saved row without its sign-in choice, as a saved import keeps it")
+        @MainActor
+        func testReplaceSnapshotDropsSelectors() throws {
+            let connection = ConnectionSharingTests.connectionWithLocalOnlyFields()
+            let fields = try #require(
+                ConnectionBundleExporter().portableSettings(for: connection, keepingLocalCredentials: false).additionalFields
+            )
+
+            #expect(fields["usePgpass"] == nil)
+            #expect(fields["awsRegion"] == "us-east-1")
         }
     }
 
@@ -597,7 +610,7 @@ struct ConnectionSharingTests {
                 redisDatabase: nil,
                 startupCommands: "SET statement_timeout = 30000;",
                 localOnly: true,
-                additionalFields: ["schema": "public"]
+                additionalFields: ["connectionOptions": "--cluster=prod"]
             )
 
             let link = try #require(ConnectionShareLink.deeplink(for: original))
@@ -626,7 +639,7 @@ struct ConnectionSharingTests {
             #expect(parsed.aiPolicy == "never")
             #expect(parsed.startupCommands == "SET statement_timeout = 30000;")
             #expect(parsed.localOnly == true)
-            #expect(parsed.additionalFields?["schema"] == "public")
+            #expect(parsed.additionalFields?["connectionOptions"] == "--cluster=prod")
         }
     }
 
@@ -701,7 +714,7 @@ struct ConnectionSharingTests {
             return ConnectionSharingTests.importedSettings(url)
         }
 
-        @Test("Deeplink import drops every AWS credential-resolution field")
+        @Test("Deeplink import drops the AWS sign-in choice and keeps the region and endpoint")
         @MainActor
         func testDeeplinkImportDropsAWSFields() throws {
             let parsed = try #require(Self.parseImportLink([
@@ -717,44 +730,50 @@ struct ConnectionSharingTests {
             ]))
 
             #expect(parsed.additionalFields?["awsAuth"] == nil)
-            #expect(parsed.additionalFields?["awsRDSEndpoint"] == nil)
-            #expect(parsed.additionalFields?["awsRegion"] == nil)
             #expect(parsed.additionalFields?["awsProfileName"] == nil)
+            #expect(parsed.additionalFields?["awsRDSEndpoint"] == "prod.abc.us-east-1.rds.amazonaws.com:5432")
+            #expect(parsed.additionalFields?["awsRegion"] == "us-east-1")
             #expect(parsed.additionalFields?["mongoAuthSource"] == "admin")
 
             let connection = ConnectionSharingTests.imported(parsed)
             #expect(!connection.usesAWSIAM)
         }
 
-        @Test("Deeplink import drops the Spanner endpoint and keeps the rest of the Spanner fields")
+        @Test("Deeplink import drops the Spanner ADC sign-in and keeps the Spanner destination fields")
         @MainActor
         func testDeeplinkImportDropsSpannerEndpoint() throws {
             let parsed = try #require(Self.parseImportLink([
                 URLQueryItem(name: "name", value: "Orders"),
                 URLQueryItem(name: "host", value: "spanner.googleapis.com"),
                 URLQueryItem(name: "type", value: "Spanner"),
-                URLQueryItem(name: "af_spEndpoint", value: "https://collector.example.com"),
+                URLQueryItem(name: "af_spAuthMethod", value: "adc"),
+                URLQueryItem(name: "af_spEndpoint", value: "https://spanner.googleapis.com"),
                 URLQueryItem(name: "af_spProjectId", value: "proj"),
                 URLQueryItem(name: "af_spInstanceId", value: "inst"),
                 URLQueryItem(name: "af_spDatabaseId", value: "gdb")
             ]))
 
-            #expect(parsed.additionalFields?["spEndpoint"] == nil)
+            #expect(parsed.additionalFields?["spAuthMethod"] == nil)
+            #expect(parsed.additionalFields?["spEndpoint"] == "https://spanner.googleapis.com")
             #expect(parsed.additionalFields?["spProjectId"] == "proj")
             #expect(parsed.additionalFields?["spInstanceId"] == "inst")
             #expect(parsed.additionalFields?["spDatabaseId"] == "gdb")
         }
 
-        @Test("A shared connection file drops the Spanner endpoint on import")
+        @Test("A shared connection file drops the Spanner ADC sign-in on import")
         func testSanitizedImportDropsSpannerEndpoint() {
             let shared = ExportableConnection(
                 name: "Orders", host: "", port: 0, database: "", username: "", type: "Spanner",
-                additionalFields: ["spEndpoint": "https://collector.example.com", "spProjectId": "proj"]
+                additionalFields: [
+                    "spAuthMethod": "adc",
+                    "spEndpoint": "https://spanner.googleapis.com",
+                    "spProjectId": "proj"
+                ]
             )
 
             let imported = shared.sanitizedForImport()
 
-            #expect(imported.additionalFields == ["spProjectId": "proj"])
+            #expect(imported.additionalFields == ["spEndpoint": "https://spanner.googleapis.com", "spProjectId": "proj"])
         }
 
         @Test("Deeplink import drops pgpass and pre-tunnel redirection fields")
@@ -781,16 +800,49 @@ struct ConnectionSharingTests {
             #expect(parsed.additionalFields?["mssqlSchema"] == "dbo")
         }
 
-        @Test("Blocked field keys are matched without regard to case")
-        func testBlockedKeysAreCaseInsensitive() {
-            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("AWSAuth"))
-            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("PreConnectScript"))
-            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("UsePgpass"))
-            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("spEndpoint"))
-            #expect(ExportableConnection.isImportBlockedAdditionalFieldKey("SPENDPOINT"))
-            #expect(!ExportableConnection.isImportBlockedAdditionalFieldKey("spProjectId"))
-            #expect(!ExportableConnection.isImportBlockedAdditionalFieldKey("mongoAuthSource"))
-            #expect(!ExportableConnection.isImportBlockedAdditionalFieldKey("awareness"))
+        @Test("A deeplink field spelled in another case than the driver reads it is dropped")
+        @MainActor
+        func testDifferentlyCasedKeysAreDropped() throws {
+            let parsed = try #require(Self.parseImportLink([
+                URLQueryItem(name: "name", value: "Replica"),
+                URLQueryItem(name: "host", value: "evil.example.com"),
+                URLQueryItem(name: "type", value: "PostgreSQL"),
+                URLQueryItem(name: "af_AWSAuth", value: "profile"),
+                URLQueryItem(name: "af_PreConnectScript", value: "touch /tmp/pwned"),
+                URLQueryItem(name: "af_UsePgpass", value: "true"),
+                URLQueryItem(name: "af_MSSQLSCHEMA", value: "dbo")
+            ]))
+
+            #expect(parsed.additionalFields == nil)
+        }
+
+        @Test("Deeplink import drops the remote SQLite agent switch")
+        @MainActor
+        func testDeeplinkImportDropsSQLiteAgentBackend() throws {
+            let parsed = try #require(Self.parseImportLink([
+                URLQueryItem(name: "name", value: "Notes"),
+                URLQueryItem(name: "type", value: "SQLite"),
+                URLQueryItem(name: "host", value: "attacker.example"),
+                URLQueryItem(name: "port", value: "4444"),
+                URLQueryItem(name: "af_sqliteBackend", value: "agent")
+            ]))
+
+            #expect(parsed.additionalFields?["sqliteBackend"] == nil)
+            #expect(ConnectionSharingTests.imported(parsed).additionalFields[RemoteSQLiteWire.backendFieldKey] == nil)
+        }
+
+        @Test("Deeplink import drops a field no driver declares")
+        @MainActor
+        func testDeeplinkImportDropsUnknownFields() throws {
+            let parsed = try #require(Self.parseImportLink([
+                URLQueryItem(name: "name", value: "Orders"),
+                URLQueryItem(name: "host", value: "db.example.com"),
+                URLQueryItem(name: "type", value: "PostgreSQL"),
+                URLQueryItem(name: "af_zzzFutureSelector", value: "1"),
+                URLQueryItem(name: "af_connectionOptions", value: "--cluster=prod")
+            ]))
+
+            #expect(parsed.additionalFields == ["connectionOptions": "--cluster=prod"])
         }
 
         @Test("Imported startup commands survive so the sheet can disclose them")

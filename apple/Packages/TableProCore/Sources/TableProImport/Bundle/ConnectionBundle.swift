@@ -239,11 +239,11 @@ public struct ConnectionBundle: Sendable, Equatable {
         return rebuilt(connections: updated)
     }
 
-    func sanitizedForImport() -> ConnectionBundle {
+    public func sanitizedForImport(keepingLocalCredentials: Bool = false) -> ConnectionBundle {
         rebuilt(
             connections: connections.map { connection in
                 var copy = connection
-                copy.settings = connection.settings.sanitizedForImport()
+                copy.settings = connection.settings.sanitizedForImport(keepingLocalCredentials: keepingLocalCredentials)
                 return copy
             },
             groups: groups.map { group in

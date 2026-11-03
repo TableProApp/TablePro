@@ -188,17 +188,25 @@ struct AIProviderDetailSheet: View {
     private var claudeAgentAuthSection: some View {
         Section {
             HStack(spacing: 8) {
-                Image(systemName: claudeAgentService.state.isUsable
-                    ? "checkmark.circle.fill"
-                    : "exclamationmark.triangle.fill")
-                    .foregroundStyle(claudeAgentService.state.isUsable ? Color.green : Color.orange)
-                Text(claudeAgentService.statusDescription)
+                AIProviderStatusLabel(status: claudeAgentStatus)
                     .font(.callout)
                 Spacer()
                 Button(String(localized: "Recheck")) {
                     claudeAgentService.refreshStatus()
                 }
                 .disabled(claudeAgentService.isRefreshing)
+            }
+            switch claudeAgentService.state {
+            case .signedIn(_, let plan?) where !plan.isEmpty:
+                Text(String(format: String(localized: "Plan: %@"), plan))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .outdated:
+                Text(String(format: String(localized: "Version %@ or newer is required."), ClaudeAgentCLI.minimumVersion))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            default:
+                EmptyView()
             }
             if let command = claudeAgentService.remedyCommand {
                 HStack {
@@ -220,6 +228,16 @@ struct AIProviderDetailSheet: View {
         }
 
         ClaudeAgentDisclosureSection()
+    }
+
+    private var claudeAgentStatus: AIProviderStatus {
+        AIProviderStatus.resolve(
+            provider: draft,
+            hasAPIKey: false,
+            oauthState: nil,
+            serviceError: nil,
+            claudeAgent: claudeAgentService.state
+        )
     }
 
     private var apiKeyAuthSection: some View {
@@ -244,12 +262,10 @@ struct AIProviderDetailSheet: View {
                 .disabled(isTesting || (draft.authStyle == .apiKey && apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             }
             if case .success = testResult {
-                Label(String(localized: "Connection successful"), systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                NoticeLabel(String(localized: "Connection successful"), severity: .success)
                     .font(.caption)
             } else if case .failure(let message) = testResult {
-                Label(message, systemImage: "xmark.circle.fill")
-                    .foregroundStyle(.red)
+                NoticeLabel(message, severity: .error)
                     .font(.caption)
                     .lineLimit(3)
             }
@@ -295,11 +311,7 @@ struct AIProviderDetailSheet: View {
 
             case .signedIn(let username):
                 HStack {
-                    Label(
-                        String(format: String(localized: "Signed in as %@"), username),
-                        systemImage: "checkmark.circle.fill"
-                    )
-                    .foregroundStyle(.green)
+                    NoticeLabel(String(format: String(localized: "Signed in as %@"), username), severity: .success)
                     Spacer()
                     Button(String(localized: "Sign Out")) {
                         Task { await copilotService.signOut() }
@@ -307,10 +319,9 @@ struct AIProviderDetailSheet: View {
                 }
             }
 
-            if let copilotErrorMessage {
-                Text(copilotErrorMessage)
+            if let message = copilotErrorMessage ?? copilotService.statusMessage {
+                NoticeLabel(message, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
             }
 
             statusRow
@@ -348,8 +359,7 @@ struct AIProviderDetailSheet: View {
             case .signedIn(let email, let planType):
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Label(chatGPTCodexSignedInLabel(email: email), systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                        NoticeLabel(chatGPTCodexSignedInLabel(email: email), severity: .success)
                         Spacer()
                         Button(String(localized: "Sign Out")) {
                             Task { await chatGPTCodexService.signOut() }
@@ -364,9 +374,8 @@ struct AIProviderDetailSheet: View {
             }
 
             if let message = chatGPTCodexService.errorMessage {
-                Text(message)
+                NoticeLabel(message, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
                     .lineLimit(3)
             }
         } header: {
@@ -420,8 +429,7 @@ struct AIProviderDetailSheet: View {
         case .running:
             EmptyView()
         case .error(let message):
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+            NoticeLabel(message, severity: .error)
                 .font(.caption)
                 .lineLimit(2)
         }
@@ -472,8 +480,7 @@ struct AIProviderDetailSheet: View {
                     .foregroundStyle(.secondary)
             }
             if resolvedEndpoint?.isPlaintextToRemoteHost == true {
-                Label(cleartextCaution, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                NoticeLabel(cleartextCaution)
                     .font(.caption)
                     .lineLimit(2)
             }
@@ -654,9 +661,8 @@ struct AIProviderDetailSheet: View {
         }
         if let modelFetchError {
             HStack {
-                Text(modelFetchError)
+                NoticeLabel(modelFetchError, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
                     .lineLimit(2)
                 Spacer()
                 Button(String(localized: "Reload")) {

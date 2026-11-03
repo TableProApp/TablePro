@@ -6,7 +6,7 @@ use tablepro_core::{
 };
 use uuid::Uuid;
 
-use crate::client_factory::{READ_ONLY_SETTINGS, base_client};
+use crate::client_factory::{base_client, read_level, read_only_settings};
 use crate::errors::{ErrorContext, map_error_in};
 use crate::result_reader::drain;
 
@@ -23,6 +23,9 @@ pub(crate) struct ClickHouseEndpoint {
     liveness: LivenessPolicy,
     tls_requested: bool,
     session_timeout: Duration,
+    read_only: bool,
+    // The login's own `readonly` level, learned on connect.
+    login_readonly: u8,
 }
 
 impl ClickHouseEndpoint {
@@ -33,20 +36,35 @@ impl ClickHouseEndpoint {
         read_only: bool,
     ) -> Result<Self, DriverError> {
         let control = base_client(target, &liveness, environment)?;
-        let mut workspace = control.clone();
-        if read_only {
-            for (name, value) in READ_ONLY_SETTINGS {
-                workspace = workspace.with_setting(name, value);
-            }
-        }
-        Ok(Self {
-            workspace,
+        let mut endpoint = Self {
+            workspace: control.clone(),
             control,
             transport: target.transport.clone(),
             liveness,
             tls_requested: target.tls.mode != TlsMode::Disable,
             session_timeout: SESSION_TIMEOUT,
-        })
+            read_only,
+            login_readonly: 0,
+        };
+        endpoint.hold(0);
+        Ok(endpoint)
+    }
+
+    // A login at a `readonly` level of its own refuses any request that changes it, so the workspace waits for
+    // the level before it asks for one.
+    fn hold(&mut self, login_readonly: u8) {
+        self.login_readonly = login_readonly;
+        let mut workspace = self.control.clone();
+        if self.read_only {
+            for (name, value) in read_only_settings(login_readonly) {
+                workspace = workspace.with_setting(name, value);
+            }
+        }
+        self.workspace = workspace;
+    }
+
+    pub(crate) fn read_level(&self, user_sql: bool) -> Option<&'static str> {
+        read_level(self.read_only, user_sql, self.login_readonly)
     }
 
     #[cfg(test)]
@@ -105,11 +123,14 @@ impl ClickHouseEndpoint {
     /// What the server says it is, and the database unqualified names
     /// resolve to, asked as the login: the first request is where a
     /// refused password or a failed handshake shows up.
-    pub(crate) async fn identify(&self) -> Result<(ServerInfo, String), DriverError> {
+    pub(crate) async fn identify(&mut self) -> Result<(ServerInfo, String), DriverError> {
         let bound = self.liveness.connect_timeout + self.liveness.login_timeout;
         let asking = self
-            .workspace
-            .query_raw("SELECT version() AS version, currentDatabase() AS database")
+            .control
+            .query_raw(
+                "SELECT version() AS version, currentDatabase() AS database, \
+                 toUInt8(getSetting('readonly')) AS readonly",
+            )
             .fetch_one::<Identity>();
         let identity = match tokio::time::timeout(bound, asking).await {
             Err(_) => {
@@ -126,6 +147,7 @@ impl ClickHouseEndpoint {
             }
             Ok(Ok(identity)) => identity,
         };
+        self.hold(identity.readonly);
         let (major, minor, patch) = version_numbers(&identity.version);
         Ok((
             ServerInfo::new("ClickHouse", identity.version, major, minor, patch),
@@ -163,6 +185,7 @@ impl ClickHouseEndpoint {
 struct Identity {
     version: String,
     database: String,
+    readonly: u8,
 }
 
 /// `24.8.4.13` is major 24, minor 8.

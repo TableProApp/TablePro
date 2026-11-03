@@ -50,6 +50,15 @@ struct SQLExportDDLRewriterTests {
         #expect(rewritten.contains("`weird AUTO_INCREMENT=9 col` int(11) DEFAULT NULL"))
     }
 
+    // MySQL reads `''` as a quote whatever follows it, and a Character scan saw `'` then `'\u{301}` and left the literal.
+    @Test("A doubled quote a combining mark follows keeps the scan inside the literal")
+    func doubledQuoteBeforeCombiningMarkStaysQuoted() {
+        let ddl = ") ENGINE=InnoDB AUTO_INCREMENT=4 COMMENT='x''\u{301} AUTO_INCREMENT=5 DEFINER=`a`@`b` y'"
+        let rewritten = Self.stripping.rewrite(ddl)
+        #expect(Array(rewritten.unicodeScalars)
+            == Array(") ENGINE=InnoDB COMMENT='x''\u{301} AUTO_INCREMENT=5 DEFINER=`a`@`b` y'".unicodeScalars))
+    }
+
     @Test("A view loses its definer and keeps its security clause")
     func viewDefinerIsRemoved() {
         let rewritten = Self.stripping.rewrite(Self.createView)

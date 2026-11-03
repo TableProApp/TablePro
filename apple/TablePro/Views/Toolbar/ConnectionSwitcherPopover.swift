@@ -62,7 +62,11 @@ struct ConnectionSwitcherEntry: Identifiable {
     let id: UUID
     let connection: DatabaseConnection
     let isActive: Bool
-    let isConnected: Bool
+    var status: ConnectionDisplayStatus = .notConnected
+
+    var presentation: ConnectionStatusPresentation {
+        ConnectionStatusPresentation(status)
+    }
 }
 
 /// The same list serves two commands: Switch Connection navigates, Move Tab to Connection picks
@@ -90,6 +94,7 @@ struct ConnectionSwitcherPopover: View {
     @State private var groups: [ConnectionGroup] = []
     @State private var tags: [ConnectionTag] = []
     @State private var hostedWithoutSession: [DatabaseConnection] = []
+    @State private var statuses: [UUID: ConnectionDisplayStatus] = [:]
     @State private var selectedConnectionId: UUID?
     @State private var searchText = ""
 
@@ -101,8 +106,12 @@ struct ConnectionSwitcherPopover: View {
         databaseManager.activeSessions
     }
 
+    // A connection dialing, lost or failed keeps a footer saying so after its session has gone.
     private var currentConnection: DatabaseConnection? {
-        currentConnectionId.flatMap { activeSessions[$0]?.connection }
+        guard let id = currentConnectionId else { return nil }
+        if let session = activeSessions[id] { return session.connection }
+        guard ConnectionStatusPresentation(statuses[id] ?? .notConnected).symbol != nil else { return nil }
+        return hostedWithoutSession.first { $0.id == id } ?? savedConnections.first { $0.id == id }
     }
 
     private var sortedSessions: [ConnectionSession] {
@@ -118,11 +127,16 @@ struct ConnectionSwitcherPopover: View {
                 id: $0.id,
                 connection: $0.connection,
                 isActive: $0.id == currentConnectionId,
-                isConnected: $0.reportedStatus.isConnected
+                status: statuses[$0.id] ?? .notConnected
             )
         }
         entries += hostedWithoutSession.map {
-            ConnectionSwitcherEntry(id: $0.id, connection: $0, isActive: $0.id == currentConnectionId, isConnected: false)
+            ConnectionSwitcherEntry(
+                id: $0.id,
+                connection: $0,
+                isActive: $0.id == currentConnectionId,
+                status: statuses[$0.id] ?? .notConnected
+            )
         }
         return entries
     }
@@ -177,7 +191,10 @@ struct ConnectionSwitcherPopover: View {
             if movedTabTitle == nil {
                 Divider()
 
-                ConnectionActivityFooter(connection: currentConnection)
+                ConnectionActivityFooter(
+                    connection: currentConnection,
+                    status: currentConnectionId.flatMap { statuses[$0] } ?? .notConnected
+                )
 
                 Divider()
 
@@ -202,6 +219,10 @@ struct ConnectionSwitcherPopover: View {
             settleSelection()
         }
         .onReceive(AppEvents.shared.connectionStatusChanged) { _ in
+            reload()
+            settleSelection()
+        }
+        .onReceive(AppEvents.shared.connectionPhaseChanged) { _ in
             reload()
             settleSelection()
         }
@@ -359,15 +380,13 @@ struct ConnectionSwitcherPopover: View {
 
             Spacer()
 
+            ConnectionStatusMark(presentation: entry.presentation)
+
             if entry.isActive {
                 Image(systemName: "checkmark")
                     .font(.body.weight(.semibold))
                     .selectionAwareTint(.accentColor)
                     .accessibilityLabel(Text("Current connection"))
-            } else if entry.isConnected {
-                Text("Connected")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 6)
@@ -384,11 +403,16 @@ struct ConnectionSwitcherPopover: View {
         groups = GroupStorage.shared.loadGroups()
         tags = TagStorage.shared.loadTags()
 
+        let hosted = WindowManager.shared.hostedWorkspaces()
         hostedWithoutSession = ConnectionSwitcherSections.hostedWithoutSession(
-            workspaces: WindowManager.shared.hostedWorkspaces().map { ($0.connectionId, $0.connection) },
+            workspaces: hosted.map { ($0.connectionId, $0.connection) },
             sessionIds: Set(databaseManager.activeSessions.keys),
             saved: saved
         )
+        let openIds = Set(databaseManager.activeSessions.keys).union(hosted.map(\.connectionId))
+        statuses = openIds.reduce(into: [:]) { result, id in
+            result[id] = ConnectionStatusResolver.status(for: id)
+        }
     }
 
     private func settleSelection() {
@@ -442,6 +466,8 @@ struct ConnectionSwitcherPopover: View {
             } catch {
                 guard !error.isUserCancellation else { return }
                 await MainActor.run {
+                    // A connect failure reports inline in the window's pane; only a failure to open one does here.
+                    guard !WindowManager.shared.hasOpenWindow(for: connectionId) else { return }
                     AlertHelper.showErrorSheet(
                         title: String(localized: "Connection Failed"),
                         message: error.localizedDescription,
@@ -595,6 +621,6 @@ internal enum ConnectionSwitcherSections {
     }
 
     private static func entry(for connection: DatabaseConnection) -> ConnectionSwitcherEntry {
-        ConnectionSwitcherEntry(id: connection.id, connection: connection, isActive: false, isConnected: false)
+        ConnectionSwitcherEntry(id: connection.id, connection: connection, isActive: false)
     }
 }

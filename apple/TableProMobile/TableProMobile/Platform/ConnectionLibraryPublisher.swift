@@ -1,6 +1,7 @@
 import AppIntents
 import Foundation
 import os
+import TableProLogRedaction
 import TableProModels
 import WidgetKit
 
@@ -87,7 +88,7 @@ final class ConnectionLibraryPublisher {
                 indexed = next
             } catch {
                 indexed = nil
-                Self.logger.error("Spotlight replace failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Spotlight replace failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             }
         }
         replacing = nil

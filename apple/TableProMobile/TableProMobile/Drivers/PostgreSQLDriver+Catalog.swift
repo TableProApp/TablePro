@@ -37,7 +37,7 @@ nonisolated extension PostgreSQLDriver {
                 throw CancellationError()
             } catch {
                 Self.logger.debug(
-                    "Column read failed with identity=\(shape.includesIdentityColumns, privacy: .public) matviews=\(shape.includesMaterializedViews, privacy: .public): \(error.localizedDescription, privacy: .private)"
+                    "Column read failed with identity=\(shape.includesIdentityColumns) matviews=\(shape.includesMaterializedViews, privacy: .public): \(error.localizedDescription, privacy: .private)"
                 )
             }
         }

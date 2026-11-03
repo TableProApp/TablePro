@@ -1,6 +1,7 @@
 import Foundation
 import TableProDamengCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Dameng Driver"
@@ -284,6 +285,60 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        try await executeWithReconnect(
+            query: query, parameters: [], rowCap: nil, replay: replayPolicy(for: query), hostSplit: context.hostSplit
+        )
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await executeWithReconnect(
+            query: query,
+            parameters: parameters ?? [],
+            rowCap: rowCap,
+            replay: replayPolicy(for: query),
+            hostSplit: context.hostSplit
+        )
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await executeWithReconnect(
+            query: query, parameters: parameters, rowCap: nil, replay: replayPolicy(for: query), hostSplit: context.hostSplit
+        )
+    }
+
+    // PluginKit's default stream runs `execute(query:)`, which cuts the text again.
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard context.hostSplit else { return streamRows(query: query) }
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let result = try await self.execute(query: query, context: context)
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: result.columns,
+                        columnTypeNames: result.columnTypeNames
+                    )))
+                    if !result.rows.isEmpty {
+                        continuation.yield(.rows(result.rows))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     // Every statement has to be a read, or `SELECT ...; DELETE ...` would replay the DELETE on a rebuilt connection.
     func replayPolicy(for query: String) -> DamengReplayPolicy {
         let statements = DamengScriptSplitter.statements(in: query, backslashEscapes: textEscaping == .backslashEscape)
@@ -363,12 +418,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        var quoted = String.UnicodeScalarView()
-        for scalar in name.unicodeScalars {
-            if scalar == "\"" { quoted.append(scalar) }
-            quoted.append(scalar)
-        }
-        return "\"\(String(quoted))\""
+        SQLQuoting.identifier(name)
     }
 
     var requiresBackslashEscapingInLiterals: Bool { textEscaping == .backslashEscape }
@@ -415,12 +465,15 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func executeOnce(
         query: String,
         parameters: [PluginCellValue],
-        rowCap: Int?
+        rowCap: Int?,
+        hostSplit: Bool = false
     ) async throws -> PluginQueryResult {
         let bound = parameters.isEmpty
             ? query
             : try DamengParameterBinder.bind(query: query, parameters: parameters, escaping: textEscaping)
-        let statements = DamengScriptSplitter.statements(in: bound, backslashEscapes: textEscaping == .backslashEscape)
+        let statements = DamengScriptSplitter.statements(
+            in: bound, backslashEscapes: textEscaping == .backslashEscape, hostSplit: hostSplit
+        )
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
 

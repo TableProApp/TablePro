@@ -34,9 +34,8 @@ struct ImportFromURLSheet: View {
             .onSubmit(submit)
 
             if let parseError {
-                Label(parseError, systemImage: "exclamationmark.triangle.fill")
+                NoticeLabel(parseError)
                     .font(.caption)
-                    .foregroundStyle(.orange)
             } else if let parsed = parsedURL {
                 previewView(parsed)
             }

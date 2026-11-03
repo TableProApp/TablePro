@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 enum QuackConnectBuilder {
     static let defaultPort = 9_494
@@ -20,28 +21,14 @@ enum QuackConnectBuilder {
     }
 
     static func secretSQL(token: String) -> String {
-        "CREATE OR REPLACE SECRET (TYPE quack, TOKEN '\(escapeLiteral(token))')"
+        "CREATE OR REPLACE SECRET (TYPE quack, TOKEN \(SQLQuoting.stringLiteral(token)))"
     }
 
     static func attachSQL(host: String, port: Int, alias: String) -> String {
-        "ATTACH '\(quackTarget(host: host, port: port))' AS \(quoteIdentifier(alias))"
+        "ATTACH \(SQLQuoting.stringLiteral("quack:\(host):\(port)")) AS \(SQLQuoting.identifier(alias))"
     }
 
     static func useSQL(alias: String) -> String {
-        "USE \(quoteIdentifier(alias))"
-    }
-
-    private static func quackTarget(host: String, port: Int) -> String {
-        "quack:\(escapeLiteral(host)):\(port)"
-    }
-
-    private static func escapeLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\0", with: "", options: .literal)
-            .replacingOccurrences(of: "'", with: "''", options: .literal)
-    }
-
-    private static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        "USE \(SQLQuoting.identifier(alias))"
     }
 }

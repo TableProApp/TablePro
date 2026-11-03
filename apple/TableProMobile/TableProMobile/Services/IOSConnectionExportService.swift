@@ -60,7 +60,9 @@ enum IOSConnectionExportService {
         return "TablePro Connections.tablepro"
     }
 
-    static func portableSettings(for connection: DatabaseConnection) -> ExportableConnection {
+    // An export keeps how the row signs in, for the receiving device to ask about. Replace compares without it,
+    // since an import never keeps it.
+    static func portableSettings(for connection: DatabaseConnection, keepingLocalCredentials: Bool) -> ExportableConnection {
         ExportableConnection(
             name: connection.name,
             host: connection.host,
@@ -77,7 +79,7 @@ enum IOSConnectionExportService {
             queryTimeoutSeconds: connection.queryTimeoutSeconds.flatMap {
                 DatabaseConnection.queryTimeoutSecondsRange.contains($0) ? $0 : nil
             },
-            additionalFields: portableAdditionalFields(connection)
+            additionalFields: portableAdditionalFields(connection, keepingLocalCredentials: keepingLocalCredentials)
         )
     }
 
@@ -95,7 +97,7 @@ enum IOSConnectionExportService {
             connections: connections.map { connection in
                 BundleExportInput.Connection(
                     id: connection.id,
-                    settings: portableSettings(for: connection),
+                    settings: portableSettings(for: connection, keepingLocalCredentials: true),
                     groupId: connection.groupId,
                     tagIds: connection.tagIds,
                     credentials: includeCredentials ? credentials(of: connection, in: appState.secureStore) : nil
@@ -155,11 +157,14 @@ enum IOSConnectionExportService {
         color == .none ? nil : color.rawValue
     }
 
-    private static func portableAdditionalFields(_ connection: DatabaseConnection) -> [String: String]? {
+    private static func portableAdditionalFields(
+        _ connection: DatabaseConnection,
+        keepingLocalCredentials: Bool
+    ) -> [String: String]? {
         var fields = connection.additionalFields
         fields.removeValue(forKey: DatabaseConnection.connectTimeoutSecondsKey)
         fields.removeValue(forKey: DatabaseConnection.queryTimeoutSecondsKey)
-        return ExportableConnection.shareableAdditionalFields(fields)
+        return ExportableConnection.shareableAdditionalFields(fields, keepingLocalCredentials: keepingLocalCredentials)
     }
 
     private static func portableSSH(_ connection: DatabaseConnection) -> ExportableSSHConfig? {

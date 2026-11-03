@@ -57,4 +57,21 @@ final class CompareSyncSessionScriptTextTests {
         #expect(oracle.runnableScriptText == "\(Self.callTrigger)\n/")
         #expect(oracle.scriptText.hasPrefix("DROP TABLE \"OLD\";\n"))
     }
+
+    // Under NO_BACKSLASH_ESCAPES, which the script sets before a routine, the mysql client ends this at its first `;`.
+    @Test
+    func aMySQLDefinitionAnotherModeCutsSitsInADelimiterBlock() {
+        let definition = "CREATE PROCEDURE `p`() SET @a = '\\'; DROP DATABASE prod; #'"
+        let mysql = session(target: .mysql, statements: [statement(definition)])
+
+        #expect(mysql.scriptText == "DELIMITER //\n\(definition)\n//\nDELIMITER ;")
+    }
+
+    @Test
+    func theDelimiterIsNeverTextTheDefinitionHolds() {
+        let definition = "CREATE PROCEDURE `p`() BEGIN SELECT 'a//b'; SELECT 1; END"
+        let mysql = session(target: .mysql, statements: [statement(definition)])
+
+        #expect(mysql.scriptText == "DELIMITER ///\n\(definition) ///\nDELIMITER ;")
+    }
 }

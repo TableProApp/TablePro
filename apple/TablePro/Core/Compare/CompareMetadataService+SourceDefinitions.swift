@@ -16,6 +16,9 @@ internal struct RoutineSourceRead: Sendable {
     internal let source: String
     internal let failure: String?
     internal let indexes: ObjectIndexRead?
+    internal let creationScope: PluginStatementScope?
+    // Set when the settings could not be read, so the object is created under the target session's own.
+    internal let creationScopeUnreadable: Bool
 
     internal init(
         name: String,
@@ -24,7 +27,9 @@ internal struct RoutineSourceRead: Sendable {
         signature: String?,
         source: String,
         failure: String? = nil,
-        indexes: ObjectIndexRead? = nil
+        indexes: ObjectIndexRead? = nil,
+        creationScope: PluginStatementScope? = nil,
+        creationScopeUnreadable: Bool = false
     ) {
         self.name = name
         self.kind = kind
@@ -33,6 +38,8 @@ internal struct RoutineSourceRead: Sendable {
         self.source = source
         self.failure = failure
         self.indexes = indexes
+        self.creationScope = creationScope
+        self.creationScopeUnreadable = creationScopeUnreadable
     }
 }
 
@@ -66,6 +73,7 @@ internal extension CompareMetadataService {
     nonisolated static func readRoutineDefinitions(
         schema: String?,
         endpointName: String,
+        readsCreationScopes: Bool = false,
         using plugin: any PluginDatabaseDriver
     ) async throws -> [RoutineSourceRead] {
         let routines: [PluginRoutineInfo]
@@ -84,7 +92,8 @@ internal extension CompareMetadataService {
                 name: routine.name,
                 kind: routine.kind == .procedure ? .procedure : .function,
                 schema: routine.schema ?? schema,
-                signature: routine.argumentSignature
+                signature: routine.argumentSignature,
+                creationScope: readsCreationScopes ? { try await plugin.fetchRoutineCreationScope(routine) } : nil
             ) {
                 try await plugin.fetchRoutineDDL(routine)
             })
@@ -96,6 +105,7 @@ internal extension CompareMetadataService {
         tables: [String],
         schema: String?,
         endpointName: String,
+        readsCreationScopes: Bool = false,
         using plugin: any PluginDatabaseDriver
     ) async throws -> [RoutineSourceRead] {
         let listed = try await listTriggers(tables: tables, schema: schema, endpointName: endpointName, using: plugin)
@@ -106,7 +116,8 @@ internal extension CompareMetadataService {
                 name: trigger.name,
                 kind: .trigger,
                 schema: trigger.schema ?? schema,
-                signature: trigger.table ?? owningTable
+                signature: trigger.table ?? owningTable,
+                creationScope: readsCreationScopes ? { try await plugin.fetchTriggerCreationScope(trigger) } : nil
             ) {
                 if let definition = trigger.definition, StatementBlank.hasContent(definition) {
                     return definition
@@ -180,13 +191,12 @@ internal extension CompareMetadataService {
         schema: String?,
         signature: String?,
         indexes: ObjectIndexRead? = nil,
+        creationScope: (() async throws -> PluginStatementScope?)? = nil,
         reading: () async throws -> String
     ) async throws -> RoutineSourceRead {
+        let source: String
         do {
-            let source = try await reading()
-            return RoutineSourceRead(
-                name: name, kind: kind, schema: schema, signature: signature, source: source, indexes: indexes
-            )
+            source = try await reading()
         } catch {
             guard !(error is CancellationError), !Task.isCancelled else { throw CancellationError() }
             definitionLogger.warning(
@@ -195,6 +205,26 @@ internal extension CompareMetadataService {
             return RoutineSourceRead(
                 name: name, kind: kind, schema: schema, signature: signature,
                 source: "", failure: error.localizedDescription, indexes: indexes
+            )
+        }
+        guard let creationScope else {
+            return RoutineSourceRead(
+                name: name, kind: kind, schema: schema, signature: signature, source: source, indexes: indexes
+            )
+        }
+        do {
+            return RoutineSourceRead(
+                name: name, kind: kind, schema: schema, signature: signature, source: source, indexes: indexes,
+                creationScope: try await creationScope()
+            )
+        } catch {
+            guard !(error is CancellationError), !Task.isCancelled else { throw CancellationError() }
+            definitionLogger.warning(
+                "Creation settings read failed for \(kind.rawValue, privacy: .public): \(error.publicLogShape, privacy: .public)"
+            )
+            return RoutineSourceRead(
+                name: name, kind: kind, schema: schema, signature: signature, source: source, indexes: indexes,
+                creationScopeUnreadable: true
             )
         }
     }

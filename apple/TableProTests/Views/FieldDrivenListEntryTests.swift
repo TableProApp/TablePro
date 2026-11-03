@@ -3,7 +3,6 @@
 //  TableProTests
 //
 
-import AppKit
 @testable import TablePro
 import Testing
 
@@ -80,22 +79,6 @@ struct FieldDrivenListEntryTests {
         let after = FieldDrivenListEntry.flatten([section("g", title: "ACME CORP", ["one"])])
 
         #expect(before.map(\.identity) != after.map(\.identity))
-    }
-
-    @Test("A recoloured section is a different header")
-    func headerIdentityFollowsItsAccent() {
-        let plain = FieldDrivenListSection(id: "g", title: "ACME", items: [Item(id: "one")])
-        let coloured = FieldDrivenListSection(
-            id: "g",
-            title: "ACME",
-            accentColor: .systemRed,
-            items: [Item(id: "one")]
-        )
-
-        #expect(
-            FieldDrivenListEntry.flatten([plain]).map(\.identity)
-                != FieldDrivenListEntry.flatten([coloured]).map(\.identity)
-        )
     }
 
     @Test("A header never reports an item id")

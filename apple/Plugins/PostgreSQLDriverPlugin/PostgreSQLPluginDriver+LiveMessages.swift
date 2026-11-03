@@ -55,7 +55,12 @@ final class PostgreSQLLiveSubscription: PluginLiveSubscription, @unchecked Senda
 
     init(listener: PostgreSQLPluginDriver) {
         self.listener = listener
-        let (stream, continuation) = AsyncThrowingStream<PluginLiveMessage, Error>.makeStream()
+        // The newest 10,000, the most the live window keeps: a channel faster than the window drains cannot queue without bound.
+        let (stream, continuation) = AsyncThrowingStream.makeStream(
+            of: PluginLiveMessage.self,
+            throwing: Error.self,
+            bufferingPolicy: .bufferingNewest(10_000)
+        )
         messages = stream
         reader = Task {
             do {

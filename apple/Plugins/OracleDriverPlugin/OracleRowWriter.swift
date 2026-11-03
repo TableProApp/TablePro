@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// The INSERT, UPDATE and DELETE statements a grid save sends to Oracle, with `?` placeholders.
 ///
@@ -289,7 +290,7 @@ internal struct OracleRowWriter {
     }
 
     static func quote(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        SQLQuoting.identifier(name)
     }
 
     private static func serverOwnedReason(_ column: String) -> String {

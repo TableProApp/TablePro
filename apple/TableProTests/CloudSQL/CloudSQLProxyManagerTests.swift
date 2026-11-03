@@ -1,9 +1,9 @@
-import CryptoKit
 import Darwin
 import Foundation
 import Testing
 
 @testable import TablePro
+import TableProProcess
 import TableProTestSupport
 
 final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendable {
@@ -18,6 +18,7 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
     let behavior: Behavior
     private var startCalls = 0
     private var stopCalls = 0
+    private var startedArgumentList: [String] = []
     private var listenerFd: Int32?
 
     let stderrLines: AsyncStream<String>
@@ -45,12 +46,20 @@ final class FakeCloudSQLProxyRunner: SupervisedProcessRunner, @unchecked Sendabl
         lock.withLock { stopCalls }
     }
 
-    func start(binaryPath: String, arguments: [String], environment: [String: String]) throws {
-        lock.withLock { startCalls += 1 }
+    var startedArguments: [String] {
+        lock.withLock { startedArgumentList }
+    }
+
+    func start(_ command: ProcessCommand) throws {
+        _ = try ProcessLauncher.process(for: command)
+        lock.withLock {
+            startCalls += 1
+            startedArgumentList = command.arguments
+        }
 
         switch behavior {
         case .ready, .squatted:
-            if let port = Self.parsePort(arguments) {
+            if let port = Self.parsePort(command.arguments) {
                 listenerFd = Self.openListener(port: port)
             }
         case .startupFailure:
@@ -143,9 +152,7 @@ struct CloudSQLProxyManagerTests {
         CloudSQLProxyConfiguration(instanceConnectionName: instance, localPort: localPort, binaryPath: "/bin/echo")
     }
 
-    /// The managed binary is ad-hoc signed and sits in a user-writable directory, so the launch
-    /// path has to obtain it through the checksum-verifying accessor rather than by checking that
-    /// a file exists. It did the latter, which left the pinned checksum unread before exec.
+    // The launch path once checked only that the file existed, so the pinned checksum went unread before exec.
     @Test("A tampered managed binary is refused rather than launched")
     func tamperedManagedBinaryIsRefused() async throws {
         let dir = FileManager.default.temporaryDirectory
@@ -160,21 +167,22 @@ struct CloudSQLProxyManagerTests {
             .write(to: dir.appendingPathComponent("version.txt"), atomically: true, encoding: .utf8)
 
         let started = LaunchFlag()
+        let binaryManager = CloudSQLProxyBinaryManager(
+            baseDirectory: dir,
+            expectedSHA256: ["arm64": "deadbeef", "amd64": "deadbeef"],
+            download: TestProxyDownload.serving(Data("still wrong".utf8), into: dir)
+        )
         let manager = CloudSQLProxyManager(
             runnerFactory: {
                 started.set()
                 return FakeCloudSQLProxyRunner(behavior: .ready)
             },
-            binaryManager: CloudSQLProxyBinaryManager(
-                baseDirectory: dir,
-                expectedSHA256: ["arm64": "deadbeef", "amd64": "deadbeef"],
-                fetch: { _ in Data("still wrong".utf8) }
-            ),
+            managedBinary: { try await binaryManager.ensureBinary() },
             systemBinaryLookup: { _ in nil },
             ownsListener: { _, _ in true }
         )
 
-        await #expect(throws: CloudSQLProxyError.binaryNotFound) {
+        await #expect(throws: CloudSQLProxyError.checksumMismatch) {
             _ = try await manager.createTunnel(
                 connectionId: UUID(),
                 config: CloudSQLProxyConfiguration(
@@ -195,15 +203,15 @@ struct CloudSQLProxyManagerTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         let bytes = Data("pinned build".utf8)
-        let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+        let binaryManager = CloudSQLProxyBinaryManager(
+            baseDirectory: dir,
+            expectedSHA256: TestProxyDownload.pins(bytes),
+            download: TestProxyDownload.serving(bytes, into: dir)
+        )
 
         let manager = CloudSQLProxyManager(
             runnerFactory: { FakeCloudSQLProxyRunner(behavior: .ready) },
-            binaryManager: CloudSQLProxyBinaryManager(
-                baseDirectory: dir,
-                expectedSHA256: ["arm64": digest, "amd64": digest],
-                fetch: { _ in bytes }
-            ),
+            managedBinary: { try await binaryManager.ensureBinary() },
             systemBinaryLookup: { _ in nil },
             ownsListener: { _, _ in true }
         )
@@ -311,6 +319,18 @@ struct CloudSQLProxyManagerTests {
         ))
         #expect(fake.stopCallCount >= 1)
         #expect(!(await manager.hasTunnel(connectionId: id)))
+    }
+
+    @Test("The instance name follows --, so a name that reads as a flag stays the instance")
+    func instanceFollowsEndOfOptions() async throws {
+        let fake = FakeCloudSQLProxyRunner(behavior: .ready)
+        let manager = CloudSQLProxyManager(testRunner: { fake })
+        let id = UUID()
+
+        _ = try await manager.createTunnel(connectionId: id, config: config(instance: "--credentials-file=/a:b:c"))
+
+        #expect(Array(fake.startedArguments.suffix(2)) == ["--", "--credentials-file=/a:b:c"])
+        try await manager.closeTunnel(connectionId: id)
     }
 
     @Test("an invalid instance connection name is rejected before launching")

@@ -25,6 +25,26 @@ struct EntraOAuthTests {
         )
     }
 
+    @Test("A redirect from the token endpoint is not followed, so the refresh token never reaches the other host")
+    func refreshRedirectIsNotFollowed() async {
+        let script = AWSSSOScriptedProtocol.Script { request, _ in
+            request.url?.host == "collector.example"
+                ? .json(#"{"access_token":"AT","refresh_token":"RT2","expires_in":3600}"#)
+                : .init(status: 307, headers: ["Location": "https://collector.example/token"])
+        }
+
+        await #expect(throws: EntraOAuthError.serverError("unknown_error")) {
+            _ = try await EntraOAuth.refresh(
+                tenantId: "contoso.onmicrosoft.com",
+                clientId: "CID",
+                refreshToken: "RT",
+                session: AWSSSOScriptedProtocol.session(for: script)
+            )
+        }
+        let hosts = script.exchanges.map { $0.request.url?.host }
+        #expect(hosts == ["login.microsoftonline.com"])
+    }
+
     @Test("Requests the Azure SQL audience and a refresh token")
     func scopeTargetsAzureSQL() {
         #expect(EntraOAuth.sqlScope.contains("https://database.windows.net/.default"))

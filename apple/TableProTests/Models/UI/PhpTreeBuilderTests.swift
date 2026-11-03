@@ -238,7 +238,7 @@ struct PhpTreeBuilderTests {
                 PhpKeyValue(key: .int(7), value: .serializable(className: "T", rawPayload: "https://example.com/")),
                 PhpKeyValue(key: .int(8), value: .reference(id: 2)),
                 PhpKeyValue(key: .int(9), value: .unsupported(token: "o")),
-                PhpKeyValue(key: .int(10), value: .depthExceeded)
+                PhpKeyValue(key: .int(10), value: .tooLarge)
             ])
         )
         let contents = root.children.map(\.rowContent)

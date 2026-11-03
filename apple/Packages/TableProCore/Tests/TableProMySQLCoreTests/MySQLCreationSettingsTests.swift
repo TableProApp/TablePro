@@ -4,6 +4,12 @@ import Testing
 @testable import TableProMySQLCore
 
 struct MySQLCreationSettingsTests {
+    @Test("A comment closer a combining mark follows still closes the comment, so the value is refused")
+    func closerBeforeMarkIsRefused() {
+        #expect(MySQLCreationSettings(sqlMode: "ANSI*/\u{301} DROP TABLE t") == nil)
+        #expect(MySQLCreationSettings(sqlMode: "ANSI", timeZone: "+00:00*/\u{301} DROP TABLE t") == nil)
+    }
+
     @Test("A routine or trigger switches the mode through its own variable and puts it back")
     func modeOnly() throws {
         let settings = try #require(MySQLCreationSettings(sqlMode: "STRICT_TRANS_TABLES,NO_ZERO_DATE"))

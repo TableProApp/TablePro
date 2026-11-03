@@ -487,15 +487,17 @@ final class SyncCoordinator: ObservableObject {
 
     // MARK: - Status
 
+    // The switch before the license: sync that was never turned on is off by choice, whatever the
+    // license says.
     private func evaluateStatus() {
-        if let reason = licenseGate() {
-            decide(.disabled(reason))
-            return
-        }
-
         let syncSettings = services.appSettingsStorage.loadSync()
         guard syncSettings.enabled else {
             decide(.disabled(.userDisabled))
+            return
+        }
+
+        if let reason = licenseGate() {
+            decide(.disabled(reason))
             return
         }
 
@@ -997,7 +999,9 @@ final class SyncCoordinator: ObservableObject {
         if let index {
             connections[index] = kept.adoptingDeviceLocalState(from: connections[index])
         } else {
-            connections.append(kept)
+            var inserted = kept
+            inserted.origin = .synced
+            connections.append(inserted)
         }
         guard services.connectionStorage.saveConnections(connections, byUser: false) else {
             Self.logger.error("Failed to apply remote connection update: persistence error for \(remoteConnection.id, privacy: .public)")

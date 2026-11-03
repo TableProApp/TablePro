@@ -86,6 +86,18 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         return MySQLEngineVersion(parsing: version[marker.upperBound...])
     }
 
+    // The curated lexical profile `SQLExpressionFragment` reads this server's text with.
+    var databaseTypeId: String {
+        switch self {
+        case .mysql: "MySQL"
+        case .mariadb: "MariaDB"
+        case .tidb: Self.tidbVariant
+        case .databend: Self.databendVariant
+        case .oceanbase: Self.oceanbaseVariant
+        case .starrocks: Self.starrocksVariant
+        }
+    }
+
     var isMariaDB: Bool { self == .mariadb }
 
     var isTiDB: Bool {
@@ -138,6 +150,16 @@ nonisolated internal enum MySQLServerFlavor: Equatable, Sendable {
         case .mysql, .mariadb, .tidb:
             return true
         case .databend, .oceanbase, .starrocks:
+            return false
+        }
+    }
+
+    // TiDB parses READ ONLY and still writes; the other three send no status flags to prove the session idle.
+    var enforcesReadOnlyTransactions: Bool {
+        switch self {
+        case .mysql, .mariadb:
+            return true
+        case .tidb, .databend, .oceanbase, .starrocks:
             return false
         }
     }

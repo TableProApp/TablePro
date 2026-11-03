@@ -1,3 +1,4 @@
+import TableProMySQLCore
 import TableProPluginKit
 import Testing
 
@@ -21,14 +22,14 @@ struct MySQLIndexKeyWriterTests {
     func oneStatementModifyByFlavor() {
         let index = PluginIndexDefinition(name: "ix", columns: ["a"], indexType: "BTREE")
         #expect(
-            mysqlModifyIndexSQL(table: "t", oldIndexName: "ix", newIndex: index, flavor: .mariadb)
+            mysqlModifyIndexSQL(table: "t", oldIndexName: "ix", newIndex: index, flavor: .mariadb, spelling: .backslashEscapes)
                 == "ALTER TABLE `t` DROP INDEX `ix`, ADD INDEX `ix` (`a`) USING BTREE"
         )
-        #expect(mysqlModifyIndexSQL(table: "t", oldIndexName: "ix", newIndex: index, flavor: .tidb(version: nil)) == nil)
+        #expect(mysqlModifyIndexSQL(table: "t", oldIndexName: "ix", newIndex: index, flavor: .tidb(version: nil), spelling: .backslashEscapes) == nil)
         #expect(
-            mysqlModifyIndexSQL(table: "t", oldIndexName: "ix", newIndex: index, flavor: .oceanbase(version: nil)) == nil
+            mysqlModifyIndexSQL(table: "t", oldIndexName: "ix", newIndex: index, flavor: .oceanbase(version: nil), spelling: .backslashEscapes) == nil
         )
-        #expect(mysqlModifyIndexSQL(table: "t", oldIndexName: "ix", newIndex: index, flavor: .databend) == nil)
+        #expect(mysqlModifyIndexSQL(table: "t", oldIndexName: "ix", newIndex: index, flavor: .databend, spelling: .backslashEscapes) == nil)
     }
 
     /// Measured on MariaDB 13.0.2: `ADD INDEX PRIMARY (b)`, `ADD INDEX primary (b)` and

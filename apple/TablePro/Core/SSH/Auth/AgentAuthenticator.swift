@@ -2,6 +2,7 @@ import Foundation
 import os
 
 import CLibSSH2
+import TableProProcess
 import TableProSSHConfig
 import TableProSSHTransport
 
@@ -19,13 +20,15 @@ internal struct AgentAuthenticator: SSHAuthenticator {
 
     // An app launched from Finder does not inherit the shell's SSH_AUTH_SOCK.
     private static func resolveSocketViaLaunchctl() -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = ["getenv", "SSH_AUTH_SOCK"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
         do {
+            let process = try ProcessLauncher.process(for: ProcessCommand(
+                executable: URL(fileURLWithPath: "/bin/launchctl"),
+                arguments: ["getenv", "SSH_AUTH_SOCK"],
+                environment: ProcessEnvironment.minimal()
+            ))
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
             try process.run()
             process.waitUntilExit()
             let data = pipe.fileHandleForReading.readDataToEndOfFile()

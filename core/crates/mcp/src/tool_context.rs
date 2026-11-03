@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use tablepro_session::Session;
-use tablepro_storage::{ConnectionListState, ConnectionStore, SavedConnection};
+use tablepro_storage::{ConnectionList, ConnectionListState, ConnectionStore, SavedConnection};
 use uuid::Uuid;
 
 use crate::mcp_host::McpHost;
@@ -19,13 +19,20 @@ impl ToolContext {
     /// Every saved connection a client may know about. A blocked one is
     /// left out, as if it did not exist.
     pub fn visible_connections(&self) -> Result<Vec<SavedConnection>, ToolError> {
+        Ok(self.visible_library()?.0)
+    }
+
+    /// One snapshot, so each connection's group is the one it had there.
+    pub fn visible_library(&self) -> Result<(Vec<SavedConnection>, ConnectionList), ToolError> {
         match self.connections.snapshot().state {
-            ConnectionListState::Ready(list) => Ok(list
-                .connections
-                .iter()
-                .filter(|connection| !connection.external_access.is_blocked())
-                .cloned()
-                .collect()),
+            ConnectionListState::Ready(list) => Ok((
+                list.connections
+                    .iter()
+                    .filter(|connection| !connection.external_access.is_blocked())
+                    .cloned()
+                    .collect(),
+                list,
+            )),
             ConnectionListState::Loading => Err(ToolError::Internal(
                 "TablePro is still reading the saved connections; try again in a moment".to_owned(),
             )),

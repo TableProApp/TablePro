@@ -184,10 +184,11 @@ extension TrinoPluginDriver {
         )
         guard let result = try? await execute(query: sql) else { return nil }
         for row in result.rows {
-            guard case .null? = row.first, row.count > 4, let value = text(row[4]), let count = Double(value) else {
+            guard case .null? = row.first, row.count > 4, let value = text(row[4]),
+                  let count = TrinoIntrospectionSQL.rowCount(fromStatsValue: value) else {
                 continue
             }
-            return Int(count)
+            return count
         }
         return nil
     }

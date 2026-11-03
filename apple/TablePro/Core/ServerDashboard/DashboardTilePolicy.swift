@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 /// What a tile refuses before it asks the execution gate. A tile runs on a timer with nobody to
 /// confirm anything, so it takes a single statement that only reads, and says why it will not.

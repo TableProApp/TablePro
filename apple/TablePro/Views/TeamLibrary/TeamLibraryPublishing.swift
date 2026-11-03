@@ -19,11 +19,10 @@ internal enum TeamLibraryPublishing {
         let isError: Bool
     }
 
-    static func message(for result: TeamLibraryPublishResult, itemCount: Int, kind: Kind) -> Message? {
+    // A publish that went through says nothing: the section shows the items once the pull after the push lands.
+    static func message(for result: TeamLibraryPublishResult) -> Message? {
         switch result {
-        case .published, .unchanged:
-            return Message(title: String(localized: "Published to the team library"), text: kind.publishedText(itemCount), isError: false)
-        case .conflicts:
+        case .published, .unchanged, .conflicts:
             return nil
         case .queued(let failure):
             return Message(
@@ -77,23 +76,6 @@ internal enum TeamLibraryPublishing {
         }
     }
 
-    enum Kind {
-        case connections
-        case savedQueries
-
-        func publishedText(_ count: Int) -> String {
-            switch self {
-            case .connections:
-                return String(
-                    format: String(localized: "Your team can now see %d shared connections. Passwords were not included."),
-                    count
-                )
-            case .savedQueries:
-                return String(format: String(localized: "Published %d saved queries to your team."), count)
-            }
-        }
-    }
-
     @MainActor
     static func present(_ message: Message, in window: NSWindow? = nil) {
         if message.isError {
@@ -104,19 +86,14 @@ internal enum TeamLibraryPublishing {
     }
 
     @MainActor
-    static func present(
-        _ outcome: TeamLibraryPublishOutcome,
-        itemCount: Int,
-        kind: Kind,
-        showConflicts: () -> Void
-    ) {
+    static func present(_ outcome: TeamLibraryPublishOutcome, showConflicts: () -> Void) {
         switch outcome {
         case .declined:
             return
         case .finished(.conflicts):
             showConflicts()
         case .finished(let result):
-            if let message = message(for: result, itemCount: itemCount, kind: kind) {
+            if let message = message(for: result) {
                 present(message)
             }
         case .failed(let error):

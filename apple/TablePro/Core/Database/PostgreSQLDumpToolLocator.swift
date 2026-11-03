@@ -71,7 +71,7 @@ enum PostgreSQLDumpToolLocator {
         if let fallback = unknownVersionPaths.first {
             logger.warning(
                 """
-                \(binary, privacy: .public) at \(fallback, privacy: .public) reports no readable version; \
+                \(binary, privacy: .public) at \(fallback, privacy: .private(mask: .hash)) reports no readable version; \
                 using it for a \(server.majorReleaseName, privacy: .public) server
                 """
             )

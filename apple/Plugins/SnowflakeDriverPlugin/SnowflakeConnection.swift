@@ -1,9 +1,10 @@
-import AppKit
-import Compression
 import Foundation
 import os
+import TableProGzip
+import TableProHTTP
 import TableProNumberFormatting
 import TableProPluginKit
+import TableProSnowflakeCore
 
 struct SnowflakeQueryResult: Sendable {
     var columns: [SnowflakeColumnMeta]
@@ -29,7 +30,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         var role: String
     }
 
-    let host: String
+    let account: SnowflakeAccount?
     let params: ResolvedParameters
     private let connectionIdentifier: String
 
@@ -46,7 +47,7 @@ final class SnowflakeConnection: @unchecked Sendable {
     var sessionFingerprint: String {
         SnowflakeSessionKey.fingerprint(
             connectionId: connectionIdentifier,
-            host: host,
+            host: account?.host ?? params.account,
             user: params.user,
             authMethod: params.authMethod,
             role: params.role
@@ -76,7 +77,7 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     init(config: DriverConnectionConfig) {
         self.params = Self.resolveParameters(from: config)
-        self.host = SnowflakeAccount.host(forAccount: params.account)
+        self.account = SnowflakeAccount(params.account)
         self.connectionIdentifier = config.additionalFields["connectionId"] ?? ""
 
         let configuration = URLSessionConfiguration.ephemeral
@@ -153,6 +154,7 @@ final class SnowflakeConnection: @unchecked Sendable {
     }
 
     func connect(timeoutMilliseconds: Int) async throws {
+        _ = try resolvedAccount()
         let deadline = PluginConnectDeadline(milliseconds: timeoutMilliseconds)
         switch params.authMethod {
         case "keyPair":
@@ -187,7 +189,8 @@ final class SnowflakeConnection: @unchecked Sendable {
     // MARK: - Authentication
 
     private func loginWithPassword(deadline: PluginConnectDeadline) async throws {
-        if let cachedToken = SnowflakeMFATokenStore.token(account: params.account, user: params.user) {
+        let account = try resolvedAccount()
+        if let cachedToken = SnowflakeMFATokenStore.token(for: account, user: params.user) {
             do {
                 try await login(
                     authenticator: "USERNAME_PASSWORD_MFA",
@@ -196,14 +199,16 @@ final class SnowflakeConnection: @unchecked Sendable {
                 )
                 return
             } catch {
-                SnowflakeMFATokenStore.clear(account: params.account, user: params.user)
-                Self.logger.info("Cached MFA token rejected; retrying with credentials")
+                if case .loginFailed? = error as? SnowflakeError {
+                    SnowflakeMFATokenStore.clear(for: account, user: params.user)
+                }
+                Self.logger.info("Login with the cached MFA token failed; retrying with credentials")
             }
         }
 
         var extra: [String: Any] = ["PASSWORD": params.password]
         let usesPasscode = !params.mfaPasscode.isEmpty
-            && !SnowflakeMFATokenStore.isPasscodeRejected(params.mfaPasscode, account: params.account, user: params.user)
+            && !SnowflakeMFATokenStore.isPasscodeRejected(params.mfaPasscode, for: account, user: params.user)
         if usesPasscode {
             extra["PASSCODE"] = params.mfaPasscode
             extra["EXT_AUTHN_DUO_METHOD"] = "passcode"
@@ -213,9 +218,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         } catch let error as SnowflakeError {
             if usesPasscode, case .loginFailed(let code, _) = error,
                ["394507", "394633"].contains(code) {
-                SnowflakeMFATokenStore.markPasscodeRejected(
-                    params.mfaPasscode, account: params.account, user: params.user
-                )
+                SnowflakeMFATokenStore.markPasscodeRejected(params.mfaPasscode, for: account, user: params.user)
             }
             throw error
         }
@@ -227,7 +230,7 @@ final class SnowflakeConnection: @unchecked Sendable {
             throw SnowflakeError.configuration("Could not read private key file at \(params.privateKeyPath)")
         }
         let auth = SnowflakeKeyPairAuth(
-            account: params.account,
+            accountName: try resolvedAccount().name,
             user: params.user,
             privateKeyPEM: pem,
             passphrase: params.privateKeyPassphrase.isEmpty ? nil : params.privateKeyPassphrase
@@ -237,13 +240,16 @@ final class SnowflakeConnection: @unchecked Sendable {
     }
 
     private func loginWithExternalBrowser(deadline: PluginConnectDeadline) async throws {
-        if let idToken = SnowflakeIdTokenStore.token(account: params.account, user: params.user) {
+        let account = try resolvedAccount()
+        if let idToken = SnowflakeIdTokenStore.token(for: account, user: params.user) {
             do {
                 try await login(authenticator: "ID_TOKEN", extra: ["TOKEN": idToken], deadline: deadline)
                 return
             } catch {
-                SnowflakeIdTokenStore.clear(account: params.account, user: params.user)
-                Self.logger.info("Cached SSO id token rejected; falling back to browser authentication")
+                if case .loginFailed? = error as? SnowflakeError {
+                    SnowflakeIdTokenStore.clear(for: account, user: params.user)
+                }
+                Self.logger.info("Login with the cached SSO id token failed; falling back to browser authentication")
             }
         }
 
@@ -252,7 +258,7 @@ final class SnowflakeConnection: @unchecked Sendable {
 
         let authRequest: [String: Any] = [
             "data": [
-                "ACCOUNT_NAME": SnowflakeAccount.issuerAccountName(forAccount: params.account),
+                "ACCOUNT_NAME": account.name,
                 "LOGIN_NAME": params.user,
                 "AUTHENTICATOR": "EXTERNALBROWSER",
                 "BROWSER_MODE_REDIRECT_PORT": String(port)
@@ -274,15 +280,20 @@ final class SnowflakeConnection: @unchecked Sendable {
         }
 
         guard let data = authResponse["data"] as? [String: Any],
-              let ssoURLString = data["ssoUrl"] as? String,
-              let ssoURL = URL(string: ssoURLString) else {
+              let ssoURLString = data["ssoUrl"] as? String else {
             server.stop()
             throw SnowflakeError.authFailed("Snowflake did not return an SSO URL for browser authentication")
+        }
+        guard let ssoURL = WebPageOpener.page(ssoURLString, scope: .https) else {
+            server.stop()
+            throw SnowflakeError.authFailed(
+                String(localized: "Snowflake returned a sign-in page that is not an https address, so TablePro did not open it.")
+            )
         }
         let proofKey = data["proofKey"] as? String ?? ""
 
         _ = await MainActor.run {
-            NSWorkspace.shared.open(ssoURL)
+            WebPageOpener.open(ssoURL, scope: .https)
         }
 
         let token: String
@@ -305,8 +316,9 @@ final class SnowflakeConnection: @unchecked Sendable {
         extra: [String: Any],
         deadline: PluginConnectDeadline
     ) async throws {
+        let account = try resolvedAccount()
         var data: [String: Any] = [
-            "ACCOUNT_NAME": SnowflakeAccount.issuerAccountName(forAccount: params.account),
+            "ACCOUNT_NAME": account.name,
             "LOGIN_NAME": params.user,
             "CLIENT_APP_ID": Self.appName,
             "CLIENT_APP_VERSION": Self.appVersion,
@@ -357,13 +369,13 @@ final class SnowflakeConnection: @unchecked Sendable {
             renewalToken = responseData["masterToken"] as? String
         }
         if let mfaToken = responseData["mfaToken"] as? String, !mfaToken.isEmpty {
-            SnowflakeMFATokenStore.store(mfaToken, account: params.account, user: params.user)
+            SnowflakeMFATokenStore.store(mfaToken, for: account, user: params.user)
             Self.logger.info("Login succeeded (\(authenticator, privacy: .public)); MFA token cached for reuse")
         } else if authenticator == "SNOWFLAKE" || authenticator == "USERNAME_PASSWORD_MFA" {
             Self.logger.info("Login succeeded (\(authenticator, privacy: .public)); no mfaToken returned; ALLOW_CLIENT_MFA_CACHING may be disabled on this account")
         }
         if let idToken = responseData["idToken"] as? String, !idToken.isEmpty {
-            SnowflakeIdTokenStore.store(idToken, account: params.account, user: params.user)
+            SnowflakeIdTokenStore.store(idToken, for: account, user: params.user)
             Self.logger.info("SSO id token cached; subsequent connects skip the browser")
         }
         applySessionInfo(responseData["sessionInfo"] as? [String: Any])
@@ -677,7 +689,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         let chunks = data["chunks"] as? [[String: Any]] ?? []
         let chunkRowCount = chunks.reduce(0) { $0 + (($1["rowCount"] as? Int) ?? 0) }
         let headers = Self.chunkRequestHeaders(from: data)
-        let urls = chunks.compactMap { ($0["url"] as? String).flatMap(URL.init(string:)) }
+        let urls = try Self.chunkURLs(chunks)
 
         let stream = AsyncThrowingStream<[[PluginCellValueBox]], Error> { continuation in
             guard !urls.isEmpty else {
@@ -740,7 +752,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         headers: [String: String],
         columns: [SnowflakeColumnMeta]
     ) async throws -> [[PluginCellValueBox]] {
-        let urls = chunks.compactMap { ($0["url"] as? String).flatMap(URL.init(string:)) }
+        let urls = try Self.chunkURLs(chunks)
         guard !urls.isEmpty else { return [] }
 
         var rowsByChunk = [[[PluginCellValueBox]]](repeating: [], count: urls.count)
@@ -769,6 +781,16 @@ final class SnowflakeConnection: @unchecked Sendable {
             }
         }
         return rowsByChunk.flatMap { $0 }
+    }
+
+    // Chunks come from cloud storage with no Snowflake credential, so any https host is fine and nothing else is.
+    private static func chunkURLs(_ chunks: [[String: Any]]) throws -> [URL] {
+        try chunks.compactMap { $0["url"] as? String }.map { value in
+            guard let url = URL(string: value), HTTPOrigin(url)?.scheme == "https" else {
+                throw SnowflakeError.invalidResponse(String(localized: "Snowflake returned a result chunk address that is not https."))
+            }
+            return url
+        }
     }
 
     private static func downloadChunk(
@@ -815,11 +837,12 @@ final class SnowflakeConnection: @unchecked Sendable {
         accept: String = "application/json",
         connectDeadline: PluginConnectDeadline? = nil
     ) async throws -> [String: Any] {
-        guard var components = URLComponents(string: "https://\(host)\(path)") else {
-            throw SnowflakeError.configuration("Invalid Snowflake host: \(host)")
-        }
-        components.queryItems = queryItems
-        guard let url = components.url else {
+        var components = URLComponents(
+            url: try resolvedAccount().origin.followServerURL(path),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = queryItems
+        guard let url = components?.url else {
             throw SnowflakeError.configuration("Could not build request URL")
         }
 
@@ -832,16 +855,23 @@ final class SnowflakeConnection: @unchecked Sendable {
         return try await send(request, connectDeadline: connectDeadline)
     }
 
+    // The server names the result path, and the session token goes with it, so it stays on the account's origin.
     private func getJSON(path: String, token: String?) async throws -> [String: Any] {
-        let urlString = path.hasPrefix("http") ? path : "https://\(host)\(path)"
-        guard let url = URL(string: urlString) else {
-            throw SnowflakeError.configuration("Invalid result URL")
-        }
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: try resolvedAccount().origin.followServerURL(path))
         request.httpMethod = "GET"
         request.timeoutInterval = Self.requestTimeout
         applyCommonHeaders(&request, token: token)
         return try await send(request)
+    }
+
+    private func resolvedAccount() throws -> SnowflakeAccount {
+        guard let account else {
+            throw SnowflakeError.configuration(String(
+                format: String(localized: "\"%@\" is not a Snowflake account. Enter an identifier such as myorg-myaccount or xy12345.us-east-2.aws."),
+                params.account
+            ))
+        }
+        return account
     }
 
     private func applyCommonHeaders(_ request: inout URLRequest, token: String?, accept: String = "application/json") {
@@ -866,7 +896,7 @@ final class SnowflakeConnection: @unchecked Sendable {
         guard (200..<300).contains(http.statusCode) else {
             let bodyText = String(data: data, encoding: .utf8) ?? ""
             Self.logger.error(
-                "HTTP \(http.statusCode, privacy: .public) from \(request.url?.path ?? "?", privacy: .public): \(String(bodyText.prefix(160)), privacy: .private)"
+                "HTTP \(http.statusCode, privacy: .public) from \(request.url?.path ?? "?", privacy: .private(mask: .hash)): \(String(bodyText.prefix(160)), privacy: .private)"
             )
             throw SnowflakeError.invalidResponse("Snowflake returned HTTP \(http.statusCode) for \(request.url?.path ?? "request"): \(bodyText.prefix(300))")
         }
@@ -966,53 +996,13 @@ final class SnowflakeConnection: @unchecked Sendable {
 
     // MARK: - Gzip
 
-    private static func gunzipIfNeeded(_ data: Data) -> Data {
-        guard data.count > 18, data[data.startIndex] == 0x1F, data[data.startIndex + 1] == 0x8B else {
-            return data
+    private static func gunzipIfNeeded(_ data: Data) throws -> Data {
+        guard data.starts(with: [0x1F, 0x8B]) else { return data }
+        do {
+            return try GzipInflater.decompress(data)
+        } catch {
+            throw SnowflakeError.invalidResponse(error.localizedDescription)
         }
-        let bytes = [UInt8](data)
-        let flags = bytes[3]
-        var offset = 10
-        if flags & 0x04 != 0, offset + 2 <= bytes.count {
-            let extraLen = Int(bytes[offset]) | (Int(bytes[offset + 1]) << 8)
-            offset += 2 + extraLen
-        }
-        if flags & 0x08 != 0 {
-            while offset < bytes.count, bytes[offset] != 0 { offset += 1 }
-            offset += 1
-        }
-        if flags & 0x10 != 0 {
-            while offset < bytes.count, bytes[offset] != 0 { offset += 1 }
-            offset += 1
-        }
-        if flags & 0x02 != 0 { offset += 2 }
-        guard offset < bytes.count - 8 else { return data }
-
-        let deflateBytes = Array(bytes[offset..<(bytes.count - 8)])
-        return inflate(deflateBytes) ?? data
-    }
-
-    private static func inflate(_ deflate: [UInt8]) -> Data? {
-        guard !deflate.isEmpty else { return nil }
-        var capacity = max(deflate.count * 8, 65_536)
-        for _ in 0..<6 {
-            var output = Data(count: capacity)
-            let written = output.withUnsafeMutableBytes { (outPtr: UnsafeMutableRawBufferPointer) -> Int in
-                deflate.withUnsafeBufferPointer { (inPtr: UnsafeBufferPointer<UInt8>) -> Int in
-                    guard let outBase = outPtr.bindMemory(to: UInt8.self).baseAddress,
-                          let inBase = inPtr.baseAddress else { return 0 }
-                    return compression_decode_buffer(
-                        outBase, capacity, inBase, deflate.count, nil, COMPRESSION_ZLIB
-                    )
-                }
-            }
-            if written > 0, written < capacity {
-                output.removeSubrange(written..<output.count)
-                return output
-            }
-            capacity *= 2
-        }
-        return nil
     }
 }
 

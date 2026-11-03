@@ -9632,7 +9632,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 Used by:
 
-- pulldown-cmark 0.13.5
+- pulldown-cmark 0.13.6
 
 ~~~~text
 The MIT License

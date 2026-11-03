@@ -34,4 +34,18 @@ struct TrinoIntrospectionSQLTests {
         #expect(TrinoIntrospectionSQL.quoteLiteral("x'\u{301} OR true--") == "'x''\u{301} OR true--'")
         #expect(TrinoIntrospectionSQL.quoteIdentifier("a\"\u{301}") == "\"a\"\"\u{301}\"")
     }
+
+    @Test("A SHOW STATS row count reads as whole rows, a fraction cut off", arguments: [
+        ("1234.0", 1_234), ("1234", 1_234), ("12.7", 12), ("1.5e+18", 1_500_000_000_000_000_000), ("0.0", 0),
+    ] as [(String, Int)])
+    func statsRowCount(text: String, count: Int) {
+        #expect(TrinoIntrospectionSQL.rowCount(fromStatsValue: text) == count)
+    }
+
+    @Test("A row count that is not a finite number inside Int is no count instead of a crash", arguments: [
+        "NaN", "Infinity", "-Infinity", "1e+30", "-1e+30", "1e19", "9223372036854775807", "rows", "",
+    ])
+    func unusableStatsRowCount(text: String) {
+        #expect(TrinoIntrospectionSQL.rowCount(fromStatsValue: text) == nil)
+    }
 }

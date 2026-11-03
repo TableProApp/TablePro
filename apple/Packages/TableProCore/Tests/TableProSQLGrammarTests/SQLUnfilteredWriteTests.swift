@@ -30,6 +30,11 @@ struct SQLUnfilteredWriteTests {
         #expect(first(sql) == expected)
     }
 
+    @Test("A MySQL user variable named where filters nothing")
+    func userVariableNamedWhere() {
+        #expect(first("UPDATE t SET a = @where", Self.mySQL) == .update)
+    }
+
     @Test("A WHERE the engine never reads as code does not count", arguments: [
         "UPDATE t SET a = 1 -- WHERE id = 1",
         "UPDATE t SET a = 1 /* WHERE id = 1 */",

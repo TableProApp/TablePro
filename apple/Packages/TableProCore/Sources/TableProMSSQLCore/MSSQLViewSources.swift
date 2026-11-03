@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 // INFORMATION_SCHEMA says NO for every view; sys.dm_exec_describe_first_result_set compiles without running.
 public enum MSSQLViewSources {
@@ -290,7 +291,7 @@ public enum MSSQLViewSources {
 
     // Read in the base table's own database. sys.tables skips a view that browse mode stopped at.
     public static func baseColumnsQuery(_ table: BaseTable) -> String {
-        let catalog = table.database.map { "[\(MSSQLSchemaQueries.escapeBracket($0))]." } ?? ""
+        let catalog = table.database.map { SQLQuoting.identifier($0, quote: .bracket) + "." } ?? ""
         let object = MSSQLStringLiteral.quoted(
             catalog + MSSQLSchemaQueries.bracketed(schema: table.schema, table: table.name)
         )
@@ -353,7 +354,7 @@ public enum MSSQLViewSources {
     }
 
     private static func bracketedColumn(_ column: String) -> String {
-        "[\(MSSQLSchemaQueries.escapeBracket(column))]"
+        SQLQuoting.identifier(column, quote: .bracket)
     }
 }
 

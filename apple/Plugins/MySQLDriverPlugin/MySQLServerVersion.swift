@@ -101,6 +101,16 @@ nonisolated internal enum MySQLServerVersion {
         flavor.isMariaDB && isAtLeast((10, 2, 7), banner: banner)
     }
 
+    // A binary default arrives as its bytes from MySQL 5.7.44, MariaDB and OceanBase, and as `0x` hex from MySQL 8.0.11 to 8.4.13.
+    static func reportsBinaryDefaultAsHex(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        switch flavor {
+        case .mysql, .tidb, .starrocks:
+            return !isKnownBelow((8, 0, 0), banner: banner)
+        case .mariadb, .oceanbase, .databend:
+            return false
+        }
+    }
+
     /// Whether a MariaDB default can be an expression other than `CURRENT_TIMESTAMP`, which MariaDB
     /// allows from 10.2.1. From then on its `SHOW FULL COLUMNS` reports `uuid()` and the string
     /// `'uuid()'` alike, so the bare form alone cannot recreate a default. An unreadable banner is

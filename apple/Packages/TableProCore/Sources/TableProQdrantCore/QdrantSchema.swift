@@ -180,6 +180,8 @@ public struct QdrantCollection: Sendable, Equatable {
     public let indexes: [QdrantPayloadIndex]
     public let pointsCount: Int?
     public let info: String
+    private let fieldPositions: [String: Int]
+    private let vectorPositions: [String: Int]
 
     public init(
         name: String,
@@ -195,6 +197,12 @@ public struct QdrantCollection: Sendable, Equatable {
         self.indexes = indexes
         self.pointsCount = pointsCount
         self.info = info
+        fieldPositions = Self.firstPositions(of: payloadFields.map(\.name))
+        vectorPositions = Self.firstPositions(of: vectors.map(\.column))
+    }
+
+    private static func firstPositions(of names: [String]) -> [String: Int] {
+        Dictionary(names.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     // Only an index states a field's type; a sample guesses it from 100 points.
@@ -205,15 +213,18 @@ public struct QdrantCollection: Sendable, Equatable {
     // `id`, `score` and the vectors are the point's own; a payload key of that name is `payload.<key>`.
     private func field(ofColumn column: String) -> QdrantPayloadField? {
         guard !QdrantSchema.isPointColumn(column) else { return nil }
-        let key = QdrantSchema.payloadKey(forColumn: column)
-        return payloadFields.first { $0.name == key }
+        return fieldPositions[QdrantSchema.payloadKey(forColumn: column)].map { payloadFields[$0] }
+    }
+
+    func vector(ofColumn column: String) -> QdrantVectorSpec? {
+        vectorPositions[column].map { vectors[$0] }
     }
 
     // A page's points widen the types a sample guessed, so a list first seen on page 2 is not saved as
     // text. `addingKeys` is false for a grid page, whose columns stay the ones the table opened with.
     public func including(_ points: [QdrantPoint], addingKeys: Bool = true) -> QdrantCollection {
         var fields = payloadFields
-        var position = Dictionary(uniqueKeysWithValues: fields.enumerated().map { ($1.name, $0) })
+        var position = fieldPositions
         for point in points {
             for key in point.payloadKeys {
                 let observed = point.payload[key].flatMap(QdrantFieldType.observed)
@@ -269,10 +280,11 @@ public struct QdrantCollection: Sendable, Equatable {
         let schema = result["payload_schema"] as? [String: Any] ?? [:]
         var indexes: [QdrantPayloadIndex] = []
         var fields: [QdrantPayloadField] = []
+        var fieldNames: Set<String> = []
         for path in schema.keys.sorted() {
             guard let type = QdrantFieldType.indexed(schema[path]) else { continue }
             indexes.append(QdrantPayloadIndex(path: path, type: type.rawValue))
-            if let key = QdrantKeyPath.topLevelKey(ofIndexPath: path), !fields.contains(where: { $0.name == key }) {
+            if let key = QdrantKeyPath.topLevelKey(ofIndexPath: path), fieldNames.insert(key).inserted {
                 fields.append(QdrantPayloadField(name: key, type: type, isIndexed: true))
             }
         }
@@ -282,7 +294,7 @@ public struct QdrantCollection: Sendable, Equatable {
             vectors: vectors,
             payloadFields: fields,
             indexes: indexes,
-            pointsCount: result["points_count"] as? Int,
+            pointsCount: (result["points_count"] as? Int).flatMap { $0 >= 0 ? $0 : nil },
             info: (try? QdrantJSON.text(result, pretty: true)) ?? "{}"
         ).including(sample)
     }
@@ -353,7 +365,7 @@ public enum QdrantSchema {
 
     public static func knownTypeName(of column: String, in collection: QdrantCollection) -> String? {
         if column == idColumn { return "id" }
-        if let spec = collection.vectors.first(where: { $0.column == column }) {
+        if let spec = collection.vector(ofColumn: column) {
             return spec.typeName
         }
         return collection.cellTypeName(ofColumn: column)

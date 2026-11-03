@@ -13,42 +13,20 @@ import TableProUtilities
 // MARK: - Shared Tunnel Helpers
 
 extension DatabaseManager {
-    /// Rewrite a connection to point at the local tunnel endpoint. A 127.0.0.1
-    /// certificate can't satisfy hostname verification, so verify modes drop to
-    /// `.required` while keeping encryption and the CA path is cleared. The pre-tunnel
-    /// endpoint is recorded for the callers that must name the real server rather than
-    /// the local forward. A tunnel forwards a single local port, so MongoDB's
-    /// seed list is collapsed to that endpoint and a direct connection is forced,
-    /// stopping replica set discovery from reaching members behind the tunnel.
-    /// Shared by the SSH and Cloudflare tunnel paths.
-    ///
-    /// A server listening on a Unix socket answers every TLS request with a refusal, because
-    /// it decides from its own listening socket family and never consults `pg_hba`. Encryption
-    /// modes are therefore dropped for a socket forward, which costs nothing: the whole path
-    /// already runs inside the SSH transport.
+    // The pre-tunnel endpoint names the server behind the forward, for the certificate check, pgpass and IAM signing.
+    // MongoDB's seed list collapses to the one forwarded port with a direct connection, so replica set discovery
+    // never reaches members behind the tunnel.
     func tunneledConnection(
         from connection: DatabaseConnection,
         localPort: Int,
         forwardsToUnixSocket: Bool = false,
         securesTransport: Bool = false
     ) -> DatabaseConnection {
-        var tunnelSSL = connection.sslConfig
-        if forwardsToUnixSocket {
-            if tunnelSSL.isEnabled {
-                Self.logger.notice("Socket forward: disabling TLS, the destination cannot negotiate it")
-            }
-            tunnelSSL.mode = .disabled
-            tunnelSSL.caCertificatePath = ""
-            tunnelSSL.clientCertificatePath = ""
-            tunnelSSL.clientKeyPath = ""
-        } else if tunnelSSL.isEnabled {
-            if tunnelSSL.verifiesCertificate {
-                tunnelSSL.mode = .required
-            }
-            tunnelSSL.caCertificatePath = ""
-        } else if connection.tunnelForwardUsesHTTPS {
-            tunnelSSL.mode = .required
+        let listenerSecuresTransport = securesTransport || forwardsToUnixSocket
+        if listenerSecuresTransport, connection.sslConfig.isEnabled {
+            Self.logger.notice("Tunnel listener secures the hop itself: disabling TLS to it")
         }
+        let tunnelSSL = connection.sslConfigurationThroughTunnel(listenerSecuresTransport: listenerSecuresTransport)
 
         var effectiveFields = connection.additionalFields
         effectiveFields[DatabaseConnection.sshForwardUnixSocketPathKey] = nil
@@ -58,14 +36,8 @@ extension DatabaseManager {
         effectiveFields[DatabaseConnection.preTunnelHostKey] = forwardEndpoint.host
         effectiveFields[DatabaseConnection.preTunnelPortKey] = String(forwardEndpoint.port)
         // An SSH forward to the server's own socket is encrypted the whole way, as the proxy's hop is.
-        effectiveFields[DatabaseConnection.tunnelSecuresTransportKey] = securesTransport || forwardsToUnixSocket ? "true" : nil
-        /// A host list names the servers the driver would reach for itself, and behind a tunnel
-        /// there is one forwarded endpoint instead, so the list has to go. An SRV connection is
-        /// the exception: its host is a lookup name rather than a server to dial, the driver
-        /// resolves it and then connects through the forward anyway, and clearing it leaves the
-        /// driver with nothing to resolve. The rule used to live in the MongoDB branch below,
-        /// where the `!usesMongoSrv` guard protected it; generalising the clear to every host-list
-        /// field moved it above that guard and dropped the exception with it.
+        effectiveFields[DatabaseConnection.tunnelSecuresTransportKey] = listenerSecuresTransport ? "true" : nil
+        // One forwarded port replaces the host list. An SRV host is a name the driver resolves, not a server to dial.
         if !connection.usesMongoSrv {
             for fieldId in connection.hostListFieldIds {
                 effectiveFields[fieldId] = nil
@@ -82,11 +54,7 @@ extension DatabaseManager {
             effectiveFields[RedisDatabaseIndex.fieldName] = String(connection.redisDatabaseIndex)
             effectiveFields["redisMode"] = "standalone"
         }
-        /// Kafka's Metadata reply names every broker by its ADVERTISED address, and a client is
-        /// expected to dial those directly for the partitions they lead. Behind a tunnel there
-        /// is one forwarded port, so an advertised `broker-2.internal:9092` is unreachable and
-        /// the fetch hangs until it times out. Pinning the driver to the bootstrap endpoint is
-        /// the same move MongoDB and Redis get above, for the same reason.
+        // Kafka's metadata names brokers by their advertised addresses, which the one forwarded port cannot reach.
         if connection.type.pluginTypeId == "Kafka" {
             effectiveFields["kafkaBrokerRouting"] = "bootstrapOnly"
         }
@@ -119,9 +87,7 @@ extension DatabaseManager {
         }
     }
 
-    /// The transport-layer reason a tunneled connect failed, when the tunnel recorded one. The driver
-    /// only ever sees a local socket that was accepted and then stayed silent, so its own error
-    /// names a read timeout and never the cause. Read before the tunnel is torn down.
+    // The driver only sees a silent local socket, so its error never names the cause. Read before teardown.
     func attributedTunnelFailure(for connection: DatabaseConnection) async -> (any Error)? {
         if let manager = activeTunnelManager(for: connection) as? SSHTunnelManager {
             return await manager.consumeLastForwardFailure(connectionId: connection.id)
@@ -161,69 +127,10 @@ extension DatabaseManager {
         return await manager.hasTunnel(connectionId: connection.id)
     }
 
-    /// Reconnect a session whose tunnel died, with exponential backoff. Guarded by
-    /// `recoveringConnectionIds` so the keepalive death callback and the wake-from-sleep
-    /// handler don't recover the same connection twice. Shared by both tunnel types.
-    func recoverDeadTunnel(connectionId: UUID, kind: String, disconnectedMessage: String) async {
-        guard let session = activeSessions[connectionId],
-              !recoveringConnectionIds.contains(connectionId) else { return }
-
-        recoveringConnectionIds.insert(connectionId)
-        defer { recoveringConnectionIds.remove(connectionId) }
-
+    // The driver and the session stay; the session's reconnect loop redials through a rebuilt tunnel.
+    func recoverDeadTunnel(connectionId: UUID, kind: String, disconnectedMessage: String) {
+        guard let session = activeSessions[connectionId] else { return }
         Self.logger.warning("\(kind, privacy: .public) tunnel died for connection: \(session.connection.name)")
-
-        await stopHealthMonitor(for: connectionId)
-
-        await sessionLanes.closeAllNotingLostTransactions(for: connectionId)
-        activeSessions[connectionId]?.driver?.disconnect()
-        updateSession(connectionId) { session in
-            session.driver = nil
-            session.status = .connecting
-        }
-
-        let maxRetries = 10
-        for retryCount in 0..<maxRetries {
-            let delay = ExponentialBackoff.delay(for: retryCount + 1, maxDelay: 120)
-            Self.logger.info("\(kind, privacy: .public) reconnect attempt \(retryCount + 1)/\(maxRetries) in \(delay)s for: \(session.connection.name)")
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-
-            do {
-                try await connectToSession(session.connection, trigger: .background)
-                Self.logger.info("Successfully reconnected \(kind, privacy: .public) tunnel for: \(session.connection.name)")
-                return
-            } catch is PreConnectScriptConsentError {
-                /// The refusal is already the session's recorded reason, and a retry gets the same one.
-                return
-            } catch {
-                Self.logger.warning("\(kind, privacy: .public) reconnect attempt \(retryCount + 1) failed: \(error.localizedDescription)")
-            }
-        }
-
-        Self.logger.error("All \(kind, privacy: .public) reconnect attempts failed for: \(session.connection.name)")
-
-        failTunnelRecovery(
-            connectionId: connectionId,
-            disconnectedMessage: disconnectedMessage,
-            attempts: maxRetries
-        )
-    }
-
-    /// Leaving the session entry in place kept `exists == true, hasDriver == nil`, which every
-    /// window reads as "still dialing", so an exhausted recovery painted a spinner that never
-    /// ended. The entry has to go, and the reason has to outlive it so the window can say why.
-    internal func failTunnelRecovery(connectionId: UUID, disconnectedMessage: String, attempts: Int) {
-        recordDisconnectReason(
-            .sessionLost(ConnectionFailureInfo(
-                message: disconnectedMessage,
-                failureReason: String(
-                    format: String(localized: "Reconnecting failed after %d attempts."),
-                    attempts
-                ),
-                recoverySuggestion: String(localized: "Check the tunnel host and your network, then try again.")
-            )),
-            for: connectionId
-        )
-        finalizeConnectionFailure(for: connectionId, cancelled: false)
+        beginRecovery(for: connectionId, cause: .transportClosed(disconnectedMessage))
     }
 }

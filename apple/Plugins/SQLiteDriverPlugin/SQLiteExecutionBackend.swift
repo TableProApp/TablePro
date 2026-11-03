@@ -40,10 +40,14 @@ protocol SQLiteExecutionBackend: Actor {
     /// A backend that cannot ask keeps the `.unknown` default.
     func sessionTransactionState() async -> PluginSessionTransactionState
 
-    func executeQuery(_ query: String) async throws -> SQLiteRawResult
-    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> SQLiteRawResult
+    func executeQuery(
+        _ query: String,
+        parameters: [PluginCellValue]?,
+        scope: SQLiteStatementScope
+    ) async throws -> SQLiteRawResult
     func streamQuery(
         _ query: String,
+        scope: SQLiteStatementScope,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) async throws
 }
@@ -59,6 +63,21 @@ extension SQLiteExecutionBackend {
     nonisolated func abortConnect() {}
 
     func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
+
+    func executeQuery(_ query: String) async throws -> SQLiteRawResult {
+        try await executeQuery(query, parameters: nil, scope: .unrestricted)
+    }
+
+    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) async throws -> SQLiteRawResult {
+        try await executeQuery(query, parameters: parameters, scope: .unrestricted)
+    }
+
+    func streamQuery(
+        _ query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        try await streamQuery(query, scope: .unrestricted, continuation: continuation)
+    }
 }
 
 struct SQLiteRawResult: Sendable {
@@ -162,6 +181,8 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLiteLocalBackend")
 
     private var db: OpaquePointer?
+    // Kept past close: the handle points at it, and a close that SQLite refuses leaves the handle open.
+    private var policy: SQLiteAuthorizerPolicy?
     private let busyState: SQLiteBusyState
     private let path: String
     private let localCanceller: SQLiteLocalCanceller
@@ -193,13 +214,25 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             throw SQLitePluginError.connectionFailed(errorMessage)
         }
         guard let db else { throw SQLitePluginError.notConnected }
+        let added: SQLiteExtensionNames
         do {
-            try loadExtensions(extensions, into: db)
+            if extensions.isEmpty {
+                added = .empty
+            } else {
+                added = try SQLiteAuthorizerPolicy.extensionNames(on: db) {
+                    try loadExtensions(extensions, into: db)
+                }
+            }
         } catch {
             close()
             throw error
         }
-        SQLiteAuthorizer.install(on: db)
+        if added.functions == nil || added.modules == nil {
+            Self.logger.warning("SQLite did not list what the extensions added, so external statements are refused")
+        }
+        let policy = SQLiteAuthorizerPolicy(extensions: added)
+        self.policy = policy
+        SQLiteAuthorizer.install(on: db, policy: policy)
         installBusyHandler()
         localCanceller.setHandle(db)
     }
@@ -245,21 +278,81 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
         path.hasPrefix("~") ? NSString(string: path).expandingTildeInPath : path
     }
 
-    func executeQuery(_ query: String) throws -> SQLiteRawResult {
-        try runStatement(query, parameters: nil)
+    func executeQuery(
+        _ query: String,
+        parameters: [PluginCellValue]?,
+        scope: SQLiteStatementScope
+    ) throws -> SQLiteRawResult {
+        try withStatementHandle(scope) { handle, mustRead in
+            try runStatement(query, parameters: parameters, on: handle, mustRead: mustRead)
+        }
     }
 
-    func executeParameterizedQuery(_ query: String, parameters: [PluginCellValue]) throws -> SQLiteRawResult {
-        try runStatement(query, parameters: parameters)
-    }
-
-    private func runStatement(_ query: String, parameters: [PluginCellValue]?) throws -> SQLiteRawResult {
-        guard let db else { throw SQLitePluginError.notConnected }
+    // `mustRead` is true when the statement has to be one SQLite reads as read-only. A read-only statement runs on the
+    // session's handle, so temporary objects, attachments, `last_insert_rowid()` and `changes()` read as they do there.
+    private func withStatementHandle<T>(
+        _ scope: SQLiteStatementScope,
+        _ body: (OpaquePointer, Bool) throws -> T
+    ) throws -> T {
+        guard let db, let policy else { throw SQLitePluginError.notConnected }
         busyState.beginOperation()
+        switch scope {
+        case .unrestricted:
+            return try body(db, false)
+        case .noServerCode:
+            policy.scope = .noServerCode
+            defer { policy.scope = .unrestricted }
+            return try body(db, false)
+        case .readOnly:
+            return try withQueryOnly(db, policy: policy) { try body(db, true) }
+        }
+    }
 
+    // query_only stops writes to the database files. It does not stop an extension's function or virtual table from
+    // reaching other files, and the policy refuses those.
+    private func withQueryOnly<T>(_ db: OpaquePointer, policy: SQLiteAuthorizerPolicy, _ body: () throws -> T) throws -> T {
+        let wasQueryOnly = try Self.integerPragma("PRAGMA query_only", on: db) == 1
+        if !wasQueryOnly {
+            try Self.exec("PRAGMA query_only = 1", on: db)
+        }
+        defer {
+            if !wasQueryOnly {
+                try? Self.exec("PRAGMA query_only = 0", on: db)
+            }
+        }
+        policy.scope = .readOnly
+        defer { policy.scope = .unrestricted }
+        return try body()
+    }
+
+    private static func integerPragma(_ sql: String, on db: OpaquePointer) throws -> Int32 {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, sqlite3_step(statement) == SQLITE_ROW else {
+            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
+        }
+        return sqlite3_column_int(statement, 0)
+    }
+
+    private static func exec(_ sql: String, on db: OpaquePointer) throws {
+        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
+            throw SQLitePluginError.queryFailed(String(cString: sqlite3_errmsg(db)))
+        }
+    }
+
+    private func runStatement(
+        _ query: String,
+        parameters: [PluginCellValue]?,
+        on db: OpaquePointer,
+        mustRead: Bool
+    ) throws -> SQLiteRawResult {
         let startTime = Date()
         let statement = try Self.prepareOnlyStatement(query, db: db)
         defer { sqlite3_finalize(statement) }
+        // EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
+        if mustRead, sqlite3_stmt_readonly(statement) == 0, sqlite3_stmt_isexplain(statement) == 0 {
+            throw SQLitePluginError.readOnlyStatement
+        }
 
         if let parameters {
             try bind(parameters, to: statement, db: db)
@@ -325,12 +418,26 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
 
     func streamQuery(
         _ query: String,
+        scope: SQLiteStatementScope,
         continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
     ) throws {
-        busyState.beginOperation()
-        guard let db else { throw SQLitePluginError.notConnected }
+        try withStatementHandle(scope) { handle, mustRead in
+            try stream(query, on: handle, mustRead: mustRead, continuation: continuation)
+        }
+    }
 
+    private func stream(
+        _ query: String,
+        on db: OpaquePointer,
+        mustRead: Bool,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) throws {
         let statement = try Self.prepareOnlyStatement(query, db: db)
+        // EXPLAIN never runs its statement, but stmt_readonly reports that statement's writes.
+        if mustRead, sqlite3_stmt_readonly(statement) == 0, sqlite3_stmt_isexplain(statement) == 0 {
+            sqlite3_finalize(statement)
+            throw SQLitePluginError.readOnlyStatement
+        }
 
         let firstStep = SQLiteResultColumns.stepFirst(statement)
         let columnCount = firstStep.count

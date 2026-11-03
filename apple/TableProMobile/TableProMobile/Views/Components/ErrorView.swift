@@ -2,12 +2,16 @@ import SwiftUI
 
 struct ErrorView: View {
     let error: AppError
+    // A lost session reads as lost, whatever its redial failed on.
+    var title: String?
+    var systemImage: String?
+    var retryTitle = String(localized: "Retry")
     var onRetry: (() async -> Void)?
     var onEditConnection: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
-            Label(error.title, systemImage: iconName)
+            Label(title ?? error.title, systemImage: systemImage ?? iconName)
         } description: {
             VStack(spacing: 8) {
                 Text(verbatim: error.message)
@@ -33,7 +37,7 @@ struct ErrorView: View {
     }
 
     private func retryButton(_ onRetry: @escaping () async -> Void) -> some View {
-        Button("Retry") {
+        Button(retryTitle) {
             Task { await onRetry() }
         }
     }

@@ -70,10 +70,24 @@ struct TunnelCommandLineTests {
         let tokens = try TunnelCommandLine.tokenize("cmd --to={host}:{remotePort} --listen={port}")
         let substituted = TunnelCommandLine.substitutePlaceholders(
             in: tokens,
-            localPort: 55_000,
+            localPort: "55000",
             remoteHost: "db one",
             remotePort: 5_432
         )
         #expect(substituted == ["cmd", "--to=db one:5432", "--listen=55000"])
+    }
+
+    @Test("a DNS name or an IP literal is a host {host} can take", arguments: [
+        "db.example.com", "10.0.0.5", "::1", "[::1]", "fe80::1%en0", "db_1-a.internal",
+    ])
+    func substitutableHost(host: String) {
+        #expect(TunnelCommandLine.isSubstitutableHost(host))
+    }
+
+    @Test("a host with shell syntax, a space, a leading dash or a non-ASCII character is not", arguments: [
+        "a;id", "$(id)", "`id`", "-oProxyCommand=x", "a b", "a\tb", "db\u{1FEF}id", "db\u{37E}id", "dé.com", "", "a,b", "a'b",
+    ])
+    func unsubstitutableHost(host: String) {
+        #expect(!TunnelCommandLine.isSubstitutableHost(host))
     }
 }

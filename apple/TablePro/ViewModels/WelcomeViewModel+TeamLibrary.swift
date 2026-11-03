@@ -19,7 +19,7 @@ extension WelcomeViewModel {
                 through: TeamLibrarySync.shared,
                 confirm: Self.confirmPublishToTeamLibrary
             )
-            TeamLibraryPublishing.present(outcome, itemCount: connectionsToPublish.count, kind: .connections) {
+            TeamLibraryPublishing.present(outcome) {
                 self.activeSheet = .teamLibraryConflicts
             }
         }

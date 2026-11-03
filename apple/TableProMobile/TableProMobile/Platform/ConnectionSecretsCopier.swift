@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProDatabase
+import TableProLogRedaction
 
 nonisolated struct ConnectionSecrets: Sendable {
     static let secureStoreKeyPrefixes = ConnectionSecretKind.allCases.map(\.prefix)
@@ -30,7 +31,7 @@ nonisolated struct ConnectionSecrets: Sendable {
                       !value.isEmpty else { continue }
                 try secureStore.store(value, forKey: prefix + targetId.uuidString)
             } catch {
-                Self.logger.error("Copying \(prefix, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Copying \(prefix, privacy: .public) failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
                 copiedEverything = false
             }
         }
@@ -39,7 +40,7 @@ nonisolated struct ConnectionSecrets: Sendable {
             do {
                 try certificateStore.store(pem, role: role, for: targetId)
             } catch {
-                Self.logger.error("Copying \(role.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Copying \(role.rawValue, privacy: .public) failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
                 copiedEverything = false
             }
         }
@@ -60,7 +61,7 @@ nonisolated struct ConnectionSecrets: Sendable {
                 try secureStore.store(key, forKey: account)
             } catch {
                 Self.logger.error(
-                    "Storing the pasted SSH key of \(connectionId.uuidString, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+                    "Storing the pasted SSH key of \(connectionId.uuidString, privacy: .public) failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
                 )
                 unstored[connectionId] = key
             }

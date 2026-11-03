@@ -392,8 +392,12 @@ extension WelcomeViewModel {
         let resolved = resolve(rows)
         let disconnectable = Set(resolved.savedConnectionIds.filter { id in
             ConnectionMenuPolicy.showsDisconnect(
-                status: services.databaseManager.session(for: id)?.status ?? .disconnected
+                status: ConnectionStatusResolver.status(for: id),
+                holdsSession: services.databaseManager.session(for: id) != nil
             )
+        })
+        let reconnectable = Set(resolved.savedConnectionIds.filter { id in
+            ConnectionStatusPresentation(ConnectionStatusResolver.status(for: id)).primaryAction == .reconnect
         })
         return WelcomeMenuContext(
             rows: rows,
@@ -402,6 +406,7 @@ extension WelcomeViewModel {
             groups: groups,
             linkedFolderConnectionIds: Set(presentableLinkedConnections.map(\.id)),
             disconnectableConnectionIds: disconnectable,
+            reconnectableConnectionIds: reconnectable,
             isSyncEnabled: services.appSettings.sync.enabled,
             canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
             teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrarySync.shared.writableTeams : [],

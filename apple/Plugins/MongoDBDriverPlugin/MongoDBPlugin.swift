@@ -99,6 +99,7 @@ nonisolated final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     // MARK: - UI/Capability Metadata
 
     static let requiresAuthentication = false
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let urlSchemes: [String] = ["mongodb", "mongodb+srv"]
     static let brandColorHex = "#00ED63"
     static let queryLanguageName = "MQL"

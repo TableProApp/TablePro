@@ -8,8 +8,8 @@ import Foundation
 enum SqlNormalizer {
     static func normalize(_ sql: String) -> String {
         sql
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\r\n", with: "\n", options: .literal)
+            .replacingOccurrences(of: "\r", with: "\n", options: .literal)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 

@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 /// Joins a relation's `CREATE` statement to the statements that stand outside it.
 ///
@@ -92,10 +93,11 @@ internal enum TableDDLComposer {
         for sequence in sequences {
             preamble += sequence.ddl + "\n\n"
         }
+        // PostgreSQL with standard_conforming_strings off reads a backslash as an escape.
+        let escapes = SQLLexicalResolver.stringEscapes(for: driver.connection.type, session: driver.sessionLexicalState)
         for enumType in enumTypes {
-            let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
-            let quotedLabels = enumType.labels.map { "'\(SQLEscaping.escapeStringLiteral($0))'" }
-            preamble += "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n"
+            let quotedLabels = enumType.labels.map { SQLQuoting.stringLiteral($0, escapes: escapes) }
+            preamble += "CREATE TYPE \(SQLQuoting.identifier(enumType.name)) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n"
         }
         return preamble
     }

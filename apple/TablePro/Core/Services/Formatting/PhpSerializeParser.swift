@@ -24,7 +24,6 @@ internal indirect enum PhpValue: Equatable {
     // `r:`, the object numbered `id` again.
     case objectReference(id: Int)
     case unsupported(token: String)
-    case depthExceeded
     case tooLarge
 
     static func == (lhs: PhpValue, rhs: PhpValue) -> Bool {
@@ -49,7 +48,6 @@ internal indirect enum PhpValue: Equatable {
         case (.reference(let a), .reference(let b)): return a == b
         case (.objectReference(let a), .objectReference(let b)): return a == b
         case (.unsupported(let a), .unsupported(let b)): return a == b
-        case (.depthExceeded, .depthExceeded): return true
         case (.tooLarge, .tooLarge): return true
         default: return false
         }
@@ -105,14 +103,19 @@ internal enum PhpSerializeParser {
 }
 
 private struct Cursor {
+    private static let cancellationInterval = 4_096
+    private static let reservationLimit = 1_024
+
     let bytes: [UInt8]
     var index: Int = 0
+    private var valuesRead = 0
 
     var isAtEnd: Bool { index >= bytes.count }
 
     mutating func parseValue(depth: Int) -> PhpValue? {
-        guard depth <= PhpSerializeParser.depthCap else { return .depthExceeded }
-        guard index < bytes.count else { return nil }
+        guard depth <= PhpSerializeParser.depthCap, index < bytes.count else { return nil }
+        valuesRead += 1
+        if valuesRead.isMultiple(of: Self.cancellationInterval), Task.isCancelled { return nil }
         let token = bytes[index]
         switch token {
         case UInt8(ascii: "N"): return parseNull()
@@ -197,13 +200,15 @@ private struct Cursor {
         guard let count = Int(countRaw), count >= 0 else { return nil }
         guard expect(UInt8(ascii: ":")), expect(UInt8(ascii: "{")) else { return nil }
 
-        // A forged count would otherwise reserve it.
         guard count <= bytes.count - index else { return nil }
         var entries: [PhpKeyValue] = []
-        entries.reserveCapacity(count)
+        entries.reserveCapacity(min(count, Self.reservationLimit))
         for _ in 0..<count {
+            let start = index
             guard let key = parseValue(depth: depth + 1) else { return nil }
             guard let value = parseValue(depth: depth + 1) else { return nil }
+            // The count is checked against the bytes left, which bounds the entries only while each one reads some.
+            guard index > start else { return nil }
             entries.append(PhpKeyValue(key: key, value: value))
         }
         guard expect(UInt8(ascii: "}")) else { return nil }
@@ -226,10 +231,11 @@ private struct Cursor {
 
         guard count <= bytes.count - index else { return nil }
         var properties: [PhpProperty] = []
-        properties.reserveCapacity(count)
+        properties.reserveCapacity(min(count, Self.reservationLimit))
         for _ in 0..<count {
+            let start = index
             let key = parseValue(depth: depth + 1)
-            guard let value = parseValue(depth: depth + 1) else { return nil }
+            guard let value = parseValue(depth: depth + 1), index > start else { return nil }
             switch key {
             case .string(let rawKey)?:
                 let decoded = decodePhpPropertyKey(rawKey)

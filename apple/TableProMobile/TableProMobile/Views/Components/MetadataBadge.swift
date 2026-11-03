@@ -1,25 +1,19 @@
 import SwiftUI
 
-struct MetadataBadge<Background: ShapeStyle>: View {
+// A type, a row count or an index kind beside a row's title: secondary text, never a chip.
+struct MetadataBadge: View {
     let text: String
-    var foreground: Color = .secondary
-    var background: Background
+
+    init(_ text: String) {
+        self.text = text
+    }
 
     var body: some View {
-        Text(text)
+        Text(verbatim: text)
             .font(.caption2)
             .fontWeight(.medium)
-            .foregroundStyle(foreground)
+            .foregroundStyle(.secondary)
             .lineLimit(1)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(background, in: Capsule())
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
-    }
-}
-
-extension MetadataBadge where Background == HierarchicalShapeStyle {
-    init(_ text: String, foreground: Color = .secondary) {
-        self.init(text: text, foreground: foreground, background: .tertiary)
     }
 }

@@ -66,9 +66,8 @@ internal struct MCPOutsideServerSheet: View {
             Text("Server")
         } footer: {
             if let validationError {
-                Text(message(for: validationError))
+                NoticeLabel(message(for: validationError), severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
             } else {
                 Text("The address has to be HTTPS unless the server runs on this Mac. The token is kept in your Keychain and never synced.")
                     .font(.caption)
@@ -89,9 +88,8 @@ internal struct MCPOutsideServerSheet: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
         case .failed(let message):
-            Text(message)
+            NoticeLabel(message, severity: .error)
                 .font(.callout)
-                .foregroundStyle(.red)
                 .lineLimit(2)
         }
     }

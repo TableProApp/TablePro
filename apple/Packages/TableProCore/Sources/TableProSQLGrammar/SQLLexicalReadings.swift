@@ -140,7 +140,7 @@ enum SQLLexicalRelevance {
             case SqlLexer.backslash:
                 facts.formUnion([
                     .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backslashEscapesInBackticks,
-                    .backslashEscapesInAngleQuotes, .escapeStringPrefix, .escapeBytesPrefix,
+                    .backslashEscapesInAngleQuotes, .escapeStringPrefix, .escapeBytesPrefix, .escapeStringContinuations,
                 ])
             case SqlLexer.backtick:
                 facts.insert(.backtickQuotes)

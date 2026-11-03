@@ -15,8 +15,8 @@ struct LibPQConnectionStringTests {
         options: String? = nil,
         applicationName: String? = nil,
         connectTimeoutSeconds: Int? = nil
-    ) -> String {
-        LibPQConnectionString.build(
+    ) throws -> String {
+        try LibPQConnectionString.build(
             host: "db.example.com",
             port: 5_432,
             user: user,
@@ -30,8 +30,8 @@ struct LibPQConnectionStringTests {
     }
 
     @Test("The base parameters are always present")
-    func baseParameters() {
-        let conninfo = build()
+    func baseParameters() throws {
+        let conninfo = try build()
 
         #expect(conninfo.contains("host='db.example.com'"))
         #expect(conninfo.contains("port='5432'"))
@@ -42,11 +42,11 @@ struct LibPQConnectionStringTests {
     }
 
     @Test("The remaining budget reaches libpq's native connection setting")
-    func connectTimeoutReachesConnectionString() {
+    func connectTimeoutReachesConnectionString() throws {
         let timeout = LibPQConnectTimeout(additionalFields: ["connectTimeoutMilliseconds": "4201"])
 
         #expect(timeout.nativeSeconds == 5)
-        #expect(build(connectTimeoutSeconds: timeout.nativeSeconds).contains("connect_timeout='5'"))
+        #expect(try build(connectTimeoutSeconds: timeout.nativeSeconds).contains("connect_timeout='5'"))
     }
 
     @Test("The compatibility timeout is clamped before reaching libpq")
@@ -79,8 +79,8 @@ struct LibPQConnectionStringTests {
         )
     }
 
-    private func buildKerberos(host: String, serviceHost: String? = nil) -> String {
-        LibPQConnectionString.build(
+    private func buildKerberos(host: String, serverName: String? = nil) throws -> String {
+        try LibPQConnectionString.build(
             host: host,
             port: 5_432,
             user: "alice",
@@ -88,21 +88,49 @@ struct LibPQConnectionStringTests {
             database: "app",
             sslConfig: SSLConfiguration(),
             options: nil,
-            kerberos: LibPQKerberosSignIn(gssEncryptionMode: "require", cachePath: nil, serviceHost: serviceHost)
+            kerberos: LibPQKerberosSignIn(gssEncryptionMode: "require", cachePath: nil),
+            serverName: serverName
+        )
+    }
+
+    private func build(dialing host: String, serverName: String?, mode: SSLMode = .verifyIdentity) throws -> String {
+        try LibPQConnectionString.build(
+            host: host,
+            port: 54_321,
+            user: "postgres",
+            password: "hunter2",
+            database: "app",
+            sslConfig: SSLConfiguration(mode: mode, caCertificatePath: "/ca.pem"),
+            options: nil,
+            serverName: serverName
+        )
+    }
+
+    private func build(from config: DriverConnectionConfig, kerberos: LibPQKerberosSignIn? = nil) throws -> String {
+        try LibPQConnectionString.build(
+            host: config.host,
+            port: config.port,
+            user: config.username,
+            password: config.password,
+            database: config.database,
+            sslConfig: config.ssl,
+            options: nil,
+            kerberos: kerberos,
+            serverName: config.tunneledServerName
         )
     }
 
     @Test("Any other sign-in never tries GSS encryption and refuses GSS authentication")
-    func otherSignInsStayOffGSS() {
-        let conninfo = build()
+    func otherSignInsStayOffGSS() throws {
+        let conninfo = try build()
 
         #expect(conninfo.contains("gssencmode='disable'"))
         #expect(conninfo.contains("require_auth='!gss'"))
     }
 
     @Test("A Kerberos sign-in passes its GSS Encryption mode and allows GSS authentication")
-    func kerberosPassesGSSEncryption() {
-        let conninfo = buildKerberos(host: "db.corp.example.com")
+    func kerberosPassesGSSEncryption() throws {
+        let conninfo = try buildKerberos(host: "db.corp.example.com")
 
         #expect(conninfo.contains("gssencmode='require'"))
         #expect(!conninfo.contains("require_auth"))
@@ -111,42 +139,110 @@ struct LibPQConnectionStringTests {
     }
 
     @Test("Behind a tunnel, GSS names the server's own host while libpq dials the tunnel")
-    func kerberosThroughATunnel() {
-        let conninfo = buildKerberos(host: "127.0.0.1", serviceHost: "db.corp.example.com")
+    func kerberosThroughATunnel() throws {
+        let conninfo = try buildKerberos(host: "127.0.0.1", serverName: "db.corp.example.com")
 
         #expect(conninfo.hasPrefix("host='db.corp.example.com' hostaddr='127.0.0.1' port="))
     }
 
     @Test("A tunnel host that is not an address keeps the plain host", arguments: ["localhost", "/tmp"])
-    func kerberosWithoutAnAddressKeepsTheHost(host: String) {
-        let conninfo = buildKerberos(host: host, serviceHost: "db.corp.example.com")
+    func kerberosWithoutAnAddressKeepsTheHost(host: String) throws {
+        let conninfo = try buildKerberos(host: host, serverName: "db.corp.example.com")
 
         #expect(!conninfo.contains("db.corp.example.com"))
     }
 
+    @Test(
+        "Verify Identity through a forward checks the server's name while libpq dials the forward",
+        arguments: ["127.0.0.1", "::1"]
+    )
+    func verifyFullThroughAForward(dial: String) throws {
+        let conninfo = try build(dialing: dial, serverName: "db.example.com")
+
+        #expect(conninfo.hasPrefix("host='db.example.com' hostaddr='\(dial)' port='54321'"))
+        #expect(conninfo.contains("sslmode='verify-full'"))
+        #expect(conninfo.contains("sslrootcert='/ca.pem'"))
+    }
+
+    @Test("Verify CA through a forward keeps the CA and still dials the forward")
+    func verifyCAThroughAForward() throws {
+        let conninfo = try build(dialing: "127.0.0.1", serverName: "db.example.com", mode: .verifyCa)
+
+        #expect(conninfo.hasPrefix("host='db.example.com' hostaddr='127.0.0.1' port='54321'"))
+        #expect(conninfo.contains("sslmode='verify-ca'"))
+        #expect(conninfo.contains("sslrootcert='/ca.pem'"))
+    }
+
+    @Test(
+        "A stored pre-tunnel host names the server only when libpq dials a tunnel's forward",
+        arguments: [
+            ("127.0.0.1", "host='db.example.com' hostaddr='127.0.0.1' port="),
+            ("10.0.0.5", "host='10.0.0.5' port=")
+        ]
+    )
+    func storedPreTunnelHostOnlyThroughAForward(dial: String, expectedPrefix: String) throws {
+        let config = DriverConnectionConfig(
+            host: dial,
+            port: 5_432,
+            username: "postgres",
+            password: "",
+            database: "app",
+            ssl: SSLConfiguration(mode: .verifyIdentity, caCertificatePath: "/ca.pem"),
+            additionalFields: ["preTunnelHost": "db.example.com"]
+        )
+        let kerberos = LibPQKerberosSignIn(gssEncryptionMode: "prefer", cachePath: nil)
+
+        #expect(try build(from: config).hasPrefix(expectedPrefix))
+        #expect(try build(from: config, kerberos: kerberos).hasPrefix(expectedPrefix))
+    }
+
+    @Test("Every connection names a password file that cannot exist, so libpq never reads ~/.pgpass on its own")
+    func everyConnectionSkipsLibpqPassfile() throws {
+        let conninfos = [
+            try build(),
+            try build(password: nil),
+            try build(user: "", password: ""),
+            try buildKerberos(host: "db.corp.example.com"),
+            try build(dialing: "127.0.0.1", serverName: "db.example.com"),
+            try LibPQConnectionString.build(
+                host: "/tmp",
+                port: 5_432,
+                user: "postgres",
+                password: nil,
+                database: "app",
+                sslConfig: SSLConfiguration(),
+                options: nil
+            )
+        ]
+
+        for conninfo in conninfos {
+            #expect(conninfo.contains("passfile='/dev/null/pgpass'"))
+        }
+    }
+
     @Test("The session is pinned to UTF8 in the startup packet, so RESET ALL and DISCARD ALL keep it")
-    func pinsClientEncoding() {
-        #expect(build().contains("client_encoding='UTF8'"))
+    func pinsClientEncoding() throws {
+        #expect(try build().contains("client_encoding='UTF8'"))
     }
 
     @Test("Connection options still reach the server, after the pinned encoding")
-    func optionsFollowTheEncoding() {
-        let conninfo = build(options: "--cluster=my-cluster -c search_path=app")
+    func optionsFollowTheEncoding() throws {
+        let conninfo = try build(options: "--cluster=my-cluster -c search_path=app")
 
         #expect(conninfo.hasSuffix("client_encoding='UTF8' options='--cluster=my-cluster -c search_path=app'"))
     }
 
     @Test("A client_encoding in the connection options rides along in options, where the server applies it first")
-    func clientEncodingInOptionsStaysInOptions() {
-        let conninfo = build(options: "-c client_encoding=LATIN1")
+    func clientEncodingInOptionsStaysInOptions() throws {
+        let conninfo = try build(options: "-c client_encoding=LATIN1")
 
         #expect(conninfo.contains("client_encoding='UTF8'"))
         #expect(conninfo.contains("options='-c client_encoding=LATIN1'"))
     }
 
     @Test("An empty user, password or options is left out")
-    func emptyValuesAreOmitted() {
-        let conninfo = build(user: "", password: "", options: "")
+    func emptyValuesAreOmitted() throws {
+        let conninfo = try build(user: "", password: "", options: "")
 
         #expect(!conninfo.contains("user="))
         #expect(!conninfo.contains("password="))
@@ -155,18 +251,18 @@ struct LibPQConnectionStringTests {
     }
 
     @Test("A CA certificate is sent only when the mode verifies it")
-    func caOnlyWhenVerifying() {
-        let requiring = build(sslConfig: SSLConfiguration(mode: .required, caCertificatePath: "/ca.pem"))
+    func caOnlyWhenVerifying() throws {
+        let requiring = try build(sslConfig: SSLConfiguration(mode: .required, caCertificatePath: "/ca.pem"))
         #expect(!requiring.contains("sslrootcert"))
 
-        let verifying = build(sslConfig: SSLConfiguration(mode: .verifyCa, caCertificatePath: "/ca.pem"))
+        let verifying = try build(sslConfig: SSLConfiguration(mode: .verifyCa, caCertificatePath: "/ca.pem"))
         #expect(verifying.contains("sslmode='verify-ca'"))
         #expect(verifying.contains("sslrootcert='/ca.pem'"))
     }
 
     @Test("A client certificate and key reach libpq as sslcert and sslkey")
-    func clientCertificateIsSent() {
-        let conninfo = build(sslConfig: SSLConfiguration(
+    func clientCertificateIsSent() throws {
+        let conninfo = try build(sslConfig: SSLConfiguration(
             mode: .required,
             clientCertificatePath: "/client.pem",
             clientKeyPath: "/client.key"
@@ -177,8 +273,8 @@ struct LibPQConnectionStringTests {
     }
 
     @Test("Quotes and backslashes in values are escaped")
-    func escapesValues() {
-        let conninfo = build(user: "o'brien", password: "back\\slash", options: "-c application_name='x'")
+    func escapesValues() throws {
+        let conninfo = try build(user: "o'brien", password: "back\\slash", options: "-c application_name='x'")
 
         #expect(conninfo.contains("user='o\\'brien'"))
         #expect(conninfo.contains("password='back\\\\slash'"))
@@ -186,13 +282,41 @@ struct LibPQConnectionStringTests {
     }
 
     @Test("A quote a combining mark follows is still escaped")
-    func escapesAQuoteBeforeACombiningMark() {
-        #expect(LibPQConnectionString.escape("a'\u{301} host=evil") == "a\\'\u{301} host=evil")
+    func escapesAQuoteBeforeACombiningMark() throws {
+        #expect(try build(user: "a'\u{301} host=evil").contains("user='a\\'\u{301} host=evil'"))
+    }
+
+    @Test("A line break stays inside the quotes, where libpq reads it as data")
+    func keepsALineBreakAsData() throws {
+        #expect(try build(password: "a\nhost=evil").contains("password='a\nhost=evil'"))
+    }
+
+    @Test(
+        "A NUL in any setting fails the connect and names the setting, instead of libpq reading a cut string",
+        arguments: ["host", "dbname", "user", "password", "options", "sslcert"]
+    )
+    func refusesANULCharacter(keyword: String) {
+        let value = "a\u{0}b"
+        let error = #expect(throws: LibPQPluginError.self) {
+            try LibPQConnectionString.build(
+                host: keyword == "host" ? value : "db.example.com",
+                port: 5_432,
+                user: keyword == "user" ? value : "postgres",
+                password: keyword == "password" ? value : "hunter2",
+                database: keyword == "dbname" ? value : "app",
+                sslConfig: SSLConfiguration(
+                    mode: .required,
+                    clientCertificatePath: keyword == "sslcert" ? value : ""
+                ),
+                options: keyword == "options" ? value : nil
+            )
+        }
+        #expect(error?.message.contains(keyword) == true)
     }
 
     @Test("The application name reaches libpq as a fallback, ahead of the connection options")
-    func sendsFallbackApplicationName() {
-        let conninfo = build(options: "-c search_path=app", applicationName: "TablePro Metadata")
+    func sendsFallbackApplicationName() throws {
+        let conninfo = try build(options: "-c search_path=app", applicationName: "TablePro Metadata")
 
         #expect(conninfo.hasSuffix(
             "client_encoding='UTF8' fallback_application_name='TablePro Metadata' options='-c search_path=app'"
@@ -201,9 +325,9 @@ struct LibPQConnectionStringTests {
     }
 
     @Test("No application name, or an empty one, sends no application name keyword")
-    func omitsMissingApplicationName() {
-        #expect(!build().contains("application_name"))
-        #expect(!build(applicationName: "").contains("application_name"))
+    func omitsMissingApplicationName() throws {
+        #expect(try !build().contains("application_name"))
+        #expect(try !build(applicationName: "").contains("application_name"))
     }
 
     /// Measured on libpq 17: a fallback name replaces an `application_name` set in `options`, so it
@@ -219,8 +343,8 @@ struct LibPQConnectionStringTests {
             "-c Application_Name=reporting"
         ]
     )
-    func userApplicationNameWins(options: String) {
-        let conninfo = build(options: options, applicationName: "TablePro")
+    func userApplicationNameWins(options: String) throws {
+        let conninfo = try build(options: options, applicationName: "TablePro")
 
         #expect(!conninfo.contains("fallback_application_name"))
         #expect(conninfo.contains("options="))
@@ -230,8 +354,8 @@ struct LibPQConnectionStringTests {
         "An option that only mentions application_name in its value still gets the fallback",
         arguments: ["-c search_path=application_name,public", "--search-path=application_name", "-c statement_timeout=0"]
     )
-    func valuesDoNotNameTheApplication(options: String) {
-        #expect(build(options: options, applicationName: "TablePro").contains("fallback_application_name='TablePro'"))
+    func valuesDoNotNameTheApplication(options: String) throws {
+        #expect(try build(options: options, applicationName: "TablePro").contains("fallback_application_name='TablePro'"))
     }
 
     @Test("Each setting in the options is read by its name, in every spelling the server takes")
@@ -243,8 +367,8 @@ struct LibPQConnectionStringTests {
     }
 
     @Test("A quote or backslash in the application name is escaped")
-    func escapesApplicationName() {
-        #expect(build(applicationName: "o'brien\\x").contains("fallback_application_name='o\\'brien\\\\x'"))
+    func escapesApplicationName() throws {
+        #expect(try build(applicationName: "o'brien\\x").contains("fallback_application_name='o\\'brien\\\\x'"))
     }
 
     @Test("A metadata connection is named apart from the session, and anything else is the session")

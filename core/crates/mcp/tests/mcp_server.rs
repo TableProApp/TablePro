@@ -32,7 +32,7 @@ use tablepro_session::{
 };
 use tablepro_ssh::{SshRuntimeCell, SshServices};
 use tablepro_storage::query_history::NewEntry;
-use tablepro_storage::{ConnectionStore, SavedConnection, StoragePaths};
+use tablepro_storage::{ConnectionGroup, ConnectionGroupName, ConnectionStore, SavedConnection, StoragePaths};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -116,7 +116,8 @@ fn saved(id: Uuid, name: &str, file: &Path, access: ExternalAccess) -> SavedConn
         ssh: None,
         last_opened_at: None,
         color: None,
-        group: None,
+        group_id: None,
+        order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
@@ -233,6 +234,19 @@ async fn harness() -> Harness {
     ] {
         store.upsert_blocking(connection).expect("a saved connection");
     }
+    let name = |name: &str| ConnectionGroupName::new(name).expect("a group name");
+    let work = store
+        .create_group_blocking(ConnectionGroup::new(name("Work"), None))
+        .expect("a group");
+    let staging = store
+        .create_group_blocking(ConnectionGroup::new(name("Staging"), Some(work.id)))
+        .expect("a nested group");
+    store
+        .move_connections_blocking(&[ids.readable], Some(work.id), None)
+        .expect("Readable in Work");
+    store
+        .move_connections_blocking(&[ids.closed], Some(staging.id), None)
+        .expect("Closed in Staging");
     let token = AccessToken::from_secret(SecretString::from(TOKEN.to_owned())).expect("a token");
     let context = ToolContext {
         host: host.clone(),
@@ -443,6 +457,31 @@ async fn a_blocked_connection_is_not_listed_and_does_not_exist() {
     assert_eq!(listed["connections"][1]["safe_mode"], "read_only");
     assert!(blocked_failed);
     assert!(blocked.starts_with("not_found:"), "{blocked}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_listed_connection_names_its_group_by_its_path() {
+    let harness = harness().await;
+
+    let (failed, text) = call(&harness, "list_connections", json!({})).await;
+
+    assert!(!failed, "{text}");
+    let listed = parsed(&text);
+    let groups: Vec<(&str, Option<&str>)> = listed["connections"]
+        .as_array()
+        .expect("connections")
+        .iter()
+        .filter_map(|connection| Some((connection["name"].as_str()?, connection["group"].as_str())))
+        .collect();
+    assert_eq!(
+        groups,
+        [
+            ("Closed", Some("Work / Staging")),
+            ("Locked", None),
+            ("Readable", Some("Work")),
+            ("Writable", None)
+        ]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

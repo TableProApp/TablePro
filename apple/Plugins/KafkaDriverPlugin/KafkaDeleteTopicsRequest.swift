@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 enum KafkaDeleteTopicsRequest {
     /// How long the broker may spend on the deletion before answering REQUEST_TIMED_OUT.

@@ -1,3 +1,4 @@
+import AppIntents
 import BackgroundTasks
 import os
 import SwiftUI
@@ -13,7 +14,7 @@ struct TableProMobileApp: App {
 
     @UIApplicationDelegateAdaptor(TableProAppDelegate.self) private var appDelegate
     @State private var appState = AppState()
-    @State private var lockState = AppLockState()
+    @State private var lockState: AppLockState
     @State private var syncTask: Task<Void, Never>?
     @State private var heartbeatService: AnalyticsHeartbeatService?
     @State private var heartbeatTask: Task<Void, Never>?
@@ -21,6 +22,9 @@ struct TableProMobileApp: App {
 
     init() {
         ConnectionListTips.configure()
+        let lockState = AppLockState()
+        _lockState = State(initialValue: lockState)
+        AppDependencyManager.shared.add(dependency: lockState)
     }
 
     var body: some Scene {

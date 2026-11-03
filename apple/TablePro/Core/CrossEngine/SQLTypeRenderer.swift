@@ -18,20 +18,24 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 internal enum SQLTypeRenderer {
+    // `stringEscapes` spells MySQL and ClickHouse enum labels, the only literals a type holds. Both read a backslash
+    // as an escape unless the target session turned that off.
     internal static func render(
         _ type: CanonicalColumnType,
         family: SQLTypeFamily,
-        jsonColumnType: PostgreSQLJSONColumnType = .jsonb
+        jsonColumnType: PostgreSQLJSONColumnType = .jsonb,
+        stringEscapes: SQLStringEscapes = .backslash
     ) -> RenderedColumnType {
         switch family {
-        case .mysql: return mysql(type)
+        case .mysql: return mysql(type, stringEscapes: stringEscapes)
         case .postgres: return postgres(type, jsonColumnType: jsonColumnType)
         case .sqlite: return sqlite(type)
         case .mssql: return mssql(type)
         case .oracle: return oracle(type)
-        case .clickhouse: return clickHouse(type)
+        case .clickhouse: return clickHouse(type, stringEscapes: stringEscapes)
         case .duckdb: return duckDB(type)
         case .generic: return ansi(type)
         }

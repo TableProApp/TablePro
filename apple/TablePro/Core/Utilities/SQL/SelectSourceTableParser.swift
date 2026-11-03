@@ -130,7 +130,6 @@ enum SelectSourceTableParser {
             }
         }
 
-        /// Returns the unescaped identifier, or `nil` when the closing delimiter is missing.
         private mutating func consumeDelimited(closing: UInt16) -> String? {
             let backslashEscapes = grammar.backslashEscapes(inQuote: units[index])
             index += 1
@@ -151,8 +150,8 @@ enum SelectSourceTableParser {
                     let raw = String(decoding: units[start..<index], as: UTF16.self)
                     index += 1
                     guard doubled, let scalar = UnicodeScalar(closing) else { return raw }
-                    let quote = String(Character(scalar))
-                    return raw.replacingOccurrences(of: quote + quote, with: quote)
+                    let quote = String(scalar)
+                    return raw.replacingOccurrences(of: quote + quote, with: quote, options: .literal)
                 }
                 index += 1
             }

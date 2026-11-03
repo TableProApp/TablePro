@@ -15,6 +15,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let valuesPerRequest = 100
 
     private let endpoint: MemcachedEndpoint
+    private let tunneledServerName: String?
     private let lock = NSLock()
     private var connection: MemcachedConnection?
     private var _serverVersion: String?
@@ -25,10 +26,12 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private static let shownExpiryLimit = 100_000
 
     init(config: DriverConnectionConfig) {
+        tunneledServerName = config.tunneledServerName
         endpoint = MemcachedEndpoint(
             host: config.host,
             port: config.port,
             ssl: config.ssl,
+            tlsServerName: config.tunneledServerName ?? config.host,
             username: config.username,
             password: config.password,
             connectTimeout: .seconds(10)
@@ -49,6 +52,16 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Connection
 
     func connect() async throws {
+        // NIOSSL matches an address only against the peer it dialed, which behind a tunnel is the loopback forward.
+        if endpoint.ssl.verifiesHostname, let name = tunneledServerName, Self.isIPAddress(name) {
+            throw MemcachedError.refused(String(
+                format: String(localized: """
+                    Verify Identity through a tunnel checks the certificate against the server's host name, and %@ \
+                    is an IP address. Enter the server's host name, or set SSL Mode to Verify CA.
+                    """),
+                name
+            ))
+        }
         let opened = MemcachedConnection(endpoint: endpoint)
         do {
             try await opened.open()
@@ -87,6 +100,12 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func liveConnection() throws -> MemcachedConnection {
         guard let connection = lock.withLock({ connection }) else { throw MemcachedError.notConnected }
         return connection
+    }
+
+    private static func isIPAddress(_ name: String) -> Bool {
+        var v4 = in_addr()
+        var v6 = in6_addr()
+        return inet_pton(AF_INET, name, &v4) == 1 || inet_pton(AF_INET6, name, &v6) == 1
     }
 
     private static func version(on connection: MemcachedConnection) async throws -> String {
@@ -208,7 +227,9 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
 
         lock.withLock {
-            serverClockOffset = serverTime - Int64(Date().timeIntervalSince1970)
+            serverClockOffset = MemcachedServerClock.offset(
+                serverTime: serverTime, localTime: Int64(Date().timeIntervalSince1970)
+            )
             if shownExpiries.count + page.count > Self.shownExpiryLimit { shownExpiries.removeAll() }
             for entry in page { shownExpiries[entry.key] = MemcachedKnownExpiry(expiresAt: entry.expiresAt) }
         }
@@ -414,7 +435,7 @@ final class MemcachedPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let expiries = lock.withLock { shownExpiries }
         let generator = MemcachedStatementGenerator(
             columns: columns,
-            now: { Int64(Date().timeIntervalSince1970) + offset },
+            now: { MemcachedServerClock.serverTime(localTime: Int64(Date().timeIntervalSince1970), offset: offset) },
             knownExpiry: { expiries[$0] }
         )
         return try generator.generateRowWrites(

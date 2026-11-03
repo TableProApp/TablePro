@@ -79,7 +79,7 @@ struct DatabaseTreeView: View {
     }
 
     private var isConnected: Bool {
-        databaseManager.session(for: connectionId)?.status == .connected
+        databaseManager.session(for: connectionId)?.reportedStatus == .connected
     }
 
     private var databases: [DatabaseMetadata] {

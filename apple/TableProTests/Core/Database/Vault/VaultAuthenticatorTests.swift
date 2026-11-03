@@ -189,6 +189,42 @@ struct VaultAuthenticatorTests {
         #expect(transport.requests(to: "auth/oidc/oidc/callback").isEmpty)
     }
 
+    @Test("A sign-in page that is not a web address is refused before the browser opens anything", arguments: [
+        "file:///System/Applications/Calculator.app",
+        "shortcuts://run-shortcut?name=Deploy",
+        "https:///no-host",
+        "/authorize",
+        "http://idp.example/authorize",
+    ])
+    func oidcRefusesNonWebSignInPage(authURL: String) async {
+        let transport = VaultFakeTransport()
+        transport.reply("POST", "auth/oidc/oidc/auth_url", #"{"data":{"auth_url":"\#(authURL)"}}"#)
+        let receiver = VaultFakeCallbackReceiver(parameters: ["state": "st", "code": "cd"])
+        let opened = VaultFixtures.OpenedURLs()
+        let authenticator = VaultFixtures.authenticator(transport: transport, receiver: receiver, opened: opened)
+
+        await #expect(throws: VaultError.self) {
+            try await authenticator.token(for: .oidc(mount: "oidc", role: ""), endpoint: endpoint, interactive: true)
+        }
+        #expect(opened.all.isEmpty)
+        #expect(transport.requests(to: "auth/oidc/oidc/callback").isEmpty)
+    }
+
+    @Test("A local identity provider over plain http on this Mac still opens")
+    func oidcAllowsLoopbackSignInPage() async throws {
+        let transport = VaultFakeTransport()
+        transport.reply("POST", "auth/oidc/oidc/auth_url", #"{"data":{"auth_url":"http://127.0.0.1:5556/auth?x=1"}}"#)
+        transport.reply("GET", "auth/oidc/oidc/callback", VaultFixtures.authReply(token: "oidc-token"))
+        let receiver = VaultFakeCallbackReceiver(parameters: ["state": "st", "code": "cd"])
+        let opened = VaultFixtures.OpenedURLs()
+        let authenticator = VaultFixtures.authenticator(transport: transport, receiver: receiver, opened: opened)
+
+        let token = try await authenticator.token(for: .oidc(mount: "oidc", role: ""), endpoint: endpoint, interactive: true)
+
+        #expect(token.value == "oidc-token")
+        #expect(opened.all.map { $0.absoluteString } == ["http://127.0.0.1:5556/auth?x=1"])
+    }
+
     @Test("The callback listener hands back the query of GET /oidc/callback only")
     func loopbackParsesCallback() {
         let head = Data("GET /oidc/callback?code=abc&state=xyz HTTP/1.1\r\nHost: localhost:8250\r\n\r\n".utf8)

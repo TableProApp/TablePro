@@ -145,6 +145,10 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     // `--` is code, as in Cypher's `(a)--(b)`. Only the curated Cypher grammar carries it, so the kit has no feature.
     public static let withoutDashComments = SQLLexicalGrammar(rawValue: 1 << 38)
 
+    /// A `'...'` after a line break carries on an `E'...'`, or CockroachDB's `b'...'`, with its backslash escapes, as
+    /// PostgreSQL's `quotecontinue` reads it, so `E'x'` + line break + `'\'; ...'` is one literal. Curated only.
+    public static let escapeStringContinuations = SQLLexicalGrammar(rawValue: 1 << 39)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

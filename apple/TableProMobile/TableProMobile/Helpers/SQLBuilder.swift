@@ -3,6 +3,8 @@ import TableProDatabase
 import TableProModels
 import TableProPluginKit
 import TableProQuery
+import TableProSQLGrammar
+import TableProSQLQuoting
 
 nonisolated enum SQLBuilder {
     static func speaksMySQLDialect(_ type: DatabaseType) -> Bool {
@@ -11,17 +13,15 @@ nonisolated enum SQLBuilder {
 
     static func quoteIdentifier(_ name: String, for type: DatabaseType) -> String {
         if speaksMySQLDialect(type) {
-            return "`\(name.replacingOccurrences(of: "`", with: "``", options: .literal))`"
+            return SQLQuoting.identifier(name, quote: .backtick)
         }
         switch type {
-        case .postgresql, .redshift:
-            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
         case .mssql:
-            return "[\(name.replacingOccurrences(of: "]", with: "]]", options: .literal))]"
+            return SQLQuoting.identifier(name, quote: .bracket)
         case .clickhouse:
             return clickHouseQuotedIdentifier(name)
         default:
-            return "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+            return SQLQuoting.identifier(name)
         }
     }
 
@@ -105,8 +105,18 @@ nonisolated enum SQLBuilder {
         }
     }
 
-    static func filterGenerator(dialect: SQLDialectDescriptor, type: DatabaseType) -> FilterSQLGenerator {
-        FilterSQLGenerator(dialect: dialect, databaseType: type, quoteIdentifier: { quoteIdentifier($0, for: type) })
+    // `session` is what the driver last reported, `DatabaseDriver.settledLexicalFacts`.
+    static func filterGenerator(
+        dialect: SQLDialectDescriptor,
+        type: DatabaseType,
+        session: SQLSessionLexicalFacts? = nil
+    ) -> FilterSQLGenerator {
+        FilterSQLGenerator(
+            dialect: dialect,
+            databaseType: type,
+            quoteIdentifier: { quoteIdentifier($0, for: type) },
+            session: session
+        )
     }
 
     static func buildKeyMatchCount(
@@ -178,12 +188,14 @@ nonisolated enum SQLBuilder {
         if speaksMySQLDialect(type) {
             return "INSERT INTO \(qualifiedTable) () VALUES ()"
         }
-        switch type {
-        case .postgresql, .redshift, .sqlite, .mssql, .duckdb:
-            return "INSERT INTO \(qualifiedTable) DEFAULT VALUES"
-        default:
-            return nil
-        }
+        let takesDefaultValues = type.isSQLiteFamily || [.postgresql, .redshift, .mssql, .duckdb].contains(type)
+        return takesDefaultValues ? "INSERT INTO \(qualifiedTable) DEFAULT VALUES" : nil
+    }
+
+    // SQLite has no TRUNCATE statement; a DELETE with no WHERE is its truncate.
+    static func truncateStatement(table: String, schema: String?, type: DatabaseType) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+        return type.isSQLiteFamily ? "DELETE FROM \(quoted)" : "TRUNCATE TABLE \(quoted)"
     }
 
     static func supportsAllDefaultsInsert(_ type: DatabaseType) -> Bool {
@@ -211,10 +223,11 @@ nonisolated enum SQLBuilder {
         table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
         columns: [ColumnInfo] = [],
+        session: SQLSessionLexicalFacts? = nil,
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
-        let generator = filterGenerator(dialect: dialect, type: type)
+        let generator = filterGenerator(dialect: dialect, type: type, session: session)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let pagination = paginationClause(orderBy: "", limit: limit, offset: offset, for: type)
@@ -228,11 +241,12 @@ nonisolated enum SQLBuilder {
         table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
         columns: [ColumnInfo] = [],
+        session: SQLSessionLexicalFacts? = nil,
         sortState: SortState,
         limit: Int, offset: Int
     ) -> String {
         let dialect = dialectDescriptor(for: type)
-        let generator = filterGenerator(dialect: dialect, type: type)
+        let generator = filterGenerator(dialect: dialect, type: type, session: session)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let orderBy = buildOrderByClause(sortState, for: type)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
@@ -246,10 +260,11 @@ nonisolated enum SQLBuilder {
     static func buildFilteredCount(
         table: String, schema: String?, type: DatabaseType,
         filters: [TableFilter], logicMode: FilterLogicMode,
-        columns: [ColumnInfo] = []
+        columns: [ColumnInfo] = [],
+        session: SQLSessionLexicalFacts? = nil
     ) -> String {
         let dialect = dialectDescriptor(for: type)
-        let generator = filterGenerator(dialect: dialect, type: type)
+        let generator = filterGenerator(dialect: dialect, type: type, session: session)
         let whereClause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         if whereClause.isEmpty {
@@ -265,13 +280,14 @@ nonisolated enum SQLBuilder {
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter] = [], logicMode: FilterLogicMode = .and,
         columns: [ColumnInfo] = [],
+        session: SQLSessionLexicalFacts? = nil,
         sortState: SortState = SortState(),
         limit: Int, offset: Int
     ) -> String {
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
-            filters: filters, logicMode: logicMode, columns: columns, type: type
+            filters: filters, logicMode: logicMode, columns: columns, type: type, session: session
         )
         let orderBy = buildOrderByClause(sortState, for: type)
         let pagination = paginationClause(orderBy: orderBy, limit: limit, offset: offset, for: type)
@@ -285,12 +301,13 @@ nonisolated enum SQLBuilder {
         table: String, schema: String?, type: DatabaseType,
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter] = [], logicMode: FilterLogicMode = .and,
-        columns: [ColumnInfo] = []
+        columns: [ColumnInfo] = [],
+        session: SQLSessionLexicalFacts? = nil
     ) -> String {
         let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
         let whereClause = buildSearchWhereClause(
             searchText: searchText, searchColumns: searchColumns,
-            filters: filters, logicMode: logicMode, columns: columns, type: type
+            filters: filters, logicMode: logicMode, columns: columns, type: type, session: session
         )
         var sql = "SELECT COUNT(*) FROM \(quoted)"
         if !whereClause.isEmpty { sql += " \(whereClause)" }
@@ -300,17 +317,17 @@ nonisolated enum SQLBuilder {
     private static func buildSearchWhereClause(
         searchText: String, searchColumns: [ColumnInfo],
         filters: [TableFilter], logicMode: FilterLogicMode,
-        columns: [ColumnInfo], type: DatabaseType
+        columns: [ColumnInfo], type: DatabaseType, session: SQLSessionLexicalFacts?
     ) -> String {
         var whereParts: [String] = []
 
-        let searchClause = buildSearchClause(searchText: searchText, columns: searchColumns, type: type)
+        let searchClause = buildSearchClause(searchText: searchText, columns: searchColumns, type: type, session: session)
         if !searchClause.isEmpty {
             whereParts.append(searchClause)
         }
 
         if let filterConditions = filterConditions(
-            filters: filters, logicMode: logicMode, columns: columns, type: type
+            filters: filters, logicMode: logicMode, columns: columns, type: type, session: session
         ) {
             whereParts.append("(\(filterConditions))")
         }
@@ -320,10 +337,11 @@ nonisolated enum SQLBuilder {
     }
 
     private static func filterConditions(
-        filters: [TableFilter], logicMode: FilterLogicMode, columns: [ColumnInfo], type: DatabaseType
+        filters: [TableFilter], logicMode: FilterLogicMode, columns: [ColumnInfo], type: DatabaseType,
+        session: SQLSessionLexicalFacts?
     ) -> String? {
         let dialect = dialectDescriptor(for: type)
-        let generator = filterGenerator(dialect: dialect, type: type)
+        let generator = filterGenerator(dialect: dialect, type: type, session: session)
         let clause = generator.generateWhereClause(from: filters, logicMode: logicMode, columns: columns)
         guard !clause.isEmpty else { return nil }
         let wherePrefix = "WHERE "
@@ -333,17 +351,23 @@ nonisolated enum SQLBuilder {
     }
 
     private static func buildSearchClause(
-        searchText: String, columns: [ColumnInfo], type: DatabaseType
+        searchText: String, columns: [ColumnInfo], type: DatabaseType, session: SQLSessionLexicalFacts?
     ) -> String {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !columns.isEmpty else { return "" }
 
-        let generator = filterGenerator(dialect: dialectDescriptor(for: type), type: type)
+        let dialect = dialectDescriptor(for: type)
+        let generator = filterGenerator(dialect: dialect, type: type, session: session)
         let pattern = generator.likePatternBody(trimmed)
+        // D1 refuses a LIKE pattern this long, so the text is found as a plain substring, folded as its LIKE folds.
+        let substring = generator.exceedsLikePatternLimit(pattern, wildcards: 2) ? generator.stringLiteral(trimmed) : nil
 
         let conditions = columns.map { col -> String in
             let quotedCol = quoteIdentifier(col.name, for: type)
             let castExpr = searchCastExpression(quotedCol, for: type)
+            if let substring {
+                return SQLSubstringMatch.contains(castExpr, literal: substring, fold: dialect.caseFoldFunction)
+            }
             let likeOp = (type == .postgresql || type == .redshift) ? "ILIKE" : "LIKE"
             return "\(castExpr) \(likeOp) '%\(pattern)%'\(generator.likeEscapeClause)"
         }
@@ -398,8 +422,12 @@ nonisolated enum SQLBuilder {
                 caseSensitivityStyle: .collationDefined
             )
         }
-        // The ClickHouse plugin is compiled into this app, so its own dialect is read rather than mirrored.
+        // The ClickHouse and Cloudflare D1 plugins are compiled into this app, so their own dialects are read rather
+        // than mirrored.
         if type == .clickhouse, let dialect = ClickHousePlugin.sqlDialect {
+            return dialect
+        }
+        if type == .cloudflareD1, let dialect = CloudflareD1Plugin.sqlDialect {
             return dialect
         }
         switch type {

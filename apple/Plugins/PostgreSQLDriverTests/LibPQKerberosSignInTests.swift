@@ -22,13 +22,15 @@ struct LibPQKerberosSignInTests {
         #expect(signIn == LibPQKerberosSignIn(gssEncryptionMode: "prefer", cachePath: nil))
     }
 
-    @Test("Behind a tunnel the server's own host names the service")
-    func tunnelKeepsTheServiceHost() async throws {
-        let fields = ["awsAuth": KerberosAuthFields.method, "preTunnelHost": "db.corp.example.com"]
+    // libpq names the service after host, which LibPQConnectionString sets to the tunnel's server name; a stored
+    // field on its own changes nothing.
+    @Test("A stored pre-tunnel host does not reach the Kerberos sign-in")
+    func storedPreTunnelHostIsNotRead() async throws {
+        let fields = ["awsAuth": KerberosAuthFields.method, "preTunnelHost": "evil.example"]
 
         let signIn = try await LibPQKerberosSignIn.resolve(additionalFields: fields, timeoutMilliseconds: 1_000)
 
-        #expect(signIn?.serviceHost == "db.corp.example.com")
+        #expect(signIn == LibPQKerberosSignIn(gssEncryptionMode: "prefer", cachePath: nil))
     }
 
     @Test("A server that wants Kerberos tells a password sign-in where to switch")

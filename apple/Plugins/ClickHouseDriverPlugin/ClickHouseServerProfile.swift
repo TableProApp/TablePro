@@ -18,6 +18,8 @@ nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
     let catalog: Set<ClickHouseCatalogFeature>
     // The bytes of a statement the parser reads. A value written into the statement counts; as a URL parameter it did not.
     let maxQuerySize: Int
+    // The login's own `readonly` level, nil when the settings probe did not answer.
+    let loginReadOnly: Int?
 
     static let documentedMaxQuerySize = 262_144
 
@@ -48,12 +50,14 @@ nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
         version: ClickHouseServerVersion?,
         settingLimits: [ClickHouseURLSetting: ClickHouseSettingLimits],
         catalog: Set<ClickHouseCatalogFeature>,
-        maxQuerySize: Int = Self.documentedMaxQuerySize
+        maxQuerySize: Int = Self.documentedMaxQuerySize,
+        loginReadOnly: Int? = nil
     ) {
         self.version = version
         self.settingLimits = settingLimits
         self.catalog = catalog
         self.maxQuerySize = maxQuerySize
+        self.loginReadOnly = loginReadOnly
     }
 
     init(
@@ -83,8 +87,24 @@ nonisolated struct ClickHouseServerProfile: Sendable, Equatable {
             settingLimits: settings.map { Self.settingLimits(columns: $0.columns, rows: $0.rows) } ?? [:],
             catalog: catalogRow.map(Self.catalog(row:)) ?? Set(ClickHouseCatalogFeature.allCases),
             maxQuerySize: settings.flatMap { Self.maxQuerySize(columns: $0.columns, rows: $0.rows) }
-                ?? Self.documentedMaxQuerySize
+                ?? Self.documentedMaxQuerySize,
+            loginReadOnly: settings.flatMap { Self.loginReadOnly(columns: $0.columns, rows: $0.rows) }
         )
+    }
+
+    static func loginReadOnly(columns: [String], rows: [[PluginCellValue]]) -> Int? {
+        guard let nameIndex = columns.firstIndex(of: "name"), let valueIndex = columns.firstIndex(of: "value") else {
+            return nil
+        }
+        let row = rows.first { $0[safe: nameIndex]?.asText == "readonly" }
+        return row?[safe: valueIndex]?.asText.flatMap { Int($0) }
+    }
+
+    // ClickHouse refuses any change of `readonly` while the login's own level is above 1, so asking such a login for
+    // 1 would fail every read; it keeps its own level. Asking a login already at 1 for 1 changes nothing (measured).
+    var readOnlyItem: URLQueryItem? {
+        if let loginReadOnly, loginReadOnly > 1 { return nil }
+        return URLQueryItem(name: "readonly", value: "1")
     }
 
     static func maxQuerySize(columns: [String], rows: [[PluginCellValue]]) -> Int? {

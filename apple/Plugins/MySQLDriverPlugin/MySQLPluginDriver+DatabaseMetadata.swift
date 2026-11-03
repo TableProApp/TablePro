@@ -106,9 +106,7 @@ internal extension MySQLPluginDriver {
         """)
     }
 
-    /// Before 5.0.2 there is no catalog to total, so each database answers its own `SHOW TABLE STATUS`.
-    /// One the account may list but not open is refused, and keeps its name alone rather than failing
-    /// the whole list.
+    // Before 5.0.2 there is no catalog to total, so each database answers its own `SHOW TABLE STATUS`.
     private func tableStatusMetadata(of database: String, isSystem: Bool) async throws -> PluginDatabaseMetadata {
         let rows: [[PluginCellValue]]
         do {
@@ -118,16 +116,24 @@ internal extension MySQLPluginDriver {
             Self.logger.info("SHOW TABLE STATUS refused for one database code=\(error.code, privacy: .public)")
             return PluginDatabaseMetadata(name: database, isSystemDatabase: isSystem)
         }
-        let sizeBytes = rows.reduce(Int64(0)) { total, row in
-            let data = row[safe: 6]?.asText.flatMap { Int64($0) } ?? 0
-            let index = row[safe: 8]?.asText.flatMap { Int64($0) } ?? 0
-            return total + data + index
-        }
         return PluginDatabaseMetadata(
             name: database,
             tableCount: rows.count,
-            sizeBytes: sizeBytes,
+            sizeBytes: Self.tableStatusSizeBytes(rows),
             isSystemDatabase: isSystem
         )
+    }
+
+    // The lengths are the server's own numbers, so a total past Int64 pins to its end.
+    static func tableStatusSizeBytes(_ rows: [[PluginCellValue]]) -> Int64 {
+        var total: Int64 = 0
+        for row in rows {
+            for column in [6, 8] {
+                let length = row[safe: column]?.asText.flatMap { Int64($0) } ?? 0
+                let (sum, overflow) = total.addingReportingOverflow(length)
+                total = overflow ? (length < 0 ? .min : .max) : sum
+            }
+        }
+        return total
     }
 }

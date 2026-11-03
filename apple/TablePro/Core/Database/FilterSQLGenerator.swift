@@ -8,6 +8,7 @@
 import Foundation
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 /// Generates SQL WHERE clauses from filter definitions
 struct FilterSQLGenerator {
@@ -34,6 +35,7 @@ struct FilterSQLGenerator {
     // Oracle reads the literal '' as NULL, and so does KingbaseES in Oracle mode, which its type cannot tell apart
     // from its PostgreSQL mode, so `c != ''` matches no row there.
     private let readsEmptyStringAsNull: Bool
+    private let stringEscapes: SQLStringEscapes
 
     init(
         dialect: SQLDialectDescriptor,
@@ -41,14 +43,20 @@ struct FilterSQLGenerator {
         columnTypes: [ColumnType] = [],
         quoteIdentifier: ((String) -> String)? = nil,
         stringLiteralPrefix: String = "",
-        databaseType: DatabaseType? = nil
+        databaseType: DatabaseType? = nil,
+        stringEscapes: SQLStringEscapes? = nil
     ) {
         self.dialect = dialect
-        self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
+        self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect, databaseType: databaseType)
         self.columnTypesByName = ColumnTypeSQLQuoting.lookupByName(columns: columns, columnTypes: columnTypes)
         self.stringLiteralPrefix = stringLiteralPrefix
         self.family = databaseType.map(SQLTypeFamily.of)
         self.readsEmptyStringAsNull = family == .oracle || databaseType == .kingbasees
+        // Without the session's escapes the descriptor answers. Snowflake takes `ESCAPE '!'` yet reads `\'` as a
+        // quote; BigQuery and Spanner read `\` without declaring it.
+        self.stringEscapes = stringEscapes ?? SQLStringEscapes(
+            backslashEscapes: dialect.requiresBackslashEscaping || dialect.likeEscapeStyle == .implicit
+        )
     }
 
     /// The one place a string literal is spelled, so the engine's prefix cannot be forgotten on
@@ -160,6 +168,10 @@ struct FilterSQLGenerator {
         case .regex:
             let operand = patternOperand(quotedColumn, columnType: columnType)
             guard dialect.regexSyntax != .unsupported else {
+                if SQLSubstringMatch.exceeds(filter.value, wildcards: 2, limit: dialect.likePatternByteLimit) {
+                    let literal = quotedLiteral(escapeStringValue(filter.value))
+                    return SQLSubstringMatch.contains(operand, literal: literal, fold: dialect.caseFoldFunction)
+                }
                 let pattern = quotedLiteral("%\(escapeStringValue(filter.value))%")
                 return "\(folding.foldingLikeOperand(operand)) \(folding.likeKeyword) "
                     + folding.foldingLikeOperand(pattern)
@@ -322,10 +334,11 @@ struct FilterSQLGenerator {
 
     // MARK: - LIKE Conditions
 
-    // An implicit-style engine escapes LIKE with a backslash by default and takes no clause.
+    // An implicit-style engine escapes LIKE with a backslash by default and takes no clause, unless the session turned
+    // backslash escapes off: MySQL's NO_BACKSLASH_ESCAPES leaves LIKE with no escape at all.
     private var likeEscapeClause: String {
-        if dialect.likeEscapeStyle == .implicit { return "" }
-        return " ESCAPE '!'"
+        guard dialect.likeEscapeStyle == .implicit else { return " ESCAPE '!'" }
+        return stringEscapes.backslashEscapes ? "" : " ESCAPE '\\'"
     }
 
     private func generateLikeFamilyCondition(
@@ -353,7 +366,28 @@ struct FilterSQLGenerator {
         default:
             pattern = "%\(escaped)%"
         }
+        let wildcards = pattern.utf8.count - escaped.utf8.count
+        if SQLSubstringMatch.exceeds(escaped, wildcards: wildcards, limit: dialect.likePatternByteLimit) {
+            return generateSubstringCondition(column: column, filter: filter)
+        }
         return generateLikeCondition(column: column, pattern: pattern, negated: negated, folding: folding)
+    }
+
+    /// The engine rejects a LIKE pattern this long, so the value is matched as a plain substring, which needs no
+    /// wildcard escape.
+    private func generateSubstringCondition(column: String, filter: TableFilter) -> String {
+        let literal = quotedLiteral(escapeStringValue(filter.value))
+        let fold = dialect.caseFoldFunction
+        switch filter.filterOperator {
+        case .startsWith:
+            return SQLSubstringMatch.startsWith(column, literal: literal, fold: fold)
+        case .endsWith:
+            return SQLSubstringMatch.endsWith(column, literal: literal, fold: fold)
+        case .notContains:
+            return SQLSubstringMatch.notContains(column, literal: literal, fold: fold)
+        default:
+            return SQLSubstringMatch.contains(column, literal: literal, fold: fold)
+        }
     }
 
     private func generateLikeCondition(
@@ -521,27 +555,18 @@ struct FilterSQLGenerator {
         return isTrue ? "1" : "0"
     }
 
-    // Snowflake takes `ESCAPE '!'` yet reads `\'` as a quote; BigQuery and Spanner read `\` without declaring it.
-    private var literalsReadBackslash: Bool {
-        dialect.requiresBackslashEscaping || dialect.likeEscapeStyle == .implicit
-    }
-
-    // `.literal` compares code units: the default compares grapheme clusters and skips a quote a combining mark follows.
     private func escapeStringValue(_ value: String) -> String {
-        let body = literalsReadBackslash
-            ? value.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            : value
-        return body.replacingOccurrences(of: "'", with: "''", options: .literal)
+        SQLQuoting.stringLiteralBody(value, escapes: stringEscapes)
     }
 
     // Only the LIKE layer: escapeStringValue then spells the pattern as a literal.
     private func escapeLikeWildcards(_ value: String) -> String {
-        let escape = dialect.likeEscapeStyle == .implicit ? "\\" : "!"
         // `[` opens a character class in a SQL Server LIKE pattern.
-        let metacharacters = [escape, "%", "_"] + (family == .mssql ? ["["] : [])
-        return metacharacters.reduce(value) { pattern, metacharacter in
-            pattern.replacingOccurrences(of: metacharacter, with: escape + metacharacter, options: .literal)
-        }
+        SQLQuoting.likePattern(
+            value,
+            escape: dialect.likeEscapeStyle == .implicit ? "\\" : "!",
+            metacharacters: family == .mssql ? ["%", "_", "["] : ["%", "_"]
+        )
     }
 }
 

@@ -5,8 +5,7 @@
 
 import Foundation
 
-/// Headers the file spells out keep their names first; blanks and repeats are named afterwards, so a
-/// placeholder can never take a name a later header spells literally.
+// Literal headers claim their names first, so a placeholder never takes a name a later header spells out.
 public enum ImportFieldNaming {
     public static func uniqueNames(for header: [String?], placeholder: (Int) -> String) -> [String] {
         let trimmed = header.map { ($0 ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -17,14 +16,17 @@ public enum ImportFieldNaming {
             names[index] = name
         }
 
+        // Resuming each base where it last stopped keeps a header of one repeated name linear.
+        var nextOrdinal: [String: Int] = [:]
         for index in names.indices where names[index] == nil {
             let base = trimmed[index].isEmpty ? placeholder(index) : trimmed[index]
-            var unique = base
-            var suffix = 2
+            var ordinal = nextOrdinal[base, default: 1]
+            var unique = ordinal == 1 ? base : "\(base) \(ordinal)"
             while !used.insert(unique).inserted {
-                unique = "\(base) \(suffix)"
-                suffix += 1
+                ordinal += 1
+                unique = "\(base) \(ordinal)"
             }
+            nextOrdinal[base] = ordinal + 1
             names[index] = unique
         }
 

@@ -162,7 +162,7 @@ struct MongoDBDashboardProvider: ServerDashboardQueryProvider {
             metrics.append(DashboardMetric(
                 id: "resident_memory",
                 label: String(localized: "Resident Memory"),
-                value: ByteSizeFormatting.string(bytes: mebibytes * 1_048_576),
+                value: ByteSizeFormatting.string(mebibytes: mebibytes),
                 unit: "",
                 icon: "memorychip"
             ))
@@ -192,7 +192,7 @@ struct MongoDBDashboardProvider: ServerDashboardQueryProvider {
         return result.rows.map { row in
             let millis = Int(value(row, at: col["millis"])) ?? 0
             return DashboardSlowQuery(
-                duration: DurationFormatting.string(microseconds: millis * 1_000),
+                duration: DurationFormatting.string(milliseconds: millis),
                 query: String(value(row, at: col["command"]).prefix(Self.queryTextLimit)),
                 user: value(row, at: col["user"]),
                 database: Self.database(ofNamespace: value(row, at: col["ns"]))

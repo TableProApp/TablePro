@@ -1,5 +1,6 @@
 import Foundation
 @testable import TableProMCP
+import TableProMCPTestSupport
 import XCTest
 
 @MainActor
@@ -30,9 +31,11 @@ final class MCPHandshakeFileTests: XCTestCase {
     func testWritingReplacesTheEarlierCredentialAndKeepsThePermissions() throws {
         let directory = makeDirectoryPath()
         let file = MCPHandshakeFile(directory: directory)
+        try listen(in: directory)
+        let socketPath = MCPSocketLocation.primarySocket(in: directory).path
 
-        file.write(payload())
-        file.write(payload(token: "tp_second"))
+        file.write(payload(socketPath: socketPath))
+        file.write(payload(socketPath: socketPath, token: "tp_second"))
 
         let loaded = try MCPHandshakeTrust.load(at: file.url, now: Date())
         XCTAssertEqual(loaded.token, "tp_second")
@@ -42,11 +45,12 @@ final class MCPHandshakeFileTests: XCTestCase {
     func testTheWrittenHandshakeIsTrustedByTheLoader() throws {
         let directory = makeDirectoryPath()
         let file = MCPHandshakeFile(directory: directory)
+        try listen(in: directory)
 
-        file.write(payload())
+        file.write(payload(socketPath: MCPSocketLocation.primarySocket(in: directory).path))
 
         let loaded = try MCPHandshakeTrust.load(at: file.url, now: Date())
-        XCTAssertEqual(loaded.port, 23_508)
+        XCTAssertEqual(loaded.socketPath, MCPSocketLocation.primarySocket(in: directory).path)
         XCTAssertEqual(loaded.instanceId, "instance-a")
         XCTAssertEqual(loaded.protocolVersion, MCPProtocolVersion.latest.rawValue)
     }
@@ -134,8 +138,7 @@ final class MCPHandshakeFileTests: XCTestCase {
     }
 
     private func makeDirectoryPath() -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mcp-handshake-file-\(UUID().uuidString)", isDirectory: true)
+        let directory = MCPTestSocketFolder.url()
         addTeardownBlock {
             try? FileManager.default.removeItem(at: directory)
         }
@@ -147,13 +150,24 @@ final class MCPHandshakeFileTests: XCTestCase {
         return (attributes[.posixPermissions] as? NSNumber)?.int32Value ?? -1
     }
 
+    // The loader trusts a handshake only while its socket is listening.
+    private func listen(in directory: URL) throws {
+        try MCPTestSocketFolder.create(directory)
+        let listener = MCPUnixSocketListener(path: MCPSocketLocation.primarySocket(in: directory).path) { $0.cancel() }
+        try listener.start()
+        addTeardownBlock {
+            listener.stop()
+        }
+    }
+
     private func payload(
+        socketPath: String? = nil,
         token: String = "tp_test",
         pid: Int32 = ProcessInfo.processInfo.processIdentifier,
         expiresAt: Date = Date().addingTimeInterval(3_600)
     ) -> MCPHandshakePayload {
         MCPHandshakePayload(
-            port: 23_508,
+            socketPath: socketPath ?? "/nonexistent/mcp.sock",
             token: token,
             pid: pid,
             instanceId: "instance-a",

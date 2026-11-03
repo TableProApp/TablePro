@@ -29,7 +29,8 @@ internal struct DatabaseSearchQuery: Equatable, Sendable {
             columnTypes: columns.map(\.type),
             quoteIdentifier: quoteIdentifier,
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType),
-            databaseType: databaseType
+            databaseType: databaseType,
+            stringEscapes: SQLLexicalResolver.stringEscapes(for: databaseType, session: driver?.sessionLexicalState)
         )
         var kept: [TableFilter] = []
         var conditions: [String] = []

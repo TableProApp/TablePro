@@ -1,9 +1,8 @@
-import AppKit
 import SwiftUI
 
 struct CopyableCodeBlock: View {
     let text: String
-    @State private var copied = false
+    var isSecret = false
 
     var body: some View {
         HStack(alignment: .top) {
@@ -16,16 +15,14 @@ struct CopyableCodeBlock: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
 
             Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(text, forType: .string)
-                copied = true
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(1.5))
-                    copied = false
+                if isSecret {
+                    ClipboardService.shared.writeSecretText(text)
+                } else {
+                    ClipboardService.shared.writeText(text)
                 }
+                AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
             } label: {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .symbolReplaceTransition()
+                Image(systemName: "doc.on.doc")
             }
             .accessibilityLabel(String(localized: "Copy"))
             .help(String(localized: "Copy to clipboard"))

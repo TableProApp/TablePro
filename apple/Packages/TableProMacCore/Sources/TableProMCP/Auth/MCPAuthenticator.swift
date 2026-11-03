@@ -2,6 +2,8 @@ import Foundation
 
 public enum MCPClientAddress: Sendable, Equatable, Hashable {
     case loopback
+    // The app's Unix socket. Its own key, so failures any local account causes over TCP never lock it out.
+    case localSocket
     case remote(String)
 
     public var isLoopback: Bool {
@@ -13,6 +15,8 @@ public enum MCPClientAddress: Sendable, Equatable, Hashable {
         switch self {
         case .loopback:
             return "127.0.0.1"
+        case .localSocket:
+            return "local socket"
         case .remote(let host):
             return host
         }

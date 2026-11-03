@@ -10,6 +10,7 @@ use tablepro_storage::SavedConnection;
 #[properties(wrapper_type = super::saved_connection_object::SavedConnectionObject)]
 pub struct SavedConnectionObject {
     pub(super) saved: OnceCell<SavedConnection>,
+    pub(super) group_label: OnceCell<Option<String>>,
     pub(super) file_based: Cell<bool>,
     #[property(get = Self::id)]
     id: PhantomData<String>,
@@ -51,10 +52,7 @@ impl SavedConnectionObject {
     }
 
     fn group(&self) -> Option<String> {
-        self.saved
-            .get()
-            .and_then(|saved| saved.group.as_ref())
-            .map(|group| group.as_str().to_owned())
+        self.group_label.get().cloned().flatten()
     }
 
     fn last_opened(&self) -> i64 {

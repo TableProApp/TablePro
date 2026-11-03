@@ -300,10 +300,9 @@ public enum PostgreSQLTypeDefinition {
         return attributes
     }
 
-    /// `quote_ident` on the server leaves a plain lower-case name bare, so the catalog's spelling
-    /// of the default multirange has to be compared in both forms.
+    // `quote_ident` leaves a plain lower-case name bare, so the default multirange is compared in both spellings.
     private static func unquoted(_ qualifiedName: String) -> String {
-        qualifiedName.replacingOccurrences(of: "\"", with: "")
+        qualifiedName.replacingOccurrences(of: "\"", with: "", options: .literal)
     }
 
     private static func qualifiedName(of record: PostgreSQLUserDefinedTypeRecord) -> String {

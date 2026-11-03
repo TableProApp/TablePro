@@ -6,9 +6,14 @@
 import Darwin
 import Foundation
 import os
+import TableProPluginKit
+import TableProProcess
 
 actor CloudSQLProxyManager: TunnelManaging {
     static let shared = CloudSQLProxyManager()
+
+    // Set by the connect path, which holds the attempt a stage must be checked against.
+    @TaskLocal static var connectStageReporter: ConnectionStageReporter?
     private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyManager")
 
     private static let readinessPollInterval: UInt64 = 250_000_000
@@ -25,7 +30,7 @@ actor CloudSQLProxyManager: TunnelManaging {
     private var tunnels: [UUID: TunnelState] = [:]
     private var pidRecords: [UUID: CloudSQLProxyPidRecord] = [:]
     private let runnerFactory: () -> any SupervisedProcessRunner
-    private let binaryManager: CloudSQLProxyBinaryManager
+    private let managedBinary: @Sendable () async throws -> String
     private let systemBinaryLookup: (String) -> String?
     private var staleSweep: Task<Void, Never>?
     private let reaperTimings: StaleProcessReaper.Timings
@@ -37,7 +42,9 @@ actor CloudSQLProxyManager: TunnelManaging {
 
     init(
         runnerFactory: @escaping () -> any SupervisedProcessRunner = { ProcessSupervisedRunner() },
-        binaryManager: CloudSQLProxyBinaryManager = .shared,
+        managedBinary: @escaping @Sendable () async throws -> String = {
+            try await CloudSQLProxyDownload.shared.ensureBinary()
+        },
         systemBinaryLookup: @escaping (String) -> String? = { CLIExecutableFinder.findExecutable($0) },
         reaperTimings: StaleProcessReaper.Timings = .production,
         ownsListener: @escaping @Sendable (Int32?, Int) -> Bool = { pid, port in
@@ -46,7 +53,7 @@ actor CloudSQLProxyManager: TunnelManaging {
     ) {
         self.runnerFactory = runnerFactory
         self.ownsListener = ownsListener
-        self.binaryManager = binaryManager
+        self.managedBinary = managedBinary
         self.systemBinaryLookup = systemBinaryLookup
         self.reaperTimings = reaperTimings
     }
@@ -83,7 +90,7 @@ actor CloudSQLProxyManager: TunnelManaging {
             deleteCredentialsFile(at: credentialsFilePath)
             throw error
         }
-        let environment = ProcessInfo.processInfo.environment
+        let environment = ProcessEnvironment.inherited()
         let attempts = config.localPort != nil ? 1 : Self.portRetryCount
 
         var lastError: Error = CloudSQLProxyError.noAvailablePort
@@ -112,7 +119,14 @@ actor CloudSQLProxyManager: TunnelManaging {
             let arguments = Self.buildArguments(config: config, port: port, credentialsFilePath: credentialsFilePath)
 
             do {
-                try runner.start(binaryPath: binaryPath, arguments: arguments, environment: environment)
+                try runner.start(ProcessCommand(
+                    executable: URL(fileURLWithPath: binaryPath),
+                    arguments: arguments,
+                    environment: environment
+                ))
+            } catch let refusal as ProcessLaunchError {
+                deleteCredentialsFile(at: credentialsFilePath)
+                throw refusal
             } catch {
                 deleteCredentialsFile(at: credentialsFilePath)
                 throw CloudSQLProxyError.binaryNotFound
@@ -320,11 +334,8 @@ actor CloudSQLProxyManager: TunnelManaging {
         if let resolved = systemBinaryLookup("cloud-sql-proxy") {
             return resolved
         }
-        /// The managed binary is ad-hoc signed and lives in a user-writable directory, so its
-        /// pinned checksum is the only thing attesting to what is about to run. Going through
-        /// `ensureBinary()` rather than the path alone means a stale or altered copy is replaced
-        /// here instead of being executed.
-        return try await binaryManager.ensureBinary()
+        // Never the bare path: the checksum check replaces a stale or altered copy instead of running it.
+        return try await managedBinary()
     }
 
     private static func buildArguments(
@@ -342,7 +353,8 @@ actor CloudSQLProxyManager: TunnelManaging {
         if config.usePrivateIP {
             arguments.append("--private-ip")
         }
-        arguments.append(config.instanceConnectionName)
+        // `isValid` takes `--credentials-file=/a:b:c`, and cobra reads nothing after `--` as a flag.
+        arguments += ["--", config.instanceConnectionName]
         return arguments
     }
 

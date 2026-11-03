@@ -13,6 +13,8 @@ import Foundation
 import os
 import TableProConnectionLibrary
 import TableProPluginKit
+import TableProProcess
+import Yams
 
 // MARK: - Public Types
 
@@ -45,6 +47,7 @@ enum NativeDumpError: LocalizedError, Equatable {
     case incompatibleTool(message: String)
     case unreachableServer(message: String)
     case nulInArgument
+    case uncheckedThroughTunnel(tool: String, mode: SSLMode, supportedModes: [SSLMode])
 
     var errorDescription: String? {
         switch self {
@@ -68,6 +71,15 @@ enum NativeDumpError: LocalizedError, Equatable {
             return message
         case .nulInArgument:
             return String(localized: "The database name or a sign-in value holds a NUL character, which a command line cannot carry.")
+        case .uncheckedThroughTunnel(let tool, let mode, let supportedModes):
+            return String(
+                format: String(
+                    localized: "This connection uses SSL Mode %2$@, which %1$@ cannot check through a tunnel. Set SSL Mode to %3$@, or connect without the tunnel."
+                ),
+                tool,
+                mode.displayLabel,
+                supportedModes.map(\.displayLabel).formatted(.list(type: .or))
+            )
         }
     }
 }
@@ -206,6 +218,12 @@ protocol NativeDumpRunner: AnyObject {
     func cancel()
     /// Resolves once the work has ended, however it ended.
     var result: NativeDumpRunResult { get async }
+    // How far a restore has read its file, or nil when the runner cannot tell.
+    var bytesRead: Int64? { get }
+}
+
+extension NativeDumpRunner {
+    var bytesRead: Int64? { nil }
 }
 
 // MARK: - Service
@@ -226,6 +244,17 @@ final class NativeDumpService: ObservableObject {
     private var preparation: Task<NativeDumpDescriptor.Request, any Error>?
     // The Vault lease the tool signs in with, held until the tool exits.
     private var credentialLease: VaultLease?
+    private let runningWork: RunningWorkRegistry
+    private let reportCompletion: @MainActor (OperationCompletion) -> Void
+    private var trackedRestore: TrackedRestore?
+
+    private struct TrackedRestore {
+        let workId: UUID
+        let connectionId: UUID
+        let connectionName: String
+        let database: String
+        let startedAt: ContinuousClock.Instant
+    }
 
     func stateUpdates() -> AsyncStream<NativeDumpState> {
         let (stream, continuation) = AsyncStream<NativeDumpState>.makeStream()
@@ -243,8 +272,15 @@ final class NativeDumpService: ObservableObject {
     private func setState(_ newState: NativeDumpState) {
         state = newState
         switch newState {
-        case .finished, .failed, .cancelled:
+        case .finished:
             releaseCredentialLease()
+            finishTrackedRestore(.succeeded(OperationSummary()))
+        case .failed(let message, _):
+            releaseCredentialLease()
+            finishTrackedRestore(.failed(reason: message))
+        case .cancelled:
+            releaseCredentialLease()
+            finishTrackedRestore(.cancelled)
         case .idle, .running, .cancelling:
             break
         }
@@ -253,31 +289,67 @@ final class NativeDumpService: ObservableObject {
         }
     }
 
-    /// Default initializer picks the runner the job calls for.
-    init(kind: NativeDumpKind) {
-        self.kind = kind
-        self.runnerFactory = { job in
+    convenience init(kind: NativeDumpKind) {
+        self.init(kind: kind, runnerFactory: { job in
             switch job {
             case .process(let command):
                 return ProcessNativeDumpRunner(command: command)
             case .statements(let job):
                 return InProcessDumpRunner(job: job)
             }
-        }
+        })
     }
 
-    /// Test-friendly initializer that injects a custom runner factory.
-    init(kind: NativeDumpKind, runnerFactory: @escaping @MainActor (NativeDumpJob) -> any NativeDumpRunner) {
+    init(
+        kind: NativeDumpKind,
+        runningWork: RunningWorkRegistry = .shared,
+        reportCompletion: @escaping @MainActor (OperationCompletion) -> Void = {
+            _ = OperationCompletionReporter.shared.report($0)
+        },
+        runnerFactory: @escaping @MainActor (NativeDumpJob) -> any NativeDumpRunner
+    ) {
         self.kind = kind
+        self.runningWork = runningWork
+        self.reportCompletion = reportCompletion
         self.runnerFactory = runnerFactory
     }
 
-    /// Starts the operation. `fileURL` is the destination for `.backup` and the source for
-    /// `.restore`. `totalBytesEstimate` enables a determinate progress bar.
-    ///
-    /// This entry point resolves dependencies from app singletons (`DatabaseManager`,
-    /// `ConnectionStorage`, `CLIExecutableFinder`, `PluginManager`). Tests should use
-    /// `run(job:database:fileURL:totalBytesEstimate:)` directly with a fake runner.
+    // A backup is tracked by its batch, which stops every database rather than the current one.
+    func trackRestore(of database: String, on connection: DatabaseConnection) {
+        guard kind == .restore, trackedRestore == nil else { return }
+        let workId = runningWork.begin(
+            .restore,
+            subject: database,
+            connectionName: connection.name,
+            connectionIds: [connection.id]
+        ) { [weak self] in
+            self?.cancel()
+        }
+        trackedRestore = TrackedRestore(
+            workId: workId,
+            connectionId: connection.id,
+            connectionName: connection.name,
+            database: database,
+            startedAt: .now
+        )
+    }
+
+    private func finishTrackedRestore(_ outcome: OperationOutcome) {
+        guard let tracked = trackedRestore else { return }
+        trackedRestore = nil
+        runningWork.end(tracked.workId)
+        reportCompletion(OperationCompletion(
+            kind: .restore,
+            owner: .connection(tracked.connectionId),
+            connectionId: tracked.connectionId,
+            connectionName: tracked.connectionName,
+            databaseName: tracked.database,
+            elapsed: tracked.startedAt.duration(to: .now),
+            outcome: outcome
+        ))
+    }
+
+    // `fileURL` is the destination of a backup and the source of a restore.
     func start(
         connection: DatabaseConnection,
         database: String,
@@ -289,6 +361,30 @@ final class NativeDumpService: ObservableObject {
         if case .running = state { throw NativeDumpError.alreadyRunning }
         if case .cancelling = state { throw NativeDumpError.alreadyRunning }
 
+        trackRestore(of: database, on: connection)
+        do {
+            try await launch(
+                connection: connection,
+                database: database,
+                fileURL: fileURL,
+                scope: scope,
+                formatId: formatId,
+                totalBytesEstimate: totalBytesEstimate
+            )
+        } catch {
+            finishTrackedRestore(.failed(reason: error.localizedDescription))
+            throw error
+        }
+    }
+
+    private func launch(
+        connection: DatabaseConnection,
+        database: String,
+        fileURL: URL,
+        scope: NativeDumpScope,
+        formatId: String?,
+        totalBytesEstimate: Int64?
+    ) async throws {
         guard let descriptor = NativeDumpRegistry.descriptor(for: connection.type, formatId: formatId) else {
             throw NativeDumpError.unsupportedDatabase
         }
@@ -413,8 +509,7 @@ final class NativeDumpService: ObservableObject {
         }
     }
 
-    /// Test-friendly entry: hands the job to the runner and wires up termination and progress.
-    /// Skips dependency resolution.
+    // Where `start` ends up once the job is built; tests hand it a job for a fake runner.
     func run(
         job: NativeDumpJob,
         database: String,
@@ -441,9 +536,17 @@ final class NativeDumpService: ObservableObject {
         let exitPolicy = job.exitPolicy
         let pluginFolder = job.clientPluginFolder
 
-        setState(.running(database: database, fileURL: fileURL, bytesProcessed: 0, totalBytes: totalBytesEstimate))
-        if kind == .backup {
+        switch kind {
+        case .backup:
+            setState(.running(database: database, fileURL: fileURL, bytesProcessed: 0, totalBytes: totalBytesEstimate))
             startByteSizePolling(url: fileURL, database: database, totalBytes: totalBytesEstimate)
+        case .restore:
+            // Only a dump fed through standard input has an offset to read; a tool that opens the file stays indeterminate.
+            let sourceSize = runner.bytesRead == nil ? nil : Self.sizeOfDestination(fileURL)
+            setState(.running(database: database, fileURL: fileURL, bytesProcessed: 0, totalBytes: sourceSize))
+            if let sourceSize, sourceSize > 0 {
+                startInputPolling(runner: runner, url: fileURL, database: database, totalBytes: sourceSize)
+            }
         }
 
         Task { @MainActor [weak self] in
@@ -474,8 +577,7 @@ final class NativeDumpService: ObservableObject {
 
     // MARK: - Resolution
 
-    /// Both halves run off the main actor together: the lookup spawns `which`, and identifying what
-    /// it found spawns the tool itself.
+    // Off the main actor: the lookup reads the disk and identifying what it found spawns the tool itself.
     private static func resolveExecutable(
         tool: NativeDumpDescriptor.CommandLineTool,
         kind: NativeDumpKind,
@@ -642,7 +744,7 @@ final class NativeDumpService: ObservableObject {
             if let pluginFolder { try? FileManager.default.removeItem(at: pluginFolder.url) }
             throw error
         }
-        var environment = minimalEnvironment()
+        var environment = ProcessEnvironment.minimal()
         environment.merge(tool.environment(request)) { _, new in new }
         if tool.requiresUntranslatedMessages {
             environment = untranslatedMessagesEnvironment(environment)
@@ -679,7 +781,7 @@ final class NativeDumpService: ObservableObject {
     ) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("tablepro-mongo-\(UUID().uuidString).yaml")
-        let contents = entries.map { "\($0.key): \(mongoYAMLQuoted($0.value))\n" }.joined()
+        let contents = try mongoConfigurationText(entries)
         guard let data = contents.data(using: .utf8) else {
             throw NativeDumpError.sourceUnreadable
         }
@@ -688,13 +790,13 @@ final class NativeDumpService: ObservableObject {
         return url
     }
 
-    /// A double-quoted YAML scalar, which is the one form that carries every character a password
-    /// can hold without the value changing meaning.
-    nonisolated static func mongoYAMLQuoted(_ value: String) -> String {
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
-        return "\"\(escaped)\""
+    // Double-quoted, so a line break or a control character in a password is escaped instead of folding into
+    // another value; unlimited width, so libyaml never wraps one across lines.
+    nonisolated static func mongoConfigurationText(_ entries: [NativeDumpDescriptor.ConfigurationEntry]) throws -> String {
+        let pairs = entries.map { entry in
+            (Node(entry.key), Node(entry.value, .implicit, .doubleQuoted))
+        }
+        return try Yams.serialize(node: .mapping(Node.Mapping(pairs)), width: -1, allowUnicode: true)
     }
 
     /// The locale variables a spawned tool reads, named rather than spelled at each use site. The
@@ -707,10 +809,6 @@ final class NativeDumpService: ObservableObject {
         static let messages = "LC_MESSAGES"
     }
 
-    nonisolated private static let inheritedEnvironmentKeys: [String] = [
-        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", LocaleEnvironmentKey.everyCategory
-    ]
-
     nonisolated internal static let untranslatedMessagesLocale = "C"
 
     nonisolated internal static func untranslatedMessagesEnvironment(_ environment: [String: String]) -> [String: String] {
@@ -721,15 +819,6 @@ final class NativeDumpService: ObservableObject {
         }
         result[LocaleEnvironmentKey.messages] = untranslatedMessagesLocale
         return result
-    }
-
-    nonisolated static func minimalEnvironment() -> [String: String] {
-        let parent = ProcessInfo.processInfo.environment
-        var env: [String: String] = [:]
-        for key in inheritedEnvironmentKeys where parent[key] != nil {
-            env[key] = parent[key]
-        }
-        return env
     }
 
     // MARK: - Termination + Progress
@@ -811,6 +900,22 @@ final class NativeDumpService: ObservableObject {
         try? FileManager.default.removeItem(at: url)
     }
 
+    private func startInputPolling(runner: any NativeDumpRunner, url: URL, database: String, totalBytes: Int64) {
+        byteSizeTask?.cancel()
+        byteSizeTask = Task { @MainActor [weak self, weak runner] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard let self, let runner, case .running = self.state, let read = runner.bytesRead else { return }
+                self.setState(.running(
+                    database: database,
+                    fileURL: url,
+                    bytesProcessed: min(read, totalBytes),
+                    totalBytes: totalBytes
+                ))
+            }
+        }
+    }
+
     private func startByteSizePolling(url: URL, database: String, totalBytes: Int64?) {
         byteSizeTask?.cancel()
         byteSizeTask = Task { @MainActor [weak self] in
@@ -859,7 +964,7 @@ extension NativeDumpService {
     nonisolated static func sizeQuery(for type: DatabaseType) -> String? {
         switch type {
         case .postgresql, .redshift:
-            return "SELECT pg_database_size($1)"
+            return "SELECT pg_catalog.pg_database_size($1::pg_catalog.name)"
         case .mysql, .mariadb:
             return """
                 SELECT COALESCE(SUM(data_length + index_length), 0)

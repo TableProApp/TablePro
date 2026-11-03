@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 public enum MySQLObjectQueries {
     public static func escapeLiteral(_ value: String) -> String {
@@ -14,7 +15,7 @@ public enum MySQLObjectQueries {
     }
 
     public static func quoteIdentifier(_ value: String) -> String {
-        "`\(value.replacingOccurrences(of: "`", with: "``", options: .literal))`"
+        SQLQuoting.identifier(value, quote: .backtick)
     }
 
     /// The database a catalog read means.
@@ -128,10 +129,7 @@ public enum MySQLObjectQueries {
     }
 
     public static func likePattern(matching name: String) -> String {
-        name
-            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "%", with: "\\%", options: .literal)
-            .replacingOccurrences(of: "_", with: "\\_", options: .literal)
+        SQLQuoting.likePattern(name)
     }
 
     /// Whether `information_schema` describes this database at all, in one scalar.
@@ -288,9 +286,7 @@ public enum MySQLObjectQueries {
             """
     }
 
-    /// information_schema holds the parts of a trigger but not its text, so the statement is
-    /// assembled. Dropping DEFINER or the WHEN clause would produce something that looks runnable
-    /// and is not the trigger the server holds.
+    // The caller checks `condition` is one expression: this target has no SQL lexer.
     public static func triggerStatement(
         name: String,
         table: String,
@@ -306,12 +302,19 @@ public enum MySQLObjectQueries {
             header += " DEFINER = \(quotedDefiner(definer))"
         }
         header += " TRIGGER \(qualifiedIdentifier(schema: schema, name: name))"
-        header += " \(timing) \(event) ON \(qualifiedIdentifier(schema: schema, name: table))"
-        header += " FOR EACH \(orientation?.isEmpty == false ? orientation ?? "ROW" : "ROW")"
+        header += " \(keyword(timing, of: ["BEFORE", "AFTER"])) \(keyword(event, of: ["INSERT", "UPDATE", "DELETE"]))"
+        header += " ON \(qualifiedIdentifier(schema: schema, name: table))"
+        let each = orientation.flatMap { $0.isEmpty ? nil : $0 } ?? "ROW"
+        header += " FOR EACH \(keyword(each, of: ["ROW", "STATEMENT"]))"
         if let condition, !condition.isEmpty {
             header += " WHEN (\(condition))"
         }
         return header
+    }
+
+    // Catalog text that is none of the clause's keywords goes in as a name, which the server refuses.
+    private static func keyword(_ text: String, of keywords: [String]) -> String {
+        keywords.first { $0 == text.uppercased() } ?? quoteIdentifier(text)
     }
 
     // The creation-settings reads select the name too: the catalog compares names case-insensitively on MySQL 5.7
@@ -349,12 +352,12 @@ public enum MySQLObjectQueries {
         """
     }
 
-    /// A DEFINER arrives as `user@host` and both halves are identifiers, so quoting the whole
-    /// string produces a name no server will accept.
+    // `user@host`, two identifiers. Split by scalar: an `@` a combining mark follows is still the separator.
     public static func quotedDefiner(_ definer: String) -> String {
-        guard let separator = definer.lastIndex(of: "@") else { return quoteIdentifier(definer) }
-        let user = String(definer[definer.startIndex ..< separator])
-        let host = String(definer[definer.index(after: separator)...])
+        let scalars = definer.unicodeScalars
+        guard let separator = scalars.lastIndex(of: "@") else { return quoteIdentifier(definer) }
+        let user = String(scalars[scalars.startIndex ..< separator])
+        let host = String(scalars[scalars.index(after: separator)...])
         return "\(quoteIdentifier(user))@\(quoteIdentifier(host))"
     }
 }

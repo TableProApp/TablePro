@@ -295,7 +295,7 @@ public enum SQLiteTableRebuildPlanner {
     }
 
     internal static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''", options: .literal)
+        PluginSQLQuoting.stringLiteralBody(value)
     }
 
     /// Whether the copy names `rowid`, which every rowid table needs and no other table can accept.
@@ -346,13 +346,15 @@ public extension SQLiteTableRebuildPlanner {
         }
 
 
-        /// The indexes and triggers `DROP TABLE` takes with it. An auto-index backing a `UNIQUE` or
-        /// `PRIMARY KEY` has no `sql` of its own and comes back with the table.
-        let dependents = try await execute("""
+        // The indexes and triggers `DROP TABLE` takes with it; an auto-index has no `sql` and comes back with the table.
+        // SQLite stores a trailing open comment as written, which would swallow the next statement of the script.
+        let stored = try await execute("""
             SELECT sql FROM sqlite_master
             WHERE tbl_name = '\(literal)' AND type IN ('index', 'trigger') AND sql IS NOT NULL
             ORDER BY type, name
             """).rows.compactMap { $0[safe: 0]?.asText }
+        guard !stored.contains(where: SQLiteSQLScanner.endsOpen) else { return nil }
+        let dependents = stored.map { SQLiteSQLScanner.endsInLineComment($0) ? $0 + "\n" : $0 }
 
         var highWaterMark: Int64?
         if createSQL.uppercased().contains("AUTOINCREMENT") {

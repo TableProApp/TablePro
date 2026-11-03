@@ -14,6 +14,9 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     static let logger = Logger(subsystem: "com.TablePro", category: "TrinoPluginDriver")
 
+    // PluginKit's parameter binder calls back into `execute(query:)`, so the host's split reaches it through the task.
+    @TaskLocal private static var hostSplit = false
+
     init(config: DriverConnectionConfig) {
         self.config = config
         self.flavor = TrinoServerFlavor(driverVariant: config.additionalFields["driverVariant"])
@@ -103,12 +106,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         guard let client else { throw TrinoError.notConnected }
         let start = Date()
 
-        if !query.contains(";") {
-            let result = try await client.execute(query)
-            return pluginResult(result, executionTime: Date().timeIntervalSince(start))
-        }
-
-        let statements = TrinoStatementSplitter.split(query)
+        let statements = TrinoStatementSplitter.statements(in: query, hostSplit: Self.hostSplit)
         guard !statements.isEmpty else {
             return pluginResult(TrinoResultSet(columns: [], rows: []), executionTime: 0)
         }
@@ -119,13 +117,47 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return pluginResult(last, executionTime: Date().timeIntervalSince(start))
     }
 
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        try await Self.$hostSplit.withValue(context.hostSplit) {
+            try await execute(query: query)
+        }
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await Self.$hostSplit.withValue(context.hostSplit) {
+            try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await Self.$hostSplit.withValue(context.hostSplit) {
+            try await executeParameterized(query: query, parameters: parameters)
+        }
+    }
+
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         try await boundedQueryFromStream(query: query, rowCap: rowCap)
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        let statement = query.contains(";") ? (TrinoStatementSplitter.split(query).last ?? query) : query
-        return PluginRowStream.make { continuation, abort in
+        stream(TrinoStatementSplitter.statements(in: query, hostSplit: false).last ?? query)
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        stream(TrinoStatementSplitter.statements(in: query, hostSplit: context.hostSplit).last ?? query)
+    }
+
+    private func stream(_ statement: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        PluginRowStream.make { continuation, abort in
             let driver = self
             let streamTask = Task {
                 guard let client = driver.client else {
@@ -210,7 +242,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             host: config.host.isEmpty ? "localhost" : config.host,
             port: port,
             useTLS: useTLS,
-            tls: try TrinoSSLMapping.tlsOptions(for: config.ssl),
+            tls: try TrinoSSLMapping.tlsOptions(for: config.ssl, serverName: config.tunneledServerName),
             user: config.username,
             catalog: config.database.isEmpty ? nil : config.database,
             schema: trimmedField(config.additionalFields["trinoSchema"]),

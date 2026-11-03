@@ -69,24 +69,18 @@ internal struct CompareProgressView: View {
     private func messageLabel(_ text: String, systemImage: String, tint: Color) -> some View {
         Label {
             RevealedTextView(text)
+                .foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: systemImage)
+                .foregroundStyle(tint)
         }
         .font(.callout)
-        .foregroundStyle(tint)
     }
 }
 
-/// Every error and notice the session raises, at the top of the pane the user is already reading.
-///
-/// A message is set exactly when work stops, so anything that renders one only while the session is
-/// busy renders it never: a failed comparison, a capability refusal, a cross-engine warning, a
-/// cancelled run, a denied Apply authorization and "Nothing is selected to apply." all produced no
-/// output at all. It is inline rather than an alert because the HIG reserves an alert for a
-/// situation the user must resolve before continuing and allows one at a time, and a restored
-/// window can raise several at once.
+// Inline rather than an alert: a message is set when work stops, and a restored window can raise several at once.
 internal struct CompareMessageBanner: View {
     @ObservedObject internal var session: CompareSyncSession
 
@@ -96,8 +90,7 @@ internal struct CompareMessageBanner: View {
         if session.errorMessage != nil || session.informationalMessage != nil
             || session.setupErrorMessage != nil {
             VStack(alignment: .leading, spacing: 6) {
-                /// A problem with the setup rather than with a comparison, so it outlives the reset
-                /// that changing the setup performs and is dismissed on its own.
+                // A setup problem outlives the reset a setup change performs, so it is dismissed on its own.
                 if let message = session.setupErrorMessage {
                     messageRow(
                         message,
@@ -147,12 +140,13 @@ internal struct CompareMessageBanner: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Label {
                 RevealedTextView(text)
+                    .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             } icon: {
                 Image(systemName: systemImage)
+                    .foregroundStyle(differentiateWithoutColor ? Color.primary : tint)
             }
-            .foregroundStyle(differentiateWithoutColor ? Color.primary : tint)
 
             Spacer(minLength: 0)
 

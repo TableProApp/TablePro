@@ -22,6 +22,8 @@ struct ConnectionFormView: View {
     @State private var pastingServiceAccountKey = false
     @State private var pushedJumpHostId: UUID?
     @State private var reconnectingConnectionName: String?
+    // Held by the form, so going back to the picker shows the list it already fetched.
+    @State private var cloudflareD1Databases = CloudflareD1DatabaseList()
 
     var onSaved: (UUID) -> Void
 
@@ -98,6 +100,8 @@ struct ConnectionFormView: View {
                     sqliteSection(viewModel: viewModel)
                 } else if viewModel.type == .duckdb {
                     duckDBSection(viewModel: viewModel)
+                } else if viewModel.type == .cloudflareD1 {
+                    cloudflareD1Sections(viewModel: viewModel)
                 } else {
                     serverSection(viewModel: viewModel)
                 }
@@ -110,7 +114,7 @@ struct ConnectionFormView: View {
                     mongoSection(viewModel: viewModel)
                 }
 
-                if !viewModel.isFileBased {
+                if viewModel.hasNetworkTransport {
                     Section {
                         if viewModel.type == .oracle {
                             Picker(String(localized: "SSL Mode"), selection: $viewModel.oracleSSLMode) {
@@ -518,6 +522,50 @@ struct ConnectionFormView: View {
         Section("Database") {
             TextField("Database Name", text: $viewModel.database)
                 .textInputAutocapitalization(.never)
+        }
+    }
+
+    // MARK: - Cloudflare D1 Sections
+
+    @ViewBuilder
+    private func cloudflareD1Sections(viewModel: ConnectionFormViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        Section {
+            TextField(ConnectionFormViewModel.cloudflareAccountIdLabel, text: $viewModel.cloudflareAccountId)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
+            // The token is the connection's password, so the Keychain and iCloud keep it under the Mac's item.
+            SecureField("API Token", text: $viewModel.password)
+        } header: {
+            Text("Authentication")
+        } footer: {
+            Text("Copy the Account ID from the Cloudflare dashboard. The API token needs the D1 Edit permission.")
+        }
+        Section {
+            NavigationLink {
+                CloudflareD1DatabasePicker(
+                    selection: $viewModel.database,
+                    credentials: viewModel.cloudflareD1Credentials,
+                    list: cloudflareD1Databases
+                )
+            } label: {
+                LabeledContent {
+                    if viewModel.database.isEmpty {
+                        Text("Required")
+                    } else {
+                        Text(verbatim: viewModel.database)
+                    }
+                } label: {
+                    Text("Database")
+                }
+            }
+        } header: {
+            Text("Database")
+        } footer: {
+            if !viewModel.cloudflareD1Credentials.isComplete {
+                Text("Enter the Account ID and API Token to choose a database.")
+            }
         }
     }
 

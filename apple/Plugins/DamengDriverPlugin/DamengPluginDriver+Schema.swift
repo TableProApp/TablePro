@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 extension DamengPluginDriver {
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
@@ -357,8 +358,8 @@ extension DamengPluginDriver {
         return definition
     }
 
-    /// `ALL_TAB_COLUMNS` lists a view's columns as it lists a table's, so a view is looked up first:
-    /// without it Show DDL rebuilt a view as a `CREATE TABLE` of its columns.
+    // `ALL_TAB_COLUMNS` lists a view's columns as a table's, so a view is looked up first. Catalog text goes in
+    // only as one expression.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let owner = effectiveSchema(schema)
         let view = try await storedView(table, schema: owner)
@@ -369,9 +370,21 @@ extension DamengPluginDriver {
         guard !columns.isEmpty else {
             throw DamengError(message: String(localized: "Dameng did not return the table definition."))
         }
-        var definitions = columns.map { column in
+        let typeId = DamengPlugin.databaseTypeId
+        var definitions = try columns.map { column in
+            guard SQLExpressionFragment.isSingleType(column.dataType, databaseTypeId: typeId) else {
+                throw DamengError(message: String(
+                    format: String(localized: "The type of column %@ cannot be written as SQL."), column.name
+                ))
+            }
             var definition = "    \(quoteIdentifier(column.name)) \(column.dataType)"
-            if let defaultValue = column.defaultValue {
+            if let stored = column.defaultValue {
+                let defaultValue = SQLExpressionFragment.strippingComments(stored, databaseTypeId: typeId)
+                guard SQLExpressionFragment.isSingleExpression(defaultValue, databaseTypeId: typeId) else {
+                    throw DamengError(message: String(
+                        format: String(localized: "The default of column %@ cannot be written as SQL."), column.name
+                    ))
+                }
                 definition += " DEFAULT \(defaultValue)"
             }
             if !column.isNullable {

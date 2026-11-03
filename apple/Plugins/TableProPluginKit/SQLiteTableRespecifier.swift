@@ -5,9 +5,7 @@
 
 import Foundation
 
-/// The `CREATE TABLE` a respecification asks for, and what the change costs.
 public struct SQLiteRespecifiedTable: Sendable, Equatable {
-    /// One column of the rebuilt table that carries data over from the original.
     public struct CarriedColumn: Sendable, Equatable {
         public let name: String
         public let sourceName: String
@@ -20,11 +18,10 @@ public struct SQLiteRespecifiedTable: Sendable, Equatable {
 
     public let createTableSQL: String
 
-    /// The columns the rebuilt table shares with the original, in the rebuilt table's order. A
-    /// column the save adds is absent: there is nothing to copy into it.
+    // A column the save adds is absent: there is nothing to copy into it.
     public let carriedColumns: [CarriedColumn]
 
-    /// What the rewrite could not carry across, phrased for the user. Empty is the normal case.
+    // What the rewrite could not carry across, phrased for the user.
     public let caveats: [String]
 
     public init(createTableSQL: String, carriedColumns: [CarriedColumn], caveats: [String]) {
@@ -35,15 +32,7 @@ public struct SQLiteRespecifiedTable: Sendable, Equatable {
 }
 
 public extension SQLiteTableDDL {
-    /// The statement that creates `tableName` as `respecification` asks for.
-    ///
-    /// Every entry the respecification does not touch keeps its source text byte for byte, which is
-    /// what carries a `CHECK`, a `COLLATE`, a `GENERATED ALWAYS AS` and a `DEFAULT` containing a
-    /// comma through a rebuild. Only an entry the save actually changes is rewritten.
-    ///
-    /// Nil when the respecification cannot be applied to this statement: a column it renames or
-    /// drops that the statement does not define, or a wanted order that is not a permutation of the
-    /// columns that result.
+    // An entry the save does not touch keeps its stored text, which carries what no catalog query reports.
     static func respecified(
         _ parsed: Parsed,
         tableName: String,
@@ -67,9 +56,7 @@ public extension SQLiteTableDDL {
             droppedColumns: respecification.droppedColumns
         ) else { return nil }
 
-        /// A key is edited by removing its clause and writing a new one from the editable model,
-        /// which carries the columns, the table and the two actions and nothing else. A key that
-        /// also declared `MATCH` or `DEFERRABLE` loses it, so it is named rather than lost quietly.
+        // The editable model has no MATCH or DEFERRABLE, so a replaced key loses them.
         if removals.carriesUnmodelledClause(in: parsed) {
             caveats.append(
                 String(localized: "A replaced foreign key does not keep its MATCH or DEFERRABLE clause.")
@@ -99,10 +86,6 @@ public extension SQLiteTableDDL {
             if let span = removals.spans[index] {
                 text = cuttingSpan(span, from: text)
             }
-            /// The one place a column's own declaration is rewritten. Its type, nullability and
-            /// default are the only things no `ALTER TABLE` can change, so they travel here; a
-            /// rename and a drop are `ALTER`s of their own, run after the rebuild, and are absent
-            /// from this text on purpose.
             if let alteration = respecification.alteredColumns.first(
                 where: { $0.column.compare(columnName, options: .caseInsensitive) == .orderedSame }
             ) {
@@ -123,12 +106,12 @@ public extension SQLiteTableDDL {
             if finalName != columnName {
                 text = renamingLeadingIdentifier(of: text, to: finalName) ?? text
             }
-            columnEntries.append(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            columnEntries.append(trimmed(text))
             carried.append(SQLiteRespecifiedTable.CarriedColumn(name: finalName, sourceName: columnName))
         }
 
         for column in respecification.addedColumns {
-            let rendered = renderColumn(column).trimmingCharacters(in: .whitespacesAndNewlines)
+            let rendered = trimmed(renderColumn(column))
             guard !rendered.isEmpty else { return nil }
             columnEntries.append(rendered)
         }
@@ -149,23 +132,18 @@ public extension SQLiteTableDDL {
             orderedCarried = reordered.1
         }
 
-        guard !orderedColumns.isEmpty else { return nil }
+        guard !orderedColumns.isEmpty, let options = trailingOptions(of: parsed) else { return nil }
 
         let indent = "\n  "
         let body = (orderedColumns + constraintEntries).joined(separator: ",\(indent)")
         return SQLiteRespecifiedTable(
-            createTableSQL: "CREATE TABLE \(quote(tableName)) (\(indent)\(body)\n)\(trailingOptions(of: parsed))",
+            createTableSQL: "CREATE TABLE \(quote(tableName)) (\(indent)\(body)\n)\(options)",
             carriedColumns: orderedCarried,
             caveats: caveats
         )
     }
 
-    /// The column that *is* the rowid, where the table declares one.
-    ///
-    /// SQLite's rule is a single-column primary key whose declared type is exactly `INTEGER`, and
-    /// the key may be written on the column or at table level. Reading only the column's own
-    /// constraints misses `CREATE TABLE t(id INTEGER, PRIMARY KEY(id))`, where retyping `id` is
-    /// just as destructive.
+    // The key may be declared at table level: `CREATE TABLE t(id INTEGER, PRIMARY KEY(id))` makes `id` the rowid too.
     static func rowidAliasColumn(_ parsed: Parsed) -> String? {
         guard isRowidTable(parsed) else { return nil }
 
@@ -187,12 +165,11 @@ public extension SQLiteTableDDL {
             .first(where: { $0.name.compare(name, options: .caseInsensitive) == .orderedSame }) else {
             return nil
         }
-        let type = declaration.declaredType?.trimmingCharacters(in: .whitespaces) ?? ""
+        let type = declaration.declaredType ?? ""
         return type.caseInsensitiveCompare("INTEGER") == .orderedSame ? declaration.name : nil
     }
 
-    /// The columns a table-level `[CONSTRAINT n] PRIMARY KEY (…)` entry names, or nil for any other
-    /// table constraint.
+    // Nil for any table constraint other than PRIMARY KEY.
     private static func tableLevelPrimaryKeyColumns(_ text: String) -> [String]? {
         let tokens = SQLiteTokenizer.tokenize(text)
         var cursor = 0
@@ -211,15 +188,9 @@ public extension SQLiteTableDDL {
         return names.isEmpty ? nil : names
     }
 
-    /// Whether the statement declares a rowid, which decides whether a rebuild can carry rowids
-    /// across. A `WITHOUT ROWID` table has none to carry.
+    // The options the rebuild writes: SQLite stores a comment between them, `) /* WITHOUT ROWID */ STRICT`.
     static func isRowidTable(_ parsed: Parsed) -> Bool {
-        let trailing = parsed.suffix
-            .split(whereSeparator: { $0.isWhitespace || $0 == ")" || $0 == "," })
-            .map { $0.uppercased() }
-        guard let withoutIndex = trailing.firstIndex(of: "WITHOUT") else { return true }
-        return trailing.index(after: withoutIndex) >= trailing.endIndex
-            || trailing[trailing.index(after: withoutIndex)] != "ROWID"
+        tableOptions(in: parsed.suffix)?.contains(.withoutRowid) != true
     }
 }
 
@@ -230,7 +201,6 @@ private extension SQLiteTableDDL {
         var wholeEntries: Set<Int> = []
         var spans: [Int: Range<String.Index>] = [:]
 
-        /// Whether any clause being removed declared something the editable model cannot carry.
         func carriesUnmodelledClause(in parsed: Parsed) -> Bool {
             let whole = wholeEntries.compactMap { index in
                 parsed.entries.indices.contains(index) ? parsed.entries[index].text : nil
@@ -246,10 +216,7 @@ private extension SQLiteTableDDL {
         }
     }
 
-    /// Which entries a foreign key drop removes, and which column definitions lose a span.
-    ///
-    /// Nil when a key the save asks to drop is not in the statement, because rebuilding without it
-    /// would report success over a key that is still there.
+    // Nil when a key to drop is not in the statement: the rebuild would report success over a key that is still there.
     static func foreignKeyRemovals(
         located: [SQLiteLocatedForeignKey],
         dropping: [PluginForeignKeyDefinition],
@@ -267,8 +234,7 @@ private extension SQLiteTableDDL {
             record(match.element, into: &removals)
         }
 
-        /// A key whose own column is going away cannot survive the rebuild, and leaving it in makes
-        /// the `CREATE TABLE` invalid rather than making the drop fail.
+        // A key on a dropped column would leave the CREATE TABLE invalid.
         for (index, candidate) in located.enumerated() where !claimed.contains(index) {
             guard candidate.clause.columns.contains(where: { column in
                 droppedColumns.contains { $0.compare(column, options: .caseInsensitive) == .orderedSame }
@@ -286,12 +252,7 @@ private extension SQLiteTableDDL {
         }
     }
 
-    /// A table constraint entry with any renamed column carried into it.
-    ///
-    /// A foreign key is re-rendered from its parsed form, which is the only way to rewrite the
-    /// column names inside it; that drops a `MATCH` or `DEFERRABLE` clause TablePro does not model,
-    /// so it says so. Every other table constraint keeps its text, because a rename inside a
-    /// `CHECK` expression cannot be rewritten without understanding the expression.
+    // Only a foreign key is re-rendered: a rename inside a CHECK expression cannot be rewritten without parsing it.
     static func rewrittenConstraint(
         entry: Entry,
         index: Int,
@@ -299,7 +260,7 @@ private extension SQLiteTableDDL {
         renames: [String: String],
         caveats: inout [String]
     ) -> String? {
-        let text = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = trimmed(entry.text)
         guard !renames.isEmpty,
               let match = located.first(where: { $0.entryIndex == index && $0.spanInEntry == nil }) else {
             return text
@@ -365,8 +326,7 @@ private extension SQLiteTableDDL {
         )
     }
 
-    /// `NO ACTION` is SQLite's behaviour with no clause at all, so it is written as no clause. That
-    /// keeps a rebuilt statement as close to what the user wrote as the edit allows.
+    // `NO ACTION` is what no clause means, so it is written as none.
     static func normalized(_ action: String) -> String? {
         let trimmed = action.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         return trimmed.isEmpty || trimmed == "NO ACTION" ? nil : trimmed
@@ -380,14 +340,8 @@ private extension SQLiteTableDDL {
         renames.first { $0.key.compare(column, options: .caseInsensitive) == .orderedSame }?.value
     }
 
-    /// The same column definition under a new name, with everything after the name untouched.
     static func renamingLeadingIdentifier(of text: String, to name: String) -> String? {
         guard let first = SQLiteTokenizer.tokenize(text).first else { return nil }
         return text.replacingCharacters(in: first.range, with: quote(name))
-    }
-
-    static func trailingOptions(of parsed: Parsed) -> String {
-        let trailing = parsed.suffix.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
-        return trailing.isEmpty ? "" : " \(trailing)"
     }
 }

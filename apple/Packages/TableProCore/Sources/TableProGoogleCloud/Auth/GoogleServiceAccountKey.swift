@@ -52,3 +52,13 @@ extension GoogleServiceAccountKey: CustomStringConvertible, CustomDebugStringCon
         description
     }
 }
+
+public extension GoogleServiceAccountKey {
+    // A password can arrive from a file or another device, so a key taken from it is only ever the document itself,
+    // never a path that would sign in with a key file on this device.
+    static func inlineDocument(fromPassword password: String?) -> String? {
+        guard let password else { return nil }
+        let text = GoogleCredentialDocument.trimmed(password)
+        return text.hasPrefix("{") ? text : nil
+    }
+}

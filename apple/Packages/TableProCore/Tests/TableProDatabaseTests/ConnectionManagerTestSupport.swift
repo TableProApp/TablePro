@@ -55,6 +55,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
 final class MockDriverFactory: DriverFactory, @unchecked Sendable {
     var drivers: [String: any DatabaseDriver] = [:]
+    var dialsTunnels = true
     private(set) var receivedConnections: [DatabaseConnection] = []
     private(set) var receivedPreTunnelHosts: [String?] = []
 
@@ -72,6 +73,8 @@ final class MockDriverFactory: DriverFactory, @unchecked Sendable {
     }
 
     func supportedTypes() -> [DatabaseType] { drivers.keys.map(DatabaseType.init(rawValue:)) }
+
+    func dialsSSHTunnel(for connection: DatabaseConnection) -> Bool { dialsTunnels && connection.sshEnabled }
 }
 
 final class MockSecureStore: SecureStore, Sendable {

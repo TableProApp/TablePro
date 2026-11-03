@@ -46,11 +46,12 @@ public struct MCPAuthChallenge: Sendable, Equatable {
         return "Bearer " + parameters.joined(separator: ", ")
     }
 
+    // `.literal` compares code units: a quote a combining mark follows is one Character and would end the string.
     private static func escape(_ value: String) -> String {
         value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\r", with: " ")
-            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
+            .replacingOccurrences(of: "\r", with: " ", options: .literal)
+            .replacingOccurrences(of: "\n", with: " ", options: .literal)
     }
 }

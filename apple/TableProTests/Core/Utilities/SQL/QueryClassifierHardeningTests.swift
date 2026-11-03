@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
 struct QueryClassifierFailClosedTests {
@@ -331,6 +332,58 @@ struct QueryClassifierFailClosedTests {
             QueryClassifier.classifyTier("ALTER TABLE users ADD COLUMN email TEXT", databaseType: .postgresql)
                 == .write
         )
+    }
+
+    @Test("SurrealQL's REMOVE drops what it names, as DROP does elsewhere", arguments: [
+        "REMOVE TABLE person",
+        "remove table if exists person;",
+        "REMOVE DATABASE shop",
+        "REMOVE NAMESPACE acme",
+        "REMOVE FIELD email ON TABLE person",
+        "-- tidy up\nREMOVE TABLE person"
+    ])
+    func surrealRemoveIsDestructive(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .surrealdb) == .destructive)
+        #expect(QueryClassifier.isDangerousQuery(sql, databaseType: .surrealdb))
+    }
+
+    @Test("An ALTER that drops is destructive however the DROP is spaced", arguments: [
+        (DatabaseType.sqlite, "ALTER TABLE t\nDROP COLUMN c"),
+        (DatabaseType.sqlite, "ALTER TABLE t\r\nDROP COLUMN c"),
+        (DatabaseType.postgresql, "ALTER TABLE t\tDROP COLUMN c"),
+        (DatabaseType.mysql, "ALTER TABLE t ADD c INT,DROP COLUMN d"),
+        (DatabaseType.mysql, "ALTER TABLE t\nTRUNCATE PARTITION ALL"),
+        (DatabaseType.oracle, "ALTER TABLE t DROP(c)"),
+        (DatabaseType.clickhouse, "ALTER TABLE t DROP\nPARTITION '2024'"),
+    ])
+    func alterDropIsDestructiveHoweverSpaced(databaseType: DatabaseType, sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: databaseType) == .destructive)
+        #expect(QueryClassifier.isDangerousQuery(sql, databaseType: databaseType))
+    }
+
+    @Test("An ALTER that only names something like a drop stays a write")
+    func alterNamingADropStaysAWrite() {
+        #expect(QueryClassifier.classifyTier("ALTER TABLE t ADD dropped INT", databaseType: .postgresql) == .write)
+        #expect(QueryClassifier.classifyTier("ALTER TABLE t ADD drop_count INT", databaseType: .postgresql) == .write)
+        #expect(
+            QueryClassifier.classifyTier("ALTER TABLE t ADD COLUMN \"drop\" INT", databaseType: .postgresql) == .write
+        )
+    }
+
+    @Test("An INTO glued to a number is still an INTO", arguments: [
+        "SELECT name, 1INTO users_copy FROM users", "SELECT 1e1INTO t2", "SELECT 1.e1INTO t2", "SELECT .5INTO t2",
+        "SELECT 0x1INTO t2", "SELECT $1INTO t2", "SELECT name, is_copy = 1INTO users_copy FROM users",
+    ])
+    func intoGluedToANumberIsAWrite(sql: String) {
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .mssql) == .write)
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .write)
+    }
+
+    @Test("A name that ends in INTO is a name")
+    func nameEndingInIntoIsARead() {
+        let sql = "SELECT a1into, x_into, _1into, a$into, t1.e1into FROM t1"
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .mssql) == .safe)
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .postgresql) == .safe)
     }
 
     @Test("A DELETE without WHERE is dangerous, with WHERE it is an ordinary write")
@@ -901,6 +954,28 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.isWriteQuery(mutation, databaseType: .weaviate))
         let search = "WEAVIATE_SEARCH:e30="
         #expect(!QueryClassifier.isWriteQuery(search, databaseType: .weaviate))
+    }
+
+    @Test("A Weaviate DELETE is destructive whatever whitespace splits it from its path", arguments: [
+        "DELETE\t/v1/schema/Article where 1",
+        "DELETE\t/v1/schema/Article",
+        "DELETE\u{00A0}/v1/schema/Article where 1",
+        "DELETE\u{3000}/v1/schema/Article",
+        "DELETE\t/v1/schema/Article\n{}",
+        "delete /schema/Article",
+    ])
+    func weaviateDeleteIsDestructiveHoweverSpaced(request: String) {
+        #expect(QueryClassifier.classifyTier(request, databaseType: .weaviate) == .destructive)
+        #expect(QueryClassifier.isDangerousQuery(request, databaseType: .weaviate))
+    }
+
+    @Test("A Weaviate request is read the way the driver reads it")
+    func weaviateRequestsFollowTheDriver() {
+        #expect(!QueryClassifier.isWriteQuery("GET\t/v1/schema", databaseType: .weaviate))
+        #expect(!QueryClassifier.isWriteQuery("POST /v1/graphql?x=1\n{ Get { Article { title } } }", databaseType: .weaviate))
+        #expect(QueryClassifier.isWriteQuery("POST\t/v1/graphql\nmutation { a }", databaseType: .weaviate))
+        #expect(QueryClassifier.isWriteQuery("PUT\t/v1/schema/Article {}", databaseType: .weaviate))
+        #expect(QueryClassifier.isWriteQuery("FROBNICATE /v1/schema", databaseType: .weaviate))
     }
 
     @Test("Qdrant reads are safe, POST searches read, and point deletes are destructive")

@@ -121,8 +121,7 @@ extension MySQLPluginDriver {
             }
         }
 
-        let escapedName = request.name.replacingOccurrences(of: "`", with: "``", options: .literal)
-        var query = "CREATE DATABASE `\(escapedName)` CHARACTER SET \(charset)"
+        var query = "CREATE DATABASE \(mysqlQuoteIdentifier(request.name)) CHARACTER SET \(charset)"
         if let collation = collationValue {
             query += " COLLATE \(collation)"
         }

@@ -9,32 +9,14 @@
 import Foundation
 import TableProPluginKit
 import TableProPostgreSQLCore
+import TableProSQLQuoting
 
 nonisolated public enum PostgreSQLObjectQueries {
-    /// The single owner of literal quoting for every statement this plugin builds, which is why it
-    /// returns the quotes too: the `E` prefix sits outside them, so a helper that returns inner text
-    /// for a call site to wrap can never be setting-independent. Measured on PostgreSQL 17.11 with
-    /// `standard_conforming_strings = off`: a schema named `a\b` listed as `'a\b'` returns no rows,
-    /// and one named `x\' OR true--` listed that way closes the literal after `x'` and runs
-    /// `OR true` as SQL, which turned a one-row listing into every relation in the database.
-    ///
-    /// Doubling the quote is enough while the value holds no backslash, and the output is then
-    /// byte-identical to plain quote doubling. With one, the value is written as an `E''` string,
-    /// where a backslash is always an escape whatever the setting says, and is doubled here. This is
-    /// what the server's own `quote_literal` emits for the same values.
-    ///
-    /// A NUL is dropped rather than escaped. libpq takes a NUL-terminated C string, so a NUL would
-    /// truncate the statement, and PostgreSQL rejects `\000` in a literal outright ("invalid byte
-    /// sequence for encoding UTF8"). This matches the PluginKit default's own NUL strip.
-    // Every match is by code unit: a grapheme match skips a quote or backslash a combining mark follows.
+    // Reads the same under either standard_conforming_strings: a value with a backslash is an `E''` string, where a
+    // backslash is always an escape.
     public static func quoteLiteral(_ value: String) -> String {
-        let stripped = value.replacingOccurrences(of: "\0", with: "", options: .literal)
-        guard stripped.unicodeScalars.contains("\\") else { return "'\(escapeQuotes(stripped))'" }
-        return "E'\(escapeQuotes(stripped.replacingOccurrences(of: "\\", with: "\\\\", options: .literal)))'"
-    }
-
-    private static func escapeQuotes(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''", options: .literal)
+        guard value.unicodeScalars.contains("\\") else { return SQLQuoting.stringLiteral(value) }
+        return "E" + SQLQuoting.stringLiteral(LibPQStringConformance.withoutNUL(value), escapes: .backslash)
     }
 
     /// `IN ()` does not parse, so an empty list is `false`.
@@ -44,7 +26,7 @@ nonisolated public enum PostgreSQLObjectQueries {
     }
 
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        SQLQuoting.identifier(name)
     }
 
     public static func qualifiedName(schema: String, name: String) -> String {

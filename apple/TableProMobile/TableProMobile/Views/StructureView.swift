@@ -138,11 +138,11 @@ struct StructureView: View {
                                 Spacer()
 
                                 if index.isPrimary {
-                                    MetadataBadge(text: "Primary", foreground: .orange, background: Color.orange.opacity(0.15))
+                                    MetadataBadge(String(localized: "Primary"))
                                 }
 
                                 if index.isUnique && !index.isPrimary {
-                                    MetadataBadge(text: "Unique", foreground: .blue, background: Color.blue.opacity(0.15))
+                                    MetadataBadge(String(localized: "Unique"))
                                 }
 
                                 if !index.type.isEmpty {
@@ -250,7 +250,7 @@ struct StructureView: View {
             self.indexes = try await fetchedIndexes
             self.foreignKeys = ForeignKeyReference.keys(in: try await fetchedForeignKeys).map(ForeignKeyRow.init)
 
-            Self.logger.debug("Loaded structure for \(table.name, privacy: .public): \(columns.count) columns, \(indexes.count) indexes, \(foreignKeys.count) foreign keys")
+            Self.logger.debug("Loaded structure for \(table.name, privacy: .private(mask: .hash)): \(columns.count) columns, \(indexes.count) indexes, \(foreignKeys.count) foreign keys")
         } catch {
             let context = ErrorContext(
                 operation: "loadStructure",

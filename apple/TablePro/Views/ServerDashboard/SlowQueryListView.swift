@@ -21,11 +21,13 @@ internal struct SlowQueryListView: View {
                 if let error {
                     Label {
                         RevealedTextView(error)
+                            .foregroundStyle(.secondary)
                     } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
+                        Image(systemName: NoticeSeverity.warning.symbolName)
+                            .foregroundStyle(NoticeSeverity.warning.tint)
+                            .accessibilityHidden(true)
                     }
                     .font(.caption)
-                    .foregroundStyle(.orange)
                 }
             }
             .padding(.horizontal, 12)

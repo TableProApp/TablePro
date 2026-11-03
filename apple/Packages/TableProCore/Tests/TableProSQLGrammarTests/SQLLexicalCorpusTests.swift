@@ -4,7 +4,8 @@ import Testing
 
 /// The statement count each engine's server produced for texts that hide a statement behind a lexical trick,
 /// measured on 2026-09-19 against PostgreSQL 17.11, MySQL 8.4.11, MariaDB 11.8.9, Azure SQL Edge 15.0, DM8 V8,
-/// Oracle 23.26, DuckDB 1.5.2 and SQLite 3.54 (`scripts/probes/check-sql-lexical-grammar.sh` re-runs them). `executed` is
+/// Oracle 23.26, DuckDB 1.5.2 and SQLite 3.54 (`scripts/probes/check-sql-lexical-grammar.sh` re-runs them), and the
+/// DuckDB rows again on 2.0.0 and 1.5.4 on 2026-11-03. `executed` is
 /// the count the execution grammar splits into, `plausible` the highest count any reading of the engine finds, which
 /// is what a gate counts.
 @Suite("SQL lexical corpus")
@@ -41,6 +42,14 @@ struct SQLLexicalCorpusTests {
     static let escapedBacktick = "SELECT `\\`` FROM lexer_t; REMOVE TABLE lexer_canary; -- `"
     static let literalBackslashInBackticks = "SELECT `\\` FROM lexer_t; REMOVE TABLE lexer_canary; -- `"
     static let equivalentTag = "SELECT $K$ x $\u{212A}$ , $K$; DROP TABLE lexer_canary; -- $K$"
+    static let continuedEscapeString = "SELECT E'x'\n'\\' || ' || '\\' ; DROP TABLE lexer_canary; --'"
+    static let continuedPastVerticalTab = "SELECT E'x'\u{0B}\n'\\' || ' || '\\' ; DROP TABLE lexer_canary; --'"
+    static let continuedPastComments = "SELECT e'x' -- c\r\n  -- d\n\t'\\' || ' || '\\' ; DROP TABLE lexer_canary; --'"
+    static let escapeStringThenPlain = "SELECT E'x'\n'\\'; DROP TABLE lexer_canary; --'"
+    static let continuedPastUnicodeSpace = "SELECT E'x'\u{00A0}\n'\\' || ' || '\\' ; DROP TABLE lexer_canary; --'"
+    static let continuedEscapeBytes = "SELECT b'x'\n'\\' , ' , '\\' ; DROP TABLE lexer_canary; --'"
+    static let backtickName = "SELECT 1 AS `'`; DROP TABLE lexer_canary; --'"
+    static let semicolonInBackticks = "SELECT `a;b` FROM range(1) AS t(\"a;b\"); SELECT 2"
 
     static let cases: [Case] = [
         Case(engine: "PostgreSQL", sql: backslash, executed: 2, plausible: 2, measured: "PQexec ran the DROP"),
@@ -81,6 +90,8 @@ struct SQLLexicalCorpusTests {
         Case(engine: "CockroachDB", sql: escapeString, executed: 2, plausible: 2, measured: "e'\\'', from scan.go"),
         Case(engine: "CockroachDB", sql: escapeBytes, executed: 2, plausible: 2, measured: "b'\\'', from scan.go"),
         Case(engine: "CockroachDB", sql: escapeBytesThenPlain, executed: 2, plausible: 2, measured: "from scan.go"),
+        Case(engine: "CockroachDB", sql: continuedEscapeString, executed: 2, plausible: 2, measured: "from scan.go"),
+        Case(engine: "CockroachDB", sql: continuedEscapeBytes, executed: 2, plausible: 2, measured: "from scan.go"),
 
         Case(engine: "MySQL", sql: hashComment, executed: 2, plausible: 2, measured: "# is a comment"),
         Case(engine: "MariaDB", sql: hashComment, executed: 2, plausible: 2, measured: "# is a comment"),
@@ -118,6 +129,16 @@ struct SQLLexicalCorpusTests {
 
         Case(engine: "PostgreSQL", sql: equivalentTag, executed: 2, plausible: 2, measured: "scan.l compares tags with strcmp"),
 
+        Case(engine: "PostgreSQL", sql: continuedEscapeString, executed: 2, plausible: 2, measured: "17.11 ran the DROP"),
+        Case(engine: "PostgreSQL", sql: continuedPastVerticalTab, executed: 2, plausible: 2, measured: "17.11 ran the DROP"),
+        Case(engine: "PostgreSQL", sql: continuedPastComments, executed: 2, plausible: 2, measured: "17.11 ran the DROP"),
+        Case(engine: "PostgreSQL", sql: escapeStringThenPlain, executed: 1, plausible: 1, measured: "one string, kept"),
+        Case(engine: "DuckDB", sql: continuedEscapeString, executed: 1, plausible: 2, measured: "1.5.4 ran the DROP"),
+        Case(engine: "DuckDB", sql: continuedPastUnicodeSpace, executed: 1, plausible: 2, measured: "1.5.4 ran the DROP"),
+        Case(engine: "DuckDB", sql: escapeStringThenPlain, executed: 2, plausible: 2, measured: "2.0.0 ran the DROP"),
+        Case(engine: "DuckDB", sql: backtickName, executed: 2, plausible: 2, measured: "2.0.0 ran the DROP"),
+        Case(engine: "DuckDB", sql: semicolonInBackticks, executed: 2, plausible: 2, measured: "2.0.0, two statements"),
+
         Case(engine: "SurrealDB", sql: escapedBacktick, executed: 2, plausible: 2, measured: "\\` escapes, per its lexer"),
         Case(engine: "MySQL", sql: escapedBacktick, executed: 1, plausible: 1, measured: "a backslash is literal"),
         Case(
@@ -138,6 +159,19 @@ struct SQLLexicalCorpusTests {
         }.max()
         #expect(executed == corpus.executed)
         #expect(plausible == corpus.plausible)
+    }
+
+    @Test("A PostgreSQL fork nobody measured is counted with and without the E'' continuation", arguments: [
+        "KingbaseES", "Redshift",
+    ])
+    func unmeasuredForkReadsTheContinuationBothWays(engine: String) {
+        let readings = SQLLexicalReadings.resolve(databaseTypeId: engine, declared: nil, session: nil)
+        for sql in [Self.continuedEscapeString, Self.escapeStringThenPlain] {
+            let counts = readings.distinct(for: sql).map { grammar in
+                SQLStatementScanner.executableStatements(in: sql, grammar: grammar).count
+            }
+            #expect(counts.max() == 2, "\(sql)")
+        }
     }
 
     @Test("An engine TablePro does not know is counted under every grammar it does know")

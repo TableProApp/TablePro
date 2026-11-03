@@ -41,6 +41,6 @@ struct TunnelCommandPreviewTests {
 
         let preview = try #require(coordinator.tunnelCommandPreview)
 
-        #expect(preview == "forward {port} a.example:7000")
+        #expect(preview == "forward '{port}' a.example:7000")
     }
 }

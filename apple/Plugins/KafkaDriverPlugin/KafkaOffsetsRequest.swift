@@ -1,11 +1,12 @@
 import Foundation
+import TableProKafkaCore
 
 struct KafkaPartitionOffsets: Sendable {
     let partition: Int32
     let earliest: Int64
     let latest: Int64
 
-    var messageCount: Int64 { max(0, latest - earliest) }
+    var messageCount: Int64 { KafkaOffsetMath.messageCount(earliest: earliest, latest: latest) }
 }
 
 enum KafkaOffsetsRequest {

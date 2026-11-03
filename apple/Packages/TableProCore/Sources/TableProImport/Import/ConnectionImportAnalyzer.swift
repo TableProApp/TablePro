@@ -18,9 +18,9 @@ public enum ConnectionImportAnalyzer {
             }
         }
 
-        var existingByKey: [ConnectionMatchKey: ExistingConnection] = [:]
+        var existingByKey: [ConnectionMatchKey: ImportLibrarySnapshot.Connection] = [:]
         for existing in library.connections where existingByKey[existing.matchKey] == nil {
-            existingByKey[existing.matchKey] = ExistingConnection(id: existing.id, name: existing.name)
+            existingByKey[existing.matchKey] = existing
         }
 
         let connections = bundle.connections.map { connection -> ConnectionRow in
@@ -33,7 +33,8 @@ public enum ConnectionImportAnalyzer {
                 settings.type = canonicalTypeId
             }
 
-            let duplicate = existingByKey[ConnectionMatchKey(settings)]
+            let existing = existingByKey[ConnectionMatchKey(settings)]
+            let duplicate = existing.map { ExistingConnection(id: $0.id, name: $0.name) }
             let savedQueryCount = queryCounts[connection.ref] ?? 0
             let groupPath = bundle.groupChain(connection.groupRef)
                 .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -51,6 +52,7 @@ public enum ConnectionImportAnalyzer {
                 savedQueryCount: savedQueryCount,
                 resolutions: resolutions(
                     duplicate: duplicate,
+                    connectsAlike: existing?.settings?.connectsLike(settings) ?? false,
                     carriesQueries: savedQueryCount > 0,
                     source: collected.source
                 ),
@@ -69,8 +71,11 @@ public enum ConnectionImportAnalyzer {
         )
     }
 
+    // Replace keeps the saved id, and with it every secret saved under that id, so it is offered only to an
+    // entry that connects like the saved connection. Any other duplicate is added as a copy with a new id.
     private static func resolutions(
         duplicate: ExistingConnection?,
+        connectsAlike: Bool,
         carriesQueries: Bool,
         source: ImportSource
     ) -> [ConnectionResolution] {
@@ -80,7 +85,7 @@ public enum ConnectionImportAnalyzer {
             resolutions.append(.keepExisting(duplicate.id))
         }
         resolutions.append(.addCopy)
-        if source.offersReplace {
+        if source.offersReplace, connectsAlike {
             resolutions.append(.replace(duplicate.id))
         }
         return resolutions

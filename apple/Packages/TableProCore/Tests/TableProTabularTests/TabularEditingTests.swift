@@ -176,6 +176,57 @@ struct TabularEditingTests {
         #expect(TabularTypeInference.infer([(.text, "05/01/2024")]) == .text)
     }
 
+    @Test func testInferenceOfAWideSparseSheetReadsABoundedNumberOfCells() throws {
+        let budget = 100_000
+        let source = GeneratedSource(rowCount: 1_048_576, columnCount: 16_384) { row, column in
+            if row == 0, column == 0 { return "1" }
+            return row == 1_048_575 && column == 16_383 ? "2" : nil
+        }
+        let table = TabularTable(source: source, usesFirstRowAsHeader: false)
+        let kinds = try TabularTypeInference.inferKinds(of: table, cellBudget: budget)
+        #expect(source.scanned.cells <= budget)
+        #expect(kinds.count == 16_384)
+        #expect(kinds[table.columns[0].id] == .integer)
+        #expect(kinds[table.columns[16_383].id] == .text)
+    }
+
+    @Test func testInferenceOfALongTableWithNoValuesStopsAtItsBudget() throws {
+        let budget = 8_000
+        let source = GeneratedSource(rowCount: 250_000, columnCount: 8) { _, _ in nil }
+        let kinds = try TabularTypeInference.inferKinds(
+            of: TabularTable(source: source, usesFirstRowAsHeader: false),
+            cellBudget: budget
+        )
+        #expect(source.scanned.cells <= budget)
+        #expect(Set(kinds.values) == [.text])
+    }
+
+    // Reading all eight columns, the budget runs out at row 12,500, before the sparse column's value.
+    @Test func testASparseColumnKeepsTheBudgetTheFilledColumnsNoLongerNeed() throws {
+        let source = GeneratedSource(rowCount: 20_000, columnCount: 8) { row, column in
+            if column < 7 { return "\(row)" }
+            return row == 15_000 ? "42" : nil
+        }
+        let table = TabularTable(source: source, usesFirstRowAsHeader: false)
+        let kinds = try TabularTypeInference.inferKinds(of: table, cellBudget: 100_000)
+        #expect(kinds[table.columns[0].id] == .integer)
+        #expect(kinds[table.columns[7].id] == .integer)
+        #expect(source.scanned.cells <= 8 * 200 + 19_800)
+    }
+
+    @Test func testInferenceStopsWhenItsTaskIsCancelled() async {
+        let budget = 1_000_000
+        let source = GeneratedSource(rowCount: 250_000, columnCount: 8) { _, _ in nil }
+        let table = TabularTable(source: source, usesFirstRowAsHeader: false)
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try TabularTypeInference.inferKinds(of: table, cellBudget: budget)
+        }
+        let result = await task.result
+        #expect(throws: CancellationError.self) { try result.get() }
+        #expect(source.scanned.cells < budget)
+    }
+
     @Test func testARunawayRegularExpressionStopsWhenItsTaskIsCancelled() async throws {
         let expression = try NSRegularExpression(pattern: "(a+)+b")
         let text = String(repeating: "a", count: 64)
@@ -206,5 +257,41 @@ struct TabularEditingTests {
         let replaced = matcher.replacing(in: text, with: "$1Id")
         #expect(replaced.text == "userId, orderId, itemId")
         #expect(replaced.replacements == 3)
+    }
+}
+
+private final class ScannedCells: @unchecked Sendable {
+    var cells = 0
+}
+
+private struct GeneratedSource: TabularSource {
+    let rowCount: Int
+    let columnCount: Int
+    let value: @Sendable (_ row: Int, _ column: Int) -> String?
+    let scanned = ScannedCells()
+
+    var intrinsicColumnNames: [String]? { nil }
+    var absentCell: TabularCell { .text("") }
+
+    func cell(row: Int, column: Int) -> TabularCell {
+        value(row, column).map { TabularCell(kind: .number, text: $0) } ?? absentCell
+    }
+
+    func cells(row: Int) -> [TabularCell] {
+        (0..<columnCount).map { cell(row: row, column: $0) }
+    }
+
+    func scan<Rows: Collection>(columns: [Int], rows: Rows, _ body: (Int, TabularRowCells) -> Bool) where Rows.Element == Int {
+        var buffer = TabularCellBuffer()
+        for row in rows {
+            buffer.reset(slots: columns.count, fill: .text)
+            for (slot, column) in columns.enumerated() {
+                if let text = value(row, column) {
+                    buffer.setUTF8(slot, text, kind: .number)
+                }
+            }
+            scanned.cells += columns.count
+            guard buffer.withResolved({ body(row, $0) }) else { return }
+        }
     }
 }

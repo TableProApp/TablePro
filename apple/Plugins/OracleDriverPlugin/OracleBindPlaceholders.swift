@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// Writes the values for the host's `?` placeholders into an Oracle statement.
 ///
@@ -48,16 +49,11 @@ internal enum OracleBindPlaceholders {
         }
     }
 
-    /// The text as a quoted string literal, or nil when it is over the literal limit and has to be bound.
+    // Nil when the text is over the literal limit and has to be bound.
     static func quotedLiteral(_ text: String) -> String? {
         let kept = text.unicodeScalars.filter { $0 != "\0" }
         guard String(kept).utf8.count <= maxLiteralBytes else { return nil }
-        var escaped = String.UnicodeScalarView()
-        for scalar in kept {
-            if scalar == "'" { escaped.append(scalar) }
-            escaped.append(scalar)
-        }
-        return "'\(String(escaped))'"
+        return SQLQuoting.stringLiteral(text)
     }
 
     private static func replacingPlaceholders(in sql: String, with replacement: (Int) -> String?) -> String {

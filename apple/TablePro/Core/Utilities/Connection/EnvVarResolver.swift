@@ -2,94 +2,63 @@
 //  EnvVarResolver.swift
 //  TablePro
 //
-//  Resolves $VAR and ${VAR} patterns from process environment variables.
-//
 
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProSSHConfig
 
 internal enum EnvVarResolver {
     private static let logger = Logger(subsystem: "com.TablePro", category: "EnvVarResolver")
 
-    private static let pattern: NSRegularExpression = {
-        let source = #"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)"#
-        if let regex = try? NSRegularExpression(pattern: source) {
-            return regex
-        }
-        logger.fault("Failed to compile EnvVarResolver pattern: \(source, privacy: .public)")
-        return NSRegularExpression()
-    }()
-
-    /// Resolve environment variable references in a string.
-    /// Unresolved variables are left as-is and logged as warnings.
     static func resolve(_ value: String) -> String {
-        let nsValue = value as NSString
-        let length = nsValue.length
-        guard length > 0 else { return value }
-
-        let fullRange = NSRange(location: 0, length: length)
-        let matches = pattern.matches(in: value, range: fullRange)
-        guard !matches.isEmpty else { return value }
-
-        // Process in reverse order so replacement ranges stay valid
-        let result = NSMutableString(string: nsValue)
-        for match in matches.reversed() {
-            // Group 1: ${VAR}, Group 2: $VAR
-            let varName: String
-            if match.range(at: 1).location != NSNotFound {
-                varName = nsValue.substring(with: match.range(at: 1))
-            } else {
-                varName = nsValue.substring(with: match.range(at: 2))
+        EnvVarReferences.replacing(in: value) { name in
+            guard let envValue = ProcessInfo.processInfo.environment[name] else {
+                logger.warning("A connection field names an environment variable that is not set")
+                return nil
             }
-
-            if let envValue = ProcessInfo.processInfo.environment[varName] {
-                result.replaceCharacters(in: match.range, with: envValue)
-            } else {
-                logger.warning("Unresolved environment variable: \(varName)")
-            }
+            return envValue
         }
-
-        return result as String
     }
 
-    /// Check whether a string contains any `$VAR` or `${VAR}` references.
-    static func containsVarReferences(_ value: String) -> Bool {
-        let length = (value as NSString).length
-        guard length > 0 else { return false }
-        let fullRange = NSRange(location: 0, length: length)
-        return pattern.firstMatch(in: value, range: fullRange) != nil
+    static func referencedNames(in connection: DatabaseConnection) -> Set<String> {
+        var names: Set<String> = []
+        var scanned = connection
+        visitResolvedFields(of: &scanned) { names.formUnion(EnvVarReferences.names(in: $0)) }
+        return names
     }
 
-    /// Resolve environment variables in all applicable connection fields.
-    /// Returns a new connection; the original is never mutated.
     static func resolveConnection(_ connection: DatabaseConnection) -> DatabaseConnection {
         var resolved = connection
-
-        resolved.host = resolve(connection.host)
-        resolved.database = resolve(connection.database)
-        resolved.username = resolve(connection.username)
-
-        resolved.sshConfig.host = resolve(connection.sshConfig.host)
-        resolved.sshConfig.username = resolve(connection.sshConfig.username)
-        resolved.sshConfig.privateKeyPath = resolve(connection.sshConfig.privateKeyPath)
-        resolved.sshConfig.agentSocketPath = resolve(connection.sshConfig.agentSocketPath)
-
-        resolved.sslConfig.caCertificatePath = resolve(connection.sslConfig.caCertificatePath)
-        resolved.sslConfig.clientCertificatePath = resolve(connection.sslConfig.clientCertificatePath)
-        resolved.sslConfig.clientKeyPath = resolve(connection.sslConfig.clientKeyPath)
-
-        if let commands = connection.startupCommands {
-            resolved.startupCommands = resolve(commands)
-        }
-
-        var resolvedFields: [String: String] = [:]
-        for (key, value) in connection.additionalFields {
-            resolvedFields[key] = resolve(value)
-        }
-        resolved.additionalFields = resolvedFields
-
+        visitResolvedFields(of: &resolved) { $0 = resolve($0) }
         return resolved
+    }
+
+    // The one list of fields a connect resolves, so consent covers exactly what is read.
+    private static func visitResolvedFields(of connection: inout DatabaseConnection, _ visit: (inout String) -> Void) {
+        visit(&connection.host)
+        visit(&connection.database)
+        visit(&connection.username)
+
+        visit(&connection.sshConfig.host)
+        visit(&connection.sshConfig.username)
+        visit(&connection.sshConfig.privateKeyPath)
+        visit(&connection.sshConfig.agentSocketPath)
+
+        visit(&connection.sslConfig.caCertificatePath)
+        visit(&connection.sslConfig.clientCertificatePath)
+        visit(&connection.sslConfig.clientKeyPath)
+
+        if var commands = connection.startupCommands {
+            visit(&commands)
+            connection.startupCommands = commands
+        }
+
+        connection.additionalFields = connection.additionalFields.mapValues { value in
+            var visited = value
+            visit(&visited)
+            return visited
+        }
     }
 }

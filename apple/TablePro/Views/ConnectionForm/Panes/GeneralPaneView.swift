@@ -216,12 +216,8 @@ struct GeneralPaneView: View {
                 .accessibilityIdentifier("connection-form-port-tls-note")
             } else if coordinator.ssl.mode == .disabled {
                 HStack {
-                    Label(
-                        String(format: String(localized: "Port %lld usually requires TLS, and SSL Mode is Disabled."), port),
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
-                    .foregroundStyle(.orange)
-                    .font(.caption)
+                    NoticeLabel(String(format: String(localized: "Port %lld usually requires TLS, and SSL Mode is Disabled."), port))
+                        .font(.caption)
                     Spacer()
                     Button(String(format: String(localized: "Use %@"), impliedMode.displayLabel)) {
                         coordinator.ssl.select(impliedMode)
@@ -306,33 +302,17 @@ struct GeneralPaneView: View {
         case .notChecked:
             EmptyView()
         case .fileNotFound:
-            Label(
-                String(localized: "~/.pgpass not found"),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .foregroundStyle(.yellow)
-            .font(.caption)
+            NoticeLabel(String(localized: "~/.pgpass not found"))
+                .font(.caption)
         case .badPermissions:
-            Label(
-                String(localized: "~/.pgpass has incorrect permissions (needs chmod 0600)"),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .foregroundStyle(.orange)
-            .font(.caption)
+            NoticeLabel(String(localized: "~/.pgpass has incorrect permissions (needs chmod 0600)"))
+                .font(.caption)
         case .matchFound:
-            Label(
-                String(localized: "~/.pgpass found, matching entry exists"),
-                systemImage: "checkmark.circle.fill"
-            )
-            .foregroundStyle(.green)
-            .font(.caption)
+            NoticeLabel(String(localized: "~/.pgpass found, matching entry exists"), severity: .success)
+                .font(.caption)
         case .noMatch:
-            Label(
-                String(localized: "~/.pgpass found, no matching entry"),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .foregroundStyle(.yellow)
-            .font(.caption)
+            NoticeLabel(String(localized: "~/.pgpass found, no matching entry"))
+                .font(.caption)
         }
     }
 
@@ -347,9 +327,8 @@ struct GeneralPaneView: View {
             .foregroundStyle(.secondary)
             // MariaDB's server names its own principal, so only these two take it from the host.
             if hostIsIPAddress, usesWindowsAuthentication || type.pluginTypeId == "PostgreSQL" {
-                Label(kerberosHostWarning, systemImage: "exclamationmark.triangle.fill")
+                NoticeLabel(kerberosHostWarning)
                     .font(.caption)
-                    .foregroundStyle(.yellow)
             }
         }
     }

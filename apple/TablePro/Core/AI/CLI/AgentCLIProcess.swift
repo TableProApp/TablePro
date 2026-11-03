@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProProcess
 
 enum AgentCLIError: Error, LocalizedError {
     case notInstalled(String)
@@ -46,7 +47,12 @@ struct AgentCLIProcess: Sendable {
     let label: String
 
     func run(_ launch: AgentCLILaunch) async throws -> (code: Int32, output: String) {
-        let process = Self.makeProcess(launch)
+        let process: Process
+        do {
+            process = try Self.makeProcess(launch)
+        } catch {
+            throw AgentCLIError.launchFailed(error.localizedDescription)
+        }
         let combined = Pipe()
         process.standardOutput = combined
         process.standardError = combined
@@ -73,7 +79,13 @@ struct AgentCLIProcess: Sendable {
 
     func streamLines(_ launch: AgentCLILaunch) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            let process = Self.makeProcess(launch)
+            let process: Process
+            do {
+                process = try Self.makeProcess(launch)
+            } catch {
+                continuation.finish(throwing: AgentCLIError.launchFailed(error.localizedDescription))
+                return
+            }
             let stdout = Pipe()
             let stderr = Pipe()
             process.standardOutput = stdout
@@ -82,7 +94,7 @@ struct AgentCLIProcess: Sendable {
             let label = self.label
             let stderrDrain = Task {
                 for try await line in stderr.fileHandleForReading.bytes.lines where !line.isEmpty {
-                    Self.logger.error("\(label, privacy: .public) stderr: \(line, privacy: .public)")
+                    Self.logger.error("\(label, privacy: .public) stderr: \(line, privacy: .private)")
                 }
             }
 
@@ -114,14 +126,13 @@ struct AgentCLIProcess: Sendable {
         }
     }
 
-    private static func makeProcess(_ launch: AgentCLILaunch) -> Process {
-        let process = Process()
-        process.executableURL = launch.executable
-        process.arguments = launch.arguments
-        process.environment = launch.environment
-        process.currentDirectoryURL = launch.currentDirectory
-        process.standardInput = FileHandle.nullDevice
-        return process
+    private static func makeProcess(_ launch: AgentCLILaunch) throws -> Process {
+        try ProcessLauncher.process(for: ProcessCommand(
+            executable: launch.executable,
+            arguments: launch.arguments,
+            environment: launch.environment,
+            currentDirectory: launch.currentDirectory
+        ))
     }
 
     private static func terminate(_ process: Process, label: String) {

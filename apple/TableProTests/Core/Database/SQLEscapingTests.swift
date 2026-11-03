@@ -122,6 +122,15 @@ struct SQLEscapingTests {
         #expect(SQLEscaping.quoteIdentifier("") == "\"\"")
     }
 
+    // A combining mark joins the quote it follows into one Character, which a grapheme search does not find.
+    @Test("A quote a combining mark follows is still doubled")
+    func quoteWithCombiningMarkIsDoubled() {
+        let escaped = SQLEscaping.escapeStringLiteral("x'\u{301} OR 1=1 --")
+        #expect(Array(escaped.unicodeScalars) == Array("x''\u{301} OR 1=1 --".unicodeScalars))
+        let quoted = SQLEscaping.quoteIdentifier("t\"\u{301}; DROP TABLE users; --")
+        #expect(Array(quoted.unicodeScalars) == Array("\"t\"\"\u{301}; DROP TABLE users; --\"".unicodeScalars))
+    }
+
     // MARK: - escapeLikeWildcards Tests
 
     @Test("LIKE plain string unchanged")

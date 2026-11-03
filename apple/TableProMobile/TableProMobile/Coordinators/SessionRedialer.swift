@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProDatabase
+import TableProLogRedaction
 import TableProModels
 import TableProSSHTransport
 
@@ -101,7 +102,7 @@ final class SessionRedialer {
         do {
             try await driver.switchSchema(to: schema)
         } catch {
-            logger.warning("Failed to restore schema \(schema, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            logger.warning("Failed to restore schema \(schema, privacy: .private(mask: .hash)): \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 }

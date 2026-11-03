@@ -65,13 +65,13 @@ internal struct SourceObjectSyncBuilder {
             try refuseWithoutACreateStatement(result)
             guard replacesInPlace(result.identity, with: result) else {
                 let indexes = try indexCreationStatements(for: result)
-                return dropStatements(for: result, isReplacement: true)
+                return try dropStatements(for: result, isReplacement: true)
                     + createStatements(for: result, isReplacement: false)
                     + indexes
             }
             return createStatements(for: result, isReplacement: true)
         case .drop:
-            return dropStatements(for: result, isReplacement: false)
+            return try dropStatements(for: result, isReplacement: false)
         }
     }
 
@@ -122,10 +122,13 @@ internal struct SourceObjectSyncBuilder {
 
     private func refuseWithoutACreateStatement(_ result: CompareObjectResult) throws {
         let definition = result.sourceDefinition.joined(separator: "\n")
-        guard SourceDefinitionDefect.of(definition: definition, sentAs: scriptText) != nil else { return }
+        guard let defect = SourceDefinitionDefect.of(definition: definition, sentAs: scriptText) else { return }
+        let isSeveral = defect == .severalStatements
+        let reason = isSeveral ? "several statements" : "no CREATE statement"
         Self.logger.fault(
-            "Refused to script \(result.identity.kind.rawValue, privacy: .public) \(result.identity.name, privacy: .private(mask: .hash)) without a CREATE statement"
+            "Refused to script \(result.identity.kind.rawValue, privacy: .public) \(result.identity.name, privacy: .private(mask: .hash)): \(reason, privacy: .public)"
         )
+        guard !isSeveral else { throw CompareSyncError.severalStatements(in: result.identity.displayName) }
         throw CompareSyncError.unsupportedOperation(
             String(
                 format: String(localized: "%@ cannot be scripted, because its definition is not a statement that recreates it."),
@@ -134,35 +137,66 @@ internal struct SourceObjectSyncBuilder {
         )
     }
 
-    /// Whether running `replacement`'s definition alone replaces `existing` on the target. Measured on Oracle 23ai, a
-    /// DROP followed by a CREATE the engine refused left no trigger at all, while the same CREATE OR REPLACE refused
-    /// on its own left the existing trigger VALID. A materialized view has no `CREATE OR REPLACE` on any engine.
+    // Measured on Oracle 23ai: DROP then a refused CREATE left no trigger, a refused CREATE OR REPLACE alone kept it VALID.
     internal func replacesInPlace(_ existing: CompareObjectIdentity, with replacement: CompareObjectResult) -> Bool {
         guard targetDriver.replacesDefinitionsInPlace,
               existing.kind == replacement.identity.kind,
               existing.kind != .materializedView,
               replacement.sourceIndexes == nil,
-              let first = scriptText.sendableStatements(replacement.sourceDefinition.joined(separator: "\n")).first
+              let first = scriptText.sendableStatements(
+                  ofForeignText: replacement.sourceDefinition.joined(separator: "\n")
+              )?.first
         else { return false }
         let leadingWords = first.split(whereSeparator: \.isWhitespace).prefix(3).map { $0.uppercased() }
         return leadingWords == ["CREATE", "OR", "REPLACE"]
     }
 
-    /// The source's definition goes out as the statements it holds, each the way the target's driver takes it. On
-    /// Oracle that keeps a unit's own `;` and leaves a `CALL` trigger without one, which is the only form of either
-    /// that Oracle stores VALID.
+    // Oracle stores a unit VALID only with its own `;`, and a `CALL` trigger only without one.
     private func createStatements(for result: CompareObjectResult, isReplacement: Bool) -> [SyncStatement] {
         let definition = result.sourceDefinition.joined(separator: "\n")
         let format = isReplacement ? String(localized: "Replace %1$@ %2$@") : String(localized: "Create %1$@ %2$@")
         let summary = String(
             format: format, result.identity.kind.displayName.lowercased(), result.identity.displayName
         )
-        return scriptText.sendableStatements(definition).map { sql in
+        let create = (scriptText.sendableStatements(ofForeignText: definition) ?? []).map { sql in
             SyncStatement(sql: sql, objectName: result.identity.displayName, summary: summary)
         }
+        guard let scope = result.sourceCreationScope, !create.isEmpty else { return create }
+        return scoped(create, in: scope, for: result.identity, summary: summary)
     }
 
-    private func dropStatements(for result: CompareObjectResult, isReplacement: Bool) -> [SyncStatement] {
+    // Each closing statement is a scope its opening partner opens, so a failed run still puts back what ran.
+    private func scoped(
+        _ create: [SyncStatement],
+        in scope: PluginStatementScope,
+        for identity: CompareObjectIdentity,
+        summary: String
+    ) -> [SyncStatement] {
+        let key = "creation|\(identity.id)"
+        let last = scope.closing.count - 1
+        let pairs = min(scope.opening.count, scope.closing.count)
+        let opening = scope.opening.enumerated().map { index, sql in
+            SyncStatement(
+                sql: sql,
+                objectName: identity.displayName,
+                summary: summary,
+                sessionEffect: index < pairs
+                    ? .opens(scope: "\(key)|\(last - index)", closingSQL: scope.closing[last - index])
+                    : nil
+            )
+        }
+        let closing = scope.closing.enumerated().map { index, sql in
+            SyncStatement(
+                sql: sql,
+                objectName: identity.displayName,
+                summary: summary,
+                sessionEffect: last - index < pairs ? .closes(scope: "\(key)|\(index)") : nil
+            )
+        }
+        return opening + create + closing
+    }
+
+    private func dropStatements(for result: CompareObjectResult, isReplacement: Bool) throws -> [SyncStatement] {
         guard let keyword = dropKeyword(for: result.identity.kind) else { return [] }
         let sql = dialectDrop(for: result.identity) ?? "DROP \(keyword) \(qualified(result.identity))"
         let summary = isReplacement
@@ -175,7 +209,10 @@ internal struct SourceObjectSyncBuilder {
                 result.identity.kind.displayName.lowercased(), result.identity.displayName
             )
         let hazards = dropHazards(for: result, isReplacement: isReplacement)
-        return scriptText.sendableStatements(sql).map { statement in
+        guard let statements = scriptText.sendableStatements(ofForeignText: sql) else {
+            throw CompareSyncError.severalStatements(in: result.identity.displayName)
+        }
+        return statements.map { statement in
             SyncStatement(
                 sql: statement,
                 objectName: result.identity.displayName,

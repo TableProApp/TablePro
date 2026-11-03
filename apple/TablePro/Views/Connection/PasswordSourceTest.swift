@@ -86,9 +86,8 @@ struct PasswordSourceTestView: View {
             }
             SecretRevealToggle(reveal: reveal, requiresAuthentication: true)
         case .failed(let message):
-            Label(message, systemImage: "exclamationmark.triangle.fill")
+            NoticeLabel(message, severity: .error)
                 .font(.caption)
-                .foregroundStyle(.red)
                 .textSelection(.enabled)
         case nil:
             EmptyView()

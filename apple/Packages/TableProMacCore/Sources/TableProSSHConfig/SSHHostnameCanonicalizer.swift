@@ -35,7 +35,7 @@ enum SSHHostnameCanonicalizer {
     ) -> String? {
         guard options.mode != .no else { return host }
         guard !host.isEmpty else { return host }
-        guard !isNumericHost(host) else { return host }
+        guard !isNumericHost(host), !looksLikeAnAddress(host) else { return host }
 
         // An anchored name is looked up as it is, before MaxDots and the suffixes, as ssh does.
         if host.hasSuffix(".") {
@@ -54,7 +54,7 @@ enum SSHHostnameCanonicalizer {
                 let canonical = followsCNAME(from: candidate, to: resolved, rules: options.permittedCNAMEs)
                     ? resolved
                     : candidate
-                logger.debug("Canonicalized \(host, privacy: .public) -> \(canonical, privacy: .public)")
+                logger.debug("Canonicalized \(host, privacy: .private(mask: .hash)) -> \(canonical, privacy: .private(mask: .hash))")
                 return canonical
             }
         }
@@ -110,6 +110,15 @@ enum SSHHostnameCanonicalizer {
         freeaddrinfo(result)
         return true
     }
+
+    // is_addr_fast in OpenSSH: an address that did not parse, such as `::ffff:zz` or `1.2.3.4.5`, is
+    // left as it is, never searched for in the domains (measured with ssh -G 10.3).
+    private static func looksLikeAnAddress(_ host: String) -> Bool {
+        host.unicodeScalars.allSatisfy { digitsAndDots.contains($0) }
+            || host.unicodeScalars.contains { $0 == ":" || $0 == "%" }
+    }
+
+    private static let digitsAndDots = CharacterSet(charactersIn: "0123456789.")
 
     private static func dotCount(in host: String) -> Int {
         host.reduce(0) { $1 == "." ? $0 + 1 : $0 }

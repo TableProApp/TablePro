@@ -279,7 +279,7 @@ final class MCPBridgeIntegrationTests: XCTestCase {
     }
 
     func testAForwardThatFailsAnswersTheHostInsteadOfLeavingItWaiting() async throws {
-        let bridge = try await startBridge(upstreamPort: 1)
+        let bridge = try await startBridge(socketPath: MCPSocketLocation.primarySocket(in: MCPTestSocketFolder.url()).path)
         defer { bridge.shutdown() }
 
         try bridge.write(#"{"jsonrpc":"2.0","id":13,"method":"tools/list","params":{}}"#)
@@ -333,10 +333,11 @@ final class MCPBridgeIntegrationTests: XCTestCase {
         XCTAssertEqual(forwarded.count, 1)
     }
 
-    private func startBridge(upstreamPort: UInt16? = nil) async throws -> BridgeHarness {
-        let port = upstreamPort ?? upstream.port
-        let endpoint = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/mcp"))
-        let credentials = MCPUpstreamCredentials(endpoint: endpoint, bearerToken: "integration-token")
+    private func startBridge(socketPath: String? = nil) async throws -> BridgeHarness {
+        let credentials = MCPUpstreamCredentials(
+            socketPath: socketPath ?? upstream.socketPath,
+            bearerToken: "integration-token"
+        )
         let transport = MCPStreamableHttpClientTransport(
             configuration: MCPStreamableHttpClientConfiguration(requestTimeout: .seconds(5)),
             credentialsProvider: MCPCachedUpstreamCredentialsProvider(initial: credentials) { credentials },

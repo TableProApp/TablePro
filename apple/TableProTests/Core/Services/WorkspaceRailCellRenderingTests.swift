@@ -15,6 +15,7 @@ import AppKit
 import Foundation
 import SwiftUI
 @testable import TablePro
+import TableProConnectionLibrary
 import Testing
 
 @MainActor
@@ -31,7 +32,7 @@ struct WorkspaceRailCellRenderingTests {
         name: String = "production",
         container: String = "app",
         color: ConnectionColor = .none,
-        status: ConnectionStatus = .connected
+        status: ConnectionDisplayStatus = .connected
     ) -> WorkspaceRailEntry {
         var connection = TestFixtures.makeConnection(database: container)
         connection.name = name
@@ -49,7 +50,7 @@ struct WorkspaceRailCellRenderingTests {
         name: String = "production",
         container: String = "app",
         color: ConnectionColor,
-        status: ConnectionStatus = .connected,
+        status: ConnectionDisplayStatus = .connected,
         layout: WorkspaceRailMetrics.Layout = WorkspaceRailMetrics.medium
     ) -> WorkspaceRailCellView {
         let view = WorkspaceRailCellView(frame: NSRect(
@@ -131,20 +132,19 @@ struct WorkspaceRailCellRenderingTests {
         color.brightnessComponent < 0.6
     }
 
-    /// The defect this suite exists for. The band covered the label's whole width; a dot may not
-    /// cover more than a small fraction of the cell, whatever colour the user picks.
-    @Test("The identity colour never covers more than a fraction of the cell")
-    func identityStaysSmall() throws {
+    /// The defect this suite exists for. The band covered the label's whole width; the identity now
+    /// fills the tile, the one Welcome and the switcher draw, and nothing outside it.
+    @Test("The identity colour fills the tile and nothing else")
+    func identityStaysInTheTile() throws {
         let view = cell(color: .red)
         let rep = try #require(render(view))
-        let total = rep.pixelsWide * rep.pixelsHigh
-        let painted = pixelCount(rep, matching: isRedish)
+        let tile = try #require(view.renderedTile)
+        let tileRect = bitmapRect(tile.frame, in: view, rep: rep)
+        let inside = pixelCount(rep, in: tileRect, matching: isRedish)
+        let total = pixelCount(rep, matching: isRedish)
 
-        #expect(painted > 0, "the identity colour did not render at all")
-        #expect(
-            Double(painted) / Double(total) < 0.05,
-            "identity covers \(painted) of \(total) pixels, which is a fill rather than a dot"
-        )
+        #expect(Double(inside) > Double(tileRect.width * tileRect.height) * 0.4, "the tile is not filled")
+        #expect(total - inside <= Int(tileRect.width + tileRect.height), "identity escaped the tile")
     }
 
     /// The rail used to drop identity entirely on the selected row, which is the row whose identity
@@ -210,18 +210,43 @@ struct WorkspaceRailCellRenderingTests {
         )
     }
 
-    @Test("The identity dot never touches the label, at every rail size")
-    func identityDotClearsTheLabel() throws {
+    @Test("The tile and the status mark never touch the label, at every rail size")
+    func tileAndMarkClearTheLabel() throws {
         for layout in Self.layouts {
-            let rail = HostedRail(entries: [entry(name: "podo-stage", container: "gwatop", color: .red)], layout: layout)
+            let rail = HostedRail(
+                entries: [entry(name: "podo-stage", container: "gwatop", color: .red, status: .failed(cause: "refused"))],
+                layout: layout
+            )
             let cell = try rail.cell(atRow: 0)
             let label = try #require(cell.renderedLabel)
-            let icon = try #require(cell.imageView)
-            let dot = try #require(cell.subviews.first { $0 !== label && $0 !== icon })
+            let tile = try #require(cell.renderedTile)
+            let mark = try #require(cell.renderedStatusMark)
 
             #expect(cell.bounds.contains(label.frame), "label escaped the \(layout) row")
-            #expect(cell.bounds.contains(dot.frame), "identity dot escaped the \(layout) row")
-            #expect(!dot.frame.intersects(label.frame), "identity dot overlapped the label in \(layout)")
+            #expect(cell.bounds.contains(tile.frame), "tile escaped the \(layout) row")
+            #expect(cell.bounds.contains(mark.frame), "status mark escaped the \(layout) row")
+            #expect(!tile.frame.intersects(label.frame), "tile overlapped the label in \(layout)")
+            #expect(!mark.frame.intersects(label.frame), "status mark overlapped the label in \(layout)")
+            #expect(abs(mark.frame.midX - tile.frame.maxX) <= rail.pixel, "mark left the tile's corner in \(layout)")
+            #expect(mark.frame.intersects(tile.frame), "mark left the tile in \(layout)")
+        }
+    }
+
+    /// Measured on the shipped rail: an inline mark before the name truncated "analytics" to
+    /// "an…ics" at the medium width.
+    @Test("A status mark leaves a name like analytics untruncated at the medium width")
+    func statusMarkLeavesTheNameItsWidth() throws {
+        let layout = WorkspaceRailMetrics.medium
+        for status in [ConnectionDisplayStatus.failed(cause: "refused"), .lost(cause: nil), .reconnecting(attempt: 1, of: 10)] {
+            let marked = try HostedRail(entries: [entry(name: "analytics", container: "app", status: status)], layout: layout)
+                .cell(atRow: 0)
+            let plain = try HostedRail(entries: [entry(name: "analytics", container: "app")], layout: layout).cell(atRow: 0)
+            let label = try #require(marked.renderedLabel)
+            let needed = try #require(label.cell).cellSize.width
+
+            #expect(try #require(marked.renderedStatusMark).showsMark, "\(status)")
+            #expect(needed <= label.frame.width, "analytics is cut short beside \(status)")
+            #expect(label.frame.width == plain.renderedLabel?.frame.width, "the mark took width from the label: \(status)")
         }
     }
 
@@ -298,8 +323,8 @@ struct WorkspaceRailCellRenderingTests {
     /// points snaps to whole pixels on a 1x display, so the two sides may differ by one pixel there.
     @Test("A tile has as much space above its glyph as below its label")
     func hostedTileIsBalanced() throws {
-        let cases: [(String, ConnectionStatus)] = [
-            ("gwatop", .connected), ("", .connected), ("gwatop", .error("refused")), ("gwatop", .disconnected),
+        let cases: [(String, ConnectionDisplayStatus)] = [
+            ("gwatop", .connected), ("", .connected), ("gwatop", .failed(cause: "refused")), ("gwatop", .notConnected),
         ]
         for layout in Self.layouts {
             for (container, status) in cases {
@@ -323,8 +348,8 @@ struct WorkspaceRailCellRenderingTests {
         }
     }
 
-    @Test("The glyph and its label sit the same distance apart with or without a colour dot")
-    func hostedGapIgnoresTheDot() throws {
+    @Test("The tile and its label sit the same distance apart with or without a colour")
+    func hostedGapIgnoresTheColour() throws {
         for layout in Self.layouts {
             for color in [ConnectionColor.none, .red] {
                 let rail = HostedRail(entries: [entry(container: "app", color: color)], layout: layout)
@@ -359,11 +384,10 @@ struct WorkspaceRailCellRenderingTests {
         }
     }
 
-    /// The glyph as Auto Layout places it. SF Symbols carry alignment insets, so the warning and
-    /// disconnected glyphs' frames reach past the box the layout centres.
+    /// The tile as Auto Layout places it.
     private func glyphRect(in cell: WorkspaceRailCellView) throws -> NSRect {
-        let icon = try #require(cell.imageView)
-        return icon.alignmentRect(forFrame: icon.frame)
+        let tile = try #require(cell.renderedTile)
+        return tile.alignmentRect(forFrame: tile.frame)
     }
 
     private func verticalMargins(of cell: WorkspaceRailCellView) throws -> (top: CGFloat, bottom: CGFloat) {

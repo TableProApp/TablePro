@@ -12,7 +12,7 @@ import Testing
 
 struct SupportLinksTests {
     private static let everyReferrer: [SupportReferrer] =
-        [.supportWindow, .aboutPanel, .licenseSettings, .ask]
+        [.supportWindow, .aboutPanel, .licenseSettings, .ask, .blackFriday, .welcome]
             + ProFeature.allCases.map { .featureGate($0) }
 
     private static func components(_ url: URL) -> URLComponents? {
@@ -83,5 +83,16 @@ struct SupportLinksTests {
             #expect(!SupportLinks.pricing(referrer).absoluteString.contains("$"))
             #expect(!SupportLinks.sponsors(referrer).absoluteString.contains("$"))
         }
+    }
+
+    @Test("The Black Friday link opens the sale page with its ref and no code")
+    func blackFridayLinkIsTagged() throws {
+        let url = SupportLinks.blackFriday(.blackFriday)
+        let parts = try #require(Self.components(url))
+
+        #expect(url.absoluteString == "https://tablepro.app/black-friday?ref=app-black-friday")
+        #expect(parts.host == "tablepro.app")
+        #expect(parts.path == "/black-friday")
+        #expect(parts.queryItems == [URLQueryItem(name: "ref", value: "app-black-friday")])
     }
 }

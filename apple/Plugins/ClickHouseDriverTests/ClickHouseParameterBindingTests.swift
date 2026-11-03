@@ -122,6 +122,25 @@ struct ClickHouseParameterBindingTests {
         #expect(bound.params == ["p1": "x", "p2": "y"])
     }
 
+    @Test("A question mark in a hash comment is not a placeholder, as the server's lexer reads it")
+    func hashCommentsAreSkipped() {
+        let bound = ClickHouseParameterBinding.bind(
+            query: "SELECT ? # why?\nFROM t WHERE a = ?",
+            parameters: [.text("x"), .text("y")]
+        )
+        #expect(bound.query == "SELECT {p1:String} # why?\nFROM t WHERE a = {p2:String}")
+        #expect(bound.params == ["p1": "x", "p2": "y"])
+    }
+
+    @Test("A quote a combining mark follows still closes its string, so the next question mark binds")
+    func quoteBeforeCombiningMarkCloses() {
+        let bound = ClickHouseParameterBinding.bind(
+            query: "SELECT 'a'\u{301}, ?",
+            parameters: [.text("x")]
+        )
+        #expect(Array(bound.query.unicodeScalars) == Array("SELECT 'a'\u{301}, {p1:String}".unicodeScalars))
+    }
+
     @Test("Extra placeholders past the parameter list are left alone")
     func extraPlaceholdersAreLeftAlone() {
         let bound = ClickHouseParameterBinding.bind(
@@ -198,7 +217,7 @@ struct ClickHouseParameterBindingTests {
         #expect(insertSelect.query == "/* copy */ insert into t select * from s where s = '\(long)'")
     }
 
-    // Measured on 25.8: each of these reads back as the text that was bound.
+    // ClickHouse needs only `'` and `\` escaped; a control goes in as it is, and NUL as `\0`.
     @Test("A quote, backslash or control character cannot end a written-in literal")
     func writtenInLiteralsAreEscaped() {
         let padding = String(repeating: "p", count: 140_000)
@@ -206,7 +225,7 @@ struct ClickHouseParameterBindingTests {
             query: "SELECT ?, ?, ?, ?",
             parameters: [.text(padding), .text(#"C:\new\table"#), .text("a\tb\nc\rd\u{0}e\u{08}f\u{0C}g\u{1A}"), .text("'\u{301}) OR 1 = 1 --")]
         )
-        let expected = [padding, #"C:\\new\\table"#, #"a\tb\nc\rd\0e\bf\fg"# + "\u{1A}", "''\u{301}) OR 1 = 1 --"]
+        let expected = [padding, #"C:\\new\\table"#, "a\tb\nc\rd" + #"\0"# + "e\u{08}f\u{0C}g\u{1A}", "''\u{301}) OR 1 = 1 --"]
         #expect(bound.query == "SELECT " + expected.map { "'\($0)'" }.joined(separator: ", "))
     }
 

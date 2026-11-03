@@ -604,7 +604,7 @@ final class MainContentCoordinator: ObservableObject {
             databaseType: connection.type,
             dialect: dialect,
             pagination: services.pluginManager.paginationCapability(for: connection.type),
-            dialectQuote: dialect.map { quoteIdentifierFromDialect($0) } ?? { SQLEscaping.quoteIdentifier($0) }
+            dialectQuote: dialect.map { quoteIdentifierFromDialect($0, databaseType: connection.type) } ?? { SQLEscaping.quoteIdentifier($0) }
         )
         self.persistence = TabPersistenceCoordinator.forConnection(connection.id)
 
@@ -742,6 +742,9 @@ final class MainContentCoordinator: ObservableObject {
         let browseBuilder = driver.queryBuildingPluginDriver
         if !queryBuilder.usesPluginDriver(browseBuilder) {
             queryBuilder.setPluginDriver(browseBuilder)
+        }
+        if !queryBuilder.usesSessionDriver(driver) {
+            queryBuilder.setSessionDriver(driver)
         }
         let rowWriter = driver.rowWritingPluginDriver
         if rowWriter !== changeManager.pluginDriver {
@@ -935,7 +938,7 @@ final class MainContentCoordinator: ObservableObject {
         toolbarState.update(from: connection)
 
         if let session = services.databaseManager.session(for: connectionId) {
-            toolbarState.updateConnectionState(from: session.reportedStatus)
+            toolbarState.updateConnectionState(from: session.effectiveStatus)
         }
     }
 

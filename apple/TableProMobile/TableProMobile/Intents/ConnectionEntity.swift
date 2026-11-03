@@ -10,19 +10,22 @@ struct ConnectionEntity: AppEntity {
     var name: String
     var host: String
     var databaseType: String
+    // The connection list's line, so an engine without a host names its file or database instead.
+    var detail: String
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(
             title: "\(name)",
-            subtitle: "\(databaseType), \(host)"
+            subtitle: "\(databaseType), \(detail)"
         )
     }
 
-    init(id: UUID, name: String, host: String, databaseType: String) {
+    init(id: UUID, name: String, host: String, databaseType: String, detail: String? = nil) {
         self.id = id
         self.name = name
         self.host = host
         self.databaseType = databaseType
+        self.detail = detail ?? host
     }
 
     init(connection: DatabaseConnection) {
@@ -30,7 +33,8 @@ struct ConnectionEntity: AppEntity {
             id: connection.id,
             name: connection.name.isEmpty ? connection.host : connection.name,
             host: connection.host,
-            databaseType: connection.type.rawValue
+            databaseType: connection.type.rawValue,
+            detail: ConnectionDetailFormatter.detail(for: connection)
         )
     }
 }

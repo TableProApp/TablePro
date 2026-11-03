@@ -250,6 +250,25 @@ struct SchemaRegistryTests {
         #expect(host == "other.example.com")
     }
 
+    @Test("The registry's sign-in never follows a redirect to another origin")
+    func transportRefusesCrossOriginRedirect() async throws {
+        let collector = try LoopbackHTTPResponder { _ in LoopbackResponse(status: 200, body: "{}") }
+        try await collector.start()
+        defer { collector.stop() }
+        let location = collector.url("/schemas/ids/1").absoluteString
+        let registry = try LoopbackHTTPResponder { _ in LoopbackResponse(status: 307, headers: ["Location": location]) }
+        try await registry.start()
+        defer { registry.stop() }
+        var request = URLRequest(url: registry.url("/schemas/ids/1"))
+        request.setValue("Basic cmVhZGVyOnNlY3JldA==", forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await SchemaRegistryClient.urlSessionTransport(request)
+
+        #expect((response as? HTTPURLResponse)?.statusCode == 307)
+        #expect(registry.requests.first?.header("Authorization") == "Basic cmVhZGVyOnNlY3JldA==")
+        #expect(collector.requests.isEmpty)
+    }
+
     private final class HeldTransport: Sendable {
         let gate = AsyncGate()
         let calls = OSAllocatedUnfairLock(initialState: 0)

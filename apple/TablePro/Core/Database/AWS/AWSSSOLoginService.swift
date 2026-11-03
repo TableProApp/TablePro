@@ -1,5 +1,5 @@
-import AppKit
 import Foundation
+import TableProHTTP
 import TableProPluginKit
 
 enum AWSSSOLoginService {
@@ -49,7 +49,7 @@ enum AWSSSOLoginService {
             configContents: configContents,
             cacheDirectory: cacheDirectory,
             openVerificationURL: { url in
-                Task { @MainActor in NSWorkspace.shared.open(url) }
+                Task { @MainActor in WebPageOpener.open(url, scope: .https) }
             }
         )
     }

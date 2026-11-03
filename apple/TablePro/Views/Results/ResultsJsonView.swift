@@ -26,8 +26,6 @@ internal struct ResultsJsonView: View {
     @State private var heldBackDeletionCount = 0
     @State private var hasRendered = false
     @State private var renderedKey: RenderKey?
-    @State private var copied = false
-    @State private var copyCooldownTask: Task<Void, Never>?
 
     init(
         tableRows: TableRows,
@@ -132,21 +130,9 @@ internal struct ResultsJsonView: View {
 
             Button {
                 ClipboardService.shared.writeText(cachedJson)
-                copied = true
-                copyCooldownTask?.cancel()
-                copyCooldownTask = Task { @MainActor in
-                    do {
-                        try await Task.sleep(for: .milliseconds(1_500))
-                        copied = false
-                    } catch {
-                        // cancelled by next press
-                    }
-                }
+                AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
             } label: {
-                Label(
-                    copied ? String(localized: "Copied!") : String(localized: "Copy JSON"),
-                    systemImage: copied ? "checkmark" : "doc.on.doc"
-                )
+                Label(String(localized: "Copy JSON"), systemImage: "doc.on.doc")
             }
             .buttonStyle(.borderless)
             .controlSize(.small)

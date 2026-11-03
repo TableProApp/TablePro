@@ -9,26 +9,20 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 public enum SnowflakeSQL {
-    /// Snowflake reads `\'` inside a literal as a content quote, so doubling the quote alone leaves
-    /// a backslash able to escape the very quote that was meant to close the value. The backslash
-    /// goes first: doubling it after the quotes would also double the ones this method just added.
+    // Snowflake reads `\'` inside a literal as a content quote, so the backslash is escaped too.
     public static func escapeLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-            .replacingOccurrences(of: "'", with: "''", options: .literal)
+        SQLQuoting.stringLiteralBody(value, escapes: .backslash)
     }
 
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"\(name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        SQLQuoting.identifier(name)
     }
 
-    /// `LIKE` reads `_` and `%` as wildcards, so a name containing either has to arrive escaped or
-    /// it matches objects the caller never named.
+    // The LIKE layer first, escaped with a backslash, then the literal rule over the whole pattern.
     public static func escapeLikePattern(_ value: String) -> String {
-        escapeLiteral(value)
-            .replacingOccurrences(of: "_", with: "\\\\_", options: .literal)
-            .replacingOccurrences(of: "%", with: "\\\\%", options: .literal)
+        escapeLiteral(SQLQuoting.likePattern(value))
     }
 }

@@ -55,6 +55,10 @@ struct ExportState {
     // False for an export that writes no rows, which then reports its progress in objects.
     var readsRows = true
 
+    // Set when the row total came from statistics, or when some tables could not be counted.
+    var rowTotalIsEstimate = false
+    var estimateNote: String?
+
     /// What the export wrote, as opposed to what went wrong with it. Kept apart from `warnings`
     /// because the success alert reads a non-empty `warnings` as a problem: it retitles itself,
     /// takes the caution icon, and drops its "Do not show this again" checkbox.
@@ -146,11 +150,20 @@ final class ExportService: ObservableObject {
 
     // MARK: - Cancellation
 
+    // Latched, so a Stop during the row count or before the plugin starts is not lost.
     func cancelExport() {
+        isStopRequested = true
         currentProgress?.cancel()
     }
 
     @Published private var currentProgress: PluginExportProgress?
+    private var isStopRequested = false
+
+    private func throwIfStopped() throws {
+        if isStopRequested || Task.isCancelled {
+            throw PluginExportCancellationError()
+        }
+    }
 
     /// The status line a plugin writes with `PluginExportProgress.setStatus`. Nothing observed it,
     /// so "Compressing..." never reached a user in any export. The empty guard sits outside the hop
@@ -185,13 +198,14 @@ final class ExportService: ObservableObject {
 
         defer {
             state.isExporting = false
-                state.statusMessage = ""
+            state.statusMessage = ""
             currentProgress = nil
         }
 
         guard let driver, let databaseType else {
             throw ExportError.notConnected
         }
+        try throwIfStopped()
 
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
 
@@ -203,6 +217,7 @@ final class ExportService: ObservableObject {
             databaseType: databaseType,
             dataSource: dataSource
         )
+        try throwIfStopped()
 
         let nsProgress = Progress(totalUnitCount: Int64(state.totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
@@ -322,14 +337,16 @@ final class ExportService: ObservableObject {
         }
 
         let exportTable = Self.queryResultExportTable(named: config.fileName, plugin: plugin)
+        state = ExportState(isExporting: true, totalTables: 1)
         let totalRows = await Self.approximateRowCount(of: exportTable, in: dataSource)
-        state = ExportState(isExporting: true, totalTables: 1, totalRows: totalRows)
+        state.totalRows = totalRows
 
         defer {
             state.isExporting = false
             state.statusMessage = ""
             currentProgress = nil
         }
+        try throwIfStopped()
 
         let nsProgress = Progress(totalUnitCount: Int64(totalRows))
         let progress = PluginExportProgress(progress: nsProgress)
@@ -408,9 +425,10 @@ final class ExportService: ObservableObject {
 
         defer {
             state.isExporting = false
-                state.statusMessage = ""
+            state.statusMessage = ""
             currentProgress = nil
         }
+        try throwIfStopped()
 
         let dataSource = StreamingQueryExportDataSource(
             query: LeadingRowsStatement.resolve(query, rowCap: nil, databaseType: databaseType).sql,
@@ -488,10 +506,7 @@ final class ExportService: ObservableObject {
         )
     }
 
-    /// The non-SQL count goes through the data source, which knows the container each object was
-    /// listed under. Asking the driver directly answers about whichever one it is leased to, so an
-    /// export spanning two databases counted one of them twice and reported a total no progress bar
-    /// could reach.
+    // The non-SQL count asks the data source: the driver answers for whichever database it is leased to.
     private func fetchTotalRowCount(
         for tables: [ExportObjectItem],
         driver: DatabaseDriver,
@@ -504,13 +519,15 @@ final class ExportService: ObservableObject {
         var failedCount = 0
 
         if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
+            state.rowTotalIsEstimate = true
             for table in tables {
+                guard !isStopRequested else { return total }
                 do {
                     let count = try await dataSource.fetchApproximateRowCount(
                         table: table.name, databaseName: table.databaseName
                     )
                     if let count {
-                        total += count
+                        total = Self.saturatingSum(total, count)
                     }
                 } catch {
                     failedCount += 1
@@ -519,7 +536,7 @@ final class ExportService: ObservableObject {
             }
             if failedCount > 0 {
                 Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
-                state.statusMessage = Self.estimatedProgressMessage(uncountedTables: failedCount)
+                state.estimateNote = Self.estimatedProgressMessage(uncountedTables: failedCount)
             }
             return total
         }
@@ -527,6 +544,7 @@ final class ExportService: ObservableObject {
         let chunkSize = 50
 
         for chunkStart in stride(from: 0, to: tables.count, by: chunkSize) {
+            guard !isStopRequested else { return total }
             let end = min(chunkStart + chunkSize, tables.count)
             let batch = tables[chunkStart ..< end]
 
@@ -540,16 +558,17 @@ final class ExportService: ObservableObject {
                 let result = try await driver.execute(query: batchQuery)
                 for row in result.rows {
                     if let cell = row.first, let count = Int(cell.asText ?? "0") {
-                        total += count
+                        total = Self.saturatingSum(total, count)
                     }
                 }
             } catch {
                 for table in batch {
+                    guard !isStopRequested else { return total }
                     do {
                         let tableRef = qualifiedTableRef(for: table, driver: driver, databaseType: databaseType)
                         let result = try await driver.execute(query: "SELECT COUNT(*) FROM \(tableRef)")
                         if let cell = result.rows.first?.first, let count = Int(cell.asText ?? "0") {
-                            total += count
+                            total = Self.saturatingSum(total, count)
                         }
                     } catch {
                         failedCount += 1
@@ -561,9 +580,15 @@ final class ExportService: ObservableObject {
 
         if failedCount > 0 {
             Self.logger.warning("\(failedCount) tables failed row count, the progress indicator may be inaccurate")
-            state.statusMessage = Self.estimatedProgressMessage(uncountedTables: failedCount)
+            state.rowTotalIsEstimate = true
+            state.estimateNote = Self.estimatedProgressMessage(uncountedTables: failedCount)
         }
         return total
+    }
+
+    private static func saturatingSum(_ total: Int, _ count: Int) -> Int {
+        let (sum, overflow) = total.addingReportingOverflow(count)
+        return overflow ? (count < 0 ? .min : .max) : sum
     }
 
     /// Counts pick between an explicit singular and plural key. Automatic grammar agreement is a

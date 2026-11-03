@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 /// Catalog SQL for routines and triggers. Pure, so it is testable without a server.
 ///
@@ -14,14 +15,12 @@ import Foundation
 /// have the app read it. The rule and its measurement live in `OracleDictionary` in TableProOracleCore, which this file
 /// cannot import: it compiles into the test target, which does not link that package, so the prefix is written out here.
 public enum OracleObjectQueries {
-    /// `.literal` matches by code unit: the default matches grapheme clusters and skips a quote that
-    /// a combining mark follows, which then ends the literal early.
     public static func escapeLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''", options: .literal)
+        SQLQuoting.stringLiteralBody(value)
     }
 
     public static func quoteIdentifier(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\"\"", options: .literal))\""
+        SQLQuoting.identifier(value)
     }
 
     /// Oracle's grammar is `COMMENT ON TABLE [schema.]{table | view}`: there is no `VIEW` keyword.
@@ -39,9 +38,9 @@ public enum OracleObjectQueries {
         "COMMENT ON COLUMN \(qualifiedTable).\(quoteIdentifier(column)) IS \(commentLiteral(comment))"
     }
 
-    /// Oracle removes a comment only when it is set to the empty string.
+    // Oracle removes a comment only when it is set to the empty string.
     private static func commentLiteral(_ comment: String?) -> String {
-        "'\(escapeLiteral((comment ?? "").replacingOccurrences(of: "\0", with: "", options: .literal)))'"
+        SQLQuoting.stringLiteral(comment ?? "")
     }
 
     /// Standalone procedures and functions only. A packaged routine is addressed through its
