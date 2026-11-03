@@ -14,9 +14,12 @@ use crate::document_problem::{DocumentProblem, DocumentProblemKind};
 use crate::error::StorageError;
 use crate::{ConnectionGroup, ConnectionTag, ConnectionTagName, GroupTree};
 
+mod cloud;
 mod legacy_groups;
 mod library;
 mod placement;
+
+pub(crate) use placement::cyclic;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {

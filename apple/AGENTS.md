@@ -28,6 +28,7 @@ Every capability is core, a module or a plugin. The first rule that fits decides
 - `Plugins/`: drivers and import/export formats as `.tableplugin` bundles, plus `TableProPluginKit`. Bundled plugins are the `copy: { destination: plugins }` targets in `project.yml`; the app never offers a registry install or update over one.
 - `Packages/`: `TableProCore` (both apps), `TableProMacCore` (macOS only, never in the iOS project), `TableProOracle`, `TableProEditor`, `TableProGrammars`. Edit PluginKit in `Plugins/TableProPluginKit/` only; `TableProCore` symlinks it. Never pass `SWIFT_VERSION=` to `xcodebuild`.
 - `Native/`: Rust and Go bridges. `Libs/`: static libraries from `scripts/download-libs.sh`, not in git.
+- `Packages/TableProFFI`: the shared Rust core (`core/`) as the module `TableProFFI`. `scripts/build-core.sh` builds its XCFramework and generates its Swift from the same library, neither in git; then `swift test --package-path Packages/TableProFFI`. Nothing in the app links it yet (`core/docs/decisions/0009-macos-on-the-core.md`).
 - XcodeGen generates `TablePro.xcodeproj` and `TableProMobile/TableProMobile.xcodeproj`; never hand-edit them. Signing overrides go in `Configs/Secrets.xcconfig`.
 - Architecture lives in `.claude/rules/`: `plugin-system.md`, `connection-window.md`, `editor.md`, `theme.md` and `data-sync-storage.md`.
 

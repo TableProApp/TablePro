@@ -1,6 +1,6 @@
 # Architecture
 
-The shared core is the Rust workspace's UI-free crates under `core/crates`: the domain types and the driver contract, one crate per database engine, the network and SSH transports, sessions, storage, the MCP server, the AI client, and the library other languages load. Each platform's app builds on them with a native UI: the GTK app in `linux/` directly, the Windows app in `windows/` through `ffi`, and the Swift app later ([ADR 0001](docs/decisions/0001-shared-core.md)). `linux/ARCHITECTURE.md` covers the Linux app.
+The shared core is the Rust workspace's UI-free crates under `core/crates`: the domain types and the driver contract, one crate per database engine, the network and SSH transports, sessions, storage, the MCP server, the AI client, and the library other languages load. Each platform's app builds on them with a native UI: the GTK app in `linux/` directly, the Windows app in `windows/` through `ffi`, and the Swift app through `ffi` one slice at a time ([ADR 0001](docs/decisions/0001-shared-core.md), [ADR 0009](docs/decisions/0009-macos-on-the-core.md)). `linux/ARCHITECTURE.md` covers the Linux app.
 
 ## Crate layout
 
@@ -16,6 +16,7 @@ core/crates/
 ├── ai/                            the AI assistant's providers, prompts and replies
 ├── mcp/                           the MCP server: transport, token and tools
 ├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
+├── bindgen/                       uniffi-bindgen-swift, which writes the Swift bindings from a built ffi
 ├── test-fixtures/                 dev-only container fixtures with a generated PKI
 ├── test-support/                  dev-only fakes and the conformance suites
 └── drivers/
@@ -41,7 +42,7 @@ core/crates/
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
 | `ai` | `core`, `net` |
-| `ffi` | `core`, `session`, `ssh` and every driver |
+| `ffi` | `core`, `session`, `ssh`, `storage`, and every driver behind its default `engines` feature |
 | An app, such as `linux/crates/app` | every crate above, and its platform crate |
 
 Rules, enforced by review:
@@ -93,15 +94,15 @@ Each boundary error has a stable `code()`, such as `driver.timeout` or `ssh.host
 
 ## Bindings
 
-`ffi` is the library an app outside Rust loads: the Windows app now, the Swift app later. Core ADRs 0002, on the bindings, and 0003, on result windows, hold the reasons.
+`ffi` is the library an app outside Rust loads: the Windows app as a DLL, the Apple apps as a static library in an XCFramework, built without the `engines` feature by `apple/scripts/build-core.sh`. Core ADRs 0002, on the bindings, 0003, on result windows, and 0009, on the macOS slices, hold the reasons.
 
-- One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets. A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), reports and waits on the session's health, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
+- One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets, and gives the Apple apps the library's CloudKit records and merges a pull into it (`tablepro_storage::cloudkit`). A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), reports and waits on the session's health, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
 - The grid reads a `ResultSet` through the C ABI in `src/window_abi.rs`: `tablepro_cursor_fetch` packs the display text of one visible range, and `tablepro_cursor_free` ends the cursor.
 - The library owns one tokio runtime. Each async export runs on it and is aborted when the foreign side drops the call; a `CancelToken` stops it sooner, since UniFFI cannot cancel.
 - A result set takes rows as the driver reads them. Each column keeps a kind byte, a raw `i64` and the exact text `tablepro_core::export::value_text` writes, or a binary value's bytes, in chunks of 65,536 rows. A window only cuts and copies.
 - A `CoreError` carries the `code()` of each error from the outermost in; the innermost decides.
 
-How the bindings are generated, and where they live: `windows/AGENTS.md`, Bindings.
+How the bindings are generated, and where they live: `windows/AGENTS.md`, Bindings, for C#, and `apple/AGENTS.md`, Repository map, for Swift.
 
 ## Driver layer
 

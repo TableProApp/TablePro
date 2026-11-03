@@ -2,6 +2,7 @@
 
 mod cancel_token;
 mod catalog;
+mod cloud;
 mod connection_url;
 mod core_handle;
 #[cfg(windows)]
@@ -20,6 +21,7 @@ pub mod window_abi;
 
 pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
+pub use cloud::{CloudConnectionFields, CloudGroupFields, CloudLibraryPull, CloudLibraryRecords};
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
 pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag};

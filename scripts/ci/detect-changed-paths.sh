@@ -90,9 +90,11 @@ case "$SUITE" in
         PATTERNS=('.*\.swift$' '(.*/)?\.swiftlint\.yml$' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/workflows/(ci|swiftlint)\.yml$') ;;
     linux|linux-docs)
-        # The Linux app builds the shared core in the Cargo workspace whose files are at the top.
+        # The Linux app builds the shared core in the Cargo workspace whose files are at the top. core.yml also
+        # builds the core's Swift bindings and runs their tests.
         PATTERNS=('linux/' 'core/' 'Cargo\.(toml|lock)$' '(rust-toolchain|rustfmt|clippy|deny)\.toml$'
             '\.config/nextest\.toml$' 'scripts/ci/detect-changed-paths\.sh$'
+            'apple/Packages/TableProFFI/' 'apple/scripts/build-core\.sh$' 'apple/scripts/lib/deployment-target\.sh$'
             '\.github/workflows/(ci|build-linux|core|linux-packages|release-linux)\.yml$')
         # linux-docs decides the docs links job, which reads every path. The other Linux jobs skip
         # Markdown, except the files a Meson test reads and the notices the build installs.

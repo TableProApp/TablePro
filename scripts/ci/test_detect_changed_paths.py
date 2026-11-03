@@ -82,6 +82,12 @@ class DetectChangedPathsTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "true")
 
+    def test_linux_runs_on_the_cores_swift_bindings(self):
+        for path in ["apple/Packages/TableProFFI/Package.swift", "apple/scripts/build-core.sh",
+                     "apple/scripts/lib/deployment-target.sh"]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "true")
+
     def test_linux_skips_the_apple_apps(self):
         for path in ["apple/TablePro/App.swift", "apple/TableProMobile/App.swift", "apple/Plugins/Shared/Timeout.swift",
                      "apple/project.yml", "apple/CHANGELOG.md", ".github/workflows/macos-tests.yml"]:
