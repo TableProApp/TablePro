@@ -58,6 +58,11 @@ on:
         type: string
         default: "1"
 
+# A pull request keeps only its newest run; every other run, a release's call included, has its own group.
+concurrency:
+  group: linux-packages-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, inputs.release-tag) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
