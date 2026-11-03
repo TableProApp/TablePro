@@ -28,7 +28,8 @@ final class CloudSQLProxyDownload: ObservableObject {
     @Published private(set) var phase: Phase = .idle
 
     private var running: (id: UUID, task: Task<String, Error>)?
-    private var waiters: Set<UUID> = []
+    // Keyed by download, so callers still unwinding a cancelled one never hold up its replacement.
+    private var waiters: [UUID: Set<UUID>] = [:]
 
     init(binaryManager: CloudSQLProxyBinaryManager) {
         self.binaryManager = binaryManager
@@ -56,21 +57,21 @@ final class CloudSQLProxyDownload: ObservableObject {
         reportStage?(.custom(String(localized: "Downloading Cloud SQL Auth Proxy")))
         defer { reportStage?(.resolvingTunnel) }
 
-        let task = running?.task ?? startDownload()
+        let download = running ?? startDownload()
         let token = UUID()
-        waiters.insert(token)
-        defer { waiters.remove(token) }
+        waiters[download.id, default: []].insert(token)
+        defer { leave(token, download: download.id) }
 
         return try await withTaskCancellationHandler {
-            let path = try await task.value
+            let path = try await download.task.value
             try Task.checkCancellation()
             return path
         } onCancel: {
-            Task { @MainActor in self.abandon(token, of: task) }
+            Task { @MainActor in self.abandon(token, download: download.id) }
         }
     }
 
-    private func startDownload() -> Task<String, Error> {
+    private func startDownload() -> (id: UUID, task: Task<String, Error>) {
         let id = UUID()
         let binaryManager = binaryManager
         phase = .downloading(fraction: nil)
@@ -91,7 +92,7 @@ final class CloudSQLProxyDownload: ObservableObject {
             }
         }
         running = (id, task)
-        return task
+        return (id, task)
     }
 
     private func report(_ fraction: Double, for id: UUID) {
@@ -105,9 +106,14 @@ final class CloudSQLProxyDownload: ObservableObject {
         self.phase = phase
     }
 
-    private func abandon(_ token: UUID, of task: Task<String, Error>) {
-        waiters.remove(token)
-        guard waiters.isEmpty, let running, running.task == task else { return }
+    private func leave(_ token: UUID, download id: UUID) {
+        waiters[id]?.remove(token)
+        if waiters[id]?.isEmpty == true { waiters[id] = nil }
+    }
+
+    private func abandon(_ token: UUID, download id: UUID) {
+        leave(token, download: id)
+        guard waiters[id] == nil, running?.id == id else { return }
         cancel()
     }
 }

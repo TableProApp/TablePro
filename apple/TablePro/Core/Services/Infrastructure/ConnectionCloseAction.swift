@@ -74,6 +74,7 @@ internal enum ConnectionCloseAction {
         // Shown, then asked; a close that closes nothing puts the user back where they were.
         let wasShowing = WindowManager.shared.shownConnection(besides: connectionId)
         let work = registry.items(in: .connection(connectionId))
+        var hasAnsweredForWork = false
         // With nothing unsaved, one alert names the work and any open transaction.
         if !work.isEmpty, !hasUnsavedWork(), let prompt = RunningWorkPrompt.make(
             action: .close,
@@ -84,9 +85,9 @@ internal enum ConnectionCloseAction {
                 WindowManager.shared.show(wasShowing, inWindowHosting: connectionId)
                 return
             }
-            registry.cancel(work)
-            WindowManager.shared.closeWindow(for: connectionId)
-            return
+            hasAnsweredForWork = true
+            // Another window on the connection stayed editable while the alert was up.
+            decision = Self.decision(hasSession: coordinator != nil, holdsTransaction: false, hasUnsavedWork: hasUnsavedWork())
         }
         if decision == .confirmEndingTransaction, let coordinator, let message = transactionMessage(for: holding) {
             let confirmed = await AlertHelper.confirmDestructive(
@@ -103,7 +104,7 @@ internal enum ConnectionCloseAction {
         }
         guard decision == .confirmUnsavedWork else {
             // The edits were saved meanwhile, so the work still needs its own answer.
-            if let prompt = RunningWorkPrompt.make(action: .close, work: work) {
+            if !hasAnsweredForWork, let prompt = RunningWorkPrompt.make(action: .close, work: work) {
                 guard await RunningWorkApproval.confirm(prompt, window: reveal(connectionId: connectionId)) else {
                     WindowManager.shared.show(wasShowing, inWindowHosting: connectionId)
                     return
@@ -118,7 +119,11 @@ internal enum ConnectionCloseAction {
         let presentingWindow = reveal(connectionId: connectionId)
         let targets = coordinators.isEmpty ? [coordinator].compactMap { $0 } : coordinators
         switch await AlertHelper.confirmSaveChanges(
-            message: RunningWorkPrompt.saveMessage(unsavedWorkMessage(across: targets), action: .close, alsoStopping: work),
+            message: RunningWorkPrompt.saveMessage(
+                unsavedWorkMessage(across: targets),
+                action: .close,
+                alsoStopping: hasAnsweredForWork ? [] : work
+            ),
             window: presentingWindow
         ) {
         case .save:

@@ -1123,10 +1123,14 @@ private final class ExportRun {
         isStopRequested = false
     }
 
-    // The task cancel covers the wait for the lease, before any service exists to ask.
+    // Before a service exists the task is cancelled to end the lease wait. After, only the service
+    // stops: a cancelled consumer can end a row stream normally and let a format save a cut file.
     func stop() {
         isStopRequested = true
-        service?.cancelExport()
-        task?.cancel()
+        guard let service else {
+            task?.cancel()
+            return
+        }
+        service.cancelExport()
     }
 }

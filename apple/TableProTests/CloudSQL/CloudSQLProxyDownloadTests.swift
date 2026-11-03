@@ -75,6 +75,41 @@ struct CloudSQLProxyDownloadTests {
         #expect(record.starts == 1)
     }
 
+    @Test("A replacement download stops with its own callers while a cancelled one still unwinds")
+    func replacementStopsWithItsOwnCallers() async throws {
+        let dir = try TestProxyDownload.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let gate = AsyncGate()
+        let record = DownloadRecord()
+        let replacement = DownloadRecord()
+        let download = makeDownload(dir: dir) { _, _ in
+            record.started()
+            guard record.starts > 1 else {
+                await gate.wait()
+                throw CancellationError()
+            }
+            do {
+                try await Task.sleep(for: .seconds(60))
+            } catch {
+                replacement.sawCancel()
+                throw error
+            }
+            throw CancellationError()
+        }
+
+        let first = Task { try await download.ensureBinary() }
+        try await waitUntil { record.starts == 1 }
+        download.cancel()
+        let second = Task { try await download.ensureBinary() }
+        try await waitUntil { record.starts == 2 }
+        second.cancel()
+
+        try await waitUntil { replacement.wasCancelled }
+        await gate.open()
+        _ = try? await first.value
+        _ = try? await second.value
+    }
+
     @Test("Cancel stops the download itself and leaves no file and no binary")
     func cancelStopsTheDownload() async throws {
         let dir = try TestProxyDownload.temporaryDirectory()

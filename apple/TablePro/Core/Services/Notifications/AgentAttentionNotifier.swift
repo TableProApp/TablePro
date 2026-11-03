@@ -79,14 +79,13 @@ internal final class AgentAttentionNotifier {
 
     @discardableResult
     internal func statusChanged(_ session: AgentSession, to status: AgentSessionStatus) -> Task<Void, Never>? {
-        guard let body = Self.body(for: status, session: session) else {
+        guard Self.body(for: status, session: session) != nil else {
             withdraw(sessionId: session.id)
             return nil
         }
         guard settings().isEnabled, !isOnScreen(session) else { return nil }
-        let request = request(for: session, body: body)
         return Task { [weak self] in
-            await self?.deliver(request, for: session)
+            await self?.deliver(for: session)
         }
     }
 
@@ -124,10 +123,11 @@ internal final class AgentAttentionNotifier {
         return UNNotificationRequest(identifier: Self.identifier(for: session.id), content: content, trigger: nil)
     }
 
-    private func deliver(_ request: UNNotificationRequest, for session: AgentSession) async {
+    private func deliver(for session: AgentSession) async {
         guard await authorization.ensureAuthorized() else { return }
-        // The permission prompt can take minutes; the session may be on screen or answered by now.
-        guard Self.body(for: session.status, session: session) != nil, !isOnScreen(session) else { return }
+        // The permission prompt can take minutes; the text comes from the state the session is in now.
+        guard let body = Self.body(for: session.status, session: session), !isOnScreen(session) else { return }
+        let request = request(for: session, body: body)
         do {
             try await presenter.post(request)
             delivered.insert(request.identifier)

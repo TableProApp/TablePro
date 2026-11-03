@@ -127,4 +127,17 @@ struct AgentAttentionNotifierTests {
 
         #expect(presenter.posted.isEmpty)
     }
+
+    @Test("A session that fails while permission is asked is announced as failed, not waiting")
+    func deliveryReadsTheCurrentState() async {
+        let session = makeSession()
+        session.mark(.waitingOnYou)
+        let notifier = makeNotifier()
+
+        let delivery = notifier.statusChanged(session, to: .waitingOnYou)
+        session.mark(.failed)
+        await delivery?.value
+
+        #expect(presenter.posted.first?.content.body.hasPrefix("The agent's reply failed") == true)
+    }
 }
