@@ -156,16 +156,8 @@ public sealed partial class HomeView : UserControl
         Settle(2);
     }
 
-    // The node holds the state a row's container is given each time the tree prepares it.
-    private void Expand(TreeViewItem row)
-    {
-        if (ConnectionTree.NodeFromContainer(row) is { } node)
-        {
-            node.IsExpanded = true;
-        }
-
-        row.IsExpanded = true;
-    }
+    // Through the container: setting the node of a row the tree had not prepared yet left its section folded.
+    private static void Expand(TreeViewItem row) => row.IsExpanded = true;
 
     private LibraryItem ToItem(LibraryNode node, bool searching)
     {
