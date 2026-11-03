@@ -608,7 +608,7 @@ final class SidebarViewModel: ObservableObject {
             ),
             layout: sharedState.sidebarLayout
         )
-        let isConnected = DatabaseManager.shared.session(for: connectionId)?.status == .connected
+        let isConnected = DatabaseManager.shared.session(for: connectionId)?.reportedStatus == .connected
         let schemaFilter = SidebarSchemaFilter()
         for database in databases {
             listingDemand.requestIfNeeded(
@@ -626,7 +626,7 @@ final class SidebarViewModel: ObservableObject {
     private func loadAttachedSchemaObjectsForSearch(service: DatabaseTreeMetadataService) {
         guard PluginManager.shared.listsAttachedDatabases(for: databaseType),
               let database = browsedDatabase,
-              DatabaseManager.shared.session(for: connectionId)?.status == .connected
+              DatabaseManager.shared.session(for: connectionId)?.reportedStatus == .connected
         else { return }
         let connectionId = connectionId
         for schema in SchemaService.shared.attachedSchemas(for: connectionId)

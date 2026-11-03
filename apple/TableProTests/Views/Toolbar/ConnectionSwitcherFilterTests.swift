@@ -83,7 +83,7 @@ struct ConnectionSwitcherSelectionTests {
     // MARK: - A new query
 
     private func entry(_ connection: DatabaseConnection, isActive: Bool = false) -> ConnectionSwitcherEntry {
-        ConnectionSwitcherEntry(id: connection.id, connection: connection, isActive: isActive, isConnected: isActive)
+        ConnectionSwitcherEntry(id: connection.id, connection: connection, isActive: isActive, status: isActive ? .connected : .notConnected)
     }
 
     @Test("A query selects the connection it names over the open one it matches only through a file path")
@@ -254,7 +254,7 @@ struct ConnectionSwitcherSectionsTests {
         let open = connection("acme-local", groupId: acme.id)
 
         let sections = ConnectionSwitcherSections.build(
-            active: [ConnectionSwitcherEntry(id: open.id, connection: open, isActive: true, isConnected: true)],
+            active: [ConnectionSwitcherEntry(id: open.id, connection: open, isActive: true, status: .connected)],
             saved: [connection("scratch")],
             groups: [acme],
             isFiltering: false
@@ -401,7 +401,7 @@ struct ConnectionSwitcherSectionsTests {
         let open = connection("acme-local", groupId: acme.id)
 
         let sections = ConnectionSwitcherSections.build(
-            active: [ConnectionSwitcherEntry(id: open.id, connection: open, isActive: true, isConnected: true)],
+            active: [ConnectionSwitcherEntry(id: open.id, connection: open, isActive: true, status: .connected)],
             saved: [],
             groups: [acme],
             isFiltering: false
@@ -419,7 +419,7 @@ struct ConnectionSwitcherSectionsTests {
     }
 
     private func openEntry(_ connection: DatabaseConnection) -> ConnectionSwitcherEntry {
-        ConnectionSwitcherEntry(id: connection.id, connection: connection, isActive: false, isConnected: true)
+        ConnectionSwitcherEntry(id: connection.id, connection: connection, isActive: false, status: .connected)
     }
 
     @Test("A move leaves its source out of the open connections")
@@ -523,7 +523,7 @@ struct ConnectionSwitcherSectionsTests {
         let saved = [connection("acme-prod", groupId: acme.id), connection("scratch")]
 
         let sections = ConnectionSwitcherSections.build(
-            active: [ConnectionSwitcherEntry(id: open.id, connection: open, isActive: true, isConnected: true)],
+            active: [ConnectionSwitcherEntry(id: open.id, connection: open, isActive: true, status: .connected)],
             saved: saved,
             groups: [acme],
             isFiltering: false

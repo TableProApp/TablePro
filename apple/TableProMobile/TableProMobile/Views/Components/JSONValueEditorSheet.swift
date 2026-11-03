@@ -6,6 +6,7 @@ struct JSONValueEditorSheet: View {
     let onDone: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(ConnectionCoordinator.self) private var coordinator: ConnectionCoordinator?
     @State private var draft: String
     @State private var caretRequest: JSONTextView.CaretRequest?
     private let original: String
@@ -43,6 +44,7 @@ struct JSONValueEditorSheet: View {
                             .disabled(draft.isEmpty || failure != nil)
                     }
                 }
+                .connectionStatusToolbar(for: coordinator)
         }
         .presentationSizing(.page)
         .interactiveDismissDisabled(hasChanges)

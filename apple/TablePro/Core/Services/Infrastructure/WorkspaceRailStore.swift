@@ -5,33 +5,40 @@
 
 import Combine
 import Foundation
+import TableProConnectionLibrary
 
 internal struct WorkspaceRailEntry: Identifiable, Equatable {
     internal let workspace: WorkspaceID
     internal let connection: DatabaseConnection
-    internal let status: ConnectionStatus
+    internal let status: ConnectionDisplayStatus
     /// What the container names on this engine, so the row can say "schema public" rather
     /// than calling every container a database.
     internal let containerTarget: ContainerSwitchTarget?
     /// A session connection behind this entry holds a transaction, so it shows from other entries.
-    internal let holdsTransaction: Bool
+    internal let transaction: SessionTransactionTracker.State?
+    // A session entry exists, so Disconnect has something to end.
+    internal let holdsSession: Bool
 
     internal init(
         workspace: WorkspaceID,
         connection: DatabaseConnection,
-        status: ConnectionStatus,
+        status: ConnectionDisplayStatus,
         containerTarget: ContainerSwitchTarget? = .database,
-        holdsTransaction: Bool = false
+        transaction: SessionTransactionTracker.State? = nil,
+        holdsSession: Bool = true
     ) {
         self.workspace = workspace
         self.connection = connection
         self.status = status
         self.containerTarget = containerTarget
-        self.holdsTransaction = holdsTransaction
+        self.transaction = transaction
+        self.holdsSession = holdsSession
     }
 
     internal var id: WorkspaceID { workspace }
     internal var container: String { workspace.container }
+    internal var holdsTransaction: Bool { transaction != nil }
+    internal var presentation: ConnectionStatusPresentation { ConnectionStatusPresentation(status) }
 }
 
 @MainActor
@@ -51,7 +58,8 @@ internal enum WorkspaceRailStore {
         let openIds = Set(hosted.map(\.connectionId))
         guard !openIds.isEmpty else { return [] }
 
-        let sessions = DatabaseManager.shared.activeSessions
+        let manager = DatabaseManager.shared
+        let sessions = manager.activeSessions
         let sessionless = openIds.filter { sessions[$0] == nil }
         /// Every window hosting a connection, not one of them: a tab torn off into its own window
         /// still holds its container, and keeping one workspace per connection dropped the other
@@ -61,6 +69,8 @@ internal enum WorkspaceRailStore {
         return resolveEntries(
             openConnectionIds: openIds,
             sessions: sessions,
+            phases: workspacesById.mapValues { $0.map(\.phase) },
+            endReasons: openIds.reduce(into: [:]) { reasons, id in reasons[id] = manager.disconnectReason(for: id) },
             hostedConnections: workspacesById.compactMapValues { $0.lazy.compactMap(\.connection).first },
             storedConnections: Self.storedConnections(for: Array(sessionless)),
             containerTarget: { PluginManager.shared.containerSwitchTarget(for: $0) },
@@ -73,8 +83,8 @@ internal enum WorkspaceRailStore {
             visibleContainers: { Set(coordinatorsById[$0]?.compactMap(\.tabManager.visibleContainer) ?? []) },
             openedAt: workspacesById.compactMapValues { $0.map(\.openedAt).min() },
             storedOrder: WorkspaceRailOrderStore.shared.order,
-            holdsTransaction: { workspace in
-                DatabaseManager.shared.sessionTransactions.holdsTransaction(
+            transaction: { workspace in
+                manager.sessionTransactions.transactionState(
                     connectionId: workspace.connectionId,
                     container: workspace.container
                 )
@@ -86,11 +96,13 @@ internal enum WorkspaceRailStore {
     /// the ones its tabs hold, and the one it is browsing. A window can outlive its session: it
     /// exists before the connection is established, and it stays open after a session is torn down.
     /// Such an entry falls back to the record its own workspace carries, and to the saved connection
-    /// after that, and reports `.disconnected`, which is what "no session" means, rather than
-    /// claiming a connection attempt that may not be running.
+    /// after that. Its status comes from the hosting workspaces' phases, which tell a failed connect
+    /// from a lost session from one never dialed.
     internal static func resolveEntries(
         openConnectionIds: Set<UUID>,
         sessions: [UUID: ConnectionSession],
+        phases: [UUID: [ConnectionWindowPhase]] = [:],
+        endReasons: [UUID: ConnectionEndReason] = [:],
         hostedConnections: [UUID: DatabaseConnection] = [:],
         storedConnections: [UUID: DatabaseConnection],
         containerTarget: (DatabaseType) -> ContainerSwitchTarget?,
@@ -100,10 +112,11 @@ internal enum WorkspaceRailStore {
         visibleContainers: (UUID) -> Set<String> = { _ in [] },
         openedAt: [UUID: Date] = [:],
         storedOrder: [WorkspaceID],
-        holdsTransaction: (WorkspaceID) -> Bool = { _ in false }
+        transaction: (WorkspaceID) -> SessionTransactionTracker.State? = { _ in nil }
     ) -> [WorkspaceRailEntry] {
         var connections: [UUID: DatabaseConnection] = [:]
-        var statuses: [UUID: ConnectionStatus] = [:]
+        var statuses: [UUID: ConnectionDisplayStatus] = [:]
+        var sessionIds: Set<UUID> = []
         var targets: [UUID: ContainerSwitchTarget] = [:]
         var workspaces: Set<WorkspaceID> = []
 
@@ -116,7 +129,12 @@ internal enum WorkspaceRailStore {
             ) else { continue }
 
             connections[connectionId] = resolved.connection
-            statuses[connectionId] = resolved.status
+            if resolved.session != nil { sessionIds.insert(connectionId) }
+            statuses[connectionId] = ConnectionStatusResolver.status(
+                phases: phases[connectionId] ?? [],
+                session: resolved.session,
+                endReason: endReasons[connectionId]
+            )
 
             let target = containerTarget(resolved.connection.type)
             targets[connectionId] = target
@@ -149,7 +167,8 @@ internal enum WorkspaceRailStore {
                 connection: connection,
                 status: status,
                 containerTarget: targets[workspace.connectionId],
-                holdsTransaction: holdsTransaction(workspace)
+                transaction: transaction(workspace),
+                holdsSession: sessionIds.contains(workspace.connectionId)
             )
         }
     }
@@ -193,13 +212,17 @@ internal enum WorkspaceRailStore {
         .eraseToAnyPublisher()
     }
 
+    // Separate from `changes`: a phase moves a status, never membership, so it repaints rows without a reload.
+    internal static var statusChanges: AnyPublisher<UUID, Never> {
+        AppEvents.shared.connectionPhaseChanged.eraseToAnyPublisher()
+    }
+
     internal static func applyVisibleOrder(_ ids: [WorkspaceID]) {
         WorkspaceRailOrderStore.shared.applyVisibleOrder(ids)
     }
 
     private struct ResolvedConnection {
         let connection: DatabaseConnection
-        let status: ConnectionStatus
         let session: ConnectionSession?
     }
 
@@ -214,14 +237,10 @@ internal enum WorkspaceRailStore {
         storedConnections: [UUID: DatabaseConnection]
     ) -> ResolvedConnection? {
         if let session = sessions[connectionId] {
-            return ResolvedConnection(
-                connection: session.connection,
-                status: session.reportedStatus,
-                session: session
-            )
+            return ResolvedConnection(connection: session.connection, session: session)
         }
         guard let record = hostedConnections[connectionId] ?? storedConnections[connectionId] else { return nil }
-        return ResolvedConnection(connection: record, status: .disconnected, session: nil)
+        return ResolvedConnection(connection: record, session: nil)
     }
 
     /// An engine that switches neither database nor schema names no container, and a

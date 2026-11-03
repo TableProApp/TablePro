@@ -48,6 +48,8 @@ final class AppEvents {
     // MARK: - Connections
 
     let connectionStatusChanged = PassthroughSubject<ConnectionStatusChange, Never>()
+    /// A workspace's window phase changed. Carries the connection id; the phase lives on the workspace.
+    let connectionPhaseChanged = PassthroughSubject<UUID, Never>()
 
     // A driver's Vault lease can no longer be renewed, so the driver has to sign in again.
     let credentialLeaseEnding = PassthroughSubject<CredentialLeaseEnding, Never>()

@@ -72,7 +72,7 @@ internal struct FavoritesTabView: View {
         FavoriteTableCatalogReader(
             connectionId: connectionId,
             grouping: groupingStrategy,
-            isConnected: session?.isConnected ?? false,
+            isConnected: session?.reportedStatus.isConnected ?? false,
             schemaService: schemaService,
             treeService: treeMetadata,
             keptSchemas: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: activeDatabase ?? "")

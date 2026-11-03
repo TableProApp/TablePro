@@ -8,9 +8,6 @@ import Foundation
 // MARK: - Cloudflare Tunnel Helper
 
 extension DatabaseManager {
-    /// Build an effective connection for a Cloudflare-tunneled database connection.
-    /// Starts the cloudflared process and returns a connection pointing at the
-    /// local loopback port the tunnel listens on.
     func buildCloudflareEffectiveConnection(
         for connection: DatabaseConnection,
         deadline: ConnectionDeadline
@@ -40,13 +37,11 @@ extension DatabaseManager {
 
     // MARK: - Cloudflare Tunnel Recovery
 
-    /// Handle Cloudflare tunnel death by reconnecting with exponential backoff.
-    /// Guarded by `recoveringConnectionIds` to prevent duplicate concurrent recovery.
     func handleCloudflareTunnelDied(connectionId: UUID) async {
-        await recoverDeadTunnel(
+        recoverDeadTunnel(
             connectionId: connectionId,
             kind: "Cloudflare",
-            disconnectedMessage: String(localized: "Cloudflare tunnel disconnected. Click to reconnect.")
+            disconnectedMessage: String(localized: "Cloudflare tunnel disconnected.")
         )
     }
 }
