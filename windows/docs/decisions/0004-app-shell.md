@@ -121,7 +121,7 @@ Single-project MSIX for x64 and Arm64, minimum 10.0.17763, identity `TablePro` w
 
 ## What the runner showed
 
-Facts the CI runs on `windows-2025` and `windows-11-arm` established, which the code relies on. Run 41550202718 passed 185 .NET tests and 14 UI tests on each, and 41538980893 the FFI crate's tests. With the sort of held rows and column sizing, run 41561946564 passed 192 .NET tests, 14 UI tests and the FFI crate's tests on each.
+Facts the CI runs on `windows-2025` and `windows-11-arm` established, which the code relies on. Run 41550202718 passed 185 .NET tests and 14 UI tests on each, and 41538980893 the FFI crate's tests. With the sort of held rows and column sizing, run 41561946564 passed 192 .NET tests, 14 UI tests and the FFI crate's tests on each. With the shell's second pass on top, run 41565047628 built the core and passed the FFI crate's tests on each and on macOS, and run 41575653721 passed 214 .NET tests and the 32 UI tests four times over on each, with the committed bindings matching the library.
 
 - TabView's default style sets `VerticalAlignment` to `Top`, so a tab's content gets its smallest height. The workspace sets it to `Stretch`.
 - A `TreeViewItem.IsExpanded` binding loses its first value when the row joins the tree, in ItemsSource mode. Rows open through their container instead: `ContainerFromItem` after a layout pass, or the row's `Loaded`.
