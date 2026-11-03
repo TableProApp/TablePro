@@ -61,6 +61,9 @@
     "MongoDBDriver": {
       "name": "MongoDB Driver"
     },
+    "HydraDBDriverPlugin": {
+      "name": "HydraDB Driver"
+    },
     "Neo4jDriverPlugin": {
       "name": "Neo4j Driver"
     },
