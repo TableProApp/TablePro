@@ -158,8 +158,7 @@ public sealed partial class ShellTests
         app.Find("SaveSecretBox").AsCheckBox().IsChecked = true;
         app.PressDialogButton();
 
-        // The password got past the keyring to the closed port. A password that did not log in is not kept, so
-        // Retry asks again, and closing the dialog takes the connection off the rail.
+        // A password that did not log in is not kept, so Retry asks again.
         app.Find("FailureBar");
         Assert.False(Credentials.Exists(target));
         app.Find("RetryButton").AsButton().Invoke();
@@ -276,7 +275,6 @@ public sealed partial class ShellTests
         app.PressDialogButton();
         app.FindByName("Work", tree);
 
-        // F2 renames the row in place.
         app.Click(app.FindByNamePrefix("Chinook (Sample),", tree));
         app.Chord(() => app.TryFind("RenameBox") is not null, VirtualKeyShort.F2);
         app.Find("RenameBox").AsTextBox().Text = "Music";
@@ -284,7 +282,6 @@ public sealed partial class ShellTests
         app.Chord(() => app.TryFind("RenameBox") is null, VirtualKeyShort.RETURN);
         var music = app.FindByNamePrefix("Music,", tree);
 
-        // A tag made from the row's menu goes on the row.
         app.Front();
         music.RightClick();
         var tags = app.FindMenuItem("Tags");
@@ -299,7 +296,6 @@ public sealed partial class ShellTests
         Assert.True(tagged, app.FindByNamePrefix("Music,", tree).Name);
         app.Screenshot("26-home-tagged");
 
-        // A row dropped on a group moves into it, through the core.
         var group = GroupId(app.DataFolder);
         app.Drag(
             () => app.FindByNamePrefix("Music,", tree),
@@ -307,19 +303,28 @@ public sealed partial class ShellTests
             () => Regex.IsMatch(File.ReadAllText(AppSession.LibraryFile(app.DataFolder)), $"\"group_id\"\\s*:\\s*\"{group}\""));
         app.FindByNamePrefix("Music,", tree);
         // The group the row went into opens, so the row shows there as well as under Recent.
-        var shown = Retry.WhileFalse(
-            () => tree.FindAllDescendants(condition => condition.ByName("Music, SQLite", PropertyConditionFlags.MatchSubstring)).Length == 2,
-            AppSession.Wait,
-            throwOnTimeout: false).Success;
+        AutomationElement[] Music() =>
+            tree.FindAllDescendants(condition => condition.ByName("Music, SQLite", PropertyConditionFlags.MatchSubstring));
+        var shown = Retry.WhileFalse(() => Music().Length == 2, AppSession.Wait, throwOnTimeout: false).Success;
         Assert.True(shown);
         app.Screenshot("27-home-dropped");
 
-        // Selection mode acts on every checked connection.
+        // A check on either row is a check on the connection, so both rows follow it.
+        bool AllChecked(bool expected) =>
+            Music().All(row => row.Patterns.SelectionItem.Pattern.IsSelected.Value == expected);
         app.Find("SelectButton").AsToggleButton().Toggle();
         Assert.False(app.Find("SelectionFavoriteButton").IsEnabled);
-        app.Check(app.FindByNamePrefix("Music,", tree));
-        Retry.WhileFalse(() => app.Find("SelectionFavoriteButton").IsEnabled, AppSession.Wait, throwOnTimeout: false);
+        app.Check(Music()[0]);
+        Assert.True(Retry.WhileFalse(() => AllChecked(true), AppSession.Wait, throwOnTimeout: false).Success);
+        Assert.True(app.Find("SelectionFavoriteButton").IsEnabled);
         app.Screenshot("28-home-selecting");
+
+        app.Check(Music()[1], isChecked: false);
+        Assert.True(Retry.WhileFalse(() => AllChecked(false), AppSession.Wait, throwOnTimeout: false).Success);
+        Assert.False(app.Find("SelectionFavoriteButton").IsEnabled);
+
+        app.Check(Music()[1]);
+        Assert.True(Retry.WhileFalse(() => AllChecked(true), AppSession.Wait, throwOnTimeout: false).Success);
         app.Find("SelectionFavoriteButton").AsButton().Invoke();
         app.FindByName("Favorites", tree);
     }

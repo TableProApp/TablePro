@@ -10,7 +10,7 @@ using FlaUI.UIA3;
 
 namespace TablePro.App.UITests;
 
-// One launch of the app over a data folder of its own. The folder outlives the session when a test relaunches.
+// The data folder outlives the session, so a test can relaunch the app over it.
 internal sealed class AppSession : IDisposable
 {
     public static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
@@ -60,26 +60,23 @@ internal sealed class AppSession : IDisposable
     public static AppSession Relaunch(string dataFolder, string theme, bool maximize = true) =>
         new(dataFolder, theme, maximize);
 
-    // The core's connections.json under the data folder.
     public static string LibraryFile(string folder) =>
         Directory.EnumerateFiles(folder, "connections.json", SearchOption.AllDirectories).First();
 
-    // A drag the app sees as a person's: press, move in steps past the drag threshold, then release over the target.
+    // Steps past the drag threshold, as a person's drag does.
     public void Drag(AutomationElement from, AutomationElement to)
     {
         Front();
         Drag(from.GetClickablePoint(), to.GetClickablePoint());
     }
 
-    // The Arm64 runner's own windows take keys and drags now and then, as they take clicks, so each goes again until
-    // the app shows it landed.
+    // The Arm64 runner's own windows take keys and drags now and then, so each goes again until it lands.
     public void Drag(Func<AutomationElement> from, Func<AutomationElement> to, Func<bool> landed) =>
         Again(() => Drag(from(), to()), landed, "The drag");
 
     public void Chord(Func<bool> landed, params VirtualKeyShort[] keys) =>
         Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys));
 
-    // The editor holds exactly text afterwards, whatever it held before.
     public void TypeInto(AutomationElement editor, string text) =>
         Again(
             () =>
@@ -106,8 +103,7 @@ internal sealed class AppSession : IDisposable
         throw Failure($"{what} did nothing.", screen: true);
     }
 
-    // FlaUI moves the pointer with SetCursorPos, which WinUI does not see as a pointer moving with the button down,
-    // so a drag goes through SendInput as a mouse does.
+    // WinUI does not see FlaUI's SetCursorPos as a pointer moving with the button down, so this uses SendInput.
     public static void Drag(System.Drawing.Point start, System.Drawing.Point end)
     {
         PointerInput.Move(start);
@@ -127,26 +123,38 @@ internal sealed class AppSession : IDisposable
         Thread.Sleep(300);
     }
 
-    // A tree row's check box in selection mode, or its selection where the row lists no box of its own.
-    public void Check(AutomationElement row)
+    // TreeViewItem's check box is raw to UI Automation, so a row in selection mode checks through its selection.
+    public void Check(AutomationElement row, bool isChecked = true)
     {
         Front();
         if (row.FindFirstDescendant(condition => condition.ByControlType(ControlType.CheckBox)) is { } box)
         {
-            box.Click();
+            if (box.AsCheckBox().IsChecked != isChecked)
+            {
+                box.Click();
+            }
+
             return;
         }
 
         if (row.Patterns.SelectionItem.PatternOrDefault is { } selection)
         {
-            selection.AddToSelection();
+            if (isChecked)
+            {
+                selection.AddToSelection();
+            }
+            else
+            {
+                selection.RemoveFromSelection();
+            }
+
             return;
         }
 
         row.Click();
     }
 
-    // The open ContentDialog's primary button, which its template names PrimaryButton.
+    // The ContentDialog template names its primary button PrimaryButton.
     public void PressDialogButton()
     {
         var button = Retry.WhileNull(
@@ -236,7 +244,7 @@ internal sealed class AppSession : IDisposable
 
     public bool HasWindow(string title) => OpenWindow(title) is not null;
 
-    // A cell's name is its text. Waits until done accepts it, as rows from a new run replace the old ones.
+    // Waits, since rows from a new run replace the old ones.
     public string WaitForCell(AutomationElement grid, int row, int column, Func<string, bool> done)
     {
         var text = string.Empty;
@@ -311,7 +319,6 @@ internal sealed class AppSession : IDisposable
         ?? Window.FindFirstChild(condition => condition.ByControlType(ControlType.Window).And(condition.ByName(title)))
             ?.AsWindow();
 
-    // A failure says what the screen showed and what the app logged before it ended.
     private InvalidOperationException Failure(string message, bool screen = false)
     {
         Screenshot("failure-" + DateTime.UtcNow.ToString("HHmmssfff", System.Globalization.CultureInfo.InvariantCulture), screen: screen);

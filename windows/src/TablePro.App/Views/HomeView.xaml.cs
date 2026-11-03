@@ -12,20 +12,20 @@ using Windows.System;
 
 namespace TablePro.App.Views;
 
-// The Connections page: Get started while the library is empty, then the library as a tree with Favorites, Recent
-// and the nested groups. Every change writes through the core and rebuilds from a new snapshot.
+// Every change writes through the core and rebuilds the tree from a new snapshot.
 public sealed partial class HomeView : UserControl
 {
-    // The colours a new tag takes in turn.
     private static readonly string[] TagColors = ["blue", "green", "orange", "purple", "teal", "red", "pink", "yellow", "slate"];
 
     private readonly Workbench _workbench;
     private readonly IShell _shell;
     private readonly HashSet<string> _collapsed = [];
+    private readonly LibrarySelection _selection = new();
     private LibrarySnapshot _snapshot = new([], [], [], []);
     private int _reload;
     private int _rebuild;
     private bool _rebuilding;
+    private bool _checking;
     private List<LibraryNode>? _dragging;
     private LibraryItem? _renaming;
     private string? _reveal;
@@ -106,22 +106,26 @@ public sealed partial class HomeView : UserControl
 
         var query = LibrarySearch.Text;
         var searching = !string.IsNullOrWhiteSpace(query);
-        // Clearing the rows reports them collapsed, which is not the user collapsing them.
+        // Clearing the rows reports them collapsed and unchecked, which is not the user's doing.
         _rebuilding = true;
+        _checking = true;
         var rebuild = ++_rebuild;
         _renaming = null;
         Items.Clear();
-        foreach (var node in LibraryTree.Build(_snapshot, query, _workbench.EngineName))
+        var roots = LibraryTree.Build(_snapshot, query, _workbench.EngineName);
+        foreach (var node in roots)
         {
             Items.Add(ToItem(node, searching));
         }
 
+        _checking = false;
+        _selection.Retain(roots);
         ApplyExpansion(Items);
+        SyncChecks();
         UpdateSelectionCommands();
         NoResultsText.Visibility = searching && Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        // The tree sets each new row's state in a pass of its own after this one, which can fold a row opened above
-        // (seen on the Arm64 runner). The rows open again after that pass, and a fold before it is not the user's.
+        // The tree sets each new row's state in a later pass, which can fold a row opened here (seen on Arm64).
         var reveal = _reveal;
         _reveal = null;
         void Settle(int passes)
@@ -134,6 +138,7 @@ public sealed partial class HomeView : UserControl
                 }
 
                 ApplyExpansion(Items);
+                SyncChecks();
                 if (reveal is not null
                     && Flatten(Items).FirstOrDefault(item => item.Node.Key == reveal) is { } group
                     && ConnectionTree.ContainerFromItem(group) is TreeViewItem row)
@@ -227,9 +232,7 @@ public sealed partial class HomeView : UserControl
         }
     }
 
-    // A bound TreeViewItem.IsExpanded is overwritten when the row joins the tree, so a row opens once it has loaded.
-    // The rows that are already in the tree open here, a level at a time, since a row's children get containers only
-    // once it is open and laid out; rows that load later open in OnLibraryRowLoaded.
+    // A bound IsExpanded is overwritten as the row joins the tree, and a row's children get containers only once open.
     private void ApplyExpansion(IEnumerable<LibraryItem> items)
     {
         ConnectionTree.UpdateLayout();
@@ -251,10 +254,20 @@ public sealed partial class HomeView : UserControl
 
     private void OnLibraryRowLoaded(object sender, RoutedEventArgs e)
     {
-        if (sender is TreeViewItem row
-            && ConnectionTree.ItemFromContainer(row) is LibraryItem { StartsExpanded: true, Children.Count: > 0 })
+        if (sender is not TreeViewItem row || ConnectionTree.ItemFromContainer(row) is not LibraryItem item)
+        {
+            return;
+        }
+
+        if (item is { StartsExpanded: true, Children.Count: > 0 })
         {
             Expand(row);
+        }
+
+        // A row the tree had no node for when its twin was checked gets its check once it exists.
+        if (Selecting && _selection.IsChecked(item.Node) && ConnectionTree.NodeFromContainer(row) is { } node)
+        {
+            Check(node, true);
         }
     }
 
@@ -317,8 +330,7 @@ public sealed partial class HomeView : UserControl
         var menu = new MenuFlyout();
         if (item.Node.Connection is { } connection)
         {
-            // In selection mode a checked row speaks for every checked connection.
-            List<SavedConnection> targets = Selecting && ConnectionTree.SelectedItems.Contains(item)
+            List<SavedConnection> targets = Selecting && _selection.IsChecked(item.Node)
                 ? SelectedConnections()
                 : [connection];
             AddItem(menu, "MenuConnect", Symbol.Play, () => Connect(targets));
@@ -390,7 +402,6 @@ public sealed partial class HomeView : UserControl
         }
     }
 
-    // Each tag is checked when every connection asked about carries it.
     private MenuFlyoutSubItem TagMenu(IReadOnlyList<SavedConnection> targets)
     {
         var menu = new MenuFlyoutSubItem { Text = Strings.Get("MenuTags"), Icon = new SymbolIcon(Symbol.Tag) };
@@ -424,7 +435,6 @@ public sealed partial class HomeView : UserControl
         return icon;
     }
 
-    // The page's Tags button: rename, recolour or delete each tag, or make one.
     private void OnTagsMenuOpening(object sender, object e)
     {
         TagsMenu.Items.Clear();
@@ -577,7 +587,6 @@ public sealed partial class HomeView : UserControl
             Strings.Get("CreateButton"),
             name => _workbench.Library.CreateGroupAsync(name, parent));
 
-    // A new tag takes the next colour no tag holds yet, and goes on the connections it was made from.
     private Task NewTagAsync(List<Guid> connections)
     {
         var color = TagColors.FirstOrDefault(color => _snapshot.Tags.All(tag => tag.Color != color))
@@ -603,7 +612,6 @@ public sealed partial class HomeView : UserControl
             Strings.Get("RenameButton"),
             name => _workbench.Library.UpdateTagAsync(tag.Id, name, tag.Color));
 
-    // The dialog stays open with the reason under the field while the core refuses the name.
     private async Task AskNameAsync(string title, string name, string action, Func<string, Task> apply)
     {
         var box = new TextBox
@@ -647,7 +655,6 @@ public sealed partial class HomeView : UserControl
         }
     }
 
-    // Rename in place: the row's title turns into a box, Enter or leaving it saves, Escape keeps the old name.
     private void StartRename(LibraryItem item)
     {
         if (!item.CanRename || Selecting)
@@ -735,7 +742,6 @@ public sealed partial class HomeView : UserControl
         }
     }
 
-    // Selection mode puts a check box on each row, and the commands then act on every connection checked.
     private void OnSelectMode(object sender, RoutedEventArgs e) => SetSelecting(SelectButton.IsChecked == true);
 
     private void SetSelecting(bool selecting)
@@ -746,6 +752,7 @@ public sealed partial class HomeView : UserControl
             _renaming = null;
         }
 
+        _selection.Clear();
         SelectButton.IsChecked = selecting;
         ConnectionTree.SelectionMode = selecting ? TreeViewSelectionMode.Multiple : TreeViewSelectionMode.Single;
         foreach (var command in new UIElement[] { SelectionConnectButton, SelectionFavoriteButton, SelectionMoveButton, SelectionDeleteButton })
@@ -753,11 +760,69 @@ public sealed partial class HomeView : UserControl
             command.Visibility = selecting ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        SyncChecks();
         UpdateSelectionCommands();
     }
 
-    private void OnLibrarySelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args) =>
+    private void OnLibrarySelectionChanged(TreeView sender, TreeViewSelectionChangedEventArgs args)
+    {
+        if (Selecting && !_checking)
+        {
+            _selection.Apply(Rows(args.AddedItems), Rows(args.RemovedItems));
+            SyncChecks();
+        }
+
         UpdateSelectionCommands();
+    }
+
+    private static IEnumerable<LibraryNode> Rows(IEnumerable<object> items) =>
+        items.OfType<LibraryItem>().Select(item => item.Node);
+
+    // Through the tree's nodes, since a row scrolled away or under a folded section has no container to check.
+    private void SyncChecks()
+    {
+        if (!Selecting)
+        {
+            return;
+        }
+
+        foreach (var node in Nodes(ConnectionTree.RootNodes))
+        {
+            if (node.Content is LibraryItem { Node.Kind: LibraryNodeKind.Connection } item)
+            {
+                Check(node, _selection.IsChecked(item.Node));
+            }
+        }
+    }
+
+    private void Check(TreeViewNode node, bool isChecked)
+    {
+        var selected = ConnectionTree.SelectedNodes;
+        if (isChecked == selected.Contains(node))
+        {
+            return;
+        }
+
+        _checking = true;
+        try
+        {
+            if (isChecked)
+            {
+                selected.Add(node);
+            }
+            else
+            {
+                selected.Remove(node);
+            }
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private static IEnumerable<TreeViewNode> Nodes(IEnumerable<TreeViewNode> nodes) =>
+        nodes.SelectMany(node => Nodes(node.Children).Prepend(node));
 
     private void UpdateSelectionCommands()
     {
@@ -768,14 +833,7 @@ public sealed partial class HomeView : UserControl
         }
     }
 
-    // A checked group or section checks the rows inside it; each connection counts once.
-    private List<SavedConnection> SelectedConnections() =>
-        [
-            .. ConnectionTree.SelectedItems.OfType<LibraryItem>()
-                .Select(item => item.Node.Connection)
-                .OfType<SavedConnection>()
-                .DistinctBy(connection => connection.Id),
-        ];
+    private List<SavedConnection> SelectedConnections() => [.. _selection.Connections(_snapshot)];
 
     private void OnConnectSelected(object sender, RoutedEventArgs e) => Connect(SelectedConnections());
 
@@ -788,8 +846,6 @@ public sealed partial class HomeView : UserControl
     private async void OnDeleteSelected(object sender, RoutedEventArgs e) =>
         await DeleteConnectionsAsync(SelectedConnections()).ConfigureAwait(true);
 
-    // A row drags itself, or every checked connection when it is one of them; a section stays. The drop goes
-    // through the core.
     private void OnDragItemsStarting(TreeView sender, TreeViewDragItemsStartingEventArgs args)
     {
         if (args.Items.OfType<LibraryItem>().FirstOrDefault() is not { CanDrag: true } item || _renaming is not null)
@@ -802,6 +858,7 @@ public sealed partial class HomeView : UserControl
             ? ConnectionTree.SelectedItems.OfType<LibraryItem>()
                 .Where(selected => selected.CanDrag)
                 .Select(selected => selected.Node)
+                .DistinctBy(node => (node.Kind, node.Id))
                 .ToList()
             : [item.Node];
         _dragging = nodes;

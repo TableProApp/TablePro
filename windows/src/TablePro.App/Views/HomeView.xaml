@@ -96,8 +96,7 @@
             </Grid>
         </ScrollViewer>
 
-        <!-- The tree starts each drag; its own reorder stays off, and the rows take the drops, so each goes through the
-             core. -->
+        <!-- The rows take the drops instead of the tree's own reorder, so each move goes through the core. -->
         <TreeView
             x:Name="ConnectionTree"
             x:Uid="ConnectionTree"

@@ -196,6 +196,54 @@ public sealed class LibraryTreeTests
         Assert.Null(LibraryDrop.Resolve([staging], localRow, snapshot.Groups));
     }
 
+    [Fact]
+    public void CheckingAConnectionOnOneRowChecksItsRowInEverySection()
+    {
+        var (snapshot, local, _, _) = Library();
+        var rows = Flatten(LibraryTree.Build(snapshot, null, EngineName)).Where(node => node.Id == local.Id).ToList();
+        var selection = new LibrarySelection();
+
+        selection.Apply([rows[0]], []);
+
+        Assert.Equal([LibraryTree.RecentSection, LibraryTree.ConnectionsSection], rows.Select(row => row.Section));
+        Assert.All(rows, row => Assert.True(selection.IsChecked(row)));
+        Assert.Equal(local.Id, Assert.Single(selection.Connections(snapshot)).Id);
+
+        selection.Apply([], [rows[1]]);
+
+        Assert.All(rows, row => Assert.False(selection.IsChecked(row)));
+        Assert.Empty(selection.Connections(snapshot));
+    }
+
+    [Fact]
+    public void ACheckedSectionChecksItsConnectionsEverywhereAndEachCountsOnce()
+    {
+        var (snapshot, local, prod, stage) = Library();
+        var roots = LibraryTree.Build(snapshot, null, EngineName);
+        var all = roots.Single(root => root.Kind == LibraryNodeKind.AllConnections);
+        var selection = new LibrarySelection();
+
+        selection.Apply(Flatten([all]), []);
+
+        Assert.Equal(3, selection.Count);
+        Assert.Equal([local.Id, prod.Id, stage.Id], selection.Connections(snapshot).Select(connection => connection.Id));
+        Assert.True(selection.IsChecked(Flatten(roots).First(node => node.Section == LibraryTree.FavoritesSection && node.Id == prod.Id)));
+        Assert.False(selection.IsChecked(Flatten(roots).First(node => node.Id == Work)));
+    }
+
+    [Fact]
+    public void AConnectionARebuildNoLongerShowsIsNoLongerChecked()
+    {
+        var (snapshot, local, _, stage) = Library();
+        var selection = new LibrarySelection();
+        selection.Apply(Flatten(LibraryTree.Build(snapshot, null, EngineName)), []);
+
+        selection.Retain(LibraryTree.Build(snapshot, "staging", EngineName));
+
+        Assert.Equal(stage.Id, Assert.Single(selection.Connections(snapshot)).Id);
+        Assert.False(selection.IsChecked(Flatten(LibraryTree.Build(snapshot, null, EngineName)).First(node => node.Id == local.Id)));
+    }
+
     // The records hold lists, which compare by reference.
     private sealed class DropComparer : IEqualityComparer<LibraryDrop?>
     {
