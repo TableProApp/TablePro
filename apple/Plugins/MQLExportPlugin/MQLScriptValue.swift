@@ -236,7 +236,14 @@ struct MQLScriptReader {
         case "null": return .null
         case "new":
             guard identifier() == "Date", consume("("), let argument = value(), consume(")") else { return nil }
-            guard case .string = argument else { return nil }
+            switch argument {
+            case .string:
+                break
+            case .number(let text):
+                guard let milliseconds = Int64(text), milliseconds.magnitude <= 8_640_000_000_000_000 else { return nil }
+            default:
+                return nil
+            }
             return .constructor("new Date", [argument])
         case "Infinity", "NaN": return .nonFinite(name)
         default:

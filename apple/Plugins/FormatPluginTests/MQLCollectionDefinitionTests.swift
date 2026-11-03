@@ -301,5 +301,24 @@ struct MQLCollectionDefinitionTests {
         #expect(script.contains(#"BSONSymbol("x")"#))
         #expect(script.contains(#"new Date("+010000-01-01T00:00:00.000Z")"#))
     }
+    @Test("Driver date literals retain numeric milliseconds in validators and index filters", arguments: [
+        #"db.runCommand({"collMod":"users","validator":{"createdAt":{"$gte":new Date(-62167219200000)}}})"#,
+        #"db.users.createIndex({"createdAt":1},{"name":"createdAt_1","partialFilterExpression":{"createdAt":{"$gte":new Date(-62167219200000)}}})"#
+    ])
+    func numericDateLiteral(statement: String) {
+        let script = MQLCollectionDefinition.script(fromDDL: "// Collection: users\n" + statement, collection: "users")
+        #expect(!script.contains(MQLCollectionDefinition.skippedStatementComment))
+        #expect(script.contains("new Date(-62167219200000)"))
+        Self.expectAllowlistedShapes(script, collection: "users")
+    }
+
+    @Test("Numeric dates outside the shell range are not accepted", arguments: [
+        "8640000000000001", "-8640000000000001", "NaN", "Infinity", "1.5"
+    ])
+    func invalidNumericDateLiteral(milliseconds: String) {
+        let statement = "db.users.createIndex({\"k\":1},{\"partialFilterExpression\":{\"d\":new Date(\(milliseconds))}})"
+        let script = MQLCollectionDefinition.script(fromDDL: "// Collection: users\n" + statement, collection: "users")
+        #expect(script == MQLCollectionDefinition.skippedStatementComment)
+    }
 
 }
