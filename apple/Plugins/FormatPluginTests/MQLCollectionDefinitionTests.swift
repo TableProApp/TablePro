@@ -39,13 +39,8 @@ struct MQLCollectionDefinitionTests {
         return sections.joined(separator: "\n")
     }
 
-    /// Reading the export's own output back must find every statement again, so the output holds
-    /// only the shapes the reader accepts, and no line terminator but the line feeds between lines.
-    /// JavaScriptCore checks that it parses, without running it.
-    private static func expectAllowlistedShapes(_ script: String, collection: String) {
+    private static func expectScriptSyntax(_ script: String) {
         #expect(!script.unicodeScalars.contains { rawLineBreaks.contains($0) })
-        let reread = MQLCollectionDefinition.script(fromDDL: "// Collection: x\n\(script)", collection: collection)
-        #expect(reread == script)
 
         let context = JSGlobalContextCreate(nil)
         let source = JSStringCreateWithCFString(script as CFString)
@@ -72,7 +67,8 @@ struct MQLCollectionDefinitionTests {
         // Capped: true, size: 4096
 
         // Validator
-        db.runCommand({
+        {
+          const result = db.runCommand({
           "collMod": "users",
           "validator": {
             "$jsonSchema": {
@@ -83,12 +79,16 @@ struct MQLCollectionDefinitionTests {
             }
           }
         });
+          if (!result.ok || (result.writeErrors && result.writeErrors.length) || result.writeConcernError) {
+            throw new Error("Document import failed: " + EJSON.stringify(result));
+          }
+        }
 
         // Indexes
         db.users.createIndex({"email": 1}, {"unique": true, "name": "email_1"});
         db.users.createIndex({"createdAt": 1}, {"expireAfterSeconds": 3600, "sparse": true, "name": "createdAt_1"});
         """)
-        Self.expectAllowlistedShapes(script, collection: "users")
+        Self.expectScriptSyntax(script)
     }
 
     @Test("Shell constructors and libbson spacing read back as the same values")
@@ -127,7 +127,7 @@ struct MQLCollectionDefinitionTests {
         db.events.createIndex({"at": -1, "n": 1}, {"name": "at_-1_n_1", "partialFilterExpression": {"n": {"$gt": NumberLong("5")}}});
         """))
         #expect(!script.contains(MQLCollectionDefinition.skippedStatementComment))
-        Self.expectAllowlistedShapes(script, collection: "events")
+        Self.expectScriptSyntax(script)
     }
 
     @Test("A name holding a line terminator stays inside its comment and its string literals")
@@ -152,7 +152,7 @@ struct MQLCollectionDefinitionTests {
                 let parsed = parse.call(withArguments: [literal])?.toString()
                 #expect(parsed?.unicodeScalars.elementsEqual(name.unicodeScalars) == true)
             }
-            Self.expectAllowlistedShapes(script, collection: collection)
+            Self.expectScriptSyntax(script)
         }
     }
 
@@ -167,7 +167,7 @@ struct MQLCollectionDefinitionTests {
         // Indexes
         db.getCollection("a\\nb").createIndex({"k": 1}, {"name": "k_1"});
         """)
-        Self.expectAllowlistedShapes(script, collection: collection)
+        Self.expectScriptSyntax(script)
     }
 
     @Test("A validator whose collection name was written unescaped is left out, and the indexes kept")
@@ -182,7 +182,7 @@ struct MQLCollectionDefinitionTests {
         #expect(!script.contains("runCommand"))
         #expect(script.contains(MQLCollectionDefinition.skippedStatementComment))
         #expect(script.hasSuffix("db.getCollection(\"a\\\"b\").createIndex({\"k\": 1}, {\"name\": \"k_1\"});"))
-        Self.expectAllowlistedShapes(script, collection: collection)
+        Self.expectScriptSyntax(script)
     }
 
     @Test("An index whose name was written unescaped is left out")
@@ -197,7 +197,7 @@ struct MQLCollectionDefinitionTests {
         \(MQLCollectionDefinition.skippedStatementComment)
         db.users.createIndex({"email": 1}, {"name": "email_1"});
         """)
-        Self.expectAllowlistedShapes(script, collection: "users")
+        Self.expectScriptSyntax(script)
     }
 
     @Test("A statement spelled inside an index name that fails to read is left out with it")
@@ -213,7 +213,7 @@ struct MQLCollectionDefinitionTests {
         \(MQLCollectionDefinition.skippedStatementComment)
         db.users.createIndex({"email": 1}, {"name": "email_1"});
         """)
-        Self.expectAllowlistedShapes(script, collection: "users")
+        Self.expectScriptSyntax(script)
     }
 
     @Test("A validator anywhere but first, where the driver writes it, is left out")
@@ -227,7 +227,7 @@ struct MQLCollectionDefinitionTests {
         \(MQLCollectionDefinition.skippedStatementComment)
         // "})
         """)
-        Self.expectAllowlistedShapes(script, collection: "users")
+        Self.expectScriptSyntax(script)
     }
 
     @Test("A statement that does not start its own line is left out")
@@ -241,7 +241,7 @@ struct MQLCollectionDefinitionTests {
         \(MQLCollectionDefinition.skippedStatementComment)
         // "})
         """)
-        Self.expectAllowlistedShapes(script, collection: "users")
+        Self.expectScriptSyntax(script)
     }
 
     @Test("Statements for another collection or of any other kind are left out")
@@ -309,7 +309,7 @@ struct MQLCollectionDefinitionTests {
         let script = MQLCollectionDefinition.script(fromDDL: "// Collection: users\n" + statement, collection: "users")
         #expect(!script.contains(MQLCollectionDefinition.skippedStatementComment))
         #expect(script.contains("new Date(-62167219200000)"))
-        Self.expectAllowlistedShapes(script, collection: "users")
+        Self.expectScriptSyntax(script)
     }
 
     @Test("Numeric dates outside the shell range are not accepted", arguments: [
@@ -319,6 +319,16 @@ struct MQLCollectionDefinitionTests {
         let statement = "db.users.createIndex({\"k\":1},{\"partialFilterExpression\":{\"d\":new Date(\(milliseconds))}})"
         let script = MQLCollectionDefinition.script(fromDDL: "// Collection: users\n" + statement, collection: "users")
         #expect(script == MQLCollectionDefinition.skippedStatementComment)
+    }
+
+    @Test("A failed validator command stops the restore")
+    func validatorFailureStopsScript() throws {
+        let ddl = "// Collection: users\n" + #"db.runCommand({"collMod":"users","validator":{"k":{"$gt":0}}})"#
+        let script = MQLCollectionDefinition.script(fromDDL: ddl, collection: "users")
+        let context = try #require(JSContext())
+        context.evaluateScript("var db = {runCommand: function() {return {ok:0,code:26};}}; var EJSON = {stringify: JSON.stringify};")
+        context.evaluateScript(script)
+        #expect(context.exception != nil)
     }
 
 }

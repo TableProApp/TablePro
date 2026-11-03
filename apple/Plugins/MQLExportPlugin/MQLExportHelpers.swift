@@ -50,11 +50,16 @@ enum MQLExportHelpers {
         return checkedCommand("{insert: \(name), documents: [\n\(documents.joined(separator: ",\n"))\n], ordered: true}") + "\n"
     }
 
-    static func checkedCommand(_ command: String) -> String {
-        """
+    static func createCollectionCommand(_ collection: String) -> String {
+        checkedCommand("{create: \(JavaScriptText.stringLiteral(collection))}", allowingNamespaceExists: true)
+    }
+
+    static func checkedCommand(_ command: String, allowingNamespaceExists: Bool = false) -> String {
+        let failed = allowingNamespaceExists ? "(!result.ok && result.code !== 48)" : "!result.ok"
+        return """
         {
           const result = db.runCommand(\(command));
-          if (!result.ok || (result.writeErrors && result.writeErrors.length) || result.writeConcernError) {
+          if (\(failed) || (result.writeErrors && result.writeErrors.length) || result.writeConcernError) {
             throw new Error("Document import failed: " + EJSON.stringify(result));
           }
         }

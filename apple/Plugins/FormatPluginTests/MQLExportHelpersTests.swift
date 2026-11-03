@@ -108,6 +108,19 @@ struct MQLExportHelpersTests {
         #expect(context.exception != nil)
     }
 
+    @Test("Collection creation permits only success or an existing namespace", arguments: [
+        (#"{"ok":1}"#, false),
+        (#"{"ok":0,"code":48}"#, false),
+        (#"{"ok":0,"code":13}"#, true),
+        (#"{"ok":0,"code":48,"writeConcernError":{"code":64}}"#, true)
+    ])
+    func collectionCreationReply(reply: String, fails: Bool) throws {
+        let context = try #require(JSContext())
+        context.evaluateScript("var db = {runCommand: function() {return \(reply);}}; var EJSON = {stringify: JSON.stringify};")
+        context.evaluateScript(MQLExportHelpers.createCollectionCommand("people"))
+        #expect((context.exception != nil) == fails)
+    }
+
 }
 
 struct MQLDocumentBatchTests {

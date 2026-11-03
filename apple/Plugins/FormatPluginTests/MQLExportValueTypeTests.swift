@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import JavaScriptCore
 import TableProPluginKit
 import Testing
 
@@ -13,11 +14,13 @@ struct MQLExportValueTypeTests {
         let header: PluginStreamHeader
         let rows: [[PluginCellValue]]
         let documents: [PluginExportDocument]?
+        let ddl: String
 
-        init(header: PluginStreamHeader, rows: [[PluginCellValue]], documents: [PluginExportDocument]?) {
+        init(header: PluginStreamHeader, rows: [[PluginCellValue]], documents: [PluginExportDocument]?, ddl: String = "") {
             self.header = header
             self.rows = rows
             self.documents = documents
+            self.ddl = ddl
         }
 
         func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -42,7 +45,7 @@ struct MQLExportValueTypeTests {
             streamExportRows(table: object.name, databaseName: object.databaseName)
         }
 
-        func fetchTableDDL(table: String, databaseName: String) async throws -> String { "" }
+        func fetchTableDDL(table: String, databaseName: String) async throws -> String { ddl }
 
         func execute(query: String) async throws -> PluginQueryResult {
             PluginQueryResult(columns: [], columnTypeNames: [], rows: [], rowsAffected: 0, executionTime: 0)
@@ -57,14 +60,17 @@ struct MQLExportValueTypeTests {
 
     private static let uuid = "8cd003eb-4a25-4324-9332-88fce2da0d1a"
 
-    private func exportedScript(header: PluginStreamHeader, rows: [[PluginCellValue]], documents: [PluginExportDocument]?) async throws -> String {
+    private func exportedScript(
+        header: PluginStreamHeader, rows: [[PluginCellValue]], documents: [PluginExportDocument]?,
+        optionValues: [Bool] = [false, false, true], ddl: String = ""
+    ) async throws -> String {
         let destination = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).js")
         defer { try? FileManager.default.removeItem(at: destination) }
         let table = PluginExportTable(
             name: "people",
             databaseName: "",
             tableType: "table",
-            optionValues: [false, false, true],
+            optionValues: optionValues,
             schema: nil,
             kind: .table
         )
@@ -74,7 +80,7 @@ struct MQLExportValueTypeTests {
         plugin.settings.batchSize = 500
         _ = try await plugin.export(
             tables: [table],
-            dataSource: CollectionDataSource(header: header, rows: rows, documents: documents),
+            dataSource: CollectionDataSource(header: header, rows: rows, documents: documents, ddl: ddl),
             destination: destination,
             progress: PluginExportProgress(progress: Progress(totalUnitCount: 1))
         )
@@ -125,10 +131,57 @@ struct MQLExportValueTypeTests {
             header: PluginStreamHeader(columns: ["value"], columnTypeNames: ["VARCHAR"]),
             rows: documents.map { [$0.fields[0].cellValue] }, documents: documents
         )
-        #expect(script.components(separatedBy: "const result = db.runCommand").count - 1 == 4)
+        #expect(script.components(separatedBy: "const result = db.runCommand({insert:").count - 1 == 4)
         for index in 0..<500 {
             #expect(script.components(separatedBy: "[\"value\", \"row_\(index)\"]").count - 1 == 1)
         }
+    }
+
+    @Test("An empty collection is recreated with the default export options")
+    func emptyCollectionIsCreated() async throws {
+        let script = try await exportedScript(
+            header: PluginStreamHeader(columns: [], columnTypeNames: []), rows: [], documents: nil,
+            optionValues: [true, true, true]
+        )
+        #expect(script.contains("db.people.drop();"))
+        #expect(script.contains("db.runCommand({create: \"people\"})"))
+        #expect(!script.contains("documents:"))
+    }
+
+    @Test("An empty collection exists before its validator is restored without secondary indexes")
+    func emptyValidatorCollectionIsCreatedFirst() async throws {
+        let script = try await exportedScript(
+            header: PluginStreamHeader(columns: [], columnTypeNames: []), rows: [], documents: [],
+            optionValues: [true, true, false],
+            ddl: "// Collection: people\n" + #"db.runCommand({"collMod":"people","validator":{"value":{"$type":"string"}}})"#
+        )
+        let context = try #require(JSContext())
+        context.evaluateScript("""
+        var exists = true;
+        var operations = [];
+        var EJSON = {stringify: JSON.stringify};
+        var db = {
+          people: {drop: function() {exists = false; operations.push("drop");}},
+          runCommand: function(command) {
+            if (command.create) {exists = true; operations.push("create"); return {ok:1};}
+            operations.push("validator");
+            return exists ? {ok:1} : {ok:0,code:26};
+          }
+        };
+        """)
+        context.evaluateScript(script)
+        #expect(context.exception == nil)
+        #expect(context.evaluateScript("JSON.stringify(operations)")?.toString() == #"["drop","create","validator"]"#)
+    }
+
+    @Test("Drop-only exports do not recreate the collection")
+    func dropOnlyStaysDropOnly() async throws {
+        let script = try await exportedScript(
+            header: PluginStreamHeader(columns: [], columnTypeNames: []), rows: [], documents: nil,
+            optionValues: [true, false, false]
+        )
+        #expect(script.contains("db.people.drop();"))
+        #expect(!script.contains("runCommand"))
     }
 
 }

@@ -101,6 +101,11 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                 try fileHandle.write(contentsOf: "\(collectionAccessor).drop();\n".toUTF8Data())
             }
 
+            if includeData || includeIndexes {
+                let create = MQLExportHelpers.createCollectionCommand(table.name)
+                try fileHandle.write(contentsOf: "\(create)\n".toUTF8Data())
+            }
+
             if includeData {
                 var documentBatch = MQLDocumentBatch(countLimit: batchSize)
 
@@ -112,6 +117,7 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     case .header:
                         break
                     case .rows(let rows, let documents):
+                        if rows.isEmpty, documents?.isEmpty != false { continue }
                         guard let documents, documents.count == rows.count else {
                             throw PluginExportError.exportFailed(String(
                                 localized: "No typed documents. Update the database driver, save changes and reload before exporting MQL.",

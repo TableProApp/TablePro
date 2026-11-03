@@ -127,7 +127,7 @@ enum MQLCollectionDefinition {
             return nil
         }
         let rebuilt = MQLScriptValue.object([MQLScriptMember(key: "collMod", value: .string(collection)), command[1]])
-        return "db.runCommand(\(rebuilt.indentedText(depth: 0)));"
+        return MQLExportHelpers.checkedCommand(rebuilt.indentedText(depth: 0))
     }
 
     /// `db.<name>`, `db["<name>"]` or `db.getCollection("<name>")`, the three spellings a driver
