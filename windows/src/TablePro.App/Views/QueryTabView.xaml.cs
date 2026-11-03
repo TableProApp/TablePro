@@ -175,6 +175,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
             Title = Strings.Get("RollBackTitle"),
             Content = Strings.Get("RollBackMessage"),
             PrimaryButtonText = Strings.Get("RollBackButtonText"),

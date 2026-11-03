@@ -474,6 +474,7 @@ public sealed partial class HomeView : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
             Title = connections.Count == 1
                 ? Strings.Format("DeleteConnectionTitle", connections[0].Name)
                 : Strings.Format("DeleteConnectionsTitle", connections.Count),
@@ -499,6 +500,7 @@ public sealed partial class HomeView : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
             Title = Strings.Format("DeleteGroupTitle", group.Name),
             Content = Strings.Get("DeleteGroupMessage"),
             PrimaryButtonText = Strings.Get("DeleteButton"),
@@ -516,6 +518,7 @@ public sealed partial class HomeView : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
             Title = Strings.Format("DeleteTagTitle", tag.Name),
             Content = Strings.Get("DeleteTagMessage"),
             PrimaryButtonText = Strings.Get("DeleteButton"),
@@ -575,6 +578,7 @@ public sealed partial class HomeView : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
             Title = title,
             Content = box,
             PrimaryButtonText = action,

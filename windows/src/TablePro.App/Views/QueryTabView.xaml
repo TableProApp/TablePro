@@ -45,17 +45,16 @@
             AutomationProperties.AutomationId="TransactionBar"
             IsClosable="False"
             IsOpen="False">
-            <InfoBar.ActionButton>
-                <Button x:Uid="RollBackButton" x:Name="RollBackButton" AutomationProperties.AutomationId="RollBackButton" Click="OnRollBack" />
-            </InfoBar.ActionButton>
             <InfoBar.Content>
-                <Button
-                    x:Uid="CommitButton"
-                    x:Name="CommitButton"
-                    Margin="0,0,0,12"
-                    AutomationProperties.AutomationId="CommitButton"
-                    Click="OnCommit"
-                    Style="{StaticResource AccentButtonStyle}" />
+                <StackPanel Margin="0,0,0,12" Orientation="Horizontal" Spacing="8">
+                    <Button
+                        x:Uid="CommitButton"
+                        x:Name="CommitButton"
+                        AutomationProperties.AutomationId="CommitButton"
+                        Click="OnCommit"
+                        Style="{StaticResource AccentButtonStyle}" />
+                    <Button x:Uid="RollBackButton" x:Name="RollBackButton" AutomationProperties.AutomationId="RollBackButton" Click="OnRollBack" />
+                </StackPanel>
             </InfoBar.Content>
         </InfoBar>
 

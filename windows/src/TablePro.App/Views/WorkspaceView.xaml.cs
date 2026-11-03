@@ -102,6 +102,7 @@ public sealed partial class WorkspaceView : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
             Title = Strings.Get("SecretRequiredTitle"),
             Content = new StackPanel { Spacing = 12, Children = { message, box, save } },
             PrimaryButtonText = Strings.Get("ConnectButtonText"),
@@ -404,6 +405,7 @@ public sealed partial class WorkspaceView : UserControl
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
             Title = Strings.Format("CloseHeldTabTitle", content.Title),
             Content = Strings.Get("CloseHeldTabMessage"),
             PrimaryButtonText = Strings.Get("CloseHeldTabButton"),
