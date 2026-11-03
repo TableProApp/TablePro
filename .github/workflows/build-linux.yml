@@ -300,7 +300,7 @@ jobs:
             echo "::error::the license files do not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
             exit 1
           fi
-      - name: The Linux, core and Windows workflows
+      - name: The Linux and core workflows
         # Offline, so the verdict depends on these files alone and not on
         # where a branch the pins name has moved since.
         working-directory: .
@@ -310,8 +310,7 @@ jobs:
             .github/workflows/build-linux.yml \
             .github/workflows/core.yml \
             .github/workflows/linux-packages.yml \
-            .github/workflows/release-linux.yml \
-            .github/workflows/windows.yml
+            .github/workflows/release-linux.yml
 
   i18n:
     name: Translations

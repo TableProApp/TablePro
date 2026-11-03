@@ -16,11 +16,18 @@
     <DefaultLanguage>en-US</DefaultLanguage>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
+    <PublishAot>true</PublishAot>
+    <!-- Every trim and AOT warning on its own, not one per assembly, so each is fixed where it starts. -->
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <Version>0.1.0</Version>
     <!-- Unpackaged by default, which the UI tests launch; the MSIX build passes -p:WindowsPackageType=MSIX. -->
     <WindowsPackageType Condition="'$(WindowsPackageType)' == ''">None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
+    <!-- One sideload package per architecture, every scale in it; the release workflow bundles them (windows/RELEASING.md). -->
+    <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
+    <AppxBundle>Never</AppxBundle>
+    <AppxSymbolPackageEnabled>false</AppxSymbolPackageEnabled>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,7 +41,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
   </ItemGroup>
 
