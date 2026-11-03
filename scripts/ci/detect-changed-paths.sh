@@ -101,8 +101,7 @@ case "$SUITE" in
             KEEP='linux/CHANGELOG\.md$|linux/docs/regression-tests\.md$|linux/data/'
         fi ;;
     windows)
-        # The .NET interop library and its tests run the whole core through its FFI crate, so a
-        # change to any core crate or to the workspace it builds in runs them again.
+        # The .NET tests run the whole core through its FFI crate, so any core or workspace change runs them.
         PATTERNS=('windows/' 'core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$'
             'scripts/ci/detect-changed-paths\.sh$' '\.github/workflows/(ci|windows)\.yml$')
         SKIP='(windows|core)/.*\.md$' ;;

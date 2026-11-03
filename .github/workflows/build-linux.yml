@@ -125,9 +125,7 @@ jobs:
         with:
           workspaces: . -> linux/_build/cargo-target
           cache-directories: linux/_build/cargo-home
-      # rust-cache keeps only Cargo's own artifacts, so DuckDB's unpacked
-      # sources come back as folders with no files. A rerun of its build
-      # script then cannot unpack them over the folder, so it goes.
+      # rust-cache restores DuckDB's unpacked sources as empty folders, which its build script cannot unpack over.
       - name: Drop the emptied DuckDB sources
         run: rm -rf _build/cargo-target/duckdb-sources
       - name: Generate the en_US.UTF-8 locale

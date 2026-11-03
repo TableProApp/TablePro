@@ -124,8 +124,7 @@ jobs:
     if: needs.plan.outputs.linux == 'true' && !startsWith(github.ref, 'refs/heads/release/')
     uses: ./.github/workflows/core.yml
 
-  # The .NET interop library over the core's FFI crate. The Windows app has no release line, so a
-  # release/** line skips it as it skips Linux.
+  # The Windows app has no release line, so a release/** run skips it as it skips Linux.
   windows:
     needs: plan
     if: needs.plan.outputs.windows == 'true' && !startsWith(github.ref, 'refs/heads/release/')

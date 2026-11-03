@@ -1,7 +1,6 @@
 name: Windows
 
-# The Windows app and the .NET libraries under it, tested against the real core on each
-# platform it builds for. CI calls it when the windows suite changed.
+# ci.yml calls it when the windows suite changed.
 on:
   workflow_call:
   workflow_dispatch:
@@ -41,8 +40,7 @@ jobs:
     timeout-minutes: 150
     env:
       RUSTFLAGS: -D warnings
-      # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks;
-      # its prebuilt objects stand in.
+      # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks; its prebuilt objects stand in.
       AWS_LC_SYS_PREBUILT_NASM: "1"
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       DOTNET_NOLOGO: "1"
@@ -60,9 +58,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: windows-${{ matrix.target }}
-      # rust-cache keeps only Cargo's own artifacts, so DuckDB's unpacked
-      # sources come back as folders with no files. A rerun of its build
-      # script then cannot unpack them over the folder, so they go.
+      # rust-cache restores DuckDB's unpacked sources as empty folders, which its build script cannot unpack over.
       - name: Drop the emptied DuckDB sources
         run: rm -rf "target/${{ matrix.target }}/duckdb-sources" target/duckdb-sources
       # windows/global.json takes the newest 10.0 SDK.
