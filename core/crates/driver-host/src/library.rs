@@ -29,7 +29,12 @@ pub struct DriverLibrary {
 impl DriverLibrary {
     // `path` is absolute. Its dependencies resolve from its own folder and the system's, never the current
     // directory or PATH.
-    pub fn load(path: &Path) -> Result<Self, PluginError> {
+    /// # Safety
+    /// The library and its dependencies must be trusted native code whose initializers are safe to run.
+    /// Any exported descriptor must contain valid readable fields and strings, and its entry points must
+    /// obey the ABI's callback, threading and ownership contracts. The verified files must remain unchanged
+    /// until mapping completes; descriptor checks cannot establish these guarantees.
+    pub unsafe fn load(path: &Path) -> Result<Self, PluginError> {
         let library = platform_load(path)?;
         let symbol = unsafe { library.get::<*const Descriptor>(ffi::DESCRIPTOR_SYMBOL) };
         let descriptor = match symbol {
@@ -332,7 +337,8 @@ mod tests {
         ));
         std::fs::write(&path, b"not a library").unwrap();
 
-        let error = DriverLibrary::load(&path).err().unwrap();
+        // This text fixture has no executable code or exported pointers.
+        let error = unsafe { DriverLibrary::load(&path) }.err().unwrap();
 
         assert_eq!(error.code(), "plugin.load_failed");
     }

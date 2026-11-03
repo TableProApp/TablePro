@@ -14,7 +14,7 @@ public sealed partial class SettingsView
     private IReadOnlyList<InstalledDriver> _installed = [];
     private IReadOnlyList<AvailableDriver>? _available = [];
     private string? _catalog;
-    private bool _driversBusy;
+    private readonly DriverOperationGate _driverOperations = new();
 
     // Each card's button, turned off while a driver installs or goes so two never overlap.
     private readonly List<Button> _driverActions = [];
@@ -37,24 +37,8 @@ public sealed partial class SettingsView
         ShowDrivers();
     });
 
-    private async Task RunDriverOperationAsync(Func<Task> operation)
-    {
-        // Loaded can fire again while this cached page still has a download in progress.
-        if (_driversBusy)
-        {
-            return;
-        }
-
-        SetDriversBusy(true);
-        try
-        {
-            await operation().ConfigureAwait(true);
-        }
-        finally
-        {
-            SetDriversBusy(false);
-        }
-    }
+    private Task RunDriverOperationAsync(Func<Task> operation) =>
+        _driverOperations.RunAsync(operation, SetDriversBusy);
 
     private async Task RefreshInstalledAsync()
     {
@@ -120,7 +104,7 @@ public sealed partial class SettingsView
 
     private Button DriverButton(string automationId, string label, string name)
     {
-        var button = new Button { Content = label, IsEnabled = !_driversBusy };
+        var button = new Button { Content = label, IsEnabled = !_driverOperations.IsBusy };
         AutomationProperties.SetAutomationId(button, automationId);
         AutomationProperties.SetName(button, name);
         _driverActions.Add(button);
@@ -136,7 +120,6 @@ public sealed partial class SettingsView
 
     private void SetDriversBusy(bool busy)
     {
-        _driversBusy = busy;
         DriversProgress.IsActive = busy;
         InstallDriverFileButton.IsEnabled = !busy;
         foreach (var action in _driverActions)

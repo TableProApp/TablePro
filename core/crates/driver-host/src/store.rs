@@ -256,7 +256,8 @@ impl DriverStore {
             });
         }
         self.trust.verify(&file, path, purpose)?;
-        let library = DriverLibrary::load(path)?;
+        // The trust policy vouched for this file, which remains held through mapping.
+        let library = unsafe { DriverLibrary::load(path) }?;
         let identity = library.identity().clone();
         if let Some(expected) = expected
             && (expected.id != identity.id || expected.version != identity.version)
@@ -451,7 +452,8 @@ mod tests {
 
     struct Refuse;
 
-    impl Trust for Refuse {
+    // This policy never permits native code to load.
+    unsafe impl Trust for Refuse {
         fn verify(&self, _file: &File, path: &Path, _purpose: Purpose) -> Result<(), PluginError> {
             Err(PluginError::Unsigned {
                 path: path.display().to_string(),

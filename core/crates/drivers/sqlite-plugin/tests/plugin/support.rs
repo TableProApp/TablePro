@@ -23,7 +23,8 @@ pub fn plugin_path() -> PathBuf {
 }
 
 pub fn load_dynamic() -> DriverHandle {
-    let library = DriverLibrary::load(&plugin_path()).unwrap();
+    // The workspace built this plugin against the same ABI and trusted dependencies.
+    let library = unsafe { DriverLibrary::load(&plugin_path()) }.unwrap();
     assert_eq!(library.identity().id, "sqlite");
     assert_eq!(library.identity().version, env!("CARGO_PKG_VERSION"));
     library.open().unwrap()

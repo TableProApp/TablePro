@@ -13,7 +13,8 @@ use crate::support::*;
 
 struct AcceptAll;
 
-impl Trust for AcceptAll {
+// These tests load only copies of the SQLite plugin built by this workspace.
+unsafe impl Trust for AcceptAll {
     fn verify(&self, _file: &File, _path: &Path, _purpose: Purpose) -> Result<(), PluginError> {
         Ok(())
     }

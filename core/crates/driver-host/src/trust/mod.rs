@@ -17,7 +17,11 @@ pub enum Purpose {
     Load,
 }
 
-pub trait Trust: Send + Sync {
+/// # Safety
+/// A successful verification vouches for trusted native code, including its initializers and dependencies,
+/// with a valid descriptor and entry points that obey the ABI's callback, threading and ownership contracts.
+/// The checked file must be the file named by `path`; a signature alone does not establish ABI conformance.
+pub unsafe trait Trust: Send + Sync {
     // `file` is the open file about to be loaded, held so that nothing replaces it between the check and the load.
     fn verify(&self, file: &File, path: &Path, purpose: Purpose) -> Result<(), PluginError>;
 }
@@ -42,7 +46,8 @@ impl PlatformTrust {
     }
 }
 
-impl Trust for PlatformTrust {
+// Configured publishers are trusted to ship ABI-conforming drivers; other platforms refuse all files.
+unsafe impl Trust for PlatformTrust {
     #[cfg(windows)]
     fn verify(&self, file: &File, path: &Path, purpose: Purpose) -> Result<(), PluginError> {
         authenticode::verify(file, path, &self.signers, purpose)
