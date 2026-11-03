@@ -407,10 +407,19 @@ actor DuckDBConnectionActor {
     }
 
     private func readHeldStateCounts() throws -> (catalogs: Int, sessionObjects: Int) {
-        let result = try runInternalQuery(DuckDBSchemaQueries.sessionHeldState(
+        guard let connection else { throw DuckDBPluginError.notConnected }
+        let query = DuckDBSchemaQueries.sessionHeldState(
             excluding: configuredAttachments,
             readOnly: attachmentsReadOnly
-        ))
+        )
+        var raw = duckdb_result()
+        defer { duckdb_destroy_result(&raw) }
+        // Preparing this metadata query would make it count its own temporary prepared statement.
+        guard duckdb_query(connection, query, &raw) == DuckDBSuccess else {
+            throw DuckDBPluginError.queryFailed(Self.errorMessage(from: &raw))
+        }
+        let schema = Self.schema(of: &raw)
+        let result = try Self.extractResult(from: &raw, schema: schema, rowsChanged: 0, startTime: Date())
         guard let row = result.rows.first, row.count >= 2 else {
             throw DuckDBPluginError.queryFailed("DuckDB reported no session state")
         }

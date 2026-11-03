@@ -180,8 +180,19 @@ private enum NulTextProbe {
             try expect(texts(readOnly.rows) == expected, "read-only transaction failed to render text")
             let following = try await actor.executeQuery(query)
             try expect(texts(following.rows) == expected, "read-only rollback lost the reader")
+            _ = try await actor.executeQuery("PREPARE retained_query AS SELECT v, d FROM saved")
+            let held = await actor.releaseFile(idleFor: nil)
+            try expect(held == .holdsSessionObjects, "release discarded a user prepared statement")
+            _ = try await actor.executeQuery("DEALLOCATE retained_query")
             let released = await actor.releaseFile(idleFor: nil)
-            try expect(released == .released, "reader prevented idle release: \(released)")
+            if released != .released {
+                let functions = try await actor.executeQuery(
+                    "SELECT function_name, internal FROM duckdb_functions() WHERE function_name LIKE '_tablepro_result_%'"
+                )
+                let state = try await actor.executeQuery(DuckDBSchemaQueries.sessionHeldState)
+                let prepared = try await actor.executeQuery("SELECT name FROM duckdb_prepared_statements()")
+                throw ProbeFailure(description: "reader prevented idle release: \(released); functions: \(texts(functions.rows)); held: \(texts(state.rows)); prepared: \(texts(prepared.rows))")
+            }
             try expect(await actor.hasReleasedFile, "release did not close the file")
             let reopened = try await actor.executeQuery(query)
             try expect(texts(reopened.rows) == expected, "reopen did not restore the reader")
