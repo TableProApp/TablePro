@@ -69,15 +69,10 @@ struct RowDetailView: View {
         .onChange(of: viewModel.currentIndex) {
             hapticSelection += 1
         }
-        .overlay(alignment: .bottom) {
-            if viewModel.showSaveSuccess {
-                Label("Row updated", systemImage: "checkmark.circle.fill")
-                    .font(.subheadline)
-                    .padding()
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+        // The saved values in the fields and the success haptic say it; VoiceOver hears it.
+        .onChange(of: viewModel.showSaveSuccess) { _, saved in
+            guard saved else { return }
+            AccessibilityNotification.Announcement(String(localized: "Row updated")).post()
         }
         .bottomSafeAreaBar {
             if viewModel.showsRowNavigator {
@@ -366,18 +361,14 @@ struct RowDetailView: View {
             }
 
             if offersNull {
-                Button {
-                    viewModel.toggleNull(at: index)
-                } label: {
+                Toggle(isOn: Binding(
+                    get: { isNull },
+                    set: { _ in viewModel.toggleNull(at: index) }
+                )) {
                     Text("NULL")
-                        .font(.caption2)
-                        .foregroundStyle(isNull ? .white : .secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(isNull ? Color.accentColor : Color(.systemFill))
-                        .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .toggleStyle(.button)
+                .controlSize(.mini)
             }
         }
     }
