@@ -107,7 +107,7 @@ Facts the CI runs on `windows-2025` and `windows-11-arm` established, which the 
 - A `TreeViewItem.IsExpanded` binding loses its first value when the row joins the tree, in ItemsSource mode. Rows open through their container instead: `ContainerFromItem` after a layout pass, or the row's `Loaded`.
 - UI Automation lists an owned window under its owner, not under the desktop.
 - The `windows-11-arm` image opens "Choose privacy settings for your device" over the desktop while the tests run, and it takes their clicks. CI turns the experience off by policy and stops it first, with the grid gate's `ci/desktop.ps1`.
-- A `wsl.exe` console asking to update WSL opened there too, mid-run. The tests bring the app to the front before each click and key.
+- The image's provisioning agent (`provjobd`) runs `wsl.exe` every 30 seconds, and now and then its "update WSL" console opens over the app. CI stops each one (`Start-WslWatch`), and the tests bring the app to the front before each click and click again when nothing happened.
 - The Community Toolkit's clickable `SettingsCard` offers no Invoke pattern, so the UI tests click it.
 - Concurrent Credential Manager writes from one process lost each other's changes: a stored secret read back as missing, a deleted one came back. The core serializes its calls.
 - System.Text.Json's source generator sets every init-only property when it builds a record, so a key a file leaves out took the type's default, not the property's initializer. The stored records use settable properties.

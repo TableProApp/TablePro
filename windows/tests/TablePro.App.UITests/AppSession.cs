@@ -92,6 +92,23 @@ internal sealed class AppSession : IDisposable
         element.Click();
     }
 
+    // A window the runner opens for a moment can take a click, so it goes again until the app shows it landed.
+    public void Click(AutomationElement element, Func<bool> landed, Window? window = null)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            Click(element, window);
+            if (Retry.WhileFalse(landed, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
+            {
+                return;
+            }
+        }
+
+        throw Failure($"Clicking {element.Properties.AutomationId.ValueOrDefault} did nothing.", screen: true);
+    }
+
+    public bool HasWindow(string title) => OpenWindow(title) is not null;
+
     // A cell's name is its text. Waits until done accepts it, as rows from a new run replace the old ones.
     public string WaitForCell(AutomationElement grid, int row, int column, Func<string, bool> done)
     {
@@ -117,8 +134,8 @@ internal sealed class AppSession : IDisposable
     public void SortBy(AutomationElement grid, string column) =>
         FindByName(column, grid).Patterns.Invoke.Pattern.Invoke();
 
-    public AutomationElement? TryFind(string automationId) =>
-        Window.FindFirstDescendant(condition => condition.ByAutomationId(automationId));
+    public AutomationElement? TryFind(string automationId, Window? window = null) =>
+        (window ?? Window).FindFirstDescendant(condition => condition.ByAutomationId(automationId));
 
     // UI Automation lists an owned window under its owner, not under the desktop.
     public Window WaitForWindow(string title) =>

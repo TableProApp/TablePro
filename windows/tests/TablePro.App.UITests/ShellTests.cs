@@ -55,11 +55,11 @@ public sealed class ShellTests
         var database = AppSession.SampleDatabase(folder);
         using (var app = AppSession.Relaunch(folder, theme))
         {
-            app.Click(app.Find("NewConnectionCard"));
+            app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
             var form = app.WaitForWindow("New connection");
             app.Find("EngineGrid", form);
             app.Screenshot("02-form-engines", form);
-            app.Click(app.Find("Engine_sqlite", form), form);
+            app.Click(app.Find("Engine_sqlite", form), () => app.TryFind("FileBox", form) is not null, form);
             app.Find("FileBox", form).AsTextBox().Text = database;
             app.Find("NameBox", form).AsTextBox().Text = "Chinook copy";
             app.Screenshot("03-form-details", form);
@@ -71,7 +71,7 @@ public sealed class ShellTests
             Assert.False(app.Find("Rail_Chinook copy").IsOffscreen);
             app.Screenshot("04-workspace");
 
-            app.Click(album);
+            app.Click(album, () => app.TryFind("TableStatus") is not null);
             var status = app.Find("TableStatus");
             var text = AppSession.WaitForText(status, value => value.StartsWith("Rows: 347", StringComparison.Ordinal));
             Assert.StartsWith("Rows: 347", text, StringComparison.Ordinal);
@@ -127,7 +127,7 @@ public sealed class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("SampleCard"));
+        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
         app.FindByName("Track", app.Find("ObjectTree"));
         app.Find("HomeItem").AsListBoxItem().Select();
         var tree = app.Find("ConnectionTree");
@@ -141,9 +141,9 @@ public sealed class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("NewConnectionCard"));
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
         var form = app.WaitForWindow("New connection");
-        app.Click(app.Find("Engine_postgres", form), form);
+        app.Click(app.Find("Engine_postgres", form), () => app.TryFind("HostBox", form) is not null, form);
         app.Find("HostBox", form).AsTextBox().Text = "127.0.0.1";
         app.Find("PortBox", form).AsTextBox().Text = "1";
         app.Find("UserBox", form).AsTextBox().Text = "nobody";
@@ -168,9 +168,9 @@ public sealed class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("NewConnectionCard"));
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
         var form = app.WaitForWindow("New connection");
-        app.Click(app.Find("Engine_postgres", form), form);
+        app.Click(app.Find("Engine_postgres", form), () => app.TryFind("HostBox", form) is not null, form);
         // A documentation address that drops packets, so the connect waits until cancelled.
         app.Find("HostBox", form).AsTextBox().Text = "192.0.2.1";
         app.Find("NameBox", form).AsTextBox().Text = "Unreachable";
@@ -193,9 +193,9 @@ public sealed class ShellTests
     {
         using var app = AppSession.Launch(theme);
 
-        app.Click(app.Find("NewConnectionCard"));
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
         var form = app.WaitForWindow("New connection");
-        app.Click(app.Find("Engine_mysql", form), form);
+        app.Click(app.Find("Engine_mysql", form), () => app.TryFind("HostBox", form) is not null, form);
         app.Find("HostBox", form).AsTextBox().Text = string.Empty;
         app.Find("TestButton", form).AsButton().Invoke();
 
