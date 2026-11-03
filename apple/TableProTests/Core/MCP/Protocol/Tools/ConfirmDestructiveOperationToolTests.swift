@@ -6,7 +6,6 @@
 import Foundation
 @testable import TablePro
 import TableProMCP
-import TableProSQLGrammar
 import Testing
 
 struct ConfirmDestructiveOperationToolTests {
@@ -92,14 +91,10 @@ struct ConfirmDestructiveOperationToolTests {
 
     @Test("Only a destructive statement belongs here, and the gate decides that")
     func onlyDestructiveStatementsQualify() {
-        #expect(
-            QueryClassifier.classifyTier("DROP TABLE users", databaseType: .postgresql) == .destructive
-        )
-        #expect(
-            QueryClassifier.classifyTier("UPDATE users SET a = 1", databaseType: .postgresql) == .write
-        )
-        #expect(
-            QueryClassifier.classifyTier("SELECT 1", databaseType: .postgresql) == .safe
-        )
+        #expect(ExternalStatementGate.isDestructive("DROP TABLE users", databaseType: .postgresql))
+        #expect(ExternalStatementGate.isDestructive("DELETE FROM users", databaseType: .postgresql))
+        #expect(!ExternalStatementGate.isDestructive("DELETE FROM users WHERE id = 1", databaseType: .postgresql))
+        #expect(!ExternalStatementGate.isDestructive("UPDATE users SET a = 1", databaseType: .postgresql))
+        #expect(!ExternalStatementGate.isDestructive("SELECT 1", databaseType: .postgresql))
     }
 }
