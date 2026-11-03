@@ -47,6 +47,40 @@ extension DatabaseManager {
         return holding
     }
 
+    // Unlike the probe above, a busy session, a timeout or an engine that cannot say is never read as safe.
+    internal func transactionSafety(
+        for connectionId: UUID,
+        clock: any Clock<Duration> = ContinuousClock()
+    ) async -> SessionTransactionSafety {
+        guard let session = activeSessions[connectionId] else { return .noTransaction }
+        guard session.driver?.supportsTransactions ?? true else { return .noTransaction }
+        var drivers: [DatabaseDriver] = []
+        var isBusy = false
+        if let driver = session.driver {
+            if sessionDriverGate.isHeld(browsedGateKey(for: connectionId)) { isBusy = true } else { drivers.append(driver) }
+        }
+        for database in sessionLanes.parkedDatabases(for: connectionId).sorted() {
+            guard let driver = sessionLanes.parkedDriver(for: connectionId, database: database) else { continue }
+            let key = SessionDriverGate.Key(connectionId: connectionId, database: database)
+            if sessionDriverGate.isHeld(key) { isBusy = true } else { drivers.append(driver) }
+        }
+        let reads = drivers.map { driver in Task { await Self.boundedTransactionState(of: driver, clock: clock) } }
+        var safety: SessionTransactionSafety = isBusy ? .unknown : .noTransaction
+        for read in reads {
+            switch await read.value {
+            case .inTransaction, .abortedTransaction:
+                safety = .holding
+            case .idle, .holdsSessionLocks:
+                break
+            case .unknown:
+                if safety == .noTransaction { safety = .unknown }
+            @unknown default:
+                if safety == .noTransaction { safety = .unknown }
+            }
+        }
+        return safety
+    }
+
     /// Ends the transaction a hold shows, on the connection that holds it. Refused when that
     /// connection was replaced, or when other work ran there after the hold was read: the user
     /// confirmed what they saw, not a transaction someone opened since.
@@ -121,4 +155,11 @@ internal enum SessionTransactionActionError: Error, LocalizedError, Equatable {
             String(localized: "Other work ran on this connection before you confirmed. Check the transaction and try again.")
         }
     }
+}
+
+internal enum SessionTransactionSafety: Equatable, Sendable {
+    case noTransaction
+    case holding
+    // Busy, timed out, or an engine that cannot report its transaction state.
+    case unknown
 }

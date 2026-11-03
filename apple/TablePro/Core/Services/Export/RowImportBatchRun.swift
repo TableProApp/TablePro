@@ -63,7 +63,7 @@ internal struct RowImportBatchReport {
         switch transaction {
         case .rolledBack, .endedByServer:
             return false
-        case .untracked, .committed, .committedBeforeRollback, .endedByFile:
+        case .untracked, .committed, .committedBeforeRollback, .endedByFile, .joinedUserTransaction:
             return true
         }
     }

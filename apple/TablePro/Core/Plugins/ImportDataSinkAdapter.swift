@@ -8,20 +8,30 @@ import os
 import TableProPluginKit
 import TableProSQLGrammar
 
-/// What became of the transaction an import opened, as far as the import saw.
+// What became of the transaction an import opened, as far as the import saw.
 internal enum ImportTransactionOutcome: Equatable, Sendable {
-    /// No transaction of the import's own, or one it did not see end: what ran stays as it ran.
+    // No transaction of the import's own, or one it did not see end: what ran stays as it ran.
     case untracked
     case committed
     case rolledBack
-    /// A statement that succeeded left no transaction open, as a `CREATE` or the file's own `COMMIT` does on MySQL, so
-    /// what ran up to then was not rolled back.
+    // A `CREATE` or the file's own `COMMIT` left no transaction open on MySQL, so what ran before it stayed.
     case committedBeforeRollback
-    /// The transaction had ended by the rollback with nothing before that naming how: a deadlock rolls it back, a
-    /// failing `CREATE` commits it, and the session reads the same after either.
+    // Ended before the rollback with no sign of how: a deadlock rolls it back, a failing `CREATE` commits it.
     case endedByServer
-    /// The file ran its own `ROLLBACK`, so what stays depends on what the file ran after it.
+    // The file ran its own `ROLLBACK`, so what stays depends on what the file ran after it.
     case endedByFile
+    // The session held the user's own transaction, so the import ran inside it and left ending it to them.
+    case joinedUserTransaction
+}
+
+// What a ROLLBACK does to what the import writes, known before it starts.
+internal enum ImportTargetRollback: Equatable, Sendable {
+    // Rows the app writes, or a file on an engine whose DDL rolls back, into tables that roll back.
+    case rollsBack
+    // A target table whose engine keeps its rows through a ROLLBACK, such as MyISAM.
+    case keepsRows
+    // A file whose statements can commit or reach tables nobody read, or an engine that would not say.
+    case unknown
 }
 
 final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
@@ -48,15 +58,16 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     private let tableEditDialect: TableEditDialect?
     private let nameHazards = OSAllocatedUnfairLock<[String]>(initialState: [])
-    /// Whether this import opened the transaction it is in. A session connection can already hold
-    /// the user's own: a `BEGIN` there would join it, and the import's `COMMIT` would commit work the
-    /// user never asked to commit, so the import then runs inside it and leaves ending it to them.
+    // False inside the user's own transaction: the import joins it and leaves ending it to them.
     private let ownsTransaction = OSAllocatedUnfairLock(initialState: false)
-    /// One file of several imported in one run. The run opened the transaction and ends it, so this sink sends no
-    /// `BEGIN`, `COMMIT` or `ROLLBACK`: reading the session would not stop it, since `.unknown` permits a `BEGIN`
-    /// and MySQL commits the open transaction on one.
+    // One file of a batch: the run owns the transaction, so this sink sends no `BEGIN`, `COMMIT` or `ROLLBACK`.
     private let joinsTransaction: Bool
     private let transactionRecord = OSAllocatedUnfairLock(initialState: TransactionRecord())
+    private let targetRollback: ImportTargetRollback
+    private let refusesCommitAfterStop: Bool
+    private let joinedUserTransaction = OSAllocatedUnfairLock(initialState: false)
+    // Called whenever what a Stop would do changes, from whatever thread the import runs on.
+    private let onStopOutcomeChange: (@Sendable () -> Void)?
 
     private struct TransactionRecord {
         enum Ending {
@@ -67,6 +78,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
         var hasCommittedEarly = false
         var isEndedByFile = false
+        var isCommitting = false
         var ending: Ending?
     }
 
@@ -88,9 +100,15 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         sourceFields: Set<String> = [],
         rowWriting: ImportRowWriting = .insert,
         joinsTransaction: Bool = false,
-        isCancelled: @escaping @Sendable () -> Bool = { false }
+        targetRollback: ImportTargetRollback = .unknown,
+        refusesCommitAfterStop: Bool = false,
+        isCancelled: @escaping @Sendable () -> Bool = { false },
+        onStopOutcomeChange: (@Sendable () -> Void)? = nil
     ) {
         self.isCancelled = isCancelled
+        self.targetRollback = targetRollback
+        self.refusesCommitAfterStop = refusesCommitAfterStop
+        self.onStopOutcomeChange = onStopOutcomeChange
         self.rowWriting = rowWriting
         self.tally = OSAllocatedUnfairLock(initialState: ImportRowTally(mode: rowWriting.mode))
         self.joinsTransaction = joinsTransaction
@@ -131,7 +149,15 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     var transactionOutcome: ImportTransactionOutcome {
-        transactionRecord.withLock { record in
+        let joinedUser = joinedUserTransaction.withLock { $0 }
+        return transactionRecord.withLock { record in
+            if targetRollback == .keepsRows, record.ending != .committed {
+                return .untracked
+            }
+            // Only the rows this sink writes are known not to commit; a file's own statements can.
+            if joinedUser, record.ending == nil, targetTable != nil, targetRollback == .rollsBack {
+                return .joinedUserTransaction
+            }
             switch record.ending {
             case .committed:
                 return .committed
@@ -146,6 +172,14 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             case nil:
                 return .untracked
             }
+        }
+    }
+
+    // True only while a Stop is certain to take back everything written so far.
+    var rollsBackOnStop: Bool {
+        guard targetRollback == .rollsBack, ownsTransaction.withLock({ $0 }) else { return false }
+        return transactionRecord.withLock { record in
+            record.ending == nil && !record.isCommitting && !record.hasCommittedEarly && !record.isEndedByFile
         }
     }
 
@@ -542,25 +576,40 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     func beginTransaction() async throws {
         guard !joinsTransaction else { return }
+        let sessionState = await driver.heldSessionTransactionState()
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: await driver.heldSessionTransactionState()
+            sessionState: sessionState
         )
+        joinedUserTransaction.withLock { $0 = owner == .session && sessionState.holdsUserTransaction }
         ownsTransaction.withLock { $0 = owner.opensTransaction }
         transactionRecord.withLock { $0 = TransactionRecord() }
-        guard owner.opensTransaction else { return }
+        guard owner.opensTransaction else {
+            onStopOutcomeChange?()
+            return
+        }
         try await driver.beginTransaction(mode: .readWrite)
+        onStopOutcomeChange?()
     }
 
     func commitTransaction() async throws {
         guard ownsTransaction.withLock({ $0 }) else { return }
+        // A Stop that came during the last write was promised a rollback, and the runners commit at the end unasked.
+        if refusesCommitAfterStop, isCancelled() {
+            try await rollbackTransaction()
+            throw PluginImportCancellationError()
+        }
+        transactionRecord.withLock { $0.isCommitting = true }
+        onStopOutcomeChange?()
         try await driver.commitTransaction()
         ownsTransaction.withLock { $0 = false }
         transactionRecord.withLock { $0.ending = .committed }
+        onStopOutcomeChange?()
     }
 
     func rollbackTransaction() async throws {
         guard ownsTransaction.withLock({ $0 }) else { return }
+        defer { onStopOutcomeChange?() }
         guard await !sessionHoldsNoTransaction() else {
             ownsTransaction.withLock { $0 = false }
             transactionRecord.withLock { $0.ending = .endedByServer }
@@ -584,6 +633,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             guard !driver.supportsTransactionalDDL, await sessionHoldsNoTransaction() else { return }
             transactionRecord.withLock { $0.hasCommittedEarly = true }
         }
+        onStopOutcomeChange?()
     }
 
     private enum FileTransactionEnd {

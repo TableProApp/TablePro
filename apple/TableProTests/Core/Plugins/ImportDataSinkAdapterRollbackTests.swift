@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 /// Holds a transaction the way MySQL does: open from `BEGIN`, or from any statement under `autocommit = 0`, until a
@@ -25,6 +26,10 @@ private final class StatusFlagDriver: PluginDriverStub, @unchecked Sendable {
     private var reportsInTransaction = false
     private(set) var executed: [String] = []
     private(set) var stateReads = 0
+    var tableEngine: String?
+    var hasTransactions = true
+    var insertHold: AsyncGate?
+    var commitHold: AsyncGate?
 
     init(
         reportsState: Bool = true,
@@ -44,6 +49,8 @@ private final class StatusFlagDriver: PluginDriverStub, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         executed.append(query)
+        if query.hasPrefix("INSERT"), let insertHold { await insertHold.wait() }
+        if query == "COMMIT", let commitHold { await commitHold.wait() }
         let head = query.split(separator: " ").first.map { $0.uppercased() } ?? ""
         let isDDL = ["CREATE", "ALTER", "DROP"].contains(head)
         if isDDL, !supportsTransactionalDDL { isInTransaction = false }
@@ -62,6 +69,12 @@ private final class StatusFlagDriver: PluginDriverStub, @unchecked Sendable {
         }
         reportsInTransaction = isInTransaction
         return .empty
+    }
+
+    var supportsTransactions: Bool { hasTransactions }
+
+    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        PluginTableMetadata(tableName: table, engine: tableEngine)
     }
 
     func sessionTransactionState() async -> PluginSessionTransactionState {
@@ -348,5 +361,208 @@ struct ImportDataSinkAdapterRollbackTests {
         try await sink.commitTransaction()
 
         #expect(sink.transactionOutcome == .committed)
+    }
+}
+
+private final class StopOutcomeCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    var count: Int { lock.withLock { value } }
+
+    func bump() { lock.withLock { value += 1 } }
+}
+
+// A Stop promised a rollback only where one is certain: the import's own transaction, on tables that roll back.
+struct ImportStopRollbackTests {
+    private func makeRowSink(
+        on driver: StatusFlagDriver,
+        targetRollback: ImportTargetRollback,
+        changes: StopOutcomeCount = StopOutcomeCount()
+    ) -> (ImportDataSinkAdapter, PluginDriverAdapter) {
+        let connection = TestFixtures.makeConnection(type: .mysql)
+        let adapter = PluginDriverAdapter(connection: connection, pluginDriver: driver)
+        let sink = ImportDataSinkAdapter(
+            driver: adapter,
+            databaseType: .mysql,
+            targetTable: "courses",
+            targetRollback: targetRollback,
+            onStopOutcomeChange: { changes.bump() }
+        )
+        return (sink, adapter)
+    }
+
+    @Test("The import's own transaction on tables that roll back promises the rollback, and keeps it")
+    func ownTransactionRollsBack() async throws {
+        let driver = StatusFlagDriver()
+        let changes = StopOutcomeCount()
+        let (sink, _) = makeRowSink(on: driver, targetRollback: .rollsBack, changes: changes)
+        #expect(!sink.rollsBackOnStop)
+
+        try await sink.beginTransaction()
+        #expect(sink.rollsBackOnStop)
+        #expect(changes.count == 1)
+
+        try await sink.rollbackTransaction()
+        #expect(!sink.rollsBackOnStop)
+        #expect(sink.transactionOutcome == .rolledBack)
+        #expect(driver.executed.contains("ROLLBACK"))
+    }
+
+    @Test("A statement that commits the transaction takes the promise back")
+    func earlyCommitEndsThePromise() async throws {
+        let driver = StatusFlagDriver()
+        let changes = StopOutcomeCount()
+        let (sink, _) = makeRowSink(on: driver, targetRollback: .rollsBack, changes: changes)
+
+        try await sink.beginTransaction()
+        try await sink.execute(statement: "CREATE TABLE extra (id INT)", line: 1)
+
+        #expect(!sink.rollsBackOnStop)
+        #expect(changes.count == 2)
+    }
+
+    @Test("A Stop during the last row write rolls back where the row runner would have committed")
+    func stopDuringLastRowWriteRollsBack() async throws {
+        let driver = StatusFlagDriver(failingStatements: [])
+        let hold = AsyncGate()
+        driver.insertHold = hold
+        let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .mysql), pluginDriver: driver)
+        let progress = PluginImportProgress(progress: Progress(totalUnitCount: 0))
+        let sink = ImportDataSinkAdapter(
+            driver: adapter,
+            databaseType: .mysql,
+            targetTable: "courses",
+            columnMapping: ["id": "id"],
+            sourceFields: ["id"],
+            targetRollback: .rollsBack,
+            refusesCommitAfterStop: true,
+            isCancelled: { progress.isCancelled }
+        )
+        let run = Task {
+            var batches: [[RowImportRunner.Entry]] = [[(line: 2, row: ["id": .text("1")])]]
+            return try await RowImportRunner.run(
+                configuration: RowImportRunner.Configuration(
+                    errorHandling: .stopAndRollback, wrapInTransaction: true, deleteExistingRows: false
+                ),
+                sink: sink,
+                progress: progress
+            ) { batches.isEmpty ? nil : batches.removeFirst() }
+        }
+        await hold.arrived(1)
+        #expect(sink.rollsBackOnStop)
+        progress.cancel()
+        await hold.open()
+
+        await #expect(throws: PluginImportCancellationError.self) { _ = try await run.value }
+        #expect(driver.executed.contains("ROLLBACK"))
+        #expect(!driver.executed.contains("COMMIT"))
+        #expect(sink.transactionOutcome == .rolledBack)
+    }
+
+    @Test("Once the commit is on its way the Stop no longer promises a rollback")
+    func committingEndsThePromise() async throws {
+        let driver = StatusFlagDriver()
+        let hold = AsyncGate()
+        driver.commitHold = hold
+        let (sink, _) = makeRowSink(on: driver, targetRollback: .rollsBack)
+        try await sink.beginTransaction()
+
+        let commit = Task { try await sink.commitTransaction() }
+        await hold.arrived(1)
+        #expect(!sink.rollsBackOnStop)
+        await hold.open()
+        try await commit.value
+
+        #expect(sink.transactionOutcome == .committed)
+    }
+
+    @Test("A table that keeps its rows through a ROLLBACK is never promised one, and a rollback reads as kept")
+    func nonTransactionalTableKeepsRows() async throws {
+        let driver = StatusFlagDriver()
+        let (sink, _) = makeRowSink(on: driver, targetRollback: .keepsRows)
+
+        try await sink.beginTransaction()
+        #expect(!sink.rollsBackOnStop)
+
+        try await sink.rollbackTransaction()
+        #expect(sink.transactionOutcome == .untracked)
+    }
+
+    @Test("Rows written inside the user's own transaction are not promised a rollback and read as still open")
+    func usersTransactionIsNotPromised() async throws {
+        let driver = StatusFlagDriver()
+        let (sink, adapter) = makeRowSink(on: driver, targetRollback: .rollsBack)
+        _ = try await adapter.execute(query: "BEGIN")
+
+        try await sink.beginTransaction()
+        #expect(!sink.rollsBackOnStop)
+
+        try await sink.rollbackTransaction()
+        #expect(!driver.executed.contains("ROLLBACK"))
+        #expect(sink.transactionOutcome == .joinedUserTransaction)
+    }
+
+    @Test("An engine without transactions is never promised a rollback")
+    func engineWithoutTransactions() async throws {
+        let driver = StatusFlagDriver()
+        driver.hasTransactions = false
+        let (sink, _) = makeRowSink(on: driver, targetRollback: .rollsBack)
+
+        try await sink.beginTransaction()
+
+        #expect(!sink.rollsBackOnStop)
+        #expect(!driver.executed.contains("BEGIN"))
+    }
+
+    @Test("A file of unknown reach is never promised a rollback")
+    func unknownReachIsNotPromised() async throws {
+        let driver = StatusFlagDriver()
+        let (sink, _) = makeRowSink(on: driver, targetRollback: .unknown)
+
+        try await sink.beginTransaction()
+
+        #expect(!sink.rollsBackOnStop)
+    }
+
+    @Test("MySQL reads the target's engine: InnoDB rolls back, MyISAM keeps its rows, no engine is unknown")
+    func mysqlTargetEngine() async {
+        let driver = StatusFlagDriver()
+        let adapter = PluginDriverAdapter(connection: TestFixtures.makeConnection(type: .mysql), pluginDriver: driver)
+
+        driver.tableEngine = "InnoDB"
+        #expect(await ImportService.targetRollback(of: "courses", schema: nil, on: adapter) == .rollsBack)
+        driver.tableEngine = "MyISAM"
+        #expect(await ImportService.targetRollback(of: "courses", schema: nil, on: adapter) == .keepsRows)
+        driver.tableEngine = nil
+        #expect(await ImportService.targetRollback(of: "courses", schema: nil, on: adapter) == .unknown)
+    }
+
+    @Test("A SQL file rolls back only where DDL does and no table engine decides")
+    func sqlFileReach() async {
+        let mysql = PluginDriverAdapter(
+            connection: TestFixtures.makeConnection(type: .mysql),
+            pluginDriver: StatusFlagDriver(transactionalDDL: true)
+        )
+        let postgres = PluginDriverAdapter(
+            connection: TestFixtures.makeConnection(type: .postgresql),
+            pluginDriver: StatusFlagDriver(transactionalDDL: true)
+        )
+        let oracleLike = PluginDriverAdapter(
+            connection: TestFixtures.makeConnection(type: .postgresql),
+            pluginDriver: StatusFlagDriver(transactionalDDL: false)
+        )
+
+        #expect(await ImportService.targetRollback(of: nil, schema: nil, on: mysql) == .unknown)
+        #expect(await ImportService.targetRollback(of: nil, schema: nil, on: postgres) == .rollsBack)
+        #expect(await ImportService.targetRollback(of: nil, schema: nil, on: oracleLike) == .unknown)
+        #expect(await ImportService.targetRollback(of: "orders", schema: nil, on: postgres) == .rollsBack)
+    }
+
+    @Test("Several files roll back only when every target does")
+    func batchCombination() {
+        #expect(ImportService.combined([.rollsBack, .rollsBack]) == .rollsBack)
+        #expect(ImportService.combined([.rollsBack, .unknown]) == .unknown)
+        #expect(ImportService.combined([.unknown, .keepsRows, .rollsBack]) == .keepsRows)
     }
 }

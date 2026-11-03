@@ -17,7 +17,7 @@ struct ImportProgressView: View {
 extension ImportState {
     var transferProgress: TransferProgress {
         TransferProgress(
-            job: .dataImport,
+            job: .dataImport(rollsBack: rollsBackOnStop),
             item: fileName,
             step: TransferProgress.Step(index: fileIndex + 1, count: fileCount),
             completed: Int64(processedStatements),

@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 private struct ScopeRefusal: Error {}
@@ -22,6 +23,9 @@ private final class SessionScopeDriver: PluginDriverStub, @unchecked Sendable {
     var statesAfter: [String: PluginSessionTransactionState] = [:]
     var failingStatements: Set<String> = []
     var opensScope = true
+    var tableEngine: String?
+    var heldQuery: String?
+    var hold: AsyncGate?
     var openError: (any Error)?
     var closeError: (any Error)?
     private(set) var events: [String] = []
@@ -30,6 +34,7 @@ private final class SessionScopeDriver: PluginDriverStub, @unchecked Sendable {
 
     func execute(query: String) async throws -> PluginQueryResult {
         events.append(query)
+        if query == heldQuery { await hold?.wait() }
         if let next = statesAfter[query] { transactionState = next }
         if failingStatements.contains(query) {
             throw DatabaseError.queryFailed(Self.failure)
@@ -38,6 +43,10 @@ private final class SessionScopeDriver: PluginDriverStub, @unchecked Sendable {
     }
 
     func switchDatabase(to database: String) async throws {}
+
+    func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
+        PluginTableMetadata(tableName: table, engine: tableEngine)
+    }
 
     func sessionTransactionState() async -> PluginSessionTransactionState {
         transactionState
@@ -71,15 +80,18 @@ private final class ScriptedImportPlugin: ImportFormatPlugin {
 
     private let statements: [String]
     private let cancelsBeforeLine: Int?
+    private let heldAfterBegin: AsyncGate?
 
     required init() {
         statements = []
         cancelsBeforeLine = nil
+        heldAfterBegin = nil
     }
 
-    init(statements: [String], cancelsBeforeLine: Int? = nil) {
+    init(statements: [String], cancelsBeforeLine: Int? = nil, heldAfterBegin: AsyncGate? = nil) {
         self.statements = statements
         self.cancelsBeforeLine = cancelsBeforeLine
+        self.heldAfterBegin = heldAfterBegin
     }
 
     func performImport(
@@ -88,6 +100,7 @@ private final class ScriptedImportPlugin: ImportFormatPlugin {
         progress: PluginImportProgress
     ) async throws -> PluginImportResult {
         try await sink.beginTransaction()
+        await heldAfterBegin?.wait()
         do {
             for (index, statement) in statements.enumerated() {
                 let line = index + 1
@@ -159,6 +172,112 @@ struct ImportServiceSessionScopeTests {
         } catch {
             return ImportRun(service: service, result: .failure(error))
         }
+    }
+
+    // Holds the import right after its BEGIN, runs `whileHeld`, then lets it go on.
+    private func runHeldImport(
+        on driver: SessionScopeDriver,
+        targetTable: String,
+        holdingStatement: Bool = false,
+        whileHeld: @MainActor (ImportService) async throws -> Void
+    ) async throws -> ImportRun {
+        let connection = TestFixtures.makeConnection(database: "school", type: .mysql)
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
+        )
+        session.browseDatabase = "school"
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+
+        let gate = AsyncGate()
+        let statement = "INSERT INTO courses VALUES (1)"
+        if holdingStatement {
+            driver.heldQuery = statement
+            driver.hold = gate
+        }
+        let formatId = "\(ScriptedImportPlugin.formatId)-\(UUID().uuidString)"
+        PluginManager.shared.importPlugins[formatId] = ScriptedImportPlugin(
+            statements: [statement],
+            heldAfterBegin: holdingStatement ? nil : gate
+        )
+        defer { PluginManager.shared.importPlugins[formatId] = nil }
+
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("held-import-\(UUID().uuidString)")
+            .appendingPathExtension("csv")
+        try Data("id\n1\n".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        let service = ImportService(connection: connection, historyRecorder: DiscardingHistory(), gate: AlwaysAllowGate())
+        let run = Task {
+            try await service.importFile(
+                from: file,
+                formatId: formatId,
+                encoding: .utf8,
+                scope: DatabaseScope(connectionId: connection.id, database: "school", schema: nil),
+                targetTable: targetTable
+            )
+        }
+        await gate.arrived(1)
+        do {
+            try await whileHeld(service)
+        } catch {
+            await gate.open()
+            _ = await run.result
+            throw error
+        }
+        await gate.open()
+        return ImportRun(service: service, result: await run.result)
+    }
+
+    @Test("A Stop on an InnoDB table promises the rollback and the import rolls back")
+    func stopOnTransactionalTableRollsBack() async throws {
+        let driver = SessionScopeDriver()
+        driver.tableEngine = "InnoDB"
+
+        let run = try await runHeldImport(on: driver, targetTable: "courses") { service in
+            try await waitUntil { service.state.rollsBackOnStop }
+            #expect(service.state.transferProgress.stopPolicy.consequence == "What was imported so far is rolled back.")
+            service.cancelImport()
+        }
+
+        #expect(run.error is PluginImportCancellationError)
+        #expect(driver.events.contains("ROLLBACK"))
+        #expect(run.service.state.transactionOutcome == .rolledBack)
+        #expect(!run.service.state.rollsBackOnStop)
+    }
+
+    @Test("A Stop during the last statement rolls back where the plugin would have committed")
+    func stopDuringLastStatementRollsBack() async throws {
+        let driver = SessionScopeDriver()
+        driver.tableEngine = "InnoDB"
+
+        let run = try await runHeldImport(on: driver, targetTable: "courses", holdingStatement: true) { service in
+            try await waitUntil { service.state.rollsBackOnStop }
+            service.cancelImport()
+        }
+
+        #expect(run.error is PluginImportCancellationError)
+        #expect(driver.events.contains("ROLLBACK"))
+        #expect(!driver.events.contains("COMMIT"))
+        #expect(run.service.state.transactionOutcome == .rolledBack)
+    }
+
+    @Test("A Stop on a MyISAM table promises nothing and reports the rows as kept")
+    func stopOnNonTransactionalTableKeepsRows() async throws {
+        let driver = SessionScopeDriver()
+        driver.tableEngine = "MyISAM"
+
+        let run = try await runHeldImport(on: driver, targetTable: "courses") { service in
+            #expect(service.state.transferProgress.stopPolicy.consequence == "Anything already imported may stay.")
+            service.cancelImport()
+        }
+
+        #expect(run.error is PluginImportCancellationError)
+        #expect(!run.service.state.rollsBackOnStop)
+        #expect(run.service.state.transactionOutcome == .untracked)
     }
 
     @Test("A successful import opens one preserving scope and closes it after the commit")

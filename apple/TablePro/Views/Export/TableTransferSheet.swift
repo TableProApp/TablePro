@@ -20,9 +20,9 @@ struct TableTransferSheet: View {
     @Binding var isPresented: Bool
     let sourceConnection: DatabaseConnection
     let preselectedTables: Set<String>
-    /// The schema the preselected rows came from. Without it the sheet listed whichever schema the
-    /// session happened to be browsing and matched the bare names against that one instead.
+    // Without it the sheet listed whichever schema the session was browsing and matched the bare names there.
     var preselectedSchema: String?
+    var sheetWork: SheetWorkScope?
 
     @StateObject private var service = TableTransferService()
     @State private var destinationConnectionId: UUID?
@@ -444,17 +444,18 @@ struct TableTransferSheet: View {
         service.prepareForRun()
         isRunning = true
         let transferService = service
-        let workId = RunningWorkRegistry.shared.begin(
+        let job = SheetJob(
             .tableTransfer,
             subject: destinationConnection.name,
             connectionName: sourceConnection.name,
-            connectionIds: [sourceConnection.id, destinationConnection.id]
+            connectionIds: [sourceConnection.id, destinationConnection.id],
+            scope: sheetWork
         ) {
             transferService.cancel()
         }
         defer {
             isRunning = false
-            RunningWorkRegistry.shared.end(workId)
+            job.end()
         }
 
         await loadColumnsForSelection()

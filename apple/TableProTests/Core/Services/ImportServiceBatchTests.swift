@@ -6,16 +6,20 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProTestSupport
 import Testing
 
 /// Records every statement and answers the session state an engine that cannot report it would.
 private final class RecordingDriver: PluginDriverStub, @unchecked Sendable {
     var transactionState: PluginSessionTransactionState = .unknown
     var failingValue: String?
+    var heldValue: String?
+    var hold: AsyncGate?
     private(set) var events: [String] = []
 
     func execute(query: String) async throws -> PluginQueryResult {
         events.append(query)
+        if let heldValue, query.contains("'\(heldValue)'") { await hold?.wait() }
         if let failingValue, query.contains("'\(failingValue)'") {
             throw DatabaseError.queryFailed("Duplicate entry '\(failingValue)'")
         }
@@ -81,6 +85,11 @@ private final class LineRowsPlugin: ImportFormatPlugin {
     }
 }
 
+@MainActor
+private final class ReportBox {
+    var report: RowImportBatchReport?
+}
+
 private actor RecordingHistory: QueryHistoryRecording {
     private(set) var queries: [String] = []
 
@@ -106,9 +115,14 @@ struct ImportServiceBatchTests {
         configuration: RowImportRunner.Configuration? = nil,
         failingValue: String? = nil,
         sessionState: PluginSessionTransactionState = .unknown,
-        stopsFirst: Bool = false
+        stopsFirst: Bool = false,
+        heldValue: String? = nil,
+        whileHeld: @MainActor (ImportService) async -> Void = { _ in }
     ) async throws -> Run {
         let driver = RecordingDriver()
+        let hold = AsyncGate()
+        driver.heldValue = heldValue
+        driver.hold = hold
         driver.failingValue = failingValue
         driver.transactionState = sessionState
         let connection = TestFixtures.makeConnection(database: "shop", type: .mysql)
@@ -151,11 +165,21 @@ struct ImportServiceBatchTests {
         if stopsFirst {
             service.cancelImport()
         }
-        let report = try await service.importFiles(
-            items,
-            scope: DatabaseScope(connectionId: connection.id, database: "shop", schema: nil),
-            policy: policy
-        )
+        let box = ReportBox()
+        let run = Task {
+            box.report = try await service.importFiles(
+                items,
+                scope: DatabaseScope(connectionId: connection.id, database: "shop", schema: nil),
+                policy: policy
+            )
+        }
+        if heldValue != nil {
+            await hold.arrived(1)
+            await whileHeld(service)
+            await hold.open()
+        }
+        try await run.value
+        let report = try #require(box.report)
         return Run(report: report, driver: driver, history: await history.queries)
     }
 
@@ -173,6 +197,18 @@ struct ImportServiceBatchTests {
         #expect(run.driver.inserts.count == 3)
         #expect(run.report.importedRowCount == 4)
         #expect(run.report.transaction == .committed)
+    }
+
+    @Test("A Stop during the last file's last write rolls every file back instead of committing")
+    func stopDuringLastWriteRollsBack() async throws {
+        let run = try await runFiles(["a1", "b1"], policy: Self.rollback, heldValue: "b1") { service in
+            service.cancelImport()
+        }
+
+        #expect(run.report.ending == .stopped(file: 1))
+        #expect(run.driver.events.contains("ROLLBACK"))
+        #expect(!run.driver.events.contains("COMMIT"))
+        #expect(!run.report.rowsKept)
     }
 
     @Test("A failure in a later file rolls back the files before it under Stop and Rollback")

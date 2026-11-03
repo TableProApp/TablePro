@@ -53,8 +53,12 @@ internal enum ResultVisibilityResolver {
         return controller.workspaces.selected?.connectionId
     }
 
+    // Agent mode draws the conversation over the tabs; `showSelectedContentPanes` clears the mark when Browse returns.
     private static func selectedTabId(in window: NSWindow) -> UUID? {
-        guard let controller = window.contentViewController as? MainSplitViewController else { return nil }
-        return controller.workspaces.selected?.sessionState?.tabManager.selectedTab?.id
+        guard let controller = window.contentViewController as? MainSplitViewController,
+              let workspace = controller.workspaces.selected,
+              workspace.detailMode == .browse
+        else { return nil }
+        return workspace.sessionState?.tabManager.selectedTab?.id
     }
 }

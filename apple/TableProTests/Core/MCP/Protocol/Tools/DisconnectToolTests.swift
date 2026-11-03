@@ -6,6 +6,7 @@
 import Foundation
 @testable import TablePro
 import TableProMCP
+import TableProPluginKit
 import Testing
 
 struct DisconnectToolTests {
@@ -48,6 +49,142 @@ struct DisconnectToolTests {
         #expect(MCPToolTestHarness.errorText(result)?.hasPrefix("not_connected:") == true)
     }
 
+    @Test("Disconnecting while TablePro has work on the connection is refused and the session stays")
+    @MainActor
+    func runningWorkRefusesDisconnect() async throws {
+        let connection = TestFixtures.makeConnection(name: "Busy", type: .mysql)
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: IdleDriver())
+        )
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let work = RunningWorkRegistry.shared.begin(
+            .dataImport,
+            subject: "private-file.csv",
+            connectionName: connection.name,
+            connectionIds: [connection.id]
+        ) {}
+        defer { RunningWorkRegistry.shared.end(work) }
+
+        let result = try await call(.object(["connection_id": .string(connection.id.uuidString)]))
+
+        #expect(result.isError)
+        let text = try #require(MCPToolTestHarness.errorText(result))
+        #expect(text.hasPrefix("denied:"))
+        #expect(text.contains("an import, export, backup, restore or copy"))
+        #expect(!text.contains("private-file.csv"))
+        #expect(DatabaseManager.shared.activeSessions[connection.id] != nil)
+    }
+
+    @Test("Once the work ends the same call disconnects")
+    @MainActor
+    func disconnectsOnceTheWorkEnds() async throws {
+        let connection = TestFixtures.makeConnection(name: "Idle again", type: .mysql)
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: IdleDriver())
+        )
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        let work = RunningWorkRegistry.shared.begin(
+            .backup, subject: "", connectionName: connection.name, connectionIds: [connection.id]
+        ) {}
+        let arguments: JsonValue = .object(["connection_id": .string(connection.id.uuidString)])
+
+        #expect(try await call(arguments).isError)
+        RunningWorkRegistry.shared.end(work)
+        let result = try await call(arguments)
+
+        #expect(!result.isError)
+        #expect(DatabaseManager.shared.activeSessions[connection.id] == nil)
+    }
+
+    @Test("Work that starts while the transaction probe runs is seen, and the disconnect is refused")
+    @MainActor
+    func workStartingDuringTheProbeRefuses() async throws {
+        let connection = TestFixtures.makeConnection(name: "Starts work", type: .mysql)
+        let driver = WorkStartingDriver(connectionId: connection.id)
+        try await withLiveSession(connection, driver: driver) {
+            let result = try await call(.object(["connection_id": .string(connection.id.uuidString)]))
+
+            #expect(result.isError)
+            #expect(MCPToolTestHarness.errorText(result)?.contains("an import, export, backup, restore or copy") == true)
+            #expect(DatabaseManager.shared.activeSessions[connection.id] != nil)
+        }
+        RunningWorkRegistry.shared.end(driver.startedWork)
+    }
+
+    @Test("A transactional engine that cannot report its state is refused, naming nothing")
+    @MainActor
+    func unknownTransactionStateRefuses() async throws {
+        let connection = TestFixtures.makeConnection(name: "Cannot tell", type: .mysql)
+        try await withLiveSession(connection, driver: UnknownStateDriver()) {
+            let result = try await call(.object(["connection_id": .string(connection.id.uuidString)]))
+
+            #expect(result.isError)
+            let text = try #require(MCPToolTestHarness.errorText(result))
+            #expect(text.hasPrefix("denied:"))
+            #expect(text.contains("cannot tell whether this connection holds an open transaction"))
+            #expect(!text.contains("Cannot tell"))
+            #expect(DatabaseManager.shared.activeSessions[connection.id] != nil)
+        }
+    }
+
+    @Test("An engine without transactions disconnects without a probe answer")
+    @MainActor
+    func engineWithoutTransactionsDisconnects() async throws {
+        let connection = TestFixtures.makeConnection(name: "No transactions", type: .mysql)
+        try await withLiveSession(connection, driver: TransactionlessDriver()) {
+            let result = try await call(.object(["connection_id": .string(connection.id.uuidString)]))
+
+            #expect(!result.isError)
+            #expect(DatabaseManager.shared.activeSessions[connection.id] == nil)
+        }
+    }
+
+    @Test("An open transaction is named as a loss, never the database")
+    @MainActor
+    func openTransactionRefuses() {
+        let message = ExternalDisconnectRefusal.message(work: [], transactions: .holding, hasUnsavedWork: false)
+        #expect(message?.contains("an open transaction") == true)
+        #expect(ExternalDisconnectRefusal.message(work: [], transactions: .noTransaction, hasUnsavedWork: false) == nil)
+    }
+
+    @MainActor
+    private func withLiveSession(
+        _ connection: DatabaseConnection,
+        driver: any PluginDatabaseDriver,
+        _ body: @MainActor () async throws -> Void
+    ) async throws {
+        var session = ConnectionSession(
+            connection: connection,
+            driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
+        )
+        session.status = .connected
+        DatabaseManager.shared.injectSession(session, for: connection.id)
+        defer { DatabaseManager.shared.removeSession(for: connection.id) }
+        try await body()
+    }
+
+    @Test("Each loss is named by its kind, in one fixed order")
+    @MainActor
+    func refusalNamesKinds() {
+        #expect(ExternalDisconnectRefusal.message(for: []) == nil)
+        #expect(
+            ExternalDisconnectRefusal.message(for: [.transaction])
+                == "This connection has an open transaction in TablePro, which disconnecting would stop or discard. "
+                + "Finish it first, or disconnect in TablePro, which asks the user."
+        )
+        let several = ExternalDisconnectRefusal.message(for: [.unsavedChanges, .query]) ?? ""
+        let query = several.range(of: "a running query")
+        let unsaved = several.range(of: "unsaved changes")
+        #expect(query != nil && unsaved != nil)
+        if let query, let unsaved { #expect(query.lowerBound < unsaved.lowerBound) }
+    }
+
     @Test("An unknown parameter is rejected")
     func unknownParameterIsRejected() async throws {
         await #expect(throws: MCPProtocolError.self) {
@@ -56,5 +193,41 @@ struct DisconnectToolTests {
                 "force": .bool(true)
             ]))
         }
+    }
+}
+
+private final class IdleDriver: PluginDriverStub, @unchecked Sendable {
+    func sessionTransactionState() async -> PluginSessionTransactionState { .idle }
+}
+
+private final class UnknownStateDriver: PluginDriverStub, @unchecked Sendable {
+    func sessionTransactionState() async -> PluginSessionTransactionState { .unknown }
+}
+
+private final class TransactionlessDriver: PluginDriverStub, @unchecked Sendable {
+    var supportsTransactions: Bool { false }
+}
+
+// Starts an import on the connection while the disconnect is still asking about transactions.
+private final class WorkStartingDriver: PluginDriverStub, @unchecked Sendable {
+    private let connectionId: UUID
+    private let lock = NSLock()
+    private var work: UUID?
+
+    init(connectionId: UUID) {
+        self.connectionId = connectionId
+    }
+
+    var startedWork: UUID? { lock.withLock { work } }
+
+    func sessionTransactionState() async -> PluginSessionTransactionState {
+        let connectionId = connectionId
+        let id = await MainActor.run {
+            RunningWorkRegistry.shared.begin(
+                .dataImport, subject: "late.csv", connectionName: "", connectionIds: [connectionId]
+            ) {}
+        }
+        lock.withLock { work = id }
+        return .idle
     }
 }
