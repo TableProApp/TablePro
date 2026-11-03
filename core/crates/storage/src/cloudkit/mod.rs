@@ -67,13 +67,19 @@ pub struct CloudPull {
     pub favorites_order: Option<Vec<Uuid>>,
 }
 
+struct ConnectionPlace {
+    record_key: Option<(i64, String)>,
+    order: u32,
+    id: Uuid,
+}
+
 // Unknown groups stay in the record cache for a newer reader to understand.
 pub fn layout(list: &ConnectionList, records: &CloudRecords, favorites_order: &[Uuid]) -> ConnectionList {
     let groups = read_groups(&records.groups);
     let known: HashSet<Uuid> = groups.iter().map(|group| group.id).collect();
     let recorded = by_id(&records.connections, |record| &record.connection_id);
 
-    let mut places: HashMap<Option<Uuid>, Vec<(Option<(i64, String)>, u32, Uuid)>> = HashMap::new();
+    let mut places: HashMap<Option<Uuid>, Vec<ConnectionPlace>> = HashMap::new();
     let mut favorites: HashSet<Uuid> = HashSet::new();
     for saved in list.connections.iter() {
         let record = recorded.get(&saved.id);
@@ -86,7 +92,11 @@ pub fn layout(list: &ConnectionList, records: &CloudRecords, favorites_order: &[
             let name = record.name.clone().unwrap_or_else(|| saved.name.clone());
             (sort_key(record.sort_order), name)
         });
-        places.entry(group).or_default().push((key, saved.order, saved.id));
+        places.entry(group).or_default().push(ConnectionPlace {
+            record_key: key,
+            order: saved.order,
+            id: saved.id,
+        });
         let is_favorite = record.map_or_else(|| list.is_favorite(saved.id), |record| favorite(record.is_favorite));
         if is_favorite {
             favorites.insert(saved.id);
@@ -95,14 +105,14 @@ pub fn layout(list: &ConnectionList, records: &CloudRecords, favorites_order: &[
 
     let mut placed: HashMap<Uuid, (Option<Uuid>, u32)> = HashMap::new();
     for (group, mut members) in places {
-        members.sort_by(|left, right| match (&left.0, &right.0) {
-            (Some(l), Some(r)) => reads_before((l.0, &l.1, left.2), (r.0, &r.1, right.2)),
+        members.sort_by(|left, right| match (&left.record_key, &right.record_key) {
+            (Some(l), Some(r)) => reads_before((l.0, &l.1, left.id), (r.0, &r.1, right.id)),
             (Some(_), None) => std::cmp::Ordering::Less,
             (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => (left.1, left.2).cmp(&(right.1, right.2)),
+            (None, None) => (left.order, left.id).cmp(&(right.order, right.id)),
         });
-        for ((_, _, id), rank) in members.into_iter().zip(0_u32..) {
-            placed.insert(id, (group, rank));
+        for (member, rank) in members.into_iter().zip(0_u32..) {
+            placed.insert(member.id, (group, rank));
         }
     }
     let connections: Vec<SavedConnection> = list
@@ -160,7 +170,7 @@ fn changed<R: PartialEq>(base: &HashMap<Uuid, &R>, id: &str, record: &R) -> bool
         .is_none_or(|held| *held != record)
 }
 
-fn by_id<'a, R>(records: &'a [R], id: impl Fn(&R) -> &String) -> HashMap<Uuid, &'a R> {
+fn by_id<R>(records: &[R], id: impl Fn(&R) -> &String) -> HashMap<Uuid, &R> {
     let mut found = HashMap::with_capacity(records.len());
     for record in records {
         if let Some(parsed) = record_id(id(record)) {
