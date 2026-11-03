@@ -51,8 +51,7 @@ public sealed class AutomationTests
         Assert.Equal((999_999, 199), (grid.FocusedRow, grid.FocusedColumn));
     });
 
-    // A client holds a cell's peer across a new result: the peer then reads the new data, and a cell the new data
-    // lacks reads as empty, off screen and with no bounds, without reading the released set.
+    // A cell peer held across a new result reads the new data, or empty and off screen where the data lacks it.
     [Fact]
     public Task ACellPeerReadsTheNewDataAfterTheOldSetIsReleased() => WinUiHost.RunAsync(async () =>
     {

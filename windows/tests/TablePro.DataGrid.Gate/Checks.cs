@@ -77,7 +77,7 @@ internal sealed partial class Gate
             var t0 = Clock.Now();
             send();
             var done = await Task.WhenAny(changed.Task, Task.Delay(3000));
-            // The Arm64 image's shell takes the foreground or focus now and then, and a press sent meanwhile goes to it.
+            // The Arm64 image's shell takes the foreground now and then, and a press sent meanwhile goes to it.
             if (done != changed.Task)
             {
                 results.Add($"{name}: lost with foreground={Native.IsForeground(ctx.Window)} focus={_grid.FocusState}, sent again");
@@ -488,7 +488,7 @@ internal sealed partial class Gate
     }
 }
 
-// Settings' per-source DPI call, not in the SDK headers; request numbers from SetDPI (MIT, https://github.com/imniko/SetDPI).
+// Settings' per-source DPI call, absent from the SDK; request numbers from SetDPI (MIT, github.com/imniko/SetDPI).
 internal static partial class DisplayScale
 {
     private static readonly int[] Scales = [100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500];

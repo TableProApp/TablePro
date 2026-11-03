@@ -55,8 +55,7 @@ internal sealed partial class RowsLayout(IGridWindow grid, bool frozen, LayoutCo
 
     public Dictionary<int, UIElement> Realized => _realized;
 
-    // After the data was replaced. A new source leaves SuppressAutoRecycle elements realized, still drawing the old
-    // rows under the new ones, so the next measure hands them back.
+    // A new source leaves SuppressAutoRecycle elements drawing the old rows; the next measure hands them back.
     public void Forget()
     {
         _replaced.AddRange(_realized.Values);

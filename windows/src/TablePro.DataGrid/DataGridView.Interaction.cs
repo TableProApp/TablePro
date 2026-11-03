@@ -12,7 +12,6 @@ using Windows.UI.Core;
 
 namespace TablePro.DataGrid;
 
-// Keys, pointer, selection, copy and the header's commands.
 public sealed partial class DataGridView
 {
     private CancellationTokenSource? _copy;

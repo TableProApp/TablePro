@@ -47,7 +47,6 @@ internal sealed unsafe partial class DrawnRow : Microsoft.UI.Xaml.Controls.Grid
 
     public bool IsFrozen => _frozen;
 
-    // The row this element stands for.
     public int Row { get; private set; } = -1;
 
     // What the surface shows: the row, and the columns from First to Last.

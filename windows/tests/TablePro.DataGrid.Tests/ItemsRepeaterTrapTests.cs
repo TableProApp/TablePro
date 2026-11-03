@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace TablePro.DataGrid.Tests;
 
-// The ItemsRepeater traps that broke the grid silently (wingates2 SPIKE.md and the app's sort); each fails without its fix.
+// ItemsRepeater traps that broke the grid silently (wingates2 SPIKE.md, the app's sort); each fails without its fix.
 public sealed class ItemsRepeaterTrapTests
 {
     // Without SuppressAutoRecycle one element served two rows and headers went blank.
@@ -49,7 +49,7 @@ public sealed class ItemsRepeaterTrapTests
         }
     });
 
-    // GetElementIfAlreadyHeldByLayout walks every child inside a cached range that only grows; small ranges keep it short.
+    // GetElementIfAlreadyHeldByLayout walks every child in a cached range that only grows; small ranges keep it short.
     [Fact]
     public Task EachRepeaterHoldsASmallContiguousRangeAfterRandomJumps() => WinUiHost.RunAsync(async () =>
     {
@@ -125,8 +125,7 @@ public sealed class ItemsRepeaterTrapTests
         }
     });
 
-    // A new source leaves elements realized with SuppressAutoRecycle where they were. Once the new rows arrived, the
-    // old rows stayed drawn under them, as a sorted result showed in the app.
+    // A new source left SuppressAutoRecycle elements realized, and the old rows stayed drawn under a sorted result.
     [Fact]
     public Task NewDataLeavesOnlyItsOwnRowsAndHeadersOnScreen() => WinUiHost.RunAsync(async () =>
     {

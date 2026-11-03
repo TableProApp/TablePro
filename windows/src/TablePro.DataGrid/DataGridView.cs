@@ -540,7 +540,7 @@ public sealed partial class DataGridView : UserControl, IGridWindow
         }
     }
 
-    // UISettings calls back on its own thread; AccessibilitySettings.HighContrastChanged needs a CoreWindow (0x80070490).
+    // UISettings calls back on its own thread; HighContrastChanged needs a CoreWindow (0x80070490).
     private void OnTextScaleChanged(UISettings sender, object args) =>
         DispatcherQueue.TryEnqueue(() => ApplyTextScale(_settings.TextScaleFactor));
 
