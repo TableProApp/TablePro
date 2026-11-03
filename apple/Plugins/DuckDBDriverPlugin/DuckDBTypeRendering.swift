@@ -72,15 +72,11 @@ extension DuckDBLogicalType {
         .varchar, .blob, .boolean, .tinyint, .smallint, .integer, .bigint, .utinyint, .usmallint, .uinteger, .ubigint,
     ]
 
-    var isRenderedByValueAPI: Bool {
-        !Self.typesTheValueAPICannotRender.contains(self)
-    }
-
     var isReadFromChunks: Bool {
         Self.typesReadFromChunks.contains(self)
     }
 
-    // A SELECT casts every other type to text, so DuckDB spells it and the result reads through chunks.
+    // DuckDB casts every other type to text, keeping its spelling without using the row value API.
     static func requiresTextProjection(_ type: DuckDBLogicalType?) -> Bool {
         guard let type else { return true }
         return !type.isReadFromChunks
@@ -92,8 +88,6 @@ extension DuckDBLogicalType {
 }
 
 enum DuckDBProjectedQuery {
-    static let subqueryAlias = "_tp_cast"
-
     static func sourceAlias(at index: Int) -> String {
         "c\(index + 1)"
     }
@@ -108,17 +102,10 @@ enum DuckDBProjectedQuery {
         return "CASE WHEN \(source) IS NULL THEN NULL ELSE \(rendered) END AS \(alias)"
     }
 
-    static func build(originalQuery: String, columns: [(name: String, type: DuckDBLogicalType?)]) -> String? {
-        guard !columns.isEmpty else { return nil }
-        var inner = originalQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        if inner.hasSuffix(";") {
-            inner = String(inner.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        guard !inner.isEmpty else { return nil }
+    static func build(function: String, columns: [(name: String, type: DuckDBLogicalType?)]) -> String {
         let projections = columns.enumerated()
             .map { projection(for: $0.element.type, at: $0.offset, column: $0.element.name) }
             .joined(separator: ", ")
-        let aliases = columns.indices.map(sourceAlias(at:)).joined(separator: ", ")
-        return "SELECT \(projections) FROM (\(inner)\n) AS \(subqueryAlias)(\(aliases))"
+        return "SELECT \(projections) FROM \(SQLQuoting.identifier(function))()"
     }
 }
