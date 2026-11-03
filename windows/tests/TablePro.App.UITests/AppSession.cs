@@ -18,7 +18,11 @@ internal sealed class AppSession : IDisposable
     private readonly UIA3Automation _automation = new();
     private readonly Application _application;
 
-    private AppSession(string dataFolder, string theme, bool maximize = true)
+    private AppSession(
+        string dataFolder,
+        string theme,
+        bool maximize = true,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         DataFolder = dataFolder;
         Theme = theme;
@@ -30,6 +34,11 @@ internal sealed class AppSession : IDisposable
 
         var start = new ProcessStartInfo(path) { UseShellExecute = false };
         start.Environment["TABLEPRO_DATA_DIR"] = dataFolder;
+        foreach (var (name, value) in environment ?? new Dictionary<string, string>())
+        {
+            start.Environment[name] = value;
+        }
+
         _application = Application.Launch(start);
         Window = _application.GetMainWindow(_automation, Wait)
             ?? throw new InvalidOperationException("The main window did not open.");
@@ -57,8 +66,12 @@ internal sealed class AppSession : IDisposable
 
     public static AppSession Launch(string theme) => new(NewDataFolder(theme), theme);
 
-    public static AppSession Relaunch(string dataFolder, string theme, bool maximize = true) =>
-        new(dataFolder, theme, maximize);
+    public static AppSession Relaunch(
+        string dataFolder,
+        string theme,
+        bool maximize = true,
+        IReadOnlyDictionary<string, string>? environment = null) =>
+        new(dataFolder, theme, maximize, environment);
 
     public static string LibraryFile(string folder) =>
         Directory.EnumerateFiles(folder, "connections.json", SearchOption.AllDirectories).First();

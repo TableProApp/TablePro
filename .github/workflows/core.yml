@@ -60,6 +60,10 @@ jobs:
             -p tablepro-ai -p tablepro-mcp -p tablepro-test-support -p tablepro-test-fixtures \
             -p tablepro-driver-cassandra -p tablepro-driver-clickhouse -p tablepro-driver-duckdb \
             -p tablepro-driver-mongodb -p tablepro-driver-mssql -p tablepro-driver-mysql \
-            -p tablepro-driver-postgres -p tablepro-driver-redis -p tablepro-driver-sqlite
+            -p tablepro-driver-postgres -p tablepro-driver-redis -p tablepro-driver-sqlite \
+            -p tablepro-driver-abi -p tablepro-driver-host -p tablepro-driver-sqlite-plugin
       - name: Core unit tests
         run: cargo test --locked --target "$TARGET" -p tablepro-core --lib
+      # The driver ABI's matrix loads the SQLite driver as a library, which only these runners can for Windows.
+      - name: Driver ABI tests
+        run: cargo test --locked --target "$TARGET" -p tablepro-driver-abi -p tablepro-driver-host -p tablepro-driver-sqlite-plugin

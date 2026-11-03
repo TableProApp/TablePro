@@ -1260,4 +1260,112 @@
   <data name="StatusPageOf" xml:space="preserve">
     <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
   </data>
+  <data name="DriversHeader.Text" xml:space="preserve">
+    <value>Drivers</value>
+  </data>
+  <data name="InstalledDriversExpander.Header" xml:space="preserve">
+    <value>Installed drivers</value>
+  </data>
+  <data name="InstalledDriversExpander.Description" xml:space="preserve">
+    <value>Drivers you added. The ones TablePro comes with are always there.</value>
+  </data>
+  <data name="InstallDriverFileButton.Content" xml:space="preserve">
+    <value>Install from file...</value>
+  </data>
+  <data name="AvailableDriversExpander.Header" xml:space="preserve">
+    <value>Available drivers</value>
+  </data>
+  <data name="AvailableDriversExpander.Description" xml:space="preserve">
+    <value>Drivers TablePro publishes for this PC</value>
+  </data>
+  <data name="NoDriversInstalled" xml:space="preserve">
+    <value>No drivers installed</value>
+  </data>
+  <data name="DriverCatalogEmpty" xml:space="preserve">
+    <value>No drivers are available for this PC yet</value>
+  </data>
+  <data name="DriverCatalogUnavailable" xml:space="preserve">
+    <value>The driver catalog couldn't be reached</value>
+  </data>
+  <data name="DriverVersion" xml:space="preserve">
+    <value>Version {0}</value>
+  </data>
+  <data name="DriverNotLoaded" xml:space="preserve">
+    <value>Not loaded. {0}</value>
+  </data>
+  <data name="DriverUpToDate" xml:space="preserve">
+    <value>Installed</value>
+  </data>
+  <data name="InstallDriver" xml:space="preserve">
+    <value>Install</value>
+  </data>
+  <data name="UpdateDriver" xml:space="preserve">
+    <value>Update</value>
+  </data>
+  <data name="InstallDriverName" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="RemoveDriver" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="RemoveDriverName" xml:space="preserve">
+    <value>Remove {0}</value>
+  </data>
+  <data name="DriverInstalled" xml:space="preserve">
+    <value>{0} {1} is installed.</value>
+  </data>
+  <data name="DriverRemoved" xml:space="preserve">
+    <value>{0} was removed.</value>
+  </data>
+  <data name="DriverDownloadFailed" xml:space="preserve">
+    <value>The driver couldn't be downloaded. Check your connection and try again.</value>
+  </data>
+  <data name="Error_plugin_unsigned" xml:space="preserve">
+    <value>This driver isn't signed, so TablePro won't load it.</value>
+  </data>
+  <data name="Error_plugin_untrusted" xml:space="preserve">
+    <value>This driver's signature isn't valid, so TablePro won't load it.</value>
+  </data>
+  <data name="Error_plugin_wrong_signer" xml:space="preserve">
+    <value>This driver isn't signed by TablePro, so TablePro won't load it.</value>
+  </data>
+  <data name="Error_plugin_trust_unavailable" xml:space="preserve">
+    <value>This version of TablePro can't check a driver's signature.</value>
+  </data>
+  <data name="Error_plugin_load_failed" xml:space="preserve">
+    <value>Windows couldn't load this driver.</value>
+  </data>
+  <data name="Error_plugin_wrong_architecture" xml:space="preserve">
+    <value>This driver is built for a different processor.</value>
+  </data>
+  <data name="Error_plugin_not_a_driver" xml:space="preserve">
+    <value>This file isn't a TablePro driver.</value>
+  </data>
+  <data name="Error_plugin_abi_unsupported" xml:space="preserve">
+    <value>This driver needs a different version of TablePro.</value>
+  </data>
+  <data name="Error_plugin_panic_abort" xml:space="preserve">
+    <value>This driver can't run safely in TablePro.</value>
+  </data>
+  <data name="Error_plugin_open_failed" xml:space="preserve">
+    <value>The driver didn't start.</value>
+  </data>
+  <data name="Error_plugin_checksum_mismatch" xml:space="preserve">
+    <value>The downloaded driver doesn't match the catalog. Try again.</value>
+  </data>
+  <data name="Error_plugin_wrong_driver" xml:space="preserve">
+    <value>The downloaded file isn't the driver the catalog lists.</value>
+  </data>
+  <data name="Error_plugin_no_release" xml:space="preserve">
+    <value>This driver has no release for this PC.</value>
+  </data>
+  <data name="Error_plugin_manifest_invalid" xml:space="preserve">
+    <value>The driver catalog couldn't be read.</value>
+  </data>
+  <data name="Error_plugin_not_installed" xml:space="preserve">
+    <value>This driver isn't installed.</value>
+  </data>
+  <data name="Error_plugin_io" xml:space="preserve">
+    <value>The driver file couldn't be read or saved.</value>
+  </data>
 </root>

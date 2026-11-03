@@ -6112,6 +6112,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-driver-abi"
+version = "0.0.0"
+dependencies = [
+ "arrow-array",
+ "arrow-data",
+ "arrow-schema",
+ "async-trait",
+ "futures",
+ "prost",
+ "tablepro-core",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "tablepro-driver-cassandra"
 version = "0.0.0"
 dependencies = [
@@ -6178,6 +6193,29 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "tablepro-driver-host"
+version = "0.0.0"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-data",
+ "arrow-schema",
+ "libloading",
+ "prost",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tablepro-driver-abi",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6312,6 +6350,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tablepro-driver-sqlite-plugin"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "sha2 0.10.9",
+ "sqlx",
+ "tablepro-driver-abi",
+ "tablepro-driver-host",
+ "tablepro-driver-sqlite",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "tablepro-ffi"
 version = "0.0.0"
 dependencies = [
@@ -6325,6 +6378,7 @@ dependencies = [
  "tablepro-driver-cassandra",
  "tablepro-driver-clickhouse",
  "tablepro-driver-duckdb",
+ "tablepro-driver-host",
  "tablepro-driver-mongodb",
  "tablepro-driver-mssql",
  "tablepro-driver-mysql",

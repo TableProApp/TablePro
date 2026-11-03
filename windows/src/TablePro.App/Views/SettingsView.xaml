@@ -74,6 +74,25 @@
                     ValueChanged="OnTimeoutChanged" />
             </toolkit:SettingsCard>
 
+            <TextBlock x:Uid="DriversHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <InfoBar x:Name="DriversMessage" AutomationProperties.AutomationId="DriversMessage" IsOpen="False" Margin="0,0,0,4" />
+            <toolkit:SettingsExpander
+                x:Name="InstalledDriversExpander"
+                x:Uid="InstalledDriversExpander"
+                AutomationProperties.AutomationId="InstalledDrivers"
+                IsExpanded="True">
+                <toolkit:SettingsExpander.HeaderIcon><FontIcon Glyph="&#xEA86;" /></toolkit:SettingsExpander.HeaderIcon>
+                <Button x:Name="InstallDriverFileButton" x:Uid="InstallDriverFileButton" AutomationProperties.AutomationId="InstallDriverFileButton" Click="OnInstallDriverFile" />
+            </toolkit:SettingsExpander>
+            <toolkit:SettingsExpander
+                x:Name="AvailableDriversExpander"
+                x:Uid="AvailableDriversExpander"
+                AutomationProperties.AutomationId="AvailableDrivers"
+                IsExpanded="True">
+                <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="Download" /></toolkit:SettingsExpander.HeaderIcon>
+                <ProgressRing x:Name="DriversProgress" Width="20" Height="20" IsActive="False" />
+            </toolkit:SettingsExpander>
+
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsExpander x:Name="AboutExpander" x:Uid="AboutExpander" AutomationProperties.AutomationId="AboutExpander">
                 <toolkit:SettingsExpander.HeaderIcon>

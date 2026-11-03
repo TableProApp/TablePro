@@ -191,7 +191,10 @@ internal static class Mapping
     };
 
     public static Native.HostConfig Host(HostConfiguration configuration) =>
-        new(configuration.ClientVersion, configuration.StorageDirectory);
+        new(
+            configuration.ClientVersion,
+            configuration.StorageDirectory,
+            [.. (configuration.DriverSigners ?? []).Select(signer => new Native.DriverSigner(signer.Subject, signer.IssuerSha256))]);
 
     public static Native.ConnectionSecrets Secrets(ConnectionSecrets secrets) =>
         new(secrets.DatabasePassword, secrets.SshPassword, secrets.SshPassphrase);

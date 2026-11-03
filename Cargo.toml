@@ -3,6 +3,8 @@ resolver = "3"
 members = [
     "core/crates/ai",
     "core/crates/core",
+    "core/crates/driver-abi",
+    "core/crates/driver-host",
     "core/crates/ffi",
     "core/crates/mcp",
     "core/crates/net",
@@ -20,6 +22,7 @@ members = [
     "core/crates/drivers/postgres",
     "core/crates/drivers/redis",
     "core/crates/drivers/sqlite",
+    "core/crates/drivers/sqlite-plugin",
     "linux/crates/app",
     "linux/crates/platform",
 ]
@@ -33,6 +36,8 @@ publish = false
 [workspace.dependencies]
 tablepro-ai = { path = "core/crates/ai" }
 tablepro-core = { path = "core/crates/core" }
+tablepro-driver-abi = { path = "core/crates/driver-abi" }
+tablepro-driver-host = { path = "core/crates/driver-host" }
 tablepro-driver-cassandra = { path = "core/crates/drivers/cassandra" }
 tablepro-driver-clickhouse = { path = "core/crates/drivers/clickhouse" }
 tablepro-driver-duckdb = { path = "core/crates/drivers/duckdb" }
@@ -148,8 +153,24 @@ glib-build-tools = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
 url = "2"
 percent-encoding = "2"
-# The Windows Credential Manager, where the core keeps secrets on Windows.
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
+# The Windows Credential Manager, where the core keeps secrets on Windows, and the Authenticode check of a
+# driver library before it loads.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security_Credentials",
+    "Win32_Security_Cryptography",
+    "Win32_Security_WinTrust",
+    "Win32_Storage_FileSystem",
+] }
+# The driver ABI: rows cross as the Arrow C Data Interface, the version DuckDB's arrow already brings.
+arrow-array = { version = "60.1", default-features = false, features = ["ffi"] }
+arrow-buffer = { version = "60.1", default-features = false }
+arrow-data = { version = "60.1", default-features = false, features = ["ffi"] }
+arrow-schema = { version = "60.1", default-features = false, features = ["ffi"] }
+# Requests and responses, written as derives so no protoc runs in the build.
+prost = { version = "0.14", default-features = false, features = ["derive", "std"] }
+libloading = "0.8"
+sha2 = "0.10"
 zeroize = "1.9"
 # The volume and index that name a file on Windows, which std reads only on nightly.
 winapi-util = "0.1"

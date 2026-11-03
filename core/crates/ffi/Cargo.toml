@@ -12,6 +12,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 tablepro-core.workspace = true
+tablepro-driver-host.workspace = true
 tablepro-driver-cassandra.workspace = true
 tablepro-driver-clickhouse.workspace = true
 tablepro-driver-duckdb.workspace = true

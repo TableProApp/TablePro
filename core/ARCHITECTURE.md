@@ -15,6 +15,8 @@ core/crates/
 ├── storage/                       saved connections, history, drafts, credentials, file persistence
 ├── ai/                            the AI assistant's providers, prompts and replies
 ├── mcp/                           the MCP server: transport, token and tools
+├── driver-abi/                    the driver C ABI: its table, its messages, any core driver served over it
+├── driver-host/                   loading, calling, checking and installing driver libraries
 ├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
 ├── test-fixtures/                 dev-only container fixtures with a generated PKI
 ├── test-support/                  dev-only fakes and the conformance suites
@@ -22,6 +24,7 @@ core/crates/
     ├── postgres/                  tokio-postgres
     ├── mysql/                     sqlx-mysql, MySQL and MariaDB
     ├── sqlite/                    sqlx-sqlite
+    ├── sqlite-plugin/             the SQLite driver as a library the app downloads
     ├── duckdb/                    duckdb, with DuckDB compiled in
     ├── mssql/                     tiberius
     ├── clickhouse/                clickhouse over hyper
@@ -41,7 +44,10 @@ core/crates/
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
 | `ai` | `core`, `net` |
-| `ffi` | `core`, `session`, `ssh` and every driver |
+| `driver-abi` | `core` |
+| `driver-host` | `driver-abi` |
+| `drivers/sqlite-plugin` | `driver-abi`, `drivers/sqlite` |
+| `ffi` | `core`, `session`, `ssh`, `driver-host` and every driver |
 | An app, such as `linux/crates/app` | every crate above, and its platform crate |
 
 Rules, enforced by review:
@@ -53,6 +59,7 @@ Rules, enforced by review:
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
 - `ai` depends on `core` and `net`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
 - `ffi` stands in for an app outside Rust: it names every driver and passes the host's services in. No other core crate depends on it.
+- An `<engine>-plugin` crate depends on its engine's crate and `driver-abi` only, and nothing depends on it: it is the library an app downloads ([ADR 0004](docs/decisions/0004-driver-plugin-abi.md)).
 - No core crate depends on a GUI toolkit or on a platform crate. An app, or `ffi` for one outside Rust, is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only an app's dev-dependencies turn on.
 
@@ -86,6 +93,7 @@ A `cfg` split inside a crate:
 | SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | the `kerberos` feature, which CI does not build | SSPI |
 | `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>` |
 | OpenSSH transport, askpass helper | yes | yes | not built |
+| A driver library's signature (`tablepro-driver-host`) | no check: refused | no check: refused | Authenticode, then the signer's subject and issuer |
 | MongoDB's relay for an SSH route | yes | yes | not built |
 | Cassandra's loopback relay | serves this user, from `/proc/net/tcp` | serves no one | serves no one |
 
@@ -96,6 +104,7 @@ Each boundary error has a stable `code()`, such as `driver.timeout` or `ssh.host
 `ffi` is the library an app outside Rust loads: the Windows app now, the Swift app later. Core ADRs 0002, on the bindings, and 0003, on result windows, hold the reasons.
 
 - One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets. A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), reports and waits on the session's health, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
+- `Core::driver_plugins` lists the drivers the user installed, installs one from a file or from a catalog release the app downloaded, and removes one; `available_drivers` reads a catalog ([ADR 0004](docs/decisions/0004-driver-plugin-abi.md)).
 - The grid reads a `ResultSet` through the C ABI in `src/window_abi.rs`: `tablepro_cursor_fetch` packs the display text of one visible range, and `tablepro_cursor_free` ends the cursor.
 - The library owns one tokio runtime. Each async export runs on it and is aborted when the foreign side drops the call; a `CancelToken` stops it sooner, since UniFFI cannot cancel.
 - A result set takes rows as the driver reads them. Each column keeps a kind byte, a raw `i64` and the exact text `tablepro_core::export::value_text` writes, or a binary value's bytes, in chunks of 65,536 rows. A window only cuts and copies.

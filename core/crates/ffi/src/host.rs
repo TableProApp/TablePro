@@ -14,6 +14,17 @@ pub struct HostConfig {
     pub client_version: String,
     // The folder the saved connections live in. None leaves the library out.
     pub storage_dir: Option<String>,
+    // Who may sign a driver library. Empty refuses every driver.
+    pub driver_signers: Vec<DriverSigner>,
+}
+
+/// A certificate allowed to sign a driver library: its subject as
+/// Windows writes it ("CN=TablePro, O=TablePro, C=VN"), and the SHA-256
+/// of the certificate that issued it, which is its own when self-signed.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct DriverSigner {
+    pub subject: String,
+    pub issuer_sha256: String,
 }
 
 /// The platform's secret store, which the app implements: the Windows

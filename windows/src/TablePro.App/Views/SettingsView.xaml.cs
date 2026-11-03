@@ -22,6 +22,7 @@ public sealed partial class SettingsView : UserControl
         VersionText.Text = Strings.Format("VersionText", AppStorage.Version);
         DataFolderCard.Description = workbench.Folder;
         Load();
+        Loaded += async (_, _) => await LoadDriversAsync().ConfigureAwait(true);
     }
 
     public void ShowAbout()

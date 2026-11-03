@@ -1,0 +1,20 @@
+[package]
+name = "tablepro-driver-abi"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablepro-core.workspace = true
+arrow-array.workspace = true
+arrow-data.workspace = true
+arrow-schema.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+prost.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
+tokio-util.workspace = true
+
+[lints]
+workspace = true

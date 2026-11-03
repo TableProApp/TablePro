@@ -66,6 +66,7 @@ fn core() -> Arc<Core> {
         HostConfig {
             client_version: "test".to_owned(),
             storage_dir: None,
+            driver_signers: Vec::new(),
         },
         Box::new(NoSecrets),
     )

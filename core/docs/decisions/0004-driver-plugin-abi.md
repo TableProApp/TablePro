@@ -22,8 +22,8 @@ Each driver is a Rust crate that exports a small C ABI of our own, the app loads
 
 The parts of the ABI, and what the spike showed for each:
 
-- **A static descriptor.** `tablepro_driver_descriptor` holds a magic, its size, the ABI major and minor, a `panic_unwind` flag, the driver id and its version, at offsets that never move. The host reads it before running any driver code and refuses another major, a wrong magic or a `panic=abort` build. A driver claiming ABI 2.0 and a foreign library were both refused before any of their code ran.
-- **Minor versions negotiate down.** `tablepro_driver_open` fills a table with `call`, `cancel` and `shutdown`. Both sides use `min(host, driver)`, and every struct starts with its size, so a later minor appends fields.
+- **A static descriptor.** `tablepro_driver_descriptor` holds a magic, its size, the ABI major and minor, a `panic_unwind` flag, the driver id and its version, at offsets that never move. Mapping a native library can run its initializers; signature verification precedes mapping. The host reads the descriptor before calling any driver ABI entry point and refuses another major, a wrong magic or a `panic=abort` build. A driver claiming ABI 2.0 and a foreign library were both refused before any of their ABI entry points ran.
+- **Minor versions negotiate down.** `tablepro_driver_open` fills a table with `call`, `cancel` and `shutdown`. Both sides use `min(host, driver)`, and both API tables start with their size. Open also receives the host output capacity and refuses a buffer smaller than the negotiated table prefix, so a later minor can append fields.
 - **Requests and responses are protobuf.** One `Request` oneof has a kind per capability. Unknown fields are skipped, and an unknown kind is answered `UNSUPPORTED`, so a new host learns an old driver lacks a feature without a minor bump. Tests of both directions of a version skew pass. One inline call took 183 to 275 ns warm.
 - **Rows are Arrow C Data.** The host moves the `ArrowSchema` and `ArrowArray` structs out and builds a `RecordBatch`. The release callback frees them later in the driver's own code, so memory never crosses sides to be freed. This matches the core's columnar store ([0003](0003-result-windows-for-native-grids.md)).
 - **Each driver runs its own tokio runtime.** A library has its own copy of std and tokio, and tokio keeps its runtime context in a thread-local, so the host's runtime cannot be shared. A plugin handed the host's future panicked in `TcpStream::connect` with "there is no reactor running". The driver builds a runtime in `open`; the process went from 1 to 3 threads.
@@ -46,9 +46,27 @@ The parts of the ABI, and what the spike showed for each:
 - The first `dlopen` of a newly signed library took 120 to 560 ms, later loads 0.8 to 47 ms.
 - A workspace-wide build unifies features and builds a library with no exports. A thin `<engine>-plugin` crate per driver avoids that.
 - A contained panic still closes its connection, since the driver's state may be poisoned. A memory fault in a C library inside a driver (SQLite, DuckDB, librdkafka) still ends the app. Out-of-process drivers were not evaluated.
-- The first Windows release links its 9 drivers statically, as the crates without the `plugin` feature. The ABI lands in a later PR, and until then every app links its drivers at compile time.
+- The first Windows release links its 9 drivers statically. The apps still link every driver they offer at compile time; the ABI below adds drivers beside them.
 - [Linux ADR 0001](../../../linux/docs/decisions/0001-no-plugin-system.md) is superseded.
 
+What is built (2026-11-04):
+
+- `crates/driver-abi` holds the table (`include/tablepro_driver.h`), the messages, the driver's side of the table, and `CoreDriver`, which serves any core `DatabaseDriver` over it. The message kinds are Describe, OpenFile, Probe, ListSchemas, ListObjects, Read and Close; Read returns one statement's first result set as one Arrow batch.
+- A thin `<engine>-plugin` crate is the library: `crates/drivers/sqlite-plugin` exports the core's SQLite driver, versioned by its own `Cargo.toml`. Its tests run one matrix on the loaded library and on the same driver linked in.
+- `crates/driver-host` loads a library, reads its descriptor before calling its ABI entry points, calls it, and keeps installed drivers under `<storage>/drivers`: one folder per install and an `installed.json` index with each file's sha256. Every load checks that checksum and the signature again, holding the file open so it cannot be swapped before it maps. A replaced or removed driver stays mapped until the app quits, and its folder goes at the next start.
+- Windows checks the Authenticode signature with revocation on install, falling back to no revocation check when no answer comes offline, and without the network on each later load. The signer is matched on two things the app passes in `HostConfig.driver_signers`: the signing certificate's subject as `CertNameToStrW` writes it with `CERT_NAME_STR_REVERSE_FLAG` (the form `X509Certificate2.Subject` shows), and the SHA-256 of the certificate that issued it. A subject alone is a name any trusted CA can issue; the issuer pins the CA, and a renewed certificate from it still matches. macOS and Linux refuse every driver until their check is built.
+- The catalog, `drivers/v1.json`, lists entries in the shape of a `plugins/v3.json` entry (`id`, `name`, `databaseTypeIds`, `releases`). A release carries `abi`, `os` and `arch` (Rust's `std::env::consts` names) in place of `pluginKit` and `minimumSystemVersion`; a file of its own keeps PluginKit apps from reading it. The app downloads a release, and the core checks its sha256, the driver id and the version against the entry.
+- The Windows app lists installed drivers in Settings, installs one from a file or from the catalog, and removes one.
+
+Left to build:
+
+- The rest of the driver surface as message kinds (`Connection`, `SqlDialect`, `DdlDialect`, `EditorSession`), with a `DatabaseDriver` over a `DriverHandle`. Until then a loaded driver is listed in Settings and not offered to connect, and nothing decides yet between a driver the app links and a downloaded one with the same id.
+- Host calls with the same call and completion pattern: opening a stream through the host's transport, secrets and askpass. OpenFile is the only connect until they land.
+- Rows by cursor or `ArrowArrayStream` that keep the sink's backpressure; Read returns one batch.
+- Arrow extension types for the values ADR 0014 keeps lossless. Today a column whose values have no Arrow type of their own, or several kinds, carries the export's exact text and names the kind in its field metadata.
+- A `.proto` file for drivers in other languages; the Rust derives are the schema.
+- TablePro's Authenticode certificate, its subject and issuer in the app, and a release workflow that builds, signs and publishes each driver per architecture with the catalog. A signature on the catalog, as `plugins/v3.json` has, would add rollback protection; the Authenticode check is the gate today.
+- The macOS check (`SecStaticCodeCheckValidity` against the Team ID) and a Linux one in the core.
 Open:
 
 - About 95 trait methods and 210 PluginKit requirements become message kinds. The work is large but mechanical. The dialect's many small synchronous calls could become one static descriptor plus a few calls.

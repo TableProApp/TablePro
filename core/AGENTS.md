@@ -9,13 +9,13 @@ This is the guide for work under `core/`. The root `AGENTS.md` holds the rules e
 1. **Tests define behavior**, as in the root `AGENTS.md`.
 2. **No GUI, no platform service.** A core crate depends on no GUI toolkit and on no platform crate. What a platform does its own way comes in as a value or a trait the app passes in, or sits behind a `cfg` split; `ARCHITECTURE.md`, Platforms, lists both.
 3. **Every target builds.** A change keeps the crates building for Linux, Windows (x64 and Arm64) and macOS. `std::os::unix`, `rustix`, `/proc` and Unix sockets go behind `cfg(unix)` or `cfg(target_os = "linux")`, with the other platforms' answer beside them.
-4. **One-directional crates.** `ARCHITECTURE.md` has the graph. Drivers are linked in at compile time until the driver ABI lands (`docs/decisions/0004-driver-plugin-abi.md`).
+4. **One-directional crates.** `ARCHITECTURE.md` has the graph. An app links the drivers it offers at compile time; a downloaded driver comes in through the driver ABI (`docs/decisions/0004-driver-plugin-abi.md`).
 5. **Errors carry a code, not a sentence.** Each boundary error has a stable `code()` and typed fields; an app words it. No translation catalog lives here.
 6. **Decisions are recorded.** One that holds for every platform goes in `docs/decisions/` (`docs/decisions/README.md`).
 
 ## Map
 
-- `crates/core`, `crates/net`, `crates/ssh`, `crates/storage`, `crates/session`, `crates/ai`, `crates/mcp`: the libraries. `crates/drivers/*`: one crate per engine. `crates/ffi`: the library the Windows app loads (`ARCHITECTURE.md`, Bindings). `crates/test-fixtures` and `crates/test-support`: test-only.
+- `crates/core`, `crates/net`, `crates/ssh`, `crates/storage`, `crates/session`, `crates/ai`, `crates/mcp`: the libraries. `crates/drivers/*`: one crate per engine, and an `<engine>-plugin` crate for each one an app downloads. `crates/driver-abi` and `crates/driver-host`: the driver ABI's two sides. `crates/ffi`: the library the Windows app loads (`ARCHITECTURE.md`, Bindings). `crates/test-fixtures` and `crates/test-support`: test-only.
 - `ARCHITECTURE.md`: the crates, the graph, the platform seams and the driver layer. `docs/decisions/`: the cross-platform decisions.
 - The Cargo workspace and its tool settings are at the top of the repository: `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `deny.toml`, `.config/nextest.toml`.
 - Until another app builds the core, the Linux docs hold its contracts: `linux/docs/adding-drivers.md`, `linux/docs/drivers/`, `linux/docs/error-handling.md`, `linux/docs/testing.md` and `linux/docs/storage.md`.

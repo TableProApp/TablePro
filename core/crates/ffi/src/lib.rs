@@ -6,6 +6,7 @@ mod connection_url;
 mod core_handle;
 #[cfg(windows)]
 mod credential_manager;
+mod driver_plugins;
 mod drivers;
 mod editor;
 mod error;
@@ -22,10 +23,11 @@ pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
+pub use driver_plugins::{AvailableDriver, DriverPlugins, InstalledDriverInfo, available_drivers};
 pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag};
 pub use editor::{QueryEditor, RunSettings};
 pub use error::{CoreError, ErrorInfo, ServerMessage};
-pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
+pub use host::{DriverSigner, HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
 pub use library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot, SafeModeTag,
     SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,

@@ -2,8 +2,16 @@ using Native = TablePro.Interop.Native;
 
 namespace TablePro.Interop;
 
-// ClientVersion goes to servers beside the app's name. A null StorageDirectory leaves the library out.
-public sealed record HostConfiguration(string ClientVersion, string? StorageDirectory = null);
+// ClientVersion goes to servers beside the app's name. A null StorageDirectory leaves the library and the drivers
+// out. DriverSigners may sign a driver library; none refuses every driver.
+public sealed record HostConfiguration(
+    string ClientVersion,
+    string? StorageDirectory = null,
+    IReadOnlyList<DriverSigner>? DriverSigners = null);
+
+// Subject is the signing certificate's, as X509Certificate2.Subject shows it. IssuerSha256 is the SHA-256 thumbprint
+// of the certificate that issued it, the signer's own when it is self-signed.
+public sealed record DriverSigner(string Subject, string IssuerSha256);
 
 // Path is absolute. A null EngineId lets the file's first bytes decide, then its name. Create needs a new Path.
 public sealed record FileOpenOptions(string Path, string? EngineId = null, bool ReadOnly = false, bool Create = false);
@@ -13,18 +21,23 @@ public sealed class TableProCore : IDisposable
 {
     private readonly Native.Core _core;
     private readonly Lazy<ConnectionLibrary> _library;
+    private readonly Lazy<DriverPlugins> _drivers;
 
     private TableProCore(Native.Core core)
     {
         _core = core;
         Engines = [.. core.Drivers().Select(Mapping.Engine)];
         _library = new Lazy<ConnectionLibrary>(() => new ConnectionLibrary(CoreCall.Run(_core.Library)));
+        _drivers = new Lazy<DriverPlugins>(() => new DriverPlugins(CoreCall.Run(_core.DriverPlugins)));
     }
 
     public IReadOnlyList<DatabaseEngine> Engines { get; }
 
     // Throws TableProException with code ffi.no_storage when the configuration named no storage directory.
     public ConnectionLibrary Library => _library.Value;
+
+    // Throws TableProException with code ffi.no_storage when the configuration named no storage directory.
+    public DriverPlugins Drivers => _drivers.Value;
 
     public static TableProCore Create(HostConfiguration configuration, ISecretStore secrets)
     {
@@ -91,6 +104,11 @@ public sealed class TableProCore : IDisposable
         if (_library.IsValueCreated)
         {
             _library.Value.Dispose();
+        }
+
+        if (_drivers.IsValueCreated)
+        {
+            _drivers.Value.Dispose();
         }
 
         _core.Dispose();

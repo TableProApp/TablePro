@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/TablePro.Interop/TablePro.Interop.csproj" />
+    <Compile Include="../../src/TablePro.App/Services/DriverCatalog.cs" Link="Services/DriverCatalog.cs" />
   </ItemGroup>
 
 </Project>

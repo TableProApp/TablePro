@@ -9,6 +9,7 @@ use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
     SafeModeLevel, SshFailure, TransportError, WorkspaceSettings,
 };
+use tablepro_driver_host::{DriverStore, PlatformTrust, Signer, Trust};
 use tablepro_session::connect::{SshTunnel, SshTunnels};
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
@@ -21,6 +22,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::cancel_token::{CancelToken, token};
+use crate::driver_plugins::DriverPlugins;
 use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
 use crate::host::{HostConfig, HostSecretStore, HostSecrets};
@@ -38,6 +40,7 @@ pub struct Core {
     vault: Arc<dyn SecretVault>,
     items: Arc<dyn SecretItems>,
     store: Option<ConnectionStore>,
+    plugins: Option<Arc<DriverStore>>,
     tasks: Tasks,
 }
 
@@ -80,6 +83,12 @@ impl Core {
             .collect();
         drivers.sort_by(|a, b| a.display_name.cmp(&b.display_name));
         drivers
+    }
+
+    /// The drivers the user installed, in the storage folder's `drivers`.
+    pub fn driver_plugins(&self) -> Result<Arc<DriverPlugins>, CoreError> {
+        let store = self.plugins.clone().ok_or_else(no_storage)?;
+        Ok(Arc::new(DriverPlugins::new(store, self.tasks.clone())))
     }
 
     pub fn library(&self) -> Result<Arc<ConnectionLibrary>, CoreError> {
@@ -258,10 +267,20 @@ impl Core {
             ssh: Arc::new(NoSshTransport),
             liveness,
         };
-        let store = config
-            .storage_dir
-            .filter(|dir| !dir.trim().is_empty())
-            .map(|dir| ConnectionStore::new(&storage_paths(Path::new(&dir))));
+        let storage_dir = config.storage_dir.filter(|dir| !dir.trim().is_empty());
+        let store = storage_dir
+            .as_ref()
+            .map(|dir| ConnectionStore::new(&storage_paths(Path::new(dir))));
+        let signers = config
+            .driver_signers
+            .into_iter()
+            .map(|signer| Signer {
+                subject: signer.subject,
+                issuer_sha256: signer.issuer_sha256,
+            })
+            .collect();
+        let trust: Arc<dyn Trust> = Arc::new(PlatformTrust::new(signers));
+        let plugins = storage_dir.map(|dir| Arc::new(DriverStore::new(Path::new(&dir).join("drivers"), trust)));
         Arc::new(Self {
             registry: Arc::new(drivers::registry()),
             connector: Arc::new(DriverConnector::new(services, deadlines.clone())),
@@ -269,6 +288,7 @@ impl Core {
             vault,
             items,
             store,
+            plugins,
             tasks,
         })
     }

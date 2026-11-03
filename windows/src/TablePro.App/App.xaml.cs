@@ -11,6 +11,7 @@ public partial class App : Application
 
     public App()
     {
+        DllSearch.Restrict();
         InitializeComponent();
         UnhandledException += (_, args) => CrashLog.Write(args.Exception);
         AppDomain.CurrentDomain.UnhandledException += (_, args) => CrashLog.Write(args.ExceptionObject as Exception);
@@ -20,7 +21,8 @@ public partial class App : Application
     {
         var folder = AppStorage.DataFolder;
         Directory.CreateDirectory(folder);
-        var core = TableProCore.CreateWithSystemSecrets(new HostConfiguration(AppStorage.Version, folder));
+        var core = TableProCore.CreateWithSystemSecrets(
+            new HostConfiguration(AppStorage.Version, folder, DriverSigning.Signers));
         _window = new MainWindow(new Workbench(core, folder));
         _window.ActivateRestored();
         // Off the first grid's path: the fallback fonts for non-Latin cells load in the background.

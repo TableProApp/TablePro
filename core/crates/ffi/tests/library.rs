@@ -66,6 +66,7 @@ fn core(dir: &Path, secrets: MemorySecrets) -> Arc<Core> {
         HostConfig {
             client_version: "test".to_owned(),
             storage_dir: Some(dir.display().to_string()),
+            driver_signers: Vec::new(),
         },
         Box::new(secrets),
     )
@@ -530,6 +531,7 @@ fn a_core_without_a_storage_folder_has_no_library() {
         HostConfig {
             client_version: "test".to_owned(),
             storage_dir: None,
+            driver_signers: Vec::new(),
         },
         Box::new(MemorySecrets::default()),
     )
