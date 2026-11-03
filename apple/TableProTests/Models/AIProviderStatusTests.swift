@@ -23,11 +23,10 @@ struct AIProviderStatusTests {
         )
     }
 
-    @Test("A provider that needs a key says so and offers to add one")
+    @Test("A provider that needs a key says so with a warning")
     func missingKey() {
         let missing = status(.openAI)
         #expect(missing == .needsAPIKey)
-        #expect(missing.action == .addAPIKey)
         #expect(missing.severity == .warning)
         #expect(status(.openAI, hasAPIKey: true).isReady)
     }
@@ -68,11 +67,10 @@ struct AIProviderStatusTests {
         #expect(status(.ollama) == .ready(detail: String(localized: "Local")))
     }
 
-    @Test("Only states the user has to fix carry a symbol and an action")
+    @Test("Only states the user has to fix carry a symbol")
     func readyAndBusyStatesAreQuiet() {
         for quiet in [AIProviderStatus.checking, .signingIn, .ready(detail: nil)] {
             #expect(quiet.severity == nil)
-            #expect(quiet.action == nil)
         }
     }
 }

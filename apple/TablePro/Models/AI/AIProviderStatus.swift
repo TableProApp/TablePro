@@ -18,13 +18,6 @@ internal enum AIProviderStatus: Equatable, Sendable {
     case failed(message: String)
     case notConfigured
 
-    internal enum Action: Equatable, Sendable {
-        case addAPIKey
-        case signIn
-        case install
-        case openSettings
-    }
-
     internal var isReady: Bool {
         if case .ready = self { return true }
         return false
@@ -50,26 +43,6 @@ internal enum AIProviderStatus: Equatable, Sendable {
         case .checking, .ready, .signingIn: nil
         case .failed: .error
         case .needsAPIKey, .needsSignIn, .needsInstall, .needsUpdate, .notConfigured: .warning
-        }
-    }
-
-    internal var action: Action? {
-        switch self {
-        case .checking, .ready, .signingIn: nil
-        case .needsAPIKey: .addAPIKey
-        case .needsSignIn: .signIn
-        case .needsInstall, .needsUpdate: .install
-        case .failed, .notConfigured: .openSettings
-        }
-    }
-
-    internal var actionTitle: String? {
-        switch action {
-        case .addAPIKey: String(localized: "Add API Key…")
-        case .signIn: String(localized: "Sign In…")
-        case .install: String(localized: "Set Up…")
-        case .openSettings: String(localized: "Settings…")
-        case nil: nil
         }
     }
 
