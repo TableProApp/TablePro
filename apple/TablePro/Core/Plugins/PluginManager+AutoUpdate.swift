@@ -202,7 +202,7 @@ extension PluginManager {
         }
     }
 
-    private func markUnfinishedRejectedPlugins() {
+    func markUnfinishedRejectedPlugins() {
         for rejected in rejectedPlugins where rejected.isOutdated {
             let reason: String
             switch rejectedAction(for: rejected) {
@@ -243,11 +243,11 @@ extension PluginManager {
     }
 
     private func registryUnreachableReason() -> String {
-        String(localized: "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and reopen TablePro.")
+        String(localized: "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and try again.")
     }
 
     private func temporaryFailureReason() -> String {
-        String(localized: "Updating this plugin didn't finish. TablePro will try again the next time it launches.")
+        String(localized: "Updating this plugin didn't finish. Update it again to keep using it.")
     }
 
     // Only plist checks here: the signature was checked when staged and is checked again before any code loads.
@@ -373,6 +373,23 @@ extension PluginManager {
         let targets = registryUpdateTargets(forTypeId: typeId, appBuild: Bundle.main.buildNumber)
         _ = await repairRejectedPlugins(targets, manifest: manifest)
         AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+    }
+
+    // Try Again on a plugin that could not load: fetch the manifest now, repair what can be repaired, and
+    // say again what each one still waits for. Returns false when the registry is still out of reach.
+    @discardableResult
+    func retryRejectedPluginRepairs(registryClient: RegistryClient = .shared) async -> Bool {
+        guard isUpdatingEnabled else { return false }
+        await waitForRejectedPluginRepairs()
+        guard let manifest = await registryClient.fetch(policy: .mustBeCurrent) else {
+            Self.logger.warning("Retrying plugin repairs: the plugin manifest is unavailable")
+            return false
+        }
+        let targets = registryUpdateTargets(appBuild: Bundle.main.buildNumber).filter { $0.rejectedURL != nil }
+        _ = await repairRejectedPlugins(targets, manifest: manifest)
+        markUnfinishedRejectedPlugins()
+        AppEvents.shared.pluginsRejected.send(rejectedPlugins)
+        return true
     }
 
     func registryUpdateTargets(forTypeId typeId: String, appBuild: Int) -> [RegistryUpdateTarget] {

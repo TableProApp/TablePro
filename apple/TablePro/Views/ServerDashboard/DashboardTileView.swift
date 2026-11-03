@@ -20,18 +20,18 @@ struct DashboardTileView: View {
     @State private var isDropTarget = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            header
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            footer
+        GroupBox {
+            VStack(alignment: .leading, spacing: 6) {
+                header
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                footer
+            }
         }
-        .padding(10)
         .frame(height: 168)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             if isDropTarget {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 6)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
             }
         }
@@ -113,11 +113,13 @@ struct DashboardTileView: View {
         Label {
             RevealedTextView(message)
                 .lineLimit(lineLimit)
+                .foregroundStyle(.secondary)
         } icon: {
-            Image(systemName: "exclamationmark.triangle")
+            Image(systemName: NoticeSeverity.error.symbolName)
+                .foregroundStyle(NoticeSeverity.error.tint)
+                .accessibilityHidden(true)
         }
         .font(.caption)
-        .foregroundStyle(.red)
         .help(RevealedText(message).plainText)
     }
 

@@ -533,9 +533,10 @@ struct ExportDialog: View {
                             .foregroundStyle(.secondary)
 
                         if let plugin = currentPlugin, !type(of: plugin).perTableOptionColumns.isEmpty, exportableCount < selectedCount {
-                            Text("\(selectedCount - exportableCount) skipped (no options)")
-                                .font(.subheadline)
-                                .foregroundStyle(.orange)
+                            NoticeLabel(
+                                String(format: String(localized: "%lld skipped (no options)"), Int64(selectedCount - exportableCount))
+                            )
+                            .font(.subheadline)
                         }
                     }
                 }

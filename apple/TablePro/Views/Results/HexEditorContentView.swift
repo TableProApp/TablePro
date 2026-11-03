@@ -100,11 +100,10 @@ struct HexEditorBody: View {
                         if sourceIsTruncated || isTruncated {
                             Text(String(localized: "Truncated, read only"))
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.secondary)
                         } else if !isValid, !editableHex.isEmpty {
-                            Text(String(localized: "Invalid hex"))
+                            NoticeLabel(String(localized: "Invalid hex"), severity: .error)
                                 .font(.caption)
-                                .foregroundStyle(.red)
                         }
 
                         Spacer()

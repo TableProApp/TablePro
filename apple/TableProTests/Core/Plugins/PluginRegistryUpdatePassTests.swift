@@ -469,6 +469,51 @@ struct PluginRegistryUpdatePassTests {
         #expect(registry.requestCount == 0)
     }
 
+    @Test("Try Again repairs a rejected plugin as soon as the registry answers")
+    func tryAgainRepairsARejectedPlugin() async throws {
+        let installer = FixtureRegistryInstaller()
+        let fixture = try makeFixture(installer: installer, isUpdatingEnabled: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        let (client, manifestURL) = try makeRegistryClient(servingBuild: 20)
+
+        let reached = await fixture.manager.retryRejectedPluginRepairs(registryClient: client)
+
+        #expect(reached)
+        #expect(ManifestStubProtocol.requestCount(for: manifestURL) == 1)
+        let installedIds = await installer.installedIds
+        #expect(installedIds == ["com.example.driver"])
+    }
+
+    @Test("Try Again with the registry still refused reports it and installs nothing")
+    func tryAgainReportsAnUnreachableRegistry() async throws {
+        let installer = FixtureRegistryInstaller()
+        let fixture = try makeFixture(installer: installer, isUpdatingEnabled: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        let (client, _) = try makeRegistryClient(servingBuild: 20, signedBy: nil)
+
+        let reached = await fixture.manager.retryRejectedPluginRepairs(registryClient: client)
+
+        #expect(!reached)
+        let installedIds = await installer.installedIds
+        #expect(installedIds.isEmpty)
+        #expect(fixture.manager.rejectedPlugins.count == 1)
+    }
+
+    @Test("Try Again does nothing where updating is off")
+    func tryAgainNeedsUpdating() async throws {
+        let fixture = try makeFixture(isUpdatingEnabled: false)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        let registry = try OfflineRegistry()
+
+        let reached = await fixture.manager.retryRejectedPluginRepairs(registryClient: registry.client)
+
+        #expect(!reached)
+        #expect(registry.requestCount == 0)
+    }
+
     @Test("A manifest without a newer build yet keeps the pass retrying")
     func staleManifestRetries() async throws {
         let fixture = try makeFixture()

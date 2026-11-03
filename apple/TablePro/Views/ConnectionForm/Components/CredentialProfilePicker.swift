@@ -28,12 +28,8 @@ struct CredentialProfilePicker: View {
         .accessibilityIdentifier("connection-form-credential-profile")
 
         if auth.credentialProfileIsMissing {
-            Label(
-                String(localized: "This connection uses a credential profile that isn't on this Mac."),
-                systemImage: "exclamationmark.triangle.fill"
-            )
-            .font(.caption)
-            .foregroundStyle(.yellow)
+            NoticeLabel(String(localized: "This connection uses a credential profile that isn't on this Mac."))
+                .font(.caption)
             Button(String(localized: "Enter Credentials Here")) {
                 auth.credentialMode = .inline
             }

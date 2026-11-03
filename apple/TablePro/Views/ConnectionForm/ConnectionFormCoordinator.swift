@@ -762,8 +762,8 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
     }
 
-    /// Testing tears down first so the sheet never covers a running test, and the result is left
-    /// alone rather than marked failed: the credential was the problem, not the settings.
+    // The test tears down first so the sign-in sheet never covers a running one; a finished
+    // sign-in tests again, so the Test button reports the result in place.
     private func offerSignIn(
         _ provider: ConnectionSignInProvider,
         for error: Error,
@@ -775,11 +775,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         isTesting = false
         testTask = nil
         guard await ConnectionSignInPrompt.offer(provider, for: error, fields: fields, window: window) else { return }
-        AlertHelper.showInfoSheet(
-            title: String(localized: "Signed In"),
-            message: provider.signedInMessage,
-            window: window
-        )
+        test()
     }
 
     private struct TunnelFormStates {

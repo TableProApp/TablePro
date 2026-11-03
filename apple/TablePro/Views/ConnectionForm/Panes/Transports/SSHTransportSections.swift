@@ -79,9 +79,14 @@ struct SSHTransportSections: View {
     }
 
     private func caption(_ message: String, systemImage: String, tint: Color) -> some View {
-        Label(message, systemImage: systemImage)
-            .font(.caption)
-            .foregroundStyle(tint)
+        Label {
+            Text(message)
+                .foregroundStyle(.secondary)
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(tint)
+        }
+        .font(.caption)
     }
 }
 

@@ -12,13 +12,12 @@ struct InstalledPluginsView: View {
     @ObservedObject private var modules = AppModuleSettings.shared
     @ObservedObject private var updates = UpdateCenter.shared
 
-    @State private var selectedPluginId: String?
+    @State private var selection: PluginListSelection?
     @State private var searchText = ""
     @State private var showErrorAlert = false
     @State private var errorAlertTitle = ""
     @State private var errorAlertMessage = ""
-    @State private var dismissedRestartBanner = false
-    @State private var dismissedRejectedBanner = false
+    @State private var isRetryingRejected = false
 
     init(registryClient: RegistryClient = .shared) {
         self.registryClient = registryClient
@@ -33,22 +32,18 @@ struct InstalledPluginsView: View {
         AppModule.allCases.filter { $0.matches(filter: searchText) }
     }
 
+    private var filteredRejected: [RejectedPlugin] {
+        if searchText.isEmpty { return pluginManager.rejectedPlugins }
+        return pluginManager.rejectedPlugins.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            if !pluginManager.rejectedPlugins.isEmpty && !dismissedRejectedBanner {
-                rejectedPluginsBanner
-            }
-            if pluginManager.needsRestart && !dismissedRestartBanner {
-                restartBanner
-            }
+        HSplitView {
+            pluginList
+                .frame(minWidth: 200, idealWidth: 240, maxWidth: 280)
 
-            HSplitView {
-                pluginList
-                    .frame(minWidth: 200, idealWidth: 240, maxWidth: 280)
-
-                detailPane
-                    .frame(minWidth: 340)
-            }
+            detailPane
+                .frame(minWidth: 340)
         }
         .task {
             await registryClient.fetch(policy: .ifStale)
@@ -76,110 +71,92 @@ struct InstalledPluginsView: View {
         }
     }
 
-    // MARK: - Restart Banner
+    // MARK: - Relaunch Row
 
-    private var restartBanner: some View {
+    // Untagged, so it never takes the selection; the list is where the pending removal is.
+    private var relaunchRow: some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.yellow)
-            Text("Relaunch TablePro to finish removing plugins.")
-                .font(.callout)
-            Spacer()
+            Label {
+                Text("Relaunch to finish removing plugins.")
+                    .lineLimit(2)
+            } icon: {
+                Image(systemName: "arrow.clockwise")
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
             Button(String(localized: "Relaunch")) { updates.relaunch() }
-                .buttonStyle(.bordered)
                 .controlSize(.small)
-            Button("Dismiss") { dismissedRestartBanner = true }
-                .buttonStyle(.borderless)
-                .font(.callout)
+                .accessibilityIdentifier("plugins-relaunch-button")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
     }
 
-    // MARK: - Rejected Plugins Banner
+    // MARK: - Rejected Plugins
 
-    private var rejectedPluginsBanner: some View {
-        let actions = rejectedActionsByURL
-        let recoverable = !actions.values.contains { if case .notInRegistry = $0 { return true } else { return false } }
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: recoverable ? "arrow.triangle.2.circlepath" : "exclamationmark.circle.fill")
-                    .foregroundStyle(recoverable ? .orange : .red)
-                Text(rejectedBannerTitle(recoverable: recoverable))
-                    .font(.callout.weight(.medium))
-                Spacer()
-                Button(String(localized: "Dismiss")) { dismissedRejectedBanner = true }
-                    .buttonStyle(.borderless)
-                    .font(.callout)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-
-            Divider()
-
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(pluginManager.rejectedPlugins, id: \.url) { plugin in
-                        rejectedPluginRow(plugin, action: actions[plugin.url] ?? .awaitingCompatibleBuild)
-                        Divider().padding(.leading, 12)
-                    }
-                }
-            }
-            .frame(maxHeight: Self.rejectedBannerMaxHeight)
-
-            Divider()
-        }
-    }
-
-    private static let rejectedBannerMaxHeight: CGFloat = 168
-
-    private var rejectedActionsByURL: [URL: RejectedPluginAction] {
-        var result: [URL: RejectedPluginAction] = [:]
-        for plugin in pluginManager.rejectedPlugins {
-            result[plugin.url] = pluginManager.rejectedAction(for: plugin)
-        }
-        return result
-    }
-
-    private func rejectedBannerTitle(recoverable: Bool) -> String {
-        let count = pluginManager.rejectedPlugins.count
-        if recoverable {
-            return count == 1
-                ? String(localized: "1 plugin needs an update to load.")
-                : String(format: String(localized: "%d plugins need an update to load."), count)
-        }
-        return count == 1
-            ? String(localized: "1 plugin could not be loaded.")
-            : String(format: String(localized: "%d plugins could not be loaded."), count)
-    }
-
-    @ViewBuilder
-    private func rejectedPluginRow(_ plugin: RejectedPlugin, action: RejectedPluginAction) -> some View {
-        HStack(spacing: 8) {
+    private func rejectedRow(_ plugin: RejectedPlugin) -> some View {
+        let status = RejectedPluginStatus(action: pluginManager.rejectedAction(for: plugin))
+        return HStack(spacing: 8) {
             PluginIconView(name: PluginManager.iconName(forPrimaryTypeId: plugin.providedDatabaseTypeIds.first))
                 .font(.title3)
                 .frame(width: 24, height: 24)
                 .foregroundStyle(.tertiary)
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(plugin.name)
-                    .font(.callout.weight(.medium))
                     .lineLimit(1)
-                Text(plugin.reason)
+                Text(status.caption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
+
             Spacer()
-            rejectedActionControl(for: plugin, action: action)
-            Button(String(localized: "Remove")) {
-                removeRejectedPlugin(plugin)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .accessibilityLabel(String(format: String(localized: "Remove %@"), plugin.name))
+
+            Image(systemName: status.severity.symbolName)
+                .selectionAwareTint(status.severity.tint)
+                .accessibilityHidden(true)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func rejectedDetail(_ plugin: RejectedPlugin) -> some View {
+        let action = pluginManager.rejectedAction(for: plugin)
+        let status = RejectedPluginStatus(action: action)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(plugin.name)
+                    .font(.title3.weight(.semibold))
+
+                NoticeLabel(plugin.reason, severity: status.severity)
+                    .font(.callout)
+
+                if let bundleId = plugin.bundleId {
+                    Divider()
+                    Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {
+                        GridRow {
+                            Text("Bundle ID")
+                                .foregroundStyle(.secondary)
+                            Text(bundleId)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .font(.callout)
+                }
+
+                Divider()
+
+                HStack(spacing: 8) {
+                    rejectedActionControl(for: plugin, action: action)
+                    Button(String(localized: "Remove")) {
+                        removeRejectedPlugin(plugin)
+                    }
+                    .accessibilityLabel(String(format: String(localized: "Remove %@"), plugin.name))
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     @ViewBuilder
@@ -189,19 +166,35 @@ struct InstalledPluginsView: View {
             Button(String(localized: "Update Now")) {
                 updatePlugin(registryPlugin)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .disabled(pluginManager.isInstalling)
             .accessibilityLabel(String(format: String(localized: "Update %@"), plugin.name))
         case .requiresAppUpdate:
             Button(updates.status.appUpdateTitle) {
                 updates.performAppUpdateAction()
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
             .disabled(!updates.isAppUpdateActionEnabled)
             .help(String(localized: "A newer TablePro is required to load this plugin."))
-        case .awaitingCompatibleBuild, .notInRegistry:
+        case .awaitingCompatibleBuild:
+            if pluginManager.isUpdatingEnabled {
+                if isRetryingRejected {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button(String(localized: "Try Again")) {
+                        retryRejectedPlugins()
+                    }
+                }
+            }
+        case .notInRegistry:
             EmptyView()
+        }
+    }
+
+    private func retryRejectedPlugins() {
+        isRetryingRejected = true
+        Task {
+            defer { isRetryingRejected = false }
+            await pluginManager.retryRejectedPluginRepairs(registryClient: registryClient)
         }
     }
 
@@ -219,6 +212,7 @@ struct InstalledPluginsView: View {
             }
         }
         pluginManager.removeFromRejected(url: plugin.url)
+        if selection == .rejected(plugin.url) { selection = nil }
     }
 
     // MARK: - Plugin List
@@ -230,7 +224,12 @@ struct InstalledPluginsView: View {
                 .padding(.vertical, 6)
 
             ScrollViewReader { proxy in
-                List(selection: $selectedPluginId) {
+                List(selection: $selection) {
+                    if pluginManager.needsRestart {
+                        Section {
+                            relaunchRow
+                        }
+                    }
                     if !filteredModules.isEmpty {
                         // Untagged, so a module row toggles but never takes the plugin selection.
                         Section(String(localized: "Modules")) {
@@ -239,11 +238,20 @@ struct InstalledPluginsView: View {
                             }
                         }
                     }
+                    if !filteredRejected.isEmpty {
+                        Section(String(localized: "Couldn't Load")) {
+                            ForEach(filteredRejected, id: \.url) { plugin in
+                                rejectedRow(plugin)
+                                    .tag(PluginListSelection.rejected(plugin.url))
+                                    .id(PluginListSelection.rejected(plugin.url))
+                            }
+                        }
+                    }
                     Section(String(localized: "Plugins")) {
                         ForEach(filteredPlugins) { plugin in
                             pluginRow(plugin)
-                                .tag(plugin.id)
-                                .id(plugin.id)
+                                .tag(PluginListSelection.plugin(plugin.id))
+                                .id(PluginListSelection.plugin(plugin.id))
                         }
                     }
                 }
@@ -255,15 +263,20 @@ struct InstalledPluginsView: View {
                 .onChange(of: navigation.pendingRequest) { _ in
                     revealRequestedPlugin()
                 }
-                .onChange(of: selectedPluginId) { pluginId in
-                    guard let pluginId else { return }
-                    proxy.scrollTo(pluginId)
+                .onChange(of: selection) { selection in
+                    guard let selection else { return }
+                    proxy.scrollTo(selection)
                 }
             }
         }
         .onChange(of: searchText) { _ in
-            if let selectedPluginId, !filteredPlugins.contains(where: { $0.id == selectedPluginId }) {
-                self.selectedPluginId = nil
+            switch selection {
+            case .plugin(let id) where !filteredPlugins.contains(where: { $0.id == id }):
+                selection = nil
+            case .rejected(let url) where !filteredRejected.contains(where: { $0.url == url }):
+                selection = nil
+            default:
+                break
             }
         }
     }
@@ -465,13 +478,20 @@ struct InstalledPluginsView: View {
     // MARK: - Detail Pane
 
     private var selectedPlugin: PluginEntry? {
-        guard let id = selectedPluginId else { return nil }
+        guard case .plugin(let id) = selection else { return nil }
         return pluginManager.plugins.first { $0.id == id }
+    }
+
+    private var selectedRejected: RejectedPlugin? {
+        guard case .rejected(let url) = selection else { return nil }
+        return pluginManager.rejectedPlugins.first { $0.url == url }
     }
 
     @ViewBuilder
     private var detailPane: some View {
-        if let selected = selectedPlugin {
+        if let rejected = selectedRejected {
+            rejectedDetail(rejected)
+        } else if let selected = selectedPlugin {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(selected.name)
@@ -583,14 +603,14 @@ struct InstalledPluginsView: View {
     // MARK: - Actions
 
     private func revealRequestedPlugin() {
-        guard let request = navigation.consumePendingRequest() else { return }
-        guard let pluginId = request.pluginId,
-              pluginManager.plugins.contains(where: { $0.id == pluginId }) else {
-            dismissedRejectedBanner = false
-            return
-        }
+        guard let request = navigation.consumePendingRequest(),
+              let target = PluginListSelection.revealTarget(
+                  pluginId: request.pluginId,
+                  loadedIds: pluginManager.plugins.map(\.id),
+                  rejected: pluginManager.rejectedPlugins
+              ) else { return }
         searchText = ""
-        selectedPluginId = pluginId
+        selection = target
     }
 
     private func installFromFile() {
@@ -612,7 +632,7 @@ struct InstalledPluginsView: View {
     private func installPlugin(from url: URL) {
         Task {
             guard let entry = try? await pluginManager.installPlugin(from: url) else { return }
-            selectedPluginId = entry.id
+            selection = .plugin(entry.id)
         }
     }
 
@@ -629,7 +649,7 @@ struct InstalledPluginsView: View {
 
             do {
                 try await pluginManager.uninstallPlugin(id: plugin.id)
-                selectedPluginId = nil
+                selection = nil
             } catch {
                 errorAlertTitle = String(localized: "Uninstall Failed")
                 errorAlertMessage = error.localizedDescription

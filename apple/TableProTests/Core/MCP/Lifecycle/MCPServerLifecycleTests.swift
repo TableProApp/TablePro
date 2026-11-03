@@ -149,7 +149,8 @@ final class MCPServerManagerIdleStateTests: XCTestCase {
     func testServerStatesAreDistinguishable() {
         XCTAssertNotEqual(MCPServerState.stopped, .starting)
         XCTAssertNotEqual(MCPServerState.running(port: 1), .running(port: 2))
-        XCTAssertEqual(MCPServerState.failed("boom"), .failed("boom"))
+        XCTAssertEqual(MCPServerState.failed(.listenerStopped(detail: "boom")), .failed(.listenerStopped(detail: "boom")))
+        XCTAssertNotEqual(MCPServerState.failed(.noBoundPort), .failed(.credentialUnavailable))
     }
 }
 

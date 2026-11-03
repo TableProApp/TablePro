@@ -67,9 +67,6 @@ struct SavedQueryRow: View {
                     .font(.system(.caption, design: .monospaced).weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(.quaternary))
                     .accessibilityHidden(true)
             }
         }

@@ -69,6 +69,17 @@ struct MCPServerOffContractTests {
         _ = try readRefusal()
     }
 
+    @Test("Try Again in Settings is refused while MCP is off")
+    func tryAgainIsRefused() async throws {
+        let manager = makeManager()
+
+        manager.retry()
+        await manager.stop()
+
+        expectNoListener(manager)
+        _ = try readRefusal()
+    }
+
     @Test("Pairing is refused before the approval prompt while MCP is off")
     func pairingIsRefused() async throws {
         let manager = makeManager()

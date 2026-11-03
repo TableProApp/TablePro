@@ -71,11 +71,12 @@ internal struct CompareScriptPane: View {
             if !heldBackStatements.isEmpty {
                 Label {
                     Text(heldBackSummary)
+                        .foregroundStyle(.secondary)
                 } icon: {
                     Image(systemName: "hand.raised.fill")
+                        .foregroundStyle(CompareStatusStyle.warning)
                 }
                 .font(.callout)
-                .foregroundStyle(CompareStatusStyle.warning)
             }
             Spacer(minLength: 0)
             Button("Copy") {

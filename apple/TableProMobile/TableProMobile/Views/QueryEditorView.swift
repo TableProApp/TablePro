@@ -539,7 +539,6 @@ struct QueryEditorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.thinMaterial)
     }
 
     private var rowLayout: RowLayout {

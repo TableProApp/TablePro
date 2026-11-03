@@ -104,16 +104,16 @@ internal struct CopyObjectsSheet: View {
     @ViewBuilder
     private var statusText: some View {
         if let message = session.errorMessage {
-            /// A driver's message is the only account of what went wrong, and it is routinely
-            /// longer than two lines, so it stays selectable and reachable in full from the
-            /// pointer rather than being truncated into something nobody can act on.
+            // A driver's message often runs past two lines, so it stays selectable and whole in the tooltip.
             Label {
                 RevealedTextView(message)
+                    .foregroundStyle(.secondary)
             } icon: {
-                Image(systemName: "exclamationmark.triangle")
+                Image(systemName: NoticeSeverity.error.symbolName)
+                    .foregroundStyle(NoticeSeverity.error.tint)
+                    .accessibilityHidden(true)
             }
             .font(.callout)
-            .foregroundStyle(.red)
             .lineLimit(2)
             .textSelection(.enabled)
             .help(RevealedText(message).plainText)

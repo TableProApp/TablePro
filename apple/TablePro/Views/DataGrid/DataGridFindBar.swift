@@ -85,7 +85,7 @@ struct DataGridFindBar: View {
 
             Text(counterText)
                 .font(.callout)
-                .foregroundStyle(find.problem == nil || status != nil ? Color.secondary : Color(nsColor: .systemRed))
+                .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .lineLimit(1)
                 .accessibilityLabel(counterText)

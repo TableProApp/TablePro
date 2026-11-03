@@ -1086,12 +1086,6 @@ struct MainEditorContentView: View {
                     Text("⌘T")
                         .font(.callout.monospaced())
                         .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color(nsColor: .quaternaryLabelColor))
-                        )
                     Text(
                         "Open \(PluginManager.shared.queryLanguageName(for: connection.type)) Editor"
                     )
@@ -1113,12 +1107,6 @@ struct MainEditorContentView: View {
                         Text("⌘K")
                             .font(.callout.monospaced())
                             .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color(nsColor: .quaternaryLabelColor))
-                            )
                         Text(String(
                             format: String(localized: "Switch %@"),
                             PluginManager.shared.containerEntityName(for: connection.type)

@@ -124,10 +124,8 @@ internal struct ThemeEditorView: View {
     }
 
     private func fieldError(_ message: String, identifier: String) -> some View {
-        Text(message)
+        NoticeLabel(message, severity: .error)
             .font(.callout)
-            .foregroundStyle(.red)
-            .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier(identifier)
     }
 

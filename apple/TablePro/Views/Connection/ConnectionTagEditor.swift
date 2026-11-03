@@ -3,14 +3,19 @@
 //  TablePro
 //
 
+import AppKit
+import os
 import SwiftUI
 
+// Tags are a set the person names, so they edit as tokens: type to complete or create one, Delete to
+// remove one. The pull-down beside it keeps the tag colors, creation with a color and deletion.
 struct ConnectionTagEditor: View {
     @Binding var tagIds: [UUID]
     @State private var allTags: [ConnectionTag] = []
     @State private var showingCreateSheet = false
 
     private let tagStorage = TagStorage.shared
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionTagEditor")
 
     private var selectedTags: [ConnectionTag] {
         tagIds.compactMap { id in allTags.first { $0.id == id } }
@@ -18,7 +23,11 @@ struct ConnectionTagEditor: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            selectionView
+            ConnectionTagTokenField(
+                tokens: selectedTags.map(\.name),
+                completions: allTags.map(\.name),
+                onChange: applyTokens
+            )
             tagMenu
         }
         .task { allTags = tagStorage.loadTags() }
@@ -32,45 +41,34 @@ struct ConnectionTagEditor: View {
         }
     }
 
-    @ViewBuilder
-    private var selectionView: some View {
-        if !selectedTags.isEmpty {
-            HStack(spacing: 4) {
-                ForEach(selectedTags) { tag in
-                    tagChip(tag)
-                }
+    // Resolves against the store as it is now: another window or iCloud may have added a tag since
+    // this form loaded. Returns the names that ended up selected, so the field drops one that failed.
+    private func applyTokens(_ names: [String]) -> [String] {
+        allTags = tagStorage.loadTags()
+        let ids: [UUID] = ConnectionTagTokens.resolve(names, among: allTags).compactMap { entry in
+            switch entry {
+            case .existing(let id):
+                return id
+            case .new(let name):
+                return createTag(named: name)
             }
         }
+        allTags = tagStorage.loadTags()
+        if ids != tagIds { tagIds = ids }
+        return ids.compactMap { id in allTags.first { $0.id == id }?.name }
     }
 
-    private func tagChip(_ tag: ConnectionTag) -> some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(tag.color.color)
-                .frame(width: 7, height: 7)
-                .accessibilityHidden(true)
-            Text(tag.name)
-                .lineLimit(1)
-            Button { toggle(tag) } label: {
-                Image(systemName: "xmark")
-                    .imageScale(.small)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help(Text(removeLabel(for: tag)))
-            .accessibilityLabel(Text(removeLabel(for: tag)))
+    private func createTag(named name: String) -> UUID? {
+        let tag = ConnectionTag(name: name, isPreset: false, color: .gray)
+        do {
+            try tagStorage.addTag(tag)
+            return tag.id
+        } catch TagStorageError.duplicateName {
+            return tagStorage.loadTags().first { $0.name.lowercased() == name }?.id
+        } catch {
+            Self.logger.error("Could not create a tag from the token field: \(error.publicLogShape, privacy: .public)")
+            return nil
         }
-        .padding(.leading, 7)
-        .padding(.trailing, 5)
-        .padding(.vertical, 2)
-        .background(tag.color.color.opacity(0.14), in: Capsule())
-        .overlay(Capsule().strokeBorder(tag.color.color.opacity(0.35), lineWidth: 1))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(tag.name))
-    }
-
-    private func removeLabel(for tag: ConnectionTag) -> String {
-        String(format: String(localized: "Remove tag %@"), tag.name)
     }
 
     private var tagMenu: some View {
@@ -80,7 +78,7 @@ struct ConnectionTagEditor: View {
                     toggle(tag)
                 } label: {
                     HStack {
-                        Image(nsImage: colorDot(tag.color.color))
+                        Image(nsImage: Self.tagSymbol(tag.color))
                         Text(tag.name)
                         if tagIds.contains(tag.id) {
                             Spacer()
@@ -112,30 +110,17 @@ struct ConnectionTagEditor: View {
                 }
             }
         } label: {
-            menuLabel
+            Image(systemName: "tag")
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .menuIndicator(.visible)
         .fixedSize()
-        .help(Text("Add tags"))
+        .help(Text("Choose Tags"))
+        // An icon-only pull-down publishes no name of its own.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Choose Tags"))
         .accessibilityIdentifier("connection-form-tags")
-    }
-
-    /// The placeholder is the pull-down's own title, the way every macOS pull-down names itself,
-    /// so the words open the menu instead of sitting beside it as unclickable text. Once a tag is
-    /// picked the chips say what is selected, and the title moves into an icon-less `Label` so the
-    /// control keeps its name while showing nothing but its own disclosure chevron. A chevron drawn
-    /// here would land beside that one, not replace it.
-    @ViewBuilder
-    private var menuLabel: some View {
-        if selectedTags.isEmpty {
-            Text("Add tags")
-                .foregroundStyle(.secondary)
-        } else {
-            Label { Text("Add tags") } icon: { EmptyView() }
-                .labelStyle(.iconOnly)
-        }
     }
 
     private func toggle(_ tag: ConnectionTag) {
@@ -159,13 +144,11 @@ struct ConnectionTagEditor: View {
         allTags = tagStorage.loadTags()
     }
 
-    private func colorDot(_ color: Color) -> NSImage {
-        let size = NSSize(width: 10, height: 10)
-        let image = NSImage(size: size, flipped: false) { rect in
-            NSColor(color).setFill()
-            NSBezierPath(ovalIn: rect).fill()
-            return true
-        }
+    // A menu draws a SwiftUI symbol as a template and drops its tint, so the colored tag is an image.
+    private static func tagSymbol(_ color: ConnectionColor) -> NSImage {
+        let configuration = NSImage.SymbolConfiguration(paletteColors: [NSColor(color.color)])
+        let image = NSImage(systemSymbolName: "tag.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration) ?? NSImage()
         image.isTemplate = false
         return image
     }
@@ -200,10 +183,8 @@ private struct CreateTagSheet: View {
             }
 
             if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                NoticeLabel(errorMessage, severity: .error)
                     .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 

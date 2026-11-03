@@ -104,10 +104,16 @@ struct ForeignKeyPreviewView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .frame(height: 60)
         } else if let errorMessage {
-            RevealedTextView(errorMessage)
-                .foregroundStyle(.red)
-                .font(.callout)
-                .padding(10)
+            Label {
+                RevealedTextView(errorMessage)
+                    .foregroundStyle(.secondary)
+            } icon: {
+                Image(systemName: NoticeSeverity.error.symbolName)
+                    .foregroundStyle(NoticeSeverity.error.tint)
+                    .accessibilityHidden(true)
+            }
+            .font(.callout)
+            .padding(10)
         } else if values.isEmpty {
             Text("Referenced row not found")
                 .foregroundStyle(.secondary)

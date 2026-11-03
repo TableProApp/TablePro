@@ -33395,6 +33395,9 @@
         }
       }
     },
+    "Can't be loaded" : {
+
+    },
     "Can't Debug %@" : {
 
     },
@@ -38421,6 +38424,9 @@
         }
       }
     },
+    "Choose an AI provider in Settings to chat." : {
+
+    },
     "Choose an auth method for this connection." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -38798,6 +38804,9 @@
       }
     },
     "Choose Schema" : {
+
+    },
+    "Choose Tags" : {
 
     },
     "Choose the .proto file or descriptor set the values in this column were written with." : {
@@ -54732,6 +54741,9 @@
     "Couldn't Import Formatter Rules" : {
 
     },
+    "Couldn't Load" : {
+
+    },
     "Couldn't Move File to Trash" : {
       "localizations" : {
         "fr" : {
@@ -55046,6 +55058,9 @@
           }
         }
       }
+    },
+    "Couldn't start" : {
+
     },
     "Count" : {
       "localizations" : {
@@ -113291,6 +113306,9 @@
         }
       }
     },
+    "Needs a newer TablePro" : {
+
+    },
     "Needs a valid unique index on the view's columns, with no WHERE clause and no expressions." : {
       "localizations" : {
         "fr" : {
@@ -113300,6 +113318,9 @@
           }
         }
       }
+    },
+    "Needs an API key" : {
+
     },
     "Needs attention" : {
 
@@ -115557,6 +115578,9 @@
           }
         }
       }
+    },
+    "No AI Provider" : {
+
     },
     "No AI provider configured. Go to Settings > AI to add one." : {
       "localizations" : {
@@ -135312,6 +135336,9 @@
         }
       }
     },
+    "Port %d was in use." : {
+
+    },
     "Port %lld uses TLS, so SSL Mode is %@." : {
       "localizations" : {
         "en" : {
@@ -145631,7 +145658,13 @@
     "Relaunch TablePro to finish removing plugins." : {
 
     },
+    "Relaunch TablePro to finish switching languages." : {
+
+    },
     "Relaunch TablePro to finish updating." : {
+
+    },
+    "Relaunch to finish removing plugins." : {
 
     },
     "Relaunch to Update" : {
@@ -175154,6 +175187,9 @@
         }
       }
     },
+    "Stopped unexpectedly" : {
+
+    },
     "Stopped." : {
 
     },
@@ -180428,6 +180464,9 @@
           }
         }
       }
+    },
+    "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and try again." : {
+
     },
     "TablePro Data Was Removed from iCloud" : {
       "extractionState" : "manual",
@@ -188930,7 +188969,13 @@
         }
       }
     },
+    "The MCP server could not issue its bridge credential." : {
+
+    },
     "The MCP server could not prepare its private socket folder" : {
+
+    },
+    "The MCP server could not prepare its private socket folder." : {
 
     },
     "The MCP server is turned off. Turn it on in Settings > MCP." : {
@@ -188975,6 +189020,9 @@
           }
         }
       }
+    },
+    "The MCP server started without a port." : {
+
     },
     "the message is larger than the broker accepts" : {
       "extractionState" : "manual",
@@ -208485,6 +208533,9 @@
         }
       }
     },
+    "Update available" : {
+
+    },
     "Update Available" : {
 
     },
@@ -209005,6 +209056,9 @@
           }
         }
       }
+    },
+    "Updating this plugin didn't finish. Update it again to keep using it." : {
+
     },
     "Updating…" : {
       "extractionState" : "stale",
@@ -212365,6 +212419,9 @@
         }
       }
     },
+    "Version %@ or newer is required." : {
+
+    },
     "Version 4 (random)" : {
 
     },
@@ -213074,6 +213131,9 @@
           }
         }
       }
+    },
+    "Waiting for a compatible build" : {
+
     },
     "Waiting for the tunnel" : {
       "localizations" : {

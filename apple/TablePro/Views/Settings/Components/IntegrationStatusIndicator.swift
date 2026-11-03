@@ -41,7 +41,7 @@ struct IntegrationStatusIndicator: View {
         case .stopped:
             return "stop.circle.fill"
         case .starting:
-            return "clock.fill"
+            return "clock"
         case .failed, .error, .revoked:
             return "xmark.circle.fill"
         case .warning:
@@ -55,10 +55,8 @@ struct IntegrationStatusIndicator: View {
         switch status {
         case .running, .success, .active:
             return .green
-        case .stopped:
+        case .stopped, .starting:
             return Color(nsColor: .secondaryLabelColor)
-        case .starting:
-            return .orange
         case .failed, .error:
             return .red
         case .warning, .expired:

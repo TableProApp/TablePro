@@ -189,9 +189,8 @@ internal struct FavoriteEditDialog: View {
             .accessibilityLabel(String(localized: "Query"))
 
             if let message = draft.sizeValidation.displayText {
-                Text(message)
+                NoticeLabel(message, severity: .error)
                     .font(.callout)
-                    .foregroundStyle(Color.red)
             }
         } header: {
             Text("Query")
@@ -217,9 +216,8 @@ internal struct FavoriteEditDialog: View {
                 }
 
             if let message = keywordField.validation.displayText {
-                Text(message)
+                NoticeLabel(message, severity: keywordField.validation.isWarning ? .warning : .error)
                     .font(.callout)
-                    .foregroundStyle(keywordField.validation.isWarning ? Color.orange : Color.red)
             }
 
             Toggle(isOn: $isGlobal) {

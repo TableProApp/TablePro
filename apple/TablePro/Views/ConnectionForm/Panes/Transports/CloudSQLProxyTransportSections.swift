@@ -136,7 +136,8 @@ struct CloudSQLProxyTransportSections: View {
             case .downloading(let fraction):
                 downloadProgress(fraction)
             case .failed(let message):
-                warning(message)
+                NoticeLabel(message)
+                    .textSelection(.enabled)
             case .idle:
                 EmptyView()
             }
@@ -146,7 +147,8 @@ struct CloudSQLProxyTransportSections: View {
                     LabeledContent(String(localized: "Detected"), value: resolved)
                         .foregroundStyle(.secondary)
                 } else if viewModel.didResolveBinary {
-                    warning(viewModel.binaryNotFoundMessage)
+                    NoticeLabel(viewModel.binaryNotFoundMessage)
+                        .textSelection(.enabled)
                 }
             }
         } header: {
@@ -169,17 +171,6 @@ struct CloudSQLProxyTransportSections: View {
                 viewModel.cancelDownload()
             }
             .controlSize(.small)
-        }
-    }
-
-    private func warning(_ message: String) -> some View {
-        Label {
-            Text(message)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
         }
     }
 

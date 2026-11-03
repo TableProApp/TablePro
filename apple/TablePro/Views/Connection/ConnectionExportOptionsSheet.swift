@@ -209,9 +209,8 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     private func warningLabel(_ text: String) -> some View {
-        Label(text, systemImage: "exclamationmark.triangle.fill")
+        NoticeLabel(text)
             .font(.caption)
-            .foregroundStyle(.orange)
     }
 
     private var footer: some View {

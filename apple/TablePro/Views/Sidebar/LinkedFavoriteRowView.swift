@@ -25,7 +25,7 @@ internal struct LinkedFavoriteRowView: View {
             if favorite.encodingCannotRepresentEveryCharacter {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .selectionAwareTint(.yellow)
+                    .selectionAwareTint(.orange)
                     .help(String(
                         format: String(
                             localized: "Encoded as %@. Saving keeps this encoding, and a character it can't represent stops the save."
@@ -39,9 +39,6 @@ internal struct LinkedFavoriteRowView: View {
                 Text(keyword)
                     .font(.system(.caption, design: .monospaced).weight(.medium))
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(.quaternary))
                     .accessibilityHidden(true)
             }
 
