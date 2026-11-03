@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{ConnectionColor, ConnectionGroupName, ConnectionIcon, GroupIcon, SymbolName};
 
-// How a field the macOS app wrote reads in the core, and what the core writes for a value of its own. A value no reader here understands reads as the default, and the record keeps it until the user changes that field (`super::records`).
+// Keep unknown raw values until the user changes that field.
 
 // As Swift's `UUID(uuidString:)` reads one: hyphenated, in either case.
 pub(super) fn record_id(raw: &str) -> Option<Uuid> {
@@ -23,7 +23,7 @@ pub(super) fn group_name(raw: Option<&str>) -> Option<ConnectionGroupName> {
     raw.and_then(ConnectionGroupName::from_stored)
 }
 
-// The macOS `ConnectionColor` raw values a group record holds. Teal is the core's alone: a macOS build reads it as no colour and keeps it until someone picks another.
+// Keep macOS colour spellings so existing readers recognize the records.
 const COLORS: [(ConnectionColor, &str); 9] = [
     (ConnectionColor::Red, "Red"),
     (ConnectionColor::Orange, "Orange"),
@@ -50,7 +50,7 @@ pub(super) fn color_value(color: Option<ConnectionColor>) -> String {
         .to_owned()
 }
 
-// The SF Symbol each named icon is written as. A record naming one of these reads back as the named icon, so the value round-trips and a library exported from a Mac carries icons every app draws.
+// Use SF Symbol names so the same record draws a known icon on macOS.
 const NAMED_SYMBOLS: [(ConnectionIcon, &str); 15] = [
     (ConnectionIcon::Server, "server.rack"),
     (ConnectionIcon::Computer, "desktopcomputer"),
@@ -101,7 +101,7 @@ pub(super) fn favorite_value(favorite: bool) -> i64 {
     i64::from(favorite)
 }
 
-// The macOS tie-break between equal sort orders is `localizedStandardCompare`, then the id. Without a locale this follows its English order: digit runs by value, then letters without accents or case, then accents, then lower case first (apple/scripts/probes/check-library-name-order.sh measures Foundation against the same pairs).
+// The Foundation probe checks common English name ties; other locales can order ties differently.
 pub(super) fn name_order(left: (&str, Uuid), right: (&str, Uuid)) -> Ordering {
     let (l, r) = (left.0, right.0);
     natural_text_order(&letters(l), &letters(r))

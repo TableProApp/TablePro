@@ -1,4 +1,4 @@
-// The connection library as the Apple apps sync it through CloudKit: a `ConnectionGroup` record per group, and on each `Connection` record the fields that place it. The app moves the records; this maps them to and from a [`ConnectionList`] and merges a pull with the edits this device has not pushed yet.
+// CloudKit transport stays in the host; the core only maps record fields.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -33,7 +33,7 @@ pub struct CloudGroup {
     pub sort_order: Option<i64>,
 }
 
-// The fields of a `Connection` record that place it in the library. The name only breaks a tie in the order: [`records`] writes the one the record has, or the library's for a new record.
+// Names only break ordering ties; the host owns connection name edits.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CloudConnection {
     pub connection_id: String,
@@ -67,7 +67,7 @@ pub struct CloudPull {
     pub favorites_order: Option<Vec<Uuid>>,
 }
 
-// The library `records` read as, for the connections `list` holds: the groups they make, where each connection sits, and the favourites, in `favorites_order` and then by name. A connection with no record keeps its place after the ones that have one. A record the core cannot hold, such as a group with no name, is left out.
+// Unknown groups stay in the record cache for a newer reader to understand.
 pub fn layout(list: &ConnectionList, records: &CloudRecords, favorites_order: &[Uuid]) -> ConnectionList {
     let groups = read_groups(&records.groups);
     let known: HashSet<Uuid> = groups.iter().map(|group| group.id).collect();
@@ -127,7 +127,7 @@ pub fn layout(list: &ConnectionList, records: &CloudRecords, favorites_order: &[
     }
 }
 
-// Every record the library writes, keeping each value `base` holds wherever it reads as the library's, so a library read from `base` writes `base` back, and a value only another build understands survives.
+// Preserve raw fields so reading alone never writes edits back to CloudKit.
 pub fn records(list: &ConnectionList, base: &CloudRecords) -> CloudRecords {
     CloudRecords {
         groups: group_records(list, base),
@@ -170,7 +170,7 @@ fn by_id<'a, R>(records: &'a [R], id: impl Fn(&R) -> &String) -> HashMap<Uuid, &
     found
 }
 
-// The groups as macOS reads them: a parent the records lack, or a cycle, roots the group, and siblings go by `sortOrder`, then name.
+// Invalid parents must not prevent the host from showing a group.
 fn read_groups(records: &[CloudGroup]) -> Vec<ConnectionGroup> {
     let mut claimed = HashSet::with_capacity(records.len());
     let mut seen = HashSet::with_capacity(records.len());

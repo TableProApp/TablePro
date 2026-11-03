@@ -12,7 +12,7 @@ impl ConnectionStore {
         Ok(cloudkit::edits(&self.list_blocking()?, base))
     }
 
-    // Lays a pull over the library in one write. A connection the pull deleted leaves it; one the library does not hold yet is the app's to add first.
+    // The host adds unknown connections before applying their placement fields.
     pub fn apply_cloud_pull_blocking(&self, pull: &CloudPull) -> Result<(), StorageError> {
         self.edit(|document| {
             let deleted: HashSet<Uuid> = pull.deleted.connections.iter().copied().collect();

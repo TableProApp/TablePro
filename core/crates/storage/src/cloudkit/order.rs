@@ -11,7 +11,7 @@ pub(super) struct Sibling<'a> {
     pub base: Option<Option<i64>>,
 }
 
-// Each sibling's `sortOrder`, given in the list's order. Values the server holds stay while they still read in this order, so a list nobody reordered writes nothing; otherwise the list is numbered from 0, as macOS numbers one.
+// Keep unchanged ordering values so reading a library sends no writes.
 pub(super) fn sort_orders(siblings: &[Sibling<'_>]) -> Vec<Option<i64>> {
     keeping_base(siblings).unwrap_or_else(|| {
         siblings
