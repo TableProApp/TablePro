@@ -102,7 +102,7 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
             }
 
             if includeData {
-                var documentBatch: [String] = []
+                var documentBatch = MQLDocumentBatch(countLimit: batchSize)
 
                 let stream = dataSource.streamExportRows(for: table)
                 for try await element in stream {
@@ -119,15 +119,10 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                             ))
                         }
                         for document in documents {
-                            documentBatch.append(try MQLExportHelpers.documentLiteral(document))
-
-                            if documentBatch.count >= batchSize {
-                                try writeMQLInsertMany(
-                                    collection: table.name,
-                                    documents: documentBatch,
-                                    to: fileHandle
-                                )
-                                documentBatch.removeAll(keepingCapacity: true)
+                            let literal = try MQLExportHelpers.documentLiteral(document)
+                            let ready = documentBatch.append(literal, bsonSizeUpperBound: document.bsonSizeUpperBound)
+                            for batch in ready {
+                                try writeMQLInsertMany(collection: table.name, documents: batch, to: fileHandle)
                             }
 
                             progress.incrementRow()
@@ -137,12 +132,9 @@ final class MQLExportPlugin: ObservableObject, ExportFormatPlugin, SettablePlugi
                     }
                 }
 
-                if !documentBatch.isEmpty {
-                    try writeMQLInsertMany(
-                        collection: table.name,
-                        documents: documentBatch,
-                        to: fileHandle
-                    )
+                let remaining = documentBatch.finish()
+                if !remaining.isEmpty {
+                    try writeMQLInsertMany(collection: table.name, documents: remaining, to: fileHandle)
                 }
             }
 

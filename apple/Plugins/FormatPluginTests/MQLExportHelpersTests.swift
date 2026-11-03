@@ -109,3 +109,55 @@ struct MQLExportHelpersTests {
     }
 
 }
+
+struct MQLDocumentBatchTests {
+    @Test("Large documents split before the command reaches its BSON limit")
+    func byteBudgetSplitsBatches() {
+        let expected = (0..<500).map(String.init)
+        var batch = MQLDocumentBatch(countLimit: 500)
+        var groups: [[String]] = []
+        for document in expected {
+            groups += batch.append(document, bsonSizeUpperBound: 100 * 1_024)
+        }
+        groups.append(batch.finish())
+        #expect(groups.map(\.count) == [153, 153, 153, 41])
+        #expect(groups.flatMap { $0 } == expected)
+        #expect(groups.allSatisfy { $0.count * 100 * 1_024 < MQLDocumentBatch.documentByteLimit })
+    }
+
+    @Test("A near-limit document and unknown sizes each get their own command")
+    func singleDocumentsKeepTheirPlace() {
+        var batch = MQLDocumentBatch(countLimit: 500)
+        var groups = batch.append("small-before", bsonSizeUpperBound: 100)
+        groups += batch.append("near-limit", bsonSizeUpperBound: 16 * 1_024 * 1_024 - 1)
+        groups += batch.append("unknown", bsonSizeUpperBound: nil)
+        groups += batch.append("small-after", bsonSizeUpperBound: 100)
+        groups.append(batch.finish())
+        #expect(groups == [["small-before"], ["near-limit"], ["unknown"], ["small-after"]])
+    }
+
+    @Test("The configured document count still limits small batches")
+    func configuredCount() {
+        var batch = MQLDocumentBatch(countLimit: 2)
+        var groups: [[String]] = []
+        for index in 0..<5 { groups += batch.append(String(index), bsonSizeUpperBound: 100) }
+        groups.append(batch.finish())
+        #expect(groups == [["0", "1"], ["2", "3"], ["4"]])
+    }
+
+    @Test("An invalid document count cannot create an unbounded command", arguments: [Int.min, 0])
+    func invalidCount(count: Int) {
+        var batch = MQLDocumentBatch(countLimit: count)
+        #expect(batch.append("one", bsonSizeUpperBound: 5) == [["one"]])
+        #expect(batch.finish().isEmpty)
+    }
+
+    @Test("An imported large count respects the server's maximum document count")
+    func serverCountLimit() {
+        var batch = MQLDocumentBatch(countLimit: Int.max)
+        var groups: [[String]] = []
+        for _ in 0..<100_001 { groups += batch.append("{}", bsonSizeUpperBound: 5) }
+        groups.append(batch.finish())
+        #expect(groups.map(\.count) == [100_000, 1])
+    }
+}

@@ -21,12 +21,12 @@ struct MQLExportOptionsView: View {
                 .padding(.vertical, 2)
 
             HStack {
-                Text("Rows per insertMany")
+                Text("Rows per batch")
                     .font(.system(size: 13))
 
                 Spacer()
 
-                Picker(String(localized: "Rows per insertMany", bundle: .main), selection: $plugin.settings.batchSize) {
+                Picker(String(localized: "Rows per batch", bundle: .main), selection: $plugin.settings.batchSize) {
                     ForEach(Self.batchSizeOptions, id: \.self) { size in
                         Text("\(size)")
                             .tag(size)

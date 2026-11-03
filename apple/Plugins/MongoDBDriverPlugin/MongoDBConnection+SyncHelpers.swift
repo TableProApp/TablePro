@@ -452,7 +452,8 @@ nonisolated extension MongoDBConnection {
                     continue
                 }
                 let document = try MongoExportDocument.read(
-                    canonicalJSON: text, dictionary: dict, representation: uuidRepresentation
+                    canonicalJSON: text, dictionary: dict, representation: uuidRepresentation,
+                    bsonSizeUpperBound: MongoLibbsonCodec.size(of: doc)
                 )
                 let row = BsonDocumentFlattener.flatten(
                     documents: [dict], columns: projection.columns, kinds: projection.kinds,

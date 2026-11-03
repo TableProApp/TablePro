@@ -227,7 +227,8 @@ enum ExportDocumentMasking {
         excluding: Set<String> = [],
         row: [PluginCellValue]? = nil
     ) -> PluginExportDocument {
-        PluginExportDocument(fields: document.fields.map { field in
+        var sizeBound = document.bsonSizeUpperBound
+        let fields = document.fields.map { field in
             guard !excluding.contains(field.name) else { return field }
             let index = columns.firstIndex(of: field.name)
             let style = index.flatMap { masks.styles[$0] }
@@ -239,8 +240,28 @@ enum ExportDocumentMasking {
             } else {
                 cell = field.cellValue
             }
-            return replacing(field, with: MaskedValue.mask(cell, style: style))
-        })
+            let masked = MaskedValue.mask(cell, style: style)
+            sizeBound = enlargedBound(sizeBound, for: masked)
+            return replacing(field, with: masked)
+        }
+        return PluginExportDocument(fields: fields, bsonSizeUpperBound: sizeBound)
+    }
+
+    private static func enlargedBound(_ bound: Int?, for value: PluginCellValue) -> Int? {
+        guard let bound else { return nil }
+        let bytes: Int
+        switch value {
+        case .null:
+            return bound
+        case .text(let text):
+            bytes = text.utf8.count
+        case .bytes:
+            bytes = MaskedValue.bullets.utf8.count
+        }
+        // Keeping the old value's size avoids depending on its BSON type when the mask changes it.
+        let (withText, textOverflow) = bound.addingReportingOverflow(bytes)
+        let (withLength, lengthOverflow) = withText.addingReportingOverflow(5)
+        return textOverflow || lengthOverflow ? nil : withLength
     }
 
     static func replacing(_ field: PluginExportField, with value: PluginCellValue) -> PluginExportField {

@@ -153801,6 +153801,10 @@
         }
       }
     },
+    "Rows per batch" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Rows per group" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,

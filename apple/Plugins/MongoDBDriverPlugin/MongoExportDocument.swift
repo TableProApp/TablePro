@@ -5,7 +5,8 @@ nonisolated enum MongoExportDocument {
     static func read(
         canonicalJSON: String,
         dictionary: [String: Any],
-        representation: MongoDBUuidRepresentation
+        representation: MongoDBUuidRepresentation,
+        bsonSizeUpperBound: Int? = nil
     ) throws -> PluginExportDocument {
         let document = try MongoDocumentText(parsing: canonicalJSON)
         let fields = try document.members.map { member in
@@ -24,7 +25,12 @@ nonisolated enum MongoExportDocument {
                 typeName: BsonDocumentFlattener.typeName(for: kind, representation: representation), cellValue: cell
             )
         }
-        return PluginExportDocument(fields: fields)
+        #if canImport(CLibMongoc)
+        let size = bsonSizeUpperBound ?? MongoLibbsonCodec().bsonSize(of: canonicalJSON)
+        #else
+        let size = bsonSizeUpperBound
+        #endif
+        return PluginExportDocument(fields: fields, bsonSizeUpperBound: size)
     }
 
     static func read(_ documents: MongoReadDocuments, representation: MongoDBUuidRepresentation) throws -> [PluginExportDocument] {

@@ -16,6 +16,18 @@ struct PluginExportDocumentTests {
         #expect(restored == document)
     }
 
+    @Test("BSON sizing metadata survives coding and remains optional for earlier payloads")
+    func bsonSizeCoding() throws {
+        let document = PluginExportDocument(fields: [], bsonSizeUpperBound: 5)
+        let encoded = try JSONEncoder().encode(document)
+        let restored = try JSONDecoder().decode(PluginExportDocument.self, from: encoded)
+        #expect(restored.bsonSizeUpperBound == 5)
+        #expect(restored.canonicalJSON == "{}")
+        let old = try JSONDecoder().decode(PluginExportDocument.self, from: Data(#"{"fields":[]}"#.utf8))
+        #expect(old.bsonSizeUpperBound == nil)
+        #expect(PluginExportDocument(fields: []).bsonSizeUpperBound == nil)
+    }
+
     @Test("Names encode as JSON strings")
     func escapedNames() throws {
         let name = "quote\" slash\\ newline\n nul\0 emoji😀"
@@ -62,14 +74,66 @@ struct PluginExportDocumentTests {
     @Test("Cell consumers retain every row from document streams")
     func cellStream() async throws {
         let stream = AsyncThrowingStream<PluginExportStreamElement, Error> { continuation in
-            continuation.yield(.rows([["42"]], documents: [PluginExportDocument(fields: [])]))
+            continuation.yield(.header(PluginStreamHeader(columns: ["v", "absent"], columnTypeNames: ["VARCHAR", "VARCHAR"])))
+            let document = PluginExportDocument(fields: [
+                PluginExportField(name: "v", canonicalJSON: #""42""#, typeName: "VARCHAR", cellValue: "42")
+            ])
+            continuation.yield(.rows([["42", .null]], documents: [document]))
             continuation.finish()
         }
         var rows: [PluginRow] = []
         for try await element in PluginExportStreamElement.cells(stream) {
             if case .rows(let batch) = element { rows += batch }
         }
-        #expect(rows == [["42"]])
+        #expect(rows == [["42", .null]])
+    }
+
+    @Test("A late document field refuses a fixed-column export")
+    func lateFieldRefused() async {
+        await expectCellStreamRefusal(columns: ["sampled"], fieldNames: ["sampled", "late"], rowCount: 1)
+    }
+
+    @Test("Document rows require a header before reaching cell consumers")
+    func missingHeaderRefused() async {
+        await expectCellStreamRefusal(columns: nil, fieldNames: ["v"], rowCount: 1)
+    }
+
+    @Test("Document counts must match the cell rows")
+    func misalignedDocumentsRefused() async {
+        await expectCellStreamRefusal(columns: ["v"], fieldNames: ["v"], rowCount: 2)
+    }
+
+    @Test("A short cell row cannot discard a declared document field")
+    func shortRowRefused() async {
+        await expectCellStreamRefusal(columns: ["a", "b"], fieldNames: ["a", "b"], rowCount: 1)
+    }
+
+    @Test("A canonically equivalent name cannot stand in for another stored field")
+    func distinctUnicodeFieldRefused() async {
+        await expectCellStreamRefusal(columns: ["\u{00E9}"], fieldNames: ["e\u{0301}"], rowCount: 1)
+    }
+
+    private func expectCellStreamRefusal(columns: [String]?, fieldNames: [String], rowCount: Int) async {
+        let stream = AsyncThrowingStream<PluginExportStreamElement, Error> { continuation in
+            if let columns {
+                continuation.yield(.header(PluginStreamHeader(columns: columns, columnTypeNames: [])))
+            }
+            let document = PluginExportDocument(fields: fieldNames.map {
+                PluginExportField(name: $0, canonicalJSON: #""private value""#, typeName: "VARCHAR", cellValue: "private value")
+            })
+            continuation.yield(.rows(Array(repeating: ["private value"], count: rowCount), documents: [document]))
+            continuation.finish()
+        }
+        do {
+            for try await element in PluginExportStreamElement.cells(stream) {
+                if case .rows = element { Issue.record("Rows with incomplete columns reached the cell consumer") }
+            }
+            Issue.record("The incomplete export was accepted")
+        } catch let error as PluginExportError {
+            #expect(!error.localizedDescription.contains("private value"))
+        } catch {
+            Issue.record("Unexpected error type")
+        }
     }
 
     @Test("Default export source keeps its scoped legacy read")

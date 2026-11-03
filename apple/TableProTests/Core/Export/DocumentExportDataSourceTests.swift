@@ -170,6 +170,25 @@ struct DocumentExportDataSourceTests {
         #expect(rows.rows[0].exportSnapshot?.document.canonicalJSON.contains("secret") == false)
     }
 
+    @Test func documentMaskingPreservesOrGrowsTheSizeBound() {
+        let fields = [field("value", #""secret""#, cell: .text("secret"))]
+        let original = PluginExportDocument(fields: fields, bsonSizeUpperBound: 23)
+        let unchanged = ExportDocumentMasking.document(original, columns: ["value"], masks: .none)
+        #expect(unchanged == original)
+
+        let masked = ExportDocumentMasking.document(original, columns: ["value"], masks: ColumnMasks(styles: [0: .full]))
+        #expect(masked.bsonSizeUpperBound == 23 + MaskedValue.bullets.utf8.count + 5)
+        let nulled = ExportDocumentMasking.document(original, columns: ["value"], masks: ColumnMasks(styles: [0: .null]))
+        #expect(nulled.bsonSizeUpperBound == original.bsonSizeUpperBound)
+
+        let bounds: [Int?] = [nil, Int.max]
+        for bound in bounds {
+            let unbounded = PluginExportDocument(fields: fields, bsonSizeUpperBound: bound)
+            let result = ExportDocumentMasking.document(unbounded, columns: ["value"], masks: ColumnMasks(styles: [0: .full]))
+            #expect(result.bsonSizeUpperBound == nil)
+        }
+    }
+
     @Test func documentColumnMasksUseGridCellsAndDoNotMaskTwice() async throws {
         let document = PluginExportDocument(fields: [
             field("value", #"{"$binary":{"base64":"YWJjZA==","subType":"04"}}"#, type: "UUID", cell: .text("UUID(abcd)"))

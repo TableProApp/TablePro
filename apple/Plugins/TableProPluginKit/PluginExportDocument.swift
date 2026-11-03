@@ -19,8 +19,13 @@ public struct PluginExportField: Codable, Equatable, Sendable {
 public struct PluginExportDocument: Codable, Equatable, Sendable {
     public let fields: [PluginExportField]
 
-    public init(fields: [PluginExportField]) {
+    /// The driver measures stored BSON bytes; masking can grow the value, so exporters need a bound
+    /// that callers increase when replacing fields. Nil means batch sizing must treat this document alone.
+    public let bsonSizeUpperBound: Int?
+
+    public init(fields: [PluginExportField], bsonSizeUpperBound: Int? = nil) {
         self.fields = fields
+        self.bsonSizeUpperBound = bsonSizeUpperBound
     }
 
     public var canonicalJSON: String {
@@ -75,11 +80,29 @@ public enum PluginExportStreamElement: Sendable {
     ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
+                var columns: Set<Data>?
+                var columnCount = 0
                 do {
                     for try await element in stream {
                         switch element {
-                        case .header(let header): continuation.yield(.header(header))
-                        case .rows(let rows, _): continuation.yield(.rows(rows))
+                        case .header(let header):
+                            columns = Set(header.columns.map { Data($0.utf8) })
+                            columnCount = header.columns.count
+                            continuation.yield(.header(header))
+                        case .rows(let rows, let documents):
+                            if let documents {
+                                guard let columns, documents.count == rows.count,
+                                      rows.allSatisfy({ $0.count == columnCount }) else {
+                                    throw PluginExportError.exportFailed("Export documents do not match their columns and rows")
+                                }
+                                // Fixed columns cannot carry a field the cursor first returned after its sample.
+                                guard documents.allSatisfy({ document in
+                                    document.fields.allSatisfy { columns.contains(Data($0.name.utf8)) }
+                                }) else {
+                                    throw PluginExportError.exportFailed("The column stream cannot represent every document field")
+                                }
+                            }
+                            continuation.yield(.rows(rows))
                         }
                     }
                     continuation.finish()

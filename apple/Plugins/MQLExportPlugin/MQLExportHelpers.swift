@@ -61,3 +61,41 @@ enum MQLExportHelpers {
         """
     }
 }
+
+// A command has a BSON size limit too; reserving space keeps its array keys and metadata outside the document budget.
+struct MQLDocumentBatch {
+    static let documentByteLimit = 15 * 1_024 * 1_024
+
+    private let countLimit: Int
+    private var documents: [String] = []
+    private var byteCount = 0
+
+    init(countLimit: Int) {
+        self.countLimit = min(100_000, max(1, countLimit))
+    }
+
+    mutating func append(_ literal: String, bsonSizeUpperBound: Int?) -> [[String]] {
+        var ready: [[String]] = []
+        guard let size = bsonSizeUpperBound, size > 0, size <= Self.documentByteLimit else {
+            if !documents.isEmpty { ready.append(finish()) }
+            ready.append([literal])
+            return ready
+        }
+        var entrySize = size + String(documents.count).utf8.count + 2
+        if byteCount > Self.documentByteLimit - entrySize {
+            if !documents.isEmpty { ready.append(finish()) }
+            entrySize = size + 3
+        }
+        documents.append(literal)
+        byteCount += entrySize
+        if documents.count >= countLimit { ready.append(finish()) }
+        return ready
+    }
+
+    mutating func finish() -> [String] {
+        let ready = documents
+        documents.removeAll(keepingCapacity: true)
+        byteCount = 0
+        return ready
+    }
+}

@@ -68,7 +68,11 @@ struct MQLExportValueTypeTests {
             schema: nil,
             kind: .table
         )
-        _ = try await MQLExportPlugin().export(
+        let plugin = MQLExportPlugin()
+        let originalOptions = plugin.settings
+        defer { plugin.settings = originalOptions }
+        plugin.settings.batchSize = 500
+        _ = try await plugin.export(
             tables: [table],
             dataSource: CollectionDataSource(header: header, rows: rows, documents: documents),
             destination: destination,
@@ -107,4 +111,24 @@ struct MQLExportValueTypeTests {
             #expect(error.localizedDescription.contains("typed documents"))
         }
     }
+    @Test("The exporter sends large document batches in byte-bounded commands without losing rows")
+    func exportUsesDocumentByteBounds() async throws {
+        let documents = (0..<500).map { index in
+            PluginExportDocument(
+                fields: [PluginExportField(
+                    name: "value", canonicalJSON: "\"row_\(index)\"", typeName: "VARCHAR", cellValue: .text("row_\(index)")
+                )],
+                bsonSizeUpperBound: 100 * 1_024
+            )
+        }
+        let script = try await exportedScript(
+            header: PluginStreamHeader(columns: ["value"], columnTypeNames: ["VARCHAR"]),
+            rows: documents.map { [$0.fields[0].cellValue] }, documents: documents
+        )
+        #expect(script.components(separatedBy: "const result = db.runCommand").count - 1 == 4)
+        for index in 0..<500 {
+            #expect(script.components(separatedBy: "[\"value\", \"row_\(index)\"]").count - 1 == 1)
+        }
+    }
+
 }
