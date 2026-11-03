@@ -10,7 +10,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use tablepro_ffi::{
-    ConnectionRecord, ConnectionSecrets, Core, FileOpenRequest, HostConfig, HostSecretError, HostSecrets,
+    ConnectionRecord, ConnectionSecrets, Core, CoreError, FileOpenRequest, HostConfig, HostSecretError, HostSecrets,
     ObjectScopeArg, RunOutcome, RunSettings, SafeModeTag, SecretItemTag, SecretKindTag, TableName, TlsModeTag,
     TlsSettings,
 };
@@ -97,6 +97,7 @@ fn record(name: &str, driver_id: &str, database: &str) -> ConnectionRecord {
         color: None,
         group_id: None,
         last_opened_ms: None,
+        tags: Vec::new(),
     }
 }
 
@@ -234,6 +235,7 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
             },
             None,
             100,
+            0,
             None,
         )
         .await
@@ -291,6 +293,237 @@ async fn a_network_login_with_no_saved_password_says_so() {
         .unwrap_err();
 
     assert_eq!(error.code(), "keyring.secret_not_stored");
+    let CoreError::Failed { info } = error else {
+        panic!("cancelled")
+    };
+    assert_eq!(info.secret, Some(SecretKindTag::DatabasePassword));
+}
+
+#[tokio::test]
+async fn a_password_typed_at_connect_is_used_when_none_is_saved() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let mut shop = record("shop", "postgres", "shop");
+    shop.host = "127.0.0.1".to_owned();
+    shop.port = 1;
+    let saved = library.save(shop, ConnectionSecrets::default()).await.unwrap();
+
+    let error = core
+        .connect_saved(
+            saved.id,
+            ConnectionSecrets {
+                database_password: Some("typed".to_owned()),
+                ..ConnectionSecrets::default()
+            },
+            None,
+        )
+        .await
+        .unwrap_err();
+
+    // Past the keyring, the connect reaches the closed port.
+    assert_ne!(error.code(), "keyring.secret_not_stored");
+}
+
+#[tokio::test]
+async fn a_tag_goes_on_several_connections_and_a_rename_reaches_all_of_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let one = library
+        .save(record("one", "sqlite", "C:/data/one.db"), ConnectionSecrets::default())
+        .await
+        .unwrap();
+    let two = library
+        .save(record("two", "sqlite", "C:/data/two.db"), ConnectionSecrets::default())
+        .await
+        .unwrap();
+
+    let tag = library.create_tag("prod".to_owned(), "red".to_owned()).await.unwrap();
+    library
+        .tag_connections(vec![one.id.clone(), two.id.clone()], tag.id.clone(), true)
+        .await
+        .unwrap();
+    library
+        .update_tag(tag.id.clone(), "production".to_owned(), "orange".to_owned())
+        .await
+        .unwrap();
+    let snapshot = library.snapshot().await.unwrap();
+
+    assert_eq!(snapshot.tags.len(), 1);
+    assert_eq!(snapshot.tags[0].name, "production");
+    assert_eq!(snapshot.tags[0].color, "orange");
+    assert!(snapshot.connections.iter().all(|saved| saved.tags == [tag.id.clone()]));
+
+    library
+        .tag_connections(vec![one.id.clone()], tag.id.clone(), false)
+        .await
+        .unwrap();
+    let untagged = library.snapshot().await.unwrap();
+    let tags_of = |id: &str| {
+        untagged
+            .connections
+            .iter()
+            .find(|saved| saved.id == id)
+            .map(|saved| saved.tags.clone())
+    };
+    assert_eq!(tags_of(&one.id), Some(Vec::new()));
+    assert_eq!(tags_of(&two.id), Some(vec![tag.id.clone()]));
+}
+
+#[tokio::test]
+async fn a_deleted_tag_leaves_every_connection_and_a_taken_name_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let one = library
+        .save(record("one", "sqlite", "C:/data/one.db"), ConnectionSecrets::default())
+        .await
+        .unwrap();
+    let tag = library.create_tag("prod".to_owned(), "red".to_owned()).await.unwrap();
+    library
+        .tag_connections(vec![one.id.clone()], tag.id.clone(), true)
+        .await
+        .unwrap();
+
+    let taken = library
+        .create_tag("PROD".to_owned(), "blue".to_owned())
+        .await
+        .unwrap_err();
+    let empty = library
+        .create_tag("  ".to_owned(), "blue".to_owned())
+        .await
+        .unwrap_err();
+    let colour = library
+        .create_tag("eu".to_owned(), "beige".to_owned())
+        .await
+        .unwrap_err();
+    library.delete_tag(tag.id.clone()).await.unwrap();
+    let snapshot = library.snapshot().await.unwrap();
+
+    assert_eq!(taken.code(), "storage.tag_name_taken");
+    assert_eq!(empty.code(), "tag_name.empty");
+    assert_eq!(colour.code(), "library.unknown_color");
+    assert!(snapshot.tags.is_empty());
+    assert!(snapshot.connections[0].tags.is_empty());
+}
+
+#[tokio::test]
+async fn saving_from_the_form_keeps_the_tags_it_does_not_show() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let saved = library
+        .save(record("one", "sqlite", "C:/data/one.db"), ConnectionSecrets::default())
+        .await
+        .unwrap();
+    let tag = library.create_tag("prod".to_owned(), "red".to_owned()).await.unwrap();
+    library
+        .tag_connections(vec![saved.id.clone()], tag.id.clone(), true)
+        .await
+        .unwrap();
+
+    let mut edited = saved.clone();
+    edited.name = "renamed".to_owned();
+    library.save(edited, ConnectionSecrets::default()).await.unwrap();
+
+    assert_eq!(library.snapshot().await.unwrap().connections[0].tags, [tag.id]);
+}
+
+#[tokio::test]
+async fn a_rename_changes_only_the_name_and_an_empty_one_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let saved = library
+        .save(record("one", "sqlite", "C:/data/one.db"), ConnectionSecrets::default())
+        .await
+        .unwrap();
+
+    library
+        .rename_connection(saved.id.clone(), "  Orders  ".to_owned())
+        .await
+        .unwrap();
+    let empty = library
+        .rename_connection(saved.id.clone(), " ".to_owned())
+        .await
+        .unwrap_err();
+    let snapshot = library.snapshot().await.unwrap();
+
+    assert_eq!(snapshot.connections[0].name, "Orders");
+    assert_eq!(snapshot.connections[0].database, "C:/data/one.db");
+    assert_eq!(empty.code(), "library.name_required");
+}
+
+#[tokio::test]
+async fn a_drop_places_connections_before_another_and_reorders_favourites() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let group = library.create_group("Work".to_owned(), None).await.unwrap();
+    let mut ids = Vec::new();
+    for name in ["a", "b", "c"] {
+        let saved = library
+            .save(
+                record(name, "sqlite", &format!("C:/data/{name}.db")),
+                ConnectionSecrets::default(),
+            )
+            .await
+            .unwrap();
+        ids.push(saved.id);
+    }
+
+    library
+        .move_to_group(vec![ids[0].clone(), ids[2].clone()], Some(group.id.clone()), None)
+        .await
+        .unwrap();
+    library
+        .move_to_group(vec![ids[1].clone()], Some(group.id.clone()), Some(ids[2].clone()))
+        .await
+        .unwrap();
+    library
+        .add_favorites(vec![ids[0].clone(), ids[1].clone()], None)
+        .await
+        .unwrap();
+    library
+        .add_favorites(vec![ids[1].clone()], Some(ids[0].clone()))
+        .await
+        .unwrap();
+    let snapshot = library.snapshot().await.unwrap();
+
+    let names: Vec<&str> = snapshot.connections.iter().map(|saved| saved.name.as_str()).collect();
+    assert_eq!(names, ["a", "b", "c"]);
+    assert!(
+        snapshot
+            .connections
+            .iter()
+            .all(|saved| saved.group_id.as_deref() == Some(group.id.as_str()))
+    );
+    assert_eq!(snapshot.favorites, [ids[1].clone(), ids[0].clone()]);
+
+    library.remove_favorites(vec![ids[1].clone()]).await.unwrap();
+    assert_eq!(library.snapshot().await.unwrap().favorites, [ids[0].clone()]);
+}
+
+#[tokio::test]
+async fn a_group_dropped_on_another_goes_inside_it_but_not_inside_itself() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let library = core.library().unwrap();
+    let work = library.create_group("Work".to_owned(), None).await.unwrap();
+    let staging = library.create_group("Staging".to_owned(), None).await.unwrap();
+
+    library
+        .move_groups(vec![staging.id.clone()], Some(work.id.clone()), None)
+        .await
+        .unwrap();
+    let inside_itself = library
+        .move_groups(vec![work.id.clone()], Some(staging.id.clone()), None)
+        .await;
+    let snapshot = library.snapshot().await.unwrap();
+
+    assert_eq!(snapshot.groups[1].parent_id.as_deref(), Some(work.id.as_str()));
+    assert!(inside_itself.is_err());
 }
 
 #[test]

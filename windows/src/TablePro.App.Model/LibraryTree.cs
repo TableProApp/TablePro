@@ -35,6 +35,9 @@ public sealed class LibraryNode
 
     public ConnectionGroup? Group { get; init; }
 
+    // A connection's tags, in the library's order.
+    public IReadOnlyList<ConnectionTag> Tags { get; init; } = [];
+
     public List<LibraryNode> Children { get; } = [];
 
     public string Key => $"{Section}/{Kind}/{Id}";
@@ -60,14 +63,27 @@ public static class LibraryTree
         var byId = snapshot.Connections
             .Where(connection => connection.Id is not null)
             .ToDictionary(connection => connection.Id!.Value);
+        IReadOnlyList<ConnectionTag> TagsOf(SavedConnection connection) =>
+            [.. snapshot.Tags.Where(tag => connection.Tags.Contains(tag.Id))];
         bool Matches(SavedConnection connection) =>
-            ConnectionSearch.Matches(connection, GroupPath(connection.GroupId, groups), engineName(connection.EngineId), words);
+            ConnectionSearch.Matches(
+                connection,
+                GroupPath(connection.GroupId, groups),
+                engineName(connection.EngineId),
+                words,
+                TagsOf(connection).Select(tag => tag.Name));
+        LibraryNode ConnectionNode(string section, SavedConnection connection) =>
+            new(LibraryNodeKind.Connection, section, connection.Id, connection.Name)
+            {
+                Connection = connection,
+                Tags = TagsOf(connection),
+            };
 
         var roots = new List<LibraryNode>();
         if (words.Count == 0)
         {
-            AddSection(roots, LibraryNodeKind.Favorites, FavoritesSection, snapshot.Favorites, byId);
-            AddSection(roots, LibraryNodeKind.Recent, RecentSection, snapshot.Recent, byId);
+            AddSection(roots, LibraryNodeKind.Favorites, FavoritesSection, snapshot.Favorites, byId, ConnectionNode);
+            AddSection(roots, LibraryNodeKind.Recent, RecentSection, snapshot.Recent, byId, ConnectionNode);
         }
 
         var all = new LibraryNode(LibraryNodeKind.AllConnections, ConnectionsSection, null, string.Empty);
@@ -120,14 +136,15 @@ public static class LibraryTree
         LibraryNodeKind kind,
         string section,
         IReadOnlyList<Guid> ids,
-        Dictionary<Guid, SavedConnection> byId)
+        Dictionary<Guid, SavedConnection> byId,
+        Func<string, SavedConnection, LibraryNode> connectionNode)
     {
         var node = new LibraryNode(kind, section, null, string.Empty);
         foreach (var id in ids)
         {
             if (byId.TryGetValue(id, out var connection))
             {
-                node.Children.Add(ConnectionNode(section, connection));
+                node.Children.Add(connectionNode(section, connection));
             }
         }
 
@@ -136,9 +153,6 @@ public static class LibraryTree
             roots.Add(node);
         }
     }
-
-    private static LibraryNode ConnectionNode(string section, SavedConnection connection) =>
-        new(LibraryNodeKind.Connection, section, connection.Id, connection.Name) { Connection = connection };
 }
 
 public static class ConnectionSearch
@@ -153,13 +167,15 @@ public static class ConnectionSearch
         SavedConnection connection,
         string? groupPath,
         string engineName,
-        IReadOnlyList<string> words)
+        IReadOnlyList<string> words,
+        IEnumerable<string>? tags = null)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(words);
         string?[] fields =
         [
             connection.Name, connection.Host, connection.Database, connection.UserName, engineName, groupPath,
+            .. tags ?? [],
         ];
         return words.All(word => fields.Any(field =>
             field is not null && field.Contains(word, StringComparison.CurrentCultureIgnoreCase)));

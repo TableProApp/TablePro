@@ -271,6 +271,10 @@ public sealed partial class DataGridView
 
     internal bool IsCellVisible(int row, int column)
     {
+        if (!Contains(row, column))
+        {
+            return false;
+        }
         var (first, last) = VisibleRows();
         if (row < first || row > last)
         {

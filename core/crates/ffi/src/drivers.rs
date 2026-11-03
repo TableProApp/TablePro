@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tablepro_core::{DataModel, DatabaseDriver, DriverRegistry, EndpointKind};
+use tablepro_core::{DataModel, DatabaseDriver, DriverRegistry, EndpointKind, EngineCategory};
 
 /// Every engine the library links in. Drivers are compiled in until the
 /// driver ABI lands (core/docs/decisions/0004-driver-plugin-abi.md).
@@ -24,6 +24,7 @@ pub struct DriverInfo {
     pub id: String,
     pub display_name: String,
     pub data_model: DataModelTag,
+    pub category: EngineCategoryTag,
     pub endpoint: EndpointInfo,
 }
 
@@ -32,6 +33,29 @@ pub enum DataModelTag {
     Relational,
     KeyValue,
     Document,
+}
+
+/// The family the connect dialog lists the engine under, in the order it
+/// lists them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum EngineCategoryTag {
+    Relational,
+    Document,
+    KeyValue,
+    Analytical,
+    WideColumn,
+}
+
+impl From<EngineCategory> for EngineCategoryTag {
+    fn from(category: EngineCategory) -> Self {
+        match category {
+            EngineCategory::Relational => Self::Relational,
+            EngineCategory::Document => Self::Document,
+            EngineCategory::KeyValue => Self::KeyValue,
+            EngineCategory::Analytical => Self::Analytical,
+            EngineCategory::WideColumn => Self::WideColumn,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -57,6 +81,7 @@ impl DriverInfo {
                 DataModel::KeyValue => DataModelTag::KeyValue,
                 DataModel::Document => DataModelTag::Document,
             },
+            category: driver.category().into(),
             endpoint: match &capabilities.endpoint {
                 EndpointKind::Network { default_port } => EndpointInfo::Network {
                     default_port: *default_port,
@@ -93,6 +118,26 @@ mod tests {
                 "sqlite"
             ]
         );
+    }
+
+    #[test]
+    fn each_engine_is_listed_under_the_family_the_macos_app_gives_it() {
+        let registry = registry();
+        let category = |id: &str| {
+            registry
+                .iter()
+                .find(|driver| driver.id() == id)
+                .map(|driver| DriverInfo::of(driver.as_ref()).category)
+        };
+
+        for id in ["mssql", "mysql", "postgres", "sqlite"] {
+            assert_eq!(category(id), Some(EngineCategoryTag::Relational), "{id}");
+        }
+        assert_eq!(category("mongodb"), Some(EngineCategoryTag::Document));
+        assert_eq!(category("redis"), Some(EngineCategoryTag::KeyValue));
+        assert_eq!(category("clickhouse"), Some(EngineCategoryTag::Analytical));
+        assert_eq!(category("duckdb"), Some(EngineCategoryTag::Analytical));
+        assert_eq!(category("cassandra"), Some(EngineCategoryTag::WideColumn));
     }
 
     #[test]

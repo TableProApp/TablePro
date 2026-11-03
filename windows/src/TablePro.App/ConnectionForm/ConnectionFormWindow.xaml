@@ -79,7 +79,7 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Viewbox Width="24" Height="24" VerticalAlignment="Center">
-                                <SymbolIcon Symbol="{x:Bind Icon}" />
+                                <ContentPresenter Content="{x:Bind Icon}" />
                             </Viewbox>
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
@@ -100,7 +100,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Viewbox Width="24" Height="24">
-                        <SymbolIcon x:Name="EngineIcon" Symbol="Library" />
+                        <ContentPresenter x:Name="EngineIcon" />
                     </Viewbox>
                     <TextBlock x:Name="EngineText" Grid.Column="1" VerticalAlignment="Center" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SubtitleTextBlockStyle}" />
                     <HyperlinkButton x:Uid="ChangeEngineButton" x:Name="ChangeEngineButton" Grid.Column="2" Click="OnChangeEngine" />
@@ -216,7 +216,7 @@
                         <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="FontColor" /></toolkit:SettingsExpander.HeaderIcon>
                         <toolkit:SettingsExpander.Items>
                             <toolkit:SettingsCard x:Uid="ColorCard">
-                                <ComboBox x:Name="ColorBox" x:Uid="ColorBox" MinWidth="240" SelectionChanged="OnSummaryChanged" />
+                                <ComboBox x:Name="ColorBox" x:Uid="ColorBox" MinWidth="240" AutomationProperties.AutomationId="ColorBox" SelectionChanged="OnSummaryChanged" />
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="GroupCard">
                                 <ComboBox x:Name="GroupBox" x:Uid="GroupBox" MinWidth="240" SelectionChanged="OnSummaryChanged" />

@@ -36,6 +36,12 @@ public sealed partial class ResultsPane : UserControl
     // How many result sets the last run produced; only one can be sorted by running its statement again.
     public int ResultSetCount { get; private set; }
 
+    // The rows the shown set holds once the run ends.
+    public long RowCount { get; private set; }
+
+    // The transaction the last run left the editor's connection in.
+    public TransactionState Transaction { get; private set; } = TransactionState.Idle;
+
     public GridSort Sort
     {
         get => ResultGrid.Sort;
@@ -88,8 +94,9 @@ public sealed partial class ResultsPane : UserControl
         Placeholder.Text = Strings.Get("ResultsEmpty");
     }
 
-    // Reads the run's events on the UI thread until it ends. The rows shown stay until the run's first set starts,
-    // so a sort does not blank the grid. A table tab shows only its first visibleColumns.
+    // Reads the run's events on the UI thread until it ends. The rows shown stay until the run's first set has rows
+    // of its own or ends, so a sort or a refresh does not blank the grid, and a client reading a cell never finds the
+    // grid between the two. A table tab shows only its first visibleColumns.
     internal async Task ShowRunAsync(QueryRun run, GridSort sort, int visibleColumns = int.MaxValue)
     {
         ArgumentNullException.ThrowIfNull(run);
@@ -97,43 +104,66 @@ public sealed partial class ResultsPane : UserControl
         Status(Strings.Get("StatusRunning"));
         ResultSetCount = 0;
         var shownIndex = -1;
+        (ResultSet Set, IReadOnlyList<ResultColumn> Columns)? waiting = null;
         long rows = 0;
         long? affected = null;
         var truncated = false;
-        await foreach (var queryEvent in run.ReadEventsAsync().ConfigureAwait(true))
+        void ShowWaiting()
         {
-            switch (queryEvent)
+            if (waiting is { } next)
             {
-                case QueryEvent.ResultSetStarted started:
-                    ResultSetCount++;
-                    if (shownIndex < 0 && run.GetResultSet(started.SetIndex) is { } set)
-                    {
-                        shownIndex = started.SetIndex;
-                        Show(set, [.. started.Columns.Take(visibleColumns)], sort);
-                    }
-
-                    break;
-                case QueryEvent.RowsAppended appended when appended.SetIndex == shownIndex:
-                    rows = appended.RowCount;
-                    ResultGrid.RowsChanged();
-                    break;
-                case QueryEvent.RowLimitReached limit when limit.SetIndex == shownIndex:
-                    truncated = true;
-                    break;
-                case QueryEvent.ResultSetFinished finished when finished.SetIndex == shownIndex:
-                    rows = finished.RowCount;
-                    truncated |= finished.Truncation != Truncation.Complete;
-                    ResultGrid.RowsChanged();
-                    break;
-                case QueryEvent.CommandCompleted command:
-                    affected = (affected ?? 0) + (command.RowsAffected ?? 0);
-                    break;
-                case QueryEvent.Finished finished:
-                    Finish(finished.Outcome, shownIndex >= 0, rows, affected, truncated);
-                    break;
-                default:
-                    break;
+                waiting = null;
+                Show(next.Set, next.Columns, sort);
             }
+        }
+
+        try
+        {
+            await foreach (var queryEvent in run.ReadEventsAsync().ConfigureAwait(true))
+            {
+                switch (queryEvent)
+                {
+                    case QueryEvent.ResultSetStarted started:
+                        ResultSetCount++;
+                        if (shownIndex < 0 && run.GetResultSet(started.SetIndex) is { } set)
+                        {
+                            shownIndex = started.SetIndex;
+                            waiting = (set, started.Columns.Take(visibleColumns).ToList());
+                        }
+
+                        break;
+                    case QueryEvent.RowsAppended appended when appended.SetIndex == shownIndex:
+                        rows = appended.RowCount;
+                        ShowWaiting();
+                        ResultGrid.RowsChanged();
+                        break;
+                    case QueryEvent.RowLimitReached limit when limit.SetIndex == shownIndex:
+                        truncated = true;
+                        break;
+                    case QueryEvent.ResultSetFinished finished when finished.SetIndex == shownIndex:
+                        rows = finished.RowCount;
+                        truncated |= finished.Truncation != Truncation.Complete;
+                        ShowWaiting();
+                        ResultGrid.RowsChanged();
+                        break;
+                    case QueryEvent.CommandCompleted command:
+                        affected = (affected ?? 0) + (command.RowsAffected ?? 0);
+                        break;
+                    case QueryEvent.Finished finished:
+                        ShowWaiting();
+                        RowCount = shownIndex >= 0 ? rows : 0;
+                        Transaction = finished.Transaction;
+                        Finish(finished.Outcome, shownIndex >= 0, rows, affected, truncated);
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+        finally
+        {
+            // A run read no further, as when its tab closed, never shows the set it held back.
+            waiting?.Set.Dispose();
         }
     }
 

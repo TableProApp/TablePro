@@ -12,7 +12,7 @@ $platform = if ($Arch -eq 'arm64') { 'ARM64' } else { 'x64' }
 New-Item -ItemType Directory -Force -Path $Out, "$Out\shots" | Out-Null
 $build = [ordered]@{ arch = $Arch }
 
-. (Join-Path $PSScriptRoot 'desktop.ps1')
+. (Join-Path $windows 'ci\desktop.ps1')
 $build.first_logon = Clear-FirstLogon
 $build.display = Set-Display -Width 1920 -Height 1080
 $build.dotnet = (dotnet --version)

@@ -24,6 +24,9 @@ public sealed class QueryEditor : IAsyncDisposable
         return new QueryRun(_editor.Run(sql, settings, wake), wake, cancellationToken);
     }
 
+    // The connection is gone, and is never opened again by itself since its transaction would not come back with it.
+    public bool IsLost => _editor.IsLost();
+
     /// <summary>Closes the editor's connection, which ends any transaction it holds.</summary>
     public async ValueTask DisposeAsync()
     {

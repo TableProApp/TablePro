@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window, IShell
     private readonly Dictionary<string, ConnectionFormWindow> _forms = [];
     private SettingsView? _settings;
     private OpenConnection? _front;
+    private readonly bool _restoreMaximized;
 
     internal MainWindow(Workbench workbench)
     {
@@ -53,16 +54,36 @@ public sealed partial class MainWindow : Window, IShell
             presenter.PreferredMinimumHeight = (int)(480 * scale);
         }
 
+        // Where the window stood last time, whether or not its connections come back.
+        var session = workbench.Sessions.Load();
+        if (session.Window is { } placement && WindowInterop.Restore(this, placement))
+        {
+            _restoreMaximized = placement.Maximized;
+        }
+
+        workbench.ObjectPaneWidth = session.ObjectPaneWidth ?? ObjectPane.DefaultWidth;
         _home = new HomeView(workbench, this);
         Rail.Content = _home;
         Rail.SelectedItem = HomeItem;
         Themes.Apply(this, workbench.Settings.Theme);
         workbench.SettingsChanged += (_, _) => Themes.Apply(this, workbench.Settings.Theme);
+        workbench.LibraryChanged += async (_, _) => await RefreshMarksAsync();
         AppWindow.Closing += OnClosing;
         UpdateRail();
         if (workbench.Settings.ReopenSession)
         {
-            Restore(workbench.Sessions.Load());
+            Restore(session);
+            _ = RefreshMarksAsync();
+        }
+    }
+
+    // A maximized window is maximized once shown, over the bounds it restores to.
+    public void ActivateRestored()
+    {
+        Activate();
+        if (_restoreMaximized && AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.Maximize();
         }
     }
 
@@ -77,12 +98,13 @@ public sealed partial class MainWindow : Window, IShell
     public void Connect(SavedConnection connection)
     {
         ArgumentNullException.ThrowIfNull(connection);
-        Open(new SessionConnection
+        var open = Open(new SessionConnection
         {
             ConnectionId = connection.Id,
             Name = connection.Name,
             EngineId = connection.EngineId,
         });
+        open.Mark(connection.EngineId, connection.Color);
     }
 
     public async Task OpenFileAsync()
@@ -169,13 +191,48 @@ public sealed partial class MainWindow : Window, IShell
         }
     }
 
-    private void Open(SessionConnection origin)
+    private OpenConnection Open(SessionConnection origin)
     {
         var open = _open.FirstOrDefault(item => item.Matches(origin.ConnectionId, origin.FilePath)) ?? Add(origin);
         Select(open);
         if (open.State == ConnectionState.Failed)
         {
             _ = open.ConnectAsync();
+        }
+
+        return open;
+    }
+
+    // Each saved connection's rail item takes its engine and colour from the library as it is now.
+    private async Task RefreshMarksAsync()
+    {
+        if (!_open.Any(open => open.ConnectionId is not null))
+        {
+            return;
+        }
+
+        try
+        {
+            var snapshot = await _workbench.Library.GetSnapshotAsync();
+            foreach (var open in _open)
+            {
+                if (snapshot.Connections.FirstOrDefault(saved => saved.Id == open.ConnectionId) is { } saved)
+                {
+                    open.Mark(saved.EngineId, saved.Color);
+                    if (saved.Name != open.Name)
+                    {
+                        open.Rename(saved.Name);
+                        if (ReferenceEquals(_front, open))
+                        {
+                            AppTitleBar.Subtitle = saved.Name;
+                        }
+                    }
+                }
+            }
+        }
+        catch (TableProException)
+        {
+            // The marks stay as they were; the Connections page says what the library could not read.
         }
     }
 
@@ -208,6 +265,7 @@ public sealed partial class MainWindow : Window, IShell
     private void Show(OpenConnection open)
     {
         _front = open;
+        open.View.ApplyPaneWidth();
         Rail.Content = open.View;
         AppTitleBar.Subtitle = open.Name;
         AppTitleBar.IsBackButtonVisible = false;
@@ -365,7 +423,13 @@ public sealed partial class MainWindow : Window, IShell
         var front = _front is null ? (connections.Count > 0 ? 0 : -1) : _open.IndexOf(_front);
         try
         {
-            _workbench.Sessions.Save(new SessionState { Connections = connections, Front = front });
+            _workbench.Sessions.Save(new SessionState
+            {
+                Connections = connections,
+                Front = front,
+                Window = WindowInterop.Placement(this),
+                ObjectPaneWidth = _workbench.ObjectPaneWidth,
+            });
         }
         catch (IOException)
         {
@@ -382,6 +446,7 @@ public sealed partial class MainWindow : Window, IShell
         var front = Rail.Content is WorkspaceView ? _front : null;
         MenuNewQueryTab.IsEnabled = workspace is not null;
         MenuCloseTab.IsEnabled = tab is not null;
+        MenuReopenTab.IsEnabled = workspace?.CanReopenTab ?? false;
         MenuShowObjects.IsEnabled = workspace is not null;
         MenuShowObjects.IsChecked = workspace?.ObjectsVisible ?? true;
         MenuFilterObjects.IsEnabled = workspace is not null;
@@ -410,6 +475,8 @@ public sealed partial class MainWindow : Window, IShell
     private void OnNewQueryTab(object sender, RoutedEventArgs e) => Workspace?.NewQueryTab();
 
     private void OnCloseTab(object sender, RoutedEventArgs e) => Workspace?.CloseActiveTab();
+
+    private void OnReopenTab(object sender, RoutedEventArgs e) => Workspace?.ReopenClosedTab();
 
     private void OnShowSettings(object sender, RoutedEventArgs e) => ShowSettings();
 

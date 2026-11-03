@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tablepro_core::{EditorSession, RowLimit, RunOptions, UserSql};
+use tablepro_core::{EditorSession, EditorSessionState, RowLimit, RunOptions, UserSql};
 use tablepro_session::runtime::{Tasks, catch_panic};
 
 use crate::error::CoreError;
-use crate::run::{QueryRun, RunListener, RunOutcome, RunSink, RunState};
+use crate::run::{QueryRun, RunListener, RunOutcome, RunSink, RunState, TransactionStateTag};
 use crate::runtime::on_runtime;
 
 /// An editor tab's own connection, which keeps its transaction and
@@ -46,12 +46,23 @@ impl QueryEditor {
         let run = state.clone();
         drop(self.tasks.spawn_task(async move {
             let ran = catch_panic(editor.run(UserSql::new(sql), options, Box::new(sink))).await;
-            run.finish(match ran {
-                Ok(result) => RunOutcome::of(result),
-                Err(panic) => CoreError::failed("ffi.panicked", format!("the run panicked: {panic}")).into(),
-            });
+            let (outcome, transaction) = match ran {
+                Ok(result) => RunOutcome::with_transaction(result),
+                Err(panic) => (
+                    CoreError::failed("ffi.panicked", format!("the run panicked: {panic}")).into(),
+                    TransactionStateTag::Unknown,
+                ),
+            };
+            run.finish(outcome, transaction);
         }));
         Arc::new(QueryRun::new(state, self.tasks.clone()))
+    }
+
+    /// The editor's connection is gone. It is never opened again by
+    /// itself, since its transaction would not come back with it, so the
+    /// tab opens a new editor.
+    pub fn is_lost(&self) -> bool {
+        self.editor.state() == EditorSessionState::Lost
     }
 
     /// Closes the editor's connection, ending its transaction.

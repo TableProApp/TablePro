@@ -35,8 +35,23 @@
                 <AppBarButton x:Uid="NewConnectionButton" x:Name="NewConnectionButton" AutomationProperties.AutomationId="NewConnectionButton" Icon="Add" Click="OnNewConnection" />
                 <AppBarButton x:Uid="OpenFileButton" x:Name="OpenFileButton" AutomationProperties.AutomationId="OpenFileButton" Icon="OpenFile" Click="OnOpenFile" />
                 <AppBarButton x:Uid="ImportButton" x:Name="ImportButton" AutomationProperties.AutomationId="ImportButton" Icon="Import" Click="OnImport" />
-                <AppBarSeparator />
+                <AppBarSeparator x:Name="LibrarySeparator" />
                 <AppBarButton x:Uid="NewGroupButton" x:Name="NewGroupButton" AutomationProperties.AutomationId="NewGroupButton" Icon="NewFolder" Click="OnNewGroup" />
+                <AppBarButton x:Uid="TagsButton" x:Name="TagsButton" AutomationProperties.AutomationId="TagsButton" Icon="Tag">
+                    <AppBarButton.Flyout>
+                        <MenuFlyout x:Name="TagsMenu" Opening="OnTagsMenuOpening" />
+                    </AppBarButton.Flyout>
+                </AppBarButton>
+                <AppBarToggleButton x:Uid="SelectButton" x:Name="SelectButton" AutomationProperties.AutomationId="SelectButton" Icon="Bullets" Click="OnSelectMode" />
+                <AppBarButton x:Uid="SelectionConnectButton" x:Name="SelectionConnectButton" AutomationProperties.AutomationId="SelectionConnectButton" Icon="Play" Click="OnConnectSelected" Visibility="Collapsed" />
+                <AppBarButton x:Uid="SelectionFavoriteButton" x:Name="SelectionFavoriteButton" AutomationProperties.AutomationId="SelectionFavoriteButton" Icon="Favorite" Click="OnFavoriteSelected" Visibility="Collapsed" />
+                <AppBarButton x:Uid="SelectionMoveButton" x:Name="SelectionMoveButton" AutomationProperties.AutomationId="SelectionMoveButton" Icon="MoveToFolder" Visibility="Collapsed">
+                    <AppBarButton.Flyout>
+                        <MenuFlyout x:Name="SelectionMoveMenu" Opening="OnSelectionMoveOpening" />
+                    </AppBarButton.Flyout>
+                </AppBarButton>
+                <AppBarButton x:Uid="SelectionDeleteButton" x:Name="SelectionDeleteButton" AutomationProperties.AutomationId="SelectionDeleteButton" Icon="Delete" Click="OnDeleteSelected" Visibility="Collapsed" />
+                <AppBarSeparator x:Name="SettingsSeparator" />
                 <AppBarButton x:Uid="SettingsButton" x:Name="SettingsButton" AutomationProperties.AutomationId="SettingsButton" Icon="Setting" Click="OnSettings" />
             </CommandBar>
             <AutoSuggestBox
@@ -81,18 +96,23 @@
             </Grid>
         </ScrollViewer>
 
+        <!-- The tree starts each drag; its own reorder stays off, and the rows take the drops, so each goes through the
+             core. -->
         <TreeView
             x:Name="ConnectionTree"
             x:Uid="ConnectionTree"
             Grid.Row="3"
             Margin="0,12,0,0"
             AutomationProperties.AutomationId="ConnectionTree"
-            CanDragItems="False"
+            CanDragItems="True"
             CanReorderItems="False"
+            DragItemsCompleted="OnDragItemsCompleted"
+            DragItemsStarting="OnDragItemsStarting"
             Collapsed="OnLibraryCollapsed"
             Expanding="OnLibraryExpanding"
             ItemsSource="{x:Bind Items}"
             PreviewKeyDown="OnLibraryKeyDown"
+            SelectionChanged="OnLibrarySelectionChanged"
             SelectionMode="Single"
             Visibility="Collapsed">
             <TreeView.ItemTemplate>
@@ -101,19 +121,66 @@
                         AutomationProperties.Name="{x:Bind AccessibleName}"
                         ContextRequested="OnLibraryContextRequested"
                         DoubleTapped="OnLibraryDoubleTapped"
+                        HorizontalContentAlignment="Stretch"
                         Loaded="OnLibraryRowLoaded"
                         ItemsSource="{x:Bind Children}">
-                        <StackPanel Orientation="Horizontal" Spacing="12" Padding="0,4">
-                            <Viewbox Width="16" Height="16">
-                                <SymbolIcon Symbol="{x:Bind Icon}" />
+                        <Grid
+                            Padding="0,4"
+                            AllowDrop="{x:Bind AllowDrop}"
+                            Background="Transparent"
+                            ColumnSpacing="12"
+                            DragEnter="OnRowDragOver"
+                            DragLeave="OnRowDragLeave"
+                            DragOver="OnRowDragOver"
+                            Drop="OnRowDrop">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Viewbox Width="16" Height="16" VerticalAlignment="Center">
+                                <ContentPresenter Content="{x:Bind Glyph}" />
                             </Viewbox>
-                            <TextBlock Text="{x:Bind Title}" VerticalAlignment="Center" Style="{x:Bind TitleStyle}" />
                             <TextBlock
+                                Grid.Column="1"
+                                Text="{x:Bind Title}"
+                                VerticalAlignment="Center"
+                                Style="{x:Bind TitleStyle}"
+                                Visibility="{x:Bind TitleVisibility, Mode=OneWay}" />
+                            <TextBox
+                                x:Uid="RenameBox"
+                                Grid.Column="1"
+                                MinWidth="220"
+                                AutomationProperties.AutomationId="RenameBox"
+                                KeyDown="OnRenameKeyDown"
+                                LostFocus="OnRenameLostFocus"
+                                Text="{x:Bind Title}"
+                                Visibility="{x:Bind RenameVisibility, Mode=OneWay}" />
+                            <TextBlock
+                                Grid.Column="2"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 Text="{x:Bind Detail}"
                                 TextTrimming="CharacterEllipsis"
                                 VerticalAlignment="Center" />
-                        </StackPanel>
+                            <ItemsRepeater Grid.Column="3" VerticalAlignment="Center" ItemsSource="{x:Bind Tags}" Visibility="{x:Bind TagsVisibility}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Orientation="Horizontal" Spacing="12" />
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="local:TagChip">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Ellipse Width="8" Height="8" VerticalAlignment="Center" Fill="{x:Bind Fill}" />
+                                            <TextBlock
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind Name}"
+                                                VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </Grid>
                     </TreeViewItem>
                 </DataTemplate>
             </TreeView.ItemTemplate>

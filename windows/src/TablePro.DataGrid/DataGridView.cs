@@ -409,8 +409,13 @@ public sealed partial class DataGridView : UserControl, IGridWindow
 
     internal long BlocksFetched => _cache?.BlocksFetched ?? 0;
 
+    // A peer outlives the data it was made for, so a cell past the current rows or columns reads as empty.
     internal CellText Cell(int row, int column) =>
-        _cache is null ? new CellText([], CellState.Missing) : _cache.Get(row, column, CapFor(column));
+        _cache is null || !Contains(row, column)
+            ? new CellText([], CellState.Missing)
+            : _cache.Get(row, column, CapFor(column));
+
+    internal bool Contains(int row, int column) => row >= 0 && row < RowCount && column >= 0 && column < ColumnCount;
 
     internal string CellName(int row, int column)
     {

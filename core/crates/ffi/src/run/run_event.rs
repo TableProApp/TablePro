@@ -1,4 +1,4 @@
-use tablepro_core::{DriverError, RunEnd, RunSummary, ServerNotice, Truncation};
+use tablepro_core::{DriverError, RunEnd, RunSummary, ServerNotice, TransactionState, Truncation};
 
 use crate::error::{CoreError, ErrorInfo};
 use crate::results::ResultColumnInfo;
@@ -43,10 +43,33 @@ pub enum RunEvent {
         message: String,
         code: Option<String>,
     },
-    /// The last event of every run.
+    /// The last event of every run, with the transaction the editor's
+    /// connection is left in.
     Finished {
         outcome: RunOutcome,
+        transaction: TransactionStateTag,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum TransactionStateTag {
+    Idle,
+    InTransaction,
+    /// A statement failed inside the transaction, so the rest is refused
+    /// until it is rolled back.
+    Failed,
+    Unknown,
+}
+
+impl From<TransactionState> for TransactionStateTag {
+    fn from(state: TransactionState) -> Self {
+        match state {
+            TransactionState::Idle => Self::Idle,
+            TransactionState::InTransaction => Self::InTransaction,
+            TransactionState::Failed => Self::Failed,
+            TransactionState::Unknown => Self::Unknown,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -69,6 +92,15 @@ pub enum RunOutcome {
 }
 
 impl RunOutcome {
+    /// The outcome, and the transaction a run that reached the server
+    /// left open.
+    pub(crate) fn with_transaction(result: Result<RunSummary, DriverError>) -> (Self, TransactionStateTag) {
+        let transaction = result
+            .as_ref()
+            .map_or(TransactionStateTag::Unknown, |summary| summary.transaction_state.into());
+        (Self::of(result), transaction)
+    }
+
     pub(crate) fn of(result: Result<RunSummary, DriverError>) -> Self {
         match result {
             Ok(summary) => match summary.end {

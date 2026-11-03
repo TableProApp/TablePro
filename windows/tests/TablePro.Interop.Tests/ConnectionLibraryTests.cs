@@ -72,7 +72,7 @@ public sealed class ConnectionLibraryTests : IDisposable
         await _core.TestConnectionAsync(saved, ConnectionSecrets.None, cancellationToken);
         await using var session = await _core.ConnectAsync(saved.Id!.Value, cancellationToken: cancellationToken);
         var objects = await session.GetObjectsAsync(ObjectScope.DefaultSchema, cancellationToken);
-        var browse = await session.GetTableQueryAsync(new TableName(null, "people"), null, 100, cancellationToken);
+        var browse = await session.GetTableQueryAsync(new TableName(null, "people"), null, 100, cancellationToken: cancellationToken);
         var snapshot = await library.GetSnapshotAsync();
 
         Assert.Contains(objects, entry => entry.Name == "people");
@@ -91,6 +91,55 @@ public sealed class ConnectionLibraryTests : IDisposable
             () => _core.ConnectAsync(saved.Id!.Value, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal("keyring.secret_not_stored", error.Code);
+        Assert.Equal(SecretKind.DatabasePassword, error.Error.Secret);
+    }
+
+    [Fact]
+    public async Task ATagGoesOnSeveralConnectionsAndARenameReachesThemAll()
+    {
+        var library = _core.Library;
+        var one = await library.SaveAsync(Network("one"), ConnectionSecrets.None);
+        var two = await library.SaveAsync(Network("two"), ConnectionSecrets.None);
+
+        var tag = await library.CreateTagAsync("prod", "red");
+        await library.TagAsync([one.Id!.Value, two.Id!.Value], tag.Id, tagged: true);
+        await library.UpdateTagAsync(tag.Id, "production", "orange");
+        await library.TagAsync([one.Id.Value], tag.Id, tagged: false);
+        var snapshot = await library.GetSnapshotAsync();
+
+        Assert.Equal([new ConnectionTag(tag.Id, "production", "orange")], snapshot.Tags);
+        Assert.Empty(snapshot.Connections.Single(connection => connection.Name == "one").Tags);
+        Assert.Equal([tag.Id], snapshot.Connections.Single(connection => connection.Name == "two").Tags);
+
+        await library.DeleteTagAsync(tag.Id);
+        Assert.All((await library.GetSnapshotAsync()).Connections, connection => Assert.Empty(connection.Tags));
+    }
+
+    [Fact]
+    public async Task ARenameAndADropChangeOnlyWhatTheyName()
+    {
+        var library = _core.Library;
+        var work = await library.CreateGroupAsync("Work", null);
+        var staging = await library.CreateGroupAsync("Staging", null);
+        var a = await library.SaveAsync(Network("a"), ConnectionSecrets.None);
+        var b = await library.SaveAsync(Network("b"), ConnectionSecrets.None);
+
+        await library.RenameAsync(a.Id!.Value, "orders");
+        await library.MoveToGroupAsync([b.Id!.Value], work.Id);
+        await library.MoveToGroupAsync([a.Id.Value], work.Id, before: b.Id.Value);
+        await library.MoveGroupsAsync([staging.Id], work.Id);
+        await library.AddFavoritesAsync([a.Id.Value, b.Id.Value]);
+        await library.AddFavoritesAsync([b.Id.Value], before: a.Id.Value);
+        var snapshot = await library.GetSnapshotAsync();
+
+        Assert.Equal(["orders", "b"], snapshot.Connections.Select(connection => connection.Name));
+        Assert.All(snapshot.Connections, connection => Assert.Equal(work.Id, connection.GroupId));
+        Assert.Equal("shop", snapshot.Connections[0].Database);
+        Assert.Equal(work.Id, snapshot.Groups.Single(group => group.Name == "Staging").ParentId);
+        Assert.Equal([b.Id.Value, a.Id.Value], snapshot.Favorites);
+
+        await library.RemoveFavoritesAsync([b.Id.Value]);
+        Assert.Equal([a.Id.Value], (await library.GetSnapshotAsync()).Favorites);
     }
 
     [Fact]

@@ -45,6 +45,8 @@ public sealed partial class QueryTabView : UserControl, ITabContent
 
     public bool IsRunning { get; private set; }
 
+    public TransactionState Transaction { get; private set; } = TransactionState.Idle;
+
     public SqlEditor? Editor => SqlText;
 
     public DataGridView Grid => Results.GridView;
@@ -111,6 +113,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
                     settings.RowLimit,
                     settings.QueryTimeoutSeconds > 0 ? TimeSpan.FromSeconds(settings.QueryTimeoutSeconds) : null));
             await Results.ShowRunAsync(_run, _sort).ConfigureAwait(true);
+            await AfterRunAsync().ConfigureAwait(true);
         }
         catch (TableProException exception)
         {
@@ -120,6 +123,83 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         {
             SetRunning(false);
         }
+    }
+
+    // A lost connection is never opened again by itself, since its transaction would not come back; the next run
+    // opens a new one. A run that cannot say keeps the state the tab knew.
+    private async Task AfterRunAsync()
+    {
+        if (_editor is { IsLost: true } lost)
+        {
+            _editor = null;
+            await lost.DisposeAsync().ConfigureAwait(true);
+            if (WorkspaceNotices.Holds(Transaction))
+            {
+                Results.ShowError(Strings.Get("TransactionLost"));
+            }
+
+            ShowTransaction(TransactionState.Idle);
+            return;
+        }
+
+        var state = Results.Transaction == TransactionState.Unknown ? Transaction : Results.Transaction;
+        ShowTransaction(WorkspaceNotices.Holds(state) ? state : TransactionState.Idle);
+    }
+
+    private void ShowTransaction(TransactionState state)
+    {
+        var changed = state != Transaction;
+        Transaction = state;
+        if (!WorkspaceNotices.Holds(state))
+        {
+            TransactionBar.IsOpen = false;
+            return;
+        }
+
+        TransactionBar.Severity = state == TransactionState.Failed ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
+        TransactionBar.Title = Strings.Get(state == TransactionState.Failed ? "TransactionFailedTitle" : "TransactionOpenTitle");
+        TransactionBar.Message = Strings.Get(state == TransactionState.Failed ? "TransactionFailedMessage" : "TransactionOpenMessage");
+        // Rolling back keeps nothing, so it is the way out at every safe mode; a read-only connection commits nothing.
+        CommitButton.Visibility = state == TransactionState.Failed || _session.IsReadOnly ? Visibility.Collapsed : Visibility.Visible;
+        if (changed || !TransactionBar.IsOpen)
+        {
+            // Narrator reads an InfoBar when it opens, not when its text changes.
+            TransactionBar.IsOpen = false;
+            TransactionBar.IsOpen = true;
+        }
+    }
+
+    private async void OnCommit(object sender, RoutedEventArgs e) => await EndTransactionAsync(commit: true).ConfigureAwait(true);
+
+    private async void OnRollBack(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = Strings.Get("RollBackTitle"),
+            Content = Strings.Get("RollBackMessage"),
+            PrimaryButtonText = Strings.Get("RollBackButtonText"),
+            CloseButtonText = Strings.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            await EndTransactionAsync(commit: false).ConfigureAwait(true);
+        }
+    }
+
+    // Sent as typed SQL is, so the results and the bar follow it, as the Linux app ends one. The editor keeps its text.
+    private async Task EndTransactionAsync(bool commit)
+    {
+        if (IsRunning || _editor is null)
+        {
+            return;
+        }
+
+        var model = _workbench.Engine(_session.EngineId)?.DataModel ?? DataModel.Relational;
+        _statement = null;
+        await RunSqlAsync(WorkspaceNotices.EndTransaction(model, commit)).ConfigureAwait(true);
     }
 
     private void SetRunning(bool running)

@@ -7,13 +7,24 @@ public enum DataModel
     Document,
 }
 
+// The family the connect dialog lists an engine under, in the order it lists them.
+public enum EngineCategory
+{
+    Relational,
+    Document,
+    KeyValue,
+    Analytical,
+    WideColumn,
+}
+
 // FileSuffixes: the suffixes a file engine claims, the one a new file gets first. Empty for a network engine.
 public sealed record DatabaseEngine(
     string Id,
     string DisplayName,
     DataModel DataModel,
     int? DefaultPort,
-    IReadOnlyList<string> FileSuffixes);
+    IReadOnlyList<string> FileSuffixes,
+    EngineCategory Category = EngineCategory.Relational);
 
 public sealed record SchemaEntry(string Name, bool IsDefault, bool IsSystem);
 
@@ -63,8 +74,34 @@ public sealed record TableName(string? Schema, string Name);
 // Column is the table's column position, as the grid numbers its columns.
 public sealed record ColumnSort(int Column, bool Ascending);
 
-// The engine's row address may follow the visible columns; a grid shows the first VisibleColumns.
-public sealed record TableQuery(string Sql, int VisibleColumns);
+// The engine's row address may follow the visible columns; a grid shows the first VisibleColumns. An engine that pages
+// on the server reads a table only from its start, so CanSeek is false and only the first page can be asked for.
+public sealed record TableQuery(string Sql, int VisibleColumns, bool CanSeek = true);
+
+public enum FailureCause
+{
+    Authentication,
+    Tls,
+    Configuration,
+    HostKey,
+}
+
+// How a session's connection is doing. A reconnect replaces it on its own; a failed one waits for Reconnect.
+public abstract record SessionHealth
+{
+    private SessionHealth()
+    {
+    }
+
+    public sealed record Online : SessionHealth;
+
+    public sealed record Reconnecting(int Attempt) : SessionHealth;
+
+    // The server is unreachable; the core checks again on a long timer.
+    public sealed record Offline : SessionHealth;
+
+    public sealed record Failed(FailureCause Cause, CoreError? Reason) : SessionHealth;
+}
 
 // TypeName: the type as the server spells it, for display.
 public sealed record ColumnEntry(

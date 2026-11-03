@@ -10,7 +10,10 @@ using Windows.System;
 
 namespace TablePro.App.Views;
 
-// One open connection's page: connecting, the failure with its actions, or the object tree and the tab strip.
+internal sealed record SecretAnswer(string Secret, bool Save);
+
+// One open connection's page: connecting, the failure with its actions, or the object tree and the tab strip, with
+// the bars for the connection's health and a transaction another tab holds.
 public sealed partial class WorkspaceView : UserControl
 {
     private readonly Workbench _workbench;
@@ -23,6 +26,8 @@ public sealed partial class WorkspaceView : UserControl
 
     // Schemas a refresh reads again, the next time each one opens.
     private readonly HashSet<string> _stale = [];
+    private readonly ClosedTabs _closed = new();
+    private CancellationTokenSource? _watching;
 
     internal WorkspaceView(Workbench workbench, OpenConnection connection)
     {
@@ -46,6 +51,7 @@ public sealed partial class WorkspaceView : UserControl
         }
 
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+        ApplyPaneWidth();
     }
 
     public event EventHandler? EditRequested;
@@ -58,7 +64,64 @@ public sealed partial class WorkspaceView : UserControl
 
     public bool ObjectsVisible => ObjectsPane.Visibility == Visibility.Visible;
 
+    public bool CanReopenTab => _session is not null && _closed.Count > 0;
+
     internal ITabContent? ActiveTab => (Tabs.SelectedItem as TabViewItem)?.Content as ITabContent;
+
+    // Every workspace shares the width the last one was given.
+    public void ApplyPaneWidth()
+    {
+        if (ObjectsVisible)
+        {
+            ObjectsColumn.Width = new GridLength(_workbench.ObjectPaneWidth);
+        }
+    }
+
+    // Asked when the core has no secret saved for the connection. Null when the dialog is closed.
+    internal async Task<SecretAnswer?> AskSecretAsync(SecretKind kind)
+    {
+        if (XamlRoot is null)
+        {
+            var loaded = new TaskCompletionSource();
+            void OnLoaded(object sender, RoutedEventArgs e) => loaded.TrySetResult();
+            Loaded += OnLoaded;
+            await loaded.Task.ConfigureAwait(true);
+            Loaded -= OnLoaded;
+        }
+
+        var label = Strings.Get("Secret_" + kind);
+        var box = new PasswordBox { Header = label };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "SecretBox");
+        var save = new CheckBox { Content = Strings.Get("SaveSecret") };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(save, "SaveSecretBox");
+        var message = new TextBlock
+        {
+            Text = Strings.Format("SecretRequiredMessage", _connection.Name),
+            TextWrapping = TextWrapping.Wrap,
+        };
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = Strings.Get("SecretRequiredTitle"),
+            Content = new StackPanel { Spacing = 12, Children = { message, box, save } },
+            PrimaryButtonText = Strings.Get("ConnectButtonText"),
+            CloseButtonText = Strings.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Primary,
+        };
+        box.Loaded += (_, _) => box.Focus(FocusState.Programmatic);
+        try
+        {
+            return await dialog.ShowAsync() == ContentDialogResult.Primary
+                ? new SecretAnswer(box.Password, save.IsChecked == true)
+                : null;
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // Another dialog is open on this thread; the connect ends as cancelled and can be asked for again.
+            return null;
+        }
+    }
 
     public void Rename(string name)
     {
@@ -125,6 +188,7 @@ public sealed partial class WorkspaceView : UserControl
         }
 
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+        WatchHealth(session);
         await LoadTreeAsync().ConfigureAwait(true);
     }
 
@@ -146,6 +210,11 @@ public sealed partial class WorkspaceView : UserControl
 
     public async Task CloseTabsAsync()
     {
+        _watching?.Cancel();
+        _watching = null;
+        HealthBar.IsOpen = false;
+        ElsewhereBar.IsOpen = false;
+        _closed.Clear();
         foreach (var content in Tabs.TabItems.OfType<TabViewItem>().Select(item => item.Content).OfType<ITabContent>().ToList())
         {
             await content.CloseAsync().ConfigureAwait(true);
@@ -170,7 +239,7 @@ public sealed partial class WorkspaceView : UserControl
         AddTab(new QueryTabView(_workbench, _session, title ?? NextQueryTitle(), sql), Symbol.Document);
     }
 
-    public void OpenTable(string? schema, string name)
+    public void OpenTable(string? schema, string name, int? index = null)
     {
         if (_session is null)
         {
@@ -186,7 +255,7 @@ public sealed partial class WorkspaceView : UserControl
         }
 
         var table = new TableTabView(_workbench, _session, schema, name);
-        AddTab(table, Symbol.ViewAll);
+        AddTab(table, Symbol.ViewAll, index);
         table.Run();
     }
 
@@ -202,7 +271,31 @@ public sealed partial class WorkspaceView : UserControl
     {
         var show = !ObjectsVisible;
         ObjectsPane.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        ObjectsColumn.Width = show ? new GridLength(280) : new GridLength(0);
+        ObjectsSplitter.Visibility = ObjectsPane.Visibility;
+        // A hidden pane's column has no width to keep, so its limits go with it.
+        ObjectsColumn.MinWidth = show ? ObjectPane.MinWidth : 0;
+        ObjectsColumn.Width = show ? new GridLength(_workbench.ObjectPaneWidth) : new GridLength(0);
+    }
+
+    // The tab comes back where it stood, with its text or its table.
+    public void ReopenClosedTab()
+    {
+        if (_session is null || _closed.Pop() is not { } closed)
+        {
+            return;
+        }
+
+        var index = Math.Min(closed.Index, Tabs.TabItems.Count);
+        if (closed.Tab is { Kind: TabKind.Table, Table: { } table })
+        {
+            OpenTable(closed.Tab.Schema, table, index);
+        }
+        else
+        {
+            AddTab(new QueryTabView(_workbench, _session, closed.Tab.Title, closed.Tab.Sql), Symbol.Document, index);
+        }
+
+        CommandsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void FocusFilter()
@@ -262,7 +355,7 @@ public sealed partial class WorkspaceView : UserControl
         }
     }
 
-    private void AddTab(ITabContent content, Symbol icon)
+    private void AddTab(ITabContent content, Symbol icon, int? index = null)
     {
         var item = new TabViewItem
         {
@@ -270,21 +363,158 @@ public sealed partial class WorkspaceView : UserControl
             IconSource = new SymbolIconSource { Symbol = icon },
             Content = content,
         };
-        content.StateChanged += (_, _) => CommandsChanged?.Invoke(this, EventArgs.Empty);
-        Tabs.TabItems.Add(item);
+        content.StateChanged += (_, _) =>
+        {
+            UpdateElsewhereBar();
+            CommandsChanged?.Invoke(this, EventArgs.Empty);
+        };
+        if (index is { } at && at >= 0 && at <= Tabs.TabItems.Count)
+        {
+            Tabs.TabItems.Insert(at, item);
+        }
+        else
+        {
+            Tabs.TabItems.Add(item);
+        }
+
         Tabs.SelectedItem = item;
         CommandsChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    // Closing a tab ends its own connection, and its transaction with it, so a held one is asked about first.
     private async Task CloseTabAsync(TabViewItem item)
     {
         if (item.Content is ITabContent content)
         {
+            if (WorkspaceNotices.Holds(content.Transaction) && !await ConfirmCloseHeldAsync(content).ConfigureAwait(true))
+            {
+                return;
+            }
+
+            _closed.Push(content.Snapshot(), Tabs.TabItems.IndexOf(item));
             await content.CloseAsync().ConfigureAwait(true);
         }
 
         Tabs.TabItems.Remove(item);
+        UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task<bool> ConfirmCloseHeldAsync(ITabContent content)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = Strings.Format("CloseHeldTabTitle", content.Title),
+            Content = Strings.Get("CloseHeldTabMessage"),
+            PrimaryButtonText = Strings.Get("CloseHeldTabButton"),
+            CloseButtonText = Strings.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    // The tab shown names its own transaction; this bar names one another tab holds.
+    private void UpdateElsewhereBar()
+    {
+        var tabs = new List<HeldTab>();
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>())
+        {
+            if (item.Content is ITabContent content)
+            {
+                tabs.Add(new HeldTab(content.Title, content.Transaction, ReferenceEquals(item, Tabs.SelectedItem)));
+            }
+        }
+
+        if (WorkspaceNotices.Elsewhere(tabs) is not { } elsewhere)
+        {
+            ElsewhereBar.IsOpen = false;
+            return;
+        }
+
+        var message = elsewhere.Count > 1
+            ? Strings.Format("TransactionElsewhereMany", elsewhere.Count)
+            : Strings.Format(
+                elsewhere.Transaction == TransactionState.Failed ? "TransactionElsewhereFailed" : "TransactionElsewhere",
+                elsewhere.Title);
+        ShowTransactionTabButton.Tag = elsewhere.Target;
+        if (!ElsewhereBar.IsOpen || ElsewhereBar.Message != message)
+        {
+            ElsewhereBar.Message = message;
+            // Narrator reads an InfoBar when it opens, not when its text changes.
+            ElsewhereBar.IsOpen = false;
+            ElsewhereBar.IsOpen = true;
+        }
+    }
+
+    private void OnShowTransactionTab(object sender, RoutedEventArgs e)
+    {
+        if (ShowTransactionTabButton.Tag is int target && target < Tabs.TabItems.Count)
+        {
+            Tabs.SelectedIndex = target;
+        }
+    }
+
+    // The core reports each change of the connection's health; the bar shows while it is not online.
+    private async void WatchHealth(DatabaseSession session)
+    {
+        _watching?.Cancel();
+        using var watching = new CancellationTokenSource();
+        _watching = watching;
+        var health = session.Health;
+        ShowHealth(health);
+        try
+        {
+            while (!watching.IsCancellationRequested)
+            {
+                health = await session.WaitForHealthChangeAsync(health, watching.Token).ConfigureAwait(true);
+                ShowHealth(health);
+            }
+        }
+        catch (Exception exception) when (exception is TableProException or OperationCanceledException or ObjectDisposedException)
+        {
+            // The session closed, or the workspace stopped watching it.
+        }
+        finally
+        {
+            if (ReferenceEquals(_watching, watching))
+            {
+                _watching = null;
+            }
+        }
+    }
+
+    private void ShowHealth(SessionHealth health)
+    {
+        if (WorkspaceNotices.For(health) is not { } notice)
+        {
+            HealthBar.IsOpen = false;
+            return;
+        }
+
+        HealthBar.Severity = notice.Kind == HealthNoticeKind.Failed ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
+        HealthBar.Title = notice.Kind switch
+        {
+            HealthNoticeKind.Reconnecting => Strings.Format("HealthReconnecting", notice.Attempt),
+            HealthNoticeKind.Offline => Strings.Get("HealthOffline"),
+            _ => Strings.Get("HealthFailed"),
+        };
+        HealthBar.Message = notice.Reason is { } reason ? Strings.Error(reason) : string.Empty;
+        ReconnectButton.Visibility = notice.OffersReconnect ? Visibility.Visible : Visibility.Collapsed;
+        // Narrator reads an InfoBar when it opens, not when its text changes.
+        HealthBar.IsOpen = false;
+        HealthBar.IsOpen = true;
+    }
+
+    private void OnReconnect(object sender, RoutedEventArgs e) => _session?.Reconnect();
+
+    private void OnObjectsPaneSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (ObjectsVisible && e.NewSize.Width > 0)
+        {
+            _workbench.ObjectPaneWidth = ObjectPane.Clamp(e.NewSize.Width);
+        }
     }
 
     private async Task LoadTreeAsync(bool refresh = false)
@@ -589,6 +819,7 @@ public sealed partial class WorkspaceView : UserControl
     private void OnTabSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         ActiveTab?.FocusContent();
+        UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
     }
 

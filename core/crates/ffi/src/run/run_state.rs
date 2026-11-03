@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use super::{RunEvent, RunListener, RunOutcome};
+use super::{RunEvent, RunListener, RunOutcome, TransactionStateTag};
 use crate::results::ResultStore;
 
 /// What a run shares between the task that reads it and the app that
@@ -80,11 +80,12 @@ impl RunState {
 
     /// Ends the run: every set holds what it will, and `Finished` is the
     /// last event.
-    pub(crate) fn finish(&self, outcome: RunOutcome) {
+    pub(crate) fn finish(&self, outcome: RunOutcome, transaction: TransactionStateTag) {
         let sets = self.lock().sets.clone();
         sets.iter().for_each(|store| store.finish());
         self.post(RunEvent::Finished {
             outcome: outcome.clone(),
+            transaction,
         });
         self.outcome.send_replace(Some(outcome));
     }
@@ -151,14 +152,15 @@ mod tests {
         let outcome = state.outcome();
 
         state.post(rows(0, 5));
-        state.finish(RunOutcome::Cancelled);
+        state.finish(RunOutcome::Cancelled, TransactionStateTag::InTransaction);
 
         assert_eq!(
             state.drain(),
             [
                 rows(0, 5),
                 RunEvent::Finished {
-                    outcome: RunOutcome::Cancelled
+                    outcome: RunOutcome::Cancelled,
+                    transaction: TransactionStateTag::InTransaction,
                 }
             ]
         );

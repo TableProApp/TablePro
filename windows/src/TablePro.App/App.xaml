@@ -7,7 +7,33 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="ms-appx:///Resources/EngineGlyphs.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <!-- A connection's colour, a shade per theme that keeps 3:1 against the window and a selected row. -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="ConnectionColor_blue">#0063B1</Color>
+                    <Color x:Key="ConnectionColor_teal">#00777A</Color>
+                    <Color x:Key="ConnectionColor_green">#107C10</Color>
+                    <Color x:Key="ConnectionColor_yellow">#8A6A00</Color>
+                    <Color x:Key="ConnectionColor_orange">#B54A00</Color>
+                    <Color x:Key="ConnectionColor_red">#C42B1C</Color>
+                    <Color x:Key="ConnectionColor_pink">#BF0077</Color>
+                    <Color x:Key="ConnectionColor_purple">#744DA9</Color>
+                    <Color x:Key="ConnectionColor_slate">#56606B</Color>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <Color x:Key="ConnectionColor_blue">#60CDFF</Color>
+                    <Color x:Key="ConnectionColor_teal">#4FD1D1</Color>
+                    <Color x:Key="ConnectionColor_green">#6CCB5F</Color>
+                    <Color x:Key="ConnectionColor_yellow">#FCE100</Color>
+                    <Color x:Key="ConnectionColor_orange">#FF9349</Color>
+                    <Color x:Key="ConnectionColor_red">#FF99A4</Color>
+                    <Color x:Key="ConnectionColor_pink">#FF8CCE</Color>
+                    <Color x:Key="ConnectionColor_purple">#C2A8FF</Color>
+                    <Color x:Key="ConnectionColor_slate">#A9B4BF</Color>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
             <!-- The spacing the Windows settings guidance gives between setting cards. -->
             <x:Double x:Key="SettingsCardSpacing">4</x:Double>
             <Style x:Key="SettingsSectionHeaderStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrongTextBlockStyle}">

@@ -34,6 +34,50 @@ public sealed class ConnectionLibrary : IDisposable
     public Task SetFavoriteAsync(Guid id, bool favorite) =>
         CoreCall.RunAsync(() => _library.SetFavorite(id.ToString(), favorite));
 
+    // Favourites already listed move, which is how a drag reorders them; to the end when before is null.
+    public Task AddFavoritesAsync(IReadOnlyList<Guid> ids, Guid? before = null)
+    {
+        var names = Names(ids);
+        return CoreCall.RunAsync(() => _library.AddFavorites(names, before?.ToString()));
+    }
+
+    public Task RemoveFavoritesAsync(IReadOnlyList<Guid> ids)
+    {
+        var names = Names(ids);
+        return CoreCall.RunAsync(() => _library.RemoveFavorites(names));
+    }
+
+    public Task RenameAsync(Guid id, string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return CoreCall.RunAsync(() => _library.RenameConnection(id.ToString(), name));
+    }
+
+    public async Task<ConnectionTag> CreateTagAsync(string name, string color)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(color);
+        var tag = await CoreCall.RunAsync(() => _library.CreateTag(name, color)).ConfigureAwait(false);
+        return new ConnectionTag(Guid.Parse(tag.Id), tag.Name, tag.Color);
+    }
+
+    // A rename or a new colour reaches every connection that carries the tag.
+    public Task UpdateTagAsync(Guid id, string name, string color)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(color);
+        return CoreCall.RunAsync(() => _library.UpdateTag(id.ToString(), name, color));
+    }
+
+    public Task DeleteTagAsync(Guid id) => CoreCall.RunAsync(() => _library.DeleteTag(id.ToString()));
+
+    // Puts the tag on each connection, or takes it off.
+    public Task TagAsync(IReadOnlyList<Guid> ids, Guid tag, bool tagged)
+    {
+        var names = Names(ids);
+        return CoreCall.RunAsync(() => _library.TagConnections(names, tag.ToString(), tagged));
+    }
+
     public async Task<ConnectionGroup> CreateGroupAsync(string name, Guid? parentId)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -51,11 +95,18 @@ public sealed class ConnectionLibrary : IDisposable
     // The group's subgroups go with it, and its connections move to the top level.
     public Task DeleteGroupAsync(Guid id) => CoreCall.RunAsync(() => _library.DeleteGroup(id.ToString()));
 
-    public Task MoveToGroupAsync(IReadOnlyList<Guid> ids, Guid? groupId)
+    // Into the group, or the top level when it is null, before the connection named, or at the end.
+    public Task MoveToGroupAsync(IReadOnlyList<Guid> ids, Guid? groupId, Guid? before = null)
     {
-        ArgumentNullException.ThrowIfNull(ids);
-        var names = ids.Select(id => id.ToString()).ToArray();
-        return CoreCall.RunAsync(() => _library.MoveToGroup(names, groupId?.ToString()));
+        var names = Names(ids);
+        return CoreCall.RunAsync(() => _library.MoveToGroup(names, groupId?.ToString(), before?.ToString()));
+    }
+
+    // Under the parent, or the top level when it is null, before the group named, or at the end.
+    public Task MoveGroupsAsync(IReadOnlyList<Guid> ids, Guid? parentId, Guid? before = null)
+    {
+        var names = Names(ids);
+        return CoreCall.RunAsync(() => _library.MoveGroups(names, parentId?.ToString(), before?.ToString()));
     }
 
     // A TablePro connections file. It carries no passwords.
@@ -67,4 +118,10 @@ public sealed class ConnectionLibrary : IDisposable
     }
 
     public void Dispose() => _library.Dispose();
+
+    private static string[] Names(IReadOnlyList<Guid> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        return [.. ids.Select(id => id.ToString())];
+    }
 }

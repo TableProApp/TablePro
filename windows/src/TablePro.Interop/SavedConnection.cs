@@ -58,7 +58,11 @@ public sealed record SavedConnection(
     int? QueryTimeoutSeconds = null,
     string? Color = null,
     Guid? GroupId = null,
-    DateTimeOffset? LastOpened = null);
+    DateTimeOffset? LastOpened = null)
+{
+    // Read only: a save keeps the stored tags, which change through ConnectionLibrary.TagAsync.
+    public IReadOnlyList<Guid> Tags { get; init; } = [];
+}
 
 // A null secret keeps what is stored; an empty one is stored as empty, for a server that takes none.
 public sealed record ConnectionSecrets(
@@ -71,12 +75,18 @@ public sealed record ConnectionSecrets(
 
 public sealed record ConnectionGroup(Guid Id, string Name, Guid? ParentId, int Order, string? Color);
 
-// Connections come in each group's order, groups depth first in each parent's order.
+// A label several connections share. Color is one of the connection colours' ids.
+public sealed record ConnectionTag(Guid Id, string Name, string Color);
+
+// Connections come in each group's order, groups depth first in each parent's order, tags in the order they were made.
 public sealed record LibrarySnapshot(
     IReadOnlyList<SavedConnection> Connections,
     IReadOnlyList<ConnectionGroup> Groups,
     IReadOnlyList<Guid> Favorites,
-    IReadOnlyList<Guid> Recent);
+    IReadOnlyList<Guid> Recent)
+{
+    public IReadOnlyList<ConnectionTag> Tags { get; init; } = [];
+}
 
 public sealed record ImportSummary(int Added, int Updated);
 

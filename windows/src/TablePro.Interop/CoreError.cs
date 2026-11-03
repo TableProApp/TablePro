@@ -9,7 +9,8 @@ public sealed record CoreError(
     IReadOnlyList<string> Codes,
     string Message,
     ServerMessage? Server,
-    string? Path);
+    string? Path,
+    SecretKind? Secret = null);
 
 /// <summary>What the server said, which the app shows as it came.</summary>
 public sealed record ServerMessage(

@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
 use tablepro_core::EditorSessionOptions;
-use tablepro_core::browse::{PageRequest, SortKey, build_page};
+use tablepro_core::browse::{PageRequest, PagingMode, SortKey, build_count, build_page, paging_mode};
 use tablepro_core::filter::FilterSet;
 use tablepro_core::meta::{PagePosition, TableRef};
 use tablepro_core::sql_syntax::{SortReference, sort_reference, with_order_by};
 use tablepro_session::runtime::Tasks;
-use tablepro_session::{OperationError, OperationKind, Session};
+use tablepro_session::{FailureCause, MonitorSignal, OperationError, OperationKind, Session, SessionHealth};
 
 use crate::cancel_token::{CancelToken, token};
 use crate::catalog::{ColumnEntry, ObjectEntry, ObjectScopeArg, SchemaEntry, TableName};
 use crate::editor::QueryEditor;
-use crate::error::CoreError;
+use crate::error::{CoreError, ErrorInfo};
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
@@ -20,11 +20,46 @@ pub struct ColumnSort {
     pub ascending: bool,
 }
 
-// The engine's own row address may follow the visible columns, for edits; a grid shows the visible ones.
+// The engine's own row address may follow the visible columns, for edits; a grid shows the visible ones. An engine
+// that pages on the server reads a table only from its start, so it cannot seek to a later page.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct TableQuery {
     pub sql: String,
     pub visible_columns: u32,
+    pub can_seek: bool,
+}
+
+// How the session's connection is doing. A reconnect replaces it on its own; a failed one waits for reconnect().
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SessionHealthTag {
+    Online,
+    Reconnecting {
+        attempt: u32,
+    },
+    // The server is unreachable; it is checked again on a long timer.
+    Offline,
+    Failed {
+        cause: FailureCauseTag,
+        reason: Option<ErrorInfo>,
+    },
+}
+
+impl SessionHealthTag {
+    // The reason a failure carries is read again on each call, so it does not tell two states apart.
+    fn same_state(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Failed { cause, .. }, Self::Failed { cause: seen, .. }) => cause == seen,
+            _ => self == other,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FailureCauseTag {
+    Authentication,
+    Tls,
+    Configuration,
+    HostKey,
 }
 
 // Each catalog level is read when first asked for and shared by every caller.
@@ -118,12 +153,13 @@ impl DatabaseSession {
         .await
     }
 
-    // The page is the first, so the statement binds nothing and runs as editor text.
+    // The page starts offset rows in, so the statement binds nothing and runs as editor text.
     pub async fn table_query(
         &self,
         table: TableName,
         sort: Option<ColumnSort>,
         limit: u64,
+        offset: u64,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<TableQuery, CoreError> {
         let session = self.session.clone();
@@ -149,6 +185,17 @@ impl DatabaseSession {
                 })
                 .into_iter()
                 .collect();
+            let can_seek = paging_mode(dialect.table_paging(), &identity, &sort) != PagingMode::ServerPaging;
+            if offset > 0 && !can_seek {
+                return Err(CoreError::failed(
+                    "ffi.page_unsupported",
+                    "the engine reads a table only from its start",
+                ));
+            }
+            let position = match offset {
+                0 => PagePosition::First,
+                rows => PagePosition::Offset(rows),
+            };
             let spec = build_page(
                 &*dialect,
                 &PageRequest {
@@ -157,7 +204,7 @@ impl DatabaseSession {
                     filter: &FilterSet::default(),
                     sort: &sort,
                     identity: &identity,
-                    position: &PagePosition::First,
+                    position: &position,
                     limit,
                 },
             )
@@ -171,9 +218,74 @@ impl DatabaseSession {
             Ok(TableQuery {
                 sql: spec.statement.sql().to_owned(),
                 visible_columns: u32::try_from(spec.visible_columns()).unwrap_or(u32::MAX),
+                can_seek,
             })
         })
         .await
+    }
+
+    // Every row of the table, counted by the server, for the pager's last page.
+    pub async fn table_row_count(&self, table: TableName, cancel: Option<Arc<CancelToken>>) -> Result<u64, CoreError> {
+        let session = self.session.clone();
+        let cancel = token(cancel);
+        on_runtime(&self.tasks, async move {
+            let table: TableRef = table.into();
+            let columns = tokio::select! {
+                biased;
+                () = cancel.cancelled() => return Err(CoreError::Cancelled),
+                columns = session.columns(table.clone()) => columns?,
+            };
+            Ok(session
+                .run_cancellable(OperationKind::Count, &cancel, |lease, options| {
+                    let table = table.clone();
+                    let columns = columns.clone();
+                    async move {
+                        let statement = build_count(&*lease.dialect(), &table, &columns, &FilterSet::default())
+                            .map_err(OperationError::from)?;
+                        Ok(lease.count_rows(&statement, options).await?)
+                    }
+                })
+                .await?)
+        })
+        .await
+    }
+
+    pub fn health(&self) -> SessionHealthTag {
+        health_tag(&self.session, &self.session.health().borrow())
+    }
+
+    // Waits until the health is no longer seen and returns it. Fails once the session is closed.
+    pub async fn health_change(
+        &self,
+        seen: SessionHealthTag,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<SessionHealthTag, CoreError> {
+        let session = self.session.clone();
+        let cancel = token(cancel);
+        on_runtime(&self.tasks, async move {
+            let mut health = session.health();
+            loop {
+                let now = health_tag(&session, &health.borrow_and_update());
+                if !now.same_state(&seen) {
+                    return Ok(now);
+                }
+                tokio::select! {
+                    biased;
+                    () = cancel.cancelled() => return Err(CoreError::Cancelled),
+                    changed = health.changed() => {
+                        if changed.is_err() {
+                            return Err(CoreError::failed("ffi.session_closed", "the session was closed"));
+                        }
+                    }
+                }
+            }
+        })
+        .await
+    }
+
+    // Connects again now, which is also the only way out of a failed health.
+    pub fn reconnect(&self) {
+        self.session.signal(MonitorSignal::RetryNow);
     }
 
     // The column by name where that names it alone, else by its place in the select list. None when the statement
@@ -241,6 +353,30 @@ impl DatabaseSession {
             }
         })
         .await
+    }
+}
+
+fn health_tag(session: &Session, health: &SessionHealth) -> SessionHealthTag {
+    match health {
+        SessionHealth::Online => SessionHealthTag::Online,
+        SessionHealth::Reconnecting { attempt } => SessionHealthTag::Reconnecting { attempt: *attempt },
+        SessionHealth::Offline => SessionHealthTag::Offline,
+        SessionHealth::Failed { cause } => SessionHealthTag::Failed {
+            cause: match cause {
+                FailureCause::Authentication => FailureCauseTag::Authentication,
+                FailureCause::Tls => FailureCauseTag::Tls,
+                FailureCause::Configuration => FailureCauseTag::Configuration,
+                FailureCause::HostKeyUnknown | FailureCause::HostKeyChanged | FailureCause::HostKeyRevoked => {
+                    FailureCauseTag::HostKey
+                }
+            },
+            reason: session
+                .last_rejection()
+                .and_then(|rejection| match CoreError::from((*rejection).clone()) {
+                    CoreError::Failed { info } => Some(info),
+                    CoreError::Cancelled => None,
+                }),
+        },
     }
 }
 

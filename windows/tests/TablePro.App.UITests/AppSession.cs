@@ -3,7 +3,9 @@ using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Capturing;
 using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
+using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
 
 namespace TablePro.App.UITests;
@@ -16,7 +18,7 @@ internal sealed class AppSession : IDisposable
     private readonly UIA3Automation _automation = new();
     private readonly Application _application;
 
-    private AppSession(string dataFolder, string theme)
+    private AppSession(string dataFolder, string theme, bool maximize = true)
     {
         DataFolder = dataFolder;
         Theme = theme;
@@ -32,7 +34,10 @@ internal sealed class AppSession : IDisposable
         Window = _application.GetMainWindow(_automation, Wait)
             ?? throw new InvalidOperationException("The main window did not open.");
         // The runner's screen is small; a maximized window fits it whole for the screenshots.
-        Window.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Maximized);
+        if (maximize)
+        {
+            Window.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Maximized);
+        }
     }
 
     public string DataFolder { get; }
@@ -41,16 +46,138 @@ internal sealed class AppSession : IDisposable
 
     public Window Window { get; }
 
-    public static string NewDataFolder(string theme)
+    // rowLimit sets how many rows a page holds, so a small table has later pages.
+    public static string NewDataFolder(string theme, int? rowLimit = null)
     {
         var folder = Directory.CreateTempSubdirectory("tablepro-ui-").FullName;
-        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}" }""");
+        var limit = rowLimit is { } rows ? $$""", "rowLimit": {{rows}}""" : string.Empty;
+        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}"{{limit}} }""");
         return folder;
     }
 
     public static AppSession Launch(string theme) => new(NewDataFolder(theme), theme);
 
-    public static AppSession Relaunch(string dataFolder, string theme) => new(dataFolder, theme);
+    public static AppSession Relaunch(string dataFolder, string theme, bool maximize = true) =>
+        new(dataFolder, theme, maximize);
+
+    // The core's connections.json under the data folder.
+    public static string LibraryFile(string folder) =>
+        Directory.EnumerateFiles(folder, "connections.json", SearchOption.AllDirectories).First();
+
+    // A drag the app sees as a person's: press, move in steps past the drag threshold, then release over the target.
+    public void Drag(AutomationElement from, AutomationElement to)
+    {
+        Front();
+        Drag(from.GetClickablePoint(), to.GetClickablePoint());
+    }
+
+    // The Arm64 runner's own windows take keys and drags now and then, as they take clicks, so each goes again until
+    // the app shows it landed.
+    public void Drag(Func<AutomationElement> from, Func<AutomationElement> to, Func<bool> landed) =>
+        Again(() => Drag(from(), to()), landed, "The drag");
+
+    public void Chord(Func<bool> landed, params VirtualKeyShort[] keys) =>
+        Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys));
+
+    // The editor holds exactly text afterwards, whatever it held before.
+    public void TypeInto(AutomationElement editor, string text) =>
+        Again(
+            () =>
+            {
+                Click(editor);
+                Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+                Keyboard.Type(text);
+            },
+            () => EditorText(editor).TrimEnd('\r', '\n') == text,
+            $"Typing {text}");
+
+    private void Again(Action act, Func<bool> landed, string what)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            Front();
+            act();
+            if (Retry.WhileFalse(landed, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
+            {
+                return;
+            }
+        }
+
+        throw Failure($"{what} did nothing.", screen: true);
+    }
+
+    // FlaUI moves the pointer with SetCursorPos, which WinUI does not see as a pointer moving with the button down,
+    // so a drag goes through SendInput as a mouse does.
+    public static void Drag(System.Drawing.Point start, System.Drawing.Point end)
+    {
+        PointerInput.Move(start);
+        Thread.Sleep(100);
+        PointerInput.Button(down: true);
+        Thread.Sleep(200);
+        for (var step = 1; step <= 20; step++)
+        {
+            PointerInput.Move(new System.Drawing.Point(
+                start.X + ((end.X - start.X) * step / 20),
+                start.Y + ((end.Y - start.Y) * step / 20)));
+            Thread.Sleep(40);
+        }
+
+        Thread.Sleep(300);
+        PointerInput.Button(down: false);
+        Thread.Sleep(300);
+    }
+
+    // A tree row's check box in selection mode, or its selection where the row lists no box of its own.
+    public void Check(AutomationElement row)
+    {
+        Front();
+        if (row.FindFirstDescendant(condition => condition.ByControlType(ControlType.CheckBox)) is { } box)
+        {
+            box.Click();
+            return;
+        }
+
+        if (row.Patterns.SelectionItem.PatternOrDefault is { } selection)
+        {
+            selection.AddToSelection();
+            return;
+        }
+
+        row.Click();
+    }
+
+    // The open ContentDialog's primary button, which its template names PrimaryButton.
+    public void PressDialogButton()
+    {
+        var button = Retry.WhileNull(
+                () => Window.FindFirstDescendant(condition => condition.ByAutomationId("PrimaryButton")),
+                Wait,
+                throwOnTimeout: false).Result
+            ?? throw Failure("No dialog opened.", screen: true);
+        button.AsButton().Invoke();
+    }
+
+    public void CloseDialog()
+    {
+        var button = Retry.WhileNull(
+                () => Window.FindFirstDescendant(condition => condition.ByAutomationId("CloseButton")),
+                Wait,
+                throwOnTimeout: false).Result
+            ?? throw Failure("No dialog opened.", screen: true);
+        button.AsButton().Invoke();
+    }
+
+    // A menu flyout's item, which UI Automation lists under the window that opened it.
+    public AutomationElement FindMenuItem(string name) =>
+        Retry.WhileNull(
+                () => Window.FindFirstDescendant(condition =>
+                    condition.ByControlType(ControlType.MenuItem).And(condition.ByName(name))),
+                Wait,
+                throwOnTimeout: false).Result
+            ?? throw Failure($"No menu item {name} appeared.", screen: true);
+
+    public static string EditorText(AutomationElement editor) =>
+        editor.Patterns.Text.Pattern.DocumentRange.GetText(-1);
 
     public static string SampleDatabase(string folder)
     {

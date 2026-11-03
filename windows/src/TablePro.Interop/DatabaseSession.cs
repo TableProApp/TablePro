@@ -63,22 +63,56 @@ public sealed class DatabaseSession : IAsyncDisposable
         return [.. columns.Select(Mapping.Column)];
     }
 
-    // The statement for a table's first rows in the sort asked for; the core writes the ORDER BY for the engine.
+    // The statement for limit rows of a table, offset rows in, in the sort asked for; the core writes the ORDER BY and
+    // the page for the engine.
     public async Task<TableQuery> GetTableQueryAsync(
         TableName table,
         ColumnSort? sort,
         long limit,
+        long offset = 0,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(table);
         ArgumentOutOfRangeException.ThrowIfNegative(limit);
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
         var native = sort is null ? null : new Native.ColumnSort(checked((uint)sort.Column), sort.Ascending);
         var query = await CoreCall.RunAsync(
-                token => _session.TableQuery(Mapping.Table(table), native, checked((ulong)limit), token),
+                token => _session.TableQuery(
+                    Mapping.Table(table),
+                    native,
+                    checked((ulong)limit),
+                    checked((ulong)offset),
+                    token),
                 cancellationToken)
             .ConfigureAwait(false);
-        return new TableQuery(query.Sql, checked((int)query.VisibleColumns));
+        return new TableQuery(query.Sql, checked((int)query.VisibleColumns), query.CanSeek);
     }
+
+    // Every row of the table, counted by the server.
+    public async Task<long> CountRowsAsync(TableName table, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(table);
+        var count = await CoreCall.RunAsync(token => _session.TableRowCount(Mapping.Table(table), token), cancellationToken)
+            .ConfigureAwait(false);
+        return Mapping.Count(count);
+    }
+
+    public SessionHealth Health => Mapping.Health(_session.Health());
+
+    // Waits until the health is no longer seen and returns it. Throws once the session is closed.
+    public async Task<SessionHealth> WaitForHealthChangeAsync(
+        SessionHealth seen,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(seen);
+        var native = Mapping.Health(seen);
+        var health = await CoreCall.RunAsync(token => _session.HealthChange(native, token), cancellationToken)
+            .ConfigureAwait(false);
+        return Mapping.Health(health);
+    }
+
+    // Connects again now; the only way out of a failed health.
+    public void Reconnect() => _session.Reconnect();
 
     // Null when the statement is not one read, so running it again could repeat a write, or when the engine can order
     // by neither the column's name nor its position. ResultSet.SortedAsync sorts the rows held then.

@@ -92,17 +92,14 @@ public sealed partial class ConnectionFormWindow : Window
         }
     }
 
+    // By family, as the macOS app lists them.
     private void FillEngines(string query)
     {
-        var groups = _workbench.Engines
-            .Where(engine => engine.DisplayName.Contains(query.Trim(), StringComparison.CurrentCultureIgnoreCase))
-            .GroupBy(EngineCategory)
-            .OrderBy(group => group.Key)
-            .Select(group => new EngineGroup(
-                Strings.Get("EngineGroup_" + group.Key),
-                [.. group.OrderBy(engine => engine.DisplayName, StringComparer.CurrentCulture).Select(Choice)]))
+        EngineSource.Source = EngineCatalog.Sections(_workbench.Engines, query)
+            .Select(section => new EngineGroup(
+                Strings.Get("EngineGroup_" + section.Category),
+                [.. section.Engines.Select(Choice)]))
             .ToList();
-        EngineSource.Source = groups;
     }
 
     private static EngineChoice Choice(DatabaseEngine engine) => new(
@@ -110,15 +107,6 @@ public sealed partial class ConnectionFormWindow : Window
         engine.DefaultPort is { } port
             ? Strings.Format("EngineDefaultPort", port)
             : string.Join(", ", engine.FileSuffixes.Select(suffix => "." + suffix)));
-
-    // Network engines by data model, then the engines that open a file.
-    private static int EngineCategory(DatabaseEngine engine) => engine switch
-    {
-        { DefaultPort: null } => 3,
-        { DataModel: DataModel.Document } => 1,
-        { DataModel: DataModel.KeyValue } => 2,
-        _ => 0,
-    };
 
     private void FillColors()
     {
@@ -178,7 +166,7 @@ public sealed partial class ConnectionFormWindow : Window
         FormTitleBar.IsBackButtonVisible = _isNew;
         ChangeEngineButton.Visibility = _isNew ? Visibility.Visible : Visibility.Collapsed;
         EngineText.Text = engine.DisplayName;
-        EngineIcon.Symbol = engine.DefaultPort is null ? Symbol.Document : Symbol.Library;
+        EngineIcon.Content = EngineIcons.Glyph(engine.Id);
         ConnectButton.Style = _isNew ? (Style)Application.Current.Resources["AccentButtonStyle"] : null;
         SaveButton.Style = _isNew ? null : (Style)Application.Current.Resources["AccentButtonStyle"];
 
