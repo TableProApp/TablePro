@@ -63,21 +63,6 @@ struct TabRouterTargetingTests {
         #expect(target == nil)
     }
 
-    // MARK: - Opening a connection a window already has
-
-    @Test("A connection that is up or connecting is not dialed again")
-    func liveOrConnectingSessionsAreLeftAlone() {
-        #expect(!TabRouter.needsConnect(reportedStatus: .connected))
-        #expect(!TabRouter.needsConnect(reportedStatus: .connecting))
-    }
-
-    @Test("A connection that is gone, disconnected or failing is dialed")
-    func missingOrFailedSessionsAreDialed() {
-        #expect(TabRouter.needsConnect(reportedStatus: nil))
-        #expect(TabRouter.needsConnect(reportedStatus: .disconnected))
-        #expect(TabRouter.needsConnect(reportedStatus: .error("The connection stopped responding.")))
-    }
-
     // MARK: - Revealing a query tab from a link
 
     private func makeCoordinator(_ connection: DatabaseConnection) -> MainContentCoordinator {

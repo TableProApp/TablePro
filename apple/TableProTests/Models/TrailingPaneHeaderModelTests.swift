@@ -188,10 +188,14 @@ struct TrailingPaneUnavailableReasonTests {
     /// The column used to keep a session's SQL and Results over a dropped connection, statements and
     /// rows that could no longer run or be refreshed, beside a detail column already showing the
     /// unavailable screen.
+    @Test("A connection that is dialing says Connecting, with or without a session", arguments: [false, true])
+    func dialingConnectionSaysConnecting(hasSession: Bool) {
+        #expect(TrailingPaneUnavailableView.Reason.agentResult(pane: .connecting, hasSession: hasSession) == .connecting)
+    }
+
     @Test("A connection that is not up says so, with or without a session", arguments: [false, true])
     func downConnectionIsNamed(hasSession: Bool) {
         let panes: [ConnectionWindowPane] = [
-            .connecting,
             .unavailable(.notConnected),
             .unavailable(.disconnected(nil)),
             .empty,

@@ -53,14 +53,17 @@ internal enum ExternalConnectionDirectory {
             connections: ConnectionStorage.shared.loadConnections(),
             groups: GroupStorage.shared.loadGroups(),
             tags: TagStorage.shared.loadTags(),
-            live: DatabaseManager.shared.activeSessions.mapValues { session in
-                LiveState(
-                    database: session.resolvedBrowseDatabase,
-                    schema: session.browseSchema,
-                    isConnected: session.reportedStatus.isConnected
-                )
-            },
+            live: DatabaseManager.shared.activeSessions.mapValues(liveState(for:)),
             defaultPolicy: AppSettingsManager.shared.ai.defaultConnectionPolicy
+        )
+    }
+
+    // A session the reconnect loop is redialing is not connected to an outside client.
+    internal static func liveState(for session: ConnectionSession) -> LiveState {
+        LiveState(
+            database: session.resolvedBrowseDatabase,
+            schema: session.browseSchema,
+            isConnected: session.effectiveStatus.isConnected
         )
     }
 

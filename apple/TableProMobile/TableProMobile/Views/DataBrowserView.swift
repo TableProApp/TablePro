@@ -19,8 +19,8 @@ struct DataBrowserView: View {
     private var session: ConnectionSession? { coordinator.session }
 
     @State private var viewModel = DataBrowserViewModel()
-    /// Not persisted. This search runs on the server and is applied on submit, so a value restored
-    /// into the field would name a filter the rows on screen were never fetched under.
+    // Not persisted. This search runs on the server and is applied on submit, so a value restored
+    // into the field would name a filter the rows on screen were never fetched under.
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @State private var showInsertSheet = false
@@ -52,14 +52,14 @@ struct DataBrowserView: View {
         reference?.displaySchema(current: activeSchema)
     }
 
-    /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
-    /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
+    // Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
+    // which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
     private var allowsRowEditing: Bool { table.type.allowsRowEditing }
     private var browseMode: TableBrowseMode { TableBrowseMode(driver: session?.driver) }
     private var browsesSQLRows: Bool { browseMode == .sql }
 
-    /// Both entry points ask this. A key's contents take no `INSERT`, and the form cannot be filled
-    /// in before the column list has arrived.
+    // Both entry points ask this. A key's contents take no `INSERT`, and the form cannot be filled
+    // in before the column list has arrived.
     private var canInsertRow: Bool {
         allowsRowEditing && browsesSQLRows
             && !connection.safeModeLevel.blocksWrites && !viewModel.columnDetails.isEmpty
@@ -72,16 +72,9 @@ struct DataBrowserView: View {
     private var columns: [ColumnInfo] { viewModel.columns }
     private var rows: [[String?]] { viewModel.legacyRows }
 
-    // A list reload reading the session would end the page with its next statement, so the page waits for it; nothing
-    // suspends between that wait and `track` marking the session busy.
     private var pageReads: DataBrowserViewModel.SessionReadTracker {
-        let transactions = appState.sessionTransactions
-        let catalogChanges = appState.catalogChanges
-        let connectionId = connection.id
-        return { read in
-            await catalogChanges.sessionReadsFinished(for: connectionId)
-            await transactions.track(connectionId, reading: true) { await read() }
-        }
+        let viewModel = viewModel
+        return coordinator.trackPageRead { viewModel.loadError != nil }
     }
 
     private var sortColumnBinding: Binding<String?> {

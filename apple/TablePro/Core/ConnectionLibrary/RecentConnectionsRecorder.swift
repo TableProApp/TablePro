@@ -14,6 +14,7 @@ internal final class RecentConnectionsRecorder {
     private let connectionStorage: ConnectionStorage
     private let appEvents: AppEvents
     private var cancellable: AnyCancellable?
+    private var connectedIds: Set<UUID> = []
 
     internal init(
         store: RecentConnectionsStore = .shared,
@@ -32,9 +33,14 @@ internal final class RecentConnectionsRecorder {
         }
     }
 
+    // Every session write sends an event, a reconnect attempt's too, so only the step into connected counts.
     internal func handle(_ change: ConnectionStatusChange) {
-        guard case .connected = change.status else { return }
-        guard connectionStorage.loadConnection(id: change.connectionId) != nil else { return }
+        guard case .connected = change.status else {
+            connectedIds.remove(change.connectionId)
+            return
+        }
+        guard connectedIds.insert(change.connectionId).inserted,
+              connectionStorage.loadConnection(id: change.connectionId) != nil else { return }
         store.record(change.connectionId)
     }
 }

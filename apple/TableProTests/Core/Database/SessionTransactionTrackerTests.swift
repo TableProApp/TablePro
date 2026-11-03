@@ -213,7 +213,7 @@ struct SessionTransactionTrackerTests {
             tabs: { _ in [] },
             openedContainers: { _ in ["sales", "hr"] },
             storedOrder: [],
-            holdsTransaction: { $0.container == "sales" }
+            transaction: { $0.container == "sales" ? .open : nil }
         )
 
         let sales = entries.first { $0.container == "sales" }
@@ -222,6 +222,21 @@ struct SessionTransactionTrackerTests {
         #expect(hr?.holdsTransaction == false)
         let spoken = sales.map { WorkspaceRailCellView.voiceOverLabel(for: $0) } ?? ""
         #expect(spoken.contains("transaction open"))
+    }
+
+    @Test("An aborted hold on any lane an entry covers wins over an open one")
+    func abortedHoldWinsForTheEntry() {
+        let tracker = SessionTransactionTracker { _, _ in true }
+        let connectionId = UUID()
+        let driver = PluginDriverAdapter(connection: TestFixtures.makeConnection(), pluginDriver: TransactionScriptedDriver())
+        let otherDriver = PluginDriverAdapter(connection: TestFixtures.makeConnection(), pluginDriver: TransactionScriptedDriver())
+        tracker.record(.inTransaction, on: driver, for: .init(connectionId: connectionId, lane: nil))
+        tracker.record(.abortedTransaction, on: otherDriver, for: .init(connectionId: connectionId, lane: "sales"))
+
+        #expect(tracker.transactionState(connectionId: connectionId, container: "sales") == .aborted)
+        #expect(tracker.transactionState(connectionId: connectionId, container: "hr") == .open)
+        #expect(tracker.transactionState(connectionId: UUID(), container: "sales") == nil)
+        #expect(tracker.holdsTransaction(connectionId: connectionId, container: "hr"))
     }
 
     @Test("Read-only hides Commit, an aborted transaction offers only Roll Back")

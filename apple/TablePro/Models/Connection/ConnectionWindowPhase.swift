@@ -100,3 +100,17 @@ internal enum ConnectionAttemptOutcome: Equatable, Sendable {
     case failed(ConnectionFailureInfo)
     case actionRequired(ConnectionFailureInfo, ConnectionRecoveryAction)
 }
+
+struct ConnectionRecoveryProgress: Equatable, Sendable {
+    static let maxAttempts = 10
+
+    let attempt: Int
+    let maxAttempts: Int
+    let cause: String?
+
+    init(attempt: Int, maxAttempts: Int = Self.maxAttempts, cause: String?) {
+        self.attempt = attempt
+        self.maxAttempts = maxAttempts
+        self.cause = cause
+    }
+}

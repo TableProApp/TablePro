@@ -303,7 +303,7 @@ struct TableTransferSheet: View {
     @MainActor
     private func load() async {
         availableDestinations = databaseManager.activeSessions.values
-            .filter { $0.id != sourceConnection.id && $0.isConnected }
+            .filter { $0.id != sourceConnection.id && $0.effectiveStatus.isConnected }
             .map { $0.effectiveConnection ?? $0.connection }
             .filter { !$0.safeModeLevel.blocksAllWrites }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

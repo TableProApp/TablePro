@@ -28,13 +28,12 @@ struct SyncSection: View {
                 }
                 .help("Syncs connections, table favorites, settings, and SSH profiles across your Macs via iCloud.")
                 .disabled(!isProAvailable)
-        } header: {
-            HStack(spacing: 6) {
-                Text("iCloud Sync")
-                if !isProAvailable {
-                    ProBadge(feature: .iCloudSync)
-                }
+
+            if !isProAvailable {
+                LicenseGateRow(feature: .iCloudSync)
             }
+        } header: {
+            Text("iCloud Sync")
         }
 
         if settingsManager.sync.enabled && isProAvailable {
@@ -45,13 +44,9 @@ struct SyncSection: View {
 
     // MARK: - Status
 
-    /// A blocked state is explained by the notice at the top of the pane, so this section names it
-    /// in the Status row and leaves the long message there.
+    // A blocker is explained by the notice at the top of the pane, so the Status row only names it.
     private var statusSection: some View {
-        let presentation = SyncStatusPresentation(
-            status: syncCoordinator.syncStatus,
-            lastSyncDate: syncCoordinator.lastSyncDate
-        )
+        let presentation = SyncStatusPresentation(status: syncCoordinator.syncStatus)
         return Section("Sync Status") {
             LabeledContent(String(localized: "Status")) {
                 HStack(spacing: 4) {
@@ -63,7 +58,7 @@ struct SyncSection: View {
                             .foregroundStyle(presentation.isWarning ? Color.orange : Color.secondary)
                             .accessibilityHidden(true)
                     }
-                    Text(presentation.statusTitle)
+                    Text(presentation.title)
                 }
             }
 

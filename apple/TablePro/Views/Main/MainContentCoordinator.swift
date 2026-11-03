@@ -938,7 +938,7 @@ final class MainContentCoordinator: ObservableObject {
         toolbarState.update(from: connection)
 
         if let session = services.databaseManager.session(for: connectionId) {
-            toolbarState.updateConnectionState(from: session.reportedStatus)
+            toolbarState.updateConnectionState(from: session.effectiveStatus)
         }
     }
 

@@ -164,7 +164,8 @@ struct TransactionIndicatorView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .modifier(TransactionButtonLabels(isCompact: iconOnly))
-            .disabled(isBusy)
+            // The bar sits outside the content a database switch disables, and a switch can replace the session.
+            .disabled(isBusy || coordinator.isSwitching)
         }
     }
 
@@ -230,8 +231,7 @@ struct TransactionIndicatorView: View {
                 return
             } catch {
                 guard !coordinator.showFailureAlert else { return }
-                coordinator.failureAlertMessage = error.localizedDescription
-                coordinator.showFailureAlert = true
+                coordinator.presentFailure(title: nil, message: error.localizedDescription)
             }
         }
     }

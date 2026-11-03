@@ -23,6 +23,10 @@ struct LinkedFoldersSection: View {
 
     var body: some View {
         Section {
+            if !isLicensed {
+                LicenseGateRow(feature: .linkedFolders)
+            }
+
             if folders.isEmpty {
                 Text("No linked folders. Add a folder to watch for shared connection files.")
                     .font(.caption)
@@ -40,12 +44,7 @@ struct LinkedFoldersSection: View {
             }
             .disabled(!isLicensed)
         } header: {
-            HStack(spacing: 6) {
-                Text(Self.title)
-                if !isLicensed {
-                    ProBadge(feature: .linkedFolders)
-                }
-            }
+            Text(Self.title)
         } footer: {
             Text("Watched folders are scanned for .tablepro files without a passphrase. Connections appear read only in the sidebar.")
                 .font(.caption)

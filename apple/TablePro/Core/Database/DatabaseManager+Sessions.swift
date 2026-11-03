@@ -24,16 +24,23 @@ extension DatabaseManager {
     ) async throws {
         let connection = resolvedConnectionDefinition(for: requestedConnection)
 
-        /// Reusing the installed driver is right only while it still answers. A reconnect that gave
-        /// up leaves one behind, and switching to it here reported success without replacing
-        /// anything, which is how Reconnect came to be a button that returned to the same pane.
+        // Reused only while it answers: a driver a reconnect gave up on would make Reconnect a no-op.
         if let existing = activeSessions[connection.id], existing.driver != nil, existing.liveness == .live {
             switchToSession(connection.id)
             return
         }
 
+        // The loop owns a dropped session's redial; only a connect someone asked for takes it over.
+        if trigger == .background, recoveryLoops[connection.id] != nil {
+            throw DatabaseError.connectionFailed(Self.recoveringConnectMessage)
+        }
+
         MacAnalyticsProvider.shared.markConnectionAttempted()
         InteractionTracer.shared.begin(.sidebarListing, key: connection.id.uuidString, event: nil)
+
+        // This connect owns the session: no loop or monitor may redial or rebuild the tunnel beside it.
+        supersedeRecovery(for: connection.id)
+        await stopHealthMonitor(for: connection.id)
 
         let attempt = connectionAttempts.begin(for: connection.id)
         disconnectReasons[connection.id] = nil
@@ -85,7 +92,8 @@ extension DatabaseManager {
                 try await buildEffectiveConnection(
                     for: resolvedConnection,
                     sshPasswordOverride: sshPasswordOverride,
-                    deadline: deadline
+                    deadline: deadline,
+                    ownsAttempt: { !self.isAttemptCancelled(attempt, for: connection.id) }
                 )
             }
         } catch {
@@ -164,9 +172,9 @@ extension DatabaseManager {
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
                 session.connectionWarning = driver.connectionWarning
-                /// A connect is the answer to whatever went wrong before it, including a reconnect
-                /// that gave up on this same entry, so the mark and the reason it carried go here.
+                // A connect answers whatever went wrong before it, including a reconnect that gave up on this entry.
                 session.liveness = .live
+                session.recovery = nil
                 disconnectReasons.removeValue(forKey: connection.id)
                 markSessionVerified(connection.id)
                 if let passwordOverride, !connection.usesIAMToken {
@@ -762,6 +770,8 @@ extension DatabaseManager {
         }
         disconnectsInFlight.insert(sessionId)
         defer { disconnectsInFlight.remove(sessionId) }
+        // Before the tunnel closes, so a reconnect attempt cannot rebuild it behind the teardown.
+        endRecoveryLoop(for: sessionId)
 
         // Before the tunnel goes: a debug target whose client vanishes keeps its locks until someone aborts it.
         await RoutineDebugSessions.shared.stopAll(connectionId: sessionId, tabsCloseAfter: true)
@@ -832,6 +842,7 @@ extension DatabaseManager {
     func runPostDisconnectScriptsBeforeQuit() async {
         await postDisconnectScripts.fireAllAndWait { connectionIds in
             for connectionId in connectionIds {
+                self.endRecoveryLoop(for: connectionId)
                 await self.stopHealthMonitor(for: connectionId)
                 self.activeSessions[connectionId]?.driver?.disconnect()
                 MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
@@ -985,7 +996,7 @@ extension DatabaseManager {
         connectionStatusVersions[connectionId, default: 0] &+= 1
         sessionTransactions.prune(connectionId)
         AppEvents.shared.connectionStatusChanged.send(
-            ConnectionStatusChange(connectionId: connectionId, status: session.status)
+            ConnectionStatusChange(connectionId: connectionId, status: session.reportedStatus)
         )
     }
 
@@ -1054,14 +1065,8 @@ extension DatabaseManager {
         disconnectReasons[connectionId] = reason
     }
 
-    /// Says that a session's driver has stopped answering, so the window stops presenting rows over
-    /// it. The driver is left installed: it is the handle every metadata read, every query route and
-    /// every reconnect still goes through, and taking it away would make an ordinary database switch
-    /// on the engines that reconnect to perform one look like a dropped connection.
-    ///
-    /// `startedWith` is the generation check. A reconnect cannot be cancelled once the driver is
-    /// inside a blocking connect, so a losing attempt completes late; without this it would mark a
-    /// connection unreachable that a later attempt had already restored.
+    // The driver stays installed: metadata reads, queries and the reconnect still go through it.
+    // `startedWith` fences off a late attempt, since a blocked connect cannot be cancelled.
     internal func markSessionUnreachable(
         _ sessionId: UUID,
         startedWith driver: DatabaseDriver?,
@@ -1069,27 +1074,32 @@ extension DatabaseManager {
     ) {
         guard let current = activeSessions[sessionId] else { return }
         guard current.driver === driver else { return }
+        endRecoveryLoop(for: sessionId)
         if let info { recordDisconnectReason(.sessionLost(info), for: sessionId) }
         updateSession(sessionId) { session in
             session.liveness = .unreachable(info)
+            session.recovery = nil
         }
     }
 
-    /// The one way back. Every path that installs a working driver clears the mark with it, so a
-    /// connection that recovers stops carrying the reason it once failed.
     internal func markSessionLive(_ sessionId: UUID) {
         guard activeSessions[sessionId] != nil else { return }
+        endRecoveryLoop(for: sessionId, resuming: .success)
         disconnectReasons.removeValue(forKey: sessionId)
         markSessionVerified(sessionId)
         updateSession(sessionId) { session in
             session.liveness = .live
+            session.recovery = nil
         }
     }
 
-    internal func markSessionRecovering(_ sessionId: UUID) {
-        guard let current = activeSessions[sessionId], current.liveness == .live else { return }
+    // Keeps the rows on screen: a blip that repairs itself should not blank the window.
+    internal func markSessionRecovering(_ sessionId: UUID, progress: ConnectionRecoveryProgress? = nil) {
+        guard let current = activeSessions[sessionId] else { return }
+        if case .unreachable = current.liveness { return }
         updateSession(sessionId) { session in
             session.liveness = .recovering
+            if let progress { session.recovery = progress }
         }
     }
 
@@ -1104,6 +1114,7 @@ extension DatabaseManager {
     // Every path that ends a session comes through here, so the gate, the pool and the post-disconnect script go with the entry.
     internal func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
+        endRecoveryLoop(for: connectionId)
         postDisconnectScripts.fire(for: connectionId)
         MetadataConnectionPool.shared.closeAll(connectionId: connectionId)
         sessionLanes.closeAll(for: connectionId)

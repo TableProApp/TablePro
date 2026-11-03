@@ -475,7 +475,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
               Self.wantsAllSchemaListing(
                   scope: scope, query: trimmedSearchText, recentNeedsListing: { self.recentRowsNeedListing() }
               ),
-              services.databaseManager.session(for: connectionId)?.status == .connected
+              services.databaseManager.session(for: connectionId)?.reportedStatus == .connected
         else { return }
         let service = DatabaseTreeMetadataService.shared
         let selection = SidebarSchemaFilter(databaseManager: services.databaseManager)
@@ -633,7 +633,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
     private func connectedSessions() -> [ConnectionSession] {
         services.databaseManager.activeSessions.values
-            .filter { $0.isConnected && $0.driver != nil }
+            .filter { $0.reportedStatus.isConnected && $0.driver != nil }
             .sorted { lhs, rhs in
                 lhs.connection.name.localizedStandardCompare(rhs.connection.name) == .orderedAscending
             }
@@ -689,7 +689,7 @@ internal final class QuickSwitcherViewModel: ObservableObject {
 
     private var crossConnectionCatalogVersion: CrossConnectionCatalogVersion {
         let entries = services.databaseManager.activeSessions.values
-            .filter { $0.isConnected && $0.driver != nil }
+            .filter { $0.reportedStatus.isConnected && $0.driver != nil }
             .compactMap { session -> CrossConnectionCatalogVersion.Entry? in
                 guard let scope = services.databaseManager.browseScope(for: session.id) else { return nil }
                 return CrossConnectionCatalogVersion.Entry(

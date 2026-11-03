@@ -2,9 +2,6 @@
 //  DatabaseManager+SystemEvents.swift
 //  TablePro
 //
-//  Handles macOS system events (sleep/wake, network changes) that affect
-//  database connections, particularly SSH-tunneled sessions.
-//
 
 import AppKit
 import Foundation
@@ -13,8 +10,6 @@ import os
 // MARK: - System Event Handling
 
 extension DatabaseManager {
-    /// Begin observing system events that affect connection health.
-    /// Call once from `applicationDidFinishLaunching`.
     func startObservingSystemEvents() {
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -29,19 +24,15 @@ extension DatabaseManager {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
-            /// Sleep is the one gap the freshness window cannot see: the clock moved but nothing
-            /// here observed it, so every answer the app is holding was given before a period the
-            /// server may well have closed the socket in.
+            // The clock moved while nothing observed it, so every answer held predates the sleep.
             self.forgetAllVerifications()
             await self.validateTunneledSessions()
         }
     }
 
-    /// After waking from sleep, proactively check all tunneled sessions.
-    /// If the tunnel is dead, trigger an immediate reconnect rather than waiting
-    /// for the next 30-second health monitor ping.
-    private func validateTunneledSessions() async {
-        for (connectionId, session) in activeSessions where session.isConnected {
+    // Each handler only starts its session's loop, so every dead tunnel recovers at once.
+    internal func validateTunneledSessions() async {
+        for (connectionId, session) in activeSessions where session.isConnected && session.liveness == .live {
             guard let kind = session.connection.activeTunnelKind,
                   let manager = activeTunnelManager(for: session.connection) else { continue }
             let tunnelAlive = await manager.hasTunnel(connectionId: connectionId)

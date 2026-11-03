@@ -158,6 +158,25 @@ struct LicenseManagerDecisionTests {
         #expect(LicenseManager.revocationStatus(for: .activationLimitReached) == nil)
     }
 
+    @Test("A check answers only for the license it started on, never one removed or replaced meanwhile")
+    func validationAnswersOnlyForTheCheckedLicense() {
+        let checked = Self.license(Self.payload())
+        let replaced = Self.license(Self.payload(tier: "team"))
+
+        #expect(LicenseManager.adoptsValidation(of: checked, current: checked))
+        #expect(!LicenseManager.adoptsValidation(of: checked, current: nil))
+        #expect(!LicenseManager.adoptsValidation(of: checked, current: replaced))
+    }
+
+    @Test("A check that reached no verdict is reported; a rejection the server spoke is not")
+    func checkFailureIsOnlyANonVerdict() {
+        #expect(LicenseManager.checkFailure(after: .networkError(URLError(.notConnectedToInternet))) != nil)
+        #expect(LicenseManager.checkFailure(after: .serverError(500, "")) != nil)
+        for rejection in [LicenseError.licenseSuspended, .licenseExpired, .notActivated, .machineMismatch, .invalidKey] {
+            #expect(LicenseManager.checkFailure(after: rejection) == nil, "\(rejection)")
+        }
+    }
+
     // MARK: - resolveStatus
 
     private static func resolve(

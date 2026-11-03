@@ -146,6 +146,59 @@ struct ConnectionWindowChromeTests {
         #expect(!owner.validateToolbarItem(NSToolbarItem(itemIdentifier: MainWindowToolbar.refresh)))
     }
 
+    /// A released coordinator left the connection item on `network` with no title and Safe Mode on
+    /// Silent, over a pane that still named the connection and its failure.
+    @Test("With no coordinator the toolbar names the selected workspace's connection")
+    func toolbarFallsBackToTheWorkspaceConnection() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        harness.controller.transition(to: .unavailable(.notConnected), for: harness.selected.connectionId)
+        let owner = try #require(harness.controller.toolbarOwner)
+        #expect(owner.coordinator == nil)
+        let item = try #require(
+            owner.toolbar(
+                owner.managedToolbar,
+                itemForItemIdentifier: MainWindowToolbar.connection,
+                willBeInsertedIntoToolbar: true
+            ) as? StatefulToolbarItem
+        )
+        let selected = try #require(harness.selected.connection)
+        let engine = try #require(
+            LibraryGlyph.connectionNSImage(type: selected.type, iconName: selected.iconName, accessibilityDescription: nil)
+        )
+
+        #expect(item.title == "Selected")
+        #expect(item.image?.tiffRepresentation == engine.tiffRepresentation)
+        #expect(owner.safeModeStatus == AgentModeSafeModeFloor.status(for: selected))
+
+        harness.controller.workspaces.select(harness.sibling.connectionId)
+        item.validate()
+        #expect(item.title == "Sibling")
+    }
+
+    @Test("A live coordinator still answers the toolbar ahead of the workspace record")
+    func coordinatorAnswersAheadOfTheRecord() throws {
+        let harness = try Harness()
+        defer { harness.tearDown() }
+
+        let owner = try #require(harness.controller.toolbarOwner)
+        let record = TestFixtures.makeConnection(name: "Coordinator")
+        let coordinator = MainContentCoordinator(
+            connection: record,
+            tabManager: QueryTabManager(),
+            changeManager: DataChangeManager(),
+            toolbarState: ConnectionToolbarState(connection: record)
+        )
+        defer { coordinator.teardown() }
+        owner.repoint(to: coordinator)
+
+        #expect(owner.workspaceConnection == nil)
+        #expect(owner.connectionTitle == "Coordinator")
+        owner.repoint(to: nil)
+        #expect(owner.connectionTitle == "Selected")
+    }
+
     /// The toolbar's shape is the selected workspace's, and a workspace with no session has no
     /// coordinator. A switch between two of them is a repoint from nothing to nothing, which returns
     /// before it reaches the toolbar, so the outgoing connection's hidden set stayed on screen: a

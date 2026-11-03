@@ -22,8 +22,14 @@ import SwiftUI
 /// mode window whose connection was up and which had no session to show.
 internal struct TrailingPaneUnavailableView: View {
     internal enum Reason: Equatable {
+        case connecting
         case notConnected
         case noSession
+
+        // The detail pane's own state, so the inspector never says Not Connected while it dials.
+        internal static func forPane(_ pane: ConnectionWindowPane) -> Reason {
+            pane == .connecting ? .connecting : .notConnected
+        }
 
         /// Why the result column cannot draw a session, or nil when it can.
         ///
@@ -33,7 +39,7 @@ internal struct TrailingPaneUnavailableView: View {
         /// already moved to the unavailable screen. Only a live connection with nothing started is
         /// an empty session list.
         internal static func agentResult(pane: ConnectionWindowPane, hasSession: Bool) -> Reason? {
-            guard pane.hasContent else { return .notConnected }
+            guard pane.hasContent else { return forPane(pane) }
             return hasSession ? nil : .noSession
         }
     }
@@ -65,28 +71,41 @@ internal struct TrailingPaneUnavailableView: View {
             ) { _ in
                 EmptyView()
             }
-            UnavailableStateView(
-                title,
-                systemImage: systemImage,
-                description: Text(description)
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if reason == .connecting {
+                UnavailableStateView {
+                    Label {
+                        Text(title)
+                    } icon: {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                } description: {
+                    Text(description)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                UnavailableStateView(
+                    title,
+                    systemImage: systemImage,
+                    description: Text(description)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
     private var title: String {
         switch reason {
+        case .connecting: String(localized: "Connecting")
         case .notConnected: String(localized: "Not Connected")
         case .noSession: String(localized: "No Session Open")
         }
     }
 
-    /// `bolt.horizontal.circle` is the glyph the connection's own unavailable screen draws for a
-    /// dropped connection, and it exists on macOS 13, the app's minimum. `cable.connector.slash`
-    /// arrived in macOS 14 and draws nothing on 13.
+    // Neutral on purpose: the detail pane names why it has no content. `cable.connector.slash` is macOS 14.
     private var systemImage: String {
         switch reason {
-        case .notConnected: "bolt.horizontal.circle"
+        case .connecting, .notConnected: "bolt.horizontal.circle"
         case .noSession: surface.symbolName
         }
     }
@@ -97,7 +116,7 @@ internal struct TrailingPaneUnavailableView: View {
             String(localized: "Row fields appear once the connection is up")
         case (.assistant, _):
             String(localized: "The assistant answers once the connection is up")
-        case (.agentResult, .notConnected):
+        case (.agentResult, .notConnected), (.agentResult, .connecting):
             String(localized: "What the session runs appears once the connection is up")
         case (.agentResult, .noSession):
             String(localized: "What a session proposes and runs appears here")

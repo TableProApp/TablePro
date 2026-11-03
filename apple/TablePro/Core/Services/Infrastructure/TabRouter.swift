@@ -163,16 +163,24 @@ internal final class TabRouter {
             /// Raising the window is not the same as showing the connection the user picked, and a
             /// window hosts several. Whether to dial is the workspace phase's call: no driver is
             /// installed for the whole of a connect, so asking the driver restarted one in flight.
-            if let host = existing.contentViewController as? MainSplitViewController,
-               host.workspaces.contains(id) {
-                host.reconnectWorkspaceIfIdle(id)
+            if let host = existing.contentViewController as? MainSplitViewController {
+                if host.workspaces.contains(id) {
+                    host.reconnectWorkspaceIfIdle(id)
+                } else {
+                    // Dialed by a workspace of its own, so a failure lands inline in its pane, not as an alert.
+                    if transientConnection != nil {
+                        DatabaseManager.shared.registerPendingSession(connection)
+                    }
+                    let adopted = host.adoptWorkspace(
+                        payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault),
+                        autoConnect: false
+                    )
+                    if adopted?.phase != .connected {
+                        host.reconnectWorkspace(id)
+                    }
+                }
                 return
             }
-            let status = DatabaseManager.shared.activeSessions[id]?.reportedStatus
-            guard Self.needsConnect(reportedStatus: status) else { return }
-            try await confirmConnectConsent(connection)
-            try await DatabaseManager.shared.ensureConnected(connection)
-            return
         }
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         if transientConnection != nil {
@@ -181,18 +189,6 @@ internal final class TabRouter {
         WindowManager.shared.openTab(payload: payload, autoConnect: true)
         AppActivationPolicyController.shared.activate(ignoringOtherApps: true)
         WindowOpener.shared.closeWelcome()
-    }
-
-    /// An unreachable session reports an error, so it is redialed like one that is gone. A session
-    /// already connecting is left alone: dialing again would ask for consent a second time.
-    internal static func needsConnect(reportedStatus: ConnectionStatus?) -> Bool {
-        guard let reportedStatus else { return true }
-        switch reportedStatus {
-        case .connected, .connecting:
-            return false
-        case .disconnected, .error:
-            return true
-        }
     }
 
     /// Opens a connection and hands its window to the agent.
