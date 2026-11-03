@@ -16,7 +16,7 @@ use tablepro_ffi::window_abi::{TpCursor, TpWindow, tablepro_cursor_fetch, tablep
 use tablepro_ffi::{
     ColumnSort, Core, CoreError, DatabaseSession, EndpointInfo, FileOpenRequest, HostConfig, HostSecretError,
     HostSecrets, ObjectKindTag, ObjectScopeArg, QueryEditor, RunEvent, RunListener, RunOutcome, RunSettings,
-    SecretItemTag, SecretKindTag, TableName, ValueKind,
+    SecretItemTag, SecretKindTag, SessionHealthTag, TableName, TransactionStateTag, ValueKind,
 };
 
 struct NoSecrets;
@@ -392,10 +392,10 @@ async fn a_table_query_sorts_on_the_server_and_names_the_columns_a_grid_shows() 
     });
 
     let by_name = session
-        .table_query(people.clone(), descending, 100, None)
+        .table_query(people.clone(), descending, 100, 0, None)
         .await
         .unwrap();
-    let first_two = session.table_query(people, descending, 2, None).await.unwrap();
+    let first_two = session.table_query(people, descending, 2, 0, None).await.unwrap();
     let by_body = session
         .table_query(
             notes,
@@ -404,6 +404,7 @@ async fn a_table_query_sorts_on_the_server_and_names_the_columns_a_grid_shows() 
                 ascending: true,
             }),
             100,
+            0,
             None,
         )
         .await
@@ -449,4 +450,65 @@ async fn a_query_result_sorts_by_running_its_own_statement_again() {
             .unwrap(),
         None
     );
+}
+
+#[tokio::test]
+async fn a_table_pages_past_its_first_rows_and_counts_them_all() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session, editor) = fixture(dir.path()).await;
+    let people = TableName {
+        schema: None,
+        name: "people".to_owned(),
+    };
+    let by_name = Some(ColumnSort {
+        column: 1,
+        ascending: true,
+    });
+
+    let second = session.table_query(people.clone(), None, 2, 2, None).await.unwrap();
+    let sorted_second = session.table_query(people.clone(), by_name, 2, 1, None).await.unwrap();
+    let count = session.table_row_count(people, None).await.unwrap();
+    let (_, ids) = column_texts(&editor, &second.sql, 0).await;
+    let (_, names) = column_texts(&editor, &sorted_second.sql, 1).await;
+
+    assert!(second.can_seek);
+    assert_eq!(ids, texts(&["3"]));
+    assert_eq!(names, texts(&["Grace", "Zoë 👋"]));
+    assert_eq!(count, 3);
+}
+
+#[tokio::test]
+async fn a_run_reports_the_transaction_it_leaves_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, _session, editor) = fixture(dir.path()).await;
+    let finished = |events: &[RunEvent]| match events.last() {
+        Some(RunEvent::Finished { transaction, .. }) => *transaction,
+        other => panic!("the run did not finish: {other:?}"),
+    };
+
+    let (_, began, _) = run(&editor, "BEGIN", RunSettings::default()).await;
+    let lost = editor.is_lost();
+    let (_, rolled_back, _) = run(&editor, "ROLLBACK", RunSettings::default()).await;
+
+    assert_eq!(finished(&began), TransactionStateTag::InTransaction);
+    assert_eq!(finished(&rolled_back), TransactionStateTag::Idle);
+    assert!(!lost);
+}
+
+#[tokio::test]
+async fn an_open_file_is_online_and_a_cancel_ends_the_wait_for_a_change() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session, _editor) = fixture(dir.path()).await;
+    let cancel = tablepro_ffi::CancelToken::new();
+    cancel.cancel();
+
+    let health = session.health();
+    let ended = tokio::time::timeout(
+        Duration::from_secs(10),
+        session.health_change(SessionHealthTag::Online, Some(cancel)),
+    )
+    .await;
+
+    assert_eq!(health, SessionHealthTag::Online);
+    assert!(matches!(ended, Ok(Err(CoreError::Cancelled))), "{ended:?}");
 }

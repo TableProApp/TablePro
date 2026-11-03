@@ -4,6 +4,8 @@ use std::sync::Arc;
 use tablepro_core::{DriverError, ServerDiagnostics, TransportError};
 use tablepro_session::{ConnectError, OperationError};
 
+use crate::host::SecretKindTag;
+
 /// Why a call produced no value. A cancel is its own variant, so a
 /// binding can turn it into its language's cancellation.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
@@ -27,6 +29,8 @@ pub struct ErrorInfo {
     pub server: Option<ServerMessage>,
     /// The file an error about a database file names.
     pub path: Option<String>,
+    /// The secret a keyring error is about, so the app can ask for it.
+    pub secret: Option<SecretKindTag>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -48,6 +52,7 @@ impl CoreError {
                 message: message.into(),
                 server: None,
                 path: None,
+                secret: None,
             },
         }
     }
@@ -75,6 +80,7 @@ impl ErrorInfo {
             message,
             server: server_message(cause),
             path: file_path(cause).map(|path| path.display().to_string()),
+            secret: None,
         }
     }
 
@@ -85,6 +91,7 @@ impl ErrorInfo {
             message,
             server: None,
             path: None,
+            secret: None,
         }
     }
 }
@@ -179,7 +186,10 @@ impl From<ConnectError> for CoreError {
                 info: ErrorInfo::wrapping(&[error.code()], driver, error.to_string()),
             },
             ConnectError::Keyring(keyring) => Self::Failed {
-                info: ErrorInfo::plain(&[error.code(), keyring.code()], error.to_string()),
+                info: ErrorInfo {
+                    secret: Some(keyring.kind().into()),
+                    ..ErrorInfo::plain(&[error.code(), keyring.code()], error.to_string())
+                },
             },
             other => Self::Failed {
                 info: ErrorInfo::plain(&[other.code()], other.to_string()),

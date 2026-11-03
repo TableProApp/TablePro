@@ -28,16 +28,16 @@ pub use cancel_token::CancelToken;
 pub use catalog::{ColumnEntry, ObjectEntry, ObjectKindTag, ObjectScopeArg, SchemaEntry, TableName};
 pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
-pub use drivers::{DataModelTag, DriverInfo, EndpointInfo};
+pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag};
 pub use editor::{QueryEditor, RunSettings};
 pub use error::{CoreError, ErrorInfo, ServerMessage};
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
 pub use library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot, SafeModeTag,
-    SshAuthTag, SshSettings, TlsModeTag, TlsSettings,
+    SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
 };
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};
-pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TruncationTag};
-pub use session::{ColumnSort, DatabaseSession, TableQuery};
+pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
+pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TableQuery};
 
 uniffi::setup_scaffolding!();

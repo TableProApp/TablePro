@@ -7,8 +7,8 @@ use tablepro_core::credentials::{SecretKind, SecretVault};
 use tablepro_core::{AuthMode, ClientIdentity, NetworkOptions, SafeModeLevel, TlsConfig, TlsMode};
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
-    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, SavedConnection, SavedSshAuth,
-    SavedSshConfig, StorageError, english_secret_label,
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTag, ConnectionTagName,
+    SavedConnection, SavedSshAuth, SavedSshConfig, StorageError, english_secret_label,
 };
 use uuid::Uuid;
 
@@ -75,6 +75,8 @@ pub struct ConnectionRecord {
     pub color: Option<String>,
     pub group_id: Option<String>,
     pub last_opened_ms: Option<i64>,
+    // Read only: a save keeps the stored tags, which change through tag_connections.
+    pub tags: Vec<String>,
 }
 
 // Each secret as the form holds it: None keeps what is stored, an empty string is stored as one.
@@ -107,13 +109,23 @@ pub struct GroupRecord {
     pub color: Option<String>,
 }
 
-// Connections in each group's order, groups in each parent's order, favourites and recent as the library ranks them.
+// A label several connections share; they name it by id, so a rename or a new colour reaches all of them.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TagRecord {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+}
+
+// Connections in each group's order, groups in each parent's order, favourites and recent as the library ranks them,
+// tags in the order they were made.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct LibrarySnapshot {
     pub connections: Vec<ConnectionRecord>,
     pub groups: Vec<GroupRecord>,
     pub favorites: Vec<String>,
     pub recent: Vec<String>,
+    pub tags: Vec<TagRecord>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
@@ -184,6 +196,7 @@ impl ConnectionLibrary {
                     .into_iter()
                     .map(|saved| saved.id.to_string())
                     .collect(),
+                tags: list.tags.iter().map(TagRecord::from).collect(),
             })
         })
         .await
@@ -267,6 +280,84 @@ impl ConnectionLibrary {
         .await
     }
 
+    // Favourites already listed move, which is how a drag reorders them; the end when before is none.
+    pub async fn add_favorites(&self, ids: Vec<String>, before: Option<String>) -> Result<(), CoreError> {
+        let ids = parse_ids(&ids)?;
+        let before = optional_id(before.as_deref())?;
+        self.blocking(move |store| Ok(store.add_favorites_blocking(&ids, before)?))
+            .await
+    }
+
+    pub async fn remove_favorites(&self, ids: Vec<String>) -> Result<(), CoreError> {
+        let ids = parse_ids(&ids)?;
+        self.blocking(move |store| Ok(store.remove_favorites_blocking(&ids)?))
+            .await
+    }
+
+    pub async fn rename_connection(&self, id: String, name: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        let name = name.trim().to_owned();
+        if name.is_empty() {
+            return Err(CoreError::failed("library.name_required", "a connection needs a name"));
+        }
+        self.blocking(
+            move |store| match store.update_blocking(id, |saved| saved.name = name)? {
+                Some(_) => Ok(()),
+                None => Err(StorageError::ConnectionNotFound { id }.into()),
+            },
+        )
+        .await
+    }
+
+    pub async fn create_tag(&self, name: String, color: String) -> Result<TagRecord, CoreError> {
+        let name = tag_name(&name)?;
+        let color = tag_color(&color)?;
+        self.blocking(move |store| Ok(TagRecord::from(&store.create_tag_blocking(name, color)?)))
+            .await
+    }
+
+    pub async fn update_tag(&self, id: String, name: String, color: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        let name = tag_name(&name)?;
+        let color = tag_color(&color)?;
+        self.blocking(move |store| Ok(store.update_tag_blocking(ConnectionTag { id, name, color })?))
+            .await
+    }
+
+    // Takes the tag off every connection too.
+    pub async fn delete_tag(&self, id: String) -> Result<(), CoreError> {
+        let id = parse_id(&id)?;
+        self.blocking(move |store| {
+            store.delete_tag_blocking(id)?;
+            Ok(())
+        })
+        .await
+    }
+
+    // Puts the tag on each connection, or takes it off.
+    pub async fn tag_connections(&self, ids: Vec<String>, tag_id: String, tagged: bool) -> Result<(), CoreError> {
+        let ids = parse_ids(&ids)?;
+        let tag = parse_id(&tag_id)?;
+        self.blocking(move |store| {
+            if !store.tags_blocking()?.iter().any(|known| known.id == tag) {
+                return Err(CoreError::failed("library.tag_not_found", format!("no tag {tag}")));
+            }
+            for id in ids {
+                let changed = store.update_blocking(id, |saved| {
+                    saved.tags.retain(|held| *held != tag);
+                    if tagged {
+                        saved.tags.push(tag);
+                    }
+                })?;
+                if changed.is_none() {
+                    return Err(StorageError::ConnectionNotFound { id }.into());
+                }
+            }
+            Ok(())
+        })
+        .await
+    }
+
     pub async fn create_group(&self, name: String, parent_id: Option<String>) -> Result<GroupRecord, CoreError> {
         let name = group_name(&name)?;
         let parent = optional_id(parent_id.as_deref())?;
@@ -294,11 +385,33 @@ impl ConnectionLibrary {
         .await
     }
 
-    // Moves the connections to the end of the group, or of the top level when there is none.
-    pub async fn move_to_group(&self, ids: Vec<String>, group_id: Option<String>) -> Result<(), CoreError> {
-        let ids = ids.iter().map(|id| parse_id(id)).collect::<Result<Vec<_>, _>>()?;
+    // Moves the connections into the group, or the top level when there is none, before the connection named, or
+    // to the end.
+    pub async fn move_to_group(
+        &self,
+        ids: Vec<String>,
+        group_id: Option<String>,
+        before: Option<String>,
+    ) -> Result<(), CoreError> {
+        let ids = parse_ids(&ids)?;
         let group = optional_id(group_id.as_deref())?;
-        self.blocking(move |store| Ok(store.move_connections_blocking(&ids, group, None)?))
+        let before = optional_id(before.as_deref())?;
+        self.blocking(move |store| Ok(store.move_connections_blocking(&ids, group, before)?))
+            .await
+    }
+
+    // Moves the groups under the parent, or to the top level, before the group named, or to the end. A group cannot
+    // go inside itself.
+    pub async fn move_groups(
+        &self,
+        ids: Vec<String>,
+        parent_id: Option<String>,
+        before: Option<String>,
+    ) -> Result<(), CoreError> {
+        let ids = parse_ids(&ids)?;
+        let parent = optional_id(parent_id.as_deref())?;
+        let before = optional_id(before.as_deref())?;
+        self.blocking(move |store| Ok(store.move_groups_blocking(&ids, parent, before)?))
             .await
     }
 
@@ -339,6 +452,19 @@ pub(crate) fn secret_error(error: tablepro_core::credentials::SecretError) -> Co
 
 pub(crate) fn parse_id(id: &str) -> Result<Uuid, CoreError> {
     Uuid::parse_str(id.trim()).map_err(|_| CoreError::failed("library.invalid_id", format!("{id} is not an id")))
+}
+
+fn parse_ids(ids: &[String]) -> Result<Vec<Uuid>, CoreError> {
+    ids.iter().map(|id| parse_id(id)).collect()
+}
+
+fn tag_name(name: &str) -> Result<ConnectionTagName, CoreError> {
+    ConnectionTagName::new(name).map_err(|error| CoreError::failed(error.code(), error.to_string()))
+}
+
+fn tag_color(color: &str) -> Result<ConnectionColor, CoreError> {
+    ConnectionColor::from_id(color.trim())
+        .ok_or_else(|| CoreError::failed("library.unknown_color", format!("{color} is not a colour")))
 }
 
 fn optional_id(id: Option<&str>) -> Result<Option<Uuid>, CoreError> {
@@ -514,6 +640,7 @@ impl From<&SavedConnection> for ConnectionRecord {
             color: saved.color.map(|color| color.id().to_owned()),
             group_id: saved.group_id.map(|id| id.to_string()),
             last_opened_ms: saved.last_opened_at.map(|at: DateTime<Utc>| at.timestamp_millis()),
+            tags: saved.tags.iter().map(Uuid::to_string).collect(),
         }
     }
 }
@@ -526,6 +653,16 @@ impl From<&ConnectionGroup> for GroupRecord {
             parent_id: group.parent_id.map(|id| id.to_string()),
             order: group.order,
             color: group.color.map(|color| color.id().to_owned()),
+        }
+    }
+}
+
+impl From<&ConnectionTag> for TagRecord {
+    fn from(tag: &ConnectionTag) -> Self {
+        Self {
+            id: tag.id.to_string(),
+            name: tag.name.as_str().to_owned(),
+            color: tag.color.id().to_owned(),
         }
     }
 }
