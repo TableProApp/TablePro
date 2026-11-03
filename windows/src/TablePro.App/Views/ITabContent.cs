@@ -1,6 +1,7 @@
 using TablePro.App.Model;
 using TablePro.DataGrid;
 using TablePro.Editor;
+using TablePro.Interop;
 
 namespace TablePro.App.Views;
 
@@ -12,6 +13,9 @@ internal interface ITabContent
     string Title { get; }
 
     bool IsRunning { get; }
+
+    // The transaction the tab's own connection holds; the workspace names a held one over the other tabs.
+    TransactionState Transaction { get; }
 
     SqlEditor? Editor { get; }
 

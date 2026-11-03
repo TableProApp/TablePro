@@ -31,6 +31,12 @@ public sealed partial class ResultsPane : UserControl
     // How many result sets the last run produced; only one can be sorted by running its statement again.
     public int ResultSetCount { get; private set; }
 
+    // The rows the shown set holds once the run ends.
+    public long RowCount { get; private set; }
+
+    // The transaction the last run left the editor's connection in.
+    public TransactionState Transaction { get; private set; } = TransactionState.Idle;
+
     public GridSort Sort
     {
         get => ResultGrid.Sort;
@@ -93,6 +99,8 @@ public sealed partial class ResultsPane : UserControl
                     affected = (affected ?? 0) + (command.RowsAffected ?? 0);
                     break;
                 case QueryEvent.Finished finished:
+                    RowCount = shownIndex >= 0 ? rows : 0;
+                    Transaction = finished.Transaction;
                     Finish(finished.Outcome, shownIndex >= 0, rows, affected, truncated);
                     break;
                 default:

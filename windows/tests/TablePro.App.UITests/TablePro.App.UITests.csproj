@@ -8,6 +8,7 @@
     <IsTestProject>true</IsTestProject>
     <RootNamespace>TablePro.App.UITests</RootNamespace>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

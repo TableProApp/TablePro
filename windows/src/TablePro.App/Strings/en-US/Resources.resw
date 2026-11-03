@@ -334,10 +334,10 @@
     <value>SQLite and DuckDB files on this PC</value>
   </data>
   <data name="ImportCard.Header" xml:space="preserve">
-    <value>Import from another app</value>
+    <value>Import a connections file</value>
   </data>
   <data name="ImportCard.Description" xml:space="preserve">
-    <value>Bring in connections from a TablePro connections file</value>
+    <value>Connections exported from TablePro. Passwords are not in the file, so each one asks on its first connect.</value>
   </data>
   <data name="SampleCard.Header" xml:space="preserve">
     <value>Try the sample database</value>
@@ -825,17 +825,20 @@
   <data name="EditConnectionTitle" xml:space="preserve">
     <value>Edit connection</value>
   </data>
-  <data name="EngineGroup_0" xml:space="preserve">
+  <data name="EngineGroup_Relational" xml:space="preserve">
     <value>Relational</value>
   </data>
-  <data name="EngineGroup_1" xml:space="preserve">
+  <data name="EngineGroup_Document" xml:space="preserve">
     <value>Document</value>
   </data>
-  <data name="EngineGroup_2" xml:space="preserve">
+  <data name="EngineGroup_KeyValue" xml:space="preserve">
     <value>Key-value</value>
   </data>
-  <data name="EngineGroup_3" xml:space="preserve">
-    <value>Files</value>
+  <data name="EngineGroup_Analytical" xml:space="preserve">
+    <value>Analytical</value>
+  </data>
+  <data name="EngineGroup_WideColumn" xml:space="preserve">
+    <value>Wide-column</value>
   </data>
   <data name="EngineDefaultPort" xml:space="preserve">
     <value>Port {0}</value>
@@ -1061,5 +1064,194 @@
   </data>
   <data name="Error_group_name_control_character" xml:space="preserve">
     <value>The name has a character that can't be shown.</value>
+  </data>
+  <data name="MenuReopenTab.Text" xml:space="preserve">
+    <value>Reopen closed tab</value>
+  </data>
+  <data name="MenuReopenTab.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="TagsButton.Label" xml:space="preserve">
+    <value>Tags</value>
+  </data>
+  <data name="SelectButton.Label" xml:space="preserve">
+    <value>Select</value>
+  </data>
+  <data name="SelectionConnectButton.Label" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="SelectionFavoriteButton.Label" xml:space="preserve">
+    <value>Add to Favorites</value>
+  </data>
+  <data name="SelectionMoveButton.Label" xml:space="preserve">
+    <value>Move to group</value>
+  </data>
+  <data name="SelectionDeleteButton.Label" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="RenameBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="MenuTags" xml:space="preserve">
+    <value>Tags</value>
+  </data>
+  <data name="MenuNewTag" xml:space="preserve">
+    <value>New tag...</value>
+  </data>
+  <data name="MenuTagColor" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="NewTagTitle" xml:space="preserve">
+    <value>New tag</value>
+  </data>
+  <data name="RenameTagTitle" xml:space="preserve">
+    <value>Rename tag</value>
+  </data>
+  <data name="DeleteTagTitle" xml:space="preserve">
+    <value>Delete the tag {0}?</value>
+  </data>
+  <data name="DeleteTagMessage" xml:space="preserve">
+    <value>It comes off every connection that has it.</value>
+  </data>
+  <data name="DeleteConnectionsTitle" xml:space="preserve">
+    <value>Delete {0} connections?</value>
+  </data>
+  <data name="DeleteConnectionsMessage" xml:space="preserve">
+    <value>The connections and their saved passwords leave this PC. This can't be undone.</value>
+  </data>
+  <data name="DropAddFavorites" xml:space="preserve">
+    <value>Add to Favorites</value>
+  </data>
+  <data name="DropBefore" xml:space="preserve">
+    <value>Move before {0}</value>
+  </data>
+  <data name="DropInto" xml:space="preserve">
+    <value>Move to {0}</value>
+  </data>
+  <data name="Error_storage_tag_name_taken" xml:space="preserve">
+    <value>Another tag has that name.</value>
+  </data>
+  <data name="Error_tag_name_empty" xml:space="preserve">
+    <value>A tag needs a name.</value>
+  </data>
+  <data name="Error_tag_name_too_long" xml:space="preserve">
+    <value>That name is too long for a tag.</value>
+  </data>
+  <data name="Error_tag_name_control_character" xml:space="preserve">
+    <value>The name has a character that can't be shown.</value>
+  </data>
+  <data name="Error_library_unknown_color" xml:space="preserve">
+    <value>That color isn't one a tag can have.</value>
+  </data>
+  <data name="Error_library_tag_not_found" xml:space="preserve">
+    <value>That tag is gone. The list shows the tags there are now.</value>
+  </data>
+  <data name="Error_ffi_page_unsupported" xml:space="preserve">
+    <value>This engine reads a table only from its start, so it has no later pages.</value>
+  </data>
+  <data name="Secret_DatabasePassword" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="Secret_SshPassword" xml:space="preserve">
+    <value>SSH password</value>
+  </data>
+  <data name="Secret_SshPassphrase" xml:space="preserve">
+    <value>Key passphrase</value>
+  </data>
+  <data name="SaveSecret" xml:space="preserve">
+    <value>Save it in Credential Manager</value>
+  </data>
+  <data name="SecretRequiredTitle" xml:space="preserve">
+    <value>Password required</value>
+  </data>
+  <data name="SecretRequiredMessage" xml:space="preserve">
+    <value>Nothing is saved for {0}. Enter it to connect.</value>
+  </data>
+  <data name="ConnectButtonText" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="CommitButton.Content" xml:space="preserve">
+    <value>Commit</value>
+  </data>
+  <data name="RollBackButton.Content" xml:space="preserve">
+    <value>Roll back</value>
+  </data>
+  <data name="TransactionOpenTitle" xml:space="preserve">
+    <value>Transaction open</value>
+  </data>
+  <data name="TransactionOpenMessage" xml:space="preserve">
+    <value>Its changes stay on this tab's connection until you commit or roll back.</value>
+  </data>
+  <data name="TransactionFailedTitle" xml:space="preserve">
+    <value>Transaction failed</value>
+  </data>
+  <data name="TransactionFailedMessage" xml:space="preserve">
+    <value>Roll it back to continue.</value>
+  </data>
+  <data name="RollBackTitle" xml:space="preserve">
+    <value>Roll back the transaction?</value>
+  </data>
+  <data name="RollBackMessage" xml:space="preserve">
+    <value>Its uncommitted changes are discarded.</value>
+  </data>
+  <data name="RollBackButtonText" xml:space="preserve">
+    <value>Roll back</value>
+  </data>
+  <data name="TransactionLost" xml:space="preserve">
+    <value>The connection was lost, and its open transaction with it. The next run opens a new connection.</value>
+  </data>
+  <data name="ReconnectButton.Content" xml:space="preserve">
+    <value>Reconnect</value>
+  </data>
+  <data name="ShowTransactionTabButton.Content" xml:space="preserve">
+    <value>Show</value>
+  </data>
+  <data name="TransactionElsewhere" xml:space="preserve">
+    <value>{0} has an open transaction.</value>
+  </data>
+  <data name="TransactionElsewhereFailed" xml:space="preserve">
+    <value>{0} has a failed transaction.</value>
+  </data>
+  <data name="TransactionElsewhereMany" xml:space="preserve">
+    <value>{0} tabs have open transactions.</value>
+  </data>
+  <data name="CloseHeldTabTitle" xml:space="preserve">
+    <value>Close {0}?</value>
+  </data>
+  <data name="CloseHeldTabMessage" xml:space="preserve">
+    <value>Its transaction is still open. Closing the tab rolls it back.</value>
+  </data>
+  <data name="CloseHeldTabButton" xml:space="preserve">
+    <value>Close and roll back</value>
+  </data>
+  <data name="HealthReconnecting" xml:space="preserve">
+    <value>Connection lost. Reconnecting, attempt {0}...</value>
+  </data>
+  <data name="HealthOffline" xml:space="preserve">
+    <value>The server can't be reached. TablePro keeps trying.</value>
+  </data>
+  <data name="HealthFailed" xml:space="preserve">
+    <value>The connection was lost and needs you to reconnect.</value>
+  </data>
+  <data name="ObjectsSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Object pane width</value>
+  </data>
+  <data name="FirstPageButton.Label" xml:space="preserve">
+    <value>First page</value>
+  </data>
+  <data name="PreviousPageButton.Label" xml:space="preserve">
+    <value>Previous page</value>
+  </data>
+  <data name="NextPageButton.Label" xml:space="preserve">
+    <value>Next page</value>
+  </data>
+  <data name="LastPageButton.Label" xml:space="preserve">
+    <value>Last page</value>
+  </data>
+  <data name="PageRange" xml:space="preserve">
+    <value>Rows {0:N0} to {1:N0}</value>
+  </data>
+  <data name="PageRangeOf" xml:space="preserve">
+    <value>Rows {0:N0} to {1:N0} of {2:N0}</value>
   </data>
 </root>

@@ -34,6 +34,9 @@ internal sealed class Workbench : IDisposable
 
     public AppSettings Settings { get; private set; }
 
+    // The object pane's width every workspace shares, kept in the session file.
+    public double ObjectPaneWidth { get; set; } = ObjectPane.DefaultWidth;
+
     public DatabaseEngine? Engine(string id) => Engines.FirstOrDefault(engine => engine.Id == id);
 
     public string EngineName(string id) => Engine(id)?.DisplayName ?? id;

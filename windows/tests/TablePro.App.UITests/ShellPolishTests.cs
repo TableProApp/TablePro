@@ -1,0 +1,369 @@
+using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
+using FlaUI.Core.Tools;
+using FlaUI.Core.WindowsAPI;
+
+namespace TablePro.App.UITests;
+
+// The shell's later flows, in the same class so they still run one at a time.
+public sealed partial class ShellTests
+{
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void TheEngineChooserListsEachFamilyAsTheMacAppDoes(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        var form = app.WaitForWindow("New connection");
+        var grid = app.Find("EngineGrid", form);
+        foreach (var family in new[] { "Relational", "Document", "Key-value", "Analytical", "Wide-column" })
+        {
+            app.FindByName(family, grid);
+        }
+
+        var wide = app.FindByName("Wide-column", grid);
+        var cassandra = app.Find("Engine_cassandra", form);
+        Assert.True(cassandra.BoundingRectangle.Top > wide.BoundingRectangle.Top);
+        Assert.Null(grid.FindFirstDescendant(condition => condition.ByName("Files")));
+        app.Screenshot("13-engine-families", form);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void AnOpenConnectionShowsItsEngineAndColorOnTheRail(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme);
+        var database = AppSession.SampleDatabase(folder);
+        using var app = AppSession.Relaunch(folder, theme);
+
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        var form = app.WaitForWindow("New connection");
+        app.Click(app.Find("Engine_sqlite", form), () => app.TryFind("FileBox", form) is not null, form);
+        app.Find("FileBox", form).AsTextBox().Text = database;
+        app.Find("NameBox", form).AsTextBox().Text = "Colored";
+        app.Click(app.Find("AppearanceExpander", form), () => app.TryFind("ColorBox", form) is { IsOffscreen: false }, form);
+        app.Find("ColorBox", form).AsComboBox().Select("Red");
+        app.Find("ConnectButton", form).AsButton().Invoke();
+        app.WaitForClose("New connection");
+
+        var rail = app.Find("Rail_Colored");
+        app.FindByName("Album", app.Find("ObjectTree"));
+        Assert.Equal("SQLite", rail.Properties.HelpText.ValueOrDefault);
+        app.Screenshot("14-rail-mark");
+        app.Find("HomeItem").AsListBoxItem().Select();
+        app.FindByNamePrefix("Colored,", app.Find("ConnectionTree"));
+        app.Screenshot("15-home-marks");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void TheObjectPaneResizesAndKeepsItsWidth(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme);
+        int widened;
+        using (var app = AppSession.Relaunch(folder, theme))
+        {
+            app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+            var tree = app.Find("ObjectTree");
+            app.FindByName("Track", tree);
+            var before = tree.BoundingRectangle.Width;
+            var splitter = app.Find("ObjectsSplitter").BoundingRectangle;
+            var start = new Point(splitter.Left + (splitter.Width / 2), splitter.Top + (splitter.Height / 2));
+
+            app.Front();
+            Mouse.MoveTo(start);
+            Mouse.Down(MouseButton.Left);
+            for (var step = 1; step <= 16; step++)
+            {
+                Mouse.MoveTo(new Point(start.X + (step * 10), start.Y));
+                Thread.Sleep(30);
+            }
+
+            Mouse.Up(MouseButton.Left);
+            var grew = Retry.WhileFalse(() => tree.BoundingRectangle.Width > before + 100, AppSession.Wait, throwOnTimeout: false).Success;
+            Assert.True(grew, $"The pane stayed {tree.BoundingRectangle.Width} wide from {before}.");
+            widened = tree.BoundingRectangle.Width;
+            app.Screenshot("16-pane-resized");
+            app.Close();
+        }
+
+        using var again = AppSession.Relaunch(folder, theme);
+        var restored = again.Find("ObjectTree");
+        again.FindByName("Track", restored);
+        Assert.InRange(restored.BoundingRectangle.Width, widened - 4, widened + 4);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void TheWindowComesBackWhereItStood(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme);
+        Rectangle placed;
+        using (var app = AppSession.Relaunch(folder, theme, maximize: false))
+        {
+            var window = app.Window;
+            window.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Normal);
+            window.Patterns.Transform.Pattern.Move(80, 60);
+            window.Patterns.Transform.Pattern.Resize(1100, 720);
+            Retry.WhileFalse(() => window.BoundingRectangle.Width == 1100, AppSession.Wait, throwOnTimeout: false);
+            placed = window.BoundingRectangle;
+            app.Close();
+        }
+
+        using (var app = AppSession.Relaunch(folder, theme, maximize: false))
+        {
+            var bounds = app.Window.BoundingRectangle;
+            Assert.InRange(bounds.Left, placed.Left - 2, placed.Left + 2);
+            Assert.InRange(bounds.Top, placed.Top - 2, placed.Top + 2);
+            Assert.InRange(bounds.Width, placed.Width - 2, placed.Width + 2);
+            Assert.InRange(bounds.Height, placed.Height - 2, placed.Height + 2);
+            app.Screenshot("17-window-restored", screen: true);
+            app.Window.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Maximized);
+            app.Close();
+        }
+
+        using var maximized = AppSession.Relaunch(folder, theme, maximize: false);
+        var state = WindowVisualState.Normal;
+        Retry.WhileFalse(
+            () => (state = maximized.Window.Patterns.Window.Pattern.WindowVisualState.Value) == WindowVisualState.Maximized,
+            AppSession.Wait,
+            throwOnTimeout: false);
+        Assert.Equal(WindowVisualState.Maximized, state);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void APasswordIsAskedForWhenNoneIsSaved(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        var form = app.WaitForWindow("New connection");
+        app.Click(app.Find("Engine_postgres", form), () => app.TryFind("HostBox", form) is not null, form);
+        app.Find("HostBox", form).AsTextBox().Text = "127.0.0.1";
+        app.Find("PortBox", form).AsTextBox().Text = "1";
+        app.Find("UserBox", form).AsTextBox().Text = "nobody";
+        app.Find("NameBox", form).AsTextBox().Text = "Asks";
+        app.Find("SaveButton", form).AsButton().Invoke();
+        app.WaitForClose("New connection");
+
+        // The form saved the empty password it was given; taking it away leaves the connection with none saved.
+        var target = $"TablePro/connection/{ConnectionId(app.DataFolder)}/database-password";
+        Credentials.Delete(target);
+        var row = app.FindByNamePrefix("Asks,", app.Find("ConnectionTree"));
+        app.Front();
+        row.DoubleClick();
+
+        var box = app.Find("SecretBox");
+        app.Screenshot("18-password-asked");
+        app.Click(box);
+        Keyboard.Type("typed");
+        app.Find("SaveSecretBox").AsCheckBox().IsChecked = true;
+        app.PressDialogButton();
+
+        // The password got past the keyring: the connect reached the closed port, and the password was saved.
+        app.Find("FailureBar");
+        Assert.True(Credentials.Exists(target));
+        Credentials.Delete(target);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void AClosedTabComesBackWithItsText(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+
+        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.FindByName("Track", app.Find("ObjectTree"));
+        var tabs = app.Find("Tabs");
+        app.Front();
+        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
+        app.FindByName("Query 2", tabs);
+        Keyboard.Type("SELECT 42 AS answer");
+        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_W);
+        var closed = Retry.WhileFalse(
+            () => tabs.FindFirstDescendant(condition => condition.ByName("Query 2")) is null,
+            AppSession.Wait,
+            throwOnTimeout: false).Success;
+        Assert.True(closed);
+
+        app.Front();
+        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT, VirtualKeyShort.KEY_T);
+        app.FindByName("Query 2", tabs);
+        var text = string.Empty;
+        Retry.WhileFalse(
+            () => (text = AppSession.EditorText(app.Find("SqlEditor"))).Contains("SELECT 42", StringComparison.Ordinal),
+            AppSession.Wait,
+            throwOnTimeout: false);
+        Assert.Contains("SELECT 42 AS answer", text, StringComparison.Ordinal);
+        app.Screenshot("19-tab-reopened");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void AnOpenTransactionHasItsBarsAndRollsBack(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+
+        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.FindByName("Track", app.Find("ObjectTree"));
+        app.Click(app.Find("SqlEditor"));
+        Keyboard.Type("BEGIN");
+        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+
+        var bar = app.Find("TransactionBar");
+        Assert.True(app.Find("CommitButton").IsEnabled);
+        app.Screenshot("20-transaction-open");
+
+        app.Front();
+        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
+        app.Find("TransactionElsewhereBar");
+        app.Screenshot("21-transaction-elsewhere");
+        app.Find("ShowTransactionTabButton").AsButton().Invoke();
+
+        app.Find("RollBackButton").AsButton().Invoke();
+        app.Screenshot("22-roll-back-asked");
+        app.PressDialogButton();
+        var gone = Retry.WhileFalse(
+            () => app.TryFind("TransactionBar") is null or { IsOffscreen: true },
+            AppSession.Wait,
+            throwOnTimeout: false).Success;
+        Assert.True(gone, bar.Name);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void ATablePagesPastTheRowLimitAndCountsToItsLastPage(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme, rowLimit: 1000);
+        using var app = AppSession.Relaunch(folder, theme);
+
+        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        var track = app.FindByName("Track", app.Find("ObjectTree"));
+        app.Click(track, () => app.TryFind("PageText") is { IsOffscreen: false });
+        var page = app.Find("PageText");
+        Assert.Equal("Rows 1 to 1,000 of 3,503", AppSession.WaitForText(page, text => text.EndsWith("of 3,503", StringComparison.Ordinal)));
+        app.Screenshot("23-table-paged");
+
+        app.Find("NextPageButton").AsButton().Invoke();
+        Assert.Equal("Rows 1,001 to 2,000 of 3,503", AppSession.WaitForText(page, text => text.StartsWith("Rows 1,001", StringComparison.Ordinal)));
+        Assert.Equal("1001", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "1001"));
+
+        app.Find("LastPageButton").AsButton().Invoke();
+        Assert.Equal("Rows 3,001 to 3,503 of 3,503", AppSession.WaitForText(page, text => text.StartsWith("Rows 3,001", StringComparison.Ordinal)));
+        Assert.Equal("3001", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "3001"));
+        Assert.False(app.Find("NextPageButton").IsEnabled);
+        app.Screenshot("24-table-last-page");
+
+        app.Find("FirstPageButton").AsButton().Invoke();
+        AppSession.WaitForText(page, text => text.StartsWith("Rows 1 to", StringComparison.Ordinal));
+        Assert.False(app.Find("PreviousPageButton").IsEnabled);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void TheConnectionsPageRenamesTagsDropsAndSelects(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+
+        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.FindByName("Track", app.Find("ObjectTree"));
+        app.Find("HomeItem").AsListBoxItem().Select();
+        var tree = app.Find("ConnectionTree");
+
+        app.Find("NewGroupButton").AsButton().Invoke();
+        app.Find("NameDialogBox").AsTextBox().Text = "Work";
+        app.PressDialogButton();
+        app.FindByName("Work", tree);
+
+        // F2 renames the row in place.
+        app.Click(app.FindByNamePrefix("Chinook (Sample),", tree));
+        Keyboard.Press(VirtualKeyShort.F2);
+        app.Find("RenameBox").AsTextBox().Text = "Music";
+        Keyboard.Press(VirtualKeyShort.RETURN);
+        var music = app.FindByNamePrefix("Music,", tree);
+
+        // A tag made from the row's menu goes on the row.
+        app.Front();
+        music.RightClick();
+        var tags = app.FindMenuItem("Tags");
+        tags.Click();
+        app.FindMenuItem("New tag...").Click();
+        app.Find("NameDialogBox").AsTextBox().Text = "demo";
+        app.PressDialogButton();
+        var tagged = Retry.WhileFalse(
+            () => app.FindByNamePrefix("Music,", tree).Name.EndsWith("demo", StringComparison.Ordinal),
+            AppSession.Wait,
+            throwOnTimeout: false).Success;
+        Assert.True(tagged, app.FindByNamePrefix("Music,", tree).Name);
+        app.Screenshot("25-home-tagged");
+
+        // A row dropped on a group moves into it, through the core.
+        app.Drag(app.FindByNamePrefix("Music,", tree), app.FindByName("Work", tree));
+        var group = GroupId(app.DataFolder);
+        var moved = Retry.WhileFalse(
+            () => Regex.IsMatch(File.ReadAllText(AppSession.LibraryFile(app.DataFolder)), $"\"group_id\"\\s*:\\s*\"{group}\""),
+            AppSession.Wait,
+            throwOnTimeout: false).Success;
+        Assert.True(moved, File.ReadAllText(AppSession.LibraryFile(app.DataFolder)));
+        app.Screenshot("26-home-dropped");
+
+        // Selection mode acts on every checked connection.
+        app.Find("SelectButton").AsToggleButton().Toggle();
+        Assert.False(app.Find("SelectionFavoriteButton").IsEnabled);
+        app.Click(app.FindByNamePrefix("Music,", tree));
+        Retry.WhileFalse(() => app.Find("SelectionFavoriteButton").IsEnabled, AppSession.Wait, throwOnTimeout: false);
+        app.Screenshot("27-home-selecting");
+        app.Find("SelectionFavoriteButton").AsButton().Invoke();
+        app.FindByName("Favorites", tree);
+    }
+
+    private static string ConnectionId(string folder) => Guids(folder).First();
+
+    // The library writes the connections first, then the groups.
+    private static string GroupId(string folder)
+    {
+        var text = File.ReadAllText(AppSession.LibraryFile(folder));
+        var groups = text.IndexOf("\"groups\"", StringComparison.Ordinal);
+        return Regex.Match(text[groups..], "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}").Value;
+    }
+
+    private static IEnumerable<string> Guids(string folder) =>
+        Regex.Matches(File.ReadAllText(AppSession.LibraryFile(folder)), "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+            .Select(match => match.Value);
+}
+
+// The generic credentials the core writes, read and removed the way it writes them.
+internal static partial class Credentials
+{
+    private const int Generic = 1;
+
+    public static bool Exists(string target)
+    {
+        if (!CredRead(target, Generic, 0, out var credential))
+        {
+            return false;
+        }
+
+        CredFree(credential);
+        return true;
+    }
+
+    public static void Delete(string target) => CredDelete(target, Generic, 0);
+
+    [LibraryImport("advapi32.dll", EntryPoint = "CredReadW", StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CredRead(string target, int type, int flags, out IntPtr credential);
+
+    [LibraryImport("advapi32.dll", EntryPoint = "CredDeleteW", StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool CredDelete(string target, int type, int flags);
+
+    [LibraryImport("advapi32.dll")]
+    private static partial void CredFree(IntPtr buffer);
+}

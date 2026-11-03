@@ -22,7 +22,7 @@ public partial class App : Application
         Directory.CreateDirectory(folder);
         var core = TableProCore.CreateWithSystemSecrets(new HostConfiguration(AppStorage.Version, folder));
         _window = new MainWindow(new Workbench(core, folder));
-        _window.Activate();
+        _window.ActivateRestored();
         // Off the first grid's path: the fallback fonts for non-Latin cells load in the background.
         DataGridView.WarmUpFonts();
     }

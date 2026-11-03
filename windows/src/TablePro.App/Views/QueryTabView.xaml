@@ -10,6 +10,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="96" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="96" />
         </Grid.RowDefinitions>
 
@@ -36,6 +37,28 @@
 
         <editor:SqlEditor x:Name="SqlText" Grid.Row="1" AutomationProperties.AutomationId="SqlEditor" />
 
-        <local:ResultsPane x:Name="Results" Grid.Row="2" />
+        <!-- The transaction lives on this tab's own connection, so its bar and its end are here. -->
+        <InfoBar
+            x:Name="TransactionBar"
+            Grid.Row="2"
+            Margin="8,8,8,0"
+            AutomationProperties.AutomationId="TransactionBar"
+            IsClosable="False"
+            IsOpen="False">
+            <InfoBar.ActionButton>
+                <Button x:Uid="RollBackButton" x:Name="RollBackButton" AutomationProperties.AutomationId="RollBackButton" Click="OnRollBack" />
+            </InfoBar.ActionButton>
+            <InfoBar.Content>
+                <Button
+                    x:Uid="CommitButton"
+                    x:Name="CommitButton"
+                    Margin="0,0,0,12"
+                    AutomationProperties.AutomationId="CommitButton"
+                    Click="OnCommit"
+                    Style="{StaticResource AccentButtonStyle}" />
+            </InfoBar.Content>
+        </InfoBar>
+
+        <local:ResultsPane x:Name="Results" Grid.Row="3" />
     </Grid>
 </UserControl>

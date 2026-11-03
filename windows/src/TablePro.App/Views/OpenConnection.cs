@@ -33,10 +33,14 @@ internal sealed class OpenConnection
         {
             Content = origin.Name,
             Tag = this,
-            Icon = new SymbolIcon(Symbol.Library),
+            Icon = EngineIcons.Mark(origin.EngineId, null),
         };
         AutomationProperties.SetName(RailItem, origin.Name);
         AutomationProperties.SetAutomationId(RailItem, "Rail_" + origin.Name);
+        if (origin.EngineId.Length > 0)
+        {
+            AutomationProperties.SetHelpText(RailItem, workbench.EngineName(origin.EngineId));
+        }
         ToolTipService.SetToolTip(RailItem, origin.Name);
     }
 
@@ -64,6 +68,23 @@ internal sealed class OpenConnection
             ? connectionId == Origin.ConnectionId
             : filePath is not null && string.Equals(filePath, Origin.FilePath, StringComparison.OrdinalIgnoreCase);
 
+    public string? Color { get; private set; }
+
+    // The rail item shows the engine's artwork in the connection's colour, as the macOS rail marks it.
+    public void Mark(string engineId, string? color)
+    {
+        if (engineId == Origin.EngineId && color == Color && RailItem.Icon is PathIcon)
+        {
+            return;
+        }
+
+        Origin = Origin with { EngineId = engineId };
+        Color = color;
+        RailItem.Icon = EngineIcons.Mark(engineId, color);
+        // The glyph says the engine to the eye; the item says it to a screen reader.
+        AutomationProperties.SetHelpText(RailItem, _workbench.EngineName(engineId));
+    }
+
     public void Rename(string name)
     {
         Origin = Origin with { Name = name };
@@ -87,14 +108,14 @@ internal sealed class OpenConnection
         try
         {
             var session = Origin.ConnectionId is { } id
-                ? await _workbench.Core.ConnectAsync(id, cancellationToken: connecting.Token).ConfigureAwait(true)
+                ? await ConnectSavedAsync(id, connecting.Token).ConfigureAwait(true)
                 : await _workbench.Core.OpenFileAsync(
                     new FileOpenOptions(Origin.FilePath!, string.IsNullOrEmpty(Origin.EngineId) ? null : Origin.EngineId),
                     connecting.Token).ConfigureAwait(true);
             Session = session;
-            if (string.IsNullOrEmpty(Origin.EngineId))
+            if (Origin.EngineId != session.EngineId)
             {
-                Origin = Origin with { EngineId = session.EngineId };
+                Mark(session.EngineId, Color);
             }
 
             SetState(ConnectionState.Connected);
@@ -122,6 +143,51 @@ internal sealed class OpenConnection
     }
 
     public void CancelConnect() => _connecting?.Cancel();
+
+    // A secret the core has none saved for is asked for, as macOS asks, and used for this connect; the box under it
+    // saves it too. Closing the dialog cancels the connect.
+    private async Task<DatabaseSession> ConnectSavedAsync(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _workbench.Core.ConnectAsync(id, cancellationToken: cancellationToken).ConfigureAwait(true);
+        }
+        catch (TableProException exception) when (exception.Code == "keyring.secret_not_stored")
+        {
+            var kind = exception.Error.Secret ?? SecretKind.DatabasePassword;
+            var answer = await View.AskSecretAsync(kind).ConfigureAwait(true)
+                ?? throw new OperationCanceledException(cancellationToken);
+            var secrets = kind switch
+            {
+                SecretKind.SshPassword => new ConnectionSecrets(SshPassword: answer.Secret),
+                SecretKind.SshPassphrase => new ConnectionSecrets(SshPassphrase: answer.Secret),
+                _ => new ConnectionSecrets(DatabasePassword: answer.Secret),
+            };
+            var session = await _workbench.Core.ConnectAsync(id, secrets, cancellationToken).ConfigureAwait(true);
+            if (answer.Save)
+            {
+                await SaveSecretAsync(id, secrets).ConfigureAwait(true);
+            }
+
+            return session;
+        }
+    }
+
+    private async Task SaveSecretAsync(Guid id, ConnectionSecrets secrets)
+    {
+        try
+        {
+            var snapshot = await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true);
+            if (snapshot.Connections.FirstOrDefault(connection => connection.Id == id) is { } saved)
+            {
+                await _workbench.Library.SaveAsync(saved, secrets).ConfigureAwait(true);
+            }
+        }
+        catch (TableProException)
+        {
+            // The connect worked; a password that could not be saved is asked for again next time.
+        }
+    }
 
     public async Task DisconnectAsync()
     {

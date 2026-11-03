@@ -19,15 +19,32 @@
             IsDynamicOverflowEnabled="True"
             VerticalContentAlignment="Center">
             <CommandBar.Content>
-                <TextBlock
-                    x:Name="StatusText"
-                    Margin="12,0"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="TableStatus"
-                    AutomationProperties.LiveSetting="Polite"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Style="{StaticResource CaptionTextBlockStyle}" />
+                <StackPanel Margin="12,0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                    <TextBlock
+                        x:Name="StatusText"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="TableStatus"
+                        AutomationProperties.LiveSetting="Polite"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                    <TextBlock
+                        x:Name="PageText"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="PageText"
+                        AutomationProperties.LiveSetting="Polite"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Visibility="Collapsed" />
+                </StackPanel>
             </CommandBar.Content>
+            <AppBarButton x:Uid="FirstPageButton" x:Name="FirstPageButton" AutomationProperties.AutomationId="FirstPageButton" Icon="Previous" Click="OnFirstPage" Visibility="Collapsed" />
+            <AppBarButton x:Uid="PreviousPageButton" x:Name="PreviousPageButton" AutomationProperties.AutomationId="PreviousPageButton" Click="OnPreviousPage" Visibility="Collapsed">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE76B;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton x:Uid="NextPageButton" x:Name="NextPageButton" AutomationProperties.AutomationId="NextPageButton" Click="OnNextPage" Visibility="Collapsed">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE76C;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton x:Uid="LastPageButton" x:Name="LastPageButton" AutomationProperties.AutomationId="LastPageButton" Icon="Next" Click="OnLastPage" Visibility="Collapsed" />
+            <AppBarSeparator x:Name="PageSeparator" Visibility="Collapsed" />
             <AppBarButton x:Uid="RefreshTableButton" x:Name="RefreshButton" AutomationProperties.AutomationId="RefreshTableButton" Icon="Refresh" Click="OnRefresh" />
             <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopTableButton" Icon="Stop" IsEnabled="False" Click="OnStop" />
         </CommandBar>

@@ -3,6 +3,7 @@ using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Capturing;
 using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.UIA3;
 
@@ -16,7 +17,7 @@ internal sealed class AppSession : IDisposable
     private readonly UIA3Automation _automation = new();
     private readonly Application _application;
 
-    private AppSession(string dataFolder, string theme)
+    private AppSession(string dataFolder, string theme, bool maximize = true)
     {
         DataFolder = dataFolder;
         Theme = theme;
@@ -32,7 +33,10 @@ internal sealed class AppSession : IDisposable
         Window = _application.GetMainWindow(_automation, Wait)
             ?? throw new InvalidOperationException("The main window did not open.");
         // The runner's screen is small; a maximized window fits it whole for the screenshots.
-        Window.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Maximized);
+        if (maximize)
+        {
+            Window.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Maximized);
+        }
     }
 
     public string DataFolder { get; }
@@ -41,16 +45,68 @@ internal sealed class AppSession : IDisposable
 
     public Window Window { get; }
 
-    public static string NewDataFolder(string theme)
+    // rowLimit sets how many rows a page holds, so a small table has later pages.
+    public static string NewDataFolder(string theme, int? rowLimit = null)
     {
         var folder = Directory.CreateTempSubdirectory("tablepro-ui-").FullName;
-        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}" }""");
+        var limit = rowLimit is { } rows ? $$""", "rowLimit": {{rows}}""" : string.Empty;
+        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}"{{limit}} }""");
         return folder;
     }
 
     public static AppSession Launch(string theme) => new(NewDataFolder(theme), theme);
 
-    public static AppSession Relaunch(string dataFolder, string theme) => new(dataFolder, theme);
+    public static AppSession Relaunch(string dataFolder, string theme, bool maximize = true) =>
+        new(dataFolder, theme, maximize);
+
+    // The core's connections.json under the data folder.
+    public static string LibraryFile(string folder) =>
+        Directory.EnumerateFiles(folder, "connections.json", SearchOption.AllDirectories).First();
+
+    // A drag the app sees as a person's: press, move in steps past the drag threshold, then release over the target.
+    public void Drag(AutomationElement from, AutomationElement to)
+    {
+        Front();
+        var start = from.GetClickablePoint();
+        var end = to.GetClickablePoint();
+        Mouse.MoveTo(start);
+        Mouse.Down(MouseButton.Left);
+        Thread.Sleep(200);
+        for (var step = 1; step <= 20; step++)
+        {
+            Mouse.MoveTo(new System.Drawing.Point(
+                start.X + ((end.X - start.X) * step / 20),
+                start.Y + ((end.Y - start.Y) * step / 20)));
+            Thread.Sleep(40);
+        }
+
+        Thread.Sleep(300);
+        Mouse.Up(MouseButton.Left);
+        Thread.Sleep(300);
+    }
+
+    // The open ContentDialog's primary button, which its template names PrimaryButton.
+    public void PressDialogButton()
+    {
+        var button = Retry.WhileNull(
+                () => Window.FindFirstDescendant(condition => condition.ByAutomationId("PrimaryButton")),
+                Wait,
+                throwOnTimeout: false).Result
+            ?? throw Failure("No dialog opened.", screen: true);
+        button.AsButton().Invoke();
+    }
+
+    // A menu flyout's item, which UI Automation lists under the window that opened it.
+    public AutomationElement FindMenuItem(string name) =>
+        Retry.WhileNull(
+                () => Window.FindFirstDescendant(condition =>
+                    condition.ByControlType(ControlType.MenuItem).And(condition.ByName(name))),
+                Wait,
+                throwOnTimeout: false).Result
+            ?? throw Failure($"No menu item {name} appeared.", screen: true);
+
+    public static string EditorText(AutomationElement editor) =>
+        editor.Patterns.Text.Pattern.DocumentRange.GetText(-1);
 
     public static string SampleDatabase(string folder)
     {

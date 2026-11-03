@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Controls;
+using TablePro.App.Services;
 using TablePro.Interop;
 
 namespace TablePro.App.ConnectionForm;
@@ -11,7 +12,8 @@ public sealed partial class EngineChoice(DatabaseEngine engine, string detail)
 
     public string Detail { get; } = detail;
 
-    public Symbol Icon => Engine.DefaultPort is null ? Symbol.Document : Symbol.Library;
+    // A recycled container binds again and gets an icon of its own.
+    public IconElement Icon => EngineIcons.Glyph(Engine.Id);
 
     public string AccessibleName => $"{Name}, {Detail}";
 }
