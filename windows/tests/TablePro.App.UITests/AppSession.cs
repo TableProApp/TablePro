@@ -177,12 +177,36 @@ internal sealed class AppSession : IDisposable
 
     // A menu flyout's item, which UI Automation lists under the window that opened it.
     public AutomationElement FindMenuItem(string name) =>
-        Retry.WhileNull(
-                () => Window.FindFirstDescendant(condition =>
-                    condition.ByControlType(ControlType.MenuItem).And(condition.ByName(name))),
-                Wait,
-                throwOnTimeout: false).Result
+        Retry.WhileNull(() => TryFindMenuItem(name), Wait, throwOnTimeout: false).Result
             ?? throw Failure($"No menu item {name} appeared.", screen: true);
+
+    // A click on a submenu item did not always open it on the runner, so it opens through ExpandCollapse.
+    public AutomationElement OpenSubmenu(string name, string child)
+    {
+        var item = FindMenuItem(name);
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            if (item.Patterns.ExpandCollapse.PatternOrDefault is { } submenu)
+            {
+                submenu.Expand();
+            }
+            else
+            {
+                Click(item);
+            }
+
+            var found = Retry.WhileNull(() => TryFindMenuItem(child), TimeSpan.FromSeconds(5), throwOnTimeout: false).Result;
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        throw Failure($"No menu item {child} appeared.", screen: true);
+    }
+
+    private AutomationElement? TryFindMenuItem(string name) =>
+        Window.FindFirstDescendant(condition => condition.ByControlType(ControlType.MenuItem).And(condition.ByName(name)));
 
     public static string EditorText(AutomationElement editor) =>
         editor.Patterns.Text.Pattern.DocumentRange.GetText(-1);
