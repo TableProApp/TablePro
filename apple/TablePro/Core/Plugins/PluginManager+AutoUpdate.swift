@@ -118,8 +118,13 @@ extension PluginManager {
             guard isRegistryUpdateTarget(update.target) else { continue }
             do {
                 try await applyRegistryUpdate(update)
+            } catch is CancellationError {
+                guard !Task.isCancelled else { return .finished }
+                // Cancelled from a surface: skipped until the next launch, not retried in this one.
+                cancelledRegistryUpdateIds.insert(update.target.pluginId)
+                Self.logger.info("Updating '\(update.target.pluginId, privacy: .public)' was cancelled")
             } catch {
-                Self.logger.error("Updating '\(update.target.pluginId)' failed: \(error.localizedDescription)")
+                Self.logger.error("Updating '\(update.target.pluginId, privacy: .public)' failed: \(error.publicLogShape, privacy: .public)")
                 result = .retry
             }
         }
@@ -161,6 +166,7 @@ extension PluginManager {
 
     // The pass suspends on the network, and the user may uninstall or remove a plugin meanwhile.
     func isRegistryUpdateTarget(_ target: RegistryUpdateTarget) -> Bool {
+        guard !cancelledRegistryUpdateIds.contains(target.pluginId) else { return false }
         if let rejectedURL = target.rejectedURL {
             return rejectedPlugins.contains { $0.url == rejectedURL }
         }
@@ -187,7 +193,8 @@ extension PluginManager {
     }
 
     private func applyRegistryUpdate(_ update: PendingRegistryUpdate) async throws {
-        switch try await updateFromRegistry(update.plugin, release: update.release, progress: { _ in }) {
+        let trigger: PluginInstallTracker.Trigger = update.target.rejectedURL == nil ? .update : .repair
+        switch try await updateFromRegistry(update.plugin, release: update.release, trigger: trigger) {
         case .installed:
             Self.logger.info("Updated '\(update.target.pluginId)' to build \(update.release.build)")
         case .staged:
@@ -341,7 +348,7 @@ extension PluginManager {
         }
         Self.logger.info("Plugin '\(typeId)' not installed, installing on demand before connect")
         do {
-            try await installMissingPlugin(for: type, registryClient: registryClient) { _ in }
+            try await installMissingPlugin(for: type, registryClient: registryClient, trigger: .repair) { _ in }
         } catch is CancellationError {
             throw CancellationError()
         } catch {

@@ -124,24 +124,25 @@ struct CloudSQLProxyTransportSections: View {
                     chooseBinary()
                 }
                 .controlSize(.small)
-                if viewModel.isDownloading {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Button("Download cloud-sql-proxy…") {
+                if !viewModel.isDownloading {
+                    Button("Download cloud-sql-proxy") {
                         viewModel.downloadBinary()
                     }
                     .controlSize(.small)
                 }
             }
 
-            if let error = viewModel.downloadError {
-                NoticeLabel(error)
-                    .font(.caption)
+            switch viewModel.downloadPhase {
+            case .downloading(let fraction):
+                downloadProgress(fraction)
+            case .failed(let message):
+                NoticeLabel(message)
                     .textSelection(.enabled)
+            case .idle:
+                EmptyView()
             }
 
-            if coordinator.cloudSQLProxy.state.binaryPath.isEmpty {
+            if coordinator.cloudSQLProxy.state.binaryPath.isEmpty, !viewModel.isDownloading {
                 if let resolved = viewModel.resolvedBinaryPath {
                     LabeledContent(String(localized: "Detected"), value: resolved)
                         .foregroundStyle(.secondary)
@@ -152,6 +153,24 @@ struct CloudSQLProxyTransportSections: View {
             }
         } header: {
             Text(verbatim: "cloud-sql-proxy")
+        }
+    }
+
+    private func downloadProgress(_ fraction: Double?) -> some View {
+        HStack(spacing: 8) {
+            ProgressView(value: fraction) {
+                Text("Downloading cloud-sql-proxy")
+            } currentValueLabel: {
+                if let fraction {
+                    Text(fraction, format: .percent.precision(.fractionLength(0)))
+                }
+            }
+            .controlSize(.small)
+
+            Button("Cancel") {
+                viewModel.cancelDownload()
+            }
+            .controlSize(.small)
         }
     }
 

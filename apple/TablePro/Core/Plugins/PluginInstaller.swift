@@ -26,7 +26,11 @@ actor PluginInstaller: RegistryPluginInstalling {
 
     static let logger = Logger(subsystem: "com.TablePro", category: "PluginInstaller")
 
-    private init() {}
+    private let session: @Sendable () async -> URLSession
+
+    init(session: @escaping @Sendable () async -> URLSession = { await MainActor.run { RegistryClient.shared.session } }) {
+        self.session = session
+    }
 
     func install(
         _ registryPlugin: RegistryPlugin,
@@ -83,44 +87,49 @@ actor PluginInstaller: RegistryPluginInstalling {
         into userPluginsDir: URL,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> ExtractedBundle {
-        let stagingRoot = Self.stagingRoot(for: userPluginsDir)
-        try FileManager.default.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
-        let workingDir = stagingRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: workingDir, withIntermediateDirectories: true)
-
-        let session = await MainActor.run { RegistryClient.shared.session }
-
         // The manifest is network input: the signature check is the real gate, but nothing travels over cleartext.
         guard let downloadURL = URL(string: release.url),
               downloadURL.scheme?.lowercased() == "https" else {
             throw PluginError.downloadFailed("Invalid download URL")
         }
 
-        let (tempDownloadURL, response) = try await Self.download(downloadURL, with: session, progress: progress)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw PluginError.downloadFailed("HTTP \(code)")
+        let stagingRoot = Self.stagingRoot(for: userPluginsDir)
+        try FileManager.default.createDirectory(at: stagingRoot, withIntermediateDirectories: true)
+        let workingDir = stagingRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: workingDir, withIntermediateDirectories: true)
+
+        do {
+            let urlSession = await self.session()
+            let (tempDownloadURL, response) = try await Self.download(downloadURL, with: urlSession, progress: progress)
+            let zipURL = workingDir.appendingPathComponent("\(registryPlugin.id).zip")
+            try FileManager.default.moveItem(at: tempDownloadURL, to: zipURL)
+            try Task.checkCancellation()
+
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                throw PluginError.downloadFailed("HTTP \(code)")
+            }
+            guard DownloadedBinary.sha256Hex(ofFileAt: zipURL.path) == release.sha256.lowercased() else {
+                throw PluginError.checksumMismatch
+            }
+
+            try Self.extractZip(at: zipURL, into: workingDir)
+
+            let bundleURL = try Self.findBundle(in: workingDir)
+            guard let stagedBundle = Bundle(url: bundleURL) else {
+                throw PluginError.invalidBundle("Cannot create bundle from \(bundleURL.lastPathComponent)")
+            }
+
+            try PluginCodeSignatureVerifier.verify(bundle: stagedBundle)
+            try Self.validateBundle(stagedBundle, against: release, pluginId: registryPlugin.id)
+            Self.stripQuarantine(at: bundleURL)
+            try Task.checkCancellation()
+
+            return ExtractedBundle(workingDir: workingDir, bundleURL: bundleURL)
+        } catch {
+            try? FileManager.default.removeItem(at: workingDir)
+            throw error
         }
-
-        guard DownloadedBinary.sha256Hex(ofFileAt: tempDownloadURL.path) == release.sha256.lowercased() else {
-            throw PluginError.checksumMismatch
-        }
-
-        let zipURL = workingDir.appendingPathComponent("\(registryPlugin.id).zip")
-        try FileManager.default.moveItem(at: tempDownloadURL, to: zipURL)
-
-        try Self.extractZip(at: zipURL, into: workingDir)
-
-        let bundleURL = try Self.findBundle(in: workingDir)
-        guard let stagedBundle = Bundle(url: bundleURL) else {
-            throw PluginError.invalidBundle("Cannot create bundle from \(bundleURL.lastPathComponent)")
-        }
-
-        try PluginCodeSignatureVerifier.verify(bundle: stagedBundle)
-        try Self.validateBundle(stagedBundle, against: release, pluginId: registryPlugin.id)
-        Self.stripQuarantine(at: bundleURL)
-
-        return ExtractedBundle(workingDir: workingDir, bundleURL: bundleURL)
     }
 
     // MARK: - Helpers (nonisolated)
@@ -130,22 +139,7 @@ actor PluginInstaller: RegistryPluginInstalling {
         with session: URLSession,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> (URL, URLResponse) {
-        let observer = DownloadProgressObserver()
-        let forwarding = Task {
-            for await fraction in observer.fractions {
-                await progress(fraction)
-            }
-        }
-        do {
-            let result = try await session.download(from: url, delegate: observer)
-            observer.finish(isComplete: true)
-            await forwarding.value
-            return result
-        } catch {
-            observer.finish(isComplete: false)
-            forwarding.cancel()
-            throw error
-        }
+        try await ProgressReportingDownload.download(url, with: session, progress: progress)
     }
 
     nonisolated static func stagingRoot(for userPluginsDir: URL) -> URL {
@@ -258,38 +252,5 @@ actor PluginInstaller: RegistryPluginInstalling {
         }
 
         return (resultURL as URL?) ?? destURL
-    }
-}
-
-// The async download sends a task delegate no byte callbacks, but the task's own progress moves.
-private final class DownloadProgressObserver: NSObject, URLSessionTaskDelegate, Sendable {
-    let fractions: AsyncStream<Double>
-    private let continuation: AsyncStream<Double>.Continuation
-    private let observation = OSAllocatedUnfairLock<NSKeyValueObservation?>(uncheckedState: nil)
-
-    override init() {
-        (fractions, continuation) = AsyncStream.makeStream(of: Double.self)
-        super.init()
-    }
-
-    func urlSession(_ session: URLSession, didCreateTask task: URLSessionTask) {
-        let continuation = continuation
-        let observation = task.progress.observe(\.fractionCompleted) { progress, _ in
-            // Without a Content-Length the fraction creeps on a guess; the UI stays indeterminate.
-            guard task.countOfBytesExpectedToReceive > 0 else { return }
-            continuation.yield(progress.fractionCompleted)
-        }
-        self.observation.withLockUnchecked { $0 = observation }
-    }
-
-    func finish(isComplete: Bool) {
-        observation.withLockUnchecked { observation in
-            observation?.invalidate()
-            observation = nil
-        }
-        if isComplete {
-            continuation.yield(1)
-        }
-        continuation.finish()
     }
 }

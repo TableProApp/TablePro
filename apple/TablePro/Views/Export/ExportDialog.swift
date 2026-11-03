@@ -64,6 +64,9 @@ struct ExportDialog: View {
     // MARK: - Export Service
 
     @State private var exportService: ExportService?
+    // Stands in for the sheet until the lease hands over a driver and the real service exists.
+    @StateObject private var waitingService = ExportService()
+    @State private var run = ExportRun()
 
     // MARK: - Mode Helpers
 
@@ -177,12 +180,8 @@ struct ExportDialog: View {
             await loadDatabaseItems(of: connection)
         }
         .sheet(isPresented: $showProgressDialog) {
-            if let exportService {
-                ExportProgressSheet(service: exportService, fileName: config.fileName) {
-                    exportService.cancelExport()
-                }
-                .interactiveDismissDisabled()
-                .onExitCommand { }
+            ExportProgressSheet(service: exportService ?? waitingService, fileName: config.fileName) {
+                run.stop()
             }
         }
         .onChange(of: showSuccessDialog) { isShowing in
@@ -315,7 +314,7 @@ struct ExportDialog: View {
                 VStack {
                     Spacer()
                     ProgressView()
-                        .scaleEffect(0.8)
+                        .controlSize(.small)
                     Text("Loading databases…")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -578,20 +577,13 @@ struct ExportDialog: View {
 
     private var footerView: some View {
         DialogFooter {
-            if isExporting, let exportService {
-                ProgressView()
-                    .scaleEffect(0.7)
-
-                ExportCurrentTableLabel(service: exportService)
-            }
-        } actions: {
             Button("Cancel") {
                 isPresented = false
             }
             .disabled(isExporting)
 
             Button("Export…") {
-                Task {
+                run.task = Task {
                     await performExport()
                 }
             }
@@ -704,8 +696,6 @@ struct ExportDialog: View {
         reportExportFinished(.succeeded(OperationSummary(fileURL: exportedFileURL)))
     }
 
-    /// Both export entry points converge here, so the completion is reported once whichever route
-    /// ran. Cancellation is caught separately by each and deliberately reports nothing.
     private func reportExportFinished(_ outcome: OperationOutcome) {
         guard let startedAt = exportStartedAt else { return }
         exportStartedAt = nil
@@ -960,10 +950,8 @@ struct ExportDialog: View {
         }
         let route = DatabaseManager.shared.executionRoute(for: scope)
 
-        isExporting = true
-        exportStartedAt = .now
-        exportedFileURL = url
-        showProgressDialog = true
+        beginExport(to: url)
+        defer { endRunningWork() }
 
         do {
             try await DatabaseManager.shared.withScopedDriver(
@@ -974,33 +962,73 @@ struct ExportDialog: View {
             ) { driver in
                 try await runTableExport(on: driver, databaseType: connection.type, to: url)
             }
-
-            showProgressDialog = false
-            isExporting = false
-            recordSuccessfulExport()
-
-            if hideSuccessDialog, exportService?.state.warnings.isEmpty ?? true {
-                isPresented = false
-            } else {
-                showSuccessDialog = true
-            }
-        } catch is PluginExportCancellationError {
-            showProgressDialog = false
-            isExporting = false
+            finishSuccessfulExport()
         } catch {
-            showProgressDialog = false
-            isExporting = false
-            showExportError(error)
+            finishExport(throwing: error)
         }
     }
 
-    /// The whole export runs inside the scoped lease, so every statement it issues lands on
-    /// the database the dialog was opened for rather than wherever the shared driver was
-    /// last parked by another tab.
+    private func beginExport(to url: URL) {
+        isExporting = true
+        exportStartedAt = .now
+        exportedFileURL = url
+        exportService = nil
+        run.reset()
+        let source = connection?.name ?? dataSourceRequest?.title ?? ""
+        let stopper = run
+        run.workId = RunningWorkRegistry.shared.begin(
+            .dataExport,
+            subject: url.lastPathComponent,
+            connectionName: source,
+            connectionIds: Set([connection?.id].compactMap { $0 })
+        ) { stopper.stop() }
+        showProgressDialog = true
+    }
+
+    private func endRunningWork() {
+        RunningWorkRegistry.shared.end(run.workId)
+        run.workId = nil
+    }
+
+    private func adopt(_ service: ExportService) {
+        exportService = service
+        run.service = service
+        if run.isStopRequested {
+            service.cancelExport()
+        }
+    }
+
+    private func finishSuccessfulExport() {
+        showProgressDialog = false
+        isExporting = false
+        recordSuccessfulExport()
+
+        if hideSuccessDialog, exportService?.state.warnings.isEmpty ?? true {
+            isPresented = false
+        } else {
+            showSuccessDialog = true
+        }
+    }
+
+    // A driver can report a stop as an error of its own, so a requested stop decides first.
+    private func finishExport(throwing error: any Error) {
+        showProgressDialog = false
+        isExporting = false
+        let wasStopped = run.isStopRequested
+            || error is PluginExportCancellationError
+            || error is CancellationError
+        guard !wasStopped else {
+            reportExportFinished(.cancelled)
+            return
+        }
+        showExportError(error)
+    }
+
+    // Inside the lease, so every statement lands on the dialog's database, not where another tab parked the driver.
     @MainActor
     private func runTableExport(on driver: DatabaseDriver, databaseType: DatabaseType, to url: URL) async throws {
         let service = ExportService(driver: driver, databaseType: databaseType)
-        exportService = service
+        adopt(service)
         try await service.export(objects: exportableObjects, config: config, to: url)
     }
 
@@ -1012,16 +1040,15 @@ struct ExportDialog: View {
         to url: URL
     ) async throws {
         let service = ExportService(driver: driver, databaseType: databaseType)
-        exportService = service
+        adopt(service)
         try await service.exportStreamingQuery(query: query, config: config, to: url)
     }
 
     @MainActor
     private func startQueryResultsExport(to url: URL) async {
-        isExporting = true
-        exportStartedAt = .now
-        exportedFileURL = url
-        showProgressDialog = true
+        if case .tables = mode { return }
+        beginExport(to: url)
+        defer { endRunningWork() }
 
         do {
             switch mode {
@@ -1041,38 +1068,21 @@ struct ExportDialog: View {
                     queryResultsDriver: DatabaseManager.shared.driver(for: connection.id),
                     databaseType: connection.type
                 )
-                exportService = service
+                adopt(service)
                 try await service.exportQueryResults(
                     tableRows: tableRows, fillUnloaded: fillUnloaded, config: config, to: url
                 )
             case .dataSource:
                 guard let scope = selectedDataSourceScope else { throw ExportError.noTablesSelected }
                 let service = ExportService()
-                exportService = service
+                adopt(service)
                 try await service.export(dataSource: scope.makeDataSource(), config: config, to: url)
             case .tables:
-                showProgressDialog = false
-                isExporting = false
-                exportStartedAt = nil
-                return
+                throw ExportError.noTablesSelected
             }
-
-            showProgressDialog = false
-            isExporting = false
-            recordSuccessfulExport()
-
-            if hideSuccessDialog, exportService?.state.warnings.isEmpty ?? true {
-                isPresented = false
-            } else {
-                showSuccessDialog = true
-            }
-        } catch is PluginExportCancellationError {
-            showProgressDialog = false
-            isExporting = false
+            finishSuccessfulExport()
         } catch {
-            showProgressDialog = false
-            isExporting = false
-            showExportError(error)
+            finishExport(throwing: error)
         }
     }
 
@@ -1098,42 +1108,27 @@ struct ExportDialog: View {
     )
 }
 
-/// Observes the service so the progress sheet advances. The dialog holds the service in an
-/// optional, which no property wrapper can observe, so the subscription lives here instead.
-private struct ExportProgressSheet: View {
-    @ObservedObject var service: ExportService
-    let fileName: String
-    let onStop: () -> Void
+// One export at a time. Reference-typed so the running-work entry and the sheet stop the same run.
+@MainActor
+private final class ExportRun {
+    var service: ExportService?
+    var task: Task<Void, Never>?
+    var workId: UUID?
+    private(set) var isStopRequested = false
 
-    var body: some View {
-        ExportProgressView(
-            subject: subject,
-            tableIndex: service.state.currentTableIndex,
-            totalTables: service.state.totalTables,
-            processedRows: service.state.processedRows,
-            totalRows: service.state.totalRows,
-            statusMessage: service.state.statusMessage,
-            readsRows: service.state.readsRows,
-            onStop: onStop
-        )
+    func reset() {
+        service = nil
+        isStopRequested = false
     }
 
-    /// A streaming query has no current table, so it is named by the file it is being written
-    /// to instead of by an empty string.
-    private var subject: String {
-        guard service.state.currentTable.isEmpty else { return service.state.currentTable }
-        return fileName.isEmpty ? String(localized: "Query results") : fileName
-    }
-}
-
-private struct ExportCurrentTableLabel: View {
-    @ObservedObject var service: ExportService
-
-    var body: some View {
-        Text(service.state.currentTable)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.middle)
+    // Before a service exists the task is cancelled to end the lease wait. After, only the service
+    // stops: a cancelled consumer can end a row stream normally and let a format save a cut file.
+    func stop() {
+        isStopRequested = true
+        guard let service else {
+            task?.cancel()
+            return
+        }
+        service.cancelExport()
     }
 }

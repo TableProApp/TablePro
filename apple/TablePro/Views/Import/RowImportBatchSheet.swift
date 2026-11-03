@@ -116,7 +116,6 @@ struct RowImportBatchSheet: View {
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
                 ImportProgressView(service: service) { service.cancelImport() }
-                    .interactiveDismissDisabled()
             }
         }
     }

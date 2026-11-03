@@ -95,9 +95,29 @@ internal enum WorkspaceCloseAction {
             Self.logger.info("close cancelled at the transaction prompt container=\(workspace.container, privacy: .private(mask: .hash))")
             return
         }
-        /// Taken after the transaction prompt: the tabs stay editable while it is answered.
+        // Taken after the transaction prompt: the tabs stay editable while it is answered.
         let victims = coordinators.flatMap { tabs(in: workspace.container, of: $0) }
-        guard let closable = await confirm(victims, across: coordinators, revealing: workspace) else {
+        // Closing a tab stops its query, so a yes needs no cancel of its own.
+        let running = RunningWorkRegistry.shared.items(in: .tabs(Set(victims.map(\.id))))
+        let holdsUnsavedWork = coordinators.contains { coordinator in
+            coordinator.commandActions?.hasUnsavedWork(among: victims.filter { victim in
+                coordinator.tabManager.tabs.contains { $0.id == victim.id }
+            }) == true
+        }
+        if !holdsUnsavedWork, let prompt = RunningWorkPrompt.make(action: .close, work: running) {
+            // Shown, then asked: the first host can be minimized or a background tab.
+            let owner = coordinators.first { coordinator in
+                running.contains { work in work.tabId.map { id in coordinator.tabManager.tabs.contains { $0.id == id } } ?? false }
+            } ?? coordinator
+            if let owner { reveal(workspace, in: owner) }
+            guard await RunningWorkApproval.confirm(prompt, window: owner?.contentWindow) else {
+                WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
+                return
+            }
+        }
+        guard let closable = await confirm(
+            victims, across: coordinators, revealing: workspace, alsoStopping: holdsUnsavedWork ? running : []
+        ) else {
             WindowManager.shared.show(wasShowing, inWindowHosting: workspace.connectionId)
             Self.logger.info("close cancelled at the save prompt container=\(workspace.container, privacy: .private(mask: .hash))")
             return
@@ -194,8 +214,10 @@ internal enum WorkspaceCloseAction {
     private static func confirm(
         _ victims: [QueryTab],
         across coordinators: [MainContentCoordinator],
-        revealing workspace: WorkspaceID
+        revealing workspace: WorkspaceID,
+        alsoStopping running: [RunningWork]
     ) async -> Set<UUID>? {
+        var running = running
         let everything = Set(victims.map(\.id))
         guard !victims.isEmpty else { return everything }
 
@@ -226,7 +248,10 @@ internal enum WorkspaceCloseAction {
             }
             revealed.append(RevealedWindow(coordinator: coordinator))
             reveal(workspace, in: coordinator)
-            switch await actions.resolveUnsavedWork(in: owned) {
+            // The first save question names the running work; the next ones need not repeat it.
+            let named = running
+            running = []
+            switch await actions.resolveUnsavedWork(in: owned, alsoStopping: named) {
             case .cancel:
                 restoreRevealed()
                 return nil

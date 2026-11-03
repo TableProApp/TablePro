@@ -7,6 +7,8 @@ import Foundation
 
 enum CloudSQLProxyError: Error, LocalizedError, Equatable {
     case binaryNotFound
+    case downloadFailed(statusCode: Int)
+    case checksumMismatch
     case noAvailablePort
     case invalidInstanceConnectionName
     case credentialsWriteFailed
@@ -18,6 +20,13 @@ enum CloudSQLProxyError: Error, LocalizedError, Equatable {
         switch self {
         case .binaryNotFound:
             return String(localized: "cloud-sql-proxy was not found. Install it with “brew install cloud-sql-proxy”, or download it in the Cloud SQL Auth Proxy settings.")
+        case .downloadFailed(let statusCode):
+            return String(
+                format: String(localized: "Couldn't download cloud-sql-proxy. The server answered with HTTP status %lld."),
+                statusCode
+            )
+        case .checksumMismatch:
+            return String(localized: "The downloaded cloud-sql-proxy didn't match its expected checksum, so it wasn't installed.")
         case .noAvailablePort:
             return String(localized: "No available local port for the Cloud SQL Auth Proxy.")
         case .invalidInstanceConnectionName:

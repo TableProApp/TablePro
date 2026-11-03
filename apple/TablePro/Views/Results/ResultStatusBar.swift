@@ -174,7 +174,7 @@ struct ResultStatusBar: View {
                     readoutMessage
                 }
                 executionReport
-                if model.controls.showsReadout, isRefreshingSchema {
+                if model.controls.showsReadout, isRefreshingSchema, !executionOwnsSpinner {
                     DelayedProgressIndicator(isActive: true)
                         .accessibilityLabel(String(localized: "Refreshing"))
                 }
@@ -192,7 +192,7 @@ struct ResultStatusBar: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else {
-            ResultStatusReadoutView(readout: model.readout)
+            ResultStatusReadoutView(readout: model.readout, showsLoadingIndicator: !executionOwnsSpinner)
         }
 
         if model.controls.showsCountInProgress {
@@ -260,6 +260,11 @@ struct ResultStatusBar: View {
                 onCancel: execution.onCancel
             )
         }
+    }
+
+    // The execution indicator spins from the moment it is revealed, so nothing else on the bar does then.
+    private var executionOwnsSpinner: Bool {
+        model.controls.showsExecution && execution.isExecuting
     }
 
     private var selectionSummaryScopeNote: String? {

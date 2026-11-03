@@ -247,7 +247,6 @@ struct RowImportSheet: View {
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
                 ImportProgressView(service: service) { service.cancelImport() }
-                    .interactiveDismissDisabled()
             }
         }
         .onChange(of: showSuccessDialog) { isShowing in

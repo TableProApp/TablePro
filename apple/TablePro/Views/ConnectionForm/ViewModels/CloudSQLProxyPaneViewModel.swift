@@ -5,21 +5,36 @@
 
 import Combine
 import Foundation
-import os
 
 @MainActor
 final class CloudSQLProxyPaneViewModel: ObservableObject {
-    nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyPane")
-
     @Published var state = CloudSQLProxyFormState()
 
     @Published var coordinator: WeakCoordinatorRef?
 
     @Published var resolvedBinaryPath: String?
     @Published var didResolveBinary: Bool = false
-    @Published var downloadedVersion: String?
-    @Published var isDownloading: Bool = false
-    @Published var downloadError: String?
+
+    let download: CloudSQLProxyDownload
+    private var downloadObservation: AnyCancellable?
+    private var wasDownloading = false
+
+    init(download: CloudSQLProxyDownload = .shared) {
+        self.download = download
+        // A connect or a Test Connection can download the binary too, so this follows the shared state.
+        downloadObservation = download.$phase.sink { [weak self] phase in
+            guard let self else { return }
+            objectWillChange.send()
+            if phase == .idle, wasDownloading {
+                resolveBinary()
+            }
+            wasDownloading = phase.isDownloading
+        }
+    }
+
+    var downloadPhase: CloudSQLProxyDownload.Phase { download.phase }
+
+    var isDownloading: Bool { download.phase.isDownloading }
 
     var validationIssues: [String] {
         guard state.enabled else { return [] }
@@ -66,36 +81,25 @@ final class CloudSQLProxyPaneViewModel: ObservableObject {
     }
 
     func resolveBinary() {
+        let binaryManager = download.binaryManager
         Task {
             let found = await Task.detached { CLIExecutableFinder.findExecutable("cloud-sql-proxy") }.value
             if let found {
                 resolvedBinaryPath = found
             } else {
-                resolvedBinaryPath = await CloudSQLProxyBinaryManager.shared.isInstalled
-                    ? CloudSQLProxyBinaryManager.shared.binaryExecutablePath
+                resolvedBinaryPath = await binaryManager.installedBinaryIsCurrent()
+                    ? binaryManager.binaryExecutablePath
                     : nil
             }
-            downloadedVersion = await CloudSQLProxyBinaryManager.shared.installedVersion()
             didResolveBinary = true
         }
     }
 
     func downloadBinary() {
-        guard !isDownloading else { return }
-        isDownloading = true
-        downloadError = nil
-        Task {
-            defer { isDownloading = false }
-            do {
-                let path = try await CloudSQLProxyBinaryManager.shared.ensureBinary()
-                resolvedBinaryPath = path
-                downloadedVersion = await CloudSQLProxyBinaryManager.shared.installedVersion()
-                didResolveBinary = true
-                Self.logger.info("cloud-sql-proxy ready at \(path, privacy: .private(mask: .hash))")
-            } catch {
-                downloadError = error.localizedDescription
-                Self.logger.error("cloud-sql-proxy download failed: \(error.publicLogShape, privacy: .public)")
-            }
-        }
+        download.start()
+    }
+
+    func cancelDownload() {
+        download.cancel()
     }
 }

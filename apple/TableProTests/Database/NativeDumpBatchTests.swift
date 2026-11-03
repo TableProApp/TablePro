@@ -70,6 +70,11 @@ private final class FakeDumpService: NativeDumpRunning {
 }
 
 @MainActor
+private final class SeenWork {
+    var work: [RunningWork] = []
+}
+
+@MainActor
 struct NativeDumpBatchTests {
     private let root = URL(fileURLWithPath: NSTemporaryDirectory())
         .appendingPathComponent("tp-batch-tests")
@@ -99,6 +104,33 @@ struct NativeDumpBatchTests {
         let directory = root.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
+    }
+
+    // One entry for the whole run, so stopping it from Quit stops every database, not just the current one.
+    @Test("A backup is one running-work entry, and stopping it there stops the whole batch")
+    func registersOneEntryForTheBatch() async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let registry = RunningWorkRegistry(providers: [])
+        let service = FakeDumpService()
+        let batch = NativeDumpBatch(makeService: { service }, estimateSize: { _, _ in nil }, runningWork: registry)
+        let seen = SeenWork()
+        service.onStart = {
+            seen.work = registry.items(in: .app)
+            registry.cancel(seen.work)
+        }
+
+        await batch.run(
+            connection: connection(),
+            items: items(["sales", "billing"], in: directory),
+            formatId: nil
+        )
+
+        #expect(seen.work.count == 1)
+        #expect(seen.work.first?.kind == .backup)
+        #expect(service.startedDatabases == ["sales"])
+        #expect(batch.state.outcomes.map(\.result) == [.cancelled, .cancelled])
+        #expect(registry.items(in: .app).isEmpty)
     }
 
     @Test("Every database is written, in order, one at a time")

@@ -14,6 +14,7 @@ struct LinkedFoldersSection: View {
     static var title: String { String(localized: "Linked Folders") }
 
     @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var watcher = LinkedFolderWatcher.shared
     @State private var folders: [LinkedFolder] = LinkedFolderStorage.shared.loadFolders()
 
     private var isLicensed: Bool {
@@ -45,7 +46,7 @@ struct LinkedFoldersSection: View {
         } header: {
             Text(Self.title)
         } footer: {
-            Text("Watched folders are scanned for .tablepro files. Connections appear read only in the sidebar.")
+            Text("Watched folders are scanned for .tablepro files without a passphrase. Connections appear read only in the sidebar.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -86,7 +87,12 @@ struct LinkedFoldersSection: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+
+                if folder.isEnabled, let status = watcher.folderStatuses[folder.id] {
+                    statusLines(status)
+                }
             }
+            .accessibilityElement(children: .combine)
 
             Spacer()
 
@@ -101,6 +107,37 @@ struct LinkedFoldersSection: View {
             .help(String(localized: "Remove Folder"))
             .accessibilityLabel(String(localized: "Remove folder"))
         }
+    }
+
+    @ViewBuilder
+    private func statusLines(_ status: LinkedFolderStatus) -> some View {
+        switch status.contents {
+        case .missing:
+            warning(String(localized: "Folder not found"))
+        case .unreadable:
+            warning(String(localized: "Can't read this folder"))
+        case .connections(let count, let unreadableFiles):
+            Text(LinkedFolderStatusCopy.connections(count))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if unreadableFiles > 0 {
+                warning(LinkedFolderStatusCopy.unreadableFiles(unreadableFiles))
+            }
+            if !status.isWatched {
+                warning(String(localized: "Not watching this folder for changes"))
+            }
+        }
+    }
+
+    private func warning(_ message: String) -> some View {
+        Label {
+            Text(message)
+                .foregroundStyle(.secondary)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+        }
+        .font(.caption)
     }
 
     // MARK: - Actions
@@ -130,5 +167,20 @@ struct LinkedFoldersSection: View {
         LinkedFolderStorage.shared.removeFolder(folder)
         folders = LinkedFolderStorage.shared.loadFolders()
         LinkedFolderWatcher.shared.reload()
+    }
+}
+
+// Explicit singular and plural keys: see OperationCompletionCopy for why not inflection.
+enum LinkedFolderStatusCopy {
+    static func connections(_ count: Int) -> String {
+        let template = count == 1 ? String(localized: "%lld connection") : String(localized: "%lld connections")
+        return String(format: template, count)
+    }
+
+    static func unreadableFiles(_ count: Int) -> String {
+        let template = count == 1
+            ? String(localized: "%lld file couldn't be read")
+            : String(localized: "%lld files couldn't be read")
+        return String(format: template, count)
     }
 }

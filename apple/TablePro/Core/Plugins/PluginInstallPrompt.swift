@@ -5,7 +5,7 @@ import os
 internal enum PluginInstallPrompt {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "PluginInstallPrompt")
 
-    internal typealias Install = (_ progress: @escaping @MainActor @Sendable (Double) -> Void) async throws -> Void
+    internal typealias Install = PluginInstallProgressPresenter.Install
 
     internal static func ensureInstalled(_ format: InstallableExportFormat, window: NSWindow?) async -> Bool {
         await confirmAndRun(
@@ -13,8 +13,8 @@ internal enum PluginInstallPrompt {
             title: String(format: String(localized: "Install the %@ plugin?"), format.displayName),
             message: String(localized: "TablePro writes this format with a plugin it downloads from the plugin registry."),
             window: window
-        ) { progress in
-            try await PluginManager.shared.installMissingExportFormat(format, progress: progress)
+        ) { onBegin in
+            try await PluginManager.shared.installMissingExportFormat(format, onBegin: onBegin)
         }
     }
 
@@ -37,20 +37,19 @@ internal enum PluginInstallPrompt {
             ),
             message: String(localized: "TablePro reads this file with a driver it downloads from the plugin registry."),
             window: nil
-        ) { progress in
-            try await PluginManager.shared.installMissingPlugin(for: type, progress: progress)
+        ) { onBegin in
+            try await PluginManager.shared.installMissingPlugin(for: type, onBegin: onBegin)
         }
     }
 
-    internal static func run(pluginName: String, window: NSWindow?, _ install: Install) async -> Bool {
+    internal static func run(pluginName: String, window: NSWindow?, _ install: @escaping Install) async -> Bool {
         do {
-            try await PluginInstallProgressPresenter.run(
-                title: String(format: String(localized: "Downloading the %@ plugin…"), pluginName),
-                window: window,
-                install
-            )
+            try await PluginInstallProgressPresenter.run(pluginName: pluginName, window: window, install)
             logger.info("Installed the \(pluginName, privacy: .public) plugin")
             return true
+        } catch is CancellationError {
+            logger.info("Install of the \(pluginName, privacy: .public) plugin was cancelled")
+            return false
         } catch {
             logger.error("Install failed for \(pluginName, privacy: .public): \(error.publicLogShape, privacy: .public)")
             AlertHelper.showErrorSheet(
@@ -67,7 +66,7 @@ internal enum PluginInstallPrompt {
         title: String,
         message: String,
         window: NSWindow?,
-        install: Install
+        install: @escaping Install
     ) async -> Bool {
         let confirmed = await AlertHelper.confirm(
             title: title,
