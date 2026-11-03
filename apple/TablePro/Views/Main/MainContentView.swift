@@ -147,7 +147,8 @@ struct MainContentView: View {
             isPresented: dismiss,
             sourceConnection: connectionWithCurrentDatabase,
             preselectedTables: tables,
-            preselectedSchema: schema
+            preselectedSchema: schema,
+            sheetWork: coordinator.sheetWork
         )
     }
 
