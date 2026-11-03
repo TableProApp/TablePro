@@ -7,6 +7,7 @@ import Foundation
 @testable import TablePro
 import TableProEtcdCore
 import TableProPluginKit
+import TableProSQLGrammar
 import Testing
 
 // MARK: - KV Commands
