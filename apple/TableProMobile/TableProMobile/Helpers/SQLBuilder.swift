@@ -188,12 +188,14 @@ nonisolated enum SQLBuilder {
         if speaksMySQLDialect(type) {
             return "INSERT INTO \(qualifiedTable) () VALUES ()"
         }
-        switch type {
-        case .postgresql, .redshift, .sqlite, .mssql, .duckdb:
-            return "INSERT INTO \(qualifiedTable) DEFAULT VALUES"
-        default:
-            return nil
-        }
+        let takesDefaultValues = type.isSQLiteFamily || [.postgresql, .redshift, .mssql, .duckdb].contains(type)
+        return takesDefaultValues ? "INSERT INTO \(qualifiedTable) DEFAULT VALUES" : nil
+    }
+
+    // SQLite has no TRUNCATE statement; a DELETE with no WHERE is its truncate.
+    static func truncateStatement(table: String, schema: String?, type: DatabaseType) -> String {
+        let quoted = qualifiedIdentifier(table: table, schema: schema, for: type)
+        return type.isSQLiteFamily ? "DELETE FROM \(quoted)" : "TRUNCATE TABLE \(quoted)"
     }
 
     static func supportsAllDefaultsInsert(_ type: DatabaseType) -> Bool {
@@ -354,12 +356,18 @@ nonisolated enum SQLBuilder {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !columns.isEmpty else { return "" }
 
-        let generator = filterGenerator(dialect: dialectDescriptor(for: type), type: type, session: session)
+        let dialect = dialectDescriptor(for: type)
+        let generator = filterGenerator(dialect: dialect, type: type, session: session)
         let pattern = generator.likePatternBody(trimmed)
+        // D1 refuses a LIKE pattern this long, so the text is found as a plain substring, folded as its LIKE folds.
+        let substring = generator.exceedsLikePatternLimit(pattern, wildcards: 2) ? generator.stringLiteral(trimmed) : nil
 
         let conditions = columns.map { col -> String in
             let quotedCol = quoteIdentifier(col.name, for: type)
             let castExpr = searchCastExpression(quotedCol, for: type)
+            if let substring {
+                return SQLSubstringMatch.contains(castExpr, literal: substring, fold: dialect.caseFoldFunction)
+            }
             let likeOp = (type == .postgresql || type == .redshift) ? "ILIKE" : "LIKE"
             return "\(castExpr) \(likeOp) '%\(pattern)%'\(generator.likeEscapeClause)"
         }
@@ -414,8 +422,12 @@ nonisolated enum SQLBuilder {
                 caseSensitivityStyle: .collationDefined
             )
         }
-        // The ClickHouse plugin is compiled into this app, so its own dialect is read rather than mirrored.
+        // The ClickHouse and Cloudflare D1 plugins are compiled into this app, so their own dialects are read rather
+        // than mirrored.
         if type == .clickhouse, let dialect = ClickHousePlugin.sqlDialect {
+            return dialect
+        }
+        if type == .cloudflareD1, let dialect = CloudflareD1Plugin.sqlDialect {
             return dialect
         }
         switch type {

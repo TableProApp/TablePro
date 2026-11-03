@@ -131,6 +131,29 @@ struct ConnectionManagerTests {
         #expect(manager.session(for: connection.id) == nil)
     }
 
+    @Test("A tunnel the factory does not dial stays closed, and the driver gets the saved host")
+    func tunnelTheFactoryDeclinesStaysClosed() async throws {
+        let factory = MockDriverFactory()
+        factory.dialsTunnels = false
+        factory.drivers["mock"] = MockDatabaseDriver()
+        let ssh = MockSSHProvider()
+        let manager = ConnectionManager(driverFactory: factory, secureStore: MockSecureStore(), sshProvider: ssh)
+        let connection = DatabaseConnection(
+            name: "File",
+            type: DatabaseType(rawValue: "mock"),
+            host: "",
+            sshEnabled: true,
+            sshConfiguration: SSHConfiguration(host: "jump.example.com")
+        )
+
+        _ = try await manager.connect(connection)
+        await manager.disconnect(connection.id)
+
+        #expect(ssh.tunnelledConnectionIds.isEmpty)
+        #expect(factory.receivedConnections.first?.host == "")
+        #expect(factory.receivedPreTunnelHosts.first == .some(nil))
+    }
+
     @Test("Connect dials the Mac's route, forwards to its socket and names its SSH profile")
     func connectDialsTheMacRoute() async throws {
         let factory = MockDriverFactory()

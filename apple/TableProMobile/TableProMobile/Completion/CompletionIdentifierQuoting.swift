@@ -58,6 +58,9 @@ nonisolated enum CompletionIdentifierQuoting {
     private static func isBare(_ scalar: Unicode.Scalar, leading: Bool, for type: DatabaseType) -> Bool {
         let letter = isASCIILetter(scalar)
         let digit = isDigit(scalar)
+        if type.isSQLiteFamily {
+            return letter || scalar == "_" || !scalar.isASCII || (!leading && (digit || scalar == "$"))
+        }
         switch type {
         case .postgresql, .redshift:
             let unicodeLetter = letter || (!scalar.isASCII && CharacterSet.letters.contains(scalar))
@@ -65,8 +68,6 @@ nonisolated enum CompletionIdentifierQuoting {
         case .mssql:
             let unicodeLetter = letter || (!scalar.isASCII && CharacterSet.letters.contains(scalar))
             return unicodeLetter || scalar == "_" || (!leading && (digit || scalar == "@" || scalar == "#" || scalar == "$"))
-        case .sqlite:
-            return letter || scalar == "_" || !scalar.isASCII || (!leading && (digit || scalar == "$"))
         case .oracle:
             return letter || (!leading && (digit || scalar == "_" || scalar == "$" || scalar == "#"))
         default:

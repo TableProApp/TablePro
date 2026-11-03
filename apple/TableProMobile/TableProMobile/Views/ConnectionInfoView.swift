@@ -44,6 +44,8 @@ struct ConnectionInfoView: View {
                 }
             case .file(let file):
                 fileSection(file)
+            case .account(let account):
+                accountSection(account)
             }
 
             statsSection
@@ -85,6 +87,26 @@ struct ConnectionInfoView: View {
             }
             if coordinator.supportsSchemas, !coordinator.activeSchema.isEmpty {
                 LabeledContent("Schema", value: coordinator.activeSchema)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func accountSection(_ account: ConnectionAccountDetail) -> some View {
+        Section("Account") {
+            if let accountId = account.accountId {
+                LabeledContent("Account ID") {
+                    Text(verbatim: accountId)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+            }
+            if !activeDatabaseLabel.isEmpty {
+                LabeledContent("Database") {
+                    Text(verbatim: activeDatabaseLabel)
+                        .textSelection(.enabled)
+                }
             }
         }
     }

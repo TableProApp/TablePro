@@ -54,6 +54,11 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         var replicationGroupId: String
     }
 
+    // The one field the Mac's Cloudflare D1 plugin declares; the API token is the connection's password.
+    nonisolated struct CloudflareD1Options: Equatable, Sendable {
+        var accountId: String
+    }
+
     var name: String
     var type: DatabaseType
     var host: String
@@ -69,6 +74,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
     var oracle: OracleOptions?
     var mongo: MongoOptions?
     var iam: IAMOptions?
+    var cloudflareD1: CloudflareD1Options?
 
     static func tagIds(selecting tagId: UUID?, over existing: [UUID]) -> [UUID] {
         let others = existing.dropFirst().filter { $0 != tagId }
@@ -100,6 +106,7 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.oracle) { applyOracleOptions(to: &connection, changedSince: opening?.oracle) }
         if changed(\.mongo) { applyMongoOptions(to: &connection, changedSince: opening?.mongo) }
         if changed(\.iam) { applyIAMOptions(to: &connection, changedSince: opening?.iam) }
+        if changed(\.cloudflareD1) { applyCloudflareD1Options(to: &connection, changedSince: opening?.cloudflareD1) }
         return connection
     }
 
@@ -262,5 +269,15 @@ nonisolated struct ConnectionFormEdits: Equatable, Sendable {
         if changed(\.profileName) { write(iam.profileName, to: Field.profileName) }
         if changed(\.rdsEndpoint) { write(iam.rdsEndpoint, to: Field.rdsEndpoint) }
         if changed(\.replicationGroupId) { write(iam.replicationGroupId, to: Field.replicationGroupId) }
+    }
+
+    private func applyCloudflareD1Options(
+        to connection: inout DatabaseConnection,
+        changedSince opening: CloudflareD1Options?
+    ) {
+        guard let cloudflareD1 else { return }
+        if Self.differs(\CloudflareD1Options.accountId, from: opening, to: cloudflareD1) {
+            connection.additionalFields[CloudflareD1Plugin.accountIdFieldId] = cloudflareD1.accountId
+        }
     }
 }

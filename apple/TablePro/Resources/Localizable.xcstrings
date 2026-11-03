@@ -646,6 +646,10 @@
         }
       }
     },
+    "'%@' is not a Cloudflare D1 database name or UUID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "'%@' is not a process id on this engine. Take one from get_server_dashboard." : {
       "localizations" : {
         "fr" : {
@@ -31536,6 +31540,16 @@
     "Binary values limit must be between 1 and 1,048,576 KB." : {
 
     },
+    "Black Friday: %lld%% off Pro until %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Black Friday: %1$lld%% off Pro until %2$@"
+          }
+        }
+      }
+    },
     "Bloated Tables" : {
 
     },
@@ -42214,6 +42228,10 @@
           }
         }
       }
+    },
+    "Cloudflare D1 cannot bind a binary value through its API." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Cloudflare hostname is required" : {
       "localizations" : {

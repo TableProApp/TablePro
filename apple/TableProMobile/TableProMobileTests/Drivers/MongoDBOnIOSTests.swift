@@ -180,7 +180,6 @@ struct MongoDBOnIOSTests {
         let driver = PluginBackedDriver(
             plugin: plugin,
             dialedHosts: [],
-            rowIdentity: .keyColumns,
             readsOnly: { !SQLWriteClassifier.isWriteQuery($0, databaseType: .mongodb) },
             provesReads: true
         )
@@ -196,7 +195,7 @@ struct MongoDBOnIOSTests {
     func guessedReadsStayWritable() async throws {
         let plugin = StubPluginDriver()
         plugin.answersBoundedReads = false
-        let driver = PluginBackedDriver(plugin: plugin, dialedHosts: [], rowIdentity: .everyColumn, readsOnly: { _ in true })
+        let driver = PluginBackedDriver(plugin: plugin, dialedHosts: [], readsOnly: { _ in true })
 
         _ = try await driver.execute(query: "SELECT 1")
 
@@ -214,7 +213,7 @@ struct MongoDBOnIOSTests {
             for await _ in released { break }
         }
         let driver = PluginBackedDriver(
-            plugin: plugin, dialedHosts: [], rowIdentity: .keyColumns, readsOnly: { _ in true },
+            plugin: plugin, dialedHosts: [], readsOnly: { _ in true },
             cancelsRunningRequest: { try? plugin.cancelQuery() }
         )
 
@@ -328,7 +327,7 @@ struct MongoDBOnIOSTests {
     }
 }
 
-private final class ShellDatabaseDriver: PluginBackedDriver, @unchecked Sendable {
+private final class ShellDatabaseDriver: PluginRowWritingDriver, @unchecked Sendable {
     private let stub: StubPluginDriver
 
     init(plugin: StubPluginDriver) {

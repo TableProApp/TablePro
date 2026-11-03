@@ -70,8 +70,8 @@ case "$SUITE" in
             'apple/TablePro\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved$'
             '\.github/plugin-registry\.json$'
             'apple/scripts/(generate-project|download-libs|create-openssl-dylibs|build-dameng|build-hana)\.sh$'
-            'apple/scripts/lib/' 'apple/scripts/release/(build|package)\.sh$'
-            'apple/scripts/release/(notes|registry|version)\.py$'
+            'apple/scripts/lib/' 'apple/scripts/release/(build|package|dmg)\.sh$'
+            'apple/scripts/release/dmg\.DS_Store$' 'apple/scripts/release/(notes|registry|version)\.py$'
             'apple/scripts/ci/verify-plugin-loads\.sh$' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/actions/(setup-xcode(gen)?|prepare-build)/' '\.github/workflows/(ci|release-build)\.yml$')
         SKIP='apple/Plugins/[^/]+Tests/|apple/Packages/[^/]+/Tests/'

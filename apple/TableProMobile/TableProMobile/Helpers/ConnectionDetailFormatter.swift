@@ -1,10 +1,15 @@
 import Foundation
 import TableProModels
+import TableProPluginKit
 
 nonisolated enum ConnectionDetailFormatter {
     static func detail(for connection: DatabaseConnection) -> String {
-        guard connection.type.isLocalFile else { return networkDetail(for: connection) }
-        return fileDetail(connection.database)
+        switch connection.type.connectionMode {
+        case .network: networkDetail(for: connection)
+        case .fileBased: fileDetail(connection.database)
+        // A Mac `d1://` import keeps the account id in Host, which names no server.
+        case .apiOnly: connection.database
+        }
     }
 
     private static func fileDetail(_ path: String) -> String {

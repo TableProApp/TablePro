@@ -111,6 +111,11 @@ public struct SQLDialectDescriptor: Sendable {
     // plugin does not say: ClickHouse's `String` and `UInt8` are matched by exact case.
     public let typeNamesAreCaseInsensitive: Bool
 
+    /// The longest LIKE or GLOB pattern the engine accepts, in bytes of UTF-8; it rejects a longer one. Cloudflare D1
+    /// caps it at 50. `nil` means no cap. Past it the app matches a contains, starts-with or ends-with filter with
+    /// `instr` and `substr`, both sides folded by ``caseFoldFunction``, which assumes the engine's LIKE ignores case.
+    public let likePatternByteLimit: Int?
+
     public enum CaseSensitivityStyle: String, Sendable {
         case ilikeOperator    // PostgreSQL, CockroachDB, PGlite, DuckDB, Snowflake
         case caseFoldFunction // Oracle, BigQuery, ClickHouse, Redshift
@@ -379,6 +384,7 @@ public struct SQLDialectDescriptor: Sendable {
         )
     }
 
+    @_disfavoredOverload
     public init(
         identifierQuote: String,
         keywords: Set<String>,
@@ -400,6 +406,53 @@ public struct SQLDialectDescriptor: Sendable {
         lexicalFeatures: SQLLexicalFeatures? = nil,
         typeNamesAreCaseInsensitive: Bool = false
     ) {
+        self.init(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: caseSensitivityStyle,
+            caseFoldFunction: caseFoldFunction,
+            operators: operators,
+            textCastTypeName: textCastTypeName,
+            functionNamesAreCaseInsensitive: functionNamesAreCaseInsensitive,
+            lexicalFeatures: lexicalFeatures,
+            typeNamesAreCaseInsensitive: typeNamesAreCaseInsensitive,
+            likePatternByteLimit: nil
+        )
+    }
+
+    public init(
+        identifierQuote: String,
+        keywords: Set<String>,
+        functions: Set<String>,
+        dataTypes: Set<String>,
+        tableOptions: [String] = [],
+        regexSyntax: RegexSyntax = .unsupported,
+        booleanLiteralStyle: BooleanLiteralStyle = .numeric,
+        likeEscapeStyle: LikeEscapeStyle = .explicit,
+        paginationStyle: PaginationStyle = .limit,
+        offsetFetchOrderBy: String = "ORDER BY (SELECT NULL)",
+        requiresBackslashEscaping: Bool = false,
+        autoLimitStyle: AutoLimitStyle = .limit,
+        caseSensitivityStyle: CaseSensitivityStyle = .unsupported,
+        caseFoldFunction: String = SQLDialectDescriptor.defaultCaseFoldFunction,
+        operators: [SQLOperatorDescriptor] = [],
+        textCastTypeName: String?,
+        functionNamesAreCaseInsensitive: Bool,
+        lexicalFeatures: SQLLexicalFeatures? = nil,
+        typeNamesAreCaseInsensitive: Bool = false,
+        likePatternByteLimit: Int? = nil
+    ) {
+        self.likePatternByteLimit = likePatternByteLimit
         self.lexicalFeatures = lexicalFeatures
         self.typeNamesAreCaseInsensitive = typeNamesAreCaseInsensitive
         self.identifierQuote = identifierQuote
@@ -446,7 +499,8 @@ public struct SQLDialectDescriptor: Sendable {
             textCastTypeName: textCastTypeName,
             functionNamesAreCaseInsensitive: functionNamesAreCaseInsensitive,
             lexicalFeatures: lexicalFeatures,
-            typeNamesAreCaseInsensitive: typeNamesAreCaseInsensitive
+            typeNamesAreCaseInsensitive: typeNamesAreCaseInsensitive,
+            likePatternByteLimit: likePatternByteLimit
         )
     }
 }

@@ -68,7 +68,7 @@ public final class ConnectionManager: @unchecked Sendable {
         var effectivePort = connection.port
         var forwardsToUnixSocket = false
         var tunnelId: UUID?
-        if connection.sshEnabled, let ssh = connection.sshConfigurationForDialing {
+        if driverFactory.dialsSSHTunnel(for: connection), let ssh = connection.sshConfigurationForDialing {
             guard let provider = sshProvider else {
                 throw ConnectionError.sshNotSupported
             }
