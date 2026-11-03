@@ -40,7 +40,7 @@ struct TransferProgressTests {
     @Test("An estimate stops the bar short of the end and says about")
     func estimate() {
         let progress = TransferProgress(
-            job: .dataImport(rollsBackOnStop: true), completed: 5_000, total: 4_000, unit: .statements, isEstimate: true
+            job: .dataImport, completed: 5_000, total: 4_000, unit: .statements, isEstimate: true
         )
 
         #expect(progress.fraction == 0.95)
@@ -52,7 +52,7 @@ struct TransferProgressTests {
         #expect(TransferProgress(job: .export, completed: 1, unit: .rows).amountText == "1 row")
         #expect(TransferProgress(job: .export, completed: 1, total: 1, unit: .objects).amountText == "1 of 1 object")
         #expect(
-            TransferProgress(job: .dataImport(rollsBackOnStop: false), completed: 1, unit: .statements).amountText
+            TransferProgress(job: .dataImport, completed: 1, unit: .statements).amountText
                 == "1 statement"
         )
     }
@@ -84,7 +84,7 @@ struct TransferProgressTests {
     @Test("Each job reads as one verb")
     func titles() {
         #expect(TransferJob.export.title == "Exporting")
-        #expect(TransferJob.dataImport(rollsBackOnStop: false).title == "Importing")
+        #expect(TransferJob.dataImport.title == "Importing")
         #expect(TransferJob.backup(databaseCount: 1).title == "Backing Up")
         #expect(TransferJob.restore.title == "Restoring")
         #expect(TransferJob.tableTransfer(wrapsEachTable: true).title == "Transferring")
@@ -94,9 +94,8 @@ struct TransferProgressTests {
     @Test("A job that leaves nothing behind cancels, one that leaves what it did stops")
     func stopActions() {
         #expect(TransferJob.export.stopPolicy.action == .cancel)
-        #expect(TransferJob.dataImport(rollsBackOnStop: true).stopPolicy.action == .cancel)
         #expect(TransferJob.backup(databaseCount: 1).stopPolicy.action == .cancel)
-        #expect(TransferJob.dataImport(rollsBackOnStop: false).stopPolicy.action == .stop)
+        #expect(TransferJob.dataImport.stopPolicy.action == .stop)
         #expect(TransferJob.backup(databaseCount: 3).stopPolicy.action == .stop)
         #expect(TransferJob.restore.stopPolicy.action == .stop)
         #expect(TransferJob.tableTransfer(wrapsEachTable: true).stopPolicy.action == .stop)
@@ -113,11 +112,7 @@ struct TransferProgressTests {
     @Test("Each confirmation says what the job really leaves")
     func consequences() {
         #expect(TransferJob.export.stopPolicy.consequence == "No file is saved.")
-        #expect(
-            TransferJob.dataImport(rollsBackOnStop: true).stopPolicy.consequence
-                == "Everything imported so far is rolled back."
-        )
-        #expect(TransferJob.dataImport(rollsBackOnStop: false).stopPolicy.consequence == "Everything imported so far stays.")
+        #expect(TransferJob.dataImport.stopPolicy.consequence == "Anything already imported may stay.")
         #expect(TransferJob.backup(databaseCount: 1).stopPolicy.consequence == "The partial backup file is removed.")
         #expect(
             TransferJob.backup(databaseCount: 2).stopPolicy.consequence

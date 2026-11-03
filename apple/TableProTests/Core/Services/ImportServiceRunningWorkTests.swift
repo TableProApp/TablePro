@@ -15,9 +15,6 @@ private final class RunningWorkDriver: PluginDriverStub, @unchecked Sendable {
     var transactionState: PluginSessionTransactionState = .unknown
     var statesAfter: [String: PluginSessionTransactionState] = [:]
     var failingStatements: Set<String> = []
-    var transactional = true
-
-    var supportsTransactions: Bool { transactional }
 
     func execute(query: String) async throws -> PluginQueryResult {
         if let next = statesAfter[query] { transactionState = next }
@@ -91,7 +88,6 @@ private actor DiscardingHistory: QueryHistoryRecording {
 @MainActor
 private final class RunLook {
     var work: [RunningWork] = []
-    var rollsBackOnStop: Bool?
 }
 
 // Quit, Close and Disconnect can only name an import the registry knows about, and only until it ends.
@@ -150,8 +146,6 @@ struct ImportServiceRunningWorkTests {
         let result = try await runImport(driver: RunningWorkDriver(), registry: registry) { service in
             ProbedImportPlugin(after: ["INSERT INTO courses VALUES (1)"]) {
                 look.work = registry.items(in: .connection(connection.id))
-                try? await waitUntil(timeout: .seconds(5)) { service.state.rollsBackOnStop }
-                look.rollsBackOnStop = service.state.rollsBackOnStop
             }
         }
 
@@ -160,7 +154,6 @@ struct ImportServiceRunningWorkTests {
         #expect(look.work.first?.kind == .dataImport)
         #expect(look.work.first?.subject == "courses.sql")
         #expect(look.work.first?.connectionName == "Shop")
-        #expect(look.rollsBackOnStop == true, "inside its own transaction a Stop takes everything back")
         #expect(registry.items(in: .app).isEmpty)
     }
 
@@ -204,56 +197,4 @@ struct ImportServiceRunningWorkTests {
     }
 
     // The probe runs after every update the sink queued before it, so an unfounded promise would already show.
-    @Test("Inside the user's own transaction a Stop promises no rollback")
-    func usersTransactionPromisesNoRollback() async throws {
-        let registry = RunningWorkRegistry(providers: [])
-        let driver = RunningWorkDriver()
-        driver.transactionState = .inTransaction
-        let look = RunLook()
-
-        let result = try await runImport(driver: driver, registry: registry) { service in
-            ProbedImportPlugin(after: ["INSERT INTO courses VALUES (1)"]) {
-                look.rollsBackOnStop = service.state.rollsBackOnStop
-            }
-        }
-
-        _ = try result.get()
-        #expect(look.rollsBackOnStop == false)
-    }
-
-    @Test("On an engine without transactions a Stop promises no rollback")
-    func nonTransactionalEnginePromisesNoRollback() async throws {
-        let registry = RunningWorkRegistry(providers: [])
-        let driver = RunningWorkDriver()
-        driver.transactional = false
-        let look = RunLook()
-
-        let result = try await runImport(driver: driver, registry: registry) { service in
-            ProbedImportPlugin(after: ["INSERT INTO courses VALUES (1)"]) {
-                look.rollsBackOnStop = service.state.rollsBackOnStop
-            }
-        }
-
-        _ = try result.get()
-        #expect(look.rollsBackOnStop == false)
-    }
-
-    @Test("Once the file commits on its own, a Stop no longer takes everything back")
-    func earlyCommitEndsTheRollback() async throws {
-        let registry = RunningWorkRegistry(providers: [])
-        let driver = RunningWorkDriver()
-        driver.transactionState = .idle
-        driver.statesAfter = ["BEGIN": .inTransaction, "DROP TABLE IF EXISTS courses": .idle]
-        let look = RunLook()
-
-        let result = try await runImport(driver: driver, registry: registry) { service in
-            ProbedImportPlugin(before: ["DROP TABLE IF EXISTS courses"]) {
-                try? await waitUntil(timeout: .seconds(2)) { !service.state.rollsBackOnStop }
-                look.rollsBackOnStop = service.state.rollsBackOnStop
-            }
-        }
-
-        _ = try result.get()
-        #expect(look.rollsBackOnStop == false)
-    }
 }

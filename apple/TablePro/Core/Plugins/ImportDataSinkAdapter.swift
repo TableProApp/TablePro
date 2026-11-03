@@ -130,11 +130,6 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         tally.withLock { $0 }
     }
 
-    // False inside the user's own transaction or on an engine without transactions: no rollback is sent there.
-    var ownsOpenTransaction: Bool {
-        ownsTransaction.withLock { $0 }
-    }
-
     var transactionOutcome: ImportTransactionOutcome {
         transactionRecord.withLock { record in
             switch record.ending {

@@ -159,9 +159,6 @@ struct ExportDialog: View {
             }
         }
         .onDisappear {
-            if isExporting {
-                run.stop()
-            }
             if !exportSucceeded {
                 restoreSettingsSnapshot()
             }

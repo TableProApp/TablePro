@@ -27,8 +27,6 @@ struct ImportState {
     // A row import counts rows through the statement counter.
     var countsRows = false
     var totalIsEstimate = true
-    // True while a transaction the import opened is still open, so a Stop takes back what ran.
-    var rollsBackOnStop = false
 }
 
 // MARK: - Import Service
@@ -109,7 +107,6 @@ final class ImportService: ObservableObject {
         let workId = beginRunningWork(named: historyName)
         defer {
             state.isImporting = false
-            state.rollsBackOnStop = false
             currentProgress = nil
             runningWork.end(workId)
         }
@@ -276,7 +273,6 @@ final class ImportService: ObservableObject {
         let workId = beginRunningWork(named: Self.batchName(fileCount: files.count))
         defer {
             state.isImporting = false
-            state.rollsBackOnStop = false
             currentProgress = nil
             runningWork.end(workId)
         }
@@ -342,7 +338,6 @@ final class ImportService: ObservableObject {
                 await closePreservingScope(sessionScope, on: driver)
                 throw error
             }
-            state.rollsBackOnStop = owner.ownsOpenTransaction
         }
 
         var outcomes = [RowImportBatchReport.FileOutcome](repeating: .notRun, count: files.count)
@@ -371,7 +366,6 @@ final class ImportService: ObservableObject {
         }
 
         if policy.usesTransaction {
-            state.rollsBackOnStop = false
             do {
                 try await endTransaction(owner, after: ending, policy: policy)
             } catch {
@@ -557,16 +551,10 @@ final class ImportService: ObservableObject {
             state.transactionOutcome = sink.transactionOutcome
             state.rowTally = targetTable == nil ? nil : sink.rowTally
         }
-        let watched = TransactionWatchingSink(base: sink) { [weak self] rollsBack in
-            Task { @MainActor [weak self] in
-                guard self?.state.isImporting == true else { return }
-                self?.state.rollsBackOnStop = rollsBack
-            }
-        }
         let sessionScope = await openPreservingScope(on: driver)
         let result: PluginImportResult
         do {
-            result = try await plugin.performImport(source: source, sink: watched, progress: progress)
+            result = try await plugin.performImport(source: source, sink: sink, progress: progress)
         } catch {
             await closePreservingScope(sessionScope, on: driver)
             guard sink.transactionOutcome == .committedBeforeRollback else { throw error }
@@ -628,84 +616,6 @@ final class ImportService: ObservableObject {
                 outcome: outcome
             )
         )
-    }
-}
-
-// Reports whether a Stop would still take back what ran: the adapter holds a transaction it opened itself, and no
-// COMMIT or ROLLBACK in the file has ended it. Inside the user's own transaction, on an engine without transactions,
-// or while the import is ending its transaction, it promises no rollback.
-private final class TransactionWatchingSink: PluginImportDataSink, @unchecked Sendable {
-    private let base: ImportDataSinkAdapter
-    private let onChange: @Sendable (Bool) -> Void
-    private let record = OSAllocatedUnfairLock(initialState: (isEnding: false, reported: false))
-
-    init(base: ImportDataSinkAdapter, onChange: @escaping @Sendable (Bool) -> Void) {
-        self.base = base
-        self.onChange = onChange
-    }
-
-    var databaseTypeId: String { base.databaseTypeId }
-    var targetTable: String? { base.targetTable }
-
-    func execute(statement: String) async throws {
-        try await base.execute(statement: statement)
-        publish()
-    }
-
-    func execute(statement: String, line: Int) async throws {
-        try await base.execute(statement: statement, line: line)
-        publish()
-    }
-
-    func insertRow(_ values: [String: PluginCellValue]) async throws {
-        try await base.insertRow(values)
-    }
-
-    func insertRows(_ rows: [[String: PluginCellValue]]) async throws {
-        try await base.insertRows(rows)
-    }
-
-    func deleteAllRowsFromTargetTable() async throws {
-        try await base.deleteAllRowsFromTargetTable()
-    }
-
-    func beginTransaction() async throws {
-        try await base.beginTransaction()
-        setEnding(false)
-    }
-
-    func commitTransaction() async throws {
-        setEnding(true)
-        try await base.commitTransaction()
-    }
-
-    func rollbackTransaction() async throws {
-        setEnding(true)
-        try await base.rollbackTransaction()
-    }
-
-    func disableForeignKeyChecks() async throws {
-        try await base.disableForeignKeyChecks()
-    }
-
-    func enableForeignKeyChecks() async throws {
-        try await base.enableForeignKeyChecks()
-    }
-
-    private func setEnding(_ isEnding: Bool) {
-        record.withLock { $0.isEnding = isEnding }
-        publish()
-    }
-
-    private func publish() {
-        let isEnding = record.withLock { $0.isEnding }
-        let rollsBack = !isEnding && base.ownsOpenTransaction && base.transactionOutcome == .untracked
-        let changed = record.withLock { state -> Bool in
-            guard state.reported != rollsBack else { return false }
-            state.reported = rollsBack
-            return true
-        }
-        if changed { onChange(rollsBack) }
     }
 }
 

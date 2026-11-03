@@ -25535,6 +25535,9 @@
         }
       }
     },
+    "Anything already imported may stay." : {
+
+    },
     "API Key" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -33636,12 +33639,6 @@
 
     },
     "Cancel Export?" : {
-
-    },
-    "Cancel Import" : {
-
-    },
-    "Cancel Import?" : {
 
     },
     "Cancel installing %@" : {
@@ -74886,12 +74883,6 @@
           }
         }
       }
-    },
-    "Everything imported so far is rolled back." : {
-
-    },
-    "Everything imported so far stays." : {
-
     },
     "Everything selected was already in your library." : {
 

@@ -7,7 +7,7 @@ import Foundation
 
 internal enum TransferJob: Equatable, Sendable {
     case export
-    case dataImport(rollsBackOnStop: Bool)
+    case dataImport
     case backup(databaseCount: Int)
     case restore
     case tableTransfer(wrapsEachTable: Bool)
@@ -33,20 +33,13 @@ internal enum TransferJob: Equatable, Sendable {
                 confirmButton: String(localized: "Cancel Export"),
                 consequence: String(localized: "No file is saved.")
             )
-        case .dataImport(let rollsBackOnStop):
-            guard rollsBackOnStop else {
-                return TransferStopPolicy(
-                    action: .stop,
-                    confirmationTitle: String(localized: "Stop Import?"),
-                    confirmButton: String(localized: "Stop Import"),
-                    consequence: String(localized: "Everything imported so far stays.")
-                )
-            }
+        case .dataImport:
+            // Whether a Stop rolls back depends on the engine, the table and the user's own transaction.
             return TransferStopPolicy(
-                action: .cancel,
-                confirmationTitle: String(localized: "Cancel Import?"),
-                confirmButton: String(localized: "Cancel Import"),
-                consequence: String(localized: "Everything imported so far is rolled back.")
+                action: .stop,
+                confirmationTitle: String(localized: "Stop Import?"),
+                confirmButton: String(localized: "Stop Import"),
+                consequence: String(localized: "Anything already imported may stay.")
             )
         case .backup(let databaseCount):
             guard databaseCount > 1 else {

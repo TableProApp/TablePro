@@ -91,9 +91,6 @@ struct TableTransferSheet: View {
             guard !isRunning else { return }
             isPresented = false
         }
-        .onDisappear {
-            if isRunning { service.cancel() }
-        }
         .sheet(isPresented: $isRunning) {
             TransferProgressSheet(progress: transferProgress) { service.cancel() }
         }

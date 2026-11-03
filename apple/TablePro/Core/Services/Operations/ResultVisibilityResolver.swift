@@ -53,11 +53,8 @@ internal enum ResultVisibilityResolver {
         return controller.workspaces.selected?.connectionId
     }
 
-    // Agent mode unmounts the tab strip, so no tab is on screen there.
     private static func selectedTabId(in window: NSWindow) -> UUID? {
-        guard let controller = window.contentViewController as? MainSplitViewController,
-              let workspace = controller.workspaces.selected,
-              workspace.resolvedContentMode != .agent else { return nil }
-        return workspace.sessionState?.tabManager.selectedTab?.id
+        guard let controller = window.contentViewController as? MainSplitViewController else { return nil }
+        return controller.workspaces.selected?.sessionState?.tabManager.selectedTab?.id
     }
 }
