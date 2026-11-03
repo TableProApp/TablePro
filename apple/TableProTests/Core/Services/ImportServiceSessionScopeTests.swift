@@ -179,7 +179,8 @@ struct ImportServiceSessionScopeTests {
         on driver: SessionScopeDriver,
         targetTable: String,
         holdingStatement: Bool = false,
-        whileHeld: @MainActor (ImportService) async throws -> Void
+        whileHeld: @MainActor (ImportService) async throws -> Void,
+        afterRelease: @MainActor (ImportService) async throws -> Void = { _ in }
     ) async throws -> ImportRun {
         let connection = TestFixtures.makeConnection(database: "school", type: .mysql)
         var session = ConnectionSession(
@@ -229,6 +230,13 @@ struct ImportServiceSessionScopeTests {
             throw error
         }
         await gate.open()
+        do {
+            try await afterRelease(service)
+        } catch {
+            service.cancelImport()
+            _ = await run.result
+            throw error
+        }
         return ImportRun(service: service, result: await run.result)
     }
 
@@ -256,6 +264,45 @@ struct ImportServiceSessionScopeTests {
 
         let run = try await runHeldImport(on: driver, targetTable: "courses", holdingStatement: true) { service in
             try await waitUntil { service.state.rollsBackOnStop }
+            service.cancelImport()
+        }
+
+        #expect(run.error is PluginImportCancellationError)
+        #expect(driver.events.contains("ROLLBACK"))
+        #expect(!driver.events.contains("COMMIT"))
+        #expect(run.service.state.transactionOutcome == .rolledBack)
+    }
+
+    @Test("While the Stop question is up the import waits before its commit, and Continue lets it commit")
+    func questionHoldsTheCommitThenContinueCommits() async throws {
+        let driver = SessionScopeDriver()
+        driver.tableEngine = "InnoDB"
+
+        let run = try await runHeldImport(on: driver, targetTable: "courses", holdingStatement: true) { service in
+            service.setStopQuestion(isOpen: true)
+        } afterRelease: { service in
+            try await waitUntil { service.pauseGate?.waitingCount == 1 }
+            #expect(!driver.events.contains("COMMIT"))
+            #expect(service.state.rollsBackOnStop)
+            service.setStopQuestion(isOpen: false)
+        }
+
+        #expect(run.error == nil)
+        #expect(driver.events.contains("COMMIT"))
+        #expect(!driver.events.contains("ROLLBACK"))
+        #expect(run.service.state.transactionOutcome == .committed)
+    }
+
+    @Test("A Stop confirmed while the question held the commit rolls back")
+    func questionHoldsTheCommitThenStopRollsBack() async throws {
+        let driver = SessionScopeDriver()
+        driver.tableEngine = "InnoDB"
+
+        let run = try await runHeldImport(on: driver, targetTable: "courses", holdingStatement: true) { service in
+            service.setStopQuestion(isOpen: true)
+        } afterRelease: { service in
+            try await waitUntil { service.pauseGate?.waitingCount == 1 }
+            #expect(!driver.events.contains("COMMIT"))
             service.cancelImport()
         }
 

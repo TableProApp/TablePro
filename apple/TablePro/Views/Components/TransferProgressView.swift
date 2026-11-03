@@ -57,6 +57,8 @@ internal struct TransferStopButton: View {
     internal let policy: TransferStopPolicy
     internal var isStopping = false
     internal let onStop: () -> Void
+    // True while the question is up, false when the user keeps the job running; a confirmed Stop stays held.
+    internal var onQuestionChange: ((Bool) -> Void)?
 
     @State private var isConfirming = false
     @State private var hasConfirmed = false
@@ -76,6 +78,14 @@ internal struct TransferStopButton: View {
         } message: {
             Text(policy.consequence)
         }
+        .onChange(of: isConfirming) { isOpen in
+            guard isOpen || !hasConfirmed else { return }
+            onQuestionChange?(isOpen)
+        }
+        .onDisappear {
+            guard isConfirming, !hasConfirmed else { return }
+            onQuestionChange?(false)
+        }
     }
 
     private var stopping: Bool {
@@ -88,6 +98,7 @@ internal struct TransferProgressSheet: View {
 
     internal let progress: TransferProgress
     internal let onStop: () -> Void
+    internal var onQuestionChange: ((Bool) -> Void)?
 
     internal var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -97,7 +108,8 @@ internal struct TransferProgressSheet: View {
                 TransferStopButton(
                     policy: progress.stopPolicy,
                     isStopping: progress.isStopping,
-                    onStop: onStop
+                    onStop: onStop,
+                    onQuestionChange: onQuestionChange
                 )
             }
         }

@@ -47,6 +47,7 @@ final class ImportService: ObservableObject {
     private var isStopRequested = false
     // The sink that owns the run's transaction, read again each time it reports a change.
     private var transactionSink: ImportDataSinkAdapter?
+    private(set) var pauseGate: ImportPauseGate?
 
     init(
         connection: DatabaseConnection,
@@ -76,6 +77,16 @@ final class ImportService: ObservableObject {
     func cancelImport() {
         isStopRequested = true
         currentProgress?.cancel()
+        pauseGate?.stop()
+    }
+
+    // The Stop question cannot change its text once shown, so the run waits while it is up.
+    func setStopQuestion(isOpen: Bool) {
+        if isOpen {
+            pauseGate?.pause()
+        } else {
+            pauseGate?.resume()
+        }
     }
 
     // MARK: - Public API
@@ -107,12 +118,16 @@ final class ImportService: ObservableObject {
         state.fileName = historyName
         state.countsRows = targetTable != nil
         state.totalIsEstimate = knownStatementCount == nil
+        let gate = ImportPauseGate()
+        pauseGate = gate
         let workId = beginRunningWork(named: historyName)
         defer {
             state.isImporting = false
             state.rollsBackOnStop = false
             currentProgress = nil
             transactionSink = nil
+            gate.finish()
+            pauseGate = nil
             runningWork.end(workId)
         }
 
@@ -269,12 +284,16 @@ final class ImportService: ObservableObject {
         state = ImportState(isImporting: true)
         state.fileCount = files.count
         state.countsRows = true
+        let gate = ImportPauseGate()
+        pauseGate = gate
         let workId = beginRunningWork(named: Self.batchName(fileCount: files.count))
         defer {
             state.isImporting = false
             state.rollsBackOnStop = false
             currentProgress = nil
             transactionSink = nil
+            gate.finish()
+            pauseGate = nil
             runningWork.end(workId)
         }
         guard !isStopRequested else {
@@ -316,6 +335,15 @@ final class ImportService: ObservableObject {
         return report
     }
 
+    private static func stopped(_ ending: RowImportBatchReport.Ending, fileCount: Int) -> RowImportBatchReport.Ending {
+        guard fileCount > 0 else { return ending }
+        switch ending {
+        case .completed: return .stopped(file: fileCount - 1)
+        case .failed(let index): return .stopped(file: index)
+        case .stopped: return ending
+        }
+    }
+
     internal static func batchName(fileCount: Int) -> String {
         fileCount == 1
             ? String(localized: "1 file")
@@ -335,11 +363,15 @@ final class ImportService: ObservableObject {
         for table in Set(files.map(\.targetTable)).sorted() {
             rollbacks.append(await Self.targetRollback(of: table, schema: schema, on: driver))
         }
+        let gate = pauseGate
         let owner = ImportDataSinkAdapter(
             driver: driver,
             databaseType: connection.type,
             targetRollback: Self.combined(rollbacks),
-            onStopOutcomeChange: stopOutcomeObserver()
+            refusesCommitAfterStop: true,
+            isCancelled: { gate?.isStopped ?? false },
+            onStopOutcomeChange: stopOutcomeObserver(),
+            pauseGate: gate
         )
         transactionSink = owner
         let sessionScope = await openPreservingScope(on: driver)
@@ -376,18 +408,18 @@ final class ImportService: ObservableObject {
             }
             guard ending == .completed else { break }
         }
+        await gate?.waitWhilePaused()
         // An explicit Stop wins over the error handling: the sheet promised a rollback, not Stop and Commit's commit.
-        if isStopRequested, !files.isEmpty {
-            switch ending {
-            case .completed: ending = .stopped(file: files.count - 1)
-            case .failed(let index): ending = .stopped(file: index)
-            case .stopped: break
-            }
+        if isStopRequested {
+            ending = Self.stopped(ending, fileCount: files.count)
         }
 
         if policy.usesTransaction {
             do {
                 try await endTransaction(owner, after: ending, policy: policy)
+            } catch is PluginImportCancellationError {
+                // Stopped while the commit waited on the question; the owner rolled back instead.
+                ending = Self.stopped(ending, fileCount: files.count)
             } catch {
                 await closePreservingScope(sessionScope, on: driver)
                 throw error
@@ -433,7 +465,8 @@ final class ImportService: ObservableObject {
             columnMapping: file.columnMapping,
             sourceFields: file.sourceFields,
             joinsTransaction: policy.usesTransaction,
-            isCancelled: { progress.isCancelled }
+            isCancelled: { progress.isCancelled },
+            pauseGate: pauseGate
         )
         do {
             return .imported(try await plugin.performImport(source: source, sink: sink, progress: progress))
@@ -611,7 +644,8 @@ final class ImportService: ObservableObject {
             targetRollback: await Self.targetRollback(of: targetTable, schema: targetSchema, on: driver),
             refusesCommitAfterStop: true,
             isCancelled: { progress.isCancelled },
-            onStopOutcomeChange: stopOutcomeObserver()
+            onStopOutcomeChange: stopOutcomeObserver(),
+            pauseGate: pauseGate
         )
         transactionSink = sink
         defer {

@@ -34,6 +34,59 @@ internal enum ImportTargetRollback: Equatable, Sendable {
     case unknown
 }
 
+// Holds an import between statements while the user reads the Stop question, whose text cannot change once shown.
+final class ImportPauseGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isPaused = false
+    private var isClosed = false
+    private var stopped = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    var isStopped: Bool { lock.withLock { stopped } }
+
+    var waitingCount: Int { lock.withLock { waiters.count } }
+
+    func pause() {
+        lock.withLock {
+            guard !isClosed else { return }
+            isPaused = true
+        }
+    }
+
+    func resume() {
+        let pending = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+            isPaused = false
+            let pending = waiters
+            waiters = []
+            return pending
+        }
+        pending.forEach { $0.resume() }
+    }
+
+    // A confirmed Stop, a teardown or the end of the run: nothing may wait on a question nobody will answer.
+    func stop() {
+        lock.withLock { stopped = true }
+        finish()
+    }
+
+    func finish() {
+        lock.withLock { isClosed = true }
+        resume()
+    }
+
+    func waitWhilePaused() async {
+        guard lock.withLock({ isPaused }) else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let resumesNow = lock.withLock { () -> Bool in
+                guard isPaused else { return true }
+                waiters.append(continuation)
+                return false
+            }
+            if resumesNow { continuation.resume() }
+        }
+    }
+}
+
 final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     let databaseTypeId: String
     let targetTable: String?
@@ -68,6 +121,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     private let joinedUserTransaction = OSAllocatedUnfairLock(initialState: false)
     // Called whenever what a Stop would do changes, from whatever thread the import runs on.
     private let onStopOutcomeChange: (@Sendable () -> Void)?
+    private let pauseGate: ImportPauseGate?
 
     private struct TransactionRecord {
         enum Ending {
@@ -103,9 +157,11 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         targetRollback: ImportTargetRollback = .unknown,
         refusesCommitAfterStop: Bool = false,
         isCancelled: @escaping @Sendable () -> Bool = { false },
-        onStopOutcomeChange: (@Sendable () -> Void)? = nil
+        onStopOutcomeChange: (@Sendable () -> Void)? = nil,
+        pauseGate: ImportPauseGate? = nil
     ) {
         self.isCancelled = isCancelled
+        self.pauseGate = pauseGate
         self.targetRollback = targetRollback
         self.refusesCommitAfterStop = refusesCommitAfterStop
         self.onStopOutcomeChange = onStopOutcomeChange
@@ -203,6 +259,12 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func execute(statement: String, line: Int) async throws {
+        if let pauseGate {
+            await pauseGate.waitWhilePaused()
+            // Stopped while the question held this statement: the plugin stops at its next check, and a throw here
+            // would read as a failed statement.
+            guard !isCancelled() else { return }
+        }
         // The file's own statements change how the session reads the next one.
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
         noteNameHazards(in: statement, grammar: grammar)
@@ -227,9 +289,14 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             throw DatabaseError.queryFailed(failure)
         }
         for batchStatement in SQLStatementScanner.executableStatements(in: statement, grammar: grammar) {
-            guard !isCancelled() else { throw PluginImportCancellationError() }
+            try await proceedOrStop()
             _ = try await driver.execute(query: batchStatement.sql)
         }
+    }
+
+    private func proceedOrStop() async throws {
+        await pauseGate?.waitWhilePaused()
+        guard !isCancelled() else { throw PluginImportCancellationError() }
     }
 
     /// An import shows no rows, so a batch keeps as few of each result set as a driver takes, and the rest are read
@@ -261,6 +328,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             )
         }
 
+        try await proceedOrStop()
         _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
         tally.withLock { $0.inserted += 1 }
     }
@@ -356,7 +424,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         columns: [String],
         generator: SQLStatementGenerator
     ) async throws {
-        guard !isCancelled() else { throw PluginImportCancellationError() }
+        try await proceedOrStop()
         guard let statement = generator.insertStatement(columns: columns, rows: batch) else {
             throw PluginImportError.importFailed(
                 String(localized: "Could not build an INSERT for the mapped columns")
@@ -464,7 +532,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             tally.withLock { $0.existing += 1 }
             return
         }
-        guard !isCancelled() else { throw PluginImportCancellationError() }
+        try await proceedOrStop()
         guard let statement = generator.keyedUpdateStatement(
             columns: assignments.map(\.0),
             values: assignments.map(\.1),
@@ -495,7 +563,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         var start = 0
         while start < keys.count {
             let chunk = Array(keys[start..<min(start + perStatement, keys.count)])
-            guard !isCancelled() else { throw PluginImportCancellationError() }
+            try await proceedOrStop()
             guard let statement = generator.keyMatchCountStatement(keyColumns: rowWriting.keyColumns, keys: chunk) else {
                 throw PluginImportError.importFailed(String(localized: "Could not build the query that matches rows"))
             }
@@ -576,6 +644,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         guard !rowWriting.mode.matchesExistingRows else {
             throw PluginImportError.importFailed(Self.matchingRefusesClearingMessage)
         }
+        try await proceedOrStop()
         _ = try await driver.execute(query: rowGenerator.deleteAllRowsStatement())
     }
 
@@ -599,6 +668,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     func commitTransaction() async throws {
         guard ownsTransaction.withLock({ $0 }) else { return }
+        await pauseGate?.waitWhilePaused()
         // A Stop that came during the last write was promised a rollback, and the runners commit at the end unasked.
         if refusesCommitAfterStop, isCancelled() {
             try await rollbackTransaction()

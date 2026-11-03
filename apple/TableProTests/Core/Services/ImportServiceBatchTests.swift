@@ -117,7 +117,8 @@ struct ImportServiceBatchTests {
         sessionState: PluginSessionTransactionState = .unknown,
         stopsFirst: Bool = false,
         heldValue: String? = nil,
-        whileHeld: @MainActor (ImportService) async -> Void = { _ in }
+        whileHeld: @MainActor (ImportService) async -> Void = { _ in },
+        afterRelease: @MainActor (ImportService) async throws -> Void = { _ in }
     ) async throws -> Run {
         let driver = RecordingDriver()
         let hold = AsyncGate()
@@ -177,6 +178,13 @@ struct ImportServiceBatchTests {
             await hold.arrived(1)
             await whileHeld(service)
             await hold.open()
+            do {
+                try await afterRelease(service)
+            } catch {
+                service.cancelImport()
+                try? await run.value
+                throw error
+            }
         }
         try await run.value
         let report = try #require(box.report)
@@ -209,6 +217,34 @@ struct ImportServiceBatchTests {
         #expect(run.driver.events.contains("ROLLBACK"))
         #expect(!run.driver.events.contains("COMMIT"))
         #expect(!run.report.rowsKept)
+    }
+
+    @Test("While the Stop question is up the last file's commit waits, and Continue commits every file")
+    func questionHoldsTheBatchCommitThenContinueCommits() async throws {
+        let run = try await runFiles(["a1", "b1"], policy: Self.rollback, heldValue: "b1") { service in
+            service.setStopQuestion(isOpen: true)
+        } afterRelease: { service in
+            try await waitUntil { service.pauseGate?.waitingCount == 1 }
+            service.setStopQuestion(isOpen: false)
+        }
+
+        #expect(run.report.ending == .completed)
+        #expect(run.driver.events.contains("COMMIT"))
+        #expect(run.report.transaction == .committed)
+    }
+
+    @Test("A Stop confirmed while the question held the last file's commit rolls every file back")
+    func questionHoldsTheBatchCommitThenStopRollsBack() async throws {
+        let run = try await runFiles(["a1", "b1"], policy: Self.rollback, heldValue: "b1") { service in
+            service.setStopQuestion(isOpen: true)
+        } afterRelease: { service in
+            try await waitUntil { service.pauseGate?.waitingCount == 1 }
+            service.cancelImport()
+        }
+
+        #expect(run.report.ending == .stopped(file: 1))
+        #expect(run.driver.events.contains("ROLLBACK"))
+        #expect(!run.driver.events.contains("COMMIT"))
     }
 
     @Test("A Stop during a write that then fails rolls back even under Stop and Commit")

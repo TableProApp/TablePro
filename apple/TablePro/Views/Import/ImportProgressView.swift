@@ -10,7 +10,11 @@ struct ImportProgressView: View {
     let onStop: () -> Void
 
     var body: some View {
-        TransferProgressSheet(progress: service.state.transferProgress, onStop: onStop)
+        TransferProgressSheet(
+            progress: service.state.transferProgress,
+            onStop: onStop,
+            onQuestionChange: { service.setStopQuestion(isOpen: $0) }
+        )
     }
 }
 

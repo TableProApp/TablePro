@@ -584,6 +584,30 @@ struct ImportStopRollbackTests {
         #expect(await ImportService.targetRollback(of: "orders", schema: nil, on: postgres) == .rollsBack)
     }
 
+    @Test("The pause gate holds waiters until resumed, and a stop releases them for good")
+    func pauseGate() async throws {
+        let gate = ImportPauseGate()
+        await gate.waitWhilePaused()
+
+        gate.pause()
+        let held = Task { await gate.waitWhilePaused() }
+        try await waitUntil { gate.waitingCount == 1 }
+        gate.resume()
+        await held.value
+        #expect(gate.waitingCount == 0)
+
+        gate.pause()
+        let stopped = Task { await gate.waitWhilePaused() }
+        try await waitUntil { gate.waitingCount == 1 }
+        gate.stop()
+        await stopped.value
+        #expect(gate.isStopped)
+
+        gate.pause()
+        await gate.waitWhilePaused()
+        #expect(gate.waitingCount == 0)
+    }
+
     @Test("Several files roll back only when every target does")
     func batchCombination() {
         #expect(ImportService.combined([.rollsBack, .rollsBack]) == .rollsBack)
