@@ -36,6 +36,7 @@ struct FilterSQLGenerator {
     // from its PostgreSQL mode, so `c != ''` matches no row there.
     private let readsEmptyStringAsNull: Bool
     private let stringEscapes: SQLStringEscapes
+    private let databaseType: DatabaseType?
 
     init(
         dialect: SQLDialectDescriptor,
@@ -47,6 +48,7 @@ struct FilterSQLGenerator {
         stringEscapes: SQLStringEscapes? = nil
     ) {
         self.dialect = dialect
+        self.databaseType = databaseType
         self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect, databaseType: databaseType)
         self.columnTypesByName = ColumnTypeSQLQuoting.lookupByName(columns: columns, columnTypes: columnTypes)
         self.stringLiteralPrefix = stringLiteralPrefix
@@ -67,12 +69,47 @@ struct FilterSQLGenerator {
 
     // MARK: - Public API
 
-    /// Generate a complete WHERE clause from filters
-    func generateWhereClause(from filters: [TableFilter], logicMode: FilterLogicMode = .and) -> String {
-        let conditions = filters.compactMap { generateCondition(from: $0) }
+    /// The WHERE clause, empty when no complete filter is given, or nil when a complete filter
+    /// cannot be written for this engine. Leaving that one out would run the query without it,
+    /// and every row would come back under a panel that says it is filtered.
+    func generateWhereClause(from filters: [TableFilter], logicMode: FilterLogicMode = .and) -> String? {
+        var conditions: [String] = []
+        for filter in filters where filter.isValid {
+            guard let condition = generateCondition(from: filter) else { return nil }
+            conditions.append(condition)
+        }
         guard !conditions.isEmpty else { return "" }
         let separator = logicMode == .and ? " AND " : " OR "
         return "WHERE " + conditions.joined(separator: separator)
+    }
+
+    /// Whether a complete raw condition could leave the parentheses it runs in: a comment, a second
+    /// statement, or a quote or parenthesis it does not close, so `1=1); DELETE …` is refused. It is
+    /// read every way the engine may lex it. T-SQL's rule that only one parenthesised group is one
+    /// expression is left out, because those parentheses are that group. A driver that writes its own
+    /// SQL takes the condition as given, so every path that hands one to a driver asks this first.
+    static func refusesRawCondition(_ filter: TableFilter, databaseType: DatabaseType?) -> Bool {
+        guard filter.isValid, filter.isRawSQL else { return false }
+        let readings = (databaseType?.lexicalReadings.all ?? SQLLexicalProfile.everyKnownReading)
+            .map { $0.subtracting(.unterminatedStatements) }
+        return !SQLExpressionFragment.isSingleExpression(filter.value, readings: readings)
+    }
+
+    /// Whether a count may not hand these filters to a driver: a raw condition the page would refuse,
+    /// or a comparison on a column named like the raw row, which a driver would read as a raw condition.
+    static func withholdsFromDriver(_ filters: [TableFilter], databaseType: DatabaseType) -> Bool {
+        let speaksSQL = PluginMetadataRegistry.shared.snapshot(for: databaseType)?.editor.sqlDialect != nil
+        return filters.contains { filter in
+            guard filter.isEnabled else { return false }
+            if filter.namesRawConditionColumn { return true }
+            return speaksSQL && refusesRawCondition(filter, databaseType: databaseType)
+        }
+    }
+
+    /// What the reader is told when a raw condition is refused, or nil when none is.
+    static func refusalMessage(for filters: [TableFilter], databaseType: DatabaseType?) -> String? {
+        guard filters.contains(where: { refusesRawCondition($0, databaseType: databaseType) }) else { return nil }
+        return String(localized: "A raw SQL filter must be one condition: no comment, no second statement, and every quote and parenthesis closed.")
     }
 
     /// Generate just the conditions (without WHERE keyword)
@@ -85,9 +122,9 @@ struct FilterSQLGenerator {
     func generateCondition(from filter: TableFilter) -> String? {
         guard filter.isValid else { return nil }
 
-        if filter.isRawSQL, let rawSQL = filter.rawSQL {
-            guard SQLBoundaryValidator.isRawFilterConditionSafe(rawSQL) else { return nil }
-            return "(\(rawSQL))"
+        if filter.isRawSQL {
+            guard !Self.refusesRawCondition(filter, databaseType: databaseType) else { return nil }
+            return "(\(filter.value))"
         }
 
         let quotedColumn = quoteIdentifierFn(filter.columnName)
@@ -573,7 +610,8 @@ struct FilterSQLGenerator {
 // MARK: - Preview/Display Helpers
 
 extension FilterSQLGenerator {
-    /// Generate a preview-friendly query string (for display, not execution)
+    /// Generate a preview-friendly query string (for display, not execution), nil when a complete
+    /// filter cannot be written for this engine.
     func generatePreviewSQL(
         tableName: String,
         schemaName: String? = nil,
@@ -582,7 +620,7 @@ extension FilterSQLGenerator {
         logicMode: FilterLogicMode = .and,
         limit: Int = 1_000,
         pluginDriver: (any PluginDatabaseDriver)? = nil
-    ) -> String {
+    ) -> String? {
         // Use plugin dispatch for NoSQL drivers (MongoDB, Redis, etc.)
         if let pluginDriver {
             let queryFilters = filters
@@ -604,7 +642,7 @@ extension FilterSQLGenerator {
         )
         var sql = "SELECT * FROM \(quotedTable)"
 
-        let whereClause = generateWhereClause(from: filters, logicMode: logicMode)
+        guard let whereClause = generateWhereClause(from: filters, logicMode: logicMode) else { return nil }
         if !whereClause.isEmpty {
             sql += "\n\(whereClause)"
         }

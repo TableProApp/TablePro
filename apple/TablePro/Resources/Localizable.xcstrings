@@ -16569,6 +16569,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A raw SQL filter must be one condition: no comment, no second statement, and every quote and parenthesis closed." : {
+
+    },
     "A raw SurrealDB filter must be one condition that only reads. Run anything else in the SurrealQL editor." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -198019,6 +198022,9 @@
           }
         }
       }
+    },
+    "This file cannot filter rows with these conditions." : {
+
     },
     "This file has unsaved changes in an editor tab. The commit takes the saved file." : {
 

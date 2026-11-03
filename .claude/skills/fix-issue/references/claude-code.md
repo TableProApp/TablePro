@@ -106,8 +106,8 @@ node "$CODEX" result <job-id>
 
 - `review` every round; `adversarial-review` in Full mode on the first round. One at a time, each in the background with `--wait`.
 - Read the findings with `result`, never from stdout, which shows only progress whether the job succeeded or died. `status` says whether it finished.
-- When `status` shows Codex cannot review (not installed, out of credits, a usage limit), use `Skill(code-review)` and say so in the report. A setup or login error goes back to the user with `/codex:setup`.
-- The security pass is a background `Agent` told to review `git -C <tree> diff origin/<base>...HEAD` (the profile's pull request base) for injection, credential exposure, authorization and unsafe execution, reporting only high and medium findings with an exploit scenario. `Skill(security-review)` reads the main checkout, not the tree.
+- Every review pass runs on Codex, never on a Claude model: no `Skill(code-review)`, `Skill(security-review)` or review `Agent`. When `status` shows Codex cannot review (out of credits, a usage limit), wait and run the pass again. A setup or login error goes back to the user with `/codex:setup`.
+- The security pass is an `adversarial-review --base origin/<base>` (the profile's pull request base) whose focus text asks for injection, credential exposure, authorization and unsafe execution, high and medium findings only, each with an exploit scenario.
 
 ## Screenshots
 

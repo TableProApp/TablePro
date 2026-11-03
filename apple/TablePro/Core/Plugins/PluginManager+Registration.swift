@@ -460,6 +460,10 @@ extension PluginManager {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.supportsMatchAnyFilters ?? true
     }
 
+    func supportsRawFilter(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(for: databaseType)?.capabilities.supportsRawFilter ?? true
+    }
+
     func isEngineReadOnly(for databaseType: DatabaseType) -> Bool {
         PluginMetadataRegistry.shared.snapshot(for: databaseType)?
             .capabilities.isEngineReadOnly ?? false

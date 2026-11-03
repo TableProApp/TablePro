@@ -831,7 +831,8 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsOpportunisticTLS: false,
-                    supportsColumnSort: false
+                    supportsColumnSort: false,
+                    supportsRawFilter: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

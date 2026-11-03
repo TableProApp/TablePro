@@ -865,6 +865,10 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         quoteIdentifier(identifier)
     }
 
+    /// The column the host names for a row holding the reader's own condition, which the shared
+    /// builder writes as given whatever operator the row last showed.
+    private static let rawConditionColumn = "__RAW__"
+
     /// The shared builder writes the `LIKE` arms' literal itself rather than asking for one, so
     /// SQL Server answers those arms first and lets every other operator fall through to it.
     private func mssqlWhereClause(
@@ -874,7 +878,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> String {
         let conditions = filters.compactMap { filter -> String? in
             let quoted = mssqlQuoteIdentifier(filter.column)
-            if let like = MSSQLStringLiteral.likeCondition(
+            if filter.column != Self.rawConditionColumn, let like = MSSQLStringLiteral.likeCondition(
                 quotedColumn: quoted, op: filter.op, value: filter.value
             ) {
                 return like
