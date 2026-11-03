@@ -6,7 +6,6 @@ import json
 import plistlib
 import re
 import sys
-import time
 import zipfile
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -158,8 +157,6 @@ def load_manifest(path: Path) -> Optional[dict]:
         raise RegistryError(f"{path} has schemaVersion {found!r}; this tool writes only {SCHEMA_VERSION}")
     if not _is_int(manifest.get("retainFromPluginKit")) or not isinstance(manifest.get("plugins"), list):
         raise RegistryError(f"{path} needs an integer retainFromPluginKit and a plugins list")
-    if "serial" in manifest and (not _is_int(manifest["serial"]) or manifest["serial"] < 1):
-        raise RegistryError(f"{path} has serial {manifest['serial']!r}, not a positive integer")
     for plugin in manifest["plugins"]:
         if not isinstance(plugin, dict) or not isinstance(plugin.get("id"), str) \
                 or not isinstance(plugin.get("releases"), list):
@@ -176,24 +173,6 @@ def load_manifest(path: Path) -> Optional[dict]:
 def write_manifest(path: Path, manifest: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-
-def _content(manifest: dict) -> str:
-    return json.dumps({key: value for key, value in manifest.items() if key != "serial"}, sort_keys=True)
-
-
-# The app refuses a signed manifest whose serial is below the highest it has accepted. The clock keeps the serial
-# above what apps stored when an older release line's registry.py dropped the key and feed.py re-signs the result.
-def _next_serial(previous: Optional[int], clock: Callable[[], float]) -> int:
-    return max((previous or 0) + 1, int(clock()))
-
-
-def restamp(path: Path, clock: Callable[[], float] = time.time) -> None:
-    manifest = load_manifest(path)
-    if manifest is None:
-        raise RegistryError(f"{path} does not exist")
-    manifest["serial"] = _next_serial(manifest.get("serial"), clock)
-    write_manifest(path, manifest)
 
 
 def retain(releases: List[dict], floor: int) -> List[dict]:
@@ -226,10 +205,9 @@ def _release(entry: dict, channel: str, url_base: str) -> dict:
 
 
 def add(path: Path, entries: List[dict], channel: str, url_base: str, retain_from: int,
-        log: Callable[[str], None] = print, clock: Callable[[], float] = time.time) -> bool:
+        log: Callable[[str], None] = print) -> bool:
     loaded = load_manifest(path)
-    before = _content(loaded) if loaded is not None else None
-    serial = loaded.get("serial") if loaded is not None else None
+    before = json.dumps(loaded, sort_keys=True) if loaded is not None else None
     manifest = loaded if loaded is not None else empty_manifest(retain_from)
     floor = max(manifest["retainFromPluginKit"], retain_from)
     plugins = {plugin["id"]: plugin for plugin in manifest["plugins"]}
@@ -259,11 +237,10 @@ def add(path: Path, entries: List[dict], channel: str, url_base: str, retain_fro
 
     manifest = {
         "schemaVersion": SCHEMA_VERSION,
-        "serial": _next_serial(serial, clock),
         "retainFromPluginKit": floor,
         "plugins": [_ordered(plugins[key]) for key in sorted(plugins) if plugins[key]["releases"]],
     }
-    if serial is not None and _content(manifest) == before:
+    if json.dumps(manifest, sort_keys=True) == before:
         return False
     write_manifest(path, manifest)
     return True
@@ -274,8 +251,7 @@ def _ordered(plugin: dict) -> dict:
     return {**{key: plugin[key] for key in keys if key in plugin}, "releases": plugin["releases"]}
 
 
-def withdraw(path: Path, release: str, log: Callable[[str], None] = print,
-             clock: Callable[[], float] = time.time) -> bool:
+def withdraw(path: Path, release: str, log: Callable[[str], None] = print) -> bool:
     version.parse_version(release)
     manifest = load_manifest(path)
     if manifest is None:
@@ -289,7 +265,6 @@ def withdraw(path: Path, release: str, log: Callable[[str], None] = print,
         log(f"{path.name} has no {release} release")
         return False
     manifest["plugins"] = [plugin for plugin in manifest["plugins"] if plugin["releases"]]
-    manifest["serial"] = _next_serial(manifest.get("serial"), clock)
     write_manifest(path, manifest)
     log(f"withdrew {removed} {release} release(s) from {path.name}")
     return True

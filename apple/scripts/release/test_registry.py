@@ -46,13 +46,9 @@ class ManifestCase(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.path = Path(directory.name) / "plugins" / "v3.json"
         self.log = []
-        self.now = 0
 
     def add(self, entries, channel="stable", retain_from=39):
-        return registry.add(self.path, entries, channel, URL_BASE, retain_from, self.log.append, lambda: self.now)
-
-    def withdraw(self, text):
-        return registry.withdraw(self.path, text, self.log.append, lambda: self.now)
+        return registry.add(self.path, entries, channel, URL_BASE, retain_from, self.log.append)
 
     def manifest(self):
         return json.loads(self.path.read_text(encoding="utf-8"))
@@ -67,7 +63,6 @@ class AddTests(ManifestCase):
         self.assertTrue(self.add([entry()]))
         self.assertEqual(self.manifest(), {
             "schemaVersion": 3,
-            "serial": 1,
             "retainFromPluginKit": 39,
             "plugins": [{
                 "id": "com.TablePro.OracleDriver", "name": "Oracle Driver", "databaseTypeIds": ["Oracle"],
@@ -84,41 +79,6 @@ class AddTests(ManifestCase):
         written = self.path.read_bytes()
         self.assertFalse(self.add([entry()]))
         self.assertEqual(self.path.read_bytes(), written)
-
-    def test_the_serial_rises_by_one_on_each_change(self):
-        self.add([entry("0.82.0")])
-        self.add([entry("0.82.0")])
-        self.assertEqual(self.manifest()["serial"], 1)
-        self.add([entry("0.82.1")])
-        self.assertEqual(self.manifest()["serial"], 2)
-
-    def test_the_serial_never_falls_below_the_clock(self):
-        self.add([entry("0.82.0")])
-        self.now = 1_800_000_000.7
-        self.add([entry("0.82.1")])
-        self.assertEqual(self.manifest()["serial"], 1_800_000_000)
-        self.now = 1_700_000_000
-        self.add([entry("0.82.2")])
-        self.assertEqual(self.manifest()["serial"], 1_800_000_001)
-        self.withdraw("0.82.2")
-        self.assertEqual(self.manifest()["serial"], 1_800_000_002)
-
-    def test_a_manifest_without_a_serial_gets_one_even_when_nothing_else_changes(self):
-        self.add([entry()])
-        manifest = self.manifest()
-        del manifest["serial"]
-        self.path.write_text(json.dumps(manifest))
-        self.assertTrue(self.add([entry()]))
-        self.assertEqual(self.manifest()["serial"], 1)
-
-    def test_a_serial_that_is_not_a_positive_integer_is_refused(self):
-        self.path.parent.mkdir(parents=True)
-        for serial in ("7", 0, True, 1.5):
-            with self.subTest(serial=serial):
-                self.path.write_text(json.dumps({"schemaVersion": 3, "serial": serial, "retainFromPluginKit": 39,
-                                                 "plugins": []}))
-                with self.assertRaisesRegex(registry.RegistryError, "not a positive integer"):
-                    self.add([entry()])
 
     def test_a_changed_sha256_for_the_same_build_is_an_error(self):
         self.add([entry()])
@@ -204,31 +164,6 @@ class WithdrawTests(ManifestCase):
         self.assertEqual(select(self.manifest(), "com.TablePro.OracleDriver", {"stable"}, 39, "26.0"), "0.82.1")
         self.assertTrue(registry.withdraw(self.path, "0.82.1", self.log.append))
         self.assertEqual(select(self.manifest(), "com.TablePro.OracleDriver", {"stable"}, 39, "26.0"), "0.82.0")
-
-    def test_a_withdraw_raises_the_serial(self):
-        self.add([entry("0.82.0")])
-        self.add([entry("0.82.1")])
-        self.withdraw("0.82.1")
-        self.assertEqual(self.manifest()["serial"], 3)
-
-    def test_a_withdraw_from_a_manifest_without_a_serial_writes_one(self):
-        self.add([entry("0.82.0")])
-        self.add([entry("0.82.1")])
-        manifest = self.manifest()
-        del manifest["serial"]
-        self.path.write_text(json.dumps(manifest))
-        self.withdraw("0.82.1")
-        self.assertEqual(self.manifest()["serial"], 1)
-
-    def test_restamp_raises_the_serial_and_keeps_the_rest(self):
-        self.add([entry("0.82.0")])
-        before = self.manifest()
-        registry.restamp(self.path, lambda: 0)
-        self.assertEqual(self.manifest(), {**before, "serial": 2})
-        del before["serial"]
-        self.path.write_text(json.dumps(before))
-        registry.restamp(self.path, lambda: 1_800_000_000)
-        self.assertEqual(self.manifest()["serial"], 1_800_000_000)
 
     def test_withdrawing_a_missing_version_changes_nothing(self):
         self.add([entry("0.82.0")])

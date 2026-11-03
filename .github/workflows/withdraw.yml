@@ -44,13 +44,7 @@ jobs:
       - name: Remove the version from the feed and the plugin manifest
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-          PLUGIN_REGISTRY_ED_PRIVATE_KEY: ${{ secrets.PLUGIN_REGISTRY_ED_PRIVATE_KEY }}
-          PLUGIN_MANIFEST_RESIGN: ${{ vars.PLUGIN_MANIFEST_RESIGN }}
-        run: |
-          set -euo pipefail
-          flags=()
-          [ "$PLUGIN_MANIFEST_RESIGN" != true ] || flags+=(--sign-unsigned-manifest)
-          python3 apple/scripts/release/feed.py withdraw "$VERSION" --site build/gh-pages ${flags[@]+"${flags[@]}"}
+        run: python3 apple/scripts/release/feed.py withdraw "$VERSION" --site build/gh-pages
 
       - name: Push gh-pages
         working-directory: build/gh-pages
@@ -58,7 +52,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add appcast.xml plugins/v3.json plugins/v3.json.sig
+          git add appcast.xml plugins/v3.json
           git diff --cached --quiet || { git commit -m "withdraw: v$VERSION" && git push origin HEAD:gh-pages; }
 
       - name: Mark the highest stable as Latest
