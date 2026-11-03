@@ -36,7 +36,7 @@ struct MQLExportOptionsView: View {
                 .labelsHidden()
                 .frame(width: 130)
             }
-            .help("Number of documents per insertMany statement. Higher values create fewer statements.")
+            .help(String(localized: "Maximum documents per batch. Large documents use smaller batches to fit the server limit.", bundle: .main))
         }
     }
 }

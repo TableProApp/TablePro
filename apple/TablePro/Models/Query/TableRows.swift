@@ -521,9 +521,9 @@ struct TableRows: Sendable {
         columns: [String], values: ContiguousArray<PluginCellValue>, rawValues: [PluginCellValue],
         absent: Set<Int>, masks: ColumnMasks,
         policy: MaskingPolicy, table: String?
-    ) -> ExportRowSnapshot? {
+    ) -> DocumentExportSnapshot? {
         guard let documents, documents.count == count else { return nil }
-        return ExportRowSnapshot(
+        return DocumentExportSnapshot(
             document: ExportDocumentMasking.document(
                 documents[index], columns: columns, masks: masks, policy: policy, table: table, row: rawValues
             ),

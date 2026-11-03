@@ -108305,6 +108305,10 @@
         }
       }
     },
+    "Maximum documents per batch. Large documents use smaller batches to fit the server limit." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Maximum entries cannot be negative" : {
       "localizations" : {
         "fr" : {

@@ -121,6 +121,27 @@ struct MQLExportHelpersTests {
         #expect((context.exception != nil) == fails)
     }
 
+    @Test("Collection creation catches only a thrown NamespaceExists code", arguments: [
+        ("error.code = 48;", false),
+        ("error.code = 13;", true),
+        ("error.code = '48';", true),
+        ("error.name = 'MongoNetworkError';", true),
+        ("error.code = 64; error.name = 'MongoWriteConcernError';", true)
+    ])
+    func collectionCreationThrownError(properties: String, fails: Bool) throws {
+        let context = try #require(JSContext())
+        context.evaluateScript("""
+        var db = {runCommand: function() {
+          var error = new Error("create failed");
+          \(properties)
+          throw error;
+        }};
+        var EJSON = {stringify: JSON.stringify};
+        """)
+        context.evaluateScript(MQLExportHelpers.createCollectionCommand("people"))
+        #expect((context.exception != nil) == fails)
+    }
+
 }
 
 struct MQLDocumentBatchTests {

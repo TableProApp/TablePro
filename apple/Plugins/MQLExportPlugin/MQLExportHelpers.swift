@@ -51,7 +51,14 @@ enum MQLExportHelpers {
     }
 
     static func createCollectionCommand(_ collection: String) -> String {
-        checkedCommand("{create: \(JavaScriptText.stringLiteral(collection))}", allowingNamespaceExists: true)
+        let create = checkedCommand("{create: \(JavaScriptText.stringLiteral(collection))}", allowingNamespaceExists: true)
+        return """
+        {
+          try \(create) catch (error) {
+            if (!error || error.code !== 48) { throw error; }
+          }
+        }
+        """
     }
 
     static func checkedCommand(_ command: String, allowingNamespaceExists: Bool = false) -> String {

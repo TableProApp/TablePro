@@ -24,7 +24,7 @@ struct Row: Equatable, Sendable {
     var absentColumns: Set<Int> = []
     // Column to byte length of a value the page left on the server; it reads `.null` until loaded.
     var unloadedColumns: [Int: Int] = [:]
-    var exportSnapshot: ExportRowSnapshot?
+    var exportSnapshot: DocumentExportSnapshot?
 
     func isAbsent(_ column: Int) -> Bool {
         absentColumns.contains(column)
@@ -46,7 +46,7 @@ struct Row: Equatable, Sendable {
 }
 
 /// The original cells let an undo restore document export without assigning types to edited text.
-struct ExportRowSnapshot: Equatable, Sendable {
+struct DocumentExportSnapshot: Equatable, Sendable {
     var document: PluginExportDocument
     var values: ContiguousArray<PluginCellValue>
     let absentColumns: Set<Int>
