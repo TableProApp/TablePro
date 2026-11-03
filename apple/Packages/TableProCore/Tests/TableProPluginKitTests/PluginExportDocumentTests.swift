@@ -139,7 +139,7 @@ struct PluginExportDocumentTests {
     @Test("Default export source keeps its scoped legacy read")
     func defaultSource() async throws {
         let source = LegacyExportSource()
-        let table = PluginExportTable(name: "items", databaseName: "db")
+        let table = PluginExportTable(name: "items", databaseName: "db", tableType: "TABLE")
         var values: [PluginRow] = []
         for try await element in source.streamExportRows(for: table) {
             if case .rows(let rows, let documents) = element {
