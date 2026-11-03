@@ -149,19 +149,8 @@ private struct WelcomeConnectionAccessories: View {
                     .accessibilityLabel(String(localized: "Local only"))
             }
 
-            WelcomeConnectionStatus(connectionId: model.id)
+            ConnectionStatusMark(presentation: ConnectionStatusPresentation(model.status))
         }
-    }
-}
-
-// Re-read when the outline revision moves, which follows both session and window phase events.
-private struct WelcomeConnectionStatus: View {
-    let connectionId: UUID
-
-    var body: some View {
-        ConnectionStatusMark(
-            presentation: ConnectionStatusPresentation(ConnectionStatusResolver.status(for: connectionId))
-        )
     }
 }
 
