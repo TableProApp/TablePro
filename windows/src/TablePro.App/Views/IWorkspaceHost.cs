@@ -12,6 +12,8 @@ internal interface IWorkspaceHost
     // False for a window kept hidden for the next drag, which no tab may be dropped into.
     bool AcceptsTabs { get; }
 
+    bool CanMoveTabs { get; }
+
     WindowId TearOutWindow(OpenConnection connection);
 
     void TearOut(TabViewItem tab, WindowId window);

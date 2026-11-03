@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private MainWindow? _spare;
     private bool _isSpare;
     private bool _closing;
+    private bool _checkingClose;
 
     internal MainWindow(Workbench workbench)
     {
@@ -91,7 +92,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     public bool IsPrimary => ReferenceEquals(_primary, this);
 
-    public bool AcceptsTabs => !_isSpare && AppWindow.IsVisible;
+    public bool CanMoveTabs => !_primary._checkingClose && !_closing;
+
+    public bool AcceptsTabs => !_isSpare && !_primary._checkingClose && AppWindow.IsVisible;
 
     private WorkspaceView? Workspace => (Rail.Content as WorkspaceView) is { IsConnected: true } view ? view : null;
 
@@ -290,6 +293,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void MoveOut(TabViewItem tab)
     {
+        if (!CanMoveTabs)
+        {
+            return;
+        }
+
         var source = WorkspaceView.HolderOf(tab);
         var from = AllWindows.FirstOrDefault(window => window._open.Any(open => open.View == source));
         if (source is null || from?._open.First(open => open.View == source) is not { } connection)
@@ -562,7 +570,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     {
         if (!IsPrimary)
         {
-            Close();
+            await RequestCloseAsync();
             return;
         }
 
@@ -686,14 +694,77 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
-        if (!IsPrimary)
+        if (_closing)
         {
-            // TabView closes the window it made for a drag that tore nothing out; it is kept for the next one.
-            args.Cancel = _isSpare && !_closing;
             return;
         }
 
-        ShutDown();
+        args.Cancel = true;
+        if (!_isSpare)
+        {
+            DispatcherQueue.TryEnqueue(async () => await RequestCloseAsync());
+        }
+    }
+
+    private async Task RequestCloseAsync()
+    {
+        if (_primary._checkingClose || _closing)
+        {
+            return;
+        }
+
+        var windows = IsPrimary ? AllWindows.ToList() : [this];
+        if (windows.Any(window => WindowDialogs.IsOpen(window.Content.XamlRoot)))
+        {
+            return;
+        }
+
+        _primary._checkingClose = true;
+        RefreshTabTransfers();
+        try
+        {
+            var confirmed = new HashSet<ITabContent>();
+            while (windows.SelectMany(window => window._open).Any(open => open.View.HasUnconfirmedTransactions(confirmed)))
+            {
+                foreach (var window in windows)
+                {
+                    foreach (var open in window._open.Where(open => open.View.HasUnconfirmedTransactions(confirmed)).ToList())
+                    {
+                        window.Activate();
+                        window.Show(open);
+                        if (!await open.View.ConfirmCloseAsync(confirmed))
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if (IsPrimary)
+            {
+                ShutDown();
+            }
+
+            CloseForGood();
+        }
+        finally
+        {
+            _primary._checkingClose = false;
+            RefreshTabTransfers();
+        }
+    }
+
+    private void RefreshTabTransfers()
+    {
+        foreach (var window in _primary.AllWindows.Where(window => !window._closing))
+        {
+            foreach (var open in window._open)
+            {
+                open.View.UpdateTearOut();
+            }
+
+            window.UpdateCommands();
+        }
     }
 
     // Window.Close raises no AppWindow.Closing, so Exit runs this itself before it closes the primary.
@@ -814,11 +885,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void OnShowSettings(object sender, RoutedEventArgs e) => ShowSettings();
 
     // Exit ends the app from any window; the primary saves every window as it closes.
-    private void OnExit(object sender, RoutedEventArgs e)
-    {
-        _primary.ShutDown();
-        _primary.Close();
-    }
+    private async void OnExit(object sender, RoutedEventArgs e) => await _primary.RequestCloseAsync();
 
     private void OnUndo(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.Z);
 

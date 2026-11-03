@@ -541,7 +541,7 @@ public sealed partial class HomeView : UserControl
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary)
         {
             await Write(async () =>
             {
@@ -565,7 +565,7 @@ public sealed partial class HomeView : UserControl
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary)
         {
             await Write(() => _workbench.Library.DeleteGroupAsync(group.Id)).ConfigureAwait(true);
         }
@@ -583,7 +583,7 @@ public sealed partial class HomeView : UserControl
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary)
         {
             await Write(() => _workbench.Library.DeleteTagAsync(tag.Id)).ConfigureAwait(true);
         }
@@ -658,7 +658,7 @@ public sealed partial class HomeView : UserControl
                 deferral.Complete();
             }
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary)
         {
             _workbench.NotifyLibraryChanged();
         }

@@ -186,7 +186,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary)
         {
             await EndTransactionAsync(commit: false).ConfigureAwait(true);
         }

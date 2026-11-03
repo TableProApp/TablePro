@@ -321,7 +321,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary)
         {
             var all = _page.AllRows();
             Resize(all, all.Size);

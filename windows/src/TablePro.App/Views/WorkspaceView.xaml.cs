@@ -71,7 +71,7 @@ public sealed partial class WorkspaceView : UserControl
     public int TabCount => Tabs.TabItems.Count;
 
     // A tab may leave a window that keeps another, or the window with the rail.
-    public bool CanMoveActiveTab => ActiveTab is not null && (Host is { IsPrimary: true } || TabCount > 1);
+    public bool CanMoveActiveTab => Host is { CanMoveTabs: true } && ActiveTab is not null && (Host is { IsPrimary: true } || TabCount > 1);
 
     public ObservableCollection<ObjectNode> Objects { get; } = [];
 
@@ -94,20 +94,6 @@ public sealed partial class WorkspaceView : UserControl
 
     // Asked when the core has no secret saved for the connection. Null when the dialog is closed.
     internal async Task<SecretAnswer?> AskSecretAsync(SecretKind kind)
-    {
-        // Windows restored together can each need a password; one dialog shows at a time, so they take turns.
-        await _workbench.Dialogs.WaitAsync().ConfigureAwait(true);
-        try
-        {
-            return await AskSecretOnceAsync(kind).ConfigureAwait(true);
-        }
-        finally
-        {
-            _workbench.Dialogs.Release();
-        }
-    }
-
-    private async Task<SecretAnswer?> AskSecretOnceAsync(SecretKind kind)
     {
         if (XamlRoot is null)
         {
@@ -141,13 +127,13 @@ public sealed partial class WorkspaceView : UserControl
         box.Loaded += (_, _) => box.Focus(FocusState.Programmatic);
         try
         {
-            return await dialog.ShowAsync() == ContentDialogResult.Primary
+            return await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary
                 ? new SecretAnswer(box.Password, save.IsChecked == true)
                 : null;
         }
         catch (System.Runtime.InteropServices.COMException)
         {
-            // Another dialog is open on this thread; the connect ends as cancelled and can be asked for again.
+            // A dialog whose window closed cancels the connection.
             return null;
         }
     }
@@ -259,6 +245,28 @@ public sealed partial class WorkspaceView : UserControl
         return origin with { Tabs = tabs, SelectedTab = Math.Max(0, Tabs.SelectedIndex) };
     }
 
+    internal bool HasUnconfirmedTransactions(ISet<ITabContent> confirmed) => Tabs.TabItems.OfType<TabViewItem>()
+        .Any(item => item.Content is ITabContent content && WorkspaceNotices.Holds(content.Transaction) && !confirmed.Contains(content));
+
+    internal async Task<bool> ConfirmCloseAsync(ISet<ITabContent> confirmed)
+    {
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>().ToList())
+        {
+            if (item.Content is ITabContent content && WorkspaceNotices.Holds(content.Transaction) && !confirmed.Contains(content))
+            {
+                Tabs.SelectedItem = item;
+                if (!await ConfirmCloseHeldAsync(content).ConfigureAwait(true))
+                {
+                    return false;
+                }
+
+                confirmed.Add(content);
+            }
+        }
+
+        return true;
+    }
+
     public async Task CloseTabsAsync()
     {
         Tabs.CanTearOutTabs = false;
@@ -350,7 +358,7 @@ public sealed partial class WorkspaceView : UserControl
         var index = Math.Min(closed.Index, Tabs.TabItems.Count);
         if (closed.Tab is { Kind: TabKind.Table, Table: { } table })
         {
-            OpenTable(closed.Tab.Schema, table, index, closed.Tab);
+            AddTable(closed.Tab.Schema, table, index, closed.Tab);
         }
         else
         {
@@ -479,9 +487,10 @@ public sealed partial class WorkspaceView : UserControl
     // Before the workspace leaves its window, while TabView can still reach the window to unmark its strip.
     public void Leave() => Tabs.CanTearOutTabs = false;
 
-    private void UpdateTearOut()
+    internal void UpdateTearOut()
     {
-        if (Tabs.IsLoaded && _session is not null)
+        Tabs.CanTearOutTabs = false;
+        if (Tabs.IsLoaded && _session is not null && Host is { CanMoveTabs: true })
         {
             Tabs.CanTearOutTabs = true;
             _stripOrigin = Tabs.TransformToVisual(null).TransformPoint(default);
@@ -627,7 +636,7 @@ public sealed partial class WorkspaceView : UserControl
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary;
     }
 
     // The tab shown names its own transaction; this bar names one another tab holds.

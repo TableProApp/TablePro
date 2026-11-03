@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Text.Json;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
@@ -103,6 +104,80 @@ public sealed partial class ShellTests
         app.Chord(torn, () => !app.HasWindow(SampleWindow), VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_W);
         app.WaitForClose(SampleWindow);
         app.FindByName("Query 1", app.Find("Tabs"));
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void DuplicateTableTabsRestoreAndReopenWithTheirOwnPages(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme);
+        var database = AppSession.SampleDatabase(folder);
+        var state = new
+        {
+            connections = new[]
+            {
+                new
+                {
+                    filePath = database,
+                    name = "Paging",
+                    engineId = "sqlite",
+                    selectedTab = 1,
+                    tabs = new[]
+                    {
+                        new { kind = "Table", title = "Track", table = "Track", pageSize = 100, offset = 0 },
+                        new { kind = "Table", title = "Track", table = "Track", pageSize = 20, offset = 40 },
+                    },
+                },
+            },
+            front = 0,
+        };
+        // Merging windows can save two tabs for the same table with different pages.
+        File.WriteAllText(Path.Combine(folder, "session.json"), JsonSerializer.Serialize(state));
+        using var app = AppSession.Relaunch(folder, theme);
+        int Count() => app.Find("Tabs").FindAllDescendants(condition =>
+            condition.ByControlType(ControlType.TabItem).And(condition.ByName("Track"))).Length;
+        Assert.True(Retry.WhileFalse(() => Count() == 2, AppSession.Wait, throwOnTimeout: false).Success);
+        AppSession.WaitForText(app.Find("TableStatus"), text => text.StartsWith("41-60 of", StringComparison.Ordinal));
+        app.Chord(() => Count() == 1, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_W);
+        AppSession.WaitForText(app.Find("TableStatus"), text => text.StartsWith("1-100 of", StringComparison.Ordinal));
+        app.Chord(() => Count() == 2, VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT, VirtualKeyShort.KEY_T);
+        AppSession.WaitForText(app.Find("TableStatus"), text => text.StartsWith("41-60 of", StringComparison.Ordinal));
+        Assert.Equal("20 rows", app.Find("PageSizeButton").Name);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void ClosingATabWindowOrExitingAsksBeforeRollingBack(string theme)
+    {
+        using var app = AppSession.Launch(theme);
+        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.FindByName("Track", app.Find("ObjectTree"));
+        app.TypeInto(app.Find("SqlEditor"), "BEGIN; UPDATE Track SET Name = 'Pending' WHERE TrackId = 1;");
+        app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+        app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Move to new window") is not null);
+        app.FindMenuItem("Move to new window").Patterns.Invoke.Pattern.Invoke();
+        var torn = app.WaitForWindow(SampleWindow);
+
+        app.Chord(torn, () => app.TryFind("PrimaryButton", torn) is not null, VirtualKeyShort.ALT, VirtualKeyShort.F4);
+        app.Find("CloseButton", torn).AsButton().Invoke();
+        Assert.True(app.HasWindow(SampleWindow));
+        Assert.True(app.Find("CommitButton", torn).IsEnabled);
+
+        // Closing the primary includes held transactions in its tab windows.
+        app.Chord(() => app.TryFind("PrimaryButton", torn) is not null, VirtualKeyShort.ALT, VirtualKeyShort.F4);
+        app.Find("CloseButton", torn).AsButton().Invoke();
+        Assert.True(app.HasWindow(SampleWindow));
+        Assert.True(app.Find("CommitButton", torn).IsEnabled);
+
+        app.Chord(torn, () => app.TryFind("PrimaryButton", torn) is not null, VirtualKeyShort.ALT, VirtualKeyShort.F4);
+        app.Screenshot("35-window-close-transaction", torn);
+        app.Find("PrimaryButton", torn).AsButton().Invoke();
+        app.WaitForClose(SampleWindow);
+        app.Chord(() => app.TryFind("SqlEditor") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
+        app.TypeInto(app.Find("SqlEditor"), "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
+        app.Chord(() => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
+            VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
+        Assert.Equal("0", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "0"));
     }
 
     private static void OpenTrack(AppSession app)
