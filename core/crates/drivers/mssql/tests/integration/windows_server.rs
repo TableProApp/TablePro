@@ -68,6 +68,18 @@ async fn link(connection: &dyn Connection) -> Link {
 
 async fn signs_in(mode: TlsMode, protocol: &str) {
     let connection = open(checked(mode)).await.expect("an integrated login");
+    let version: [u32; 4] = connection
+        .server_info()
+        .version
+        .split('.')
+        .map(|part| part.parse().expect("a numeric SQL Server version"))
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("four SQL Server version parts");
+    assert!(
+        version >= [16, 0, 4003, 1],
+        "Strict RPC needs SQL Server 2022 CU1: {version:?}"
+    );
 
     let link = link(connection.as_ref()).await;
 

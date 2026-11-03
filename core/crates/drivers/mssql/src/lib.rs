@@ -30,7 +30,6 @@ mod mssql_pooled;
 mod physical;
 mod probe;
 mod read_only_guard;
-mod rpc;
 mod standalone;
 mod stream_read;
 mod tds_message;

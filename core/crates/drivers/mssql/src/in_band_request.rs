@@ -11,9 +11,9 @@ use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
-use futures_util::{TryStream, TryStreamExt};
+use futures_util::TryStreamExt;
 use tablepro_core::{DriverError, StopRequest};
-use tiberius::QueryItem;
+use tiberius::{QueryItem, QueryStream};
 use tokio::time::Instant;
 use tracing::debug;
 
@@ -163,10 +163,7 @@ impl Watch {
     }
 
     /// The next item of a response, unless a stop comes first.
-    pub(crate) async fn next<S>(&self, stream: &mut S) -> Result<Option<QueryItem>, Interrupt>
-    where
-        S: TryStream<Ok = QueryItem, Error = tiberius::error::Error> + Unpin,
-    {
+    pub(crate) async fn next(&self, stream: &mut QueryStream<'_>) -> Result<Option<QueryItem>, Interrupt> {
         if self.request.is_requested() {
             return Err(Interrupt::Stopped(Halt::Boundary));
         }

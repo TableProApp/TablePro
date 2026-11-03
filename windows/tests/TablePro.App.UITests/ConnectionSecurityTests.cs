@@ -38,8 +38,8 @@ public sealed partial class ShellTests
         row.RightClick();
         app.FindMenuItem("Edit...").Patterns.Invoke.Pattern.Invoke();
         var edit = app.WaitForWindow("Edit connection");
-        Assert.Equal("Windows authentication", app.Find("AuthBox", edit).AsComboBox().SelectedItem.Text);
-        Assert.Equal("Strict (TDS 8.0), verify the certificate and host", app.Find("TlsModeBox", edit).AsComboBox().SelectedItem.Text);
+        Assert.Equal("Windows authentication", app.Find("AuthBox", edit).AsComboBox().SelectedItem?.Text);
+        Assert.Equal("Strict (TDS 8.0), verify the certificate and host", app.Find("TlsModeBox", edit).AsComboBox().SelectedItem?.Text);
         app.Click(app.Find("TlsExpander", edit), () => app.TryFind("CaFileBox", edit) is { IsOffscreen: false }, edit);
         Assert.Equal("db.example.com", app.Find("ServerNameBox", edit).AsTextBox().Text);
         app.Find("CancelButton", edit).AsButton().Invoke();

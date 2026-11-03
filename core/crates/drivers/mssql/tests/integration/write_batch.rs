@@ -198,9 +198,15 @@ async fn trigger_results_are_drained_and_their_counts_are_kept() {
     let report = connection.write_batch(&save, within(CALL)).await.expect("the save");
 
     assert_eq!(report.rows_affected, vec![Some(1001)]);
+    let unparameterized = batch(&["UPDATE dbo.items SET label = N'changed again' WHERE id = 1"]);
+    let report = connection
+        .write_batch(&unparameterized, within(CALL))
+        .await
+        .expect("the unparameterized save");
+    assert_eq!(report.rows_affected, vec![Some(1001)]);
     assert_eq!(
         scalar(connection.as_ref(), "SELECT label FROM dbo.items WHERE id = 1").await,
-        Value::Text("changed".to_owned())
+        Value::Text("changed again".to_owned())
     );
 }
 

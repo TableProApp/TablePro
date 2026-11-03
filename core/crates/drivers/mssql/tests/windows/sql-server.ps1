@@ -1,4 +1,4 @@
-# SQL Server 2022 Express for tests/integration/windows_server.rs. -Install: TCP 1433, Windows logins, the
+# SQL Server 2022 Express CU1 for tests/integration/windows_server.rs. -Install: TCP 1433, Windows logins, the
 # current account as sysadmin, a self-signed certificate written as PEM to TABLEPRO_TEST_MSSQL_WINDOWS_CA and
 # trusted by no Windows store. -ForceStrict: only TDS 8.0 logins get in.
 param(
@@ -43,6 +43,20 @@ if ($Install) {
         Get-Content 'C:\Program Files\Microsoft SQL Server\160\Setup Bootstrap\Log\Summary.txt'
         exit 1
     }
+
+    # CU1 fixes RTM's Strict RPC decoder (KB5022375, bug 2042238).
+    $update = Join-Path $env:RUNNER_TEMP 'SQLServer2022-KB5022375-x64.exe'
+    Invoke-WebRequest 'https://catalog.s.download.windowsupdate.com/c/msdownload/update/software/updt/2023/03/sqlserver2022-kb5022375-x64_ab34fe7633beef56c7bce1e212a6cf56c91f4e57.exe' -OutFile $update
+    $updateHash = (Get-FileHash $update -Algorithm SHA256).Hash
+    if ($updateHash -ne '589F5609A99EDC07AAAD2C73FFE53E1259B6BC1BCDE3ED950468C8219D2C9594') { throw "SQL Server CU1 has SHA-256 $updateHash" }
+    $patched = Start-Process $update -ArgumentList '/quiet', '/IAcceptSQLServerLicenseTerms', '/Action=Patch', '/InstanceName=MSSQLSERVER', '/UpdateEnabled=False' -Wait -PassThru -NoNewWindow
+    if ($patched.ExitCode -notin @(0, 3010)) {
+        Get-Content 'C:\Program Files\Microsoft SQL Server\160\Setup Bootstrap\Log\Summary.txt'
+        throw "SQL Server CU1 exited $($patched.ExitCode)"
+    }
+    $instance = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL').MSSQLSERVER
+    $installed = [version](Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\$instance\Setup" -Name PatchLevel).PatchLevel
+    if ($installed -lt [version]'16.0.4003.1') { throw "SQL Server $installed is older than CU1" }
 
     # SQL Server reads the key through the legacy CryptoAPI, so the key lives in an SChannel CSP container
     # that its service account is then allowed to read.

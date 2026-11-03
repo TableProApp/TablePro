@@ -8,7 +8,7 @@ use tiberius::{ColumnData, QueryItem};
 
 use crate::catalog::result_column;
 use crate::decode::decode_row;
-use crate::encode::encode_params;
+use crate::encode::{as_sql, encode_params};
 use crate::in_band_request::{Interrupt, Watch, cut_short};
 use crate::physical::MssqlClient;
 use crate::read_only_guard::{guarded_error, wrap};
@@ -113,7 +113,8 @@ async fn first_result(
     params: &[ColumnData<'static>],
     limit: RowLimit,
 ) -> Result<FirstResult, Interrupt> {
-    let mut stream = watch.start(crate::rpc::query(client, sql, params)).await?;
+    let refs = as_sql(params);
+    let mut stream = watch.start(client.query(sql, &refs)).await?;
     let mut columns: Option<Vec<ResultColumn>> = None;
     let mut rows = Vec::new();
     let mut sets = 0usize;
@@ -144,7 +145,8 @@ pub(crate) async fn catalogue_rows(
     sql: &str,
     params: &[ColumnData<'static>],
 ) -> Result<Vec<Vec<Value>>, Interrupt> {
-    let mut stream = watch.start(crate::rpc::query(client, sql, params)).await?;
+    let refs = as_sql(params);
+    let mut stream = watch.start(client.query(sql, &refs)).await?;
     let mut rows = Vec::new();
     while let Some(item) = watch.next(&mut stream).await? {
         if let QueryItem::Row(row) = item {
