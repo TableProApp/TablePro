@@ -227,6 +227,38 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         )
     }
 
+    @Test("Curated DuckDB offers port forwards, no SSL section, and names the fields that hold its server")
+    func duckDBCuratedTransportCapabilities() throws {
+        let curated = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "DuckDB"))
+
+        #expect(curated.capabilities.supportsSSH, "Remote mode dials a TCP server a forward can carry")
+        #expect(!curated.capabilities.supportsSSL, "Quack's TLS lives in the Remote fields, never the built-in section")
+        #expect(
+            curated.capabilities.serverEndpointFields
+                == ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort")
+        )
+        let declared = Set(curated.connection.additionalConnectionFields.map(\.id))
+        #expect(declared.isSuperset(of: ["duckdbHost", "duckdbPort"]))
+    }
+
+    @Test("DuckDB keeps its server fields when its plugin registers")
+    func duckDBKeepsItsServerEndpointFields() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockDuckDBPlugin.self)
+
+        #expect(
+            built.capabilities.serverEndpointFields
+                == ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort"),
+            "No DriverPlugin declares them, so loading the plugin would otherwise forward the built-in Host"
+        )
+    }
+
+    @Test("Only DuckDB keeps its server outside the built-in Host and Port")
+    func onlyDuckDBNamesServerEndpointFields() {
+        for entry in PluginMetadataRegistry.shared.builtInDefaults() where entry.typeId != "DuckDB" {
+            #expect(entry.snapshot.capabilities.serverEndpointFields == nil, "\(entry.typeId)")
+        }
+    }
+
     @Test("DuckDB keeps its file signatures when its plugin registers")
     func duckDBKeepsItsFileSignatures() {
         let registry = PluginMetadataRegistry.shared

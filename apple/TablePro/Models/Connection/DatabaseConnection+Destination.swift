@@ -22,9 +22,16 @@ extension DatabaseConnection {
     }
 
     // Host and port first, then every other server or project the connection may sign in to, so a prompt never
-    // hides the real host behind a value the engine ignores, or a server behind "(+N more)".
+    // hides the real host behind a value the engine ignores, or a server behind "(+N more)". Where plugin fields name
+    // the server, as DuckDB's Remote fields do, they stand in for Host, which nothing dials.
     var destinationSummary: String {
-        var servers = [host.isEmpty || host.hasPrefix("/") ? endpointDescription : HostListEndpoint(host: host, port: port).entry]
+        var servers: [String]
+        if activeServerEndpointFields != nil {
+            let server = serverEndpoint
+            servers = [HostListEndpoint(host: server.host, port: server.port).entry]
+        } else {
+            servers = [host.isEmpty || host.hasPrefix("/") ? endpointDescription : HostListEndpoint(host: host, port: port).entry]
+        }
         let account = (additionalFields["snowflakeAccount"] ?? "").trimmingCharacters(in: .whitespaces)
         if type.pluginTypeId == "Snowflake", !account.isEmpty {
             servers.append(account)
@@ -40,7 +47,7 @@ extension DatabaseConnection {
         var seen: Set<String> = []
         let server = servers.filter { seen.insert($0).inserted }.joined(separator: ", ")
         let ssh = resolvedSSHConfig
-        guard ssh.enabled, !ssh.host.isEmpty else { return server }
+        guard ssh.enabled, !ssh.host.isEmpty, opensSSHServer else { return server }
         return String(
             format: String(localized: "%1$@ through the SSH server %2$@"),
             server,
@@ -48,8 +55,8 @@ extension DatabaseConnection {
         )
     }
 
-    // The catalog's destinations this engine reads with these settings, in form order. Host lists are named entry by
-    // entry above. An engine with no declared fields names every destination it carries.
+    // The catalog's destinations this engine reads with these settings, in form order. Host lists and server fields are
+    // named above. An engine with no declared fields names every destination it carries.
     private var activeDestinationFieldIds: [String] {
         let declared = PluginMetadataRegistry.shared.snapshot(for: type)?.connection.additionalConnectionFields ?? []
         guard !declared.isEmpty else {
@@ -57,13 +64,20 @@ extension DatabaseConnection {
                 .filter { ConnectionFieldCatalog.trust(of: $0) == .destination }
                 .sorted()
         }
+        let serverFieldIds = activeServerEndpointFields.map { [$0.hostFieldId, $0.portFieldId] } ?? []
         return declared.compactMap { field -> String? in
             if case .hostList = field.fieldType { return nil }
-            guard ConnectionFieldCatalog.trust(of: field.id) == .destination,
+            guard !serverFieldIds.contains(field.id),
+                  ConnectionFieldCatalog.trust(of: field.id) == .destination,
                   declared.isVisible(field, forValues: additionalFields)
             else { return nil }
             return field.id
         }
+    }
+
+    // A stored SSH server the connect goes around, because the driver dials no forwarded port, is not part of the route.
+    private var opensSSHServer: Bool {
+        enabledTunnelKinds.contains { $0 == .ssh || $0 == .remoteFile || $0 == .remoteDatabaseSession }
     }
 
     private var destinationTransport: ConnectionDestination.Transport {

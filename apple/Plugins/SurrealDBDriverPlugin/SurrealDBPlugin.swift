@@ -25,6 +25,7 @@ final class SurrealDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsImport = false
     static let supportsSchemaEditing = false
     static let supportsForeignKeys = false
+    static let supportsForeignKeyDisable = false
     static let supportsTriggers = false
     static let supportsTriggerEditing = false
     static let brandColorHex = "#FF00A0"

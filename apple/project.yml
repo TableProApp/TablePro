@@ -983,7 +983,7 @@ targets:
       principalClass: DuckDBPlugin
     dependencies:
       - package: TableProCore
-        products: [TableProSQLGrammar, TableProSQLVocabulary]
+        products: [TableProDuckDBCore, TableProSQLGrammar, TableProSQLVocabulary]
     settings:
       base:
         # Links no OpenSSL dylib, so no Libs/dylibs search path.

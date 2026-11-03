@@ -244,6 +244,33 @@ struct DatabaseConnectionDisplayTests {
         #expect(connection.connectionSubtitle == "localhost/myapp via bastion.example.com")
     }
 
+    @Test("A DuckDB Remote row shows the server its fields name, through its tunnel")
+    func duckdbRemoteShowsItsServer() {
+        var sshConfig = SSHConfiguration()
+        sshConfig.enabled = true
+        sshConfig.host = "bastion.example.com"
+        let connection = DatabaseConnection(
+            name: "Quack", host: "localhost", port: 9_494, database: "remotedb", type: .duckdb, sshConfig: sshConfig,
+            additionalFields: ["duckdbMode": "remote", "duckdbHost": "quack.internal", "duckdbPort": "9500"]
+        )
+
+        #expect(connection.connectionSubtitle == "quack.internal:9500 via bastion.example.com")
+    }
+
+    @Test("A DuckDB Local File row never names the SSH server it still stores")
+    func duckdbLocalHidesStoredTunnel() {
+        var sshConfig = SSHConfiguration()
+        sshConfig.enabled = true
+        sshConfig.host = "bastion.example.com"
+        let connection = DatabaseConnection(
+            name: "File", host: "localhost", port: 9_494, type: .duckdb, sshConfig: sshConfig,
+            additionalFields: ["duckdbMode": "local", "duckdbFilePath": "/tmp/a.duckdb", "duckdbHost": "quack.internal"]
+        )
+
+        #expect(!connection.connectionSubtitle.contains("bastion"))
+        #expect(!connection.connectionSubtitle.contains("quack.internal"))
+    }
+
     @Test("Unknown future type is treated like a database role")
     func unknownTypeUsesDatabaseRole() {
         let connection = DatabaseConnection(

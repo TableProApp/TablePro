@@ -29757,6 +29757,10 @@
         }
       }
     },
+    "Automatic does not work through a tunnel to %@. DuckDB would use HTTPS and check the certificate against 127.0.0.1, not against the server's name. Set SSL Mode to Verify Fingerprint or Required (skip verify), or to Disabled if the server serves plain HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Automatically check for updates" : {
       "localizations" : {
         "fr" : {
@@ -35324,6 +35328,10 @@
           }
         }
       }
+    },
+    "Certificate Fingerprint" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Certificate Not Available" : {
       "extractionState" : "manual",
@@ -68662,6 +68670,22 @@
         }
       }
     },
+    "DuckDB could not install its %@ extension. It downloads the extension from extensions.duckdb.org the first time it connects to a remote database." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not load its %@ extension." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not read the CA Certificate. It reads PEM files only." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not verify the server's certificate. Either no CA it trusts signed it, or it was not issued for this host name. DuckDB checks certificates against /etc/ssl/cert.pem and the CA Certificate, and does not read the macOS keychain, so a CA added in Keychain Access is not trusted." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "DuckDB database file" : {
       "localizations" : {
         "fr" : {
@@ -68695,6 +68719,10 @@
           }
         }
       }
+    },
+    "DuckDB reported: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "duplicate" : {
       "localizations" : {
@@ -163967,6 +163995,18 @@
         }
       }
     },
+    "Set SSL Mode to Verify Fingerprint, or to Required (skip verify) to encrypt without checking the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Set SSL Mode to Verify Identity and choose the CA that signed the certificate in CA Certificate, or set SSL Mode to Verify Fingerprint and enter the server's Certificate Fingerprint. Required (skip verify) also connects, but does not check the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Set SSL Mode to Verify Identity, or to Verify Fingerprint for a server with a self-signed certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Set the comment" : {
 
     },
@@ -172691,6 +172731,8 @@
       }
     },
     "SSL Mode" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -180404,6 +180446,10 @@
     "TablePro could not reach the Schema Registry: %@" : {
 
     },
+    "TablePro could not read the CA Certificate at %@: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro could not read the database's own name from the connection." : {
       "localizations" : {
         "fr" : {
@@ -180453,6 +180499,10 @@
           }
         }
       }
+    },
+    "TablePro could not write the CA bundle DuckDB reads: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro couldn't check which rows in other tables reference these rows." : {
 
@@ -185053,6 +185103,10 @@
         }
       }
     },
+    "The CA Certificate at %@ is not a PEM certificate. DuckDB reads PEM files only. Convert a DER file with: openssl x509 -inform der -in ca.der -out ca.pem" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The CA certificate path cannot be passed to FreeTDS. Use a shorter path, without “;”, “#” or repeated spaces." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185119,6 +185173,10 @@
           }
         }
       }
+    },
+    "The Certificate Fingerprint is not a SHA-256 fingerprint. Enter the 64 hex digits that quack_server_list() shows on the server, with or without colons." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The change could not be applied: %@" : {
       "localizations" : {
@@ -188223,6 +188281,9 @@
           }
         }
       }
+    },
+    "The installed %@ driver cannot connect through a tunnel yet. Update the database driver in Settings > Extensions, then connect again." : {
+
     },
     "The installed %1$@ does not support %2$@. Update it in Settings > Extensions." : {
 
@@ -191760,6 +191821,10 @@
         }
       }
     },
+    "The server did not answer the TLS handshake. If it serves plain HTTP, set SSL Mode to Disabled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server did not say which InfluxDB version it runs." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -192058,6 +192123,10 @@
         }
       }
     },
+    "The server uses HTTPS, and this connection sent plain HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server writes the file, so it lands where the server can reach, not on this Mac." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -192091,6 +192160,10 @@
       }
     },
     "the server's certificate does not cover the hostname you connected to" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server's certificate does not match the Certificate Fingerprint. If the server has a new certificate, copy its fingerprint again from quack_server_list() on the server." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -195700,6 +195773,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This build of DuckDB does not accept turning off persistent secrets" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This call matches more than one overload of %@, so Oracle can't run it (PLS-00307)." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -196289,6 +196366,9 @@
           }
         }
       }
+    },
+    "This connection sets %1$@, which the installed %2$@ driver does not support yet. Update the database driver in Settings > Extensions, then connect again." : {
+
     },
     "This connection signs in with Kerberos, which TablePro on iPhone and iPad can't do." : {
       "extractionState" : "manual",
@@ -203258,6 +203338,10 @@
           }
         }
       }
+    },
+    "Token is required. Enter the token the server was started with, from quack_serve." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Token Name" : {
       "localizations" : {
@@ -212255,6 +212339,14 @@
         }
       }
     },
+    "Verify Fingerprint" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Verify Fingerprint needs the server's Certificate Fingerprint. Run quack_server_list() on the server to read it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Verify Identity" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -212296,6 +212388,10 @@
           }
         }
       }
+    },
+    "Verify Identity does not work through a tunnel. DuckDB checks the certificate against 127.0.0.1 there, not against the server's name. Set SSL Mode to Verify Fingerprint, or to Required (skip verify)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Verify Identity through a tunnel checks the certificate against the server's host name, and %@ is an IP address. Enter the server's host name, or set SSL Mode to Verify CA." : {
       "extractionState" : "manual",
