@@ -21,7 +21,7 @@ namespace TablePro.Graphics;
 // The swap chain belongs to a SwapChainPanel, so XAML composes it and nothing is copied through a XAML surface.
 internal sealed unsafe class GraphicsDevice : IDisposable
 {
-    // WinUI 3's ISwapChainPanelNative IID (microsoft.ui.xaml.media.dxinterop.h); TerraFX's struct gives only the vtable.
+    // WinUI 3's ISwapChainPanelNative IID (microsoft.ui.xaml.media.dxinterop.h); TerraFX has only the vtable.
     private static readonly Guid SwapChainPanelNativeIid = new("63aad0b8-7c24-40ff-85a8-640d944cc325");
 
     private readonly RenderDevice _device;
@@ -127,7 +127,7 @@ internal sealed unsafe class GraphicsDevice : IDisposable
         CreateTarget();
     }
 
-    // True when the swap chain can take a frame now. It takes the swap chain's signal, so a true is followed by a frame.
+    // It takes the swap chain's signal, so a true must be followed by a frame.
     public bool TryBeginFrame() => _frameReady == HANDLE.NULL || WaitForSingleObjectEx(_frameReady, 0, BOOL.FALSE) == WAIT.WAIT_OBJECT_0;
 
     public void BeginDraw() => _context->BeginDraw();

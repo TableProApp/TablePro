@@ -16,7 +16,7 @@ using static TerraFX.Interop.Windows.Windows;
 
 namespace TablePro.Editor;
 
-// What one presented frame cost, for the gate harness and later for a debug overlay.
+// What one presented frame cost, for the gate harness.
 public readonly record struct EditorFrame(
     long PresentedAt,
     double RenderMilliseconds,
@@ -27,9 +27,7 @@ public readonly record struct EditorFrame(
     int LayoutsCreated,
     bool Software);
 
-// The SQL editor: TablePro's own text control over the EditorModel, drawn with Direct2D and DirectWrite into a
-// SwapChainPanel, with TSF for input methods and a UIA text provider. windows/docs/decisions/0002-sql-editor-control.md
-// has the design.
+// Our own control, since RichEditBox failed its gate (windows/docs/decisions/0002-sql-editor-control.md).
 public sealed partial class SqlEditor : UserControl, IDisposable
 {
     private const float DefaultFontSize = 14;
@@ -84,8 +82,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         _verticalBar.ValueChanged += (_, e) => ScrollFromBar(vertical: true, e.NewValue);
         _horizontalBar.ValueChanged += (_, e) => ScrollFromBar(vertical: false, e.NewValue);
         ActualThemeChanged += (_, _) => RebuildBrushes();
-        // AccessibilitySettings.HighContrastChanged needs a CoreWindow (0x80070490 in a desktop app);
-        // UISettings raises this one for contrast themes too, off the UI thread.
+        // AccessibilitySettings.HighContrastChanged needs a CoreWindow, and this one fires for contrast themes too.
         _uiSettings.ColorValuesChanged += (_, _) => DispatcherQueue.TryEnqueue(RebuildBrushes);
         GotFocus += (_, _) => OnFocusChanged(true);
         LostFocus += (_, _) => OnFocusChanged(false);
@@ -101,14 +98,13 @@ public sealed partial class SqlEditor : UserControl, IDisposable
 
     public TextDocument Document => _model.Document;
 
-    // The text with the document's own line breaks. Setting it clears undo.
+    // With the document's own line breaks; setting it clears undo.
     public string Text
     {
         get => Document.ExportText(0, Document.Length);
         set => Document.SetText(value ?? string.Empty);
     }
 
-    // The lexer that colors the text; null leaves it plain. A later slice swaps in the connection's grammar.
     public ISyntaxLexer? Lexer
     {
         get => _lexer;
@@ -122,7 +118,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         }
     }
 
-    // Draws with WARP even when a GPU is there. Read when the editor loads.
+    // WARP even when a GPU is there; read once, when the editor loads.
     public bool PreferSoftwareRendering { get; set; }
 
     public bool IsSoftwareRendering => _device?.IsSoftware ?? false;
@@ -155,7 +151,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
 
     public SyntaxHighlighter? Highlighter => _highlighter;
 
-    // Redraws soon. Many calls before the frame give one frame.
+    // Calls before the next frame give one frame.
     public void Invalidate()
     {
         if (_renderQueued || _disposed)
@@ -166,7 +162,7 @@ public sealed partial class SqlEditor : UserControl, IDisposable
         DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Normal, Render);
     }
 
-    // Draws now. The gate harness calls it to time one frame on its own.
+    // For the gate harness, to time one frame on its own.
     public void RenderNow() => Render();
 
     public void Dispose()

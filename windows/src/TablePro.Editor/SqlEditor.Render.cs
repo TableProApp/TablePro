@@ -75,7 +75,6 @@ public sealed partial class SqlEditor
             }
         }
 
-        // Current line bands under everything, gutter included, for carets with no selection.
         if (!palette.HighContrast)
         {
             foreach (var selection in selections)
@@ -219,8 +218,7 @@ public sealed partial class SqlEditor
         ScheduleIdleLexing();
     }
 
-    // Line facts for the rest of the document fill in at low priority, a few windows at a time, so input and frames
-    // go first.
+    // Low priority, a few windows at a time, so input and frames go first.
     private void ScheduleIdleLexing()
     {
         if (_idleLexingQueued || _highlighter is null)
@@ -256,7 +254,6 @@ public sealed partial class SqlEditor
         Invalidate();
     }
 
-    // The layout drawn for a line in the last frame, or a plain one with the same geometry.
     private LineLayout LayoutFor(int line, string text)
     {
         if (_frameVersion == Document.Version && _frameLayouts.TryGetValue(line, out var drawn))
@@ -343,7 +340,6 @@ public sealed partial class SqlEditor
         return TextSearch.InRange(Document, _findBar.Query, Document.GetLineStart(first), Document.GetLineEnd(last));
     }
 
-    // The system caret width, in pixels, as DIPs.
     private float CaretWidth()
     {
         if (_caretWidth < 0)

@@ -46,7 +46,6 @@ public sealed partial class SqlEditor
 
     public void ScrollBy(double dx, double dy) => SetScroll(_scrollX + dx, _scrollY + dy);
 
-    // Brings the primary caret into view, a line of margin above and below.
     public void EnsureCaretVisible()
     {
         if (_layouts is null)
@@ -156,7 +155,6 @@ public sealed partial class SqlEditor
         }
     }
 
-    // A point on the panel to a document offset: the line under it, then the column DirectWrite hits.
     internal int OffsetAt(Point point)
     {
         if (_layouts is null)
@@ -185,7 +183,6 @@ public sealed partial class SqlEditor
         return _model.VisualColumn(offset);
     }
 
-    // The panel rectangle of an offset's caret, in DIPs.
     internal Rect CaretRect(int offset)
     {
         if (_layouts is null)
@@ -198,7 +195,6 @@ public sealed partial class SqlEditor
         return new Rect(x, y, 1, _layouts.LineHeight);
     }
 
-    // Rectangles of a range on the visible lines, one per line, in panel DIPs.
     internal List<Rect> RangeRects(int start, int end)
     {
         var rects = new List<Rect>();

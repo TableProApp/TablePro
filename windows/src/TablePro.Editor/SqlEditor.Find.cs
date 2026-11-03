@@ -31,7 +31,6 @@ public sealed partial class SqlEditor
         Invalidate();
     }
 
-    // F3 and Shift+F3: the next match after the selection, or before it, wrapping at the ends.
     public void FindNext(bool backward)
     {
         if (_findBar is null || string.IsNullOrEmpty(_findBar.Query.Text))

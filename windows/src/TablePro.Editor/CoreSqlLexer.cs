@@ -4,7 +4,7 @@ using TablePro.Interop;
 
 namespace TablePro.Editor;
 
-// The core's SQL lexer behind the editor's lexer seam. Span kinds are TablePro.Interop.SyntaxKind values.
+// Span kinds are TablePro.Interop.SyntaxKind values.
 public sealed class CoreSqlLexer(SqlGrammar grammar) : ISyntaxLexer
 {
     public SqlGrammar Grammar { get; } = grammar;

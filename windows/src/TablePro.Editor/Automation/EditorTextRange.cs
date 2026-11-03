@@ -5,9 +5,7 @@ using TablePro.Editor.Model;
 
 namespace TablePro.Editor.Automation;
 
-// A UIA text range over the document: two offsets, moved by the editor's own character, word and line rules.
-// Units the editor does not have fall back to the next larger one, as UIA asks: format to word, paragraph to line,
-// page to document.
+// A unit the editor lacks falls back to the next larger one, as UIA asks: format to word, page to document.
 internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int start, int end) : ITextRangeProvider
 {
     private const int IsReadOnlyAttribute = 40015;
@@ -186,7 +184,6 @@ internal sealed partial class EditorTextRange(SqlEditorAutomationPeer peer, int 
         _end = Math.Clamp(_end, _start, Document.Length);
     }
 
-    // Moves position by count units, one boundary at a time; returns how many it crossed.
     private int Step(TextUnit unit, ref int position, int count)
     {
         var moved = 0;

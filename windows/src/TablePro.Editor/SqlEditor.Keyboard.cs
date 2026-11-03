@@ -11,8 +11,7 @@ public sealed partial class SqlEditor
 {
     private char _pendingHighSurrogate;
 
-    // Keys as Windows text boxes and VS Code on Windows have them; windows/docs/decisions/0002-sql-editor-control.md
-    // lists the full map.
+    // Keys as Windows text boxes and VS Code have them; the map is in 0002-sql-editor-control.md.
     protected override void OnKeyDown(KeyRoutedEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
@@ -35,7 +34,7 @@ public sealed partial class SqlEditor
         }
     }
 
-    // One key press with its modifiers, for the keyboard and for tests that drive the editor without input.
+    // Also for tests that drive the editor without input.
     public bool HandleKey(VirtualKey key, bool control, bool shift, bool alt)
     {
         var page = Math.Max(1, VisibleLineCount - 1);
@@ -173,7 +172,7 @@ public sealed partial class SqlEditor
         return false;
     }
 
-    // Typed text from the keyboard layout. Input methods send theirs through TSF instead.
+    // Input methods send their text through TSF instead.
     private void OnCharacterReceived(Microsoft.UI.Xaml.UIElement sender, CharacterReceivedRoutedEventArgs e)
     {
         var c = e.Character;
@@ -197,7 +196,7 @@ public sealed partial class SqlEditor
         e.Handled = true;
     }
 
-    // Typing as the keyboard does it, for tests and the gate harness.
+    // For tests and the gate harness.
     public void TypeText(string text)
     {
         Edit(() => _model.Type(text));

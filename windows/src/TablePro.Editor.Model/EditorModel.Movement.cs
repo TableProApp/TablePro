@@ -18,7 +18,6 @@ public enum CaretMove
 
 public sealed partial class EditorModel
 {
-    // Moves every caret; with extend, the selections grow instead. pageLines is how many lines a page holds.
     public void Move(CaretMove move, bool extend, int pageLines = 1)
     {
         var moved = new List<Selection>(_selections.Count);
@@ -73,7 +72,6 @@ public sealed partial class EditorModel
         }
     }
 
-    // Home goes to the first character that is not a space, and from there to the line's start.
     public int SmartHome(int offset)
     {
         var line = Document.GetLineFromOffset(offset);
@@ -104,7 +102,6 @@ public sealed partial class EditorModel
         return new Selection(anchor, offset, column);
     }
 
-    // The column a caret shows at, with tabs taken to their stops.
     public int VisualColumn(int offset)
     {
         var line = Document.GetLineFromOffset(offset);
@@ -138,7 +135,6 @@ public sealed partial class EditorModel
 
     public void SelectAll() => SetSelections([new Selection(0, Document.Length)]);
 
-    // Double-click: the word, space run or symbol run under the pointer.
     public void SelectRunAt(int offset, bool add = false)
     {
         var (start, end) = TextUnits.RunAt(Document, Clamp(offset));
@@ -152,7 +148,6 @@ public sealed partial class EditorModel
         }
     }
 
-    // Triple-click: the whole line with its break.
     public void SelectLineAt(int offset)
     {
         var line = Document.GetLineFromOffset(Clamp(offset));
@@ -160,7 +155,6 @@ public sealed partial class EditorModel
         SetSelection(Document.GetLineStart(line), end);
     }
 
-    // Escape: back to the primary caret alone.
     public bool CollapseToPrimary()
     {
         if (_selections.Count == 1)
@@ -171,7 +165,6 @@ public sealed partial class EditorModel
         return true;
     }
 
-    // Ctrl+D: selects the word at the caret, then adds the next match of the selection as a new caret.
     public void SelectNextOccurrence()
     {
         var primary = Primary;
@@ -208,7 +201,6 @@ public sealed partial class EditorModel
         }
     }
 
-    // Ctrl+Alt+Up and Down: a caret on the line above or below each one, at the same column.
     public void AddCaretVertically(int direction)
     {
         var added = new List<Selection>(_selections);
@@ -231,7 +223,6 @@ public sealed partial class EditorModel
         SetSelections(added, added.IndexOf(primary));
     }
 
-    // Alt+drag: one selection per line between two corners, in visual columns.
     public void SetColumnSelection(int anchorLine, int anchorColumn, int activeLine, int activeColumn)
     {
         var first = Math.Clamp(Math.Min(anchorLine, activeLine), 0, Document.LineCount - 1);

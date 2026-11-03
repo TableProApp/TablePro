@@ -1,5 +1,4 @@
-// Ported from Windows Terminal's src/tsf/Implementation.cpp (https://github.com/microsoft/terminal),
-// Copyright (c) Microsoft Corporation, licensed under the MIT license.
+// Ported from Windows Terminal's src/tsf/Implementation.cpp, Copyright (c) Microsoft Corporation, MIT license.
 
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
@@ -20,30 +19,25 @@ public enum CompositionUnderline
     Squiggle,
 }
 
-// A stretch of the text being composed and how the IME wants it marked.
 public readonly record struct CompositionRun(int Start, int Length, CompositionUnderline Underline, bool Bold);
 
 internal interface ITsfHost
 {
     HWND Window { get; }
 
-    // Screen pixels of the caret, where the IME puts its candidate list.
+    // In screen pixels, where the IME puts its candidate list.
     RECT CaretScreenRect();
 
-    // Screen pixels of the editor, where the touch keyboard looks.
+    // In screen pixels, where the touch keyboard looks.
     RECT ViewScreenRect();
 
     void Commit(string text);
 
-    // The text being composed, shown at the caret but not yet in the document. Empty when composition ends.
+    // Shown at the caret but not in the document yet; empty when composition ends.
     void ShowComposition(string text, int caret, IReadOnlyList<CompositionRun> runs);
 }
 
-// The editor's TSF client, done as Windows Terminal does it: one context whose text store TSF owns
-// (ITfContextOwner), holding only the text being composed. Finished text moves into the document as typing and
-// leaves the context, so the IME never reads the 5 MB document and composition never reaches the undo history.
-// CoreTextEditContext is not used: its context is not transitory (windows/docs/decisions/0002-sql-editor-control.md,
-// Input).
+// The context holds only the composition, so the IME never reads the document (0002-sql-editor-control.md).
 internal sealed unsafe partial class TsfInput : IDisposable
 {
     private static readonly Guid ThreadMgrClsid = new("529a9e6b-6587-4f23-ab9e-9c7d683e3c50");
@@ -115,8 +109,7 @@ internal sealed unsafe partial class TsfInput : IDisposable
         }
     }
 
-    // A composition that just ended still has its text queued in TSF. The key that ended it must not reach the
-    // editor before that text does, so key handling flushes it first (Terminal GH#20244).
+    // The key that ended a composition must not reach the editor before its queued text (Terminal GH#20244).
     public void FlushPendingComposition()
     {
         if (_compositions > 0 || !_sessionPending || _context is null)
@@ -174,8 +167,7 @@ internal sealed unsafe partial class TsfInput : IDisposable
         // ITfThreadMgr is one per thread; creating it again returns that one.
         _threadMgr = Create<ITfThreadMgrEx>(ThreadMgrClsid);
 
-        // Terminal's flags. TF_TMAE_CONSOLE keeps Korean IMEs from leaving interim characters, which this editor
-        // cannot take back once they reach the document.
+        // Terminal's flags: TF_TMAE_CONSOLE keeps Korean IMEs from leaving interim characters in the document.
         uint clientId;
         NativeCom.Check(_threadMgr->ActivateEx(&clientId,
             TF.TF_TMAE_NOACTIVATETIP | TF.TF_TMAE_NOACTIVATEKEYBOARDLAYOUT | TF.TF_TMAE_CONSOLE));
@@ -217,8 +209,7 @@ internal sealed unsafe partial class TsfInput : IDisposable
         NativeCom.Check(_documentMgr->Push(_context));
     }
 
-    // WinUI's own TSF runs in its input site window. Taking focus from it needs that window, which the context
-    // TSF made active last reports.
+    // Taking focus from WinUI's own TSF needs its input site window, which the last active context reports.
     private HWND FindWindowOfActiveTsf()
     {
         IEnumTfDocumentMgrs* documents = null;
@@ -256,8 +247,7 @@ internal sealed unsafe partial class TsfInput : IDisposable
         }
     }
 
-    // Reads the context: text no longer composing at its start is finished and goes to the document; the rest is
-    // the composition, shown at the caret with the IME's marks.
+    // Text at the context's start that is no longer composing is finished, so it moves to the document.
     private void UpdateComposition(uint cookie)
     {
         _sessionPending = false;

@@ -5,7 +5,6 @@ public readonly record struct SearchQuery(string Text, bool MatchCase = false, b
     public StringComparison Comparison => MatchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 }
 
-// Plain-text find over the document, wrapping at either end. Regular expressions are a later slice.
 public static class TextSearch
 {
     public static (int Start, int Length)? Next(TextDocument document, SearchQuery query, int from, bool backward)
@@ -21,7 +20,6 @@ public static class TextSearch
         return found is int start ? (start, query.Text.Length) : null;
     }
 
-    // Matches that start inside [start, end), up to limit of them.
     public static List<(int Start, int Length)> InRange(TextDocument document, SearchQuery query, int start, int end,
         int limit = int.MaxValue)
     {

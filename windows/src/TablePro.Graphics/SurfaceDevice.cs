@@ -12,7 +12,7 @@ using static TerraFX.Interop.DirectX.DXGI;
 
 namespace TablePro.Graphics;
 
-// Windows App SDK's interop IIDs and ICompositorInterop layout differ from the system's (Microsoft.UI.Composition.Interop.h).
+// The Windows App SDK's interop IIDs and ICompositorInterop layout differ from the system's ones.
 internal sealed unsafe class SurfaceDevice : IDisposable
 {
     private static readonly Guid CompositorInteropIid = new("FAB19398-6D19-4D8A-B752-8F096C396069");
@@ -65,7 +65,7 @@ internal sealed unsafe class SurfaceDevice : IDisposable
         new(this, Graphics.CreateDrawingSurface2(
             pixels, DirectXPixelFormat.B8G8R8A8UIntNormalized, DirectXAlphaMode.Premultiplied));
 
-    // Moves the composition device to a new Direct2D device. Surfaces keep their objects and lose their pixels.
+    // Surfaces keep their objects and lose their pixels.
     public void Recover()
     {
         DevicesLost++;

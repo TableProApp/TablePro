@@ -1,6 +1,6 @@
 namespace TablePro.Editor.Model;
 
-// What an operation was, which decides whether the next one joins its undo step.
+// Decides whether the next operation joins the same undo step.
 public enum EditKind
 {
     Typing,
@@ -26,11 +26,7 @@ public sealed class UndoGroup
     internal IReadOnlyList<Selection>? After { get; set; }
 }
 
-// The document's undo history. An operation (one key press, one paste, one command) records every change it makes
-// as one step, whatever the number of carets. Typing and deleting runs join the step before them, as the macOS
-// editor groups them: an insert joins while it continues where the last one ended, has no line break, and does not
-// start a new word after one; a run of Backspace or of Delete joins likewise. Moving a caret ends the run.
-// Coloring never reaches this class: it does not touch the document.
+// Runs of typing or deleting join one step, as the macOS editor groups them, until a caret moves.
 public sealed class UndoHistory
 {
     private readonly List<UndoGroup> _undo = [];
@@ -60,7 +56,6 @@ public sealed class UndoHistory
         _canJoin = false;
     }
 
-    // The next operation starts a step of its own.
     public void BreakJoin() => _canJoin = false;
 
     internal void BreakJoinUnlessApplying(bool applying)

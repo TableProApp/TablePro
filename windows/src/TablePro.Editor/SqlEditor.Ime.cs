@@ -8,7 +8,6 @@ namespace TablePro.Editor;
 
 public sealed partial class SqlEditor
 {
-    // The top-level window that holds the editor.
     internal HWND WindowHandle
     {
         get
@@ -18,7 +17,7 @@ public sealed partial class SqlEditor
         }
     }
 
-    // A panel rectangle in DIPs to screen pixels, as TSF and UIA want them.
+    // TSF and UIA want screen pixels.
     internal RECT ToScreen(Rect rect)
     {
         var scale = XamlRoot?.RasterizationScale ?? 1;
@@ -41,16 +40,14 @@ public sealed partial class SqlEditor
         };
     }
 
-    // The primary caret in screen pixels, where an input method's candidates or a completion list go.
+    // In screen pixels, for an input method's candidates or a completion list.
     public Windows.Graphics.RectInt32 CaretScreenRectangle()
     {
         var rect = ToScreen(CaretRect(_model.Primary.Active));
         return new Windows.Graphics.RectInt32(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
     }
 
-    // WinUI's UIA bridge works in the island's client pixels: it turns the rectangles a text provider returns from
-    // client to screen itself, and hands RangeFromPoint a client point (microsoft-ui-xaml,
-    // dxaml/xcp/win/shared/UIAPatternProviderWrapper.cpp). Screen coordinates here would be offset twice.
+    // WinUI's UIA bridge maps client pixels to screen itself (UIAPatternProviderWrapper.cpp), so these stay client.
     internal Rect ToUiaClient(Rect rect)
     {
         var scale = XamlRoot?.RasterizationScale ?? 1;
@@ -91,7 +88,7 @@ public sealed partial class SqlEditor
         }
     }
 
-    // For the gate harness: what the IME is composing, and what it handed over.
+    // For the gate harness.
     public event EventHandler<string>? CompositionChanged;
 
     public event EventHandler<string>? CompositionCommitted;

@@ -13,8 +13,6 @@ public sealed class EditorOptions
     public string LineComment { get; set; } = "--";
 }
 
-// The editing state of one editor: its document, its carets and the commands that change them. Everything here is
-// independent of how the text is drawn, so it is tested without a window.
 public sealed partial class EditorModel
 {
     private List<Selection> _selections = [Selection.Caret(0)];
@@ -46,7 +44,6 @@ public sealed partial class EditorModel
 
     public void SetSelection(int anchor, int active) => SetSelections([new Selection(Clamp(anchor), Clamp(active))]);
 
-    // Adds a selection and makes it the primary one, merging it with any it overlaps.
     public void AddSelection(Selection selection)
     {
         var list = new List<Selection>(_selections) { Clamp(selection) };
@@ -134,7 +131,7 @@ public sealed partial class EditorModel
         }
     }
 
-    // A change made by someone else (the app, a test) moves the carets with the text.
+    // A change made outside the model, by the app or a test, moves the carets with the text.
     private void OnDocumentChanged(object? sender, TextChange change)
     {
         if (_applying > 0)
@@ -153,8 +150,7 @@ public sealed partial class EditorModel
         }
     }
 
-    // One replacement per entry, all recorded as one undo step. Edits are sorted and must not overlap; each one
-    // says where its selection lands, relative to its start in the new text.
+    // Edits come sorted and never overlap, and all of them make one undo step.
     private void Apply(EditKind kind, List<Edit> edits, int primary = -1)
     {
         if (edits.Count == 0)
@@ -191,7 +187,6 @@ public sealed partial class EditorModel
         }
     }
 
-    // Replacements that keep the carets where the text takes them, for commands that edit around a selection.
     private void ApplyKeepingSelections(EditKind kind, List<(int Start, int End, string Text)> edits)
     {
         if (edits.Count == 0)
@@ -222,8 +217,7 @@ public sealed partial class EditorModel
         }
     }
 
-    // A selection's start that sits on an insert point stays before the insert, so a selection grows over text
-    // added at its edge, as indenting a selected block expects.
+    // The start stays before an insert at it, so indenting a selected block keeps the new indent selected.
     private static Selection MapKeepingStart(Selection selection, TextChange change)
     {
         if (selection.IsEmpty)

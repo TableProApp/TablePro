@@ -8,7 +8,6 @@ using Windows.System;
 
 namespace TablePro.Editor;
 
-// Ctrl+F: a find box over the top right of the editor, built from stock controls. Replace is a later slice.
 internal sealed partial class FindBar : UserControl
 {
     private readonly Border _frame = new()

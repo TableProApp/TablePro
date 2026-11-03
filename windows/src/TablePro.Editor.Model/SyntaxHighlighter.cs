@@ -2,27 +2,19 @@ using System.Buffers;
 
 namespace TablePro.Editor.Model;
 
-// A colored run, relative to the text it was read from. Kind is the lexer's own value; the view maps it to a brush.
+// Start is relative to the text lexed; Kind is the lexer's own value, which the view maps to a brush.
 public readonly record struct SyntaxSpan(int Start, int Length, byte Kind)
 {
     public int End => Start + Length;
 }
 
-// The seam to a lexer. It writes the tokens of text in order, whitespace left out, and returns how many it wrote.
-// A span as long as text always suffices. It must read text from its start as code: no state comes in.
+// A span as long as text always holds every token, and each call lexes from a clean start with no state.
 public interface ISyntaxLexer
 {
     int Tokenize(ReadOnlySpan<char> text, Span<SyntaxSpan> spans);
 }
 
-// Colors for the lines on screen, over a lexer that only reads from a clean start. Each line keeps one fact: does it
-// start outside every token (clean), or inside one that began above (a block comment, a string)? Lexing the visible
-// lines starts at the nearest clean line above them, so tokens that span lines come out right.
-//
-// Facts are known for lines before the frontier. An edit moves the frontier back to the edited line; lexing forward
-// from there stops early once a line after the edit is clean again as it was before, because a lexer that starts
-// clean on unchanged text reads it the same way. Nothing here touches the document, so coloring never makes an
-// undo step.
+// Each line records whether it starts outside every token, so lexing can start at the nearest such line above.
 public sealed class SyntaxHighlighter : IDisposable
 {
     private const byte Unknown = 0;
@@ -52,10 +44,10 @@ public sealed class SyntaxHighlighter : IDisposable
         _document.Reset -= OnReset;
     }
 
-    // Lines whose start state is known, for tests and the idle pass.
+    // Lines before it have a known start state; an edit moves it back to the edited line.
     public int Frontier => _frontier;
 
-    // Characters handed to the lexer since the last reset, for the gate's measurements.
+    // For the gate's measurements.
     public long LexedChars { get; private set; }
 
     public int LexCalls { get; private set; }
@@ -66,7 +58,6 @@ public sealed class SyntaxHighlighter : IDisposable
         return _lines[line] == Clean;
     }
 
-    // Spans with document offsets that touch lines first to last.
     public void GetTokens(int firstLine, int lastLine, List<SyntaxSpan> output)
     {
         output.Clear();
@@ -104,8 +95,7 @@ public sealed class SyntaxHighlighter : IDisposable
         }
     }
 
-    // Lexes a few windows past the frontier while the editor is idle, so a later jump finds its lines known.
-    // False once every line is known.
+    // Runs while the editor is idle, so a later jump finds its lines known. False once every line is.
     public bool AdvanceIdle(int windows)
     {
         var window = Window;
@@ -119,7 +109,6 @@ public sealed class SyntaxHighlighter : IDisposable
         return _frontier < _document.LineCount;
     }
 
-    // Moves the frontier past line, lexing from the last clean line in windows.
     public void EnsureStates(int line)
     {
         var window = Window;

@@ -1,6 +1,6 @@
 namespace TablePro.Editor.Model;
 
-// One caret with its selection. PreferredColumn is the visual column vertical moves aim for, -1 when unset.
+// PreferredColumn is the visual column vertical moves aim for, -1 when unset.
 public readonly record struct Selection(int Anchor, int Active, int PreferredColumn = -1)
 {
     public int Start => Math.Min(Anchor, Active);

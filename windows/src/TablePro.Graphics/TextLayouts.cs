@@ -9,7 +9,7 @@ using static TerraFX.Interop.DirectX.DWRITE_WORD_WRAPPING;
 
 namespace TablePro.Graphics;
 
-// One laid-out line, or a slice of a very long one. Columns in it count from SegmentStart.
+// A very long line is laid out in slices, so columns count from SegmentStart.
 internal sealed unsafe class LineLayout
 {
     public IDWriteTextLayout* Layout;
@@ -27,7 +27,7 @@ internal sealed unsafe class LineLayout
         return OriginX + x;
     }
 
-    // The column under x, rounding to the nearer side of the character.
+    // Rounds to the nearer side of the character.
     public int ColumnAt(float x)
     {
         BOOL trailing, inside;
@@ -71,7 +71,7 @@ internal sealed unsafe class TextLayouts : IDisposable
         FontWarmup.Start(factory, FamilyName, fontSize);
     }
 
-    // A layout of any UTF-16 text in the regular format, not cached; the caller releases it.
+    // Not cached; the caller releases it.
     public IDWriteTextLayout* CreateLayout(ReadOnlySpan<char> text, float maxWidth)
     {
         fixed (char* chars = text)
@@ -142,7 +142,7 @@ internal sealed unsafe class TextLayouts : IDisposable
         }
     }
 
-    // A line's layout with its colors. styleKey must change whenever the runs do.
+    // styleKey must change whenever the runs do.
     public LineLayout Get(string text, ReadOnlySpan<StyleRun> runs, ulong styleKey, float scrollX, float viewWidth,
         IStyleBrushes brushes)
     {
@@ -288,7 +288,6 @@ internal sealed unsafe class TextLayouts : IDisposable
     private readonly record struct LayoutKey(string Text, ulong Style, int SegmentStart, int SegmentLength);
 }
 
-// A colored run within one line, in that line's columns.
 internal readonly record struct StyleRun(int Start, int Length, byte Kind);
 
 internal unsafe interface IStyleBrushes

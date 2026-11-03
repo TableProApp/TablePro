@@ -6,8 +6,7 @@ using Windows.Foundation;
 
 namespace TablePro.Editor.Automation;
 
-// The editor to UI Automation: an Edit control with the Text and Text2 patterns over the document, so Narrator
-// reads characters, words and lines and follows the caret. Offsets are the document's.
+// Text and Text2 patterns, so Narrator reads by character, word and line and follows the caret.
 internal sealed partial class SqlEditorAutomationPeer(SqlEditor editor) : FrameworkElementAutomationPeer(editor), ITextProvider2
 {
     internal SqlEditor Editor { get; } = editor;

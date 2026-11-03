@@ -19,7 +19,7 @@ internal sealed class Palette
 
     public Color Selection { get; private init; }
 
-    // In high contrast selected text takes the system's highlight text color; otherwise text keeps its colors.
+    // Set only in high contrast, where selected text takes the system's highlight text color.
     public Color? SelectionText { get; private init; }
 
     public Color Caret { get; private init; }

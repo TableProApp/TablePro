@@ -1,7 +1,6 @@
 namespace TablePro.Editor.Model;
 
-// A list with a movable gap, as Scintilla's SplitVector keeps per-line data: inserts and removals near the last
-// one cost what they move, not the whole list.
+// Scintilla's SplitVector: an edit near the last one moves only the items between them, not the whole list.
 internal sealed class GapList<T>
 {
     private T[] _items;

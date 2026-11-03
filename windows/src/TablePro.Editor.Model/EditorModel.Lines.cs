@@ -2,7 +2,6 @@ namespace TablePro.Editor.Model;
 
 public sealed partial class EditorModel
 {
-    // Ctrl+/: the comment marker at column 0 of every selected line, or off them all when each already has it.
     public void ToggleLineComment()
     {
         var marker = Options.LineComment;
@@ -35,7 +34,6 @@ public sealed partial class EditorModel
         ApplyKeepingSelections(EditKind.Other, edits);
     }
 
-    // Removes up to one level of leading spaces, or one tab, from every selected line.
     public void Outdent()
     {
         var edits = new List<(int, int, string)>();
@@ -52,7 +50,6 @@ public sealed partial class EditorModel
         ApplyKeepingSelections(EditKind.Other, edits);
     }
 
-    // Ctrl+Shift+K: removes every line a caret or selection touches.
     public void DeleteLines()
     {
         var blocks = LineBlocks();
@@ -75,7 +72,6 @@ public sealed partial class EditorModel
         Apply(EditKind.Other, edits);
     }
 
-    // Shift+Alt+Up and Down: copies the selected lines above or below themselves.
     public void CopyLines(bool down)
     {
         var edits = new List<Edit>();
@@ -99,7 +95,6 @@ public sealed partial class EditorModel
         Apply(EditKind.Other, edits);
     }
 
-    // Alt+Up and Down: swaps the selected lines with the line above or below, carets moving with them.
     public void MoveLines(bool down)
     {
         var blocks = LineBlocks();
@@ -156,7 +151,7 @@ public sealed partial class EditorModel
         return at + marker.Length <= Document.GetLineEnd(line) && Document.GetText(at, marker.Length) == marker;
     }
 
-    // Each line a selection covers, once. A selection that ends at a line's start leaves that line out.
+    // A selection that ends at a line's start leaves that line out.
     private IEnumerable<int> SelectedLines() => LineBlocks().SelectMany(b => Enumerable.Range(b.First, b.Last - b.First + 1));
 
     private List<(int First, int Last)> LineBlocks()

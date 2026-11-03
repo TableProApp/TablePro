@@ -4,7 +4,6 @@ using Windows.UI;
 
 namespace TablePro.Editor.Rendering;
 
-// The palette as Direct2D brushes on one device context. Rebuilt when the theme or the device changes.
 internal sealed unsafe class Brushes : IStyleBrushes, IDisposable
 {
     private const byte KeywordKind = 1;

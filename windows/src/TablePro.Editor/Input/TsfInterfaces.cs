@@ -4,8 +4,7 @@ using TerraFX.Interop.Windows;
 
 namespace TablePro.Editor.Input;
 
-// The four TSF interfaces the editor implements, declared for the COM source generator so they work under Native
-// AOT. What the editor only calls comes from TerraFX.
+// Declared for the COM source generator so they work under Native AOT; the ones only called come from TerraFX.
 
 [GeneratedComInterface]
 [Guid("aa80e80c-2021-11d2-93e0-0060b067b86e")]

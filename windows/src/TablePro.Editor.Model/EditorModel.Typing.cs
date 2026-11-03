@@ -5,7 +5,6 @@ public sealed partial class EditorModel
     private const string Openers = "([{'\"";
     private const string Closers = ")]}'\"";
 
-    // Text typed at every caret, replacing each selection. One key press; a run of them is one undo step.
     public void Type(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -62,8 +61,6 @@ public sealed partial class EditorModel
         return new Edit(selection.Start, selection.End, text + closer, 1, 1);
     }
 
-    // Enter: the line's indentation carries over, one level more after an opening bracket, and a bracket pair
-    // around the caret opens onto its own lines.
     public void NewLine()
     {
         var edits = new List<Edit>(_selections.Count);
@@ -161,7 +158,6 @@ public sealed partial class EditorModel
         Apply(EditKind.ForwardDelete, MergeDeletes(edits));
     }
 
-    // Tab: indents the lines of a selection that spans lines, otherwise fills to the next tab stop.
     public void Tab()
     {
         if (_selections.Any(s => SpansLines(s)))
@@ -183,7 +179,6 @@ public sealed partial class EditorModel
         Apply(EditKind.Typing, edits);
     }
 
-    // Paste replaces every selection. When the clipboard holds one line per caret, each caret gets its own line.
     public void Paste(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -199,7 +194,6 @@ public sealed partial class EditorModel
         Apply(EditKind.Other, edits);
     }
 
-    // What Copy puts on the clipboard: the selections, or the caret's whole line when nothing is selected.
     public string CopyText()
     {
         if (_selections.All(s => s.IsEmpty))
@@ -223,7 +217,6 @@ public sealed partial class EditorModel
         return text;
     }
 
-    // Replaces a range, for find and replace and the app. One undo step; the caret lands after the new text.
     public void ReplaceRange(int start, int end, string text)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -231,7 +224,6 @@ public sealed partial class EditorModel
         Apply(EditKind.Other, [Edit.Insert(Clamp(start), Clamp(end), text)], 0);
     }
 
-    // Text dropped at an offset. A move takes the primary selection away in the same undo step.
     public void DropText(string text, int target, bool move)
     {
         ArgumentNullException.ThrowIfNull(text);

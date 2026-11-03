@@ -10,8 +10,7 @@ public enum CharClass
     Punctuation,
 }
 
-// Character steps and word edges. A word is letters, digits and '_', as the macOS editor reads it; '$' and other
-// symbols are punctuation.
+// A word is letters, digits and '_', as the macOS editor reads it, so '$' and other symbols are punctuation.
 public static class TextUnits
 {
     public static CharClass Classify(char c)
@@ -29,7 +28,7 @@ public static class TextUnits
 
     public static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_' || IsMark(c);
 
-    // One user-perceived step to the right: a surrogate pair and the combining marks after a base move as one.
+    // A surrogate pair, and a base with the combining marks after it, are one step.
     public static int NextCaretStop(TextDocument document, int offset)
     {
         if (offset >= document.Length)
@@ -74,8 +73,7 @@ public static class TextUnits
             && char.IsHighSurrogate(document.CharAt(offset - 2)) ? offset - 2 : offset - 1;
     }
 
-    // Ctrl+Right as Windows text boxes have it: past the rest of this word or symbol run, then past the spaces
-    // after it, to the start of the next word. At a line's end it goes to the next line's start.
+    // As Windows text boxes have Ctrl+Right: past the word or symbol run, then past the spaces after it.
     public static int NextWordStart(TextDocument document, int offset)
     {
         var length = document.Length;
@@ -102,7 +100,6 @@ public static class TextUnits
         return offset;
     }
 
-    // Ctrl+Left: back over spaces, then to the start of the word or symbol run before them.
     public static int PreviousWordStart(TextDocument document, int offset)
     {
         if (offset <= 0)
@@ -129,7 +126,6 @@ public static class TextUnits
         return offset;
     }
 
-    // The run a double-click selects: a word, a run of spaces, or a run of symbols.
     public static (int Start, int End) RunAt(TextDocument document, int offset)
     {
         var length = document.Length;
@@ -161,7 +157,6 @@ public static class TextUnits
         return (start, end);
     }
 
-    // The word around offset, or an empty range when offset touches no word.
     public static (int Start, int End) WordAt(TextDocument document, int offset)
     {
         var (start, end) = RunAt(document, offset);

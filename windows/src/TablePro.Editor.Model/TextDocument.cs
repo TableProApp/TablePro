@@ -7,7 +7,7 @@ public enum LineEnding
     Cr,
 }
 
-// One replacement, as the document saw it. Lines are counted before the change.
+// Lines are counted before the change.
 public sealed record TextChange(
     int Offset,
     string RemovedText,
@@ -22,9 +22,7 @@ public sealed record TextChange(
     public int InsertedLength => InsertedText.Length;
 }
 
-// The text of one editor. Line breaks are stored as '\n' alone, whatever the file used; LineEnding puts the
-// file's own break back when the text leaves the editor. Offsets everywhere (carets, TSF, UIA) count UTF-16 units
-// of this normalized text.
+// Breaks are stored as '\n' alone, and every offset (carets, TSF, UIA) counts UTF-16 units of that text.
 public sealed class TextDocument
 {
     private readonly Rope _rope = new();
@@ -44,7 +42,6 @@ public sealed class TextDocument
 
     public event EventHandler<TextChange>? Changed;
 
-    // Raised by SetText, which replaces everything and clears the undo history.
     public event EventHandler? Reset;
 
     public UndoHistory Undo { get; }
@@ -71,7 +68,7 @@ public sealed class TextDocument
 
     public string GetText(int offset, int length) => _rope.GetText(offset, length);
 
-    // The whole text once per version, for searches that want one string.
+    // Built once per version, for searches that want one string.
     public string Snapshot()
     {
         if (_snapshotVersion != Version || _snapshot is null)
@@ -82,7 +79,6 @@ public sealed class TextDocument
         return _snapshot;
     }
 
-    // The text with the document's own line breaks, for saving and the clipboard.
     public string ExportText(int offset, int length)
     {
         var text = GetText(offset, length);
@@ -102,7 +98,6 @@ public sealed class TextDocument
 
     public int GetLineStart(int line) => _rope.LineStart(line);
 
-    // The offset of the line's '\n', or the document's end on the last line.
     public int GetLineEnd(int line) => line + 1 < LineCount ? _rope.LineStart(line + 1) - 1 : Length;
 
     public int GetLineLength(int line) => GetLineEnd(line) - GetLineStart(line);

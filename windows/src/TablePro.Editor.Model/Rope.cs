@@ -1,7 +1,6 @@
 namespace TablePro.Editor.Model;
 
-// A height-balanced tree of character leaves. Every node caches its length and its count of '\n', so an edit,
-// an offset-to-line lookup and a line-to-offset lookup each walk one root-to-leaf path.
+// Each node caches its length and its count of '\n', so an edit and a line lookup walk one root-to-leaf path.
 internal sealed class Rope
 {
     internal const int MaxLeaf = 2048;
@@ -64,7 +63,7 @@ internal sealed class Rope
         return string.Create(length, (this, offset), static (span, state) => state.Item1.CopyTo(state.offset, span));
     }
 
-    // The leaves' text from offset, in order, cut to length. Only valid until the next edit.
+    // Valid only until the next edit.
     public IEnumerable<ReadOnlyMemory<char>> Chunks(int offset, int length)
     {
         if (length <= 0)
@@ -110,7 +109,6 @@ internal sealed class Rope
         }
     }
 
-    // The offset just after the line-th '\n'; line 0 starts at 0.
     public int LineStart(int line)
     {
         if (line == 0)
@@ -146,7 +144,6 @@ internal sealed class Rope
         return offset + index + 1;
     }
 
-    // How many '\n' come before offset: the line that offset is on.
     public int LineOf(int offset)
     {
         if (offset < 0 || offset > _root.Length)
@@ -336,8 +333,7 @@ internal sealed class Rope
         return (Join(node.Left, c), d);
     }
 
-    // AVL join: walks down the taller tree's inner spine to a subtree of the other's height, then rebalances
-    // on the way up.
+    // AVL join: down the taller tree's inner spine to the other's height, rebalancing on the way back up.
     private static Node Join(Node left, Node right)
     {
         if (left.Length == 0)
