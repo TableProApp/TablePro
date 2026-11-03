@@ -18,7 +18,7 @@ impl ConnectionStore {
             if document.groups.iter().any(|held| held.id == group.id) {
                 return Err(StorageError::GroupExists { id: group.id });
             }
-            document.check_room(group.parent_id, 0)?;
+            document.check_room(group.parent_id)?;
             if document.name_taken(group.parent_id, &group.name, &[]) {
                 return Err(StorageError::GroupNameTaken {
                     name: group.name.as_str().to_owned(),
@@ -156,7 +156,7 @@ impl ConnectionStore {
             let group = match document.group_named(parent, &name) {
                 Some(group) => group,
                 None => {
-                    document.check_room(parent, 0)?;
+                    document.check_room(parent)?;
                     let group = ConnectionGroup {
                         order: document.next_group_order(parent),
                         ..ConnectionGroup::new(name, parent)
@@ -214,19 +214,8 @@ impl ConnectionsDocument {
             .map(|group| (*group).clone())
     }
 
-    fn check_room(&self, parent: Option<Uuid>, height: usize) -> Result<(), StorageError> {
-        let tree = GroupTree::new(&self.groups);
-        if let Some(id) = parent
-            && !tree.contains(id)
-        {
-            return Err(StorageError::GroupNotFound { id });
-        }
-        if tree.depth(parent) + 1 + height > ConnectionGroup::MAX_DEPTH {
-            return Err(StorageError::GroupTooDeep {
-                max: ConnectionGroup::MAX_DEPTH,
-            });
-        }
-        Ok(())
+    fn check_room(&self, parent: Option<Uuid>) -> Result<(), StorageError> {
+        GroupTree::new(&self.groups).check_place(None, parent)
     }
 
     fn check_group_move(
@@ -236,21 +225,18 @@ impl ConnectionsDocument {
         before: Option<Uuid>,
     ) -> Result<Vec<Uuid>, StorageError> {
         let tree = GroupTree::new(&self.groups);
-        for &id in moving {
-            if let Some(target) = parent
-                && (target == id || tree.descendants(id).contains(&target))
-            {
-                return Err(StorageError::GroupCycle { id });
-            }
-            self.check_room(parent, tree.height(id))?;
+        // A reorder in place skips both checks, so case-only siblings and too deep groups still reorder.
+        let arriving: Vec<&ConnectionGroup> = moving
+            .iter()
+            .filter_map(|id| tree.get(*id))
+            .filter(|group| group.parent_id != parent)
+            .collect();
+        for group in &arriving {
+            tree.check_place(Some(group.id), parent)?;
         }
         let siblings: Vec<&ConnectionGroup> = tree.children(parent);
-        let mut names: Vec<&ConnectionGroupName> = siblings
-            .iter()
-            .filter(|group| !moving.contains(&group.id))
-            .map(|group| &group.name)
-            .collect();
-        for group in moving.iter().filter_map(|id| tree.get(*id)) {
+        let mut names: Vec<&ConnectionGroupName> = siblings.iter().map(|group| &group.name).collect();
+        for group in arriving {
             if names.iter().any(|name| name.same_name(&group.name)) {
                 return Err(StorageError::GroupNameTaken {
                     name: group.name.as_str().to_owned(),
@@ -297,17 +283,19 @@ fn rank_of(rank: usize) -> u32 {
     u32::try_from(rank).unwrap_or(u32::MAX)
 }
 
-/// Returns the local id each of the file's group ids now stands for. A
-/// group matched by id keeps its local place, so an import never makes a
-/// cycle. Names match exactly, as the version 2 upgrade merged them.
+// A group matched by id keeps its place, so an import never makes a cycle.
 pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[ConnectionGroup]) -> HashMap<Uuid, Uuid> {
-    // Maps rather than scans: a crafted file of many groups must not make
-    // an import hold the store for minutes.
+    // Maps rather than scans, so a crafted file of many groups cannot hold the store for minutes.
     let mut at: HashMap<Uuid, usize> = local
         .iter()
         .enumerate()
         .map(|(index, group)| (group.id, index))
         .collect();
+    let mut depth: HashMap<Uuid, usize> = HashMap::with_capacity(local.len());
+    for group in GroupTree::new(local.as_slice()).walk() {
+        let above = group.parent_id.and_then(|id| depth.get(&id).copied()).unwrap_or(0);
+        depth.insert(group.id, above + 1);
+    }
     let mut names = SiblingNames::default();
     let mut next: HashMap<Option<Uuid>, u32> = HashMap::new();
     for group in local.iter() {
@@ -315,10 +303,10 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
         let last = next.entry(group.parent_id).or_insert(0);
         *last = (*last).max(group.order.saturating_add(1));
     }
-    let mut same = HashMap::with_capacity(incoming.len());
     // Parents before their children, so each finds its parent mapped.
-    for group in GroupTree::new(incoming).walk() {
-        let parent = group.parent_id.and_then(|id| same.get(&id).copied());
+    let walk = GroupTree::new(incoming).walk();
+    // Renames first, so a name one of them frees or takes decides the rest whatever order the file lists them in.
+    for group in &walk {
         if let Some(&index) = at.get(&group.id) {
             let held = &mut local[index];
             if !names.taken_by_another(held.parent_id, &group.name, held.id) {
@@ -328,8 +316,21 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
             }
             held.color = group.color;
             held.icon = group.icon.clone();
+        }
+    }
+    let mut same: HashMap<Uuid, Uuid> = HashMap::with_capacity(incoming.len());
+    for group in walk {
+        let parent = group.parent_id.and_then(|id| same.get(&id).copied());
+        let full = parent.filter(|id| depth.get(id).is_some_and(|level| *level >= ConnectionGroup::MAX_DEPTH));
+        if at.contains_key(&group.id) {
             same.insert(group.id, group.id);
-        } else if let Some(owner) = names.exactly(parent, &group.name) {
+        } else if let Some(deepest) = full {
+            // macOS cuts the path the same way, so the connections land in the deepest group allowed.
+            same.insert(group.id, deepest);
+        } else if let Some(owner) = names
+            .exactly(parent, &group.name)
+            .or_else(|| names.in_any_case(parent, &group.name))
+        {
             same.insert(group.id, owner);
         } else {
             let order = next.entry(parent).or_insert(0);
@@ -339,8 +340,10 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
                 ..group.clone()
             };
             *order = order.saturating_add(1);
+            let above = parent.and_then(|id| depth.get(&id).copied()).unwrap_or(0);
+            depth.insert(added.id, above + 1);
             at.insert(added.id, local.len());
-            names.add(&added);
+            names.add_exact(&added);
             same.insert(group.id, added.id);
             local.push(added);
         }
@@ -351,18 +354,23 @@ pub(super) fn merge_groups(local: &mut Vec<ConnectionGroup>, incoming: &[Connect
 #[derive(Default)]
 struct SiblingNames {
     exact: HashMap<(Option<Uuid>, String), Uuid>,
-    folded: HashMap<(Option<Uuid>, String), HashSet<Uuid>>,
+    folded: HashMap<(Option<Uuid>, String), Vec<Uuid>>,
 }
 
 impl SiblingNames {
     fn add(&mut self, group: &ConnectionGroup) {
-        self.exact
-            .entry((group.parent_id, group.name.as_str().to_owned()))
-            .or_insert(group.id);
+        self.add_exact(group);
         self.folded
             .entry((group.parent_id, group.name.as_str().to_lowercase()))
             .or_default()
-            .insert(group.id);
+            .push(group.id);
+    }
+
+    // An added group stays out of the any-case match, so a file's own `Work` and `work` stay two groups.
+    fn add_exact(&mut self, group: &ConnectionGroup) {
+        self.exact
+            .entry((group.parent_id, group.name.as_str().to_owned()))
+            .or_insert(group.id);
     }
 
     fn remove(&mut self, group: &ConnectionGroup) {
@@ -374,12 +382,18 @@ impl SiblingNames {
             .folded
             .get_mut(&(group.parent_id, group.name.as_str().to_lowercase()))
         {
-            ids.remove(&group.id);
+            ids.retain(|id| *id != group.id);
         }
     }
 
     fn exactly(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<Uuid> {
         self.exact.get(&(parent, name.as_str().to_owned())).copied()
+    }
+
+    fn in_any_case(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<Uuid> {
+        self.folded
+            .get(&(parent, name.as_str().to_lowercase()))
+            .and_then(|ids| ids.first().copied())
     }
 
     fn taken_by_another(&self, parent: Option<Uuid>, name: &ConnectionGroupName, except: Uuid) -> bool {

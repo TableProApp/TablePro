@@ -4,13 +4,8 @@ use gtk4::gio;
 use gtk4::glib;
 use gtk4::prelude::*;
 
-/// Make `store` hold `desired`, in order, each object once. The objects
-/// that keep their order stay where they are, and only the others are
-/// taken out and put back: a tree row taken out folds, so a store write
-/// that changes one row leaves every other row open. Each change only
-/// removes or only adds, so a list view never looks through added rows
-/// for the rows it tracks.
-pub(super) fn sync<T: IsA<glib::Object>>(store: &gio::ListStore, desired: &[T]) {
+// A removed tree row folds, so only misplaced objects move; a pure add or remove keeps GtkListView's tracked rows.
+pub(crate) fn sync<T: IsA<glib::Object>>(store: &gio::ListStore, desired: &[T]) {
     let wanted: HashMap<glib::Object, usize> = desired
         .iter()
         .enumerate()
@@ -21,8 +16,7 @@ pub(super) fn sync<T: IsA<glib::Object>>(store: &gio::ListStore, desired: &[T]) 
         .collect();
     let kept = longest_rising(&held);
     remove_runs(store, |at| !kept.contains(&at));
-    // What is left is in the wanted order, so a wanted object that is not
-    // next is missing, and goes in with the missing ones beside it.
+    // What is left is in the wanted order, so an object that is not next is missing.
     let mut position = 0;
     let mut pending: Vec<glib::Object> = Vec::new();
     for object in desired {
@@ -43,12 +37,8 @@ pub(super) fn sync<T: IsA<glib::Object>>(store: &gio::ListStore, desired: &[T]) 
     }
 }
 
-/// Make `store` hold `desired` in two changes at most: every object from
-/// the first that differs to the last goes out in one, and the new ones
-/// go in with the other. GtkListView rebuilds the rows around its scroll
-/// position on each change, so a search that changes a hundred schemas'
-/// results costs two rebuilds rather than a hundred.
-pub(super) fn replace<T: IsA<glib::Object>>(store: &gio::ListStore, desired: &[T]) {
+// Two changes at most: GtkListView rebuilds the rows around its scroll position on each change.
+pub(crate) fn replace<T: IsA<glib::Object>>(store: &gio::ListStore, desired: &[T]) {
     let held: Vec<glib::Object> = (0..store.n_items()).filter_map(|at| store.item(at)).collect();
     let desired: Vec<glib::Object> = desired.iter().map(|object| object.upcast_ref().clone()).collect();
     let same = |(held, desired): (&glib::Object, &glib::Object)| held == desired;
@@ -74,8 +64,6 @@ pub(super) fn replace<T: IsA<glib::Object>>(store: &gio::ListStore, desired: &[T
     }
 }
 
-/// Take out every object at a position `gone` names, a run at a time
-/// from the end, so each run is one change.
 fn remove_runs(store: &gio::ListStore, gone: impl Fn(u32) -> bool) {
     let mut end = store.n_items();
     while end > 0 {
@@ -92,11 +80,8 @@ fn remove_runs(store: &gio::ListStore, gone: impl Fn(u32) -> bool) {
     }
 }
 
-/// The positions of the longest run of held objects whose wanted places
-/// rise, the ones that can stay. An object not wanted is never kept.
 fn longest_rising(held: &[Option<usize>]) -> HashSet<u32> {
-    // tails[k] is the position whose wanted place ends the best rising
-    // run of length k + 1 found so far.
+    // tails[k] is the position whose wanted place ends the best rising run of length k + 1 so far.
     let mut tails: Vec<usize> = Vec::new();
     let mut before: Vec<Option<usize>> = vec![None; held.len()];
     for (at, place) in held.iter().enumerate() {

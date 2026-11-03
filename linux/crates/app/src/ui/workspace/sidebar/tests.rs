@@ -11,7 +11,10 @@ use libadwaita as adw;
 use tablepro_core::meta::{KeyKind, ObjectInfo, ObjectKind, ObjectScope, SchemaInfo, TableRef};
 use tablepro_core::{DriverError, DriverRegistry};
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, ConnectionStore, ConnectionTagName, SavedConnection, StoragePaths};
+use tablepro_storage::{
+    ConnectionColor, ConnectionGroup, ConnectionGroupName, ConnectionStore, ConnectionTagName, SavedConnection,
+    StorageError, StoragePaths,
+};
 use tablepro_test_support::FakeReply;
 use uuid::Uuid;
 
@@ -23,8 +26,10 @@ use super::sidebar_object::SidebarObject;
 use super::tree_node::TreeNode;
 use super::tree_row::TreeRow;
 use super::*;
+use crate::services::library_outline::{LibraryItem, LibraryMove, LibraryOutline, LibrarySection};
 use crate::services::saved_connection_list::SavedConnectionList;
-use crate::test_support::{descendants, drain_main_context, test_runtime, wait_until};
+use crate::test_support::{NestedLibrary, descendants, drain_main_context, test_runtime, wait_until};
+use crate::ui::library_drag::LibraryDragItem;
 use crate::ui::session_window::tests::{TestWindow, WAIT};
 use crate::ui::workspace::WorkspaceTab;
 use crate::ui::workspace::tab_spec::{TabSpec, TablePage};
@@ -73,6 +78,9 @@ type Events = Rc<RefCell<Vec<SidebarEvent>>>;
 
 /// The window and picker actions the tree fired, with their targets.
 type Fired = Rc<RefCell<Vec<(String, Option<String>)>>>;
+
+// What reached picker.change-library, None for a target that is not a move.
+type Moves = Rc<RefCell<Vec<Option<LibraryMove>>>>;
 
 fn object(schema: &str, name: &str) -> ObjectInfo {
     ObjectInfo {
@@ -164,18 +172,32 @@ struct Shown {
     entry: gtk::SearchEntry,
     window: gtk::ApplicationWindow,
     fired: Fired,
+    moves: Moves,
 }
 
 impl Shown {
     fn new(connections: &[SavedConnection]) -> Self {
+        Self::seeded(connections.len(), |paths| {
+            crate::test_support::seed_library(paths, connections)
+        })
+    }
+
+    fn nested(library: &NestedLibrary) -> Self {
+        Self::seeded(library.list().connections.len(), |paths| library.seed(paths))
+    }
+
+    fn seeded(count: usize, seed: impl FnOnce(&StoragePaths)) -> Self {
         adw::init().expect("libadwaita initialises under the test backend");
         let dir = tempfile::tempdir().expect("a temporary directory");
         let paths = StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID);
-        crate::test_support::seed_library(&paths, connections);
+        seed(&paths);
         let store = ConnectionStore::new(&paths);
         let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
         store.load_blocking().expect("the saved connections");
-        wait_until(WAIT, || list.model().n_items() as usize == connections.len()).expect("the list to have them");
+        wait_until(WAIT, || {
+            list.library().is_some_and(|library| library.connections.len() == count)
+        })
+        .expect("the list to have them");
         let tree = ConnectionTree::new(list.clone());
         let entry = gtk::SearchEntry::new();
         entry.set_search_delay(0);
@@ -198,6 +220,8 @@ impl Shown {
         }
         let picker = gio::SimpleActionGroup::new();
         picker.add_action(&recording("connect", &fired, "picker"));
+        let moves = Moves::default();
+        picker.add_action(&recording_moves(&moves));
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.insert_action_group("picker", Some(&picker));
         content.append(&entry);
@@ -213,6 +237,7 @@ impl Shown {
             entry,
             window,
             fired,
+            moves,
         }
     }
 
@@ -335,6 +360,22 @@ impl Shown {
         .expect("the list to publish it");
         drain_main_context();
     }
+
+    // A write another window makes, through the store.
+    fn change<T>(
+        &self,
+        write: impl FnOnce(&ConnectionStore) -> Result<T, StorageError>,
+        published: impl Fn(&LibraryOutline) -> bool,
+    ) -> T {
+        let written = write(&self.store).expect("the write");
+        wait_until(WAIT, || published(&self.list.outline())).expect("the list to publish it");
+        drain_main_context();
+        written
+    }
+
+    fn moves(&self) -> Vec<Option<LibraryMove>> {
+        self.moves.take()
+    }
 }
 
 impl Drop for Shown {
@@ -355,6 +396,59 @@ fn recording(name: &'static str, fired: &Fired, group: &'static str) -> gio::Sim
         ));
     });
     action
+}
+
+fn recording_moves(moves: &Moves) -> gio::SimpleAction {
+    let shape = LibraryMove::Favourites {
+        ids: Vec::new(),
+        before: None,
+    }
+    .to_variant();
+    let action = gio::SimpleAction::new("change-library", Some(shape.type_()));
+    let sink = moves.clone();
+    action.connect_activate(move |_, target| sink.borrow_mut().push(target.and_then(LibraryMove::from_variant)));
+    action
+}
+
+fn group_name(name: &str) -> ConnectionGroupName {
+    ConnectionGroupName::new(name).expect("a group name")
+}
+
+fn expander_of(row: &TreeRow) -> gtk::TreeExpander {
+    row.parent()
+        .and_downcast::<gtk::TreeExpander>()
+        .expect("the row's expander")
+}
+
+fn controller<T: IsA<glib::Object>>(widget: &impl IsA<gtk::Widget>) -> T {
+    let controllers = widget.observe_controllers();
+    (0..controllers.n_items())
+        .find_map(|at| controllers.item(at).and_downcast::<T>())
+        .expect("the controller")
+}
+
+// What a drop from the tree carries, emitted as GTK does once the drag ends over `target`.
+fn drop_on(target: &gtk::DropTarget, item: LibraryItem, y: f64) -> bool {
+    let value = LibraryDragItem::new((LibrarySection::Tree, item)).to_value();
+    target.emit_by_name::<bool>("drop", &[&glib::BoxedValue(value), &0.0_f64, &y])
+}
+
+// The test backend records the value, and only the variadic check reads it.
+fn expanded_state_is(expander: &gtk::TreeExpander, expanded: bool) -> bool {
+    // SAFETY: a live widget; the call reads one boolean and returns null or a message it allocated.
+    let message = unsafe {
+        gtk::ffi::gtk_test_accessible_check_state(
+            glib::translate::ToGlibPtr::to_glib_none(expander.upcast_ref::<gtk::Accessible>()).0,
+            gtk::ffi::GTK_ACCESSIBLE_STATE_EXPANDED,
+            glib::ffi::gboolean::from(expanded),
+        )
+    };
+    if message.is_null() {
+        return true;
+    }
+    // SAFETY: GTK hands the message over to the caller.
+    unsafe { glib::ffi::g_free(message.cast()) };
+    false
 }
 
 /// The name of a row's table or node, under the tree's row or as the
@@ -426,9 +520,10 @@ fn the_tree_lists_connections_as_the_picker_groups_them() {
         connection("Delta", Some("work")),
     ]);
 
-    assert_eq!(shown.rows(), ["Beta", "zeta", "Home", "Work", "work"]);
+    // Groups first, then the connections, each in the library's order.
+    assert_eq!(shown.rows(), ["Work", "Home", "work", "zeta", "Beta"]);
     shown.activate("Work");
-    assert_eq!(shown.rows(), ["Beta", "zeta", "Home", "Work", "Alpha", "work"]);
+    assert_eq!(shown.rows(), ["Work", "Alpha", "Home", "work", "zeta", "Beta"]);
     assert!(
         !shown.row("Beta").is_expandable(),
         "a closed connection has an expander"
@@ -463,14 +558,309 @@ fn a_store_write_keeps_the_other_open_connections_open() {
     let mut renamed = beta.clone();
     renamed.name = "Zulu".to_owned();
     shown.write(&renamed);
+    let zulu: Vec<String> = before
+        .iter()
+        .map(|name| {
+            if name == "Beta" {
+                "Zulu".to_owned()
+            } else {
+                name.clone()
+            }
+        })
+        .collect();
+    assert_eq!(shown.rows(), zulu, "the rename moved or folded a row");
+
+    let office = shown
+        .change(
+            |store| store.create_group_blocking(ConnectionGroup::new(group_name("Office"), None)),
+            |outline| outline.groups().iter().any(|(_, label, _)| label == "Office"),
+        )
+        .id;
+    shown.row("Office").set_expanded(true);
+    shown.change(
+        |store| store.move_connections_blocking(&[beta.id], Some(office), None),
+        |outline| outline.parent_of(LibraryItem::Connection(beta.id)) == Some(Some(office)),
+    );
     let after = shown.rows();
-    assert_eq!(after.first().map(String::as_str), Some("Alpha"));
-    let zulu = after.iter().position(|name| name == "Zulu").expect("the renamed row");
+    let moved = after.iter().position(|name| name == "Zulu").expect("the moved row");
     assert_eq!(
-        after[zulu..],
-        ["Zulu", "public", "orders", "sales", "leads"],
+        after[moved - 1..moved + 5],
+        ["Office", "Zulu", "public", "orders", "sales", "leads"],
         "the moved row came back folded"
     );
+}
+
+#[gtk4::test]
+fn nested_and_empty_groups_show_in_the_librarys_order() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    library.group("Archive", None);
+    library.group("Old", Some(staging));
+    library.connection("Shop", Some(staging));
+    library.connection("Intranet", Some(work));
+    library.connection("Laptop", None);
+    let shown = Shown::nested(&library);
+
+    assert_eq!(shown.rows(), ["Work", "Archive", "Laptop"]);
+    shown.row("Work").set_expanded(true);
+    shown.row("Staging").set_expanded(true);
+    assert_eq!(
+        shown.rows(),
+        ["Work", "Staging", "Old", "Shop", "Intranet", "Archive", "Laptop"]
+    );
+}
+
+#[gtk4::test]
+fn a_connection_in_a_nested_group_is_revealed_and_selected_when_its_session_opens() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    let shop = library.connection("Shop", Some(staging));
+    library.connection("Laptop", None);
+    let shown = Shown::nested(&library);
+    let saved = shown.list.get(shop).expect("Shop in the list");
+    let (view, _) = session(
+        &[object("public", "orders"), object("sales", "leads")],
+        every_affordance(),
+    );
+
+    let key = shown.open(&saved, &view);
+
+    assert!(
+        shown.row("Work").is_expanded() && shown.row("Staging").is_expanded(),
+        "the groups above the connection stayed folded: {:?}",
+        shown.rows()
+    );
+    shown.tree.select(Some(&key), Some(&table("orders")));
+    assert_eq!(shown.selected().as_deref(), Some("orders"));
+    shown.row("Work").set_expanded(false);
+    shown.tree.select(Some(&key), None);
+    assert_eq!(
+        shown.selected().as_deref(),
+        Some("Shop"),
+        "the groups were not opened to the connection"
+    );
+}
+
+#[gtk4::test]
+fn a_groups_menu_offers_subgroup_rename_order_move_and_delete() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let archive = library.group("Archive", None);
+    library.connection("Shop", Some(work));
+    let shown = Shown::nested(&library);
+    let popover = shown.popover();
+
+    shown.menu("Work");
+
+    assert!(popover.is_visible(), "a group's row has no menu");
+    let items: Vec<(String, Option<String>)> = popover
+        .menu_model()
+        .map(|menu| menu_items(&menu))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(action, target)| (action, target.and_then(|target| target.get::<String>())))
+        .collect();
+    let id = Some(work.to_string());
+    assert_eq!(
+        items,
+        [
+            ("picker.new-group".to_owned(), id.clone()),
+            ("picker.rename-group".to_owned(), id.clone()),
+            ("picker-row.move-up".to_owned(), None),
+            ("picker-row.move-down".to_owned(), None),
+            ("picker-row.parent".to_owned(), Some(String::new())),
+            ("picker-row.parent".to_owned(), Some(archive.to_string())),
+            ("picker.delete-group".to_owned(), id),
+        ]
+    );
+    WidgetExt::activate_action(&popover, "picker-row.move-up", None).expect("Move Up in the menu");
+    WidgetExt::activate_action(&popover, "picker-row.move-down", None).expect("Move Down in the menu");
+    popover.popdown();
+    assert_eq!(
+        shown.moves(),
+        [Some(LibraryMove::Groups {
+            ids: vec![work],
+            parent: None,
+            before: None,
+        })],
+        "the first group moved up, or not down"
+    );
+}
+
+#[gtk4::test]
+fn a_renamed_group_stays_open() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    library.connection("Shop", Some(work));
+    library.connection("Laptop", None);
+    let shown = Shown::nested(&library);
+    shown.row("Work").set_expanded(true);
+
+    shown.change(
+        |store| store.rename_group_blocking(work, group_name("Office")),
+        |outline| outline.label(work).as_deref() == Some("Office"),
+    );
+
+    assert_eq!(shown.rows(), ["Office", "Shop", "Laptop"]);
+    assert!(shown.row("Office").is_expanded(), "the renamed group folded");
+}
+
+#[gtk4::test]
+fn a_group_moved_under_another_parent_stays_open() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    let archive = library.group("Archive", None);
+    library.connection("Shop", Some(staging));
+    library.connection("Box", Some(archive));
+    let shown = Shown::nested(&library);
+    for name in ["Work", "Staging", "Archive"] {
+        shown.row(name).set_expanded(true);
+    }
+    assert_eq!(shown.rows(), ["Work", "Staging", "Shop", "Archive", "Box"]);
+
+    shown.change(
+        |store| store.move_groups_blocking(&[staging], Some(archive), None),
+        |outline| outline.parent_of(LibraryItem::Group(staging)) == Some(Some(archive)),
+    );
+
+    assert_eq!(shown.rows(), ["Work", "Archive", "Staging", "Shop", "Box"]);
+    assert!(shown.row("Staging").is_expanded(), "the moved group came back folded");
+}
+
+#[gtk4::test]
+fn a_drop_on_the_tree_reaches_change_library() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let shop = library.connection("Shop", Some(work));
+    let laptop = library.connection("Laptop", None);
+    let shown = Shown::nested(&library);
+    shown.row("Work").set_expanded(true);
+    let expander = expander_of(&shown.row_widget("Work"));
+    let list_view = shown.inner().tree.list_view.clone();
+    wait_until(WAIT, || expander.height() > 0 && list_view.height() > 0).expect("the rows laid out");
+    let middle = f64::from(expander.height()) / 2.0;
+    let under = f64::from(list_view.height()) - 1.0;
+
+    assert!(drop_on(&controller(&expander), LibraryItem::Connection(laptop), middle));
+    assert!(drop_on(&controller(&list_view), LibraryItem::Connection(shop), under));
+    assert!(
+        !drop_on(&controller(&list_view), LibraryItem::Connection(shop), 1.0),
+        "the list took a drop over a row"
+    );
+
+    assert_eq!(
+        shown.moves(),
+        [
+            Some(LibraryMove::Connections {
+                ids: vec![laptop],
+                group: Some(work),
+                before: None,
+            }),
+            Some(LibraryMove::Connections {
+                ids: vec![shop],
+                group: None,
+                before: None,
+            }),
+        ]
+    );
+}
+
+#[gtk4::test]
+fn only_groups_and_saved_connections_start_a_drag() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let shop = library.connection("Shop", Some(work));
+    let shown = Shown::nested(&library);
+    let saved = shown.list.get(shop).expect("Shop in the list");
+    let (view, _) = session(
+        &[object("public", "orders"), object("sales", "leads")],
+        every_affordance(),
+    );
+    shown.open(&saved, &view);
+    let carried = |name: &str| {
+        let source: gtk::DragSource = controller(&expander_of(&shown.row_widget(name)));
+        source
+            .emit_by_name::<Option<gdk::ContentProvider>>("prepare", &[&4.0_f64, &2.0_f64])
+            .and_then(|content| content.value(LibraryDragItem::static_type()).ok())
+            .and_then(|value| value.get::<LibraryDragItem>().ok())
+            .and_then(|item| item.dragged())
+    };
+
+    assert_eq!(carried("Work"), Some((LibrarySection::Tree, LibraryItem::Group(work))));
+    assert_eq!(
+        carried("Shop"),
+        Some((LibrarySection::Tree, LibraryItem::Connection(shop)))
+    );
+    assert_eq!(carried("public"), None, "a schema started a drag");
+}
+
+#[gtk4::test]
+fn a_group_row_tells_a_screen_reader_its_connections_and_whether_it_is_open() {
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    let archive = library.group("Archive", None);
+    library.connection("Shop", Some(staging));
+    let intranet = library.connection("Intranet", Some(work));
+    let shown = Shown::nested(&library);
+    let description = |name: &str| {
+        let item = shown.row_widget(name).imp().item.upgrade().expect("the row's item");
+        item.property::<Option<String>>("accessible-description")
+    };
+    assert_eq!(description("Work").as_deref(), Some("Group, 2 connections"));
+    assert_eq!(description("Archive").as_deref(), Some("Group, 0 connections"));
+
+    shown.change(
+        |store| store.move_connections_blocking(&[intranet], Some(archive), None),
+        |outline| outline.parent_of(LibraryItem::Connection(intranet)) == Some(Some(archive)),
+    );
+    assert_eq!(description("Work").as_deref(), Some("Group, 1 connection"));
+    assert_eq!(description("Archive").as_deref(), Some("Group, 1 connection"));
+
+    let expander = expander_of(&shown.row_widget("Work"));
+    assert!(expanded_state_is(&expander, false));
+    shown.row("Work").set_expanded(true);
+    assert!(
+        expanded_state_is(&expander, true),
+        "the row opened, its expander says folded"
+    );
+    shown.row("Work").set_expanded(false);
+    assert!(
+        expanded_state_is(&expander, false),
+        "the row folded, its expander says open"
+    );
+}
+
+#[gtk4::test]
+fn a_secondary_click_under_the_rows_offers_a_new_group() {
+    let shown = Shown::new(&[connection("Alpha", None)]);
+    let list_view = shown.inner().tree.list_view.clone();
+    wait_until(WAIT, || list_view.height() > 0).expect("the list laid out");
+    let controllers = list_view.observe_controllers();
+    let gesture = (0..controllers.n_items())
+        .filter_map(|at| controllers.item(at).and_downcast::<gtk::GestureClick>())
+        .rfind(|gesture| gesture.button() == gdk::BUTTON_SECONDARY)
+        .expect("the list's secondary click");
+    let popover = shown.popover();
+
+    gesture.emit_by_name::<()>("pressed", &[&1_i32, &4.0_f64, &1.0_f64]);
+    assert!(!popover.is_visible(), "a click on a row offered a new group");
+    let under = f64::from(list_view.height()) - 1.0;
+    gesture.emit_by_name::<()>("pressed", &[&1_i32, &4.0_f64, &under]);
+
+    assert!(popover.is_visible(), "the empty space has no menu");
+    let items: Vec<(String, Option<String>)> = popover
+        .menu_model()
+        .map(|menu| menu_items(&menu))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(action, target)| (action, target.and_then(|target| target.get::<String>())))
+        .collect();
+    assert_eq!(items, [("picker.new-group".to_owned(), Some(String::new()))]);
+    popover.popdown();
 }
 
 #[gtk4::test]
@@ -755,7 +1145,7 @@ fn a_list_of_collections_or_keys_says_so_when_it_is_empty() {
     shown.open(&documents, &collections);
     shown.open(&keys, &listing);
 
-    assert_eq!(shown.rows(), ["Cache", "No Keys", "Docs", "No Collections"]);
+    assert_eq!(shown.rows(), ["Docs", "No Collections", "Cache", "No Keys"]);
 }
 
 #[gtk4::test]
@@ -1316,12 +1706,16 @@ fn the_connection_menu_holds_the_pickers_items() {
     popover.popdown();
     shown.menu("Alpha");
     let open = menu_actions(&popover);
+    let work = crate::test_support::group_id("Work").to_string();
     let group = popover
         .menu_model()
         .map(|menu| menu_items(&menu))
         .unwrap_or_default()
         .into_iter()
-        .find(|(action, _)| action == "picker-row.group");
+        .find(|(action, target)| {
+            action == "picker-row.group"
+                && target.as_ref().and_then(|target| target.get::<String>()).as_deref() == Some(work.as_str())
+        });
     popover.popdown();
 
     let actions: Vec<&str> = closed.iter().map(|(action, _)| action.as_str()).collect();
@@ -1329,22 +1723,25 @@ fn the_connection_menu_holds_the_pickers_items() {
         "picker.connect",
         "picker.edit",
         "picker.duplicate",
+        "picker.set-favourite",
         "picker-row.color",
         "picker-row.group",
-        "picker.new-group",
+        "picker.new-group-for",
         "picker.delete",
     ] {
         assert!(actions.contains(&action), "{action} missing from {actions:?}");
     }
     let id = beta.id.to_string();
-    assert!(
-        closed
-            .iter()
-            .filter(|(action, _)| action.starts_with("picker."))
-            .all(
-                |(_, target)| target.as_ref().and_then(|target| target.get::<String>()).as_deref() == Some(id.as_str())
-            )
-    );
+    for (action, target) in closed.iter().filter(|(action, _)| action.starts_with("picker.")) {
+        let named = if action == "picker.set-favourite" {
+            let favourite = target.as_ref().and_then(|target| target.get::<(String, bool)>());
+            assert_eq!(favourite, Some((id.clone(), true)), "Add to Favourites");
+            favourite.map(|(named, _)| named)
+        } else {
+            target.as_ref().and_then(|target| target.get::<String>())
+        };
+        assert_eq!(named.as_deref(), Some(id.as_str()), "{action}");
+    }
     assert_eq!(
         open[..4],
         [
@@ -1357,8 +1754,8 @@ fn the_connection_menu_holds_the_pickers_items() {
     );
     assert!(!open.contains(&"picker.connect".to_owned()));
     assert!(open.contains(&"picker.delete".to_owned()));
-    assert!(group.is_some(), "Move to Group has no choices");
-    let state = WidgetExt::activate_action(&popover, "picker-row.group", Some(&"Work".to_variant()));
+    assert!(group.is_some(), "Move to Group does not offer Work by its id");
+    let state = WidgetExt::activate_action(&popover, "picker-row.group", Some(&work.to_variant()));
     assert!(state.is_ok(), "the menu's choices reach no action");
 }
 

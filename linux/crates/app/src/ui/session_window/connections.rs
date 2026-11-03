@@ -11,14 +11,16 @@ use tablepro_core::SafeModeLevel;
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::{ConnectSource, PendingSave, RequestTarget, SessionKey};
 use tablepro_storage::{
-    ConnectionColor, ConnectionListState, ConnectionTag, ConnectionTagName, CredentialDemand, SavedConnection,
+    ConnectionColor, ConnectionGroupName, ConnectionListState, ConnectionTag, ConnectionTagName, CredentialDemand,
+    SavedConnection,
 };
 use uuid::Uuid;
 
-use super::{SessionWindow, SessionWindowInput};
+use super::{LibraryEdit, SessionWindow, SessionWindowInput};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::connection_deletion::DeletionOptions;
 use crate::services::deletion_error::DeletionError;
+use crate::services::library_outline::LibraryMove;
 use crate::services::saved_connection_editor::GroupChoice;
 use crate::services::saved_connection_error::SavedConnectionError;
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogMode, ConnectPrefill, FormField};
@@ -392,8 +394,16 @@ impl SessionWindow {
         );
     }
 
-    /// File a connection under a group, or take it out of the one it
-    /// is in.
+    pub(super) fn on_library_edit(&self, edit: LibraryEdit) {
+        match edit {
+            LibraryEdit::CreateGroup { parent, name, with } => self.on_create_group(parent, name, with),
+            LibraryEdit::RenameGroup(id, name) => self.on_rename_group(id, name),
+            LibraryEdit::DeleteGroup(id) => self.on_delete_group(id),
+            LibraryEdit::Change(change) => self.on_change_library(change),
+            LibraryEdit::SetFavourite(id, favourite) => self.on_set_favourite(id, favourite),
+        }
+    }
+
     pub(super) fn on_set_connection_group(&self, id: Uuid, choice: GroupChoice) {
         let Some(state) = self.state() else {
             return;
@@ -401,6 +411,57 @@ impl SessionWindow {
         let editor = state.services.saved_connection_editor.clone();
         self.change_connection(async move { editor.move_to_group(id, choice).await }, |reason| {
             crate::i18n::gettext_f("The group could not be saved. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_create_group(&self, parent: Option<Uuid>, name: ConnectionGroupName, with: Option<Uuid>) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(
+            async move { editor.create_group(parent, name, with).await.map(drop) },
+            |reason| crate::i18n::gettext_f("The group could not be created. {reason}", &[("reason", reason)]),
+        );
+    }
+
+    pub(super) fn on_rename_group(&self, id: Uuid, name: ConnectionGroupName) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.rename_group(id, name).await }, |reason| {
+            crate::i18n::gettext_f("The group could not be renamed. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_delete_group(&self, id: Uuid) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.delete_group(id).await }, |reason| {
+            crate::i18n::gettext_f("The group could not be deleted. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_change_library(&self, change: LibraryMove) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.change_library(change).await }, |reason| {
+            crate::i18n::gettext_f("The change could not be saved. {reason}", &[("reason", reason)])
+        });
+    }
+
+    pub(super) fn on_set_favourite(&self, id: Uuid, favourite: bool) {
+        let Some(state) = self.state() else {
+            return;
+        };
+        let editor = state.services.saved_connection_editor.clone();
+        self.change_connection(async move { editor.set_favourite(id, favourite).await }, |reason| {
+            crate::i18n::gettext_f("The favourites could not be saved. {reason}", &[("reason", reason)])
         });
     }
 
@@ -1314,6 +1375,85 @@ mod tests {
         assert_eq!(test.hold.live(), 1, "the delete ran without a hold");
         wait_until(WAIT, || test.hold.live() == 0).expect("the hold to end");
         assert!(!listed(&test, copy.id), "the hold ended before the delete");
+    }
+
+    #[gtk4::test]
+    fn group_and_favourite_changes_reach_the_store_and_a_refusal_says_so() {
+        let test = TestWindow::picker("GroupChanges");
+        wait_for_list(&test.window);
+        let id = test.saved.id;
+        let library = || test.services.storage.connections().list_blocking().expect("the list");
+        let name = |text: &str| ConnectionGroupName::new(text).expect("a group name");
+
+        test.window.send(SessionWindowInput::Library(LibraryEdit::CreateGroup {
+            parent: None,
+            name: name("Work"),
+            with: Some(id),
+        }));
+        wait_until(WAIT, || library().groups.iter().any(|group| group.name == name("Work"))).expect("the new group");
+        let work = library().groups[0].id;
+        assert_eq!(
+            library()
+                .connections
+                .iter()
+                .find(|saved| saved.id == id)
+                .and_then(|saved| saved.group_id),
+            Some(work),
+            "the connection was not filed in the new group"
+        );
+
+        test.window
+            .send(SessionWindowInput::Library(LibraryEdit::SetFavourite(id, true)));
+        wait_until(WAIT, || library().favorites.contains(&id)).expect("the favourite");
+
+        test.window.send(SessionWindowInput::Library(LibraryEdit::RenameGroup(
+            work,
+            name("Office"),
+        )));
+        wait_until(WAIT, || {
+            library().groups.iter().any(|group| group.name == name("Office"))
+        })
+        .expect("the renamed group");
+
+        test.window.send(SessionWindowInput::Library(LibraryEdit::Change(
+            LibraryMove::Connections {
+                ids: vec![id],
+                group: None,
+                before: None,
+            },
+        )));
+        wait_until(WAIT, || {
+            library()
+                .connections
+                .iter()
+                .any(|saved| saved.id == id && saved.group_id.is_none())
+        })
+        .expect("the move to the top level");
+
+        test.window
+            .send(SessionWindowInput::Library(LibraryEdit::DeleteGroup(work)));
+        wait_until(WAIT, || library().groups.is_empty()).expect("the group deleted");
+
+        let toasts = || -> Vec<String> {
+            test.window
+                .imp()
+                .toasts
+                .borrow()
+                .iter()
+                .filter_map(|toast| toast.title().map(|title| title.to_string()))
+                .collect()
+        };
+        assert!(toasts().is_empty(), "{:?}", toasts());
+        test.window.send(SessionWindowInput::Library(LibraryEdit::RenameGroup(
+            work,
+            name("Gone"),
+        )));
+        wait_until(WAIT, || !toasts().is_empty()).expect("the refusal");
+        assert!(
+            toasts()[0].starts_with("The group could not be renamed. "),
+            "{:?}",
+            toasts()
+        );
     }
 
     #[gtk4::test]

@@ -184,6 +184,19 @@ columnview.tp-striped > listview > row:not(:selected) > cell > .tp-stripe {
   }
 }
 
+/* Library drops: a line between rows, libadwaita's ring into a group. */
+.tp-dragging {
+  opacity: 0.5;
+}
+
+.tp-drop-before:drop(active) {
+  box-shadow: inset 0 2px var(--accent-bg-color);
+}
+
+.tp-drop-after:drop(active) {
+  box-shadow: inset 0 -2px var(--accent-bg-color);
+}
+
 /* The ER diagram draws its cards and lines itself, in the theme's
    colours: each hidden probe's colour is one of libadwaita's variables,
    which the canvas reads. */

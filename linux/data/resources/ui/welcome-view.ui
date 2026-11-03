@@ -9,15 +9,50 @@
           <object class="GtkStackPage">
             <property name="name">list</property>
             <property name="child">
-              <object class="AdwPreferencesPage" id="page">
-                <child>
-                  <!-- The connections in no group. Each group the list
-                       files connections under gets a group of its own
-                       after this one. -->
-                  <object class="AdwPreferencesGroup" id="ungrouped">
-                    <property name="title" translatable="yes">Saved Connections</property>
+              <object class="GtkScrolledWindow" id="list_scroller">
+                <property name="hscrollbar-policy">never</property>
+                <property name="vexpand">true</property>
+                <property name="child">
+                  <object class="AdwClampScrollable">
+                    <property name="child">
+                      <object class="GtkListView" id="list_view">
+                        <property name="single-click-activate">true</property>
+                        <accessibility>
+                          <property name="label" translatable="yes">Connections</property>
+                        </accessibility>
+                        <style>
+                          <class name="navigation-sidebar"/>
+                        </style>
+                      </object>
+                    </property>
                   </object>
-                </child>
+                </property>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkStackPage">
+            <property name="name">found</property>
+            <property name="child">
+              <object class="GtkScrolledWindow">
+                <property name="hscrollbar-policy">never</property>
+                <property name="vexpand">true</property>
+                <property name="child">
+                  <object class="AdwClampScrollable">
+                    <property name="child">
+                      <object class="GtkListView" id="found_view">
+                        <property name="single-click-activate">true</property>
+                        <accessibility>
+                          <property name="label" translatable="yes">Search Results</property>
+                        </accessibility>
+                        <style>
+                          <class name="navigation-sidebar"/>
+                        </style>
+                      </object>
+                    </property>
+                  </object>
+                </property>
               </object>
             </property>
           </object>

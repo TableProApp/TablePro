@@ -187,7 +187,7 @@ Workspace tabs are one JSON file per session in `$XDG_STATE_HOME/tablepro/worksp
 
 A restore deletes the drafts no saved or open tab names, except while a moved-aside copy of the session's file is there, since that copy may name them. A draft that cannot be read is moved aside as `<id>.sql.corrupt-<seconds>`, which the cleanup never deletes, and its tab opens empty with a toast. A disconnect writes the open tabs' text before their buffers go.
 
-`SavedConnection::last_opened_at` is stamped through `touch_last_opened` each time a window adopts a saved connection's session. Every picker shows the list in one order (`saved_connection_order::sort`): ungrouped connections first, then each group by name. Inside each block the connection opened last comes first, ties sort by name, and never-opened connections go to the end of their block.
+`SavedConnection::last_opened_at` is stamped through `touch_last_opened` each time a window adopts a saved connection's session. Both lists show the library in its own order through one `LibraryOutline` (`services/library_outline.rs`, [ADR 0032](docs/decisions/0032-connection-list-tree.md)): at each level the groups, then the connections, each by its stored `order`. The picker leads with Favourites, in the library's order, and Recent, the 5 connections opened last that are not favourites. Each list keeps one node per group and per connection, keyed by id, and changes its stores with `store_sync`, so a write moves only the rows it moved. A drop and a Move Up or Move Down resolve to one `LibraryMove` through the outline, which refuses what the store would refuse, and reach the store through the `picker.change-library` action.
 
 ## MCP server
 
