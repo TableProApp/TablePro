@@ -6194,6 +6194,7 @@ dependencies = [
  "tablepro-test-support",
  "tiberius",
  "tokio",
+ "tokio-rustls",
  "tokio-util",
  "tracing",
  "uuid",

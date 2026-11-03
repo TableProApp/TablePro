@@ -5,7 +5,7 @@
 
 ## Context
 
-The SQL Server driver runs on tiberius 0.13.0 from crates.io, with MIT Kerberos on Unix behind its `kerberos` feature and `winauth` on Windows ([sql-server.md](../../../linux/docs/drivers/sql-server.md)). On Windows, users expect what Microsoft's own clients give them: Kerberos through SSPI, Entra ID sign-in, Always Encrypted and MARS.
+The SQL Server driver runs on tiberius 0.13.0 from crates.io, with GSSAPI behind its `kerberos` feature (MIT Kerberos on Linux; on macOS libgssapi-sys links the system's GSS framework, measured 2026-11-03) and `winauth` on Windows ([sql-server.md](../../../linux/docs/drivers/sql-server.md)). On Windows, users expect what Microsoft's own clients give them: Kerberos through SSPI, Entra ID sign-in, Always Encrypted and MARS.
 
 The Windows spike of 2026-11-02 ran tiberius 0.13.0 (features `tds80`, `winauth`, `native-tls`) and ODBC Driver 18.7.1.1 (through `odbc-api` 29.3.0) against SQL Server 2022 Express 16.0.1000.6. SQL Server installs on x64 only, so the run used a GitHub-hosted `windows-2025` runner (image 20261021.299.1, run 41381600680), with a self-signed certificate trusted in `LocalMachine\Root` and then the server's Force Strict setting on. Each probe read `auth_scheme`, `encrypt_option` and `protocol_version` back from `sys.dm_exec_connections`.
 
@@ -40,7 +40,8 @@ tiberius stays the SQL Server client on every platform, a fork of it adds SSPI N
 - CI proves only the NTLM fallback. Kerberos needs an Active Directory test domain, which no GitHub-hosted runner has.
 - The core builds tiberius with `default-features = false` and `tds73`, so `Encrypt=strict` needs the `tds80` feature and a strict TLS mode in the driver. The runner used `native-tls` (SChannel). The core uses `rustls`, since native-tls is banned ([Linux ADR 0009](../../../linux/docs/decisions/0009-crypto-provider-and-sources.md)), so the TLS cases run again on rustls.
 - No MARS: a connection keeps one request in flight, as it does today.
-- tiberius words a failed strict handshake as "unexpected EOF during handshake" or "failed to fill whole buffer", where ODBC names the handshake. The driver's error codes have to classify those.
+- tiberius words a failed strict handshake as "unexpected EOF during handshake" or "failed to fill whole buffer" on native-tls, and as "tls handshake eof" on rustls, where ODBC names the handshake. In each case the server closes before sending a byte, so the driver asks it, without credentials, whether it answers the other opening before it reports `ServerRefusedStrict` or `ServerRequiresStrict`.
+- SQL Server on Linux takes strict TLS from 2025, which `network.forcestrict` can require. 2022 CU14 on Linux closes a strict login (measured 2026-11-03, rustls, Docker), where 2022 on Windows takes it.
 - The ODBC connection type is Windows only and shows when "ODBC Driver 18 for SQL Server" is installed. The user installs it and accepts Microsoft's terms.
 - SQL Server has no Arm64 build. Arm64 developers and CI need a remote or x64 server. A `windows-2025` runner installs Express in about 3 minutes.
 

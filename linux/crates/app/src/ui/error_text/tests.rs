@@ -184,6 +184,27 @@ fn tls_unknown_issuer_suggests_ca() {
 }
 
 #[test]
+fn a_closed_strict_connect_names_the_encryption_to_choose() {
+    let tls = |failure| {
+        ConnectError::Driver(DriverError::Tls {
+            failure,
+            detail: "the server closed the stream".to_owned(),
+        })
+    };
+    let refused = tls(TlsFailure::ServerRefusedStrict);
+    let requires = tls(TlsFailure::ServerRequiresStrict);
+
+    let refused_text = connect_error_message(&refused);
+    assert!(refused_text.contains("TDS 8.0"), "{refused_text}");
+    assert!(refused_text.contains("Verify full"), "{refused_text}");
+    let requires_text = connect_error_message(&requires);
+    assert!(requires_text.contains("Set Encryption to Strict"), "{requires_text}");
+    for error in [refused, requires] {
+        assert_eq!(connect_remedy(&error, false), Some(TlsRemedy::ChangeEncryption));
+    }
+}
+
+#[test]
 fn auth_message_has_no_secret() {
     let message = driver_message(&DriverError::auth(Some(ServerDiagnostics::new(
         None,

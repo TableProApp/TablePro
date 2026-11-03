@@ -367,6 +367,15 @@ Under Flatpak the app brings its own Kerberos configuration and reads
 tickets from the KCM cache. [Kerberos inside Flatpak](docs/drivers/sql-server.md#kerberos-inside-flatpak)
 says where the realm, the KDC and the tickets come from there.
 
+## SQL Server with strict encryption
+
+A server set to Force Strict Encryption takes only TDS 8.0 logins, which
+start with TLS. Pick **Encryption → Strict** in the connect dialog. It
+needs SQL Server 2022 or later on Windows, or 2025 or later on Linux, and
+checks the server's certificate as Verify full does, so a self-signed
+certificate works once you choose it as the connection's CA certificate.
+Older servers take Verify full.
+
 ## AI assistant
 
 The assistant answers questions about the connected database, explains, reviews, optimizes and fixes your SQL, and can suggest SQL as you type ([ADR 0022](docs/decisions/0022-ai-assistant-and-mcp-server.md)). It is off until you choose a provider in **Preferences > AI**:
