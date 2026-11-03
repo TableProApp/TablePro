@@ -148,6 +148,27 @@ extension QueryHistoryStorage {
         return UUID(uuidString: String(cString: raw))
     }
 
+    // Retention bounds the table, so the drawer reads every id when its list loads. Nil when the store cannot answer.
+    func rewindSnapshotHistoryIds() -> Set<UUID>? {
+        guard let db else { return nil }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(
+            db, "SELECT history_id FROM rewind_snapshots WHERE history_id IS NOT NULL;", -1, &statement, nil
+        ) == SQLITE_OK else {
+            logSqliteError(context: "prepare rewind snapshot history ids")
+            return nil
+        }
+        var ids: Set<UUID> = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let raw = sqlite3_column_text(statement, 0),
+                  let id = UUID(uuidString: String(cString: raw))
+            else { continue }
+            ids.insert(id)
+        }
+        return ids
+    }
+
     /// The most recent saves against one table, newest first.
     func rewindSnapshots(
         connectionId: UUID,

@@ -31,6 +31,10 @@ extension QueryHistoryManager {
         await storage.rewindSnapshotId(forHistoryId: historyId)
     }
 
+    func rewindSnapshotHistoryIds() async -> Set<UUID>? {
+        await storage.rewindSnapshotHistoryIds()
+    }
+
     @discardableResult
     func deleteRewindSnapshot(id: UUID) async -> Bool {
         await storage.deleteRewindSnapshot(id: id)

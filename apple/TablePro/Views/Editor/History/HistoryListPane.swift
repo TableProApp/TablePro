@@ -8,7 +8,11 @@ struct HistoryListPane: View {
     let onRunInNewTab: (QueryHistoryEntry) -> Void
     let onCopy: (QueryHistoryEntry) -> Void
     let onSaveAsFavorite: (QueryHistoryEntry) -> Void
+    let canRestorePreviousValues: (QueryHistoryEntry, _ historyIdsWithSnapshot: Set<UUID>?) -> Bool
+    let loadHistoryIdsWithSnapshot: @MainActor () async -> Set<UUID>?
     let onRestorePreviousValues: (QueryHistoryEntry) -> Void
+
+    @State private var historyIdsWithSnapshot: Set<UUID>?
 
     var body: some View {
         content
@@ -62,6 +66,15 @@ struct HistoryListPane: View {
                 loadMoreBar
             }
         }
+        .task(id: rowEditEntryIds) {
+            let ids = await loadHistoryIdsWithSnapshot()
+            guard !Task.isCancelled else { return }
+            historyIdsWithSnapshot = ids
+        }
+    }
+
+    private var rowEditEntryIds: [UUID] {
+        viewModel.sections.flatMap(\.entries).compactMap { $0.source == .rowEdit ? $0.id : nil }
     }
 
     private var selectionBinding: Binding<Set<UUID>> {
@@ -148,11 +161,14 @@ struct HistoryListPane: View {
         ]
     }
 
-    /// Only a grid save has rows to put back. Everything else in this list is SQL somebody typed.
+    // Only a grid save has rows to put back. Everything else in this list is SQL somebody typed.
     private func rewindItems(for entry: QueryHistoryEntry) -> [FieldDrivenMenuItem] {
         guard entry.source == .rowEdit else { return [] }
         return [
-            FieldDrivenMenuItem(title: String(localized: "Restore Previous Values…")) {
+            FieldDrivenMenuItem(
+                title: String(localized: "Restore Previous Values…"),
+                isEnabled: canRestorePreviousValues(entry, historyIdsWithSnapshot)
+            ) {
                 onRestorePreviousValues(entry)
             },
             .separator,
