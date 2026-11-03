@@ -35,8 +35,7 @@ pub fn storage_class_rank(value: &Value) -> i32 {
     storage_class(value) as i32
 }
 
-// A column whose rows may hold text orders by storage class first, so a SQLite column of mixed kinds reads as
-// NULL, numbers, text, blobs.
+// Storage class first, so a SQLite column of mixed kinds reads as NULL, numbers, text, blobs.
 pub fn sorts_as_text(column: &ColumnType) -> bool {
     column.dynamic_storage
         || column.kind.is_textual()
@@ -53,8 +52,7 @@ pub fn sort_text(value: &Value) -> Option<&str> {
     Some(sort_head(text))
 }
 
-// Text as the macOS app orders a result it holds: digit runs by their value, everything else by code point, case
-// counting. UTF-8 bytes order as their code points do, and a digit is never part of a longer character.
+// As the macOS app orders held text: digit runs by value, the rest by code point, case counting.
 pub fn natural_text_order(a: &str, b: &str) -> Ordering {
     let (mut a, mut b) = (a.as_bytes(), b.as_bytes());
     loop {
@@ -81,8 +79,7 @@ pub fn natural_text_order(a: &str, b: &str) -> Ordering {
     }
 }
 
-// The order a host shows a column of held rows in: stable, so equal values keep the order they arrived in, and
-// descending is the comparison reversed, which puts NULL last.
+// Stable, so equal values keep their arrival order; descending reverses the comparison, which puts NULL last.
 pub fn row_order(values: &[Value], as_text: bool, ascending: bool) -> Vec<usize> {
     let mut rows: Vec<usize> = (0..values.len()).collect();
     let null = Value::Null;
@@ -267,8 +264,7 @@ fn integer_of(value: &Value) -> Option<i128> {
     }
 }
 
-// A float is taken at the decimal its shortest form spells. A decimal is borrowed: a sort compares each one many
-// times.
+// A float is taken at the decimal its shortest form spells; a decimal is borrowed, as a sort compares it often.
 pub fn decimal_of(value: &Value) -> Option<Cow<'_, SqlDecimal>> {
     let owned = match value {
         Value::Decimal(decimal) => return Some(Cow::Borrowed(decimal)),

@@ -8,8 +8,7 @@ use tablepro_core::value::order::{compare, sort_text, sorts_as_text, storage_cla
 use super::GridRow;
 use crate::services::grid::GridColumn;
 
-// GtkStringSorter collates text in the user's locale with one key per row. A custom sorter runs on every comparison
-// that reaches it, so it comes last, where two texts never do.
+// GtkStringSorter keys text once per row; a custom sorter runs per comparison, so it comes last, past the texts.
 pub fn column_sorter(column: &GridColumn) -> gtk::Sorter {
     let index = column.index;
     if sorts_as_text(&column.column_type) {

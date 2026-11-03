@@ -1,5 +1,3 @@
-//! The saved-connection library and connecting through it, with the API the bindings see.
-
 #![expect(
     clippy::unwrap_used,
     reason = "the setup helpers fail a test the way the test functions themselves do"

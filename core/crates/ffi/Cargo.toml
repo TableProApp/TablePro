@@ -5,9 +5,7 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# cdylib for the apps that load the core at run time, lib for this
-# crate's tests. A staticlib joins once an app links the core in: a debug
-# one is 1.9 GB, and every workspace test run would build it.
+# No staticlib until an app links the core in: a debug one is 1.9 GB, and every test run would build it.
 [lib]
 name = "tablepro_ffi"
 crate-type = ["cdylib", "lib"]

@@ -20,8 +20,7 @@ pub struct ColumnSort {
     pub ascending: bool,
 }
 
-// The engine's own row address may follow the visible columns, for edits; a grid shows the visible ones. An engine
-// that pages on the server reads a table only from its start, so it cannot seek to a later page.
+// Row-address columns may follow the visible ones. An engine that pages on the server cannot seek past page one.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct TableQuery {
     pub sql: String,
@@ -288,8 +287,7 @@ impl DatabaseSession {
         self.session.signal(MonitorSignal::RetryNow);
     }
 
-    // The column by name where that names it alone, else by its place in the select list. None when the statement
-    // cannot run again for a sort, or the engine could order by neither: the host then sorts the rows it holds.
+    // None when the statement cannot run again or the engine can order by neither name nor position.
     pub fn sorted_query(
         &self,
         sql: String,

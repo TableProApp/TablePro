@@ -24,7 +24,6 @@ impl CancelToken {
     }
 }
 
-/// The token an optional foreign cancel stands for, or one nobody fires.
 pub(crate) fn token(cancel: Option<Arc<CancelToken>>) -> CancellationToken {
     cancel.map(|cancel| cancel.0.clone()).unwrap_or_default()
 }

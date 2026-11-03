@@ -2,7 +2,6 @@ use super::ValueKind;
 
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
-/// The whole value, as the detail pane and a copy show it.
 pub(super) fn full(kind: ValueKind, bytes: &[u8]) -> String {
     match kind {
         ValueKind::Bytes => {
@@ -14,8 +13,7 @@ pub(super) fn full(kind: ValueKind, bytes: &[u8]) -> String {
     }
 }
 
-/// A cell's text for a grid: at most `max_chars` characters on one line.
-/// Returns whether anything was cut.
+// Returns whether anything was cut.
 pub(super) fn display(kind: ValueKind, bytes: &[u8], max_chars: usize, out: &mut Vec<u8>) -> bool {
     match kind {
         ValueKind::Bytes => push_hex(bytes, max_chars.saturating_sub(2) / 2, out),
@@ -23,7 +21,6 @@ pub(super) fn display(kind: ValueKind, bytes: &[u8], max_chars: usize, out: &mut
     }
 }
 
-/// `0x` and the first `max_bytes` bytes in lowercase hex.
 fn push_hex(bytes: &[u8], max_bytes: usize, out: &mut Vec<u8>) -> bool {
     let shown = &bytes[..bytes.len().min(max_bytes)];
     out.extend_from_slice(b"0x");
@@ -34,8 +31,7 @@ fn push_hex(bytes: &[u8], max_bytes: usize, out: &mut Vec<u8>) -> bool {
     shown.len() < bytes.len()
 }
 
-/// Cut at a character boundary. Control characters become spaces, so a
-/// line break or a tab cannot make a row taller or shift a column.
+// Control characters become spaces, so a line break or a tab cannot make a row taller or shift a column.
 fn push_line(text: &[u8], max_chars: usize, out: &mut Vec<u8>) -> bool {
     let end = char_boundary_after(text, max_chars);
     let start = out.len();

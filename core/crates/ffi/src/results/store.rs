@@ -7,12 +7,10 @@ use tablepro_core::value::order::{row_order, sorts_as_text};
 use super::column_cells::{Cell, ColumnCells, cell_value};
 use super::{ValueKind, cell_text};
 
-/// Rows per chunk. A full chunk is never written again, so an append
-/// copies at most one chunk's arrays when they grow.
+// A full chunk is never written again, so an append copies at most one chunk's arrays when they grow.
 const CHUNK_ROWS: usize = 65_536;
 
-/// One result set as it arrives: columnar chunks behind one lock, so a
-/// window reads its rows and the row count from the same moment.
+// One lock, so a window reads its rows and the row count from the same moment.
 #[derive(Debug)]
 pub(crate) struct ResultStore {
     state: RwLock<StoreState>,
@@ -63,8 +61,7 @@ impl ResultStore {
         self.read().finished
     }
 
-    /// Columns a driver could type only once rows arrived. A set whose
-    /// column count changes after its first row keeps the columns it had.
+    // A set whose column count changes after its first row keeps the columns it had.
     pub(crate) fn resolve_columns(&self, columns: Arc<[ResultColumn]>) {
         let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
         if columns.len() != state.columns.len() && state.rows > 0 {
@@ -79,8 +76,7 @@ impl ResultStore {
         state.columns = columns;
     }
 
-    /// Adds rows and returns the new row count. Values are formatted
-    /// before the lock is taken, so a window never waits on that.
+    // Values are formatted before the lock is taken, so a window never waits on that.
     pub(crate) fn append(&self, rows: &[Vec<Value>]) -> u64 {
         let columns = self.columns();
         let mut staged = vec![ColumnCells::default(); columns.len()];
@@ -126,8 +122,7 @@ impl ResultStore {
         self.state.write().unwrap_or_else(PoisonError::into_inner).finished = true;
     }
 
-    /// The whole value of one cell, for a detail pane or a copy: `None`
-    /// for null, and every byte of a binary value as hex.
+    // `Some(None)` for null, and every byte of a binary value as hex.
     pub(crate) fn full_text(&self, row: u64, column: usize) -> Option<Option<String>> {
         let state = self.read();
         let cell = state.cell(row, column)?;
@@ -156,7 +151,6 @@ impl ResultStore {
 }
 
 impl StoreState {
-    /// The chunk that holds `row`, and the row's index in it.
     pub(super) fn locate(&self, row: u64) -> Option<(&Chunk, usize)> {
         if row >= self.rows {
             return None;

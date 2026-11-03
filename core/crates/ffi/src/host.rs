@@ -113,7 +113,6 @@ impl From<SecretItem> for SecretItemTag {
     }
 }
 
-/// The app's secret store as the core's `SecretVault` and `SecretItems`.
 pub struct HostSecretStore {
     host: Arc<dyn HostSecrets>,
     tasks: Tasks,

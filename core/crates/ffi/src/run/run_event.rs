@@ -29,8 +29,7 @@ pub enum RunEvent {
     ResultSetFinished {
         set_index: u32,
         row_count: u64,
-        /// Every row the statement produced, where the engine counted
-        /// past the limit.
+        // Every row the statement produced, where the engine counted past the limit.
         total_rows: Option<u64>,
         truncation: TruncationTag,
     },
@@ -92,8 +91,6 @@ pub enum RunOutcome {
 }
 
 impl RunOutcome {
-    /// The outcome, and the transaction a run that reached the server
-    /// left open.
     pub(crate) fn with_transaction(result: Result<RunSummary, DriverError>) -> (Self, TransactionStateTag) {
         let transaction = result
             .as_ref()

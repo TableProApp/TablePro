@@ -28,9 +28,7 @@ pub struct SyntaxToken {
     pub range: Range<usize>,
 }
 
-/// The tokens of `text` as `grammar`'s script lexer reads them, without
-/// white space, in order. A construct the text leaves open runs to its
-/// end. Redis and MongoDB have none: their languages are not SQL.
+/// In order, without white space; an open construct runs to the end. Redis and MongoDB have none.
 pub fn syntax_tokens(text: &str, grammar: SqlGrammar, settings: LexicalSettings) -> Vec<SyntaxToken> {
     let Some(rules) = rules_for(grammar) else {
         return Vec::new();
@@ -70,7 +68,7 @@ pub fn syntax_tokens(text: &str, grammar: SqlGrammar, settings: LexicalSettings)
     tokens
 }
 
-/// The longest keyword or reserved word any grammar lists, with room to spare.
+// The longest keyword or reserved word any grammar lists, with room to spare.
 const LONGEST_KEYWORD: usize = 48;
 
 fn word_kind(word: &str, keywords: &HashSet<String>) -> SyntaxKind {

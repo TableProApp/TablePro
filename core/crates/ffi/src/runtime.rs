@@ -8,8 +8,7 @@ use crate::error::CoreError;
 
 static RUNTIME: OnceLock<Result<Runtime, String>> = OnceLock::new();
 
-/// The process's one runtime, built by the first caller while any other
-/// waits, so no spare runtime is ever dropped on a runtime thread.
+// Built once while any other caller waits, so no spare runtime is ever dropped on a runtime thread.
 pub(crate) fn tasks() -> Result<Tasks, CoreError> {
     let built = RUNTIME.get_or_init(|| {
         Builder::new_multi_thread()
@@ -27,9 +26,7 @@ pub(crate) fn tasks() -> Result<Tasks, CoreError> {
     }
 }
 
-/// Runs `work` on the runtime and waits for it. The foreign side polls
-/// only the join, and dropping this future aborts the task, which a
-/// dropped join handle alone would leave running.
+// Dropping this future aborts the task, which a dropped join handle alone would leave running.
 pub(crate) async fn on_runtime<T, F>(tasks: &Tasks, work: F) -> Result<T, CoreError>
 where
     T: Send + 'static,

@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use tablepro_core::{DataModel, DatabaseDriver, DriverRegistry, EndpointKind, EngineCategory};
 
-/// Every engine the library links in. Drivers are compiled in until the
-/// driver ABI lands (core/docs/decisions/0004-driver-plugin-abi.md).
+// Compiled in until the driver ABI lands (core/docs/decisions/0004-driver-plugin-abi.md).
 pub(crate) fn registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
     registry.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));

@@ -87,7 +87,6 @@ impl ValueKind {
         }
     }
 
-    /// The kind of a value that is not null.
     pub fn of_value(value: &Value) -> Self {
         match value {
             Value::Bool(_) => Self::Bool,

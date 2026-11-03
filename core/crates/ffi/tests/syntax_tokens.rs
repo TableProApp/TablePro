@@ -1,5 +1,3 @@
-//! The editor's token scan through the C ABI, with offsets in UTF-16 units.
-
 #![expect(
     clippy::unwrap_used,
     reason = "the helpers fail a test the way the test functions themselves do"

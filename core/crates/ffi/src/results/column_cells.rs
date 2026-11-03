@@ -13,13 +13,10 @@ use tablepro_core::value::{
 
 use super::ValueKind;
 
-/// The kind byte of a null cell, outside every `ValueKind`.
+// Outside every `ValueKind`.
 const NULL_CELL: u8 = u8::MAX;
 
-/// One column's cells, as flat arrays: a kind byte, a `raw` and the end
-/// of the cell's bytes in one shared buffer. A value is formatted once,
-/// when it arrives, into the exact text the core's export writes; a
-/// binary value keeps its bytes, which a window shows as hex.
+// A value is formatted once, on arrival, into the text the core's export writes; a binary value keeps its bytes.
 #[derive(Debug, Clone, Default)]
 pub(super) struct ColumnCells {
     kinds: Vec<u8>,
@@ -28,10 +25,9 @@ pub(super) struct ColumnCells {
     bytes: Vec<u8>,
 }
 
-/// One cell, borrowed from its column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Cell<'a> {
-    /// `None` for null.
+    // `None` for null.
     pub kind: Option<ValueKind>,
     pub raw: i64,
     pub bytes: &'a [u8],
@@ -88,7 +84,7 @@ impl ColumnCells {
         }
     }
 
-    /// Appends `rows` of `other`, a column of the same set.
+    // `other` is a column of the same set.
     pub(super) fn extend_from(&mut self, other: &ColumnCells, rows: Range<usize>) {
         if rows.is_empty() {
             return;
@@ -105,7 +101,7 @@ impl ColumnCells {
         self.ends.extend(other.ends[rows].iter().map(|end| end - first + base));
     }
 
-    /// Gives back what doubling left over, once nothing more is added.
+    // Once nothing more is added.
     pub(super) fn shrink(&mut self) {
         self.kinds.shrink_to_fit();
         self.raw.shrink_to_fit();
@@ -125,8 +121,7 @@ impl ColumnCells {
     }
 }
 
-// The value a cell was made from, near enough to order it: what `push` kept in `raw` or as exact text. A kind it
-// kept only as display text orders by that text.
+// Near enough to order by: what `push` kept in `raw` or as exact text, else the display text.
 pub(super) fn cell_value(cell: Cell<'_>) -> Value {
     let Some(kind) = cell.kind else {
         return Value::Null;

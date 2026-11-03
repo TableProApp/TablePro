@@ -6,9 +6,7 @@ use tablepro_core::{ResultEvent, ResultSink, SinkFlow};
 use super::{RunEvent, RunState};
 use crate::results::{ResultColumnInfo, ResultStore};
 
-/// Takes a run's events as the driver reads them: rows go into the
-/// set's store at once, so the read runs at the server's pace and not
-/// the grid's.
+// Rows go into the set's store at once, so the read runs at the server's pace and not the grid's.
 pub(crate) struct RunSink {
     state: Arc<RunState>,
     current: Option<(u32, Arc<ResultStore>)>,

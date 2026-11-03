@@ -1,8 +1,6 @@
 use crate::capabilities::DataModel;
 
-/// The family an engine is listed under when the user picks one, as the
-/// macOS app groups them. It is not the data model: Cassandra reads and
-/// writes rows of a table, but it is a wide-column store.
+/// The family an engine is listed under, as the macOS app groups them; Cassandra has rows but is wide-column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum EngineCategory {
     Relational,

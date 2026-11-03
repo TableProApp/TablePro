@@ -1,8 +1,4 @@
-//! The hot paths as a C ABI, which UniFFI would copy through a
-//! `RustBuffer`: the grid's window fetch, which packs the display text
-//! of a visible range, and the editor's token scan of the lines it
-//! colors. csbindgen reads this file to write the C# side, so it holds
-//! only the exported functions and the types they name.
+// csbindgen reads this file to write the C# side, so it holds only the exported functions and their types.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::null;

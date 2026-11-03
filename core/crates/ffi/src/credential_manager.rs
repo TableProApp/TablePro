@@ -34,8 +34,7 @@ impl CredentialManager {
         format!("{}/{}", self.prefix, item_name(item))
     }
 
-    // Credential Manager calls block, so they run where blocking is allowed, one at a time: concurrent writes from one
-    // process lost each other's changes on both CI runners, a write coming back as missing and a delete undone.
+    // One call at a time: concurrent writes from one process lost each other's changes on both CI runners.
     async fn blocking<T, F>(&self, work: F) -> Result<T, SecretError>
     where
         T: Send + 'static,
@@ -117,8 +116,7 @@ fn read(target: &str) -> Result<Option<String>, SecretError> {
         }
         return Err(failure("read"));
     }
-    // SAFETY: CredReadW succeeded, so `found` points at one credential until CredFree, and its blob holds
-    // `CredentialBlobSize` bytes when the pointer is not null.
+    // SAFETY: CredReadW succeeded, so `found` is live until CredFree and a non-null blob holds its size.
     let decoded = unsafe {
         let credential = &*found;
         let size = credential.CredentialBlobSize as usize;

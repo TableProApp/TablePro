@@ -4,14 +4,11 @@ allow-panic-in-tests = true
 allow-dbg-in-tests = true
 allow-print-in-tests = true
 
-# An error crosses as a UniFFI record, which cannot be boxed, and is
-# built once per failed call, so its size costs nothing that matters.
+# An error crosses as a UniFFI record, which cannot be boxed, and is built only once per failed call.
 large-error-threshold = 256
 enum-variant-size-threshold = 256
 
-# Clippy reads only the nearest clippy.toml, so this file repeats the
-# root file's JSON rules. A serde_json map sorts its keys, which would
-# reorder a document the server sent.
+# Clippy reads only the nearest clippy.toml, so this repeats the root file's key-order rules for JSON.
 disallowed-types = [
     { path = "serde_json::Map", reason = "key order is not preserved; keep JSON as JsonText" },
 ]
@@ -20,8 +17,7 @@ disallowed-methods = [
     { path = "serde_json::Value::as_object", reason = "key order is not preserved; keep JSON as JsonText" },
     { path = "serde_json::Value::as_object_mut", reason = "key order is not preserved; keep JSON as JsonText" },
 
-    # Every task goes on the one runtime the library owns, through Tasks.
-    # A foreign thread has no ambient runtime to reach for.
+    # A foreign thread has no ambient runtime, so every task goes on the library's own through Tasks.
     { path = "tokio::runtime::Handle::current", reason = "take the handle from Tasks" },
     { path = "tokio::runtime::Handle::try_current", reason = "take the handle from Tasks" },
     { path = "tokio::runtime::Handle::block_on", reason = "blocking a runtime thread deadlocks it; use spawn_blocking_task" },

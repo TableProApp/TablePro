@@ -20,7 +20,7 @@ pub(crate) struct Cursor {
     window: TpWindow,
 }
 
-/// The rows and columns a fetch covers, once clamped to the set.
+// Clamped to the set.
 #[derive(Debug, Clone, Copy)]
 struct Range {
     first_row: u64,
@@ -59,7 +59,7 @@ impl Cursor {
         }
     }
 
-    /// `None` when the window's text could pass what a `u32` offset holds.
+    // `None` when the window's text could pass what a `u32` offset holds.
     pub(crate) fn fetch(
         &mut self,
         first_row: u64,
@@ -73,8 +73,7 @@ impl Cursor {
         let range = clamp(&state, first_row, row_count, first_column, column_count);
         let cells = range.rows * range.columns;
         let max_chars = usize::try_from(max_chars).ok()?;
-        // A character takes at most four UTF-8 bytes, and hex writes two
-        // per byte after its `0x`.
+        // A character takes at most four UTF-8 bytes, and hex two per byte after its `0x`.
         let most = cells.checked_mul(max_chars.checked_mul(4)?.checked_add(2)?)?;
         if u32::try_from(most).is_err() {
             return None;

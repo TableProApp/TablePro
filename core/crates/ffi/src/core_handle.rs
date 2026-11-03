@@ -144,7 +144,7 @@ impl Core {
         .await
     }
 
-    // Connects a saved connection with the secrets Credential Manager holds, or the ones typed now.
+    // Secrets typed now come first; Credential Manager supplies the rest.
     pub async fn connect_saved(
         &self,
         id: String,
@@ -211,7 +211,6 @@ impl Core {
         .await
     }
 
-    // Logs in with what the form holds and closes again.
     pub async fn test_connection(
         &self,
         record: ConnectionRecord,
@@ -274,12 +273,10 @@ impl Core {
         })
     }
 
-    /// The app's secret store, for a connection's keyring credentials.
     pub fn secret_vault(&self) -> Arc<dyn SecretVault> {
         self.vault.clone()
     }
 
-    /// The app's secret store, for the secrets no connection owns.
     pub fn secret_items(&self) -> Arc<dyn SecretItems> {
         self.items.clone()
     }
@@ -402,8 +399,7 @@ fn needed(request: &ConnectRequest) -> Vec<SecretKind> {
     kinds
 }
 
-/// The engine whose signature the file's first bytes carry, read on a
-/// blocking thread. A missing file is only a problem when it is opened.
+// A missing file is no error here: it fails only once it is opened.
 async fn file_engine(
     registry: &DriverRegistry,
     tasks: &Tasks,
@@ -449,8 +445,7 @@ fn file_name(path: &Path) -> String {
     )
 }
 
-/// No SSH transport is wired into the library yet, so a connection
-/// through SSH fails as one would with no client installed.
+// No SSH transport is wired in yet, so SSH fails as it would with no client installed.
 #[derive(Debug)]
 struct NoSshTransport;
 

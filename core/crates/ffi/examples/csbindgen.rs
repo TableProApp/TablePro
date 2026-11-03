@@ -1,5 +1,4 @@
-//! Writes the C# declarations of `src/window_abi.rs` to the file named by
-//! the first argument. windows/AGENTS.md, Bindings, runs it.
+// The GenerateBindings target runs it (windows/AGENTS.md, Bindings).
 
 use std::error::Error;
 

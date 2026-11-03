@@ -1,6 +1,3 @@
-//! The library's one vertical path, through the API the bindings see,
-//! against a real SQLite file.
-
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,

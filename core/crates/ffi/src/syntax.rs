@@ -3,8 +3,7 @@ use tablepro_core::sql_syntax::{SqlGrammar, SyntaxKind, syntax_tokens};
 
 use crate::window_abi::TpSyntaxToken;
 
-/// The grammar codes of `tablepro_syntax_tokens`, in `SqlGrammar`'s
-/// declaration order.
+// Indexed by the grammar codes of `tablepro_syntax_tokens`, in `SqlGrammar`'s declaration order.
 const GRAMMARS: [SqlGrammar; 9] = [
     SqlGrammar::PostgreSql,
     SqlGrammar::MySql,
@@ -17,8 +16,7 @@ const GRAMMARS: [SqlGrammar; 9] = [
     SqlGrammar::Mongo,
 ];
 
-/// Writes the tokens of `units` to `out` with UTF-16 offsets and returns
-/// how many it wrote. `None` for an unknown grammar code.
+// `None` for an unknown grammar code.
 pub(crate) fn scan(grammar: u32, backslash_escapes: u32, units: &[u16], out: &mut [TpSyntaxToken]) -> Option<usize> {
     let grammar = *GRAMMARS.get(usize::try_from(grammar).ok()?)?;
     let settings = match backslash_escapes {
@@ -30,8 +28,7 @@ pub(crate) fn scan(grammar: u32, backslash_escapes: u32, units: &[u16], out: &mu
         },
         _ => LexicalSettings::default_for(grammar),
     };
-    // A lone surrogate becomes U+FFFD, which is one unit too, so the
-    // offsets mapped back still index `units`.
+    // A lone surrogate becomes U+FFFD, one unit too, so the offsets mapped back still index `units`.
     let text = String::from_utf16_lossy(units);
     let mut units_at = Utf16Offsets::new(&text);
     let mut written = 0;
@@ -61,8 +58,7 @@ fn kind_code(kind: SyntaxKind) -> u32 {
     }
 }
 
-/// UTF-16 offsets of byte offsets that never go back, so a whole token
-/// list maps in one pass over the text.
+// Byte offsets never go back, so a whole token list maps in one pass over the text.
 struct Utf16Offsets<'a> {
     text: &'a str,
     byte: usize,

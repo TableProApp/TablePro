@@ -1,10 +1,4 @@
-//! The core as a library other languages load: one UniFFI API for the
-//! control calls, and a C ABI for the grid's window fetch
-//! (`core/docs/decisions/0002-uniffi-bindings.md`, `0003-result-windows-for-native-grids.md`).
-//!
-//! Every async export runs on the one runtime this library owns and is
-//! aborted when the foreign side drops its future. Foreign code is
-//! called only from a runtime thread and never under a lock.
+// Foreign code is called only from a runtime thread, never under a lock (core/ARCHITECTURE.md, Bindings).
 
 mod cancel_token;
 mod catalog;

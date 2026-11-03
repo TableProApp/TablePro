@@ -117,8 +117,7 @@ pub struct TagRecord {
     pub color: String,
 }
 
-// Connections in each group's order, groups in each parent's order, favourites and recent as the library ranks them,
-// tags in the order they were made.
+// Every list is in the library's own order: connections and groups by position, tags as they were made.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct LibrarySnapshot {
     pub connections: Vec<ConnectionRecord>,
@@ -334,7 +333,6 @@ impl ConnectionLibrary {
         .await
     }
 
-    // Puts the tag on each connection, or takes it off.
     pub async fn tag_connections(&self, ids: Vec<String>, tag_id: String, tagged: bool) -> Result<(), CoreError> {
         let ids = parse_ids(&ids)?;
         let tag = parse_id(&tag_id)?;
@@ -385,8 +383,7 @@ impl ConnectionLibrary {
         .await
     }
 
-    // Moves the connections into the group, or the top level when there is none, before the connection named, or
-    // to the end.
+    // Into the group or the top level, before the connection named or at the end.
     pub async fn move_to_group(
         &self,
         ids: Vec<String>,
@@ -400,8 +397,7 @@ impl ConnectionLibrary {
             .await
     }
 
-    // Moves the groups under the parent, or to the top level, before the group named, or to the end. A group cannot
-    // go inside itself.
+    // Under the parent or at the top level, before the group named or at the end; never inside itself.
     pub async fn move_groups(
         &self,
         ids: Vec<String>,

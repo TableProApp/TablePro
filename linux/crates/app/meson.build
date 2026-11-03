@@ -55,13 +55,11 @@ endif
 # The workspace suite excludes the app, whose tests need a display and
 # the GTK test accessibility backend. A package build compiles its tests in
 # the release profile, DuckDB's C++ a second time among them, which took
-# more than an hour on a 4-core builder with DuckDB 2.0. It also excludes
-# tablepro-ffi, the library other languages load, which windows.yml tests:
-# its library and test binaries each link every engine, and filled a
-# package builder's disk.
+# more than an hour on a 4-core builder with DuckDB 2.0.
 test(
   'workspace',
   cargo,
+  # windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
   args: ['test'] + cargo_options + ['--workspace', '--exclude', 'tablepro', '--exclude', 'tablepro-ffi'],
   env: test_env,
   suite: 'unit',

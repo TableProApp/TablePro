@@ -7,13 +7,7 @@ use tokio_util::sync::CancellationToken;
 use super::{RunEvent, RunListener, RunOutcome, TransactionStateTag};
 use crate::results::ResultStore;
 
-/// What a run shares between the task that reads it and the app that
-/// drains it.
-///
-/// The listener is called only when no wake is pending, and a drain
-/// clears the pending wake before it takes the queue. An event queued
-/// after that either lands in this drain or wakes the app again, so none
-/// is lost and a busy app is woken once however many batches arrive.
+// A drain clears the pending wake before it takes the queue, so no event is lost and a busy app is woken once.
 pub(crate) struct RunState {
     listener: Box<dyn RunListener>,
     queue: Mutex<Queue>,
@@ -49,7 +43,7 @@ impl RunState {
         self.lock().sets.get(usize::try_from(index).ok()?).cloned()
     }
 
-    /// Queues `event` and wakes the app. Called on a runtime thread.
+    // Called on a runtime thread.
     pub(crate) fn post(&self, event: RunEvent) {
         {
             let mut queue = self.lock();
@@ -78,8 +72,7 @@ impl RunState {
         std::mem::take(&mut self.lock().events)
     }
 
-    /// Ends the run: every set holds what it will, and `Finished` is the
-    /// last event.
+    // Every set holds what it will, and `Finished` is the last event.
     pub(crate) fn finish(&self, outcome: RunOutcome, transaction: TransactionStateTag) {
         let sets = self.lock().sets.clone();
         sets.iter().for_each(|store| store.finish());

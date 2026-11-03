@@ -21,8 +21,7 @@ pub fn sort_reference(sql: &str, grammar: SqlGrammar, columns: &[String], column
     orders_by_position(grammar).then_some(SortReference::Position(column + 1))
 }
 
-// MySQL deprecates positions, and ClickHouse reads them only under enable_positional_arguments. Either would sort
-// by the constant, without an error, on a server that does not read the number as a position.
+// MySQL deprecates positions and ClickHouse needs a setting for them; either may sort by the constant instead.
 fn orders_by_position(grammar: SqlGrammar) -> bool {
     matches!(
         grammar,
@@ -101,8 +100,7 @@ fn plain_wildcard(options: &WildcardAdditionalOptions) -> bool {
     options.opt_replace.is_none() && options.opt_rename.is_none() && options.opt_alias.is_none()
 }
 
-// A wildcard spans as many columns as the result has beyond the other items; with two, only the items outside them
-// have a known place.
+// A wildcard spans the columns beyond the other items; with two, only the items outside them have a known place.
 fn item_at<'a>(items: &[Item<'a>], width: usize, column: usize) -> Option<Item<'a>> {
     let wildcards: Vec<usize> = items
         .iter()

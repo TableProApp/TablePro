@@ -1,5 +1,4 @@
-//! The core's copy of each result set, and the windows a grid reads
-//! from it (core/docs/decisions/0003-result-windows-for-native-grids.md).
+// The design: core/docs/decisions/0003-result-windows-for-native-grids.md.
 
 mod cell_text;
 mod column_cells;
