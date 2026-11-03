@@ -112,6 +112,63 @@ public sealed class ShellModelTests
     }
 
     [Fact]
+    public void ANewPageSizeKeepsThePageThatHoldsTheFirstRowShown()
+    {
+        var page = new TablePage(2000, 1000, 1000, 3503, true);
+
+        var smaller = page.Resized(100);
+        var larger = new TablePage(2500, 500, 500, 3503, true).Resized(1000);
+
+        Assert.Equal(2000, smaller.Offset);
+        Assert.Equal(21, smaller.Number);
+        Assert.Equal(36, smaller.Count);
+        Assert.Equal(2000, larger.Offset);
+        Assert.Equal(0, smaller.Rows);
+        Assert.Equal(1, page.Resized(0).Size);
+        Assert.Equal(TablePage.MaximumSize, page.Resized(int.MaxValue).Size);
+    }
+
+    [Fact]
+    public void GoingToAPageNeedsTheCountAndStaysInsideIt()
+    {
+        var counted = new TablePage(0, 100, 100, 3503, true);
+        var uncounted = counted with { Total = null };
+
+        Assert.Equal(36, counted.Count);
+        Assert.True(counted.Accepts(36));
+        Assert.False(counted.Accepts(37));
+        Assert.False(counted.Accepts(0));
+        Assert.Equal(200, counted.OffsetOf(3));
+        Assert.Equal(3, counted.At(counted.OffsetOf(3)).Number);
+        Assert.Null(uncounted.Count);
+        Assert.False(uncounted.Accepts(2));
+        Assert.False((counted with { CanSeek = false }).Accepts(2));
+        Assert.Equal(1, (counted with { Total = 0 }).Count);
+        Assert.Equal(35, (counted with { Total = 3500 }).Count);
+    }
+
+    [Fact]
+    public void AllRowsPutsTheCountedTableOnOnePage()
+    {
+        var page = new TablePage(2000, 1000, 1000, 3503, true);
+
+        var all = page.AllRows();
+
+        Assert.Equal(3503, all.Size);
+        Assert.Equal(0, all.Offset);
+        Assert.Equal(1, all.Count);
+        Assert.Equal(page with { Total = null }, (page with { Total = null }).AllRows());
+        Assert.Equal(int.MaxValue - 1, (page with { Total = long.MaxValue }).AllRows().Size);
+    }
+
+    [Fact]
+    public void ThePageSizeMenuOffersTheMacSizes()
+    {
+        Assert.Equal([5, 10, 20, 100, 500, 1_000], TablePage.Presets);
+        Assert.Equal(1_000, TablePage.First(AppSettings.DefaultPageSize).Size);
+    }
+
+    [Fact]
     public void TheBarOverTheTabsNamesTheFirstOtherTabHoldingATransaction()
     {
         HeldTab[] tabs =

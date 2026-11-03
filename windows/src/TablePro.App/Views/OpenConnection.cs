@@ -21,6 +21,7 @@ internal sealed class OpenConnection
     private readonly Workbench _workbench;
     private CancellationTokenSource? _connecting;
     private SessionConnection? _restore;
+    private SessionShare? _share;
 
     public OpenConnection(Workbench workbench, SessionConnection origin)
     {
@@ -58,7 +59,7 @@ internal sealed class OpenConnection
 
     public WorkspaceView View { get; }
 
-    public DatabaseSession? Session { get; private set; }
+    public DatabaseSession? Session => _share?.Session;
 
     public ConnectionState State { get; private set; } = ConnectionState.NotConnected;
 
@@ -111,14 +112,14 @@ internal sealed class OpenConnection
                 : await _workbench.Core.OpenFileAsync(
                     new FileOpenOptions(Origin.FilePath!, string.IsNullOrEmpty(Origin.EngineId) ? null : Origin.EngineId),
                     connecting.Token).ConfigureAwait(true);
-            Session = session;
+            _share = new SessionShare(session);
             if (Origin.EngineId != session.EngineId)
             {
                 Mark(session.EngineId, Color);
             }
 
             SetState(ConnectionState.Connected);
-            View.ShowConnected(session, _restore);
+            View.ShowConnected(_share, _restore);
             _restore = null;
             if (Origin.ConnectionId is not null)
             {
@@ -142,6 +143,18 @@ internal sealed class OpenConnection
     }
 
     public void CancelConnect() => _connecting?.Cancel();
+
+    // The same connection in another window, on the same session, ready for the tab moved into it.
+    public OpenConnection Adopt()
+    {
+        var share = _share ?? throw new InvalidOperationException("Only a connected workspace gives up a tab.");
+        var adopted = new OpenConnection(_workbench, Origin with { Tabs = [], SelectedTab = 0 });
+        adopted.Mark(Origin.EngineId, Color);
+        adopted._share = share.Hold();
+        adopted.SetState(ConnectionState.Connected);
+        adopted.View.ShowConnected(adopted._share, null, adopted: true);
+        return adopted;
+    }
 
     // A secret with none saved is asked for, as macOS asks; closing the dialog cancels the connect.
     private async Task<DatabaseSession> ConnectSavedAsync(Guid id, CancellationToken cancellationToken)
@@ -190,12 +203,12 @@ internal sealed class OpenConnection
     public async Task DisconnectAsync()
     {
         CancelConnect();
-        var session = Session;
-        Session = null;
+        var share = _share;
+        _share = null;
         await View.CloseTabsAsync().ConfigureAwait(true);
-        if (session is not null)
+        if (share is not null)
         {
-            await session.DisposeAsync().ConfigureAwait(true);
+            await share.ReleaseAsync().ConfigureAwait(true);
         }
 
         SetState(ConnectionState.NotConnected);

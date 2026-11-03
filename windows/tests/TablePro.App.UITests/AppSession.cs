@@ -46,12 +46,10 @@ internal sealed class AppSession : IDisposable
 
     public Window Window { get; }
 
-    // rowLimit sets how many rows a page holds, so a small table has later pages.
-    public static string NewDataFolder(string theme, int? rowLimit = null)
+    public static string NewDataFolder(string theme)
     {
         var folder = Directory.CreateTempSubdirectory("tablepro-ui-").FullName;
-        var limit = rowLimit is { } rows ? $$""", "rowLimit": {{rows}}""" : string.Empty;
-        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}"{{limit}} }""");
+        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}" }""");
         return folder;
     }
 
@@ -77,6 +75,10 @@ internal sealed class AppSession : IDisposable
     public void Chord(Func<bool> landed, params VirtualKeyShort[] keys) =>
         Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys));
 
+    // Keys reach the foreground window, so a chord for another window brings that one forward.
+    public void Chord(Window window, Func<bool> landed, params VirtualKeyShort[] keys) =>
+        Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys), window);
+
     public void TypeInto(AutomationElement editor, string text) =>
         Again(
             () =>
@@ -88,11 +90,11 @@ internal sealed class AppSession : IDisposable
             () => EditorText(editor).TrimEnd('\r', '\n') == text,
             $"Typing {text}");
 
-    private void Again(Action act, Func<bool> landed, string what)
+    private void Again(Action act, Func<bool> landed, string what, Window? window = null)
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            Front();
+            Front(window);
             act();
             if (Retry.WhileFalse(landed, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
             {
@@ -176,8 +178,8 @@ internal sealed class AppSession : IDisposable
     }
 
     // A menu flyout's item, which UI Automation lists under the window that opened it.
-    public AutomationElement FindMenuItem(string name) =>
-        Retry.WhileNull(() => TryFindMenuItem(name), Wait, throwOnTimeout: false).Result
+    public AutomationElement FindMenuItem(string name, Window? window = null) =>
+        Retry.WhileNull(() => TryFindMenuItem(name, window), Wait, throwOnTimeout: false).Result
             ?? throw Failure($"No menu item {name} appeared.", screen: true);
 
     // A click did not always open a submenu on the runner, and a pointer gliding to its item opens its neighbours'.
@@ -205,8 +207,9 @@ internal sealed class AppSession : IDisposable
         throw Failure($"No menu item {child} appeared.", screen: true);
     }
 
-    private AutomationElement? TryFindMenuItem(string name) =>
-        Window.FindFirstDescendant(condition => condition.ByControlType(ControlType.MenuItem).And(condition.ByName(name)));
+    public AutomationElement? TryFindMenuItem(string name, Window? window = null) =>
+        (window ?? Window).FindFirstDescendant(condition =>
+            condition.ByControlType(ControlType.MenuItem).And(condition.ByName(name)));
 
     public static string EditorText(AutomationElement editor) =>
         editor.Patterns.Text.Pattern.DocumentRange.GetText(-1);

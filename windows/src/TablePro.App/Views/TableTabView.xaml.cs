@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using TablePro.App.Model;
 using TablePro.App.Services;
 using TablePro.DataGrid;
@@ -13,6 +14,7 @@ namespace TablePro.App.Views;
 public sealed partial class TableTabView : UserControl, ITabContent
 {
     private readonly Workbench _workbench;
+    private readonly SessionShare _share;
     private readonly DatabaseSession _session;
     private readonly string? _schema;
     private readonly string _table;
@@ -21,16 +23,22 @@ public sealed partial class TableTabView : UserControl, ITabContent
     private GridSort _sort = GridSort.None;
     private GridSort _shownSort = GridSort.None;
     private TablePage _page;
+
+    // The size this tab was given, as macOS keeps one per table tab; without one, Settings decides.
+    private int? _chosenSize;
     private (long Milliseconds, bool Truncated)? _finished;
     private CancellationTokenSource? _counting;
 
-    internal TableTabView(Workbench workbench, DatabaseSession session, string? schema, string table)
+    internal TableTabView(Workbench workbench, SessionShare share, string? schema, string table, SessionTab? restore = null)
     {
         _workbench = workbench;
-        _session = session;
+        _share = share.Hold();
+        _session = share.Session;
         _schema = schema;
         _table = table;
-        _page = TablePage.First(workbench.Settings.RowLimit);
+        _chosenSize = restore?.PageSize is { } size ? TablePage.Clamp(size) : null;
+        var first = TablePage.First(PageSize);
+        _page = first.At((restore?.Offset ?? 0) / first.Size * first.Size);
         InitializeComponent();
         Results.StatusChanged += (_, status) => StatusText.Text = status;
         Results.RowsStatus = (rows, milliseconds, truncated) =>
@@ -40,6 +48,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
             return RowsStatus()!;
         };
         Results.SortRequested += OnSortRequested;
+        UpdatePager();
     }
 
     public event EventHandler? StateChanged;
@@ -57,6 +66,8 @@ public sealed partial class TableTabView : UserControl, ITabContent
 
     public bool GridIsTarget => true;
 
+    private int PageSize => _chosenSize ?? _workbench.Settings.PageSize;
+
     public bool Shows(string? schema, string table) =>
         string.Equals(_table, table, StringComparison.Ordinal) && string.Equals(_schema, schema, StringComparison.Ordinal);
 
@@ -66,7 +77,15 @@ public sealed partial class TableTabView : UserControl, ITabContent
 
     public void FocusContent() => Results.GridView.Focus(FocusState.Programmatic);
 
-    public SessionTab Snapshot() => new() { Kind = TabKind.Table, Title = Title, Schema = _schema, Table = _table };
+    public SessionTab Snapshot() => new()
+    {
+        Kind = TabKind.Table,
+        Title = Title,
+        Schema = _schema,
+        Table = _table,
+        PageSize = _chosenSize,
+        Offset = _page.Offset > 0 ? _page.Offset : null,
+    };
 
     public async Task CloseAsync()
     {
@@ -79,6 +98,8 @@ public sealed partial class TableTabView : UserControl, ITabContent
             await _editor.DisposeAsync().ConfigureAwait(true);
             _editor = null;
         }
+
+        await _share.ReleaseAsync().ConfigureAwait(true);
     }
 
     private async Task LoadAsync(long offset)
@@ -93,7 +114,13 @@ public sealed partial class TableTabView : UserControl, ITabContent
         try
         {
             _editor ??= await _session.OpenEditorAsync().ConfigureAwait(true);
-            var page = _page.At(offset) with { Size = Math.Max(1, _workbench.Settings.RowLimit) };
+            var page = _page.At(offset);
+            // A default changed in Settings applies from the page holding the first row shown.
+            if (_chosenSize is null && page.Size != PageSize)
+            {
+                page = page.Resized(PageSize);
+            }
+
             var sort = _sort.Direction == SortDirection.None
                 ? null
                 : new ColumnSort(_sort.Column, _sort.Direction == SortDirection.Ascending);
@@ -163,7 +190,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
     private void UpdatePager()
     {
         var shown = _page.IsPaged ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var element in new UIElement[] { FirstPageButton, PreviousPageButton, NextPageButton, LastPageButton, PageSeparator })
+        foreach (var element in new UIElement[] { FirstPageButton, PreviousPageButton, GoToPageButton, NextPageButton, LastPageButton })
         {
             element.Visibility = shown;
         }
@@ -172,6 +199,13 @@ public sealed partial class TableTabView : UserControl, ITabContent
         PreviousPageButton.IsEnabled = !IsRunning && _page.HasPrevious;
         NextPageButton.IsEnabled = !IsRunning && _page.HasNext;
         LastPageButton.IsEnabled = !IsRunning && _page.HasLast;
+        PageSizeButton.Label = Strings.Format("PageSizeLabel", _page.Size);
+        PageSizeButton.IsEnabled = !IsRunning;
+        // Going to a page needs the count, as on macOS; until it lands the button names the page alone.
+        GoToPageButton.Label = _page.Count is { } count
+            ? Strings.Format("PageOf", _page.Number, count)
+            : Strings.Format("PageNumber", _page.Number);
+        GoToPageButton.IsEnabled = !IsRunning && _page.Count is > 1;
         if (RowsStatus() is { } status)
         {
             StatusText.Text = status;
@@ -205,16 +239,124 @@ public sealed partial class TableTabView : UserControl, ITabContent
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private async void OnFirstPage(object sender, RoutedEventArgs e) => await LoadAsync(0).ConfigureAwait(true);
+    private void Resize(TablePage page, int chosen)
+    {
+        if (IsRunning)
+        {
+            return;
+        }
 
-    private async void OnPreviousPage(object sender, RoutedEventArgs e) =>
-        await LoadAsync(_page.PreviousOffset).ConfigureAwait(true);
+        _chosenSize = chosen;
+        if (page.Size != _page.Size || page.Offset != _page.Offset)
+        {
+            _page = page;
+            Run();
+        }
+    }
 
-    private async void OnNextPage(object sender, RoutedEventArgs e) =>
-        await LoadAsync(_page.NextOffset).ConfigureAwait(true);
+    // A command in the bar's overflow has no place of its own on screen, so its flyout opens at the bar.
+    private FrameworkElement Anchor(AppBarButton button) => button.IsInOverflow ? Commands : button;
 
-    private async void OnLastPage(object sender, RoutedEventArgs e) =>
-        await LoadAsync(_page.LastOffset).ConfigureAwait(true);
+    private void OnPageSize(object sender, RoutedEventArgs e)
+    {
+        var menu = new MenuFlyout { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+        foreach (var size in TablePage.Presets)
+        {
+            var item = new RadioMenuFlyoutItem
+            {
+                Text = Strings.Format("PageSizeOption", size),
+                GroupName = "PageSize",
+                IsChecked = size == _page.Size,
+            };
+            item.Click += (_, _) => Resize(_page.Resized(size), size);
+            menu.Items.Add(item);
+        }
+
+        menu.Items.Add(new MenuFlyoutSeparator());
+        if (_page.CanSeek)
+        {
+            var all = new MenuFlyoutItem { Text = Strings.Get("PageSizeAll"), IsEnabled = _page.Total is > 0 };
+            all.Click += async (_, _) => await ShowAllRowsAsync().ConfigureAwait(true);
+            menu.Items.Add(all);
+        }
+
+        var custom = new MenuFlyoutItem { Text = Strings.Get("PageSizeCustom") };
+        custom.Click += (_, _) => AskPageSize();
+        menu.Items.Add(custom);
+        menu.ShowAt(Anchor(PageSizeButton));
+    }
+
+    private void AskPageSize()
+    {
+        var request = new NumberRequest(
+            Strings.Get("PageSizeCaption"),
+            _page.Size,
+            TablePage.MaximumSize,
+            Strings.Get("PageSizeApply"),
+            "PageSizeBox",
+            "PageSizeApplyButton");
+        NumberFlyout.Create(request, size => Resize(_page.Resized((int)size), (int)size))
+            .ShowAt(Anchor(PageSizeButton));
+    }
+
+    // Asked first, as macOS asks: a large table on one page takes a lot of memory.
+    private async Task ShowAllRowsAsync()
+    {
+        if (_page.Total is not { } total || XamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            RequestedTheme = ActualTheme,
+            Title = Strings.Get("AllRowsTitle"),
+            Content = Strings.Format("AllRowsMessage", total),
+            PrimaryButtonText = Strings.Get("AllRowsButton"),
+            CloseButtonText = Strings.Get("Cancel"),
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            var all = _page.AllRows();
+            Resize(all, all.Size);
+        }
+    }
+
+    private void OnGoToPage(object sender, RoutedEventArgs e)
+    {
+        if (_page.Count is not { } count)
+        {
+            return;
+        }
+
+        var request = new NumberRequest(
+            Strings.Get("GoToPageCaption"),
+            _page.Number,
+            count,
+            Strings.Get("GoToPageAction"),
+            "GoToPageBox",
+            "GoToPageGo");
+        NumberFlyout.Create(request, number =>
+            {
+                if (_page.Accepts(number) && number != _page.Number)
+                {
+                    Run(_page.OffsetOf(number));
+                }
+            })
+            .ShowAt(Anchor(GoToPageButton));
+    }
+
+    private async void Run(long offset) => await LoadAsync(offset).ConfigureAwait(true);
+
+    private void OnFirstPage(object sender, RoutedEventArgs e) => Run(0);
+
+    private void OnPreviousPage(object sender, RoutedEventArgs e) => Run(_page.PreviousOffset);
+
+    private void OnNextPage(object sender, RoutedEventArgs e) => Run(_page.NextOffset);
+
+    private void OnLastPage(object sender, RoutedEventArgs e) => Run(_page.LastOffset);
 
     private void OnSortRequested(object? sender, GridSort sort)
     {

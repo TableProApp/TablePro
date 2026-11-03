@@ -14,6 +14,7 @@ namespace TablePro.App.Views;
 public sealed partial class QueryTabView : UserControl, ITabContent
 {
     private readonly Workbench _workbench;
+    private readonly SessionShare _share;
     private readonly DatabaseSession _session;
     private QueryEditor? _editor;
     private QueryRun? _run;
@@ -21,14 +22,15 @@ public sealed partial class QueryTabView : UserControl, ITabContent
     private GridSort _sort = GridSort.None;
     private bool _sorting;
 
-    internal QueryTabView(Workbench workbench, DatabaseSession session, string title, string? sql)
+    internal QueryTabView(Workbench workbench, SessionShare share, string title, string? sql)
     {
         _workbench = workbench;
-        _session = session;
+        _share = share.Hold();
+        _session = share.Session;
         Title = title;
         InitializeComponent();
         SqlText.Text = sql ?? string.Empty;
-        SqlText.Lexer = new CoreSqlLexer(Grammars.For(session.EngineId));
+        SqlText.Lexer = new CoreSqlLexer(Grammars.For(_session.EngineId));
         SqlText.EditorFontSize = (float)workbench.Settings.EditorFontSize;
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", title));
         Results.StatusChanged += (_, status) => StatusText.Text = status;
@@ -71,6 +73,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         }
 
         SqlText.Dispose();
+        await _share.ReleaseAsync().ConfigureAwait(true);
     }
 
     private async Task RunAsync()
