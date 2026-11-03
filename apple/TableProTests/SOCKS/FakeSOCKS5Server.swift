@@ -6,6 +6,7 @@
 import Foundation
 import Network
 import os
+import TableProTestSupport
 
 final class FakeSOCKS5Server: @unchecked Sendable {
     enum Behavior: Sendable {
@@ -30,6 +31,8 @@ final class FakeSOCKS5Server: @unchecked Sendable {
     private let behavior: Behavior
     private let requiredUsername: String?
     private let requiredPassword: String?
+    // Holds every CONNECT reply until opened, so a tunnel creation can be kept mid-probe.
+    private let connectReplyGate: AsyncGate?
     private let captured = OSAllocatedUnfairLock(initialState: CapturedState())
     private var listener: NWListener?
 
@@ -47,10 +50,16 @@ final class FakeSOCKS5Server: @unchecked Sendable {
         captured.withLock { $0.sawAuthNegotiation }
     }
 
-    init(behavior: Behavior = .echo, username: String? = nil, password: String? = nil) {
+    init(
+        behavior: Behavior = .echo,
+        username: String? = nil,
+        password: String? = nil,
+        connectReplyGate: AsyncGate? = nil
+    ) {
         self.behavior = behavior
         self.requiredUsername = username
         self.requiredPassword = password
+        self.connectReplyGate = connectReplyGate
     }
 
     func start() async throws {
@@ -117,6 +126,7 @@ final class FakeSOCKS5Server: @unchecked Sendable {
 
         let request = try await readConnectRequest(connection)
         captured.withLock { $0.connectRequests.append(request) }
+        await connectReplyGate?.wait()
         try await send(connection, Data([0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0]))
         echoLoop(connection)
     }

@@ -22,7 +22,7 @@ extension DataFileController {
     }
 
     var hasActiveQuery: Bool {
-        !filterState.appliedFilters.isEmpty || !trimmedSearchText.isEmpty || sortState.isSorting
+        !filterState.rerunFilters.filters.isEmpty || !trimmedSearchText.isEmpty || sortState.isSorting
     }
 
     var trimmedSearchText: String {
@@ -38,12 +38,33 @@ extension DataFileController {
     }
 
     func applyAllFilters() {
-        filterState.commit = .all
-        runQuery()
+        commitFilters(.all)
     }
 
     func applySoloFilter(_ filter: TableFilter) {
-        filterState.commit = .solo(filter.id)
+        commitFilters(.solo(filter.id))
+    }
+
+    /// The running filters stop counting as applied once one names a column the file no longer has,
+    /// after a header row is toggled for instance, rather than run without it under a panel that
+    /// still says it applies.
+    private func dropFiltersTheFileCannotRun() {
+        guard !filterState.rerunFilters.filters.allSatisfy({ cellPredicate(for: $0) != nil }) else { return }
+        filterState.commit = nil
+        filterState.adoptAppliedFiltersAsRunning()
+        showMessage(String(localized: "This file cannot filter rows with these conditions."))
+    }
+
+    /// A row the file cannot evaluate, a raw condition or a column the file lacks, refuses the apply.
+    /// Left out, the grid would show every row under a panel that says it is filtered.
+    private func commitFilters(_ commit: FilterCommit) {
+        let filters = TabFilterState.resolve(commit, in: filterState.filters)
+        guard filters.allSatisfy({ cellPredicate(for: $0) != nil }) else {
+            showMessage(String(localized: "This file cannot filter rows with these conditions."))
+            return
+        }
+        filterState.commit = commit
+        filterState.adoptAppliedFiltersAsRunning()
         runQuery()
     }
 
@@ -59,8 +80,8 @@ extension DataFileController {
     func runQuery() {
         setDebounceTask(nil)
         guard let table else { return }
+        dropFiltersTheFileCannotRun()
         let revision = nextQueryRevision()
-        filterState.executedFilters = filterState.appliedFilters
         let predicate = currentPredicate()
         let sortKeys = currentSortKeys()
         gridModel.clearSelection()
@@ -125,9 +146,10 @@ extension DataFileController {
 
     func currentPredicate() -> TabularRowPredicate {
         var parts: [TabularRowPredicate] = []
-        let filters = filterState.appliedFilters.compactMap(cellPredicate(for:))
+        let rerun = filterState.rerunFilters
+        let filters = rerun.filters.compactMap(cellPredicate(for:))
         if !filters.isEmpty {
-            switch filterState.filterLogicMode {
+            switch rerun.logicMode {
             case .and:
                 parts.append(.all(filters))
             case .or:

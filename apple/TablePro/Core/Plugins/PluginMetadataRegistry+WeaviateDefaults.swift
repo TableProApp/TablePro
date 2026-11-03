@@ -32,6 +32,7 @@ extension PluginMetadataRegistry {
                     supportsDropIndex: false,
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
+                    supportsRawFilter: false,
                     supportsPrincipalConnectionLimit: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

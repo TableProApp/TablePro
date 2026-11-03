@@ -11,6 +11,7 @@ import os
 internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private var itemStateObservation: AnyCancellable?
     private var tabStateObservation: AnyCancellable?
+    private var rewindAvailabilityObservation: AnyCancellable?
     nonisolated internal static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     /// The autosave name, and deliberately not bumped when the default set changes.
@@ -204,6 +205,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         itemStateObservationGeneration += 1
         itemStateObservation = nil
         tabStateObservation = nil
+        rewindAvailabilityObservation = nil
         coordinator = nil
     }
 
@@ -217,6 +219,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private func observeItemState() {
         itemStateObservation = nil
         tabStateObservation = nil
+        rewindAvailabilityObservation = nil
         guard let coordinator else { return }
         let generation = itemStateObservationGeneration
         let coordinatorIdentifier = ObjectIdentifier(coordinator)
@@ -232,6 +235,11 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             guard let self, self.isObserving(generation, coordinatorIdentifier) else { return }
             self.refreshContext()
         }
+        rewindAvailabilityObservation = coordinator.services.queryHistoryManager.rewindAvailability
+            .onMainActorChange { [weak self] in
+                guard let self, self.isObserving(generation, coordinatorIdentifier) else { return }
+                self.managedToolbar.validateVisibleItems()
+            }
     }
 
     /// A callback queued before a repoint must not act on the connection that replaced its own.

@@ -30,6 +30,6 @@ extension WorkspaceRailCellView {
 
 extension ConnectionStatusMarkView {
     var renderedTint: NSColor? {
-        subviews.lazy.compactMap { $0 as? NSImageView }.first?.contentTintColor
+        displayedTint
     }
 }

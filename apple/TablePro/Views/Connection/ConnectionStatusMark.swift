@@ -117,6 +117,10 @@ internal final class ConnectionStatusMarkView: NSView {
         presentation.isBusy
     }
 
+    internal var displayedTint: NSColor? {
+        displayedSymbolName == nil ? nil : presentation.tint.nsColor
+    }
+
     internal func configure(_ presentation: ConnectionStatusPresentation, isEmphasized: Bool) {
         self.presentation = presentation
         self.isEmphasized = isEmphasized
@@ -135,13 +139,23 @@ internal final class ConnectionStatusMarkView: NSView {
 
     private func apply() {
         let name = presentation.symbol?.systemName
-        symbol.image = name.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+        symbol.image = name.flatMap { Self.tintedSymbol(named: $0, color: presentation.tint.nsColor) }
         symbol.isHidden = name == nil
-        symbol.contentTintColor = presentation.tint.nsColor
         isHidden = presentation.symbol == nil
         // The colour AppKit draws content in on a selection, as the old identity dot's rim did.
         backing.fillColor = isEmphasized ? .alternateSelectedControlTextColor : .windowBackgroundColor
         applyAnimation()
+    }
+
+    // A template follows the selected row's emphasized style into white, the colour of the backing under it.
+    nonisolated private static func tintedSymbol(named name: String, color: NSColor) -> NSImage? {
+        guard let template = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return nil }
+        return NSImage(size: template.size, flipped: false) { rect in
+            template.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
     }
 
     private func applyAnimation() {
