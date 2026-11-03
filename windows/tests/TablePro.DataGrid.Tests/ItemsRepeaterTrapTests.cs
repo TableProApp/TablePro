@@ -1,6 +1,9 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+
 namespace TablePro.DataGrid.Tests;
 
-// The four ItemsRepeater traps that broke the spike's grid silently (wingates2 SPIKE.md); each fails without its fix.
+// The ItemsRepeater traps that broke the grid silently (wingates2 SPIKE.md and the app's sort); each fails without its fix.
 public sealed class ItemsRepeaterTrapTests
 {
     // Without SuppressAutoRecycle one element served two rows and headers went blank.
@@ -121,6 +124,46 @@ public sealed class ItemsRepeaterTrapTests
             Assert.True(later.None, $"jump {jump}, a frame later: {later}");
         }
     });
+
+    // A new source leaves elements realized with SuppressAutoRecycle where they were. Once the new rows arrived, the
+    // old rows stayed drawn under them, as a sorted result showed in the app.
+    [Fact]
+    public Task NewDataLeavesOnlyItsOwnRowsAndHeadersOnScreen() => WinUiHost.RunAsync(async () =>
+    {
+        var grid = await WinUiHost.ShowAsync(new SyntheticData(), frozen: 1);
+        // As a run's result set: no rows when the grid gets it, then rows as they arrive.
+        var next = new SyntheticData(rows: 0, columns: 30);
+        grid.SetData(next);
+        await WinUiHost.NextFrameAsync();
+        await WinUiHost.NextFrameAsync();
+        next.RowCount = 500;
+        grid.RowsChanged();
+        for (var i = 0; i < 300 && grid.RealizedRows.Count == 0; i++)
+        {
+            await WinUiHost.NextFrameAsync();
+        }
+        await WinUiHost.NextFrameAsync();
+
+        foreach (var (name, repeater, realized) in new[]
+        {
+            ("rows", grid.RowsRepeater, grid.RealizedRows),
+            ("frozen rows", grid.FrozenRowsRepeater, grid.RealizedFrozenRows),
+            ("headers", grid.HeaderRepeater, grid.RealizedHeaders),
+        })
+        {
+            var shown = Children(repeater).Where(OnScreen).ToList();
+            Assert.True(shown.All(realized.ContainsValue), $"{name}: {shown.Count} on screen, {realized.Count} realized");
+        }
+        var problems = GridChecks.Check(grid, next);
+        Assert.True(problems.None, problems.ToString());
+    });
+
+    private static IEnumerable<UIElement> Children(DependencyObject parent) =>
+        Enumerable.Range(0, VisualTreeHelper.GetChildrenCount(parent)).Select(i => (UIElement)VisualTreeHelper.GetChild(parent, i));
+
+    // ItemsRepeater arranges an element it holds for no item far off.
+    private static bool OnScreen(UIElement element) =>
+        element.Visibility == Visibility.Visible && element.ActualOffset.X > -5000 && element.ActualOffset.Y > -5000;
 
     private static void AssertContiguous(IEnumerable<int> keys, int most)
     {

@@ -55,3 +55,26 @@ function Clear-FirstLogon {
     $log += "foreground after: $(Get-ForegroundProcess)"
     $log -join '; '
 }
+
+# A minute after the first logon goes on, the Arm64 image runs wsl.exe, whose update prompt opens over the desktop.
+# A hidden loop stops it and the console it opened, and logs what started it.
+function Start-WslWatch([string]$Log, [int]$Minutes = 20) {
+    $script = @"
+`$end = (Get-Date).AddMinutes($Minutes)
+while ((Get-Date) -lt `$end) {
+    foreach (`$p in Get-CimInstance Win32_Process -Filter "Name='wsl.exe'") {
+        `$parent = Get-CimInstance Win32_Process -Filter "ProcessId=`$(`$p.ParentProcessId)"
+        Add-Content -Path '$Log' -Value "`$(Get-Date -Format o) stopping wsl.exe `$(`$p.ProcessId) from `$(`$parent.Name): `$(`$parent.CommandLine)"
+        Stop-Process -Id `$p.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    foreach (`$w in Get-Process WindowsTerminal, conhost -ErrorAction SilentlyContinue | Where-Object { `$_.MainWindowTitle -like '*wsl.exe*' }) {
+        Add-Content -Path '$Log' -Value "`$(Get-Date -Format o) closing `$(`$w.ProcessName) `$(`$w.Id) '`$(`$w.MainWindowTitle)'"
+        Stop-Process -Id `$w.Id -Force -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Milliseconds 500
+}
+"@
+    New-Item -ItemType File -Path $Log -Force | Out-Null
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+    Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile', '-EncodedCommand', $encoded
+}

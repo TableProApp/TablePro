@@ -47,6 +47,35 @@ public sealed class VerticalPathTests
     }
 
     [Fact]
+    public async Task ATableAndAQueryResultSortOnTheServer()
+    {
+        await using var database = await SqliteDatabase.CreateAsync();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var table = await database.Session.GetTableQueryAsync(
+            new TableName(null, "people"),
+            new ColumnSort(1, Ascending: false),
+            100,
+            cancellationToken);
+        var query = database.Session.SortedQuery("SELECT name FROM people LIMIT 2", "name", ascending: true);
+        var write = database.Session.SortedQuery("UPDATE people SET note = NULL", "name", ascending: true);
+
+        Assert.Equal(["Zoë 👋", "Grace", "Ada"], await Column(database, table.Sql, 1));
+        Assert.NotNull(query);
+        Assert.Equal(["Ada", "Grace"], await Column(database, query, 0));
+        Assert.Null(write);
+    }
+
+    private static async Task<List<string?>> Column(SqliteDatabase database, string sql, int column)
+    {
+        using var run = database.Editor.Run(sql, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.IsType<QueryOutcome.Completed>(await run.Completion);
+        using var set = run.GetResultSet(0);
+        Assert.NotNull(set);
+        return [.. Enumerable.Range(0, (int)set.RowCount).Select(row => set.GetCellText(row, column))];
+    }
+
+    [Fact]
     public async Task AQueryStreamsIntoAResultSetThatAWindowReads()
     {
         await using var database = await SqliteDatabase.CreateAsync();

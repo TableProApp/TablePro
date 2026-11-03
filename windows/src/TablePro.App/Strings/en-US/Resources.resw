@@ -1,0 +1,1065 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="FileMenu.Title" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="FileMenu.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="MenuNewConnection.Text" xml:space="preserve">
+    <value>New connection...</value>
+  </data>
+  <data name="MenuNewConnection.AccessKey" xml:space="preserve">
+    <value>N</value>
+  </data>
+  <data name="MenuOpenFile.Text" xml:space="preserve">
+    <value>Open database file...</value>
+  </data>
+  <data name="MenuOpenFile.AccessKey" xml:space="preserve">
+    <value>O</value>
+  </data>
+  <data name="MenuImport.Text" xml:space="preserve">
+    <value>Import connections...</value>
+  </data>
+  <data name="MenuImport.AccessKey" xml:space="preserve">
+    <value>I</value>
+  </data>
+  <data name="MenuNewQueryTab.Text" xml:space="preserve">
+    <value>New query tab</value>
+  </data>
+  <data name="MenuNewQueryTab.AccessKey" xml:space="preserve">
+    <value>T</value>
+  </data>
+  <data name="MenuCloseTab.Text" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="MenuCloseTab.AccessKey" xml:space="preserve">
+    <value>C</value>
+  </data>
+  <data name="MenuSettings.Text" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="MenuSettings.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MenuExit.Text" xml:space="preserve">
+    <value>Exit</value>
+  </data>
+  <data name="MenuExit.AccessKey" xml:space="preserve">
+    <value>X</value>
+  </data>
+  <data name="EditMenu.Title" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="EditMenu.AccessKey" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MenuUndo.Text" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="MenuUndo.AccessKey" xml:space="preserve">
+    <value>U</value>
+  </data>
+  <data name="MenuRedo.Text" xml:space="preserve">
+    <value>Redo</value>
+  </data>
+  <data name="MenuRedo.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="MenuCut.Text" xml:space="preserve">
+    <value>Cut</value>
+  </data>
+  <data name="MenuCut.AccessKey" xml:space="preserve">
+    <value>T</value>
+  </data>
+  <data name="MenuCopy.Text" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="MenuCopy.AccessKey" xml:space="preserve">
+    <value>C</value>
+  </data>
+  <data name="MenuPaste.Text" xml:space="preserve">
+    <value>Paste</value>
+  </data>
+  <data name="MenuPaste.AccessKey" xml:space="preserve">
+    <value>P</value>
+  </data>
+  <data name="MenuSelectAll.Text" xml:space="preserve">
+    <value>Select all</value>
+  </data>
+  <data name="MenuSelectAll.AccessKey" xml:space="preserve">
+    <value>A</value>
+  </data>
+  <data name="MenuFind.Text" xml:space="preserve">
+    <value>Find</value>
+  </data>
+  <data name="MenuFind.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="ViewMenu.Title" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="ViewMenu.AccessKey" xml:space="preserve">
+    <value>V</value>
+  </data>
+  <data name="MenuShowConnections.Text" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="MenuShowConnections.AccessKey" xml:space="preserve">
+    <value>C</value>
+  </data>
+  <data name="MenuShowObjects.Text" xml:space="preserve">
+    <value>Object tree</value>
+  </data>
+  <data name="MenuShowObjects.AccessKey" xml:space="preserve">
+    <value>O</value>
+  </data>
+  <data name="MenuFilterObjects.Text" xml:space="preserve">
+    <value>Filter objects</value>
+  </data>
+  <data name="MenuFilterObjects.AccessKey" xml:space="preserve">
+    <value>F</value>
+  </data>
+  <data name="DatabaseMenu.Title" xml:space="preserve">
+    <value>Database</value>
+  </data>
+  <data name="DatabaseMenu.AccessKey" xml:space="preserve">
+    <value>D</value>
+  </data>
+  <data name="MenuRefresh.Text" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="MenuRefresh.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="MenuEditConnection.Text" xml:space="preserve">
+    <value>Edit connection...</value>
+  </data>
+  <data name="MenuEditConnection.AccessKey" xml:space="preserve">
+    <value>E</value>
+  </data>
+  <data name="MenuReconnect.Text" xml:space="preserve">
+    <value>Reconnect</value>
+  </data>
+  <data name="MenuReconnect.AccessKey" xml:space="preserve">
+    <value>C</value>
+  </data>
+  <data name="MenuDisconnect.Text" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="MenuDisconnect.AccessKey" xml:space="preserve">
+    <value>D</value>
+  </data>
+  <data name="QueryMenu.Title" xml:space="preserve">
+    <value>Query</value>
+  </data>
+  <data name="QueryMenu.AccessKey" xml:space="preserve">
+    <value>Q</value>
+  </data>
+  <data name="MenuRun.Text" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="MenuRun.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="MenuStop.Text" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="MenuStop.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="HelpMenu.Title" xml:space="preserve">
+    <value>Help</value>
+  </data>
+  <data name="HelpMenu.AccessKey" xml:space="preserve">
+    <value>H</value>
+  </data>
+  <data name="MenuDocumentation.Text" xml:space="preserve">
+    <value>Documentation</value>
+  </data>
+  <data name="MenuDocumentation.AccessKey" xml:space="preserve">
+    <value>D</value>
+  </data>
+  <data name="MenuReportIssue.Text" xml:space="preserve">
+    <value>Report an issue</value>
+  </data>
+  <data name="MenuReportIssue.AccessKey" xml:space="preserve">
+    <value>R</value>
+  </data>
+  <data name="MenuSample.Text" xml:space="preserve">
+    <value>Open the sample database</value>
+  </data>
+  <data name="MenuSample.AccessKey" xml:space="preserve">
+    <value>S</value>
+  </data>
+  <data name="MenuAbout.Text" xml:space="preserve">
+    <value>About TablePro</value>
+  </data>
+  <data name="MenuAbout.AccessKey" xml:space="preserve">
+    <value>A</value>
+  </data>
+  <data name="HomeItem.Content" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="CancelConnectButton.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="RetryButton.Content" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="EditConnectionButton.Content" xml:space="preserve">
+    <value>Edit connection</value>
+  </data>
+  <data name="CopyDetailsButton.Content" xml:space="preserve">
+    <value>Copy details</value>
+  </data>
+  <data name="ObjectFilter.PlaceholderText" xml:space="preserve">
+    <value>Filter objects</value>
+  </data>
+  <data name="ObjectFilter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Filter objects</value>
+  </data>
+  <data name="BackToTreeButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Back to the object tree</value>
+  </data>
+  <data name="BackToTreeButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Back to the object tree</value>
+  </data>
+  <data name="ObjectTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Objects</value>
+  </data>
+  <data name="ObjectList.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Matching objects</value>
+  </data>
+  <data name="Tabs.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Tabs</value>
+  </data>
+  <data name="QueryCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Query commands</value>
+  </data>
+  <data name="RunButton.Label" xml:space="preserve">
+    <value>Run</value>
+  </data>
+  <data name="RunButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Run (Ctrl+Enter)</value>
+  </data>
+  <data name="StopButton.Label" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="StopButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Stop (Shift+F5)</value>
+  </data>
+  <data name="TableCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Table commands</value>
+  </data>
+  <data name="RefreshTableButton.Label" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="ResultsGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Results</value>
+  </data>
+  <data name="HomeTitle.Text" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="HomeCommands.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Connection commands</value>
+  </data>
+  <data name="NewConnectionButton.Label" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="OpenFileButton.Label" xml:space="preserve">
+    <value>Open file</value>
+  </data>
+  <data name="ImportButton.Label" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="NewGroupButton.Label" xml:space="preserve">
+    <value>New group</value>
+  </data>
+  <data name="SettingsButton.Label" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="LibrarySearch.PlaceholderText" xml:space="preserve">
+    <value>Search connections</value>
+  </data>
+  <data name="LibrarySearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Search connections</value>
+  </data>
+  <data name="GetStartedHeader.Text" xml:space="preserve">
+    <value>Get started</value>
+  </data>
+  <data name="NewConnectionCard.Header" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="NewConnectionCard.Description" xml:space="preserve">
+    <value>Connect to PostgreSQL, MySQL, SQL Server, MongoDB, Redis and more</value>
+  </data>
+  <data name="OpenFileCard.Header" xml:space="preserve">
+    <value>Open a database file</value>
+  </data>
+  <data name="OpenFileCard.Description" xml:space="preserve">
+    <value>SQLite and DuckDB files on this PC</value>
+  </data>
+  <data name="ImportCard.Header" xml:space="preserve">
+    <value>Import from another app</value>
+  </data>
+  <data name="ImportCard.Description" xml:space="preserve">
+    <value>Bring in connections from a TablePro connections file</value>
+  </data>
+  <data name="SampleCard.Header" xml:space="preserve">
+    <value>Try the sample database</value>
+  </data>
+  <data name="SampleCard.Description" xml:space="preserve">
+    <value>Chinook, a small music store in SQLite</value>
+  </data>
+  <data name="ConnectionTree.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Saved connections</value>
+  </data>
+  <data name="NoResultsText.Text" xml:space="preserve">
+    <value>No connection matches the search</value>
+  </data>
+  <data name="SettingsTitle.Text" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="AppearanceHeader.Text" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="ThemeCard.Header" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="ThemeCard.Description" xml:space="preserve">
+    <value>Select which app theme to display</value>
+  </data>
+  <data name="ThemeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>App theme</value>
+  </data>
+  <data name="ThemeLight.Content" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="ThemeDark.Content" xml:space="preserve">
+    <value>Dark</value>
+  </data>
+  <data name="ThemeSystem.Content" xml:space="preserve">
+    <value>Use system setting</value>
+  </data>
+  <data name="WindowsColorSettings.Content" xml:space="preserve">
+    <value>Windows color settings</value>
+  </data>
+  <data name="StartupHeader.Text" xml:space="preserve">
+    <value>Startup</value>
+  </data>
+  <data name="ReopenCard.Header" xml:space="preserve">
+    <value>Reopen the previous session</value>
+  </data>
+  <data name="ReopenCard.Description" xml:space="preserve">
+    <value>Open the connections and tabs you had open. Only the one in front connects.</value>
+  </data>
+  <data name="ReopenSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Reopen the previous session</value>
+  </data>
+  <data name="EditorHeader.Text" xml:space="preserve">
+    <value>Editor</value>
+  </data>
+  <data name="FontSizeCard.Header" xml:space="preserve">
+    <value>Font size</value>
+  </data>
+  <data name="FontSizeCard.Description" xml:space="preserve">
+    <value>The size of the text in the SQL editor</value>
+  </data>
+  <data name="FontSizeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Font size</value>
+  </data>
+  <data name="QueriesHeader.Text" xml:space="preserve">
+    <value>Queries</value>
+  </data>
+  <data name="RowLimitCard.Header" xml:space="preserve">
+    <value>Row limit</value>
+  </data>
+  <data name="RowLimitCard.Description" xml:space="preserve">
+    <value>The most rows each result keeps</value>
+  </data>
+  <data name="RowLimitBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Row limit</value>
+  </data>
+  <data name="TimeoutCard.Header" xml:space="preserve">
+    <value>Query timeout</value>
+  </data>
+  <data name="TimeoutCard.Description" xml:space="preserve">
+    <value>Seconds a statement may run. 0 leaves it to the connection.</value>
+  </data>
+  <data name="TimeoutBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Query timeout in seconds</value>
+  </data>
+  <data name="AboutHeader.Text" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="AboutExpander.Header" xml:space="preserve">
+    <value>TablePro</value>
+  </data>
+  <data name="AboutExpander.Description" xml:space="preserve">
+    <value>A native database client</value>
+  </data>
+  <data name="DocumentationCard.Header" xml:space="preserve">
+    <value>Documentation</value>
+  </data>
+  <data name="ReportIssueCard.Header" xml:space="preserve">
+    <value>Report an issue</value>
+  </data>
+  <data name="DataFolderCard.Header" xml:space="preserve">
+    <value>Open the data folder</value>
+  </data>
+  <data name="EngineSearch.PlaceholderText" xml:space="preserve">
+    <value>Search engines</value>
+  </data>
+  <data name="EngineSearch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Search engines</value>
+  </data>
+  <data name="FromUrlButton.Content" xml:space="preserve">
+    <value>From connection URL...</value>
+  </data>
+  <data name="UrlBox.Header" xml:space="preserve">
+    <value>Connection URL</value>
+  </data>
+  <data name="UrlBox.PlaceholderText" xml:space="preserve">
+    <value>postgresql://user@host:5432/database</value>
+  </data>
+  <data name="UrlContinueButton.Content" xml:space="preserve">
+    <value>Continue</value>
+  </data>
+  <data name="EngineGrid.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Database engines</value>
+  </data>
+  <data name="ChangeEngineButton.Content" xml:space="preserve">
+    <value>Change engine</value>
+  </data>
+  <data name="NameBox.Header" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="HostBox.Header" xml:space="preserve">
+    <value>Host</value>
+  </data>
+  <data name="PortBox.Header" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="UserBox.Header" xml:space="preserve">
+    <value>User name</value>
+  </data>
+  <data name="PasswordInput.Header" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="DatabaseBox.Header" xml:space="preserve">
+    <value>Database</value>
+  </data>
+  <data name="DatabaseBox.PlaceholderText" xml:space="preserve">
+    <value>Optional</value>
+  </data>
+  <data name="FileBox.Header" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="FileBox.PlaceholderText" xml:space="preserve">
+    <value>The full path of the database file</value>
+  </data>
+  <data name="BrowseButton.Content" xml:space="preserve">
+    <value>Browse...</value>
+  </data>
+  <data name="NewFileButton.Content" xml:space="preserve">
+    <value>New file...</value>
+  </data>
+  <data name="SshExpander.Header" xml:space="preserve">
+    <value>SSH tunnel</value>
+  </data>
+  <data name="SshSwitch.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Connect through SSH</value>
+  </data>
+  <data name="SshHostCard.Header" xml:space="preserve">
+    <value>SSH host</value>
+  </data>
+  <data name="SshHostBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH host</value>
+  </data>
+  <data name="SshPortCard.Header" xml:space="preserve">
+    <value>SSH port</value>
+  </data>
+  <data name="SshPortBox.PlaceholderText" xml:space="preserve">
+    <value>22</value>
+  </data>
+  <data name="SshPortBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH port</value>
+  </data>
+  <data name="SshUserCard.Header" xml:space="preserve">
+    <value>SSH user name</value>
+  </data>
+  <data name="SshUserBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH user name</value>
+  </data>
+  <data name="SshAuthCard.Header" xml:space="preserve">
+    <value>Authentication</value>
+  </data>
+  <data name="SshAuthBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH authentication</value>
+  </data>
+  <data name="SshAuthAgent.Content" xml:space="preserve">
+    <value>SSH agent</value>
+  </data>
+  <data name="SshAuthKey.Content" xml:space="preserve">
+    <value>Private key</value>
+  </data>
+  <data name="SshAuthPassword.Content" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="SshAuthKeyboard.Content" xml:space="preserve">
+    <value>Keyboard interactive</value>
+  </data>
+  <data name="SshKeyCard.Header" xml:space="preserve">
+    <value>Private key file</value>
+  </data>
+  <data name="SshKeyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Private key file</value>
+  </data>
+  <data name="SshPasswordCard.Header" xml:space="preserve">
+    <value>SSH password</value>
+  </data>
+  <data name="SshPasswordInput.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>SSH password</value>
+  </data>
+  <data name="TlsExpander.Header" xml:space="preserve">
+    <value>SSL/TLS</value>
+  </data>
+  <data name="TlsModeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Encryption</value>
+  </data>
+  <data name="TlsDisable.Content" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="TlsRequire.Content" xml:space="preserve">
+    <value>Required, any certificate</value>
+  </data>
+  <data name="TlsVerifyFull.Content" xml:space="preserve">
+    <value>Required, verify the certificate and host</value>
+  </data>
+  <data name="CaFileCard.Header" xml:space="preserve">
+    <value>CA certificate</value>
+  </data>
+  <data name="CaFileBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>CA certificate</value>
+  </data>
+  <data name="ClientCertificateCard.Header" xml:space="preserve">
+    <value>Client certificate</value>
+  </data>
+  <data name="ClientCertificateBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Client certificate</value>
+  </data>
+  <data name="ClientKeyCard.Header" xml:space="preserve">
+    <value>Client key</value>
+  </data>
+  <data name="ClientKeyBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Client key</value>
+  </data>
+  <data name="OptionsExpander.Header" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="SafeModeCard.Header" xml:space="preserve">
+    <value>Safe Mode</value>
+  </data>
+  <data name="SafeModeCard.Description" xml:space="preserve">
+    <value>Ask before writes, or block them</value>
+  </data>
+  <data name="SafeModeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Safe Mode</value>
+  </data>
+  <data name="SafeModeOff.Content" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="SafeModeConfirm.Content" xml:space="preserve">
+    <value>Confirm writes</value>
+  </data>
+  <data name="SafeModeReadOnly.Content" xml:space="preserve">
+    <value>Read only</value>
+  </data>
+  <data name="ConnectionTimeoutCard.Header" xml:space="preserve">
+    <value>Query timeout</value>
+  </data>
+  <data name="ConnectionTimeoutCard.Description" xml:space="preserve">
+    <value>Seconds. Empty follows Settings.</value>
+  </data>
+  <data name="ConnectionTimeoutBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Query timeout in seconds</value>
+  </data>
+  <data name="AppearanceExpander.Header" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="ColorCard.Header" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="ColorBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="GroupCard.Header" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="GroupBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="TestButton.Content" xml:space="preserve">
+    <value>Test</value>
+  </data>
+  <data name="ConnectButton.Content" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="SaveButton.Content" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="CancelButton.Content" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="StatusConnecting" xml:space="preserve">
+    <value>Connecting</value>
+  </data>
+  <data name="StatusFailed" xml:space="preserve">
+    <value>Couldn't connect</value>
+  </data>
+  <data name="StatusNotConnected" xml:space="preserve">
+    <value>Not connected</value>
+  </data>
+  <data name="ConnectingTo" xml:space="preserve">
+    <value>Connecting to {0}...</value>
+  </data>
+  <data name="ConnectFailedTitle" xml:space="preserve">
+    <value>Couldn't connect to {0}</value>
+  </data>
+  <data name="QueryTabTitle" xml:space="preserve">
+    <value>Query {0}</value>
+  </data>
+  <data name="Folder_Tables" xml:space="preserve">
+    <value>Tables</value>
+  </data>
+  <data name="Folder_Views" xml:space="preserve">
+    <value>Views</value>
+  </data>
+  <data name="Folder_MaterializedViews" xml:space="preserve">
+    <value>Materialized views</value>
+  </data>
+  <data name="Folder_ForeignTables" xml:space="preserve">
+    <value>Foreign tables</value>
+  </data>
+  <data name="Folder_Sequences" xml:space="preserve">
+    <value>Sequences</value>
+  </data>
+  <data name="Folder_Functions" xml:space="preserve">
+    <value>Functions</value>
+  </data>
+  <data name="Folder_Procedures" xml:space="preserve">
+    <value>Procedures</value>
+  </data>
+  <data name="Folder_Triggers" xml:space="preserve">
+    <value>Triggers</value>
+  </data>
+  <data name="Folder_Dictionaries" xml:space="preserve">
+    <value>Dictionaries</value>
+  </data>
+  <data name="Folder_Keys" xml:space="preserve">
+    <value>Keys</value>
+  </data>
+  <data name="Folder_Other" xml:space="preserve">
+    <value>Other</value>
+  </data>
+  <data name="ShowAllObjects" xml:space="preserve">
+    <value>Show all {0:N0}</value>
+  </data>
+  <data name="TypeToFilter" xml:space="preserve">
+    <value>Type in the filter box to find the rest</value>
+  </data>
+  <data name="FolderListHeader" xml:space="preserve">
+    <value>{0}: {1:N0}</value>
+  </data>
+  <data name="FilterMatches" xml:space="preserve">
+    <value>Matches: {0:N0}</value>
+  </data>
+  <data name="NoMatches" xml:space="preserve">
+    <value>No object matches</value>
+  </data>
+  <data name="EditorName" xml:space="preserve">
+    <value>SQL editor, {0}</value>
+  </data>
+  <data name="ResultsEmpty" xml:space="preserve">
+    <value>Run a statement to see its results</value>
+  </data>
+  <data name="StatusRunning" xml:space="preserve">
+    <value>Running...</value>
+  </data>
+  <data name="StatusRows" xml:space="preserve">
+    <value>Rows: {0:N0} · {1:N0} ms</value>
+  </data>
+  <data name="StatusRowsLimited" xml:space="preserve">
+    <value>Rows: {0:N0}, the row limit · {1:N0} ms</value>
+  </data>
+  <data name="StatusDone" xml:space="preserve">
+    <value>Done · {0:N0} ms</value>
+  </data>
+  <data name="StatusTimedOut" xml:space="preserve">
+    <value>The statement ran past its timeout.</value>
+  </data>
+  <data name="StatusCancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="StatusRunFailed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="ResultsAffected" xml:space="preserve">
+    <value>Rows affected: {0:N0}</value>
+  </data>
+  <data name="ResultsNoRows" xml:space="preserve">
+    <value>The statement returned no rows</value>
+  </data>
+  <data name="StatusSortUnavailable" xml:space="preserve">
+    <value>Sorting runs the query again, so it works only for a single query that reads.</value>
+  </data>
+  <data name="SectionFavorites" xml:space="preserve">
+    <value>Favorites</value>
+  </data>
+  <data name="SectionRecent" xml:space="preserve">
+    <value>Recent</value>
+  </data>
+  <data name="SectionConnections" xml:space="preserve">
+    <value>All connections</value>
+  </data>
+  <data name="MenuConnect" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="MenuEdit" xml:space="preserve">
+    <value>Edit...</value>
+  </data>
+  <data name="MenuAddFavorite" xml:space="preserve">
+    <value>Add to Favorites</value>
+  </data>
+  <data name="MenuRemoveFavorite" xml:space="preserve">
+    <value>Remove from Favorites</value>
+  </data>
+  <data name="MenuMoveToGroup" xml:space="preserve">
+    <value>Move to group</value>
+  </data>
+  <data name="MenuNoGroup" xml:space="preserve">
+    <value>No group</value>
+  </data>
+  <data name="MenuDelete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="MenuNewSubgroup" xml:space="preserve">
+    <value>New group inside...</value>
+  </data>
+  <data name="MenuRename" xml:space="preserve">
+    <value>Rename...</value>
+  </data>
+  <data name="DeleteConnectionTitle" xml:space="preserve">
+    <value>Delete {0}?</value>
+  </data>
+  <data name="DeleteConnectionMessage" xml:space="preserve">
+    <value>The connection and its saved passwords leave this PC. This can't be undone.</value>
+  </data>
+  <data name="DeleteGroupTitle" xml:space="preserve">
+    <value>Delete the group {0}?</value>
+  </data>
+  <data name="DeleteGroupMessage" xml:space="preserve">
+    <value>Its subgroups go with it, and its connections move to the top level.</value>
+  </data>
+  <data name="DeleteButton" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="NewGroupTitle" xml:space="preserve">
+    <value>New group</value>
+  </data>
+  <data name="RenameGroupTitle" xml:space="preserve">
+    <value>Rename group</value>
+  </data>
+  <data name="CreateButton" xml:space="preserve">
+    <value>Create</value>
+  </data>
+  <data name="RenameButton" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="GroupNameHeader" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="VersionText" xml:space="preserve">
+    <value>Version {0}</value>
+  </data>
+  <data name="NewConnectionTitle" xml:space="preserve">
+    <value>New connection</value>
+  </data>
+  <data name="EditConnectionTitle" xml:space="preserve">
+    <value>Edit connection</value>
+  </data>
+  <data name="EngineGroup_0" xml:space="preserve">
+    <value>Relational</value>
+  </data>
+  <data name="EngineGroup_1" xml:space="preserve">
+    <value>Document</value>
+  </data>
+  <data name="EngineGroup_2" xml:space="preserve">
+    <value>Key-value</value>
+  </data>
+  <data name="EngineGroup_3" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="EngineDefaultPort" xml:space="preserve">
+    <value>Port {0}</value>
+  </data>
+  <data name="ColorNone" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="Color_blue" xml:space="preserve">
+    <value>Blue</value>
+  </data>
+  <data name="Color_teal" xml:space="preserve">
+    <value>Teal</value>
+  </data>
+  <data name="Color_green" xml:space="preserve">
+    <value>Green</value>
+  </data>
+  <data name="Color_yellow" xml:space="preserve">
+    <value>Yellow</value>
+  </data>
+  <data name="Color_orange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="Color_red" xml:space="preserve">
+    <value>Red</value>
+  </data>
+  <data name="Color_pink" xml:space="preserve">
+    <value>Pink</value>
+  </data>
+  <data name="Color_purple" xml:space="preserve">
+    <value>Purple</value>
+  </data>
+  <data name="Color_slate" xml:space="preserve">
+    <value>Slate</value>
+  </data>
+  <data name="GroupNone" xml:space="preserve">
+    <value>No group</value>
+  </data>
+  <data name="PasswordKeptPlaceholder" xml:space="preserve">
+    <value>Saved. Type to replace it.</value>
+  </data>
+  <data name="FormHasErrors" xml:space="preserve">
+    <value>Fix the marked fields</value>
+  </data>
+  <data name="FieldRequired" xml:space="preserve">
+    <value>Required</value>
+  </data>
+  <data name="FieldNotANumber" xml:space="preserve">
+    <value>Enter a number</value>
+  </data>
+  <data name="FieldNotAbsolute" xml:space="preserve">
+    <value>Enter the full path, starting with a drive letter</value>
+  </data>
+  <data name="FieldTimeoutRange" xml:space="preserve">
+    <value>Enter at most 86,400 seconds</value>
+  </data>
+  <data name="FieldPortRange" xml:space="preserve">
+    <value>Enter a port from 1 to 65535</value>
+  </data>
+  <data name="FieldClientPair" xml:space="preserve">
+    <value>A client certificate needs its key, and a key its certificate</value>
+  </data>
+  <data name="SshOnSummary" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="SshOffSummary" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="OptionsSummary" xml:space="preserve">
+    <value>Safe Mode: {0}</value>
+  </data>
+  <data name="OptionsSummaryTimeout" xml:space="preserve">
+    <value>Safe Mode: {0}, timeout {1} s</value>
+  </data>
+  <data name="AppearanceSummary" xml:space="preserve">
+    <value>Color: {0}, group: {1}</value>
+  </data>
+  <data name="NewDatabaseFileName" xml:space="preserve">
+    <value>database</value>
+  </data>
+  <data name="NewFileOnConnect" xml:space="preserve">
+    <value>The file is made when you connect</value>
+  </data>
+  <data name="Testing" xml:space="preserve">
+    <value>Testing...</value>
+  </data>
+  <data name="TestSucceeded" xml:space="preserve">
+    <value>Connected. These settings work.</value>
+  </data>
+  <data name="FileCreated" xml:space="preserve">
+    <value>Created {0}</value>
+  </data>
+  <data name="ImportDone" xml:space="preserve">
+    <value>Imported. Added: {0}, updated: {1}.</value>
+  </data>
+  <data name="SampleConnectionName" xml:space="preserve">
+    <value>Chinook (Sample)</value>
+  </data>
+  <data name="Error_Unknown" xml:space="preserve">
+    <value>Something went wrong ({0}).</value>
+  </data>
+  <data name="Error_driver_file_not_found" xml:space="preserve">
+    <value>The database file isn't there.</value>
+  </data>
+  <data name="Error_driver_file_access_denied" xml:space="preserve">
+    <value>Windows refused access to the file.</value>
+  </data>
+  <data name="Error_driver_file_io" xml:space="preserve">
+    <value>The file couldn't be read.</value>
+  </data>
+  <data name="Error_driver_not_a_database" xml:space="preserve">
+    <value>This file isn't a database TablePro can open.</value>
+  </data>
+  <data name="Error_driver_auth" xml:space="preserve">
+    <value>The server refused the user name or password.</value>
+  </data>
+  <data name="Error_driver_login_refused" xml:space="preserve">
+    <value>The server refused the login.</value>
+  </data>
+  <data name="Error_driver_timeout" xml:space="preserve">
+    <value>The server didn't answer in time.</value>
+  </data>
+  <data name="Error_driver_tls" xml:space="preserve">
+    <value>The encrypted connection couldn't be set up.</value>
+  </data>
+  <data name="Error_driver_connection_lost" xml:space="preserve">
+    <value>The connection was lost.</value>
+  </data>
+  <data name="Error_driver_server" xml:space="preserve">
+    <value>The server returned an error.</value>
+  </data>
+  <data name="Error_driver_read_only" xml:space="preserve">
+    <value>This connection is read only.</value>
+  </data>
+  <data name="Error_transport_name_resolution" xml:space="preserve">
+    <value>The host name couldn't be found.</value>
+  </data>
+  <data name="Error_transport_refused" xml:space="preserve">
+    <value>The server refused the connection. Check the host and port.</value>
+  </data>
+  <data name="Error_transport_timeout" xml:space="preserve">
+    <value>The server didn't answer in time.</value>
+  </data>
+  <data name="Error_transport_unreachable" xml:space="preserve">
+    <value>The server can't be reached from this PC.</value>
+  </data>
+  <data name="Error_transport_ssh" xml:space="preserve">
+    <value>The SSH tunnel couldn't be opened.</value>
+  </data>
+  <data name="Error_ssh_open_ssh_client_missing" xml:space="preserve">
+    <value>SSH tunnels aren't available in this build of TablePro for Windows yet.</value>
+  </data>
+  <data name="Error_config_relative_path" xml:space="preserve">
+    <value>Enter the full path of the file.</value>
+  </data>
+  <data name="Error_config_empty_host" xml:space="preserve">
+    <value>Enter a host.</value>
+  </data>
+  <data name="Error_config_invalid_host" xml:space="preserve">
+    <value>The host isn't valid.</value>
+  </data>
+  <data name="Error_config_invalid_port" xml:space="preserve">
+    <value>The port isn't valid.</value>
+  </data>
+  <data name="Error_config_database_required" xml:space="preserve">
+    <value>This engine needs a database name.</value>
+  </data>
+  <data name="Error_connect_unknown_driver" xml:space="preserve">
+    <value>This build of TablePro has no engine for this connection.</value>
+  </data>
+  <data name="Error_keyring_secret_not_stored" xml:space="preserve">
+    <value>No password is saved for this connection. Edit it to enter one.</value>
+  </data>
+  <data name="Error_keyring_secret" xml:space="preserve">
+    <value>Credential Manager couldn't read the saved password.</value>
+  </data>
+  <data name="Error_secret_service_unavailable" xml:space="preserve">
+    <value>Credential Manager isn't available.</value>
+  </data>
+  <data name="Error_ffi_no_file_engine" xml:space="preserve">
+    <value>No engine opens this file.</value>
+  </data>
+  <data name="Error_ffi_no_storage" xml:space="preserve">
+    <value>The saved connections couldn't be opened.</value>
+  </data>
+  <data name="Error_url_unknown_scheme" xml:space="preserve">
+    <value>TablePro doesn't know this kind of URL.</value>
+  </data>
+  <data name="Error_url_invalid" xml:space="preserve">
+    <value>This isn't a connection URL.</value>
+  </data>
+  <data name="Error_url_no_host" xml:space="preserve">
+    <value>The URL names no host.</value>
+  </data>
+  <data name="Error_library_name_required" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="Error_library_import_unreadable" xml:space="preserve">
+    <value>The file couldn't be read.</value>
+  </data>
+  <data name="Error_storage_document_unavailable" xml:space="preserve">
+    <value>The file isn't a TablePro connections file.</value>
+  </data>
+  <data name="Error_storage_group_name_taken" xml:space="preserve">
+    <value>Another group here has this name.</value>
+  </data>
+  <data name="Error_storage_group_too_deep" xml:space="preserve">
+    <value>Groups go at most three levels deep.</value>
+  </data>
+  <data name="Error_storage_group_cycle" xml:space="preserve">
+    <value>A group can't go inside itself.</value>
+  </data>
+  <data name="Error_storage_group_not_found" xml:space="preserve">
+    <value>The group is gone.</value>
+  </data>
+  <data name="Error_storage_connection_not_found" xml:space="preserve">
+    <value>The connection is gone. It may have been deleted.</value>
+  </data>
+  <data name="Error_group_name_empty" xml:space="preserve">
+    <value>Enter a name.</value>
+  </data>
+  <data name="Error_group_name_too_long" xml:space="preserve">
+    <value>The name is too long.</value>
+  </data>
+  <data name="Error_group_name_control_character" xml:space="preserve">
+    <value>The name has a character that can't be shown.</value>
+  </data>
+</root>

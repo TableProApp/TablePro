@@ -1,8 +1,12 @@
 use std::sync::Arc;
 
 use tablepro_core::EditorSessionOptions;
-use tablepro_session::Session;
+use tablepro_core::browse::{PageRequest, SortKey, build_page};
+use tablepro_core::filter::FilterSet;
+use tablepro_core::meta::{PagePosition, TableRef};
+use tablepro_core::sql_syntax::with_order_by;
 use tablepro_session::runtime::Tasks;
+use tablepro_session::{OperationError, OperationKind, Session};
 
 use crate::cancel_token::{CancelToken, token};
 use crate::catalog::{ColumnEntry, ObjectEntry, ObjectScopeArg, SchemaEntry, TableName};
@@ -10,9 +14,20 @@ use crate::editor::QueryEditor;
 use crate::error::CoreError;
 use crate::runtime::on_runtime;
 
-/// One open database: its connection, the health monitor that keeps it
-/// and the catalog the sidebar reads. Each catalog level is read when
-/// first asked for and shared by every caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct ColumnSort {
+    pub column: u32,
+    pub ascending: bool,
+}
+
+// The engine's own row address may follow the visible columns, for edits; a grid shows the visible ones.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct TableQuery {
+    pub sql: String,
+    pub visible_columns: u32,
+}
+
+// Each catalog level is read when first asked for and shared by every caller.
 #[derive(uniffi::Object)]
 pub struct DatabaseSession {
     session: Arc<Session>,
@@ -68,8 +83,7 @@ impl DatabaseSession {
         .await
     }
 
-    /// Reads the scope's objects again, after a change the catalog did
-    /// not see, such as a table the editor created.
+    // For a change the catalog did not see, such as a table the editor created.
     pub async fn refresh_objects(
         &self,
         scope: ObjectScopeArg,
@@ -104,7 +118,72 @@ impl DatabaseSession {
         .await
     }
 
-    /// An editor tab's own connection.
+    // The page is the first, so the statement binds nothing and runs as editor text.
+    pub async fn table_query(
+        &self,
+        table: TableName,
+        sort: Option<ColumnSort>,
+        limit: u64,
+        cancel: Option<Arc<CancelToken>>,
+    ) -> Result<TableQuery, CoreError> {
+        let session = self.session.clone();
+        let cancel = token(cancel);
+        on_runtime(&self.tasks, async move {
+            let table: TableRef = table.into();
+            let columns = tokio::select! {
+                biased;
+                () = cancel.cancelled() => return Err(CoreError::Cancelled),
+                columns = session.columns(table.clone()) => columns?,
+            };
+            let identity = session
+                .run_cancellable(OperationKind::Metadata, &cancel, |lease, options| {
+                    let table = table.clone();
+                    async move { Ok(lease.row_identity(&table, options).await?) }
+                })
+                .await?;
+            let dialect = session.current_dialect().ok_or_else(not_connected)?;
+            let sort: Vec<SortKey> = sort
+                .map(|sort| SortKey {
+                    column: sort.column as usize,
+                    ascending: sort.ascending,
+                })
+                .into_iter()
+                .collect();
+            let spec = build_page(
+                &*dialect,
+                &PageRequest {
+                    table: &table,
+                    columns: &columns,
+                    filter: &FilterSet::default(),
+                    sort: &sort,
+                    identity: &identity,
+                    position: &PagePosition::First,
+                    limit,
+                },
+            )
+            .map_err(OperationError::from)?;
+            if !spec.statement.params().is_empty() {
+                return Err(CoreError::failed(
+                    "ffi.bound_statement",
+                    "the table's first page binds values",
+                ));
+            }
+            Ok(TableQuery {
+                sql: spec.statement.sql().to_owned(),
+                visible_columns: u32::try_from(spec.visible_columns()).unwrap_or(u32::MAX),
+            })
+        })
+        .await
+    }
+
+    // macOS sorts a query result the same way. None when the statement cannot run again for a sort.
+    pub fn sorted_query(&self, sql: String, column: String, ascending: bool) -> Result<Option<String>, CoreError> {
+        let dialect = self.session.current_dialect().ok_or_else(not_connected)?;
+        let direction = if ascending { "ASC" } else { "DESC" };
+        let order = format!("{} {direction}", dialect.quote_identifier(&column));
+        Ok(with_order_by(&sql, dialect.grammar(), &order))
+    }
+
     pub async fn open_editor(&self, cancel: Option<Arc<CancelToken>>) -> Result<Arc<QueryEditor>, CoreError> {
         let session = self.session.clone();
         let tasks = self.tasks.clone();
@@ -118,8 +197,7 @@ impl DatabaseSession {
         .await
     }
 
-    /// Stops every call and closes the connection. Editors opened from
-    /// it close on their own.
+    // Editors opened from it close on their own.
     pub async fn close(&self) -> Result<(), CoreError> {
         let closing = self.session.begin_shutdown();
         on_runtime(&self.tasks, async move {
@@ -133,8 +211,7 @@ impl DatabaseSession {
 }
 
 impl DatabaseSession {
-    /// A catalog read is shared, so a cancel abandons this caller's wait
-    /// and leaves the read to finish for the others.
+    // A catalog read is shared, so a cancel abandons this caller's wait and leaves the read to finish for the others.
     async fn cancellable<T, F>(&self, cancel: Option<Arc<CancelToken>>, work: F) -> Result<T, CoreError>
     where
         T: Send + 'static,
@@ -150,6 +227,10 @@ impl DatabaseSession {
         })
         .await
     }
+}
+
+fn not_connected() -> CoreError {
+    CoreError::failed("ffi.not_connected", "the session has no connection")
 }
 
 impl std::fmt::Debug for DatabaseSession {

@@ -12,6 +12,8 @@ use uuid::Uuid;
 pub struct HostConfig {
     /// Reported to servers next to the application name.
     pub client_version: String,
+    // The folder the saved connections live in. None leaves the library out.
+    pub storage_dir: Option<String>,
 }
 
 /// The platform's secret store, which the app implements: the Windows

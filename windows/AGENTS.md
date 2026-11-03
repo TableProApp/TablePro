@@ -1,6 +1,6 @@
 # TablePro for Windows
 
-The Windows app: C# on .NET 10 with WinUI 3, for Windows 10 1809 and later and Windows 11, on x64 and Arm64, over the shared Rust core in `core/` (`core/AGENTS.md`). The app project is not in the tree yet. Today this folder holds the interop library the app will reach the core through, the SQL editor and data grid controls, and their tests.
+The Windows app: C# on .NET 10 with WinUI 3, for Windows 10 1809 and later and Windows 11, on x64 and Arm64, over the shared Rust core in `core/` (`core/AGENTS.md`). This folder holds the app, the interop library it reaches the core through, the SQL editor and data grid controls, and their tests.
 
 This is the guide for work under `windows/`. The root `AGENTS.md` holds the rules every app shares. Claude Code loads this file through `windows/CLAUDE.md` once a file under `windows/` is read; Codex reads it when started in `windows/`.
 
@@ -23,6 +23,9 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `src/TablePro.DataGrid`: the read-only `DataGridView` control: ItemsRepeater rows that draw their cells with DirectWrite into composition surfaces, frozen columns, the header row, and UIA peers.
 - `tests/TablePro.DataGrid.Tests`: the control in a real WinUI window on a thread of its own. It runs on Windows and only compiles elsewhere.
 - `tests/TablePro.DataGrid.Gate` and `tests/TablePro.DataGrid.Gate.Uia`: the grid's timing and behavior gate, outside the solution. `ci/run-gate.ps1` builds and runs it; `.github/workflows/windows-grid-gate.yml` runs it by dispatch.
+- `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw`.
+- `src/TablePro.App.Model`: the app's settings and session files, the library tree, the connection form's fields and the object folders. Plain `net10.0`, so `tests/TablePro.App.Model.Tests` runs anywhere.
+- `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own.
 - `docs/decisions/`: the decisions only the Windows app makes.
 - The core's side of the boundary: `core/crates/ffi` (`core/ARCHITECTURE.md`, Bindings).
 
@@ -33,7 +36,9 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `QueryEditor.Run` returns at once. Read the run's events with `ReadEventsAsync` on the UI thread; rows that arrive while it is busy come as one event.
 - A grid reads a `ResultSet` through `ResultCursor.Fetch`, one window per visible range. A cursor belongs to one thread, and a window cannot be read after the cursor's next fetch.
 - `DataGridView.SetData(new ResultSetData(set, columns))` shows a set. Call the grid's `RowsChanged` after each `RowsAppended`. Sorting is the host's: the grid raises `SortRequested` and shows `Sort`.
-- The app implements `ISecretStore` over the Windows Credential Manager. The core calls it on a thread of its own.
+- The core writes every sorted statement: `GetTableQueryAsync` for a table, `SortedQuery` for a query result, null when the statement cannot run again.
+- The app starts the core with `TableProCore.CreateWithSystemSecrets`, so the core keeps secrets in Credential Manager itself. `ISecretStore` is for tests and hosts with a store of their own; the core calls it on a thread of its own.
+- `TableProCore.Library` reads and writes the saved connections in the storage directory the configuration names. A list the app shows is rebuilt from `GetSnapshotAsync` after each change.
 
 ## Commands
 
@@ -45,6 +50,15 @@ dotnet test --solution TablePro.slnx
 ```
 
 On macOS the solution builds `TablePro.Editor` as a compile check only: WinUI's PRI and manifest tools run on Windows.
+
+The app and its UI tests build on Windows only, so they sit outside the solution:
+
+```bash
+dotnet build src/TablePro.App -r win-x64 -p:Platform=x64
+TABLEPRO_APP="$PWD/src/TablePro.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/TablePro.exe" dotnet test --project tests/TablePro.App.UITests
+```
+
+Use `win-arm64` and `ARM64` on Arm64. The build runs unpackaged with the Windows App SDK beside it and keeps its files in `%LOCALAPPDATA%\TablePro`, or in `TABLEPRO_DATA_DIR`; the UI tests give each launch a new folder there. `-p:WindowsPackageType=MSIX -p:GenerateAppxPackageOnBuild=true` with `dotnet publish` makes the MSIX, signed with `-p:PackageCertificateThumbprint=` and a certificate whose subject is `CN=TablePro Development`. `TABLEPRO_UI_SCREENSHOTS` names a folder for the tests' light and dark screenshots.
 
 The build runs `cargo build -p tablepro-ffi` for the runtime identifier, or for the SDK's own platform when none is given, and copies the library next to the assembly. `-r win-x64` or `-r win-arm64` picks the target, `-c Release` builds the core with Cargo's release profile, `CARGO_TARGET_DIR` is honoured, and `-p:SkipCoreBuild=true` leaves cargo out. Building needs the Rust toolchain that `rust-toolchain.toml` names, with the target added, and the .NET 10 SDK; on Windows, MSVC.
 
@@ -71,4 +85,4 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 
 ## CI
 
-`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, and checks the committed bindings on macOS.
+`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, builds the app and runs its UI tests on the Windows runners with their screenshots as an artifact, and checks the committed bindings on macOS.

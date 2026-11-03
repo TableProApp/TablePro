@@ -6319,6 +6319,7 @@ dependencies = [
  "chrono",
  "csbindgen",
  "futures",
+ "percent-encoding",
  "secrecy",
  "tablepro-core",
  "tablepro-driver-cassandra",
@@ -6332,13 +6333,16 @@ dependencies = [
  "tablepro-driver-sqlite",
  "tablepro-session",
  "tablepro-ssh",
+ "tablepro-storage",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
  "uniffi",
+ "url",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

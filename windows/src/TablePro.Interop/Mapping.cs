@@ -115,6 +115,130 @@ internal static class Mapping
         _ => SecretItem.McpToken,
     };
 
+    public static Native.HostConfig Host(HostConfiguration configuration) =>
+        new(configuration.ClientVersion, configuration.StorageDirectory);
+
+    public static Native.ConnectionSecrets Secrets(ConnectionSecrets secrets) =>
+        new(secrets.DatabasePassword, secrets.SshPassword, secrets.SshPassphrase);
+
+    public static Native.ConnectionRecord Record(SavedConnection connection) => new(
+        connection.Id?.ToString() ?? string.Empty,
+        connection.Name,
+        connection.EngineId,
+        connection.Host,
+        checked((ushort)connection.Port),
+        connection.Database,
+        connection.UserName,
+        connection.IntegratedAuth,
+        new Native.TlsSettings(
+            Tls(connection.Tls.Mode),
+            connection.Tls.CaFile,
+            connection.Tls.ClientCertificate,
+            connection.Tls.ClientKey,
+            connection.Tls.ServerName),
+        connection.Ssh is { } ssh
+            ? new Native.SshSettings(
+                ssh.Host,
+                ssh.Port is { } port ? checked((ushort)port) : null,
+                ssh.UserName,
+                [.. ssh.JumpHosts],
+                ssh.Auth switch
+                {
+                    SshAuthMethod.PrivateKey => new Native.SshAuthTag.PrivateKey(ssh.KeyPath, ssh.KeyHasPassphrase),
+                    SshAuthMethod.Password => new Native.SshAuthTag.Password(),
+                    SshAuthMethod.KeyboardInteractive => new Native.SshAuthTag.KeyboardInteractive(),
+                    _ => new Native.SshAuthTag.Agent(),
+                })
+            : null,
+        connection.SafeMode switch
+        {
+            SafeMode.ConfirmWrites => Native.SafeModeTag.ConfirmWrites,
+            SafeMode.ReadOnly => Native.SafeModeTag.ReadOnly,
+            _ => Native.SafeModeTag.Off,
+        },
+        connection.QueryTimeoutSeconds is { } timeout ? checked((uint)timeout) : null,
+        connection.Color,
+        connection.GroupId?.ToString(),
+        connection.LastOpened?.ToUnixTimeMilliseconds());
+
+    public static SavedConnection Connection(Native.ConnectionRecord record) => new(
+        Guid.Parse(record.Id),
+        record.Name,
+        record.DriverId,
+        record.Host,
+        record.Port,
+        record.Database,
+        record.Username,
+        new TlsSettings(
+            Tls(record.Tls.Mode),
+            record.Tls.CaFile,
+            record.Tls.ClientCertificate,
+            record.Tls.ClientKey,
+            record.Tls.ServerName),
+        record.SafeMode switch
+        {
+            Native.SafeModeTag.ConfirmWrites => SafeMode.ConfirmWrites,
+            Native.SafeModeTag.ReadOnly => SafeMode.ReadOnly,
+            _ => SafeMode.Off,
+        },
+        record.IntegratedAuth,
+        record.Ssh is { } ssh
+            ? new SshSettings(
+                ssh.Host,
+                ssh.Port,
+                ssh.Username,
+                [.. ssh.JumpHosts],
+                ssh.Auth switch
+                {
+                    Native.SshAuthTag.PrivateKey => SshAuthMethod.PrivateKey,
+                    Native.SshAuthTag.Password => SshAuthMethod.Password,
+                    Native.SshAuthTag.KeyboardInteractive => SshAuthMethod.KeyboardInteractive,
+                    _ => SshAuthMethod.Agent,
+                },
+                ssh.Auth is Native.SshAuthTag.PrivateKey key ? key.Path : null,
+                ssh.Auth is Native.SshAuthTag.PrivateKey { HasPassphrase: true })
+            : null,
+        record.QueryTimeoutSecs is { } seconds ? checked((int)seconds) : null,
+        record.Color,
+        record.GroupId is { } group ? Guid.Parse(group) : null,
+        record.LastOpenedMs is { } opened ? DateTimeOffset.FromUnixTimeMilliseconds(opened) : null);
+
+    public static ConnectionGroup Group(Native.GroupRecord group) => new(
+        Guid.Parse(group.Id),
+        group.Name,
+        group.ParentId is { } parent ? Guid.Parse(parent) : null,
+        checked((int)group.Order),
+        group.Color);
+
+    public static LibrarySnapshot Snapshot(Native.LibrarySnapshot snapshot) => new(
+        [.. snapshot.Connections.Select(Connection)],
+        [.. snapshot.Groups.Select(Group)],
+        [.. snapshot.Favorites.Select(Guid.Parse)],
+        [.. snapshot.Recent.Select(Guid.Parse)]);
+
+    public static ParsedConnectionUrl Url(Native.ParsedConnectionUrl url) => new(
+        url.DriverId,
+        url.Host,
+        url.Port,
+        url.Username,
+        url.Password,
+        url.Database,
+        url.TlsMode is { } mode ? Tls(mode) : null);
+
+    private static Native.TlsModeTag Tls(TlsMode mode) => mode switch
+    {
+        TlsMode.Disable => Native.TlsModeTag.Disable,
+        TlsMode.Require => Native.TlsModeTag.Require,
+        _ => Native.TlsModeTag.VerifyFull,
+    };
+
+    private static TlsMode Tls(Native.TlsModeTag mode) => mode switch
+    {
+        Native.TlsModeTag.Disable => TlsMode.Disable,
+        Native.TlsModeTag.Require => TlsMode.Require,
+        _ => TlsMode.VerifyFull,
+    };
+
     // The generated enum carries the core's own byte values.
     public static ValueKind Kind(Native.ValueKind kind) => (ValueKind)(byte)kind;
 

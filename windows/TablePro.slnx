@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TablePro.App.Model/TablePro.App.Model.csproj" />
     <Project Path="src/TablePro.DataGrid/TablePro.DataGrid.csproj" />
     <Project Path="src/TablePro.DataGrid.Model/TablePro.DataGrid.Model.csproj" />
     <Project Path="src/TablePro.Editor/TablePro.Editor.csproj" />
@@ -8,6 +9,7 @@
     <Project Path="src/TablePro.Interop/TablePro.Interop.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/TablePro.App.Model.Tests/TablePro.App.Model.Tests.csproj" />
     <Project Path="tests/TablePro.DataGrid.Model.Tests/TablePro.DataGrid.Model.Tests.csproj" />
     <Project Path="tests/TablePro.DataGrid.Tests/TablePro.DataGrid.Tests.csproj" />
     <Project Path="tests/TablePro.Editor.Model.Tests/TablePro.Editor.Model.Tests.csproj" />

@@ -14,9 +14,9 @@ use std::time::{Duration, Instant};
 
 use tablepro_ffi::window_abi::{TpCursor, TpWindow, tablepro_cursor_fetch, tablepro_cursor_free};
 use tablepro_ffi::{
-    Core, CoreError, DatabaseSession, EndpointInfo, FileOpenRequest, HostConfig, HostSecretError, HostSecrets,
-    ObjectKindTag, ObjectScopeArg, QueryEditor, RunEvent, RunListener, RunOutcome, RunSettings, SecretItemTag,
-    SecretKindTag, TableName, ValueKind,
+    ColumnSort, Core, CoreError, DatabaseSession, EndpointInfo, FileOpenRequest, HostConfig, HostSecretError,
+    HostSecrets, ObjectKindTag, ObjectScopeArg, QueryEditor, RunEvent, RunListener, RunOutcome, RunSettings,
+    SecretItemTag, SecretKindTag, TableName, ValueKind,
 };
 
 struct NoSecrets;
@@ -68,6 +68,7 @@ fn core() -> Arc<Core> {
     Core::new(
         HostConfig {
             client_version: "test".to_owned(),
+            storage_dir: None,
         },
         Box::new(NoSecrets),
     )
@@ -348,4 +349,104 @@ async fn a_million_rows_stream_in_and_any_window_reads_back() {
     assert_eq!(last.texts[9].as_deref(), Some("1000000"));
     assert_eq!(last.raw[9], 1_000_000);
     eprintln!("1,000,000 rows streamed in {streamed:?}; three windows read in {fetched:?}");
+}
+
+async fn column_texts(editor: &QueryEditor, sql: &str, column: u32) -> (u32, Vec<Option<String>>) {
+    let query = editor.run(sql.to_owned(), RunSettings::default(), Box::new(Wakes::default()));
+    let outcome = query.outcome().await.unwrap();
+    assert!(matches!(outcome, RunOutcome::Completed { .. }), "{sql}: {outcome:?}");
+    let set = query.result_set(0).unwrap();
+    let width = u32::try_from(set.columns().len()).unwrap();
+    let texts = (0..set.row_count())
+        .map(|row| set.cell_text(row, column).unwrap())
+        .collect();
+    (width, texts)
+}
+
+fn texts(values: &[&str]) -> Vec<Option<String>> {
+    values.iter().map(|value| Some((*value).to_owned())).collect()
+}
+
+#[tokio::test]
+async fn a_table_query_sorts_on_the_server_and_names_the_columns_a_grid_shows() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session, editor) = fixture(dir.path()).await;
+    let (outcome, _, _) = run(
+        &editor,
+        "CREATE TABLE notes (body TEXT); INSERT INTO notes VALUES ('b'), ('a')",
+        RunSettings::default(),
+    )
+    .await;
+    assert!(matches!(outcome, RunOutcome::Completed { .. }), "{outcome:?}");
+    let people = TableName {
+        schema: None,
+        name: "people".to_owned(),
+    };
+    let notes = TableName {
+        schema: None,
+        name: "notes".to_owned(),
+    };
+    let descending = Some(ColumnSort {
+        column: 1,
+        ascending: false,
+    });
+
+    let by_name = session
+        .table_query(people.clone(), descending, 100, None)
+        .await
+        .unwrap();
+    let first_two = session.table_query(people, descending, 2, None).await.unwrap();
+    let by_body = session
+        .table_query(
+            notes,
+            Some(ColumnSort {
+                column: 0,
+                ascending: true,
+            }),
+            100,
+            None,
+        )
+        .await
+        .unwrap();
+    let (_, names) = column_texts(&editor, &by_name.sql, 1).await;
+    let (_, limited) = column_texts(&editor, &first_two.sql, 1).await;
+    let (width, bodies) = column_texts(&editor, &by_body.sql, 0).await;
+
+    assert_eq!(by_name.visible_columns, 3);
+    assert_eq!(names, texts(&["Zoë 👋", "Grace", "Ada"]));
+    assert_eq!(limited, texts(&["Zoë 👋", "Grace"]));
+    assert_eq!(bodies, texts(&["a", "b"]));
+    // A table without a key pages by its rowid, which follows the visible column.
+    assert_eq!((by_body.visible_columns, width), (1, 2));
+}
+
+#[tokio::test]
+async fn a_query_result_sorts_by_running_its_own_statement_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_core, session, editor) = fixture(dir.path()).await;
+
+    let sorted = session
+        .sorted_query(
+            "SELECT name FROM people ORDER BY id LIMIT 2;".to_owned(),
+            "name".to_owned(),
+            false,
+        )
+        .unwrap()
+        .unwrap();
+    let (_, names) = column_texts(&editor, &sorted, 0).await;
+
+    assert_eq!(sorted, "SELECT name FROM people ORDER BY \"name\" DESC LIMIT 2");
+    assert_eq!(names, texts(&["Zoë 👋", "Grace"]));
+    assert_eq!(
+        session
+            .sorted_query("DELETE FROM people".to_owned(), "name".to_owned(), true)
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        session
+            .sorted_query("SELECT 1; SELECT 2".to_owned(), "1".to_owned(), true)
+            .unwrap(),
+        None
+    );
 }

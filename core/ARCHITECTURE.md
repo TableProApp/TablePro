@@ -69,8 +69,8 @@ A value or a trait the app passes in:
 
 | Seam | Linux app | An app through `ffi` |
 |---|---|---|
-| `StoragePaths` | `tablepro_linux_platform::storage_paths`, GLib's XDG directories | not passed yet |
-| `SecretVault` and `SecretItems`, labelled through `SecretLabeler` and `SecretItemLabeler` | `tablepro_linux_platform::SecretStore`, the Secret Service through oo7 | `HostSecrets`, a callback interface the app implements |
+| `StoragePaths` | `tablepro_linux_platform::storage_paths`, GLib's XDG directories | `HostConfig.storage_dir`, one folder for every root |
+| `SecretVault` and `SecretItems`, labelled through `SecretLabeler` and `SecretItemLabeler` | `tablepro_linux_platform::SecretStore`, the Secret Service through oo7 | `Core::with_system_secrets`, the platform's store the core reaches itself (below); `HostSecrets`, a callback interface, for a host with a store of its own |
 | `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | none yet: a route through SSH fails as with no client installed |
 | `ProcessHold` | `gio::Application::hold` | none |
 
@@ -84,6 +84,7 @@ A `cfg` split inside a crate:
 | SQLite | the distribution's | bundled | bundled |
 | DuckDB's file lock while a file is replaced | fcntl | fcntl | LockFileEx |
 | SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | the `kerberos` feature, which CI does not build | SSPI |
+| `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>` |
 | OpenSSH transport, askpass helper | yes | yes | not built |
 | MongoDB's relay for an SSH route | yes | yes | not built |
 | Cassandra's loopback relay | serves this user, from `/proc/net/tcp` | serves no one | serves no one |
@@ -94,7 +95,7 @@ Each boundary error has a stable `code()`, such as `driver.timeout` or `ssh.host
 
 `ffi` is the library an app outside Rust loads: the Windows app now, the Swift app later. Core ADRs 0002, on the bindings, and 0003, on result windows, hold the reasons.
 
-- One UniFFI API. `Core` lists the engines and opens a file. A `DatabaseSession` reads the catalog one level at a time and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained. Each result set is a `ResultSet`.
+- One UniFFI API. `Core` lists the engines, opens a file, connects a saved connection or tests one from a form, and parses a connection URL. Its `ConnectionLibrary` reads and changes the saved connections, groups and favourites in `connections.json` and stores their secrets. A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted first page and a query re-run with a sort, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained. Each result set is a `ResultSet`.
 - The grid reads a `ResultSet` through the C ABI in `src/window_abi.rs`: `tablepro_cursor_fetch` packs the display text of one visible range, and `tablepro_cursor_free` ends the cursor.
 - The library owns one tokio runtime. Each async export runs on it and is aborted when the foreign side drops the call; a `CancelToken` stops it sooner, since UniFFI cannot cancel.
 - A result set takes rows as the driver reads them. Each column keeps a kind byte, a raw `i64` and the exact text `tablepro_core::export::value_text` writes, or a binary value's bytes, in chunks of 65,536 rows. A window only cuts and copies.
