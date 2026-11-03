@@ -379,9 +379,10 @@ struct AISettingsView: View {
         )
     }
 
-    // Copilot's sign-in is known only once its language server runs, which this row starts.
+    // Copilot's sign-in is known only once its language server answers, which this row starts. A
+    // server stopped after it answered keeps the state it reported.
     private func oauthState(for type: AIProviderType) -> OAuthAuthState? {
-        if type == .copilot, copilotService.status != .running { return nil }
+        if type == .copilot, copilotService.status == .starting { return nil }
         return OAuthProviderRegistry.service(for: type)?.oauthState
     }
 

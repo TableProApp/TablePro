@@ -41,27 +41,34 @@ struct ConnectionTagEditor: View {
         }
     }
 
-    private func applyTokens(_ names: [String]) {
-        var created = false
+    // Resolves against the store as it is now: another window or iCloud may have added a tag since
+    // this form loaded. Returns the names that ended up selected, so the field drops one that failed.
+    private func applyTokens(_ names: [String]) -> [String] {
+        allTags = tagStorage.loadTags()
         let ids: [UUID] = ConnectionTagTokens.resolve(names, among: allTags).compactMap { entry in
             switch entry {
             case .existing(let id):
                 return id
             case .new(let name):
-                let tag = ConnectionTag(name: name, isPreset: false, color: .gray)
-                do {
-                    try tagStorage.addTag(tag)
-                    created = true
-                    return tag.id
-                } catch {
-                    Self.logger.error("Could not create a tag from the token field: \(error.publicLogShape, privacy: .public)")
-                    return nil
-                }
+                return createTag(named: name)
             }
         }
-        if created { allTags = tagStorage.loadTags() }
-        guard ids != tagIds else { return }
-        tagIds = ids
+        allTags = tagStorage.loadTags()
+        if ids != tagIds { tagIds = ids }
+        return ids.compactMap { id in allTags.first { $0.id == id }?.name }
+    }
+
+    private func createTag(named name: String) -> UUID? {
+        let tag = ConnectionTag(name: name, isPreset: false, color: .gray)
+        do {
+            try tagStorage.addTag(tag)
+            return tag.id
+        } catch TagStorageError.duplicateName {
+            return tagStorage.loadTags().first { $0.name.lowercased() == name }?.id
+        } catch {
+            Self.logger.error("Could not create a tag from the token field: \(error.publicLogShape, privacy: .public)")
+            return nil
+        }
     }
 
     private var tagMenu: some View {

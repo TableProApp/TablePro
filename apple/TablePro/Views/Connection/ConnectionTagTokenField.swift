@@ -29,6 +29,15 @@ internal enum ConnectionTagTokens {
         return true
     }
 
+    // How many more of each name one list holds than another.
+    internal static func surplus(of names: [String], over base: [String]) -> [String: Int] {
+        var counts = Dictionary(names.map { ($0, 1) }, uniquingKeysWith: +)
+        for name in base {
+            counts[name, default: 0] -= 1
+        }
+        return counts.filter { $0.value > 0 }
+    }
+
     internal static func resolve(_ names: [String], among tags: [ConnectionTag]) -> [Entry] {
         var seen: Set<String> = []
         var entries: [Entry] = []
@@ -58,7 +67,8 @@ internal final class TagToken: NSObject {
 internal struct ConnectionTagTokenField: NSViewRepresentable {
     let tokens: [String]
     let completions: [String]
-    let onChange: ([String]) -> Void
+    // Takes the committed names and returns the ones that were kept.
+    let onChange: ([String]) -> [String]
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -130,10 +140,17 @@ internal struct ConnectionTagTokenField: NSViewRepresentable {
         // The one place a typed name becomes a token: Return, a comma, a completion or leaving the field.
         func tokenField(_ tokenField: NSTokenField, shouldAdd tokens: [Any], at index: Int) -> [Any] {
             let added = tokens.compactMap { ($0 as? TagToken)?.name }
-            var next = committed
+            let before = committed
+            var next = before
             next.insert(contentsOf: added, at: min(max(index, 0), next.count))
-            commit(next)
-            return tokens
+            let accepted = commit(next)
+            // A repeat or a tag that could not be stored never becomes a token.
+            var room = ConnectionTagTokens.surplus(of: accepted, over: before)
+            return tokens.filter { token in
+                guard let name = (token as? TagToken)?.name, let count = room[name], count > 0 else { return false }
+                room[name] = count - 1
+                return true
+            }
         }
 
         func controlTextDidChange(_ notification: Notification) {
@@ -145,13 +162,17 @@ internal struct ConnectionTagTokenField: NSViewRepresentable {
 
         func controlTextDidEndEditing(_ notification: Notification) {
             guard let field = notification.object as? NSTokenField else { return }
-            commit(Self.names(in: field))
+            let accepted = commit(Self.names(in: field))
+            if Self.names(in: field) != accepted {
+                field.objectValue = accepted.map(TagToken.init(name:))
+            }
         }
 
-        private func commit(_ names: [String]) {
-            guard names != committed else { return }
-            committed = names
-            parent.onChange(names)
+        @discardableResult
+        private func commit(_ names: [String]) -> [String] {
+            guard names != committed else { return committed }
+            committed = parent.onChange(names)
+            return committed
         }
     }
 }
