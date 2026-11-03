@@ -2,7 +2,7 @@
 # The driver's own serializers and document payload, without a database server.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PRODUCTS="${1:?Pass this worktree's Debug build products directory}"
+PRODUCTS="${1:?Pass the Debug build products directory for this worktree}"
 PLUGIN="$ROOT/Plugins/MongoDBDriverPlugin"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
