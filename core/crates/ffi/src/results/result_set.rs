@@ -56,7 +56,7 @@ impl ResultSet {
         self.store.columns().iter().map(ResultColumnInfo::from).collect()
     }
 
-    /// The whole value of one cell, `None` for null.
+    // The whole value, `None` for null.
     pub fn cell_text(&self, row: u64, column: u32) -> Result<Option<String>, CoreError> {
         usize::try_from(column)
             .ok()
@@ -64,8 +64,7 @@ impl ResultSet {
             .ok_or_else(|| CoreError::failed("ffi.out_of_range", format!("no cell at row {row}, column {column}")))
     }
 
-    /// A cursor for `tablepro_cursor_fetch`, as an address the caller
-    /// frees with `tablepro_cursor_free`.
+    // An address the caller frees with `tablepro_cursor_free`.
     pub fn open_cursor(&self) -> u64 {
         let cursor = Box::into_raw(Box::new(TpCursor::new(Cursor::new(
             self.store.clone(),

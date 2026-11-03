@@ -86,9 +86,9 @@ fn projection(body: &SetExpr) -> Option<&[SelectItem]> {
 fn item(item: &SelectItem) -> Item<'_> {
     match item {
         SelectItem::UnnamedExpr(Expr::Identifier(ident)) => Item::Named(&ident.value),
-        SelectItem::UnnamedExpr(Expr::CompoundIdentifier(parts)) => {
-            parts.last().map_or(Item::Expression, |last| Item::Qualified(&last.value))
-        }
+        SelectItem::UnnamedExpr(Expr::CompoundIdentifier(parts)) => parts
+            .last()
+            .map_or(Item::Expression, |last| Item::Qualified(&last.value)),
         SelectItem::ExprWithAlias { alias, .. } => Item::Named(&alias.value),
         SelectItem::Wildcard(options) if plain_wildcard(options) => Item::Wildcard,
         SelectItem::QualifiedWildcard(..) => Item::QualifiedWildcard,
@@ -111,7 +111,10 @@ fn item_at<'a>(items: &[Item<'a>], width: usize, column: usize) -> Option<Item<'
         .map(|(index, _)| index)
         .collect();
     let (Some(&first), Some(&last)) = (wildcards.first(), wildcards.last()) else {
-        return (items.len() == width).then(|| items.get(column).copied()).flatten();
+        if items.len() != width {
+            return None;
+        }
+        return items.get(column).copied();
     };
     let after = items.len() - last - 1;
     let spanned = width.checked_sub(first + after)?;
@@ -121,10 +124,10 @@ fn item_at<'a>(items: &[Item<'a>], width: usize, column: usize) -> Option<Item<'
     if column >= first + spanned {
         return items.get(column - spanned + (last - first) + 1).copied();
     }
-    match first == last {
-        true => items.get(first).copied(),
-        false => None,
+    if first == last {
+        return items.get(first).copied();
     }
+    None
 }
 
 #[cfg(test)]
@@ -178,7 +181,12 @@ mod tests {
                 "{grammar:?}"
             );
             assert_eq!(
-                reference(grammar, "SELECT * FROM a JOIN b ON b.a_id = a.id", &["id", "ID", "a_id"], 0),
+                reference(
+                    grammar,
+                    "SELECT * FROM a JOIN b ON b.a_id = a.id",
+                    &["id", "ID", "a_id"],
+                    0
+                ),
                 Some(SortReference::Position(1)),
                 "{grammar:?}: names that differ only in case"
             );
@@ -192,7 +200,12 @@ mod tests {
     fn an_unnamed_expression_is_ordered_by_its_position_where_the_engine_takes_one() {
         for grammar in POSITIONAL {
             assert_eq!(
-                reference(grammar, "SELECT name, count(*) FROM people GROUP BY name", &["name", "count"], 1),
+                reference(
+                    grammar,
+                    "SELECT name, count(*) FROM people GROUP BY name",
+                    &["name", "count"],
+                    1
+                ),
                 Some(SortReference::Position(2)),
                 "{grammar:?}"
             );
@@ -204,7 +217,12 @@ mod tests {
         }
         for grammar in NAMES_ONLY {
             assert_eq!(
-                reference(grammar, "SELECT name, count(*) FROM people GROUP BY name", &["name", "count(*)"], 1),
+                reference(
+                    grammar,
+                    "SELECT name, count(*) FROM people GROUP BY name",
+                    &["name", "count(*)"],
+                    1
+                ),
                 None,
                 "{grammar:?}"
             );
@@ -265,7 +283,12 @@ mod tests {
             Some(SortReference::Name)
         );
         assert_eq!(
-            reference(SqlGrammar::PostgreSql, "WITH t AS (SELECT 1 AS n) SELECT n FROM t", &["n"], 0),
+            reference(
+                SqlGrammar::PostgreSql,
+                "WITH t AS (SELECT 1 AS n) SELECT n FROM t",
+                &["n"],
+                0
+            ),
             Some(SortReference::Name)
         );
     }

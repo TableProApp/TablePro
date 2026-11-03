@@ -106,7 +106,10 @@ fn held_order(a: &Value, b: &Value, as_text: bool) -> Ordering {
 }
 
 fn split_digits(bytes: &[u8]) -> (&[u8], &[u8]) {
-    let end = bytes.iter().position(|byte| !byte.is_ascii_digit()).unwrap_or(bytes.len());
+    let end = bytes
+        .iter()
+        .position(|byte| !byte.is_ascii_digit())
+        .unwrap_or(bytes.len());
     bytes.split_at(end)
 }
 
@@ -577,16 +580,27 @@ mod tests {
 
     #[test]
     fn natural_text_orders_digit_runs_by_value() {
-        let mut names = vec!["file10", "file2", "File1", "file1", "file02b", "file", "file2a", "a1", "ab"];
+        let mut names = vec![
+            "file10", "file2", "File1", "file1", "file02b", "file", "file2a", "a1", "ab",
+        ];
         names.sort_by(|a, b| natural_text_order(a, b));
 
         assert_eq!(
             names,
-            ["File1", "a1", "ab", "file", "file1", "file2", "file2a", "file02b", "file10"]
+            [
+                "File1", "a1", "ab", "file", "file1", "file2", "file2a", "file02b", "file10"
+            ]
         );
         assert_eq!(natural_text_order("v01", "v1"), Ordering::Equal);
-        assert_eq!(natural_text_order("99999999999999999999999", "100000000000000000000000"), Ordering::Less);
-        assert_eq!(natural_text_order("é", "z"), Ordering::Greater, "code points, not a locale");
+        assert_eq!(
+            natural_text_order("99999999999999999999999", "100000000000000000000000"),
+            Ordering::Less
+        );
+        assert_eq!(
+            natural_text_order("é", "z"),
+            Ordering::Greater,
+            "code points, not a locale"
+        );
         assert_eq!(natural_text_order("a!", "a1"), Ordering::Less);
     }
 
@@ -612,7 +626,13 @@ mod tests {
 
     #[test]
     fn held_rows_of_a_typed_column_order_by_value() {
-        let values = vec![decimal("10.5"), Value::Int(-2), Value::Null, Value::Float64(3.0), Value::Int(10)];
+        let values = vec![
+            decimal("10.5"),
+            Value::Int(-2),
+            Value::Null,
+            Value::Float64(3.0),
+            Value::Int(10),
+        ];
 
         assert_eq!(row_order(&values, false, true), [2, 1, 3, 4, 0]);
         assert_eq!(row_order(&values, false, false), [0, 4, 3, 1, 2]);

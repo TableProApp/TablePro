@@ -489,6 +489,10 @@ async fn a_result_that_cannot_run_again_sorts_the_rows_it_holds() {
     );
     assert_eq!(numbers.texts[..3], texts(&["Zoë 👋", "Grace", "Ada"]));
     assert_eq!(numbers.texts[6..], texts(&["30", "20", "10"]));
-    assert_eq!(set.cell_text(0, 0).unwrap().as_deref(), Some("Ada"), "the set itself keeps its order");
+    assert_eq!(
+        set.cell_text(0, 0).unwrap().as_deref(),
+        Some("Ada"),
+        "the set itself keeps its order"
+    );
     assert!(set.sorted(3, true).is_err());
 }

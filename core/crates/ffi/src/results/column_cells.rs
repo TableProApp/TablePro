@@ -2,7 +2,7 @@ use std::io::Write;
 use std::ops::Range;
 use std::str::FromStr;
 
-use chrono::{DateTime, FixedOffset, TimeDelta};
+use chrono::{DateTime, FixedOffset, Offset, TimeDelta, Utc};
 use tablepro_core::Value;
 use tablepro_core::column::ColumnType;
 use tablepro_core::export::value_text;
@@ -144,13 +144,15 @@ pub(super) fn cell_value(cell: Cell<'_>) -> Value {
         ValueKind::Bytes => Some(Value::Bytes(cell.bytes.to_vec())),
         ValueKind::Uuid => uuid::Uuid::try_parse(&text()).ok().map(Value::Uuid),
         ValueKind::Date => Some(Value::Date(from_raw(raw, |days| {
-            DateTime::UNIX_EPOCH.date_naive().checked_add_signed(TimeDelta::try_days(days)?)
+            DateTime::UNIX_EPOCH
+                .date_naive()
+                .checked_add_signed(TimeDelta::try_days(days)?)
         }))),
         ValueKind::Timestamp => Some(Value::Timestamp(from_raw(raw, |micros| {
             Some(DateTime::from_timestamp_micros(micros)?.naive_utc())
         }))),
         ValueKind::TimestampWithOffset => Some(Value::TimestampTz(from_raw(raw, |micros| {
-            let offset = trailing_offset(&text()).unwrap_or(FixedOffset::east_opt(0)?);
+            let offset = trailing_offset(&text()).unwrap_or_else(|| Utc.fix());
             Some(OffsetTimestamp::from_datetime(
                 DateTime::from_timestamp_micros(micros)?.with_timezone(&offset),
             ))
@@ -184,7 +186,11 @@ fn from_raw<T>(raw: i64, finite: impl FnOnce(i64) -> Option<T>) -> Temporal<T> {
         i64::MIN => Temporal::NegInfinity,
         // A value too far out for chrono still orders past every other.
         raw => finite(raw).map_or(
-            if raw < 0 { Temporal::NegInfinity } else { Temporal::Infinity },
+            if raw < 0 {
+                Temporal::NegInfinity
+            } else {
+                Temporal::Infinity
+            },
             Temporal::Finite,
         ),
     }
@@ -331,7 +337,10 @@ mod tests {
             ],
             vec![
                 Value::Timestamp(Temporal::Finite(
-                    NaiveDate::from_ymd_opt(2024, 1, 2).unwrap().and_hms_opt(3, 4, 5).unwrap(),
+                    NaiveDate::from_ymd_opt(2024, 1, 2)
+                        .unwrap()
+                        .and_hms_opt(3, 4, 5)
+                        .unwrap(),
                 )),
                 Value::Timestamp(Temporal::Infinity),
             ],
@@ -358,7 +367,10 @@ mod tests {
                 Value::Bits(BitString::from_u64(0b01, 2)),
                 Value::Bits(BitString::from_u64(0b10, 2)),
             ],
-            vec![Value::Uuid(uuid::Uuid::from_u128(1)), Value::Uuid(uuid::Uuid::from_u128(2))],
+            vec![
+                Value::Uuid(uuid::Uuid::from_u128(1)),
+                Value::Uuid(uuid::Uuid::from_u128(2)),
+            ],
             vec![Value::Bytes(vec![1, 2]), Value::Bytes(vec![1, 3])],
             vec![Value::Text("a".to_owned()), Value::Text("b".to_owned())],
             vec![Value::Bool(false), Value::Bool(true)],

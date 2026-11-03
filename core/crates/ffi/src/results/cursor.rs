@@ -6,8 +6,7 @@ use super::store::{ResultStore, StoreState};
 use super::{ValueKind, cell_text};
 use crate::window_abi::TpWindow;
 
-/// The buffers one window is packed into, kept between fetches so a
-/// scrolling grid allocates nothing once they have grown.
+// Kept between fetches, so a scrolling grid allocates nothing once the buffers have grown.
 pub(crate) struct Cursor {
     store: Arc<ResultStore>,
     order: Option<Arc<[u64]>>,
