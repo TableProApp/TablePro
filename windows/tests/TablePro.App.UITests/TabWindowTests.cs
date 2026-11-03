@@ -1,6 +1,7 @@
 using System.Drawing;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
 
@@ -17,16 +18,34 @@ public sealed partial class ShellTests
     {
         var folder = AppSession.NewDataFolder(theme);
         Rectangle placed;
+        bool rightClick;
         using (var app = AppSession.Relaunch(folder, theme, maximize: false))
         {
             OpenTrack(app);
             var tab = Tab(app.Find("Tabs"), "Track")!;
             app.Front();
             tab.RightClick();
+            var byMouse = Retry.WhileNull(
+                    () => app.TryFindMenuItem("Move to new window"),
+                    TimeSpan.FromSeconds(10),
+                    throwOnTimeout: false)
+                .Result;
+            if (byMouse is null)
+            {
+                // What the right-click opened instead, then the menu from the keyboard, so the rest still runs.
+                app.Screenshot("32-tab-right-click", screen: true);
+                Keyboard.Press(VirtualKeyShort.ESCAPE);
+                app.Front();
+                tab.Focus();
+                Keyboard.TypeSimultaneously(VirtualKeyShort.SHIFT, VirtualKeyShort.F10);
+            }
+
+            rightClick = byMouse is not null;
             app.FindMenuItem("Move to new window").Patterns.Invoke.Pattern.Invoke();
 
             var torn = app.WaitForWindow(SampleWindow);
-            var left = Retry.WhileFalse(() => Tab(app.Find("Tabs"), "Track") is null, AppSession.Wait, throwOnTimeout: false).Success;
+            var left = Retry.WhileFalse(() => Tab(app.Find("Tabs"), "Track") is null, AppSession.Wait, throwOnTimeout: false)
+                .Success;
             Assert.True(left, "The tab stayed in the main window.");
             Assert.NotNull(Tab(app.Find("Tabs", torn), "Track"));
             Assert.Equal("1", app.WaitForCell(app.Find("ResultsGrid", torn), 0, 0, value => value == "1"));
@@ -61,6 +80,8 @@ public sealed partial class ShellTests
             Assert.NotNull(Retry.WhileNull(() => Tab(app.Find("Tabs"), "Track"), AppSession.Wait, throwOnTimeout: false).Result);
             app.Screenshot("33-tab-merged-back");
         }
+
+        Assert.True(rightClick, "A right-click on a tab did not open its menu.");
     }
 
     [Theory]

@@ -280,7 +280,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             _tabWindows.Add(target);
         }
 
-        WorkspaceView.Holding(tab)?.Release(tab);
+        WorkspaceView.HolderOf(tab)?.Release(tab);
         workspace.Take(tab);
         if (promoted)
         {
@@ -290,7 +290,7 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void MoveOut(TabViewItem tab)
     {
-        var source = WorkspaceView.Holding(tab);
+        var source = WorkspaceView.HolderOf(tab);
         var from = AllWindows.FirstOrDefault(window => window._open.Any(open => open.View == source));
         if (source is null || from?._open.First(open => open.View == source) is not { } connection)
         {
@@ -693,6 +693,17 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             return;
         }
 
+        ShutDown();
+    }
+
+    // Window.Close raises no AppWindow.Closing, so Exit runs this itself before it closes the primary.
+    private void ShutDown()
+    {
+        if (_closing)
+        {
+            return;
+        }
+
         _closing = true;
         foreach (var form in _forms.Values.ToList())
         {
@@ -803,7 +814,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private void OnShowSettings(object sender, RoutedEventArgs e) => ShowSettings();
 
     // Exit ends the app from any window; the primary saves every window as it closes.
-    private void OnExit(object sender, RoutedEventArgs e) => _primary.Close();
+    private void OnExit(object sender, RoutedEventArgs e)
+    {
+        _primary.ShutDown();
+        _primary.Close();
+    }
 
     private void OnUndo(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.Z);
 

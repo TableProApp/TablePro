@@ -19,6 +19,7 @@ public sealed partial class TableTabView : UserControl, ITabContent
     private readonly string? _schema;
     private readonly string _table;
     private QueryEditor? _editor;
+    private Task? _closing;
     private QueryRun? _run;
     private GridSort _sort = GridSort.None;
     private GridSort _shownSort = GridSort.None;
@@ -87,7 +88,10 @@ public sealed partial class TableTabView : UserControl, ITabContent
         Offset = _page.Offset > 0 ? _page.Offset : null,
     };
 
-    public async Task CloseAsync()
+    // Once only, however often it is asked for: the tab lets go of its session exactly once.
+    public Task CloseAsync() => _closing ??= CloseOnceAsync();
+
+    private async Task CloseOnceAsync()
     {
         _counting?.Cancel();
         _run?.Dispose();

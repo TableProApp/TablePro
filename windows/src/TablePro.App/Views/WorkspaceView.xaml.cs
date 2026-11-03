@@ -28,6 +28,7 @@ public sealed partial class WorkspaceView : UserControl
     // Schemas a refresh reads again, the next time each one opens.
     private readonly HashSet<string> _stale = [];
     private readonly ClosedTabs _closed = new();
+    private readonly HashSet<TabViewItem> _closingTabs = [];
     private CancellationTokenSource? _watching;
     private Windows.Foundation.Point _stripOrigin;
 
@@ -402,7 +403,7 @@ public sealed partial class WorkspaceView : UserControl
     }
 
     // The workspace whose strip a tab is in, which moves with the tab between windows.
-    internal static WorkspaceView? Holding(TabViewItem tab) => tab.Tag as WorkspaceView;
+    internal static WorkspaceView? HolderOf(TabViewItem tab) => tab.Tag as WorkspaceView;
 
     internal void Take(TabViewItem item, int? index = null)
     {
@@ -540,7 +541,7 @@ public sealed partial class WorkspaceView : UserControl
 
     // A tab keeps the connection it was opened on, so it joins only a workspace of that connection.
     private bool Accepts(TabViewItem tab) =>
-        Holding(tab) is { } source
+        HolderOf(tab) is { } source
         && _connection.Matches(source._connection.ConnectionId, source._connection.Origin.FilePath)
         && !(source.Host is { IsPrimary: true } && source.TabCount == 1);
 
@@ -549,23 +550,36 @@ public sealed partial class WorkspaceView : UserControl
         var index = args.DropIndex;
         foreach (var tab in args.Tabs.OfType<TabViewItem>())
         {
-            Holding(tab)?.Release(tab);
+            HolderOf(tab)?.Release(tab);
             Take(tab, index++);
         }
     }
 
     // Closing a tab ends its own connection, and its transaction with it, so a held one is asked about first.
+    // A second request while the first is closing the tab, or asking about its transaction, does nothing.
     private async Task CloseTabAsync(TabViewItem item)
     {
-        if (item.Content is ITabContent content)
+        if (!_closingTabs.Add(item))
         {
-            if (WorkspaceNotices.Holds(content.Transaction) && !await ConfirmCloseHeldAsync(content).ConfigureAwait(true))
-            {
-                return;
-            }
+            return;
+        }
 
-            _closed.Push(content.Snapshot(), Tabs.TabItems.IndexOf(item));
-            await content.CloseAsync().ConfigureAwait(true);
+        try
+        {
+            if (item.Content is ITabContent content)
+            {
+                if (WorkspaceNotices.Holds(content.Transaction) && !await ConfirmCloseHeldAsync(content).ConfigureAwait(true))
+                {
+                    return;
+                }
+
+                _closed.Push(content.Snapshot(), Tabs.TabItems.IndexOf(item));
+                await content.CloseAsync().ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _closingTabs.Remove(item);
         }
 
         Release(item);

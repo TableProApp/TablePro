@@ -17,6 +17,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
     private readonly SessionShare _share;
     private readonly DatabaseSession _session;
     private QueryEditor? _editor;
+    private Task? _closing;
     private QueryRun? _run;
     private string? _statement;
     private GridSort _sort = GridSort.None;
@@ -61,7 +62,10 @@ public sealed partial class QueryTabView : UserControl, ITabContent
 
     public SessionTab Snapshot() => new() { Kind = TabKind.Query, Title = Title, Sql = SqlText.Text };
 
-    public async Task CloseAsync()
+    // Once only, however often it is asked for: the tab lets go of its session exactly once.
+    public Task CloseAsync() => _closing ??= CloseOnceAsync();
+
+    private async Task CloseOnceAsync()
     {
         _run?.Dispose();
         _run = null;
