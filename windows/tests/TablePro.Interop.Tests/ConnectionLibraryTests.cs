@@ -154,6 +154,7 @@ public sealed class ConnectionLibraryTests : IDisposable
         Assert.Equal("p@ss", parsed.Password);
         Assert.Equal("shop", parsed.Database);
         Assert.Equal(TlsMode.Require, parsed.TlsMode);
+        Assert.Equal(TlsMode.Strict, TableProCore.ParseConnectionUrl("sqlserver://db.example.com/sales?encrypt=strict").TlsMode);
         Assert.Equal(
             "url.unknown_scheme",
             Assert.Throws<TableProException>(() => TableProCore.ParseConnectionUrl("ftp://example.com")).Code);

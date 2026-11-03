@@ -311,6 +311,7 @@ internal static class Mapping
     {
         TlsMode.Disable => Native.TlsModeTag.Disable,
         TlsMode.Require => Native.TlsModeTag.Require,
+        TlsMode.Strict => Native.TlsModeTag.Strict,
         _ => Native.TlsModeTag.VerifyFull,
     };
 
@@ -318,6 +319,7 @@ internal static class Mapping
     {
         Native.TlsModeTag.Disable => TlsMode.Disable,
         Native.TlsModeTag.Require => TlsMode.Require,
+        Native.TlsModeTag.Strict => TlsMode.Strict,
         _ => TlsMode.VerifyFull,
     };
 

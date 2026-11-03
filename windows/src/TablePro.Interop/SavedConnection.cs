@@ -5,6 +5,7 @@ public enum TlsMode
     Disable,
     Require,
     VerifyFull,
+    Strict,
 }
 
 public enum SafeMode

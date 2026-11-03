@@ -570,6 +570,9 @@
   <data name="TlsVerifyFull.Content" xml:space="preserve">
     <value>Required, verify the certificate and host</value>
   </data>
+  <data name="TlsStrict.Content" xml:space="preserve">
+    <value>Strict (TDS 8.0), verify the certificate and host</value>
+  </data>
   <data name="CaFileCard.Header" xml:space="preserve">
     <value>CA certificate</value>
   </data>

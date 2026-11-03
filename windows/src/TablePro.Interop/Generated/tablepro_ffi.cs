@@ -7735,7 +7735,8 @@ class FfiConverterTypeSshAuthTag : FfiConverterRustBuffer<SshAuthTag>{
 internal enum TlsModeTag: int {
     Disable,
     Require,
-    VerifyFull
+    VerifyFull,
+    Strict
 }
 
 class FfiConverterTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag> {
@@ -7747,6 +7748,7 @@ class FfiConverterTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag> {
             case 1: return TlsModeTag.Disable;
             case 2: return TlsModeTag.Require;
             case 3: return TlsModeTag.VerifyFull;
+            case 4: return TlsModeTag.Strict;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTlsModeTag.Read()", value));
         }
     }
@@ -7760,6 +7762,7 @@ class FfiConverterTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag> {
             case TlsModeTag.Disable: stream.WriteInt(1); break;
             case TlsModeTag.Require: stream.WriteInt(2); break;
             case TlsModeTag.VerifyFull: stream.WriteInt(3); break;
+            case TlsModeTag.Strict: stream.WriteInt(4); break;
             default: throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeTlsModeTag.Write()", value));
         }
     }

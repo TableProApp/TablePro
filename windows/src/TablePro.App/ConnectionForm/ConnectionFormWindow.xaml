@@ -173,6 +173,7 @@
                             <ComboBoxItem x:Uid="TlsDisable" Tag="Disable" />
                             <ComboBoxItem x:Uid="TlsRequire" Tag="Require" />
                             <ComboBoxItem x:Uid="TlsVerifyFull" Tag="VerifyFull" />
+                            <ComboBoxItem x:Uid="TlsStrict" Tag="Strict" />
                         </ComboBox>
                         <toolkit:SettingsExpander.Items>
                             <toolkit:SettingsCard x:Uid="CaFileCard">
