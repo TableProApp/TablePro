@@ -125,10 +125,6 @@ internal enum TransferResultAlert {
                     %lld statements had already run. Some were kept, because a statement in the file, such as \
                     COMMIT, CREATE, ALTER or DROP, committed the import's transaction as it ran.
                     """)
-        case .joinedUserTransaction:
-            template = isOne
-                ? String(localized: "%lld statement had already run inside your open transaction. Commit or roll it back.")
-                : String(localized: "%lld statements had already run inside your open transaction. Commit or roll it back.")
         case .untracked, .committed, .endedByServer, .endedByFile:
             template = isOne
                 ? String(localized: "%lld statement had already run and stays committed.")

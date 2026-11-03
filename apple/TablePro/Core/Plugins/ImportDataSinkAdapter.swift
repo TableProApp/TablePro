@@ -8,83 +8,20 @@ import os
 import TableProPluginKit
 import TableProSQLGrammar
 
-// What became of the transaction an import opened, as far as the import saw.
+/// What became of the transaction an import opened, as far as the import saw.
 internal enum ImportTransactionOutcome: Equatable, Sendable {
-    // No transaction of the import's own, or one it did not see end: what ran stays as it ran.
+    /// No transaction of the import's own, or one it did not see end: what ran stays as it ran.
     case untracked
     case committed
     case rolledBack
-    // A `CREATE` or the file's own `COMMIT` left no transaction open on MySQL, so what ran before it stayed.
+    /// A statement that succeeded left no transaction open, as a `CREATE` or the file's own `COMMIT` does on MySQL, so
+    /// what ran up to then was not rolled back.
     case committedBeforeRollback
-    // Ended before the rollback with no sign of how: a deadlock rolls it back, a failing `CREATE` commits it.
+    /// The transaction had ended by the rollback with nothing before that naming how: a deadlock rolls it back, a
+    /// failing `CREATE` commits it, and the session reads the same after either.
     case endedByServer
-    // The file ran its own `ROLLBACK`, so what stays depends on what the file ran after it.
+    /// The file ran its own `ROLLBACK`, so what stays depends on what the file ran after it.
     case endedByFile
-    // The session held the user's own transaction, so the import ran inside it and left ending it to them.
-    case joinedUserTransaction
-}
-
-// What a ROLLBACK does to what the import writes, known before it starts.
-internal enum ImportTargetRollback: Equatable, Sendable {
-    // Rows the app writes, or a file on an engine whose DDL rolls back, into tables that roll back.
-    case rollsBack
-    // A target table whose engine keeps its rows through a ROLLBACK, such as MyISAM.
-    case keepsRows
-    // A file whose statements can commit or reach tables nobody read, or an engine that would not say.
-    case unknown
-}
-
-// Holds an import between statements while the user reads the Stop question, whose text cannot change once shown.
-final class ImportPauseGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var isPaused = false
-    private var isClosed = false
-    private var stopped = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    var isStopped: Bool { lock.withLock { stopped } }
-
-    var waitingCount: Int { lock.withLock { waiters.count } }
-
-    func pause() {
-        lock.withLock {
-            guard !isClosed else { return }
-            isPaused = true
-        }
-    }
-
-    func resume() {
-        let pending = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
-            isPaused = false
-            let pending = waiters
-            waiters = []
-            return pending
-        }
-        pending.forEach { $0.resume() }
-    }
-
-    // A confirmed Stop, a teardown or the end of the run: nothing may wait on a question nobody will answer.
-    func stop() {
-        lock.withLock { stopped = true }
-        finish()
-    }
-
-    func finish() {
-        lock.withLock { isClosed = true }
-        resume()
-    }
-
-    func waitWhilePaused() async {
-        guard lock.withLock({ isPaused }) else { return }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let resumesNow = lock.withLock { () -> Bool in
-                guard isPaused else { return true }
-                waiters.append(continuation)
-                return false
-            }
-            if resumesNow { continuation.resume() }
-        }
-    }
 }
 
 final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
@@ -111,17 +48,15 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
     private let tableEditDialect: TableEditDialect?
     private let nameHazards = OSAllocatedUnfairLock<[String]>(initialState: [])
-    // False inside the user's own transaction: the import joins it and leaves ending it to them.
+    /// Whether this import opened the transaction it is in. A session connection can already hold
+    /// the user's own: a `BEGIN` there would join it, and the import's `COMMIT` would commit work the
+    /// user never asked to commit, so the import then runs inside it and leaves ending it to them.
     private let ownsTransaction = OSAllocatedUnfairLock(initialState: false)
-    // One file of a batch: the run owns the transaction, so this sink sends no `BEGIN`, `COMMIT` or `ROLLBACK`.
+    /// One file of several imported in one run. The run opened the transaction and ends it, so this sink sends no
+    /// `BEGIN`, `COMMIT` or `ROLLBACK`: reading the session would not stop it, since `.unknown` permits a `BEGIN`
+    /// and MySQL commits the open transaction on one.
     private let joinsTransaction: Bool
     private let transactionRecord = OSAllocatedUnfairLock(initialState: TransactionRecord())
-    private let targetRollback: ImportTargetRollback
-    private let refusesCommitAfterStop: Bool
-    private let joinedUserTransaction = OSAllocatedUnfairLock(initialState: false)
-    // Called whenever what a Stop would do changes, from whatever thread the import runs on.
-    private let onStopOutcomeChange: (@Sendable () -> Void)?
-    private let pauseGate: ImportPauseGate?
 
     private struct TransactionRecord {
         enum Ending {
@@ -132,7 +67,6 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
 
         var hasCommittedEarly = false
         var isEndedByFile = false
-        var isCommitting = false
         var ending: Ending?
     }
 
@@ -154,17 +88,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         sourceFields: Set<String> = [],
         rowWriting: ImportRowWriting = .insert,
         joinsTransaction: Bool = false,
-        targetRollback: ImportTargetRollback = .unknown,
-        refusesCommitAfterStop: Bool = false,
-        isCancelled: @escaping @Sendable () -> Bool = { false },
-        onStopOutcomeChange: (@Sendable () -> Void)? = nil,
-        pauseGate: ImportPauseGate? = nil
+        isCancelled: @escaping @Sendable () -> Bool = { false }
     ) {
         self.isCancelled = isCancelled
-        self.pauseGate = pauseGate
-        self.targetRollback = targetRollback
-        self.refusesCommitAfterStop = refusesCommitAfterStop
-        self.onStopOutcomeChange = onStopOutcomeChange
         self.rowWriting = rowWriting
         self.tally = OSAllocatedUnfairLock(initialState: ImportRowTally(mode: rowWriting.mode))
         self.joinsTransaction = joinsTransaction
@@ -205,15 +131,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     var transactionOutcome: ImportTransactionOutcome {
-        let joinedUser = joinedUserTransaction.withLock { $0 }
-        return transactionRecord.withLock { record in
-            if targetRollback == .keepsRows, record.ending != .committed {
-                return .untracked
-            }
-            // Only the rows this sink writes are known not to commit; a file's own statements can.
-            if joinedUser, record.ending == nil, targetTable != nil, targetRollback == .rollsBack {
-                return .joinedUserTransaction
-            }
+        transactionRecord.withLock { record in
             switch record.ending {
             case .committed:
                 return .committed
@@ -228,14 +146,6 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             case nil:
                 return .untracked
             }
-        }
-    }
-
-    // True only while a Stop is certain to take back everything written so far.
-    var rollsBackOnStop: Bool {
-        guard targetRollback == .rollsBack, ownsTransaction.withLock({ $0 }) else { return false }
-        return transactionRecord.withLock { record in
-            record.ending == nil && !record.isCommitting && !record.hasCommittedEarly && !record.isEndedByFile
         }
     }
 
@@ -259,20 +169,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
     }
 
     func execute(statement: String, line: Int) async throws {
-        if let pauseGate {
-            await pauseGate.waitWhilePaused()
-            // Stopped while the question held this statement: the plugin stops at its next check, and a throw here
-            // would read as a failed statement.
-            guard !isCancelled() else { return }
-        }
         // The file's own statements change how the session reads the next one.
         let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
         noteNameHazards(in: statement, grammar: grammar)
-        // The file's COMMIT keeps the rows once it is sent, so the rollback promise goes before it.
-        if ownsTransaction.withLock({ $0 }), fileTransactionEnd(of: statement, grammar: grammar) != nil {
-            transactionRecord.withLock { $0.isCommitting = true }
-            onStopOutcomeChange?()
-        }
         try await send(statement, line: line, grammar: grammar)
         await noteTransactionEnd(after: statement, grammar: grammar)
     }
@@ -289,14 +188,9 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             throw DatabaseError.queryFailed(failure)
         }
         for batchStatement in SQLStatementScanner.executableStatements(in: statement, grammar: grammar) {
-            try await proceedOrStop()
+            guard !isCancelled() else { throw PluginImportCancellationError() }
             _ = try await driver.execute(query: batchStatement.sql)
         }
-    }
-
-    private func proceedOrStop() async throws {
-        await pauseGate?.waitWhilePaused()
-        guard !isCancelled() else { throw PluginImportCancellationError() }
     }
 
     /// An import shows no rows, so a batch keeps as few of each result set as a driver takes, and the rest are read
@@ -328,7 +222,6 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             )
         }
 
-        try await proceedOrStop()
         _ = try await driver.executeParameterized(query: statement.sql, parameters: statement.parameters)
         tally.withLock { $0.inserted += 1 }
     }
@@ -424,7 +317,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         columns: [String],
         generator: SQLStatementGenerator
     ) async throws {
-        try await proceedOrStop()
+        guard !isCancelled() else { throw PluginImportCancellationError() }
         guard let statement = generator.insertStatement(columns: columns, rows: batch) else {
             throw PluginImportError.importFailed(
                 String(localized: "Could not build an INSERT for the mapped columns")
@@ -532,7 +425,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             tally.withLock { $0.existing += 1 }
             return
         }
-        try await proceedOrStop()
+        guard !isCancelled() else { throw PluginImportCancellationError() }
         guard let statement = generator.keyedUpdateStatement(
             columns: assignments.map(\.0),
             values: assignments.map(\.1),
@@ -563,7 +456,7 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         var start = 0
         while start < keys.count {
             let chunk = Array(keys[start..<min(start + perStatement, keys.count)])
-            try await proceedOrStop()
+            guard !isCancelled() else { throw PluginImportCancellationError() }
             guard let statement = generator.keyMatchCountStatement(keyColumns: rowWriting.keyColumns, keys: chunk) else {
                 throw PluginImportError.importFailed(String(localized: "Could not build the query that matches rows"))
             }
@@ -644,47 +537,30 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
         guard !rowWriting.mode.matchesExistingRows else {
             throw PluginImportError.importFailed(Self.matchingRefusesClearingMessage)
         }
-        try await proceedOrStop()
         _ = try await driver.execute(query: rowGenerator.deleteAllRowsStatement())
     }
 
     func beginTransaction() async throws {
         guard !joinsTransaction else { return }
-        let sessionState = await driver.heldSessionTransactionState()
         let owner = WriteTransactionOwner.resolve(
             supportsTransactions: driver.supportsTransactions,
-            sessionState: sessionState
+            sessionState: await driver.heldSessionTransactionState()
         )
-        joinedUserTransaction.withLock { $0 = owner == .session && sessionState.holdsUserTransaction }
         ownsTransaction.withLock { $0 = owner.opensTransaction }
         transactionRecord.withLock { $0 = TransactionRecord() }
-        guard owner.opensTransaction else {
-            onStopOutcomeChange?()
-            return
-        }
+        guard owner.opensTransaction else { return }
         try await driver.beginTransaction(mode: .readWrite)
-        onStopOutcomeChange?()
     }
 
     func commitTransaction() async throws {
         guard ownsTransaction.withLock({ $0 }) else { return }
-        await pauseGate?.waitWhilePaused()
-        // A Stop that came during the last write was promised a rollback, and the runners commit at the end unasked.
-        if refusesCommitAfterStop, isCancelled() {
-            try await rollbackTransaction()
-            throw PluginImportCancellationError()
-        }
-        transactionRecord.withLock { $0.isCommitting = true }
-        onStopOutcomeChange?()
         try await driver.commitTransaction()
         ownsTransaction.withLock { $0 = false }
         transactionRecord.withLock { $0.ending = .committed }
-        onStopOutcomeChange?()
     }
 
     func rollbackTransaction() async throws {
         guard ownsTransaction.withLock({ $0 }) else { return }
-        defer { onStopOutcomeChange?() }
         guard await !sessionHoldsNoTransaction() else {
             ownsTransaction.withLock { $0 = false }
             transactionRecord.withLock { $0.ending = .endedByServer }
@@ -708,7 +584,6 @@ final class ImportDataSinkAdapter: PluginImportDataSink, @unchecked Sendable {
             guard !driver.supportsTransactionalDDL, await sessionHoldsNoTransaction() else { return }
             transactionRecord.withLock { $0.hasCommittedEarly = true }
         }
-        onStopOutcomeChange?()
     }
 
     private enum FileTransactionEnd {

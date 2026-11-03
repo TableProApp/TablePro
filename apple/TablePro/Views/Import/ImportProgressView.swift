@@ -10,18 +10,14 @@ struct ImportProgressView: View {
     let onStop: () -> Void
 
     var body: some View {
-        TransferProgressSheet(
-            progress: service.state.transferProgress,
-            onStop: onStop,
-            onQuestionChange: { service.setStopQuestion(isOpen: $0) }
-        )
+        TransferProgressSheet(progress: service.state.transferProgress, onStop: onStop)
     }
 }
 
 extension ImportState {
     var transferProgress: TransferProgress {
         TransferProgress(
-            job: .dataImport(rollsBack: rollsBackOnStop),
+            job: .dataImport,
             item: fileName,
             step: TransferProgress.Step(index: fileIndex + 1, count: fileCount),
             completed: Int64(processedStatements),

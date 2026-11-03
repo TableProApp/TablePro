@@ -11813,9 +11813,6 @@
     "%lld statement had already run and was rolled back." : {
 
     },
-    "%lld statement had already run inside your open transaction. Commit or roll it back." : {
-
-    },
     "%lld statements" : {
       "localizations" : {
         "fr" : {
@@ -11954,9 +11951,6 @@
       }
     },
     "%lld statements had already run and were rolled back." : {
-
-    },
-    "%lld statements had already run inside your open transaction. Commit or roll it back." : {
 
     },
     "%lld statements had already run. Some were kept, because a statement in the file, such as COMMIT, CREATE, ALTER or DROP, committed the import's transaction as it ran." : {
@@ -214152,9 +214146,6 @@
           }
         }
       }
-    },
-    "What was imported so far is rolled back." : {
-
     },
     "What will run against %@" : {
       "localizations" : {

@@ -20,7 +20,6 @@ struct ImportState {
     var statusMessage: String = ""
     var errorMessage: String?
     var transactionOutcome: ImportTransactionOutcome = .untracked
-    var rollsBackOnStop = false
     var rowTally: ImportRowTally?
     var fileCount: Int = 0
     var fileIndex: Int = 0
@@ -45,9 +44,6 @@ final class ImportService: ObservableObject {
     @Published private var currentProgress: PluginImportProgress?
     // A Stop before a file's progress exists, while a table is created or between two files. Never reset.
     private var isStopRequested = false
-    // The sink that owns the run's transaction, read again each time it reports a change.
-    private var transactionSink: ImportDataSinkAdapter?
-    private(set) var pauseGate: ImportPauseGate?
 
     init(
         connection: DatabaseConnection,
@@ -77,16 +73,6 @@ final class ImportService: ObservableObject {
     func cancelImport() {
         isStopRequested = true
         currentProgress?.cancel()
-        pauseGate?.stop()
-    }
-
-    // The Stop question cannot change its text once shown, so the run waits while it is up.
-    func setStopQuestion(isOpen: Bool) {
-        if isOpen {
-            pauseGate?.pause()
-        } else {
-            pauseGate?.resume()
-        }
     }
 
     // MARK: - Public API
@@ -118,16 +104,10 @@ final class ImportService: ObservableObject {
         state.fileName = historyName
         state.countsRows = targetTable != nil
         state.totalIsEstimate = knownStatementCount == nil
-        let gate = ImportPauseGate()
-        pauseGate = gate
         let workId = beginRunningWork(named: historyName)
         defer {
             state.isImporting = false
-            state.rollsBackOnStop = false
             currentProgress = nil
-            transactionSink = nil
-            gate.finish()
-            pauseGate = nil
             runningWork.end(workId)
         }
 
@@ -163,7 +143,12 @@ final class ImportService: ObservableObject {
         let startedAt = Date()
         let operationStart = ContinuousClock.Instant.now
         do {
-            // One lease for the whole run, so no other tab's statement lands inside the import's transaction.
+            /// The whole import runs inside one lease, because the plugin's own `BEGIN` spans the
+            /// run: a per-statement lease would let another tab's statement execute inside the
+            /// import's transaction and be committed or rolled back with it. Taking the lease is
+            /// also what registers the import, so the health check no longer enters the same
+            /// non-thread-safe driver partway through a batch of inserts. `.protectedWrite`
+            /// because an import writes, so Stop in another tab must not reach it.
             result = try await DatabaseManager.shared.withScopedDriver(
                 scope: scope,
                 route: route,
@@ -177,7 +162,6 @@ final class ImportService: ObservableObject {
                     source: source,
                     progress: progress,
                     targetTable: targetTable,
-                    targetSchema: scope.schema,
                     columnMapping: columnMapping,
                     sourceFields: sourceFields,
                     rowWriting: rowWriting
@@ -266,7 +250,9 @@ final class ImportService: ObservableObject {
 
     // MARK: - Several files
 
-    // One lease, scope and transaction for every file; a failure or a Stop goes in the report, not thrown.
+    /// Imports each file into its own table in one lease, one session scope and, unless the policy turns it off,
+    /// one transaction, so a failure in any file takes back every file under Stop and Rollback. A failure or a Stop
+    /// is in the report rather than thrown, because the report says what became of the files before it.
     func importFiles(
         _ files: [RowImportRunItem],
         scope: DatabaseScope,
@@ -284,16 +270,10 @@ final class ImportService: ObservableObject {
         state = ImportState(isImporting: true)
         state.fileCount = files.count
         state.countsRows = true
-        let gate = ImportPauseGate()
-        pauseGate = gate
         let workId = beginRunningWork(named: Self.batchName(fileCount: files.count))
         defer {
             state.isImporting = false
-            state.rollsBackOnStop = false
             currentProgress = nil
-            transactionSink = nil
-            gate.finish()
-            pauseGate = nil
             runningWork.end(workId)
         }
         guard !isStopRequested else {
@@ -314,7 +294,7 @@ final class ImportService: ObservableObject {
             workload: .bulk,
             cancellation: .protectedWrite
         ) { driver in
-            try await self.runFiles(files, plugins: plugins, driver: driver, policy: policy, schema: scope.schema)
+            try await self.runFiles(files, plugins: plugins, driver: driver, policy: policy)
         }
         state.transactionOutcome = report.transaction
 
@@ -335,15 +315,6 @@ final class ImportService: ObservableObject {
         return report
     }
 
-    private static func stopped(_ ending: RowImportBatchReport.Ending, fileCount: Int) -> RowImportBatchReport.Ending {
-        guard fileCount > 0 else { return ending }
-        switch ending {
-        case .completed: return .stopped(file: fileCount - 1)
-        case .failed(let index): return .stopped(file: index)
-        case .stopped: return ending
-        }
-    }
-
     internal static func batchName(fileCount: Int) -> String {
         fileCount == 1
             ? String(localized: "1 file")
@@ -355,25 +326,10 @@ final class ImportService: ObservableObject {
         _ files: [RowImportRunItem],
         plugins: [any ImportFormatPlugin],
         driver: DatabaseDriver,
-        policy: RowImportBatchPolicy,
-        schema: String?
+        policy: RowImportBatchPolicy
     ) async throws -> RowImportBatchReport {
         let started = Date()
-        var rollbacks: [ImportTargetRollback] = []
-        for table in Set(files.map(\.targetTable)).sorted() {
-            rollbacks.append(await Self.targetRollback(of: table, schema: schema, on: driver))
-        }
-        let gate = pauseGate
-        let owner = ImportDataSinkAdapter(
-            driver: driver,
-            databaseType: connection.type,
-            targetRollback: Self.combined(rollbacks),
-            refusesCommitAfterStop: true,
-            isCancelled: { gate?.isStopped ?? false },
-            onStopOutcomeChange: stopOutcomeObserver(),
-            pauseGate: gate
-        )
-        transactionSink = owner
+        let owner = ImportDataSinkAdapter(driver: driver, databaseType: connection.type)
         let sessionScope = await openPreservingScope(on: driver)
         if policy.usesTransaction {
             do {
@@ -408,18 +364,10 @@ final class ImportService: ObservableObject {
             }
             guard ending == .completed else { break }
         }
-        await gate?.waitWhilePaused()
-        // An explicit Stop wins over the error handling: the sheet promised a rollback, not Stop and Commit's commit.
-        if isStopRequested {
-            ending = Self.stopped(ending, fileCount: files.count)
-        }
 
         if policy.usesTransaction {
             do {
                 try await endTransaction(owner, after: ending, policy: policy)
-            } catch is PluginImportCancellationError {
-                // Stopped while the commit waited on the question; the owner rolled back instead.
-                ending = Self.stopped(ending, fileCount: files.count)
             } catch {
                 await closePreservingScope(sessionScope, on: driver)
                 throw error
@@ -465,8 +413,7 @@ final class ImportService: ObservableObject {
             columnMapping: file.columnMapping,
             sourceFields: file.sourceFields,
             joinsTransaction: policy.usesTransaction,
-            isCancelled: { progress.isCancelled },
-            pauseGate: pauseGate
+            isCancelled: { progress.isCancelled }
         )
         do {
             return .imported(try await plugin.performImport(source: source, sink: sink, progress: progress))
@@ -571,57 +518,14 @@ final class ImportService: ObservableObject {
         if let denial = decision.denialError { throw denial }
     }
 
-    // Hops to the main actor and reads the sink there, so a late hop never brings back an older answer.
-    private func stopOutcomeObserver() -> @Sendable () -> Void {
-        { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self, let sink = self.transactionSink else { return }
-                self.state.rollsBackOnStop = sink.rollsBackOnStop
-            }
-        }
-    }
-
-    // Compare & Sync's rule: on MySQL and MariaDB a table's engine decides, elsewhere every table rolls back.
-    nonisolated internal static func targetRollback(
-        of table: String?,
-        schema: String?,
-        on driver: DatabaseDriver
-    ) async -> ImportTargetRollback {
-        let databaseType = driver.connection.type
-        guard let table else {
-            // A file runs statements nobody read first; only DDL that rolls back keeps them all inside the transaction.
-            let rollsBack = driver.supportsTransactionalDDL && !DataSyncTransactionality.needsStorageEngines(databaseType)
-            // A T-SQL batch goes whole, so a COMMIT inside it never reaches the scanner that watches for one.
-            let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
-            return rollsBack && !grammar.contains(.batchSeparatorLines) ? .rollsBack : .unknown
-        }
-        guard DataSyncTransactionality.needsStorageEngines(databaseType) else { return .rollsBack }
-        do {
-            // On the import's own leased session, which resolves the name in the database the rows go to.
-            let metadata = try await driver.fetchTableMetadata(tableName: table, schema: schema)
-            guard let engine = metadata.engine, !engine.isEmpty else { return .unknown }
-            return DataSyncTransactionality.cannotRollBack(storageEngine: engine, databaseType: databaseType)
-                ? .keepsRows
-                : .rollsBack
-        } catch {
-            Self.logger.warning("Could not read the import target's storage engine: \(error.publicLogShape, privacy: .public)")
-            return .unknown
-        }
-    }
-
-    nonisolated internal static func combined(_ rollbacks: [ImportTargetRollback]) -> ImportTargetRollback {
-        if rollbacks.contains(.keepsRows) { return .keepsRows }
-        if rollbacks.contains(.unknown) { return .unknown }
-        return .rollsBack
-    }
-
     // Read before each statement from the leased session, whose sql_mode the file's own statements change.
     nonisolated private static func sessionGrammar(of driver: DatabaseDriver) -> @Sendable () -> SQLLexicalGrammar {
         let databaseType = driver.connection.type
         return { SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution }
     }
 
-    // Built inside the lease, so the sink cannot outlive the driver it wraps.
+    /// The sink is built here rather than before the lease so it cannot outlive the driver it
+    /// wraps, and so every statement it issues lands on the leased, pinned connection.
     @MainActor
     private func runImport(
         plugin: any ImportFormatPlugin,
@@ -629,7 +533,6 @@ final class ImportService: ObservableObject {
         source: any PluginImportSource,
         progress: PluginImportProgress,
         targetTable: String?,
-        targetSchema: String?,
         columnMapping: [String: String],
         sourceFields: Set<String>,
         rowWriting: ImportRowWriting
@@ -641,13 +544,8 @@ final class ImportService: ObservableObject {
             columnMapping: columnMapping,
             sourceFields: sourceFields,
             rowWriting: rowWriting,
-            targetRollback: await Self.targetRollback(of: targetTable, schema: targetSchema, on: driver),
-            refusesCommitAfterStop: true,
-            isCancelled: { progress.isCancelled },
-            onStopOutcomeChange: stopOutcomeObserver(),
-            pauseGate: pauseGate
+            isCancelled: { progress.isCancelled }
         )
-        transactionSink = sink
         defer {
             reportNameHazards(sink.nameHazardStatements)
             state.transactionOutcome = sink.transactionOutcome

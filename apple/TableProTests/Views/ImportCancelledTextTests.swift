@@ -49,18 +49,6 @@ struct ImportCancelledTextTests {
         )
     }
 
-    @Test("An import that ran inside the user's own transaction says it is still open, not committed")
-    func joinedUserTransaction() {
-        #expect(
-            TransferResultAlert.importCancelledText(executedStatements: 4, transaction: .joinedUserTransaction)
-                == "4 statements had already run inside your open transaction. Commit or roll it back."
-        )
-        #expect(
-            TransferResultAlert.importCancelledText(executedStatements: 1, transaction: .joinedUserTransaction)
-                == "1 statement had already run inside your open transaction. Commit or roll it back."
-        )
-    }
-
     @Test("A transaction the server or the file ended makes no claim about rolled back or kept")
     func endedOutsideTheImport() {
         #expect(
