@@ -106,12 +106,13 @@ extension OracleRawResult {
 }
 
 extension SSLConfiguration {
-    var oracleTLSDescription: OracleTLSDescription {
+    func oracleTLSDescription(serverName: String?) -> OracleTLSDescription {
         OracleTLSDescription(
             mode: Self.oracleMode(for: mode),
             caCertificatePath: caCertificatePath,
             clientCertificatePath: clientCertificatePath,
-            clientKeyPath: clientKeyPath
+            clientKeyPath: clientKeyPath,
+            serverName: serverName
         )
     }
 

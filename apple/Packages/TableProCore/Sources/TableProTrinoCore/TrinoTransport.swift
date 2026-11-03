@@ -379,18 +379,27 @@ struct TrinoTLSChallengeHandler {
         if let refusal = tls.missingAnchorRefusal {
             return TrinoChallengeAnswer(disposition: .cancelAuthenticationChallenge, credential: nil, refusal: refusal)
         }
-        if tls.mode == .full, tls.anchorCertificate == nil {
+        if tls.mode == .full, tls.anchorCertificate == nil, tls.serverName == nil {
             return .defaultHandling
         }
         if let anchorDER = tls.anchorCertificate {
             guard let anchor = SecCertificateCreateWithData(nil, anchorDER as CFData) else {
                 return .refuse(.untrustedCertificate, message: "The CA certificate is not a DER or PEM certificate.")
             }
-            SecTrustSetAnchorCertificates(serverTrust, [anchor] as CFArray)
-            SecTrustSetAnchorCertificatesOnly(serverTrust, true)
+            if let refusal = Self.refusal(of: SecTrustSetAnchorCertificates(serverTrust, [anchor] as CFArray))
+                ?? Self.refusal(of: SecTrustSetAnchorCertificatesOnly(serverTrust, true)) {
+                return refusal
+            }
         }
         if tls.mode == .caOnly {
-            SecTrustSetPolicies(serverTrust, SecPolicyCreateBasicX509())
+            if let refusal = Self.refusal(of: SecTrustSetPolicies(serverTrust, SecPolicyCreateBasicX509())) {
+                return refusal
+            }
+        } else if let serverName = tls.serverName {
+            let policy = SecPolicyCreateSSL(true, serverName as CFString)
+            if let refusal = Self.refusal(of: SecTrustSetPolicies(serverTrust, policy)) {
+                return refusal
+            }
         }
         var error: CFError?
         guard SecTrustEvaluateWithError(serverTrust, &error) else {
@@ -400,6 +409,12 @@ struct TrinoTLSChallengeHandler {
             return .refuse(.untrustedCertificate, message: "The server's certificate is not issued for a server.")
         }
         return TrinoChallengeAnswer(disposition: .useCredential, credential: URLCredential(trust: serverTrust))
+    }
+
+    private static func refusal(of status: OSStatus) -> TrinoChallengeAnswer? {
+        guard status != errSecSuccess else { return nil }
+        let message = SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
+        return .refuse(.untrustedCertificate, message: message)
     }
 
     static func failureKind(of error: CFError?) -> TrinoTLSFailureKind {

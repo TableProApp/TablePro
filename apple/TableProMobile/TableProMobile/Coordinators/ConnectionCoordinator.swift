@@ -132,7 +132,7 @@ final class ConnectionCoordinator {
         connection.type == .tidb || connection.type == .oceanbase ||
         connection.type == .postgresql || connection.type == .redshift ||
         connection.type == .mssql || connection.type == .clickhouse ||
-        connection.type == .mongodb
+        connection.type == .mongodb || connection.type == .cloudflareD1
     }
 
     var supportsSchemas: Bool {
@@ -1184,10 +1184,13 @@ final class ConnectionCoordinator {
                     activeDatabase = sessionDB
                     await switchDatabase(to: target)
                 }
-            } else if let stored = appState.connectionManager.session(for: connection.id) {
-                activeDatabase = stored.activeDatabase
             } else {
-                activeDatabase = connection.database
+                activeDatabase = appState.connectionManager.session(for: connection.id)?.activeDatabase ?? connection.database
+                // A database the connection names by its id is listed by its name, which the driver reports.
+                if !databases.contains(activeDatabase), let reported = session.driver.currentDatabase,
+                   databases.contains(reported) {
+                    await switchDatabase(to: reported)
+                }
             }
         } catch {
             Self.logger.warning("Failed to load databases: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")

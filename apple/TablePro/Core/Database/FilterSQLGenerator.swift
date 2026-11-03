@@ -168,6 +168,10 @@ struct FilterSQLGenerator {
         case .regex:
             let operand = patternOperand(quotedColumn, columnType: columnType)
             guard dialect.regexSyntax != .unsupported else {
+                if SQLSubstringMatch.exceeds(filter.value, wildcards: 2, limit: dialect.likePatternByteLimit) {
+                    let literal = quotedLiteral(escapeStringValue(filter.value))
+                    return SQLSubstringMatch.contains(operand, literal: literal, fold: dialect.caseFoldFunction)
+                }
                 let pattern = quotedLiteral("%\(escapeStringValue(filter.value))%")
                 return "\(folding.foldingLikeOperand(operand)) \(folding.likeKeyword) "
                     + folding.foldingLikeOperand(pattern)
@@ -362,7 +366,28 @@ struct FilterSQLGenerator {
         default:
             pattern = "%\(escaped)%"
         }
+        let wildcards = pattern.utf8.count - escaped.utf8.count
+        if SQLSubstringMatch.exceeds(escaped, wildcards: wildcards, limit: dialect.likePatternByteLimit) {
+            return generateSubstringCondition(column: column, filter: filter)
+        }
         return generateLikeCondition(column: column, pattern: pattern, negated: negated, folding: folding)
+    }
+
+    /// The engine rejects a LIKE pattern this long, so the value is matched as a plain substring, which needs no
+    /// wildcard escape.
+    private func generateSubstringCondition(column: String, filter: TableFilter) -> String {
+        let literal = quotedLiteral(escapeStringValue(filter.value))
+        let fold = dialect.caseFoldFunction
+        switch filter.filterOperator {
+        case .startsWith:
+            return SQLSubstringMatch.startsWith(column, literal: literal, fold: fold)
+        case .endsWith:
+            return SQLSubstringMatch.endsWith(column, literal: literal, fold: fold)
+        case .notContains:
+            return SQLSubstringMatch.notContains(column, literal: literal, fold: fold)
+        default:
+            return SQLSubstringMatch.contains(column, literal: literal, fold: fold)
+        }
     }
 
     private func generateLikeCondition(

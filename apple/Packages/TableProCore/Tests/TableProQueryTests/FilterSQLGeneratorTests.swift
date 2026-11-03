@@ -468,6 +468,16 @@ struct FilterSQLGeneratorTests {
         #expect(engineClause(.sqlite, column, "5", op: .greaterThan) == "WHERE \"v\" > 5")
     }
 
+    // The Mac's FilterSQLGenerator already reads D1 as SQLite through SQLTypeFamily, so the iOS filter must too.
+    @Test("Every engine that runs SQLite matches an untyped column either way it was stored",
+          arguments: [DatabaseType.cloudflareD1, .libsql, .turso])
+    func sqliteFamilyMatchesEitherStorageClass(type: DatabaseType) {
+        let column = ColumnInfo(name: "v", typeName: "")
+        #expect(engineClause(type, column, "5") == "WHERE (\"v\" IN (5, '5') AND CAST(\"v\" AS TEXT) = '5')")
+        #expect(FilterColumnKind.keyLiteral("5", column: nil, databaseType: type) == .numberOrText("5"))
+        #expect(FilterColumnKind.keyLiteral("5", column: nil, databaseType: .duckdb) == .text("5"))
+    }
+
     @Test("A typed SQLite column keeps its literal")
     func sqliteTypedColumnUnchanged() {
         #expect(engineClause(.sqlite, ColumnInfo(name: "id", typeName: "INTEGER"), "5") == "WHERE \"id\" = 5")

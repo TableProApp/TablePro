@@ -1,3 +1,4 @@
+import CMariaDB
 import Darwin
 import Foundation
 import TableProMySQLCore
@@ -5,7 +6,8 @@ import TableProPluginKit
 import Testing
 
 // Against the Connector/C 3.4.4 the plugin links, with a loopback server that never offers TLS and
-// asks for the password in cleartext, as a man in the middle that strips TLS would.
+// asks for the password in cleartext, as a man in the middle that strips TLS would. The certificate checks
+// through a tunnel run against a TLS server in apple/scripts/probes/check-mariadb-tls-modes.sh.
 @Suite(.timeLimit(.minutes(1)))
 struct MariaDBTLSModeTests {
     private static let secret = "iam-token-or-password"
@@ -108,6 +110,104 @@ struct MariaDBTLSModeTests {
         #expect(MariaDBTLSMode.killConnectionMode(.required, sessionUsedTLS: true) == .required)
         #expect(MariaDBTLSMode.killConnectionMode(.verifyCa, sessionUsedTLS: true) == .verifyCa)
         #expect(MariaDBTLSMode.killConnectionMode(.disabled, sessionUsedTLS: false) == .disabled)
+    }
+
+    @Test(
+        "Through a tunnel's forward, a verify mode hands the server's name to the verification callback",
+        arguments: [SSLMode.verifyCa, .verifyIdentity]
+    )
+    func verifyModeCarriesTheServerName(mode: SSLMode) throws {
+        let handle = try #require(mysql_init(nil))
+        defer { mysql_close(handle) }
+        let name = try #require(MariaDBTLSServerName("db.example.com"))
+
+        withExtendedLifetime(name) {
+            MariaDBTLSMode.apply(mode, serverName: name, to: handle)
+
+            #expect(Self.serverName(on: handle) == "db.example.com")
+            #expect(Self.option(MYSQL_OPT_SSL_ENFORCE, on: handle))
+            #expect(Self.option(MYSQL_OPT_SSL_VERIFY_SERVER_CERT, on: handle))
+        }
+    }
+
+    @Test("A mode that checks no certificate gets no server name", arguments: [SSLMode.disabled, .preferred, .required])
+    func otherModesCarryNoServerName(mode: SSLMode) throws {
+        let handle = try #require(mysql_init(nil))
+        defer { mysql_close(handle) }
+        let name = try #require(MariaDBTLSServerName("db.example.com"))
+
+        withExtendedLifetime(name) {
+            MariaDBTLSMode.apply(mode, serverName: name, to: handle)
+
+            #expect(Self.serverName(on: handle) == nil)
+        }
+    }
+
+    @Test("A direct dial gets no server name, so Verify Identity checks the host it dials")
+    func directDialCarriesNoServerName() throws {
+        let handle = try #require(mysql_init(nil))
+        defer { mysql_close(handle) }
+
+        MariaDBTLSMode.apply(.verifyIdentity, serverName: MariaDBTLSServerName(nil), to: handle)
+
+        #expect(Self.serverName(on: handle) == nil)
+        #expect(Self.option(MYSQL_OPT_SSL_VERIFY_SERVER_CERT, on: handle))
+        #expect(MariaDBTLSServerName("") == nil)
+    }
+
+    @Test("Only a TCP dial to a tunnel's loopback forward takes the pre-tunnel host as the name to check")
+    func serverNameComesOnlyFromATunnel() {
+        let tunneled = Self.config(host: "127.0.0.1", fields: ["preTunnelHost": "db.example.com"])
+        let direct = Self.config(host: "db.corp.example", fields: ["preTunnelHost": "evil.example"])
+        let socket = Self.config(host: "localhost", fields: ["preTunnelHost": "db.example.com"])
+
+        #expect(MariaDBTLSMode.serverName(for: tunneled, transport: .tcp(host: "127.0.0.1", port: 3_306)) == "db.example.com")
+        #expect(MariaDBTLSMode.serverName(for: direct, transport: .tcp(host: "db.corp.example", port: 3_306)) == nil)
+        #expect(MariaDBTLSMode.serverName(for: socket, transport: .unixSocket(path: "/tmp/mysql.sock")) == nil)
+    }
+
+    // my_auth.c clears a failure no worse than TRUST | HOST on a 127.0.0.1 dial without a CA file, so a tunnel's
+    // forward would sign in to any certificate.
+    @Test("Through a tunnel a failed check is raised past Connector/C's loopback forgiveness; a direct dial is left alone")
+    func tunnelRefusesTheLoopbackForgiveness() throws {
+        let tunneled = try #require(mysql_init(nil))
+        defer { mysql_close(tunneled) }
+        let direct = try #require(mysql_init(nil))
+        defer { mysql_close(direct) }
+        let name = try #require(MariaDBTLSServerName("db.example.com"))
+        MariaDBTLSMode.apply(.verifyCa, serverName: name, to: tunneled)
+        MariaDBTLSMode.apply(.verifyCa, serverName: nil, to: direct)
+        let forgiven = UInt8(MARIADB_TLS_VERIFY_HOST | MARIADB_TLS_VERIFY_TRUST)
+        tunneled.pointee.net.tls_verify_status = UInt8(MARIADB_TLS_VERIFY_TRUST)
+        direct.pointee.net.tls_verify_status = UInt8(MARIADB_TLS_VERIFY_TRUST)
+
+        #expect(tablepro_mysql_refuse_on_tunnel(tunneled, 1) == 1)
+        #expect(tablepro_mysql_refuse_on_tunnel(direct, 1) == 1)
+
+        #expect(tunneled.pointee.net.tls_verify_status > forgiven)
+        #expect(direct.pointee.net.tls_verify_status == UInt8(MARIADB_TLS_VERIFY_TRUST))
+    }
+
+    private static func serverName(on handle: UnsafeMutablePointer<MYSQL>) -> String? {
+        tablepro_mysql_server_name(handle).map { String(cString: $0) }
+    }
+
+    private static func option(_ option: mysql_option, on handle: UnsafeMutablePointer<MYSQL>) -> Bool {
+        var value: my_bool = 0
+        mysql_get_option(handle, option, &value)
+        return value != 0
+    }
+
+    private static func config(host: String, fields: [String: String]) -> DriverConnectionConfig {
+        DriverConnectionConfig(
+            host: host,
+            port: 3_306,
+            username: "app",
+            password: "",
+            database: "",
+            ssl: SSLConfiguration(mode: .verifyIdentity),
+            additionalFields: fields
+        )
     }
 
     private func connection(port: Int, mode: SSLMode, cleartext: Bool) -> MariaDBPluginConnection {

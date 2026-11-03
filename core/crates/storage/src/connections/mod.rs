@@ -1965,13 +1965,10 @@ mod tests {
     }
 
     #[test]
-    fn a_group_an_earlier_build_wrote_past_the_limits_still_loads() {
-        let long = "g".repeat(crate::ConnectionGroupName::MAX_CHARS + 1);
+    fn a_long_group_loads_whole_and_control_characters_are_cleaned() {
+        let long = "g".repeat(200);
         for (stored, read) in [
-            (
-                format!(r#""{long}""#),
-                "g".repeat(crate::ConnectionGroupName::MAX_CHARS),
-            ),
+            (format!(r#""{long}""#), long.clone()),
             (String::from(r#""Work\tHome""#), String::from("Work Home")),
         ] {
             let root = TempDir::new().expect("tempdir");

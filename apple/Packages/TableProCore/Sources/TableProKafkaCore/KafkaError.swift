@@ -23,6 +23,7 @@ public enum KafkaError: LocalizedError {
     case partitionsLedElsewhere(topic: String, partitions: [Int32])
     case partitionsHaveNoLeader(topic: String, partitions: [Int32])
     case verifyCaNeedsCertificate
+    case verifyIdentityNeedsHostName(address: String)
 
     public var errorDescription: String? {
         switch self {
@@ -134,6 +135,14 @@ public enum KafkaError: LocalizedError {
             )
         case .verifyCaNeedsCertificate:
             return String(localized: "Verify CA needs a CA certificate. Choose the CA certificate that signed the server's certificate.")
+        case .verifyIdentityNeedsHostName(let address):
+            return String(
+                format: String(localized: """
+                    Verify Identity through a tunnel checks the certificate against the server's host name, and %@ \
+                    is an IP address. Enter the server's host name, or set SSL Mode to Verify CA.
+                    """),
+                address
+            )
         }
     }
 }

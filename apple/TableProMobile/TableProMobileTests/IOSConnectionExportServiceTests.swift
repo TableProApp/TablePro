@@ -188,7 +188,7 @@ struct IOSConnectionExportServiceTests {
             sslEnabled: true,
             sslConfiguration: SSLConfiguration(mode: .disable)
         )
-        #expect(IOSConnectionExportService.portableSettings(for: connection).sslConfig == nil)
+        #expect(IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: true).sslConfig == nil)
     }
 
     @Test("A connection synced from a Mac exports its SSL, which the Mac keeps only in its SSL settings")
@@ -201,7 +201,7 @@ struct IOSConnectionExportServiceTests {
         fields[.sslConfigJson] = Data(macBlob.utf8) as CKRecordValue
         let connection = try #require(SyncRecordMapper.toConnection(record))
 
-        #expect(IOSConnectionExportService.portableSettings(for: connection).sslConfig?.mode == "Verify Identity")
+        #expect(IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: true).sslConfig?.mode == "Verify Identity")
     }
 
     @Test("A connection in a nested group exports the whole group path")
@@ -395,15 +395,15 @@ struct IOSConnectionExportServiceTests {
             name: "Prod",
             type: .postgresql,
             queryTimeoutSeconds: 0,
-            additionalFields: ["schema": "public"]
+            additionalFields: ["connectionOptions": "-c search_path=app"]
         )
         connection.connectTimeoutSeconds = 12
 
-        let exported = IOSConnectionExportService.portableSettings(for: connection)
+        let exported = IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: true)
 
         #expect(exported.connectTimeoutSeconds == 12)
         #expect(exported.queryTimeoutSeconds == 0)
-        #expect(exported.additionalFields == ["schema": "public"])
+        #expect(exported.additionalFields == ["connectionOptions": "-c search_path=app"])
     }
 
     @Test("Export drops a query timeout unsafe for millisecond APIs")
@@ -411,11 +411,11 @@ struct IOSConnectionExportServiceTests {
         var connection = DatabaseConnection(name: "Prod", type: .postgresql)
         connection.queryTimeoutSeconds = DatabaseConnection.queryTimeoutSecondsRange.upperBound + 1
 
-        #expect(IOSConnectionExportService.portableSettings(for: connection).queryTimeoutSeconds == nil)
+        #expect(IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: true).queryTimeoutSeconds == nil)
     }
 
-    @Test("An export leaves out the fields every importer drops and keeps the rest")
-    func exportLeavesOutImportBlockedFields() {
+    @Test("An export keeps how the row signs in and leaves out what stays on the person's devices")
+    func exportLeavesOutOwnDeviceFields() {
         let connection = DatabaseConnection(
             name: "Scripted",
             type: .postgresql,
@@ -425,13 +425,31 @@ struct IOSConnectionExportServiceTests {
                 "usePgpass": "true",
                 "promptForPassword": "true",
                 "awsRegion": "us-east-1",
-                "connectionOptions": "-c search_path=app"
+                "connectionOptions": "-c search_path=app",
+                "zzzFutureSelector": "on"
             ]
         )
 
-        let fields = IOSConnectionExportService.portableSettings(for: connection).additionalFields
+        let fields = IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: true).additionalFields
 
-        #expect(fields == ["connectionOptions": "-c search_path=app"])
+        #expect(fields == ["usePgpass": "true", "awsRegion": "us-east-1", "connectionOptions": "-c search_path=app"])
+    }
+
+    @Test("The comparison Replace uses leaves out how the row signs in, as an import does")
+    func replaceComparisonLeavesOutLocalSignIn() {
+        let connection = DatabaseConnection(
+            name: "Reports",
+            type: .mssql,
+            host: "sql.corp.example",
+            port: 1_433,
+            additionalFields: ["mssqlAuthMethod": "entra", "entraTenantId": "corp-tenant", "mssqlSchema": "dbo"]
+        )
+
+        let exported = IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: true)
+        let compared = IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: false)
+
+        #expect(exported.additionalFields == ["mssqlAuthMethod": "entra", "entraTenantId": "corp-tenant", "mssqlSchema": "dbo"])
+        #expect(compared.additionalFields == ["mssqlSchema": "dbo"])
     }
 
     @Test("suggested filename uses the connection name for a single export")

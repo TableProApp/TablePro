@@ -57,6 +57,7 @@ internal enum ConnectConsent {
         connection.hasPreConnectScript
             || !LoadableExtensionGate.pendingApproval(for: connection).isEmpty
             || manager.envVarReferenceConsent.requiresApproval(connection)
+            || manager.localCredentialConsent.requiresApproval(connection)
     }
 
     internal static func confirmIfNeeded(
@@ -64,7 +65,8 @@ internal enum ConnectConsent {
         manager: DatabaseManager = .shared
     ) async -> Bool {
         if case .live = manager.connectionState(connection.id) { return true }
-        // First, so the script approval's lifetime does not run down while this prompt is open.
+        // First, so the script approval's lifetime does not run down while these prompts are open.
+        guard await manager.localCredentialConsent.confirm(connection) else { return false }
         guard await manager.envVarReferenceConsent.confirm(connection) else { return false }
         let scriptConsent = manager.preConnectScriptConsent
         guard await scriptConsent.confirm(connection) else { return false }

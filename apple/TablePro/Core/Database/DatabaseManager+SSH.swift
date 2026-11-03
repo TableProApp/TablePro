@@ -13,6 +13,7 @@ import TableProSSHTransport
 // MARK: - SSH Tunnel Helper
 
 extension DatabaseManager {
+    // `sshPasswordOverride` is the password Test Connection typed, used instead of the stored one.
     // `ownsAttempt` is asked with nothing suspending before the tunnel is created: tunnels are keyed by
     // connection, and creating one closes whatever a newer attempt opened under the same id.
     internal func buildEffectiveConnection(
@@ -22,8 +23,14 @@ extension DatabaseManager {
         ownsAttempt: () -> Bool = { true }
     ) async throws -> DatabaseConnection {
         var connection = SSHProfileStorage.shared.refreshingLinkedProfile(original)
-        // Only the tunnel this connect opens says it secures the transport; a saved or imported field never does.
+        // Only the tunnel this connect opens says it secures the transport or names the server behind it; a saved or
+        // imported field never does.
         connection.additionalFields[DatabaseConnection.tunnelSecuresTransportKey] = nil
+        connection.additionalFields[DatabaseConnection.preTunnelHostKey] = nil
+        connection.additionalFields[DatabaseConnection.preTunnelPortKey] = nil
+        // Only a remote SQLite session sets these; a stored pair would send every statement to the row's host.
+        connection.additionalFields[RemoteSQLiteWire.backendFieldKey] = nil
+        connection.additionalFields[RemoteSQLiteWire.tokenFieldKey] = nil
         let enabledKinds = connection.enabledTunnelKinds
         guard enabledKinds.count <= 1 else {
             throw ConnectionTunnelError.mutualExclusivityViolation(enabledKinds)

@@ -5,6 +5,7 @@ import TableProDatabase
 import TableProLogRedaction
 import TableProModels
 import TableProOracleCore
+import TableProPluginKit
 import TableProSSHTransport
 
 @MainActor
@@ -73,6 +74,7 @@ final class ConnectionFormViewModel {
     var mongoAuthMechanism = ""
     var mongoReplicaSet = ""
     var mongoUsesSRV = false
+    var cloudflareAccountId = ""
     var iam = ConnectionIAMFormState()
 
     // Organization
@@ -181,8 +183,10 @@ final class ConnectionFormViewModel {
         mongoAuthMechanism = conn.additionalFields[MongoDBDialPlan.authMechanismField] ?? ""
         mongoReplicaSet = conn.additionalFields[MongoDBDialPlan.replicaSetField] ?? ""
         mongoUsesSRV = conn.additionalFields[MongoDBDialPlan.srvField] == "true"
+        cloudflareAccountId = conn.additionalFields[CloudflareD1Plugin.accountIdFieldId] ?? ""
         iam = ConnectionIAMFormState(connection: conn)
-        sshEnabled = conn.sshEnabled
+        // The SSH section is hidden for an engine dialed some other way, where a synced tunnel could not be turned off.
+        sshEnabled = conn.sshEnabled && hasNetworkTransport
         groupId = conn.groupId
         tagId = conn.tagId
         iconName = conn.iconName
@@ -234,7 +238,26 @@ final class ConnectionFormViewModel {
         if type == .mongodb {
             return mongoHostsIssue == nil && !hasJumpHostWithoutHost
         }
+        // No token check: an edit keeps the stored token when the field is left empty.
+        if type == .cloudflareD1 {
+            return !trimmedCloudflareAccountId.isEmpty && !database.isEmpty
+        }
         return !host.isEmpty && !hasJumpHostWithoutHost
+    }
+
+    // The plugin declares the field, so iOS shows the label the Mac shows.
+    static let cloudflareAccountIdLabel: String = {
+        let field = CloudflareD1Plugin.additionalConnectionFields.first { $0.id == CloudflareD1Plugin.accountIdFieldId }
+        return field?.label ?? String(localized: "Account ID")
+    }()
+
+    var cloudflareD1Credentials: CloudflareD1Credentials {
+        CloudflareD1Credentials(accountId: trimmedCloudflareAccountId, apiToken: password)
+    }
+
+    // A pasted Account ID often carries a trailing newline.
+    private var trimmedCloudflareAccountId: String {
+        cloudflareAccountId.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // The Mac's MongoDB form keeps the seed list in place of Host and Port, and stores its first entry there too.
@@ -263,6 +286,11 @@ final class ConnectionFormViewModel {
         type.isLocalFile
     }
 
+    // Host, port, SSL and SSH exist only for an engine the app dials over the network.
+    var hasNetworkTransport: Bool {
+        type.dialsServer
+    }
+
     var isEditing: Bool { existingConnection != nil }
 
     var pastedPrivateKey: String? {
@@ -286,14 +314,17 @@ final class ConnectionFormViewModel {
     }
 
     var edits: ConnectionFormEdits {
+        // An API-only engine has no server: the hidden Host, Port and Username fields keep what the
+        // last type left in them, and a record that stored them would show and match on them.
+        let isAPIOnly = type.connectionMode == .apiOnly
         let primary = type == .mongodb ? mongoEndpoints.first : nil
-        let dialedHost = primary?.host ?? self.host
+        let dialedHost = isAPIOnly ? "" : (primary?.host ?? self.host)
         return ConnectionFormEdits(
-            name: name.isEmpty ? (selectedFileURL?.lastPathComponent ?? dialedHost) : name,
+            name: name.isEmpty ? defaultName(dialedHost: dialedHost, isAPIOnly: isAPIOnly) : name,
             type: type,
             host: dialedHost,
-            port: primary?.port ?? Int(port) ?? Int(type.defaultPort) ?? 0,
-            username: username,
+            port: isAPIOnly ? 0 : (primary?.port ?? Int(port) ?? Int(type.defaultPort) ?? 0),
+            username: isAPIOnly ? "" : username,
             database: database,
             groupId: groupId,
             tagId: tagId,
@@ -303,8 +334,14 @@ final class ConnectionFormViewModel {
             sshTunnel: sshTunnel,
             oracle: oracleOptions,
             mongo: mongoOptions,
-            iam: iamOptions
+            iam: iamOptions,
+            cloudflareD1: cloudflareD1Options
         )
+    }
+
+    private func defaultName(dialedHost: String, isAPIOnly: Bool) -> String {
+        if let fileName = selectedFileURL?.lastPathComponent { return fileName }
+        return isAPIOnly ? database : dialedHost
     }
 
     var offersOracleVerifyCa: Bool {
@@ -357,8 +394,8 @@ final class ConnectionFormViewModel {
     }
 
     private var effectiveSSLMode: SSLModeChoice? {
-        switch type {
-        case .sqlite, .duckdb: nil
+        guard hasNetworkTransport else { return nil }
+        return switch type {
         case .mssql: mssqlSSLMode
         case .oracle: oracleSSLMode
         default: sslMode
@@ -401,6 +438,11 @@ final class ConnectionFormViewModel {
             replicaSet: mongoReplicaSet.trimmingCharacters(in: .whitespaces),
             usesSRV: mongoUsesSRV
         )
+    }
+
+    private var cloudflareD1Options: ConnectionFormEdits.CloudflareD1Options? {
+        guard type == .cloudflareD1 else { return nil }
+        return ConnectionFormEdits.CloudflareD1Options(accountId: trimmedCloudflareAccountId)
     }
 
     private var oracleOptions: ConnectionFormEdits.OracleOptions? {
@@ -507,6 +549,10 @@ final class ConnectionFormViewModel {
         updateDefaultPort()
         if type == .mongodb, mongoHosts.isEmpty, !host.isEmpty {
             mongoHosts = HostListEndpoint(host: host, port: Self.mongoDefaultPort).entry
+        }
+        // The SSH section hides for this type, so a tunnel left on could not be turned off and every connect would dial it.
+        if !hasNetworkTransport {
+            sshEnabled = false
         }
         selectedFileURL = nil
         database = ""
@@ -719,7 +765,7 @@ final class ConnectionFormViewModel {
             let context = ErrorContext(
                 operation: "testConnection",
                 databaseType: type,
-                host: host,
+                host: testConn.host,
                 sshEnabled: sshEnabled,
                 signsInWithIAM: testConn.iamSignIn != nil
             )

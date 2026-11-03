@@ -44,11 +44,9 @@ package_app() {
     mkdir -p "$DIST"
     rm -f "$dmg" "$update" "$symbols"
 
-    mkdir "$WORK/dmg"
-    ditto "$app" "$WORK/dmg/TablePro.app"
-    ln -s /Applications "$WORK/dmg/Applications"
-    diskutil image create from "$WORK/dmg" "$dmg" --volumeName "TablePro $VERSION"
-    [ "$SIGNED" = false ] || codesign --sign "Developer ID Application" --timestamp "$dmg"
+    scripts/release/dmg.sh build "$app" "$dmg"
+    # Apple asks for an identifier of the image's own, distinct from the app's bundle identifier.
+    [ "$SIGNED" = false ] || codesign --sign "Developer ID Application" --timestamp --identifier com.TablePro.dmg "$dmg"
 
     # tar keeps the framework symlinks codesign seals; a signed bundle needs no extended attributes.
     /usr/bin/tar --no-mac-metadata --no-xattrs --uid 0 --gid 0 \

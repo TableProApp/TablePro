@@ -31,6 +31,7 @@ final class KafkaPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         cluster = KafkaCluster(
             bootstrap: endpoints,
             ssl: KafkaConnectionField.effectiveSSL(config.ssl, fields: config.additionalFields),
+            tunneledServerName: config.tunneledServerName,
             credentials: KafkaCredentials(
                 mechanism: mechanism,
                 username: config.username,

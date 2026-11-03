@@ -10,7 +10,7 @@ import TableProSQLGrammar
 
 // MARK: - Error
 
-private struct CloudflareD1Error: Error, PluginDriverError {
+nonisolated private struct CloudflareD1Error: Error, PluginDriverError {
     let message: String
 
     var pluginErrorMessage: String { message }
@@ -20,20 +20,35 @@ private struct CloudflareD1Error: Error, PluginDriverError {
 
 // MARK: - Plugin Driver
 
-final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+nonisolated final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
+    private let sessionConfiguration: URLSessionConfiguration
     private var httpClient: D1HttpClient?
     private var _serverVersion: String?
+    private var _resolvedDatabaseName: String?
     private var databaseNameToUuid: [String: String] = [:]
     private let lock = NSLock()
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "CloudflareD1PluginDriver")
+
+    private static let lexicalGrammar: SQLLexicalGrammar =
+        SQLLexicalProfile.curated(forDatabaseTypeId: CloudflareD1Plugin.databaseTypeId)?.grammar ?? .ansi
 
     var serverVersion: String? {
         lock.lock()
         defer { lock.unlock() }
         return _serverVersion
     }
+
+    /// The name of the database the client points at, set at connect and by every switch, whether the connection
+    /// named it or gave its UUID.
+    ///
+    /// PluginKit's `currentDatabase` stays nil on purpose. The Mac adopts that value at connect as the browse
+    /// database, so a connection stored by UUID would re-key its per-database state (favorites, filters, tabs).
+    var resolvedDatabaseName: String? {
+        lock.withLock { _resolvedDatabaseName }
+    }
+
     var supportsSchemas: Bool { false }
     var supportsTransactions: Bool { false }
     var currentSchema: String? { nil }
@@ -50,14 +65,17 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         ]
     }
 
-    init(config: DriverConnectionConfig) {
+    /// Every client the driver creates copies `sessionConfiguration`, so a test can route the driver's requests
+    /// through its own `URLProtocol`.
+    init(config: DriverConnectionConfig, sessionConfiguration: URLSessionConfiguration = .default) {
         self.config = config
+        self.sessionConfiguration = sessionConfiguration
     }
 
     // MARK: - Connection
 
     func connect() async throws {
-        guard let accountId = config.additionalFields["cfAccountId"], !accountId.isEmpty else {
+        guard let accountId = config.additionalFields[CloudflareD1Plugin.accountIdFieldId], !accountId.isEmpty else {
             throw CloudflareD1Error(message: String(localized: "Account ID is required"))
         }
 
@@ -76,52 +94,62 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         )
         let deadline = PluginConnectDeadline(milliseconds: connectTimeout)
 
-        let databaseId: String
-        if isUuid(databaseName) {
-            databaseId = databaseName
-        } else {
-            let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: "")
-            client.createSession(connectDeadline: deadline)
-            defer { client.invalidateSession() }
-            let databases = try await client.listDatabases()
+        let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: "")
+        client.createSession(configuration: sessionConfiguration, connectDeadline: deadline)
 
-            guard let match = databases.first(where: { $0.name == databaseName }) else {
+        // The real failure goes to the user: an expired token, a rate limit or no network each needs its own fix.
+        let details: D1DatabaseInfo
+        do {
+            guard let found = try await Self.lookUpDatabase(databaseName, client: client) else {
                 throw CloudflareD1Error(
                     message: String(format: String(localized: "Database '%@' not found in account"), databaseName)
                 )
             }
-            databaseId = match.uuid
-
-            lock.withLock {
-                for db in databases {
-                    databaseNameToUuid[db.name] = db.uuid
-                }
-            }
-        }
-
-        let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: databaseId)
-        client.createSession(connectDeadline: deadline)
-
-        do {
-            let details = try await client.getDatabaseDetails()
-            lock.withLock { _serverVersion = details.version ?? "D1" }
-            client.finishConnecting()
+            details = found
         } catch {
             client.invalidateSession()
-            Self.logger.error("Connection test failed: \(error.localizedDescription)")
-            throw CloudflareD1Error(message: String(localized: "Failed to connect to Cloudflare D1"))
+            Self.logger.error("Cloudflare D1 connect failed: \(Self.logSummary(of: error), privacy: .public)")
+            throw error
         }
 
-        lock.withLock { httpClient = client }
+        client.databaseId = details.uuid
+        client.finishConnecting()
 
-        Self.logger.debug("Connected to Cloudflare D1 database: \(databaseName)")
+        lock.withLock {
+            _serverVersion = details.version ?? "D1"
+            _resolvedDatabaseName = details.name
+            databaseNameToUuid[details.name] = details.uuid
+            httpClient = client
+        }
+
+        Self.logger.debug("Connected to Cloudflare D1 database: \(details.name)")
     }
 
     func disconnect() {
         lock.lock()
         httpClient?.invalidateSession()
         httpClient = nil
+        _resolvedDatabaseName = nil
         lock.unlock()
+    }
+
+    /// The databases an account holds, for a form that offers them before any connection exists. It reads through
+    /// the same paged client a connected driver uses.
+    static func listDatabases(
+        accountId: String,
+        apiToken: String,
+        sessionConfiguration: URLSessionConfiguration = .default
+    ) async throws -> [D1DatabaseInfo] {
+        guard !accountId.isEmpty else {
+            throw CloudflareD1Error(message: String(localized: "Account ID is required"))
+        }
+        guard !apiToken.isEmpty else {
+            throw CloudflareD1Error(message: String(localized: "API Token is required"))
+        }
+        let client = D1HttpClient(accountId: accountId, apiToken: apiToken, databaseId: "")
+        client.createSession(configuration: sessionConfiguration)
+        defer { client.invalidateSession() }
+        return try await client.listDatabases()
     }
 
     func ping() async throws {
@@ -153,16 +181,67 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let startTime = Date()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let anyParams: [Any?] = parameters.map { param -> Any? in
+        let anyParams: [Any?] = try parameters.map { param -> Any? in
             switch param {
             case .null: return nil
             case .text(let s): return s
-            case .bytes(let d): return d.base64EncodedString()
+            // The API takes JSON parameters and documents no binary form, so bytes sent as text would be stored as
+            // that text, not as the value.
+            case .bytes:
+                throw CloudflareD1Error(
+                    message: String(localized: "Cloudflare D1 cannot bind a binary value through its API.")
+                )
             }
         }
         let payload = try await client.executeRaw(sql: trimmed, params: anyParams)
         let executionTime = Date().timeIntervalSince(startTime)
         return mapRawResult(payload, executionTime: executionTime)
+    }
+
+    /// D1 fails a result over 50 MB from 2026-11-04 and answers each request with the whole result, so a read that
+    /// names no limit is sent with one: one row past the cap, which tells a trimmed result from a complete one.
+    func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
+        guard rowCap > 0, let statement = Self.boundableStatement(query) else { return nil }
+        let sent = SQLStatementRowLimit.hasExplicitRowLimit(statement, countsTop: false, grammar: Self.lexicalGrammar)
+            ? query
+            : SQLStatementRowLimit.appendingLimit(rowCap + 1, to: statement)
+        let result = try await execute(query: sent)
+        guard result.rows.count > rowCap else { return result }
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: Array(result.rows.prefix(rowCap)),
+            rowsAffected: result.rowsAffected,
+            timing: result.timing,
+            isTruncated: true,
+            statusMessage: result.statusMessage,
+            columnMeta: result.columnMeta
+        )
+    }
+
+    /// The one statement of `query`, past its terminator and any comment after it, when a trailing `LIMIT` is valid
+    /// on it: a SELECT, or a WITH list whose statement is a SELECT, with no compound term that is a bare VALUES list,
+    /// which SQLite takes no LIMIT after. Nil for several statements: D1 runs them all and answers with the first
+    /// one's rows, so a LIMIT appended to the last would bound the wrong one.
+    private static func boundableStatement(_ query: String) -> String? {
+        let grammar = lexicalGrammar
+        let statements = SQLStatementScanner.allStatements(in: query, grammar: grammar)
+        guard statements.count == 1, let statement = statements.first,
+              let keyword = SQLStatementRowLimit.leadingKeyword(statement, grammar: grammar)
+        else { return nil }
+        switch keyword {
+        case "SELECT":
+            return SQLStatementRowLimit.hasCompoundValuesTerm(statement, grammar: grammar) ? nil : statement
+        case "WITH":
+            guard let reading = SQLCommonTableExpressions.read(statement, grammar: grammar) else { return nil }
+            let main = (statement as NSString).substring(from: reading.mainStatement)
+            guard SQLStatementRowLimit.leadingKeyword(main, grammar: grammar) == "SELECT",
+                  !SQLStatementRowLimit.hasCompoundValuesTerm(main, grammar: grammar)
+            else { return nil }
+            return statement
+        default:
+            return nil
+        }
     }
 
     func executeBatch(queries: [String]) async throws -> [PluginQueryResult] {
@@ -229,7 +308,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         let rawRows = payload.results.rows ?? []
         if !rawRows.isEmpty {
             let rows = rawRows.map { rawRow in
-                rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
+                rawRow.map(\.cellValue)
             }
             continuation.yield(.rows(rows))
         }
@@ -465,47 +544,78 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
             throw CloudflareD1Error.notConnected
         }
 
-        let uuid = lock.withLock { databaseNameToUuid[name] }
-
-        guard let databaseId = uuid ?? (isUuid(name) ? name : nil) else {
-            throw CloudflareD1Error(message: String(format: String(localized: "Database '%@' not found"), name))
+        let cached = lock.withLock { databaseNameToUuid[name] }
+        let databaseId: String
+        if let cached {
+            databaseId = cached
+        } else if Self.isUuid(name) {
+            databaseId = name
+        } else {
+            guard let found = try await Self.lookUpDatabase(name, client: client) else {
+                throw CloudflareD1Error(message: String(format: String(localized: "Database '%@' not found"), name))
+            }
+            databaseId = found.uuid
         }
 
         try await client.deleteDatabase(databaseId: databaseId)
 
-        lock.withLock { _ = databaseNameToUuid.removeValue(forKey: name) }
+        lock.withLock { databaseNameToUuid = databaseNameToUuid.filter { $0.value != databaseId } }
     }
 
     func switchDatabase(to database: String) async throws {
-        var uuid = lock.withLock { databaseNameToUuid[database] }
-
-        if uuid == nil && isUuid(database) {
-            uuid = database
+        let cached = lock.withLock { () -> (name: String, uuid: String)? in
+            if let uuid = databaseNameToUuid[database] { return (name: database, uuid: uuid) }
+            return databaseNameToUuid.first { $0.value == database }.map { (name: $0.key, uuid: $0.value) }
         }
 
-        if uuid == nil {
+        let target: (name: String, uuid: String)
+        if let cached {
+            target = cached
+        } else {
             guard let client = getClient() else {
                 throw CloudflareD1Error.notConnected
             }
-
-            let databases = try await client.listDatabases()
-
-            uuid = lock.withLock {
-                databaseNameToUuid.removeAll()
-                for db in databases {
-                    databaseNameToUuid[db.name] = db.uuid
-                }
-                return databaseNameToUuid[database]
+            guard let found = try await Self.lookUpDatabase(database, client: client) else {
+                throw CloudflareD1Error(
+                    message: String(format: String(localized: "Database '%@' not found"), database)
+                )
             }
+            target = (found.name, found.uuid)
         }
 
-        guard let resolvedUuid = uuid else {
+        lock.withLock {
+            guard let httpClient else { return }
+            databaseNameToUuid[target.name] = target.uuid
+            httpClient.databaseId = target.uuid
+            _resolvedDatabaseName = target.name
+        }
+    }
+
+    /// One GET answers a name or a UUID with both. Nil when the account holds no such database; every other failure
+    /// is thrown as it came, so an expired token never reads as a missing database.
+    private static func lookUpDatabase(_ nameOrId: String, client: D1HttpClient) async throws -> D1DatabaseInfo? {
+        // The text goes into the URL path, so only the two shapes D1 accepts get that far.
+        guard isUuid(nameOrId) || isDatabaseName(nameOrId) else {
             throw CloudflareD1Error(
-                message: String(format: String(localized: "Database '%@' not found"), database)
+                message: String(format: String(localized: "'%@' is not a Cloudflare D1 database name or UUID"), nameOrId)
             )
         }
+        do {
+            return try await client.getDatabaseDetails(nameOrId: nameOrId)
+        } catch let error as D1HttpError where error.statusCode == 404 {
+            return nil
+        }
+    }
 
-        lock.withLock { httpClient?.databaseId = resolvedUuid }
+    // The status and the error's type only: an error's text may carry a response body.
+    private static func logSummary(of error: Error) -> String {
+        if let error = error as? D1HttpError {
+            return "D1HttpError status \(error.statusCode.map { String($0) } ?? "none")"
+        }
+        if let error = error as? URLError {
+            return "URLError \(error.code.rawValue)"
+        }
+        return String(describing: type(of: error))
     }
 
     func castColumnToText(_ column: String) -> String {
@@ -781,9 +891,23 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         return httpClient
     }
 
-    private func isUuid(_ string: String) -> Bool {
-        let uuidPattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-        return string.range(of: uuidPattern, options: .regularExpression) != nil
+    // Checked scalar by scalar: a regex `$` also matches before a trailing newline, which would reach the URL path.
+    private static func isUuid(_ string: String) -> Bool {
+        let scalars = Array(string.unicodeScalars)
+        guard scalars.count == 36 else { return false }
+        return scalars.enumerated().allSatisfy { index, scalar in
+            [8, 13, 18, 23].contains(index) ? scalar == "-" : scalar.properties.isASCIIHexDigit
+        }
+    }
+
+    // D1's name rule, `^[a-zA-Z0-9][a-zA-Z0-9_-]*$`, from Cloudflare's API schema.
+    private static func isDatabaseName(_ string: String) -> Bool {
+        guard let first = string.unicodeScalars.first, isASCIIAlphanumeric(first) else { return false }
+        return string.unicodeScalars.allSatisfy { isASCIIAlphanumeric($0) || $0 == "_" || $0 == "-" }
+    }
+
+    private static func isASCIIAlphanumeric(_ scalar: Unicode.Scalar) -> Bool {
+        ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar) || ("0"..."9").contains(scalar)
     }
 
     private func mapRawResult(_ payload: D1RawResultPayload, executionTime: TimeInterval) -> PluginQueryResult {
@@ -798,8 +922,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
                 truncated = true
                 break
             }
-            let row = rawRow.map(\.stringValue).map(PluginCellValue.fromOptional)
-            rows.append(row)
+            rows.append(rawRow.map(\.cellValue))
         }
 
         return PluginQueryResult(

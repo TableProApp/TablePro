@@ -143,6 +143,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "SQL Server"
     static let iconName = "mssql-icon"
     static let defaultPort = 1_433
+    // FreeTDS checks the hostname only against the host it dials, so Verify Identity cannot pass through a forward.
+    static let sslModesThroughTunnel: [SSLMode] = [.disabled, .preferred, .required, .verifyCa]
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
@@ -439,7 +441,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deadline: MSSQLConnectDeadline
     ) async throws -> String? {
         guard authMethod == .windows else { return nil }
-        let tunneledHost = config.additionalFields["preTunnelHost"].flatMap { $0.isEmpty ? nil : $0 }
+        let tunneledHost = config.tunneledServerName
         let host = tunneledHost ?? config.host
         let port = tunneledHost == nil
             ? config.port

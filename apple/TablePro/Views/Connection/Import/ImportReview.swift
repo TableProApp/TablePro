@@ -119,7 +119,15 @@ internal final class ImportReview: ObservableObject {
         isImporting = true
         defer { isImporting = false }
         let savedQueries = preview.environment.rules.supportsSavedQueries ? savedQueryStore : nil
-        return await ImportApplier.apply(plan, library: library, savedQueries: savedQueries)
+        let plan = self.plan
+        let outcome = await ImportApplier.apply(plan, library: library, savedQueries: savedQueries)
+        if preview.collected.source == .cloudDiscovery(name: RDSDiscoveryReconciler.sourceName) {
+            RDSDiscoveryReconciler.approveLocalCredentials(
+                of: plan.connections.map(\.id),
+                saved: ConnectionStorage.shared.loadConnections()
+            )
+        }
+        return outcome
     }
 }
 

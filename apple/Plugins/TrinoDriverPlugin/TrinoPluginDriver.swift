@@ -242,7 +242,7 @@ final class TrinoPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             host: config.host.isEmpty ? "localhost" : config.host,
             port: port,
             useTLS: useTLS,
-            tls: try TrinoSSLMapping.tlsOptions(for: config.ssl),
+            tls: try TrinoSSLMapping.tlsOptions(for: config.ssl, serverName: config.tunneledServerName),
             user: config.username,
             catalog: config.database.isEmpty ? nil : config.database,
             schema: trimmedField(config.additionalFields["trinoSchema"]),

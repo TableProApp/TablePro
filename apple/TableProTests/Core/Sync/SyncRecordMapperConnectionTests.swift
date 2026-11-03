@@ -279,17 +279,41 @@ struct SyncRecordMapperConnectionTests {
         #expect(additionalFields == ["mongoParam_retryWrites": "true"])
     }
 
-    @Test("A rebased record loses a secret an older build left in the server's additional fields")
+    @Test("A pushed record leaves out host-internal values and secure fields carried plain, and keeps device actions")
+    func hostInternalAndPlainSecretsStayOffTheRecord() throws {
+        var connection = TestFixtures.makeConnection(type: .postgresql)
+        connection.additionalFields = [
+            "preTunnelHost": "prod.internal",
+            "sqliteBackend": "agent",
+            "awsSecretAccessKey": "s3cr3t",
+            "preConnectScript": "op signin",
+            "awsAuth": "profile",
+            "zzzFromANewerBuild": "1"
+        ]
+
+        let record = SyncRecordMapper.toCKRecord(connection, in: zoneID)
+        let data = try #require(record[ConnectionSyncField.additionalFieldsJson.key] as? Data)
+        let additionalFields = try JSONDecoder().decode([String: String].self, from: data)
+
+        #expect(additionalFields == [
+            "preConnectScript": "op signin",
+            "awsAuth": "profile",
+            "zzzFromANewerBuild": "1"
+        ])
+    }
+
+    @Test("A rebased record loses a secret or host-internal value an older build left in the server's additional fields")
     func rebasedRecordLosesLegacySecret() throws {
         var legacy = TestFixtures.makeConnection(type: .mongodb)
         legacy.additionalFields = ["mongoParam_retryWrites": "true"]
         let record = SyncRecordMapper.toCKRecord(legacy, in: zoneID)
         record[ConnectionSyncField.additionalFieldsJson.key] = try JSONEncoder().encode([
             "mongoParam_tlsCertificateKeyFilePassword": "hunter2",
+            "preTunnelHost": "prod.internal",
             "mongoParam_retryWrites": "true"
         ]) as CKRecordValue
 
-        SyncRecordMapper.removeSecretOptions(from: record)
+        SyncRecordMapper.removeUnsyncableFields(from: record)
 
         let data = try #require(record[ConnectionSyncField.additionalFieldsJson.key] as? Data)
         #expect(try JSONDecoder().decode([String: String].self, from: data) == ["mongoParam_retryWrites": "true"])

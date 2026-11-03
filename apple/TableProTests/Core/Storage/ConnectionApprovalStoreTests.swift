@@ -1,5 +1,5 @@
 //
-//  EnvVarReferenceApprovalStoreTests.swift
+//  ConnectionApprovalStoreTests.swift
 //  TableProTests
 //
 
@@ -14,7 +14,7 @@ private final class SavedLibrary {
 }
 
 @MainActor
-struct EnvVarReferenceApprovalStoreTests {
+struct ConnectionApprovalStoreTests {
     private let suite: EphemeralDefaults
     private let defaults: UserDefaults
 
@@ -23,8 +23,11 @@ struct EnvVarReferenceApprovalStoreTests {
         defaults = suite.defaults
     }
 
-    private func makeStore(saved: @escaping @MainActor () -> [DatabaseConnection]? = { [] }) -> EnvVarReferenceApprovalStore {
-        EnvVarReferenceApprovalStore(defaults: defaults, savedConnections: saved)
+    private func makeStore(
+        _ kind: ConnectionApprovalStore.Kind = .envVarReferences,
+        saved: @escaping @MainActor () -> [DatabaseConnection]? = { [] }
+    ) -> ConnectionApprovalStore {
+        ConnectionApprovalStore(kind: kind, defaults: defaults, savedConnections: saved)
     }
 
     private func referencing(
@@ -46,9 +49,27 @@ struct EnvVarReferenceApprovalStoreTests {
         return connection
     }
 
+    private func windowsSignIn(
+        id: UUID = UUID(),
+        host: String = "sql.attacker.example",
+        origin: ConnectionOrigin = .imported
+    ) -> DatabaseConnection {
+        var connection = DatabaseConnection(
+            id: id,
+            name: "Reports",
+            host: host,
+            port: 1_433,
+            type: .mssql,
+            additionalFields: ["mssqlAuthMethod": "windows"]
+        )
+        connection.origin = origin
+        return connection
+    }
+
     @Test("Nothing is approved until someone approves it")
     func nothingApprovedByDefault() {
         #expect(!makeStore().isApproved(referencing()))
+        #expect(!makeStore(.localCredentials).isApproved(windowsSignIn()))
     }
 
     @Test("A connection with no references needs no approval")
@@ -56,11 +77,24 @@ struct EnvVarReferenceApprovalStoreTests {
         #expect(makeStore().isApproved(DatabaseConnection(name: "Plain", host: "db.example.com", username: "app")))
     }
 
+    @Test("A connection that signs in with its own key needs no local credential approval")
+    func accessKeyNeedsNothing() {
+        let connection = DatabaseConnection(
+            name: "Keys",
+            host: "orders.abc123.us-east-1.rds.amazonaws.com",
+            port: 5_432,
+            type: .postgresql,
+            additionalFields: ["awsAuth": "accessKey", "awsRegion": "us-east-1"]
+        )
+
+        #expect(makeStore(.localCredentials).isApproved(connection))
+    }
+
     @Test("An approval covers its connection only")
     func approvalIsPerConnection() {
         let store = makeStore()
         let approved = referencing()
-        store.approveReferences(of: approved)
+        store.approve(approved)
 
         #expect(store.isApproved(approved))
         #expect(!store.isApproved(referencing()))
@@ -70,7 +104,7 @@ struct EnvVarReferenceApprovalStoreTests {
     func approvalIsBoundToTheDestination() {
         let store = makeStore()
         var connection = referencing()
-        store.approveReferences(of: connection)
+        store.approve(connection)
 
         connection.name = "Orders (renamed)"
         connection.database = "$DB_USER"
@@ -88,12 +122,24 @@ struct EnvVarReferenceApprovalStoreTests {
     func approvalIsBoundToTheNames() {
         let store = makeStore()
         var connection = referencing()
-        store.approveReferences(of: connection)
+        store.approve(connection)
 
         connection.database = "orders"
         #expect(store.isApproved(connection))
 
         connection.username = "$DB_USER$AWS_SECRET_ACCESS_KEY"
+        #expect(!store.isApproved(connection))
+    }
+
+    @Test("A local credential approval covers the sign-in it was given for, not another one")
+    func localCredentialApprovalIsBoundToTheUse() {
+        let store = makeStore(.localCredentials)
+        var connection = windowsSignIn()
+        store.approve(connection)
+        #expect(store.isApproved(connection))
+
+        connection.additionalFields["mssqlAuthMethod"] = "entra"
+        connection.additionalFields["entraTenantId"] = "victim-tenant"
         #expect(!store.isApproved(connection))
     }
 
@@ -103,11 +149,21 @@ struct EnvVarReferenceApprovalStoreTests {
         let id = UUID()
         let first = referencing(id: id, host: "db1.internal.example")
         let second = referencing(id: id, host: "db2.internal.example")
-        store.approveReferences(of: first)
-        store.approveReferences(of: second)
+        store.approve(first)
+        store.approve(second)
 
         #expect(store.isApproved(first))
         #expect(store.isApproved(second))
+    }
+
+    @Test("The two kinds keep their approvals apart")
+    func kindsAreSeparate() {
+        var connection = windowsSignIn()
+        connection.username = "$DB_USER"
+        makeStore(.envVarReferences).approve(connection)
+
+        #expect(makeStore(.envVarReferences).isApproved(connection))
+        #expect(!makeStore(.localCredentials).isApproved(connection))
     }
 
     @Test("Revoking forgets a connection's approvals and keeps the others")
@@ -115,8 +171,8 @@ struct EnvVarReferenceApprovalStoreTests {
         let store = makeStore()
         let deleted = referencing()
         let kept = referencing()
-        store.approveReferences(of: deleted)
-        store.approveReferences(of: kept)
+        store.approve(deleted)
+        store.approve(kept)
 
         store.revoke(for: deleted.id)
 
@@ -129,7 +185,7 @@ struct EnvVarReferenceApprovalStoreTests {
         let store = makeStore()
         let source = referencing()
         let duplicate = referencing()
-        store.approveReferences(of: source)
+        store.approve(source)
 
         store.copyApprovals(from: source.id, to: duplicate.id)
 
@@ -139,7 +195,7 @@ struct EnvVarReferenceApprovalStoreTests {
     @Test("Approvals persist in the defaults they were written to")
     func persists() {
         let connection = referencing()
-        makeStore().approveReferences(of: connection)
+        makeStore().approve(connection)
 
         #expect(makeStore().isApproved(connection))
     }
@@ -154,6 +210,25 @@ struct EnvVarReferenceApprovalStoreTests {
         #expect(store.isApproved(own))
         #expect(!store.isApproved(imported))
         #expect(!store.isApproved(synced))
+    }
+
+    @Test("The first use approves this Mac's own sign-ins, and never an imported one")
+    func localCredentialMigrationTrustsOnlyThisMacRows() {
+        let own = windowsSignIn(host: "sql.corp.example", origin: .thisMac)
+        let imported = windowsSignIn()
+        let store = makeStore(.localCredentials) { [own, imported] }
+
+        #expect(store.isApproved(own))
+        #expect(!store.isApproved(imported))
+    }
+
+    @Test("Each kind migrates on its own, so one that already ran does not stop the other")
+    func kindsMigrateApart() {
+        var own = windowsSignIn(host: "sql.corp.example", origin: .thisMac)
+        own.username = "$DB_USER"
+        #expect(makeStore(.envVarReferences) { [own] }.isApproved(own))
+
+        #expect(makeStore(.localCredentials) { [own] }.isApproved(own))
     }
 
     @Test("The migration runs once, so a row it did not see, or saw in an untrusted file, stays unapproved")

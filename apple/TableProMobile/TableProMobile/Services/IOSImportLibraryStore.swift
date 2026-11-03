@@ -27,7 +27,7 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     redisDatabase: ConnectionMatchKey.redisDatabase(in: connection.additionalFields),
                     socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
                 ),
-                settings: IOSConnectionExportService.portableSettings(for: connection)
+                settings: IOSConnectionExportService.portableSettings(for: connection, keepingLocalCredentials: false)
             )
         }, savedQueries: appState.savedQueries.ledgerEntries() ?? [])
     }
@@ -119,6 +119,11 @@ struct IOSImportLibraryStore: ImportLibraryStore {
                     var updated = connection
                     updated.sortOrder = stored.sortOrder
                     updated.isFavorite = stored.isFavorite
+                    // The file brought no sign-in with this device's credentials, scripts or unknown fields, so the row
+                    // keeps its own.
+                    for (key, value) in stored.additionalFields where ConnectionFieldCatalog.survivesReplace(key) {
+                        updated.additionalFields[key] = value
+                    }
                     updated.sshConfiguration = JumpHostCredentialStore.keepingHopIds(
                         from: stored.sshConfiguration,
                         into: updated.sshConfiguration
@@ -189,11 +194,16 @@ nonisolated extension DatabaseConnection {
     init(importedSettings settings: ExportableConnection, id: UUID = UUID(), groupId: UUID? = nil, tagIds: [UUID] = []) {
         let safeModeLevel = SafeModeLevel(wireValue: settings.safeModeLevel, isReadOnly: false)
         let sslMode = settings.sslConfig.map { SSLConfiguration.SSLMode(importing: $0.portableMode) } ?? .disable
+        let type = DatabaseType(rawValue: settings.type)
+        // Only a server dials a host: an empty one there means this machine, while a file or API connection has none.
+        let host = settings.host.trimmingCharacters(in: .whitespaces).isEmpty && type.dialsServer
+            ? "localhost"
+            : settings.host
         self.init(
             id: id,
             name: settings.name,
-            type: DatabaseType(rawValue: settings.type),
-            host: settings.host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : settings.host,
+            type: type,
+            host: host,
             port: settings.port,
             username: settings.username,
             database: settings.database,
@@ -222,8 +232,11 @@ nonisolated extension DatabaseConnection {
     }
 
     // The Mac falls back to its own Redis index when the additional field is unset, so the import reads it the same way.
+    // iOS has no sign-in prompt, so a row from a file never keeps a value that signs in with this device's credentials.
     private static func importedAdditionalFields(_ settings: ExportableConnection) -> [String: String] {
-        var fields = settings.additionalFields ?? [:]
+        let carried = settings.additionalFields ?? [:]
+        let signIns = Set(ConnectionFieldCatalog.localCredentialUses(in: carried).map(\.fieldId))
+        var fields = carried.filter { !signIns.contains($0.key) }
         if DatabaseType(rawValue: settings.type) == .redis, fields[RedisDatabaseIndex.fieldName] == nil,
            let redisDatabase = settings.redisDatabase {
             fields[RedisDatabaseIndex.fieldName] = String(redisDatabase)

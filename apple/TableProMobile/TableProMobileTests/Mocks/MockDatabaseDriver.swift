@@ -14,6 +14,8 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var fetchColumnsError: Error?
     var scriptedTables: [TableInfo] = []
     var scriptedDatabases: [String] = []
+    // The database the driver says it is in, which may be named differently from the one the connection stores.
+    var scriptedCurrentDatabase: String?
     var scriptedSchemas: [String] = []
     var scriptedTransactionState: DriverTransactionState = .unknown
     // Answered in order, one per call, before falling back to `scriptedTransactionState`.
@@ -37,6 +39,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     private(set) var didCommitTransaction = false
     private(set) var didRollbackTransaction = false
     private(set) var pingCount = 0
+    private(set) var switchedDatabases: [String] = []
 
     var supportsSchemas: Bool = false
     var currentSchema: String?
@@ -110,8 +113,11 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
     func fetchDatabases() async throws -> [String] { scriptedDatabases }
     func fetchSchemas() async throws -> [String] { scriptedSchemas }
+    var currentDatabase: String? { scriptedCurrentDatabase }
+
     func switchDatabase(to name: String) async throws {
         if let switchDatabaseError { throw switchDatabaseError }
+        switchedDatabases.append(name)
     }
     func switchSchema(to name: String) async throws {
         currentSchema = name

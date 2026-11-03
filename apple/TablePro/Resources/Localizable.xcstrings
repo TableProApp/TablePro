@@ -646,6 +646,10 @@
         }
       }
     },
+    "'%@' is not a Cloudflare D1 database name or UUID" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "'%@' is not a process id on this engine. Take one from get_server_dashboard." : {
       "localizations" : {
         "fr" : {
@@ -23345,6 +23349,9 @@
     "Allow NULL" : {
 
     },
+    "Allow this only if you trust where the connection signs in." : {
+
+    },
     "Allowed Connections" : {
       "localizations" : {
         "fr" : {
@@ -31534,6 +31541,16 @@
     },
     "Binary values limit must be between 1 and 1,048,576 KB." : {
 
+    },
+    "Black Friday: %lld%% off Pro until %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Black Friday: %1$lld%% off Pro until %2$@"
+          }
+        }
+      }
     },
     "Bloated Tables" : {
 
@@ -42220,6 +42237,10 @@
         }
       }
     },
+    "Cloudflare D1 cannot bind a binary value through its API." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Cloudflare hostname is required" : {
       "localizations" : {
         "fr" : {
@@ -46963,6 +46984,9 @@
     "Connect again to review the script and run it." : {
 
     },
+    "Connect again to review the sign-in and approve it." : {
+
+    },
     "Connect again to review the variables and send them." : {
 
     },
@@ -47846,6 +47870,9 @@
           }
         }
       }
+    },
+    "Connection “%1$@” signs in to %2$@ with credentials stored on this Mac:" : {
+
     },
     "Connection Access" : {
       "localizations" : {
@@ -121124,6 +121151,9 @@
     "Nobody answered the pre-connect script prompt in time." : {
 
     },
+    "Nobody answered the sign-in prompt in time." : {
+
+    },
     "Nobody has joined this team yet." : {
       "localizations" : {
         "fr" : {
@@ -167415,6 +167445,9 @@
         }
       }
     },
+    "Sign In with Credentials from This Mac?" : {
+
+    },
     "Sign in with GitHub" : {
       "localizations" : {
         "fr" : {
@@ -167930,6 +167963,9 @@
           }
         }
       }
+    },
+    "Signing in with credentials from this Mac was not approved." : {
+
     },
     "Signing in…" : {
       "localizations" : {
@@ -172401,6 +172437,9 @@
     "SSL mode “%@” is not recognized, so the connection imports with SSL required." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "SSL Mode %1$@ checks the certificate of the server behind the tunnel, and this connection leaves that server's host blank. Enter the host the tunnel reaches, or set SSL Mode to %2$@." : {
+
     },
     "SSL/TLS" : {
       "extractionState" : "stale",
@@ -180227,6 +180266,9 @@
     "TablePro does not send environment variables to a new server on its own." : {
 
     },
+    "TablePro does not sign in to a new server with credentials from this Mac on its own." : {
+
+    },
     "TablePro does not use these theme keys: %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -183780,6 +183822,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The %1$@ driver cannot use SSL Mode %2$@ through a tunnel. A newer version of the driver may support it. Until then, choose %3$@, or connect without the tunnel." : {
+
+    },
+    "The %1$@ driver cannot use SSL Mode %2$@ through a tunnel. Through a tunnel it supports %3$@. Choose one of those, or connect without the tunnel." : {
+
+    },
     "The %1$@ plugin could not be installed: %2$@" : {
       "localizations" : {
         "fr" : {
@@ -185960,6 +186008,9 @@
           }
         }
       }
+    },
+    "The connection's sign-in with credentials from this Mac, environment variables, pre-connect script or SQLite extensions were not approved." : {
+
     },
     "The connection's SQLite extensions were not approved." : {
       "localizations" : {
@@ -191688,6 +191739,10 @@
         }
       }
     },
+    "The server's TLS certificate could not be verified. %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server's TLS certificate does not match the hostname being connected to." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -191699,6 +191754,10 @@
           }
         }
       }
+    },
+    "The server's TLS certificate does not name %1$@. %2$@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "The service account key is not valid JSON." : {
       "extractionState" : "manual",
@@ -195493,7 +195552,13 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection comes from a file in a linked folder, so its author chose the server and how it signs in." : {
+
+    },
     "This connection comes from a file in a linked folder, so its author chose the server and the variables." : {
+
+    },
+    "This connection comes from your team library, so a teammate chose the server and how it signs in." : {
 
     },
     "This connection comes from your team library, so a teammate chose the server and the variables." : {
@@ -195874,6 +195939,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "This connection uses SSL Mode %2$@, which %1$@ cannot check through a tunnel. Set SSL Mode to %3$@, or connect without the tunnel." : {
+
+    },
     "This connection uses SSL Mode %2$@, which the %1$@ driver does not support. It supports %3$@." : {
 
     },
@@ -195917,7 +195985,13 @@
         }
       }
     },
+    "This connection was imported, so someone else may have chosen the server and how it signs in." : {
+
+    },
     "This connection was imported, so someone else may have chosen the server and the variables." : {
+
+    },
+    "This connection was opened from a link, so its sender chose the server and how it signs in." : {
 
     },
     "This connection was opened from a link, so its sender chose the server and the variables." : {
@@ -211796,6 +211870,10 @@
           }
         }
       }
+    },
+    "Verify Identity through a tunnel checks the certificate against the server's host name, and %@ is an IP address. Enter the server's host name, or set SSL Mode to Verify CA." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Verify server certificate" : {
       "localizations" : {

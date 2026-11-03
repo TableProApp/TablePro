@@ -51,9 +51,11 @@ extension DatabaseManager {
 
         let resolvedConnection: DatabaseConnection
         do {
+            // Before anything signs in: the host resolves some credentials below, and a plugin the rest in `connect()`.
+            try await localCredentialConsent.check(connection, trigger: trigger)
             resolvedConnection = try await envVarReferenceConsent.resolve(connection, trigger: trigger)
             try await preConnectScriptConsent.authorize(connection, trigger: trigger)
-            /// The answer can take a minute, long enough for the person to cancel the attempt.
+            // The answer can take a minute, long enough for the person to cancel the attempt.
             guard !isAttemptCancelled(attempt, for: connection.id) else { throw CancellationError() }
             try await runPreConnectScriptIfNeeded(connection, resolvedConnection: resolvedConnection, attempt: attempt)
         } catch {

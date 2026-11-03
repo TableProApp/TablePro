@@ -23,6 +23,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "MySQL"
     static let iconName = "mysql-icon"
     static let defaultPort = 3306
+    // The verification callback checks the pre-tunnel host and refuses Connector/C's loopback forgiveness.
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let additionalConnectionFields: [ConnectionField] =
         GoogleCloudSQLAuthFields.standardWithAWS() + [AWSAuthFields.rdsEndpointField()] + [
         ConnectionField(

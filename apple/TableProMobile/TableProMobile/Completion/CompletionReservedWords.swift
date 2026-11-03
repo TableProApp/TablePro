@@ -10,12 +10,12 @@ nonisolated enum CompletionReservedWords {
 
     private static func words(for type: DatabaseType) -> Set<String> {
         if SQLBuilder.speaksMySQLDialect(type) { return mySQL }
+        if type.isSQLiteFamily { return sqlite }
         switch type {
         case .postgresql, .redshift: return postgreSQL
         case .duckdb: return duckDB
         case .mssql: return sqlServer
         case .oracle: return oracle
-        case .sqlite: return sqlite
         default: return all
         }
     }

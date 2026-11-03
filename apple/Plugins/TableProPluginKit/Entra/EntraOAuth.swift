@@ -318,7 +318,7 @@ public enum EntraOAuth {
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = formBody(fields)
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request, delegate: RedirectRefusingTaskDelegate.shared)
             return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
         } catch {
             throw EntraOAuthError.network(error.localizedDescription)

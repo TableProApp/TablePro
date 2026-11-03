@@ -55,7 +55,8 @@ public struct BigtableConnectionSettings: Sendable, Equatable {
         case .applicationDefault:
             return .applicationDefault
         case .serviceAccount:
-            guard let key = trimmed(fields[BigtableFieldID.serviceAccountJson]) ?? trimmed(password) else {
+            guard let key = trimmed(fields[BigtableFieldID.serviceAccountJson])
+                ?? GoogleServiceAccountKey.inlineDocument(fromPassword: password) else {
                 throw BigtableError.configuration(String(localized: "Choose a service account key file, or paste its JSON."))
             }
             return .serviceAccountKey(key)

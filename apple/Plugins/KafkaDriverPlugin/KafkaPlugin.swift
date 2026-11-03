@@ -59,6 +59,7 @@ public final class KafkaPlugin: NSObject, DriverPlugin {
     public static let supportsHealthMonitor = true
     public static let supportsSSH = true
     public static let supportsSSL = true
+    public static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     public static let supportsQueryProgress = false
     public static let supportsCascadeDrop = false
     public static let supportsForeignKeyDisable = false

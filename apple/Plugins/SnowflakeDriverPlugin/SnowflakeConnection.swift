@@ -199,8 +199,10 @@ final class SnowflakeConnection: @unchecked Sendable {
                 )
                 return
             } catch {
-                SnowflakeMFATokenStore.clear(for: account, user: params.user)
-                Self.logger.info("Cached MFA token rejected; retrying with credentials")
+                if case .loginFailed? = error as? SnowflakeError {
+                    SnowflakeMFATokenStore.clear(for: account, user: params.user)
+                }
+                Self.logger.info("Login with the cached MFA token failed; retrying with credentials")
             }
         }
 
@@ -244,8 +246,10 @@ final class SnowflakeConnection: @unchecked Sendable {
                 try await login(authenticator: "ID_TOKEN", extra: ["TOKEN": idToken], deadline: deadline)
                 return
             } catch {
-                SnowflakeIdTokenStore.clear(for: account, user: params.user)
-                Self.logger.info("Cached SSO id token rejected; falling back to browser authentication")
+                if case .loginFailed? = error as? SnowflakeError {
+                    SnowflakeIdTokenStore.clear(for: account, user: params.user)
+                }
+                Self.logger.info("Login with the cached SSO id token failed; falling back to browser authentication")
             }
         }
 

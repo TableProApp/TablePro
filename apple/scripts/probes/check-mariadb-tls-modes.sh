@@ -3,8 +3,9 @@
 #
 # MYSQL_OPT_SSL_ENFORCE alone falls back to plaintext when a server offers no TLS, verification
 # checks the host name on every dial but 127.0.0.1, and a 127.0.0.1 dial forgives an untrusted
-# certificate when no CA is set. The bridge headers work around all three; this proves they still do
-# after a libs update. Every server here asks for the password in plain text, which Connector/C answers
+# certificate when no CA is set. The bridge headers work around all three, and through a tunnel's
+# 127.0.0.1 forward they check the server name the tunnel reaches; this proves they still do after a
+# libs update. Every server here asks for the password in plain text, which Connector/C answers
 # even without TLS unless MARIADB_OPT_RESTRICTED_AUTH leaves mysql_clear_password out. Needs openssl, python3 and Libs/libmariadb_arm64.a (scripts/download-libs.sh).
 # Exits non-zero on any unexpected outcome.
 
@@ -43,7 +44,7 @@ done
 
 build() {
     clang -O0 -o "$WORK/client-$1" "$PROBE/tls-client.c" $2 -I "$ROOT/Plugins/MySQLDriverPlugin/CMariaDB/include" \
-        "$LIBS/libmariadb_arm64.a" "$LIBS/libssl_arm64.a" "$LIBS/libcrypto_arm64.a" -lz -liconv || exit 2
+        "$LIBS/libmariadb_arm64.a" "$LIBS/libssl_arm64.a" "$LIBS/libcrypto_arm64.a" -lz -liconv -framework GSS || exit 2
 }
 build macos ""
 build ios "-DTABLEPRO_IOS"
@@ -96,17 +97,20 @@ for app in macos ios; do
         verify-identity "$SECRET" ca.pem
     check "Verify Identity, matching name" $app connect "--cert local.pem --key local.key" localhost \
         verify-identity "$SECRET" ca.pem
+    # A tunnel dials its forward on 127.0.0.1 and hands over the name of the server behind it.
+    check "Tunnel Verify Identity, right server name" $app connect "--cert other.pem --key other.key" 127.0.0.1 \
+        verify-identity "$SECRET" ca.pem db.example.com
+    check "Tunnel Verify Identity, certificate names only 127.0.0.1" $app refuse "--cert local.pem --key local.key" \
+        127.0.0.1 verify-identity "$SECRET" ca.pem db.example.com
+    check "Tunnel Verify CA, other name, trusted chain" $app connect "--cert local.pem --key local.key" 127.0.0.1 \
+        verify-ca "$SECRET" ca.pem db.example.com
+    check "Tunnel Verify Identity, no CA, self-signed" $app refuse "--cert self.pem --key self.key" 127.0.0.1 \
+        verify-identity "$SECRET" - db.example.com
+    check "Tunnel Verify CA, no CA, self-signed" $app refuse "--cert self.pem --key self.key" 127.0.0.1 \
+        verify-ca "$SECRET" - db.example.com
+    check "Tunnel Verify Identity, no CA, CA-signed right name" $app refuse "--cert other.pem --key other.key" \
+        127.0.0.1 verify-identity "$SECRET" - db.example.com
 done
-check "Tunnel Verify Identity, right server name" ios connect "--cert other.pem --key other.key" 127.0.0.1 \
-    verify-identity "$SECRET" ca.pem db.example.com
-check "Tunnel Verify Identity, wrong server name" ios refuse "--cert local.pem --key local.key" 127.0.0.1 \
-    verify-identity "$SECRET" ca.pem db.example.com
-check "Tunnel Verify CA, wrong server name" ios connect "--cert local.pem --key local.key" 127.0.0.1 \
-    verify-ca "$SECRET" ca.pem db.example.com
-check "Tunnel Verify Identity, no CA, self-signed" ios refuse "--cert self.pem --key self.key" 127.0.0.1 \
-    verify-identity "$SECRET" - db.example.com
-check "Tunnel Verify CA, no CA, self-signed" ios refuse "--cert self.pem --key self.key" 127.0.0.1 \
-    verify-ca "$SECRET" - db.example.com
 
 if [ "$failures" -eq 0 ]; then
     echo "All TLS modes behave as the SSL docs describe."

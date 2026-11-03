@@ -63,7 +63,7 @@ final class InfluxDBPlugin: NSObject, TableProPlugin, DriverPlugin {
 func influxDBConnectionFields() -> [ConnectionField] {
     [
         ConnectionField(
-            id: InfluxDBFieldID.token,
+            id: InfluxConnectionFieldID.token,
             label: String(localized: "Token"),
             placeholder: "API token",
             fieldType: .secure,
@@ -71,13 +71,13 @@ func influxDBConnectionFields() -> [ConnectionField] {
             hidesPassword: true
         ).withHidesUsername(true),
         ConnectionField(
-            id: InfluxDBFieldID.organization,
+            id: InfluxConnectionFieldID.organization,
             label: String(localized: "Organization"),
             placeholder: "InfluxDB 2 only, optional with one organization",
             section: .connection
         ),
         ConnectionField(
-            id: InfluxDBFieldID.skipTLSVerify,
+            id: InfluxConnectionFieldID.skipTLSVerify,
             label: String(localized: "Skip TLS Verification"),
             defaultValue: "false",
             fieldType: .toggle,

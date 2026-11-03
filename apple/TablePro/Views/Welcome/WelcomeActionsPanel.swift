@@ -70,10 +70,33 @@ struct WelcomeActionsPanel: View {
             VStack(spacing: 4) {
                 licenseNotice
                 if licenseManager.supportAudience == .prospect {
-                    SupportPromptLink()
+                    prospectLinks
                 }
             }
             .font(.subheadline)
+        }
+    }
+
+    // The timeline holds both links, not the sale line alone: an empty TimelineView still takes the
+    // stack's spacing, so outside the sale it would leave a gap under the support link.
+    private var prospectLinks: some View {
+        let sale = DatedSale.blackFriday2026
+        return TimelineView(DatedSaleSchedule(sale: sale)) { context in
+            VStack(spacing: 4) {
+                SupportPromptLink()
+                if sale.isLive(at: context.date) {
+                    Link(
+                        String(
+                            format: String(localized: "Black Friday: %lld%% off Pro until %@"),
+                            sale.percentOff,
+                            sale.end.formatted(.dateTime.month(.abbreviated).day())
+                        ),
+                        destination: sale.page
+                    )
+                    .buttonStyle(.link)
+                    .accessibilityIdentifier("welcome-sale-link")
+                }
+            }
         }
     }
 

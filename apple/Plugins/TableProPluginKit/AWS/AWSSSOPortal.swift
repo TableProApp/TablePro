@@ -107,6 +107,7 @@ public enum AWSSSOPortal {
         accessToken: String,
         session: URLSession
     ) async throws -> Data {
+        try AWSPartition.requireValidRegion(region)
         let host = AWSPartition.host(service: "portal.sso", region: region)
         guard var components = URLComponents(string: "https://\(host)\(path)") else {
             throw AWSSSOLoginError.unexpectedResponse
@@ -127,7 +128,7 @@ public enum AWSSSOPortal {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: RedirectRefusingTaskDelegate.shared)
         } catch {
             try Task.checkCancellation()
             throw AWSSSOLoginError.network(error.localizedDescription)

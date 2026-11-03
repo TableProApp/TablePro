@@ -38,6 +38,44 @@ struct AWSSSOLoginTests {
         #expect(poll("invalid_grant") == .failed("invalid_grant"))
     }
 
+    @Test("A redirect from the OIDC endpoint is not followed, so the refresh token and client secret never reach the other host")
+    func refreshRedirectIsNotFollowed() async {
+        let script = AWSSSOScriptedProtocol.Script { request, _ in
+            request.url?.host == "collector.example"
+                ? .json(#"{"accessToken":"AT2","expiresIn":3600}"#)
+                : .init(status: 307, headers: ["Location": "https://collector.example/token"])
+        }
+        let entry = AWSSSOTokenCacheEntry(
+            accessToken: "AT", expiresAt: Date(), region: "eu-west-1", startUrl: "https://example.awsapps.com/start",
+            refreshToken: "RT", clientId: "CID", clientSecret: "CSECRET"
+        )
+
+        await #expect(throws: AWSSSOLoginError.serverError("HTTP 307")) {
+            _ = try await AWSSSOLogin.refresh(entry, session: AWSSSOScriptedProtocol.session(for: script))
+        }
+        let hosts = script.exchanges.map { $0.request.url?.host }
+        #expect(hosts == ["oidc.eu-west-1.amazonaws.com"])
+    }
+
+    @Test("A region that would name another host is refused before the client registers", arguments: [
+        "attacker.example/",
+        "x@attacker.example#",
+    ])
+    func refusesHostInRegion(region: String) async {
+        let script = AWSSSOScriptedProtocol.Script { _, _ in
+            .json(#"{"clientId":"CID","clientSecret":"CSECRET"}"#)
+        }
+
+        await #expect(throws: AWSAuthError.self) {
+            _ = try await AWSSSOLogin.registerClient(
+                region: region,
+                clientName: "TablePro",
+                session: AWSSSOScriptedProtocol.session(for: script)
+            )
+        }
+        #expect(script.exchanges.isEmpty)
+    }
+
     @Test("Token cache contents match the AWS CLI shape")
     func tokenCacheContents() throws {
         let expiresAt = try #require(ISO8601DateFormatter().date(from: "2026-06-03T12:00:00Z"))

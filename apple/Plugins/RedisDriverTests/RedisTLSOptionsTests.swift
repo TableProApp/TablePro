@@ -67,6 +67,38 @@ struct RedisTLSOptionsTests {
         #expect(options.clientKeyPath == nil)
     }
 
+    @Test("Through a tunnel's forward, SNI and the hostname check name the server behind it, not 127.0.0.1")
+    func tunnelChecksTheServerName() throws {
+        let config = Self.config(dialing: "127.0.0.1", preTunnelHost: "redis.example.com", mode: .verifyIdentity)
+        let options = try #require(
+            RedisTLSOptions.make(sslConfig: config.ssl, host: config.host, serverName: config.tunneledServerName)
+        )
+        #expect(options.serverName == "redis.example.com")
+        #expect(options.expectedHost == "redis.example.com")
+        #expect(options.caCertificatePath == "/certs/ca.pem")
+    }
+
+    @Test("Through a tunnel's forward, Verify CA sends the server's name as SNI and checks no hostname")
+    func tunnelVerifyCASendsTheServerName() throws {
+        let config = Self.config(dialing: "127.0.0.1", preTunnelHost: "redis.example.com", mode: .verifyCa)
+        let options = try #require(
+            RedisTLSOptions.make(sslConfig: config.ssl, host: config.host, serverName: config.tunneledServerName)
+        )
+        #expect(options.serverName == "redis.example.com")
+        #expect(options.verifiesCertificate)
+        #expect(options.expectedHost == nil)
+    }
+
+    @Test("A direct dial checks the host it dials, whatever a stored pre-tunnel host says")
+    func directDialIgnoresAStoredServerName() throws {
+        let config = Self.config(dialing: "redis.corp.example", preTunnelHost: "evil.example", mode: .verifyIdentity)
+        let options = try #require(
+            RedisTLSOptions.make(sslConfig: config.ssl, host: config.host, serverName: config.tunneledServerName)
+        )
+        #expect(options.serverName == "redis.corp.example")
+        #expect(options.expectedHost == "redis.corp.example")
+    }
+
     @Test("client certificate and key are passed through in every encrypted mode")
     func clientCertificatePassedThrough() throws {
         let ssl = SSLConfiguration(
@@ -77,5 +109,17 @@ struct RedisTLSOptionsTests {
         let options = try #require(RedisTLSOptions.make(sslConfig: ssl, host: "redis.example.com"))
         #expect(options.clientCertificatePath == "/certs/client.pem")
         #expect(options.clientKeyPath == "/certs/client.key")
+    }
+
+    private static func config(dialing host: String, preTunnelHost: String, mode: SSLMode) -> DriverConnectionConfig {
+        DriverConnectionConfig(
+            host: host,
+            port: 6_379,
+            username: "",
+            password: "",
+            database: "0",
+            ssl: SSLConfiguration(mode: mode, caCertificatePath: "/certs/ca.pem"),
+            additionalFields: ["preTunnelHost": preTunnelHost]
+        )
     }
 }

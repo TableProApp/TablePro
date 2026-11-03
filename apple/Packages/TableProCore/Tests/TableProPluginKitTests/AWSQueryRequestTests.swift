@@ -17,6 +17,28 @@ struct AWSQueryRequestTests {
         "MaxRecords": "100"
     ]
 
+    @Test("A region that would name another host is refused", arguments: [
+        "attacker.example/",
+        "x@attacker.example#",
+    ])
+    func refusesHostInRegion(region: String) {
+        #expect(!AWSPartition.isValidRegion(region))
+        let request = AWSQueryRequest(service: "redshift", region: region, parameters: Self.parameters)
+        #expect(throws: AWSAuthError.self) {
+            try request.signedURLRequest(credentials: Self.credentials, now: Self.signingDate)
+        }
+    }
+
+    @Test("A region name is accepted in any case and with surrounding space", arguments: [
+        "us-east-1",
+        " EU-WEST-2 ",
+        "cn-northwest-1",
+        "us-isob-east-1",
+    ])
+    func acceptsRegionNames(region: String) {
+        #expect(AWSPartition.isValidRegion(region))
+    }
+
     @Test("Form body is sorted and percent encoded")
     func formBody() {
         let request = AWSQueryRequest(service: "rds", region: "us-east-1", parameters: Self.parameters)

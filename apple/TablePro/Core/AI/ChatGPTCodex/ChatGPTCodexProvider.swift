@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProHTTP
 
 final class ChatGPTCodexProvider: ChatTransport {
     static let defaultInstructions = "You are a coding assistant helping with SQL and database tasks."
@@ -51,7 +52,7 @@ final class ChatGPTCodexProvider: ChatTransport {
             stream: false,
             sessionID: UUID().uuidString
         )
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         guard let httpResponse = response as? HTTPURLResponse else { return false }
         if httpResponse.statusCode == 200 || httpResponse.statusCode == 400 {
             return true

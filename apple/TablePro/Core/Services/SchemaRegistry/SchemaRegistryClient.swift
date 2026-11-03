@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProHTTP
 
 // Engine neutral: any driver that declares these connection fields gets the Schema Registry display format.
 internal enum SchemaRegistryConnectionField {
@@ -83,8 +84,8 @@ internal struct SchemaRegistryClient: Sendable {
     }()
 
     static let urlSessionTransport: Transport = { request in
-        guard let url = request.url else { throw URLError(.badURL) }
-        let (bytes, response) = try await session.bytes(for: request, delegate: SameOriginRedirectGuard(origin: url))
+        guard request.url != nil else { throw URLError(.badURL) }
+        let (bytes, response) = try await session.bytes(for: request, delegate: SameOriginRedirects.shared)
         var data = Data()
         for try await byte in bytes {
             data.append(byte)

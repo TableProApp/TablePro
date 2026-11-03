@@ -108,6 +108,42 @@ struct AWSSSOPortalTests {
         }
     }
 
+    @Test("A redirect from the portal is not followed, so the bearer token never reaches the other host")
+    func redirectIsNotFollowed() async {
+        let script = AWSSSOScriptedProtocol.Script { request, _ in
+            request.url?.host == "collector.example"
+                ? .json(#"{"accountList":[{"accountId":"111111111111"}]}"#)
+                : .init(status: 307, headers: ["Location": "https://collector.example/assignment/accounts"])
+        }
+
+        await #expect(throws: AWSSSOLoginError.serverError("HTTP 307")) {
+            _ = try await AWSSSOPortal.listAccounts(
+                region: "us-east-1",
+                accessToken: "BEARER",
+                session: AWSSSOScriptedProtocol.session(for: script)
+            )
+        }
+        let hosts = script.exchanges.map { $0.request.url?.host }
+        #expect(hosts == ["portal.sso.us-east-1.amazonaws.com"])
+    }
+
+    @Test("A region that would name another host is refused before anything is sent", arguments: [
+        "attacker.example/",
+        "x@attacker.example#",
+    ])
+    func refusesHostInRegion(region: String) async {
+        let script = AWSSSOScriptedProtocol.Script { _, _ in .json(#"{"accountList":[]}"#) }
+
+        await #expect(throws: AWSAuthError.self) {
+            _ = try await AWSSSOPortal.listAccounts(
+                region: region,
+                accessToken: "BEARER",
+                session: AWSSSOScriptedProtocol.session(for: script)
+            )
+        }
+        #expect(script.exchanges.isEmpty)
+    }
+
     @Test("A nextToken the portal already returned stops the listing")
     func repeatedNextTokenStops() async {
         let script = AWSSSOScriptedProtocol.Script { _, _ in
@@ -228,6 +264,12 @@ final class AWSSSOScriptedProtocol: URLProtocol, @unchecked Sendable {
         ) else {
             client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return
+        }
+        // As URLSession's own loader does: offer the redirect, then hand over the 3xx if the delegate keeps it.
+        if (300..<400).contains(reply.status), let location = reply.headers["Location"].flatMap({ URL(string: $0) }) {
+            var redirected = request
+            redirected.url = location
+            client?.urlProtocol(self, wasRedirectedTo: redirected, redirectResponse: response)
         }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: reply.body)

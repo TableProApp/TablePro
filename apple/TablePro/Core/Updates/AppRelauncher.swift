@@ -1,5 +1,6 @@
 import AppKit
 import os
+import TableProProcess
 
 // AppKit has no relaunch call. A second instance started before the quit is approved keeps running
 // when the user cancels it, and runs from a bundle Sparkle is about to replace, so the reopen waits
@@ -80,15 +81,7 @@ final class AppRelauncher {
     }
 
     nonisolated static func reopenAfterExit(pid: pid_t, bundleURL: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = [
-            "-c",
-            #"while /bin/kill -0 "$0" 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open "$1""#,
-            String(pid),
-            bundleURL.path,
-        ]
-        try process.run()
+        try ProcessLauncher.process(for: .reopen(bundleURL, afterExitOf: pid)).run()
     }
 }
 

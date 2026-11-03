@@ -13,31 +13,20 @@ import TableProUtilities
 // MARK: - Shared Tunnel Helpers
 
 extension DatabaseManager {
-    // A 127.0.0.1 certificate cannot satisfy hostname verification, so verify modes drop to `.required`.
-    // A server on a Unix socket refuses every TLS request, so a socket forward drops encryption; SSH carries it.
+    // The pre-tunnel endpoint names the server behind the forward, for the certificate check, pgpass and IAM signing.
+    // MongoDB's seed list collapses to the one forwarded port with a direct connection, so replica set discovery
+    // never reaches members behind the tunnel.
     func tunneledConnection(
         from connection: DatabaseConnection,
         localPort: Int,
         forwardsToUnixSocket: Bool = false,
         securesTransport: Bool = false
     ) -> DatabaseConnection {
-        var tunnelSSL = connection.sslConfig
-        if forwardsToUnixSocket {
-            if tunnelSSL.isEnabled {
-                Self.logger.notice("Socket forward: disabling TLS, the destination cannot negotiate it")
-            }
-            tunnelSSL.mode = .disabled
-            tunnelSSL.caCertificatePath = ""
-            tunnelSSL.clientCertificatePath = ""
-            tunnelSSL.clientKeyPath = ""
-        } else if tunnelSSL.isEnabled {
-            if tunnelSSL.verifiesCertificate {
-                tunnelSSL.mode = .required
-            }
-            tunnelSSL.caCertificatePath = ""
-        } else if connection.tunnelForwardUsesHTTPS {
-            tunnelSSL.mode = .required
+        let listenerSecuresTransport = securesTransport || forwardsToUnixSocket
+        if listenerSecuresTransport, connection.sslConfig.isEnabled {
+            Self.logger.notice("Tunnel listener secures the hop itself: disabling TLS to it")
         }
+        let tunnelSSL = connection.sslConfigurationThroughTunnel(listenerSecuresTransport: listenerSecuresTransport)
 
         var effectiveFields = connection.additionalFields
         effectiveFields[DatabaseConnection.sshForwardUnixSocketPathKey] = nil
@@ -47,8 +36,8 @@ extension DatabaseManager {
         effectiveFields[DatabaseConnection.preTunnelHostKey] = forwardEndpoint.host
         effectiveFields[DatabaseConnection.preTunnelPortKey] = String(forwardEndpoint.port)
         // An SSH forward to the server's own socket is encrypted the whole way, as the proxy's hop is.
-        effectiveFields[DatabaseConnection.tunnelSecuresTransportKey] = securesTransport || forwardsToUnixSocket ? "true" : nil
-        // Behind a tunnel there is one forwarded endpoint; an SRV host is a lookup name the driver still needs.
+        effectiveFields[DatabaseConnection.tunnelSecuresTransportKey] = listenerSecuresTransport ? "true" : nil
+        // One forwarded port replaces the host list. An SRV host is a name the driver resolves, not a server to dial.
         if !connection.usesMongoSrv {
             for fieldId in connection.hostListFieldIds {
                 effectiveFields[fieldId] = nil
@@ -65,7 +54,7 @@ extension DatabaseManager {
             effectiveFields[RedisDatabaseIndex.fieldName] = String(connection.redisDatabaseIndex)
             effectiveFields["redisMode"] = "standalone"
         }
-        // Kafka's advertised broker addresses are unreachable behind one forwarded port.
+        // Kafka's metadata names brokers by their advertised addresses, which the one forwarded port cannot reach.
         if connection.type.pluginTypeId == "Kafka" {
             effectiveFields["kafkaBrokerRouting"] = "bootstrapOnly"
         }

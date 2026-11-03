@@ -62,21 +62,48 @@ struct StatementRunPerformanceGuardTests {
         #expect(elapsed < 1.0)
     }
 
+    /// The same scan takes up to twice as long on one CI run as on another, so a fixed limit cannot tell a slow runner
+    /// from a slow scanner. The scanner is timed against itself instead. Four scans of a script and one scan of a script
+    /// four times as long do the same work when scanning is linear, and the long one takes four times as long when it is
+    /// quadratic, so a bound of twice sits a factor of two from each. With equal work per sample a stall is as likely to
+    /// land on either side, and the fastest of three drops the samples it landed on.
     @Test("Block tracking does not make a script of routine bodies quadratic")
     func routineBodiesStayLinear() {
-        let text = String(repeating: "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND;\n", count: 10_000)
+        let routine = "CREATE PROCEDURE p()\nBEGIN\n  SELECT 1;\n  SELECT 2;\nEND;\n"
+        let short = String(repeating: routine, count: 2_000)
+        let long = String(repeating: routine, count: 8_000)
 
-        let start = ProcessInfo.processInfo.systemUptime
-        let statements = SQLStatementScanner.locatedStatements(in: text, grammar: TestGrammar.mysql)
-        let elapsed = ProcessInfo.processInfo.systemUptime - start
+        var shortCount = 0
+        var longCount = 0
+        var fourShortScans = TimeInterval.infinity
+        var oneLongScan = TimeInterval.infinity
+        for _ in 0..<3 {
+            fourShortScans = min(fourShortScans, Self.secondsSpent {
+                for _ in 0..<4 {
+                    shortCount = Self.routineCount(in: short)
+                }
+            })
+            oneLongScan = min(oneLongScan, Self.secondsSpent { longCount = Self.routineCount(in: long) })
+        }
 
-        #expect(statements.filter(\.hasContent).count == 10_000)
-        #expect(elapsed < 0.5)
+        #expect(shortCount == 2_000)
+        #expect(longCount == 8_000)
+        #expect(oneLongScan < fourShortScans * 2)
     }
 
     @Test("The debounce is short enough to feel immediate and long enough to coalesce typing")
     func refreshDelayIsSane() {
         #expect(StatementRunController.refreshDelay >= .milliseconds(50))
         #expect(StatementRunController.refreshDelay <= .milliseconds(300))
+    }
+
+    private static func routineCount(in script: String) -> Int {
+        SQLStatementScanner.locatedStatements(in: script, grammar: TestGrammar.mysql).filter(\.hasContent).count
+    }
+
+    private static func secondsSpent(_ work: () -> Void) -> TimeInterval {
+        let start = ProcessInfo.processInfo.systemUptime
+        work()
+        return ProcessInfo.processInfo.systemUptime - start
     }
 }

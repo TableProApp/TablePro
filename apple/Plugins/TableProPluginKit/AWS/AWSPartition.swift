@@ -75,6 +75,25 @@ public struct AWSPartition: Sendable, Equatable {
         return byARNPartition[String(parts[1]).lowercased()]
     }
 
+    // The region becomes a label of the request's host name, so `/`, `@` or `#` in it would name another server.
+    public static func isValidRegion(_ region: String) -> Bool {
+        let canonical = canonicalRegion(region)
+        guard !canonical.isEmpty, canonical.count <= 64, !canonical.hasPrefix("-"), !canonical.hasSuffix("-") else {
+            return false
+        }
+        return canonical.unicodeScalars.allSatisfy { scalar in
+            ("a"..."z").contains(scalar) || ("0"..."9").contains(scalar) || scalar == "-"
+        }
+    }
+
+    static func requireValidRegion(_ region: String) throws {
+        guard isValidRegion(region) else {
+            throw AWSAuthError.missingConfiguration(
+                String(format: String(localized: "\"%@\" is not an AWS region"), region)
+            )
+        }
+    }
+
     public static func host(service: String, region: String) -> String {
         let normalized = canonicalRegion(region)
         return "\(service).\(normalized).\(resolve(region: normalized).dnsSuffix)"

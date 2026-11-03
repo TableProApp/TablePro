@@ -71,6 +71,18 @@ struct MacOnlyImportRowTests {
         #expect(MacOnlyConnection.importStatus(for: row.settings) == nil)
     }
 
+    @Test("An imported Cloudflare D1 row opens here and keeps its empty host, where a server row dials localhost")
+    func apiRowKeepsNoHost() throws {
+        var settings = ExportableConnection(name: "Edge", host: "", port: 0, database: "app", username: "", type: "Cloudflare D1")
+        settings.additionalFields = ["cfAccountId": "0123456789abcdef"]
+        let row = try #require(try analyzed(settings).connections.first)
+
+        #expect(MacOnlyConnection.importStatus(for: row.settings) == nil)
+        #expect(DatabaseConnection(importedSettings: row.settings).host.isEmpty)
+        let server = ExportableConnection(name: "Local", host: " ", port: 3_306, database: "app", username: "root", type: "MySQL")
+        #expect(DatabaseConnection(importedSettings: server).host == "localhost")
+    }
+
     @Test("A MySQL row that dials a Mac socket reads the Mac only status")
     func socketRowIsMarked() throws {
         var settings = ExportableConnection(name: "Local", host: "localhost", port: 3_306, database: "app", username: "root", type: "MySQL")

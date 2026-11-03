@@ -106,6 +106,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let sslConfig: SSLConfiguration
     private let enableCleartextPlugin: Bool
     private let tunnelSecuresTransport: Bool
+    private let tlsServerName: MariaDBTLSServerName?
     private let queryTimeoutSeconds: Int
     private let connectionEncoding: MySQLConnectionEncoding
     private let connectTimeoutMilliseconds: Int
@@ -312,6 +313,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         sslConfig: SSLConfiguration,
         enableCleartextPlugin: Bool = false,
         tunnelSecuresTransport: Bool = false,
+        tlsServerName: String? = nil,
         queryTimeoutSeconds: Int = 0,
         connectionEncoding: MySQLConnectionEncoding = .utf8,
         connectTimeoutMilliseconds: Int = MySQLConnectTimeout.defaultMilliseconds,
@@ -325,6 +327,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.sslConfig = sslConfig
         self.enableCleartextPlugin = enableCleartextPlugin
         self.tunnelSecuresTransport = tunnelSecuresTransport
+        self.tlsServerName = MariaDBTLSServerName(tlsServerName)
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.connectionEncoding = connectionEncoding
         self.connectTimeoutMilliseconds = MySQLConnectTimeout(milliseconds: connectTimeoutMilliseconds).milliseconds
@@ -723,7 +726,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
     private func applyTLS(_ mode: SSLMode, to handle: UnsafeMutablePointer<MYSQL>) {
-        MariaDBTLSMode.apply(mode, to: handle)
+        MariaDBTLSMode.apply(mode, serverName: tlsServerName, to: handle)
         // A local socket never leaves this Mac, and the mysql client trusts it the same way. The Cloud SQL Auth Proxy and
         // an SSH forward to the server's socket encrypt the way there, which their loopback listener cannot show as TLS.
         let withoutTLS = (mode == .disabled || mode == .preferred) && !transport.isUnixSocket && !tunnelSecuresTransport

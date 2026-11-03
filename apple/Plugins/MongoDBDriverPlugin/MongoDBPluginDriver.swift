@@ -94,6 +94,7 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
             database: currentDb,
             configuredDatabase: config.database,
             ssl: effectiveSSL,
+            tunneledServerName: config.tunneledServerName,
             authSource: config.additionalFields["mongoAuthSource"],
             readPreference: config.additionalFields["mongoReadPreference"],
             writeConcern: config.additionalFields["mongoWriteConcern"],

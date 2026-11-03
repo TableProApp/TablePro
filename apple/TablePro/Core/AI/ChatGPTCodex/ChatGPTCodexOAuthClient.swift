@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProHTTP
 
 final class ChatGPTCodexOAuthClient: ChatGPTCodexTokenRefreshing {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ChatGPTCodexOAuthClient")
@@ -61,7 +62,7 @@ final class ChatGPTCodexOAuthClient: ChatGPTCodexTokenRefreshing {
             "token": refreshToken,
             "client_id": ChatGPTCodex.clientID
         ])
-        _ = try? await session.data(for: request)
+        _ = try? await session.data(for: request, delegate: SameOriginRedirects.shared)
     }
 
     private func postToken(
@@ -79,7 +80,7 @@ final class ChatGPTCodexOAuthClient: ChatGPTCodexTokenRefreshing {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: SameOriginRedirects.shared)
         } catch {
             Self.logger.warning("ChatGPT token request failed: \(error.publicLogShape, privacy: .public)")
             throw AIProviderError.networkError(error.localizedDescription)

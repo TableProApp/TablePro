@@ -49,6 +49,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
     private let password: String?
     private let database: Int
     private let sslConfig: SSLConfiguration
+    private let tlsServerName: String?
     private let connectTimeout: RedisConnectTimeout
 
     private let routingLock = NSLock()
@@ -114,6 +115,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         password: String?,
         database: Int = 0,
         sslConfig: SSLConfiguration = SSLConfiguration(),
+        tlsServerName: String? = nil,
         connectTimeoutMilliseconds: Int = RedisConnectTimeout.defaultMilliseconds
     ) {
         self.host = host
@@ -122,6 +124,7 @@ final class RedisPluginConnection: RedisCommandChannel, @unchecked Sendable {
         self.password = password
         self.database = database
         self.sslConfig = sslConfig
+        self.tlsServerName = tlsServerName
         self.connectTimeout = RedisConnectTimeout(milliseconds: connectTimeoutMilliseconds)
         self._database = RedisSessionDatabase(database)
     }
@@ -543,7 +546,7 @@ private extension RedisPluginConnection {
             try armConnectWatchdog(deadline: deadline)
             try applyConnectDeadline(deadline, to: ctx)
             redisEnableKeepAliveWithInterval(ctx, 60)
-            if let tlsOptions = RedisTLSOptions.make(sslConfig: sslConfig, host: host) {
+            if let tlsOptions = RedisTLSOptions.make(sslConfig: sslConfig, host: host, serverName: tlsServerName) {
                 report(.negotiatingEncryption)
                 try applyConnectDeadline(deadline, to: ctx)
                 try connectSSL(ctx, options: tlsOptions)
