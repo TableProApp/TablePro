@@ -9,7 +9,7 @@ import TableProSQLGrammar
 extension QueryClassifier {
     static func etcdClassification(_ trimmed: String) -> QueryClassification {
         guard let operation = try? EtcdCommandParser.parse(trimmed) else {
-            return etcdUnparsedClassification(command: EtcdCommandParser.tokenize(trimmed).first?.lowercased() ?? "")
+            return etcdUnparsedClassification(command: EtcdCommandParser.commandName(trimmed) ?? "")
         }
         return etcdClassification(of: operation)
     }

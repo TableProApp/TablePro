@@ -2,10 +2,9 @@
 //  EtcdQueryBuilder.swift
 //  EtcdDriverPlugin
 //
-//  Builds internal query strings for etcd key browsing and filtering.
-//
 
 import Foundation
+import TableProEtcdCore
 import TableProPluginKit
 
 struct EtcdParsedQuery {
@@ -82,7 +81,7 @@ struct EtcdQueryBuilder {
 
     private static func decodeSegment(_ segment: String) -> String? {
         guard let data = Data(base64Encoded: segment) else { return nil }
-        return String(data: data, encoding: .utf8)
+        return EtcdCommandText.text(data)
     }
 
     private static func decodeFilter(_ segment: String) -> EtcdRowFilter? {

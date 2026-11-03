@@ -2,13 +2,11 @@
 //  EtcdPluginDriver.swift
 //  EtcdDriverPlugin
 //
-//  PluginDatabaseDriver implementation for etcd v3.
-//  Routes both NoSQL browsing hooks and editor commands through EtcdHttpClient.
-//
 
 import Foundation
 import os
 import OSLog
+import TableProEtcdCore
 import TableProPluginKit
 
 private extension Array where Element == String? {
@@ -47,7 +45,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         [.cancelQuery]
     }
 
-    // etcd has no transaction support — these are no-ops
+    // etcd has no transactions.
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
@@ -108,7 +106,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw EtcdError.notConnected
         }
 
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = EtcdCommandText.trimmed(query)
 
         // Health monitor sends "SELECT 1" as a ping
         if trimmed.lowercased() == "select 1" {
@@ -160,7 +158,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw EtcdError.notConnected
         }
 
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = EtcdCommandText.trimmed(query)
 
         if let parsed = EtcdQueryBuilder.parseRangeQuery(trimmed) {
             try await streamRangeRows(
@@ -199,8 +197,8 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             estimatedRowCount: nil
         )))
 
-        let (b64Key, b64RangeEnd) = Self.allKeysRange(for: prefix)
-        var req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: Int64(Self.maxKeys))
+        let range = Self.prefixRange(prefix)
+        var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: Int64(Self.maxKeys))
         req.sortOrder = sortAscending ? "ASCEND" : "DESCEND"
         req.sortTarget = "KEY"
 
@@ -238,16 +236,16 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw EtcdError.notConnected
         }
 
-        let (b64Key, b64RangeEnd) = Self.allKeysRange(for: keyspace.root)
+        let range = Self.prefixRange(keyspace.root)
 
         let response = try await client.rangeRequest(EtcdRangeRequest(
-            key: b64Key,
-            rangeEnd: b64RangeEnd,
+            key: range.key,
+            rangeEnd: range.rangeEnd,
             limit: Int64(Self.maxKeys),
             keysOnly: true
         ))
 
-        let keys = (response.kvs ?? []).map { EtcdHttpClient.base64Decode($0.key) }
+        let keys = (response.kvs ?? []).map(\.key)
         return keyspace.tables(forKeys: keys).map {
             PluginTableInfo(name: $0.name, type: "PREFIX", rowCount: $0.keyCount)
         }
@@ -297,11 +295,12 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let prefix = keyspace.prefix(forTable: table)
         let count = try await countKeys(prefix: prefix, client: client)
+        let browse = EtcdCommandText.command("get", arguments: [Data(prefix.utf8)], flags: ["--prefix"])
 
         return """
         // etcd key prefix: \(prefix.isEmpty ? "(all keys)" : prefix)
         // Keys: \(count)
-        // Use 'get \(prefix.isEmpty ? "\"\"" : prefix) --prefix' to browse keys
+        // Use '\(browse)' to browse keys
         """
     }
 
@@ -514,16 +513,13 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - KV Dispatch
 
     private func dispatchGet(
-        key: String, prefix: Bool, limit: Int64?, keysOnly: Bool,
+        key: Data, prefix: Bool, limit: Int64?, keysOnly: Bool,
         sortOrder: EtcdSortOrder?, sortTarget: EtcdSortTarget?,
         client: EtcdHttpClient, startTime: Date
     ) async throws -> PluginQueryResult {
-        let b64Key = EtcdHttpClient.base64Encode(key)
-        var req = EtcdRangeRequest(key: b64Key)
+        let range = EtcdKeyRange(key: key, prefix: prefix)
+        var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd)
 
-        if prefix {
-            req.rangeEnd = EtcdHttpClient.base64Encode(EtcdHttpClient.prefixRangeEnd(for: key))
-        }
         if let limit = limit {
             req.limit = limit
         }
@@ -540,13 +536,10 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let response = try await client.rangeRequest(req)
 
         if keysOnly {
-            let rowsRaw: [[String?]] = (response.kvs ?? []).map { kv in
-                [EtcdHttpClient.base64Decode(kv.key)]
-            }
             return PluginQueryResult(
                 columns: ["Key"],
                 columnTypeNames: ["String"],
-                rows: rowsRaw.map { $0.asCells },
+                rows: (response.kvs ?? []).map { [PluginCellValue.etcd($0.key)] },
                 rowsAffected: 0,
                 executionTime: Date().timeIntervalSince(startTime)
             )
@@ -556,14 +549,10 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func dispatchPut(
-        key: String, value: String, leaseId: Int64?,
+        key: Data, value: Data, leaseId: Int64?,
         client: EtcdHttpClient, startTime: Date
     ) async throws -> PluginQueryResult {
-        var req = EtcdPutRequest(
-            key: EtcdHttpClient.base64Encode(key),
-            value: EtcdHttpClient.base64Encode(value),
-            prevKv: true
-        )
+        var req = EtcdPutRequest(key: key, value: value, prevKv: true)
         if let leaseId = leaseId {
             req.lease = String(leaseId)
         }
@@ -574,23 +563,18 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return PluginQueryResult(
             columns: ["Key", "Value", "Revision"],
             columnTypeNames: ["String", "String", "Int64"],
-            rows: [[key, value, revision].asCells],
+            rows: [[.etcd(key), .etcd(value), .text(revision)]],
             rowsAffected: 1,
             executionTime: Date().timeIntervalSince(startTime)
         )
     }
 
     private func dispatchDel(
-        key: String, prefix: Bool,
+        key: Data, prefix: Bool,
         client: EtcdHttpClient, startTime: Date
     ) async throws -> PluginQueryResult {
-        var req = EtcdDeleteRequest(
-            key: EtcdHttpClient.base64Encode(key),
-            prevKv: true
-        )
-        if prefix {
-            req.rangeEnd = EtcdHttpClient.base64Encode(EtcdHttpClient.prefixRangeEnd(for: key))
-        }
+        let range = EtcdKeyRange(key: key, prefix: prefix)
+        let req = EtcdDeleteRequest(key: range.key, rangeEnd: range.rangeEnd, prevKv: true)
 
         let response = try await client.deleteRequest(req)
         let deleted = response.deleted ?? "0"
@@ -607,24 +591,25 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Watch Dispatch
 
     private func dispatchWatch(
-        key: String, prefix: Bool, timeout: TimeInterval,
+        key: Data, prefix: Bool, timeout: TimeInterval,
         client: EtcdHttpClient, startTime: Date
     ) async throws -> PluginQueryResult {
-        let events = try await client.watch(key: key, prefix: prefix, timeout: timeout)
+        let events = try await client.watch(range: EtcdKeyRange(key: key, prefix: prefix), timeout: timeout)
 
-        let rowsRaw: [[String?]] = events.map { event in
-            let eventType = event.type ?? "UNKNOWN"
-            let eventKey = event.kv.map { EtcdHttpClient.base64Decode($0.key) } ?? ""
-            let eventValue = event.kv?.value.map { EtcdHttpClient.base64Decode($0) } ?? ""
-            let modRevision = event.kv?.modRevision ?? ""
-            let prevValue = event.prevKv?.value.map { EtcdHttpClient.base64Decode($0) } ?? ""
-            return [eventType, eventKey, eventValue, modRevision, prevValue]
+        let rows: [PluginRow] = events.map { event in
+            [
+                .text(event.type ?? "UNKNOWN"),
+                .etcd(event.kv?.key ?? Data()),
+                .etcd(event.kv?.value ?? Data()),
+                .text(event.kv?.modRevision ?? ""),
+                .etcd(event.prevKv?.value ?? Data()),
+            ]
         }
 
         return PluginQueryResult(
             columns: ["Type", "Key", "Value", "ModRevision", "PrevValue"],
             columnTypeNames: ["String", "String", "String", "Int64", "String"],
-            rows: rowsRaw.map { $0.asCells },
+            rows: rows,
             rowsAffected: 0,
             executionTime: Date().timeIntervalSince(startTime)
         )
@@ -668,7 +653,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let ttl = response.TTL ?? "unknown"
         let grantedTtl = response.grantedTTL ?? "unknown"
         let attachedKeys = (response.keys ?? [])
-            .map { EtcdHttpClient.base64Decode($0) }
+            .map { EtcdCommandText.text($0) ?? EtcdCommandText.quoted($0) }
             .joined(separator: ", ")
 
         return PluginQueryResult(
@@ -813,10 +798,10 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         startTime: Date
     ) async throws -> PluginQueryResult {
         let matcher = try filter.matcher()
-        let (b64Key, b64RangeEnd) = Self.allKeysRange(for: prefix)
+        let range = Self.prefixRange(prefix)
         let fetchLimit = filter.isUnfiltered ? Int64(min(offset + limit, Self.maxKeys)) : Int64(Self.maxKeys)
 
-        var req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: fetchLimit)
+        var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: fetchLimit)
         req.sortOrder = sortAscending ? "ASCEND" : "DESCEND"
         req.sortTarget = "KEY"
 
@@ -831,8 +816,8 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func countKeys(prefix: String, client: EtcdHttpClient) async throws -> Int {
-        let (b64Key, b64RangeEnd) = Self.allKeysRange(for: prefix)
-        var req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: Int64(Self.maxKeys))
+        let range = Self.prefixRange(prefix)
+        var req = EtcdRangeRequest(key: range.key, rangeEnd: range.rangeEnd, limit: Int64(Self.maxKeys))
         req.countOnly = true
         let response = try await client.rangeRequest(req)
         return Int(response.count ?? "0") ?? 0
@@ -840,24 +825,14 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - Helpers
 
-    /// Returns (base64Key, base64RangeEnd) for a prefix range query.
-    /// Empty prefix uses null byte (\0) as key to mean "all keys".
-    private static func allKeysRange(for prefix: String) -> (key: String, rangeEnd: String) {
-        if prefix.isEmpty {
-            // \0 as key = start from beginning, \0 as range_end = all keys
-            let b64Key = EtcdHttpClient.base64Encode("\0")
-            let b64RangeEnd = EtcdHttpClient.base64Encode("\0")
-            return (b64Key, b64RangeEnd)
-        }
-        let b64Key = EtcdHttpClient.base64Encode(prefix)
-        let b64RangeEnd = EtcdHttpClient.base64Encode(EtcdHttpClient.prefixRangeEnd(for: prefix))
-        return (b64Key, b64RangeEnd)
+    private static func prefixRange(_ prefix: String) -> EtcdKeyRange {
+        EtcdKeyRange(key: Data(prefix.utf8), prefix: true)
     }
 
     private static func filterRow(_ kv: EtcdKeyValue) -> EtcdFilterRow {
         EtcdFilterRow(
-            key: EtcdHttpClient.base64Decode(kv.key),
-            value: kv.value.map { EtcdHttpClient.base64Decode($0) },
+            key: kv.key,
+            value: kv.value,
             version: kv.version ?? "0",
             modRevision: kv.modRevision ?? "0",
             createRevision: kv.createRevision ?? "0",

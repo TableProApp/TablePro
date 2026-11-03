@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProEtcdCore
 import TableProPluginKit
 import Testing
 
@@ -18,7 +19,7 @@ struct EtcdCommandParserGetTests {
             Issue.record("Expected .get, got \(op)")
             return
         }
-        #expect(key == "mykey")
+        #expect(key == Data("mykey".utf8))
         #expect(prefix == false)
         #expect(limit == nil)
         #expect(keysOnly == false)
@@ -33,7 +34,7 @@ struct EtcdCommandParserGetTests {
             Issue.record("Expected .get, got \(op)")
             return
         }
-        #expect(key == "/app")
+        #expect(key == Data("/app".utf8))
         #expect(prefix == true)
         #expect(keysOnly == true)
     }
@@ -45,7 +46,7 @@ struct EtcdCommandParserGetTests {
             Issue.record("Expected .get, got \(op)")
             return
         }
-        #expect(key == "/app")
+        #expect(key == Data("/app".utf8))
         #expect(prefix == true)
         #expect(limit == 5)
     }
@@ -63,7 +64,7 @@ struct EtcdCommandParserGetTests {
             Issue.record("Expected .get, got \(op)")
             return
         }
-        #expect(key == "/app")
+        #expect(key == Data("/app".utf8))
         #expect(prefix == true)
     }
 
@@ -74,7 +75,7 @@ struct EtcdCommandParserGetTests {
             Issue.record("Expected .get")
             return
         }
-        #expect(key == "/app/")
+        #expect(key == Data("/app/".utf8))
         #expect(prefix == true)
     }
 
@@ -135,7 +136,7 @@ struct EtcdCommandParserGetTests {
             Issue.record("Expected .get")
             return
         }
-        #expect(key == "/prefix/")
+        #expect(key == Data("/prefix/".utf8))
         #expect(prefix == true)
         #expect(limit == 100)
         #expect(keysOnly == true)
@@ -180,8 +181,8 @@ struct EtcdCommandParserPutTests {
             Issue.record("Expected .put, got \(op)")
             return
         }
-        #expect(key == "mykey")
-        #expect(value == "myvalue")
+        #expect(key == Data("mykey".utf8))
+        #expect(value == Data("myvalue".utf8))
         #expect(leaseId == nil)
     }
 
@@ -212,8 +213,8 @@ struct EtcdCommandParserPutTests {
             Issue.record("Expected .put")
             return
         }
-        #expect(key == "my key")
-        #expect(value == "my value")
+        #expect(key == Data("my key".utf8))
+        #expect(value == Data("my value".utf8))
     }
 
     @Test("Put with single-quoted args")
@@ -223,8 +224,8 @@ struct EtcdCommandParserPutTests {
             Issue.record("Expected .put")
             return
         }
-        #expect(key == "key")
-        #expect(value == "value")
+        #expect(key == Data("key".utf8))
+        #expect(value == Data("value".utf8))
     }
 
     @Test("Put with empty quoted key")
@@ -234,8 +235,8 @@ struct EtcdCommandParserPutTests {
             Issue.record("Expected .put")
             return
         }
-        #expect(key == "")
-        #expect(value == "value")
+        #expect(key.isEmpty)
+        #expect(value == Data("value".utf8))
     }
 
     @Test("Put with escape sequences in quotes")
@@ -245,7 +246,7 @@ struct EtcdCommandParserPutTests {
             Issue.record("Expected .put")
             return
         }
-        #expect(value == "value\nwith\nnewlines")
+        #expect(value == Data("value\nwith\nnewlines".utf8))
     }
 
     @Test("Put missing arguments throws")
@@ -271,7 +272,7 @@ struct EtcdCommandParserDelTests {
             Issue.record("Expected .del, got \(op)")
             return
         }
-        #expect(key == "mykey")
+        #expect(key == Data("mykey".utf8))
         #expect(prefix == false)
     }
 
@@ -282,7 +283,7 @@ struct EtcdCommandParserDelTests {
             Issue.record("Expected .del")
             return
         }
-        #expect(key == "/app/")
+        #expect(key == Data("/app/".utf8))
         #expect(prefix == true)
     }
 
@@ -293,7 +294,7 @@ struct EtcdCommandParserDelTests {
             Issue.record("Expected .del, got \(op)")
             return
         }
-        #expect(key == "/app")
+        #expect(key == Data("/app".utf8))
         #expect(prefix == true)
     }
 
@@ -312,7 +313,7 @@ struct EtcdCommandParserDelTests {
             Issue.record("Expected .del, got \(op)")
             return
         }
-        #expect(key == "/app")
+        #expect(key == Data("/app".utf8))
         #expect(prefix == false)
     }
 
@@ -323,7 +324,7 @@ struct EtcdCommandParserDelTests {
             Issue.record("Expected .del")
             return
         }
-        #expect(key == "mykey")
+        #expect(key == Data("mykey".utf8))
     }
 
     @Test("Del missing key throws")
@@ -342,7 +343,7 @@ struct EtcdCommandParserWatchTests {
             Issue.record("Expected .watch, got \(op)")
             return
         }
-        #expect(key == "mykey")
+        #expect(key == Data("mykey".utf8))
         #expect(prefix == false)
         #expect(timeout == 30)
     }
@@ -873,7 +874,7 @@ struct EtcdCommandParserTokenizerTests {
             Issue.record("Expected .get")
             return
         }
-        #expect(key == "mykey")
+        #expect(key == Data("mykey".utf8))
     }
 
     @Test("Leading and trailing whitespace is trimmed")
@@ -883,7 +884,7 @@ struct EtcdCommandParserTokenizerTests {
             Issue.record("Expected .get")
             return
         }
-        #expect(key == "mykey")
+        #expect(key == Data("mykey".utf8))
     }
 
     @Test("Multiple spaces between all tokens")
@@ -893,8 +894,8 @@ struct EtcdCommandParserTokenizerTests {
             Issue.record("Expected .put")
             return
         }
-        #expect(key == "key")
-        #expect(value == "value")
+        #expect(key == Data("key".utf8))
+        #expect(value == Data("value".utf8))
     }
 
     @Test("Backslash outside quotes preserved")
@@ -904,7 +905,7 @@ struct EtcdCommandParserTokenizerTests {
             Issue.record("Expected .put")
             return
         }
-        #expect(key == "C:\\path")
+        #expect(key == Data("C:\\path".utf8))
     }
 
     @Test("Tab and return escape sequences inside double quotes")
@@ -914,7 +915,7 @@ struct EtcdCommandParserTokenizerTests {
             Issue.record("Expected .put")
             return
         }
-        #expect(value == "a\tb\rc")
+        #expect(value == Data("a\tb\rc".utf8))
     }
 
     @Test("Escaped backslash inside quotes")
@@ -924,7 +925,7 @@ struct EtcdCommandParserTokenizerTests {
             Issue.record("Expected .put")
             return
         }
-        #expect(value == "a\\b")
+        #expect(value == Data("a\\b".utf8))
     }
 
     @Test("Escaped double quote inside double quotes")
@@ -934,7 +935,7 @@ struct EtcdCommandParserTokenizerTests {
             Issue.record("Expected .put")
             return
         }
-        #expect(value == "say \"hi\"")
+        #expect(value == Data("say \"hi\"".utf8))
     }
 
     @Test("Case insensitivity for commands")
@@ -944,7 +945,7 @@ struct EtcdCommandParserTokenizerTests {
             Issue.record("Expected .get")
             return
         }
-        #expect(key == "mykey")
+        #expect(key == Data("mykey".utf8))
     }
 
     @Test("Mixed case commands")
@@ -954,7 +955,85 @@ struct EtcdCommandParserTokenizerTests {
             Issue.record("Expected .get")
             return
         }
-        #expect(key == "mykey")
+        #expect(key == Data("mykey".utf8))
+    }
+}
+
+// MARK: - Generated Commands
+
+struct EtcdCommandParserRoundTripTests {
+    private static func deletedKey(_ line: String) throws -> Data? {
+        guard case .del(let key, let prefix) = try EtcdCommandParser.parse(line), !prefix else { return nil }
+        return key
+    }
+
+    @Test(
+        "A key with a space or format character at an edge survives generate then parse",
+        arguments: [" ", "\t", "\n", "\u{00A0}", "\u{3000}", "\u{200B}", "\u{200C}", "\u{200D}", "\u{2060}", "\u{FEFF}"]
+    )
+    func edgeCharacterKey(edge: String) throws {
+        for key in [edge + "foo", "foo" + edge, edge + "foo" + edge] {
+            let bytes = Data(key.utf8)
+            #expect(try Self.deletedKey(EtcdCommandText.command("del", arguments: [bytes])) == bytes)
+            #expect(try Self.deletedKey(EtcdCommandText.command("del", arguments: [bytes]) + "\n") == bytes)
+        }
+    }
+
+    @Test("A typed zero width space stays part of the key")
+    func typedZeroWidthSpace() throws {
+        #expect(try Self.deletedKey("del foo\u{200B}") == Data("foo\u{200B}".utf8))
+    }
+
+    @Test("A key that is not UTF-8 survives generate then parse")
+    func nonUTF8Key() throws {
+        let key = Data([0x2F, 0x61, 0x2F, 0xFF, 0xC3])
+        #expect(try Self.deletedKey(EtcdCommandText.command("del", arguments: [key])) == key)
+
+        let value = Data([0x00, 0x80, 0xFE])
+        let op = try EtcdCommandParser.parse(EtcdCommandText.command("put", arguments: [key, value]))
+        guard case .put(let parsedKey, let parsedValue, _) = op else {
+            Issue.record("Expected .put, got \(op)")
+            return
+        }
+        #expect(parsedKey == key)
+        #expect(parsedValue == value)
+    }
+
+    @Test("A hex escape in a typed command is one byte of the key")
+    func typedHexEscape() throws {
+        let op = try EtcdCommandParser.parse(#"get "/a\xff" --prefix"#)
+        guard case .get(let key, let prefix, _, _, _, _) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
+        }
+        #expect(key == Data([0x2F, 0x61, 0xFF]))
+        #expect(prefix)
+    }
+
+    @Test("A key that starts with -- is an argument, not a flag", arguments: ["--prefix", "--", "--lease=7"])
+    func dashedKey(key: String) throws {
+        let bytes = Data(key.utf8)
+        #expect(try Self.deletedKey(EtcdCommandText.command("del", arguments: [bytes])) == bytes)
+
+        let line = EtcdCommandText.command("put", arguments: [bytes, Data("v".utf8)], flags: ["--lease=0x7b"])
+        guard case .put(let parsedKey, let value, let leaseId) = try EtcdCommandParser.parse(line) else {
+            Issue.record("Expected .put from \(line)")
+            return
+        }
+        #expect(parsedKey == bytes)
+        #expect(value == Data("v".utf8))
+        #expect(leaseId == 0x7B)
+    }
+
+    @Test("Flags before a bare -- still apply")
+    func flagsBeforeEndOfFlags() throws {
+        let op = try EtcdCommandParser.parse("del --prefix -- --cache/")
+        guard case .del(let key, let prefix) = op else {
+            Issue.record("Expected .del, got \(op)")
+            return
+        }
+        #expect(key == Data("--cache/".utf8))
+        #expect(prefix)
     }
 }
 
