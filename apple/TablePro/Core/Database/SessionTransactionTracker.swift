@@ -61,7 +61,16 @@ internal final class SessionTransactionTracker: ObservableObject {
 
     /// A one-driver connection holds it for every entry it has; a lane only for its own database.
     internal func holdsTransaction(connectionId: UUID, container: String) -> Bool {
-        holds.keys.contains { $0.connectionId == connectionId && ($0.lane == nil || $0.lane == container) }
+        transactionState(connectionId: connectionId, container: container) != nil
+    }
+
+    // An aborted hold wins, because it is the one that blocks every statement until a rollback.
+    internal func transactionState(connectionId: UUID, container: String) -> State? {
+        let states = holds.values
+            .filter { $0.connectionId == connectionId && ($0.key.lane == nil || $0.key.lane == container) }
+            .map(\.state)
+        if states.contains(.aborted) { return .aborted }
+        return states.isEmpty ? nil : .open
     }
 
     internal func driver(for hold: Hold) -> DatabaseDriver? {

@@ -26,8 +26,6 @@ struct ConnectionLivenessPhaseTests {
         #expect(phase == .unavailable(.disconnected(Self.failure)))
     }
 
-    /// The whole point of the recovering state: a blip that repairs itself in seconds must not take
-    /// the rows, the tabs and the toolbar down with it on the way past.
     @Test("A reconnect in flight keeps the window on its content")
     func recoveringSessionStaysConnected() {
         let phase = ConnectionWindowPhaseMachine.onSessionChanged(
@@ -39,8 +37,6 @@ struct ConnectionLivenessPhaseTests {
         #expect(phase == .connected)
     }
 
-    /// PostgreSQL, Redshift, CockroachDB and PGlite reconnect to switch database, so a healthy
-    /// session sits at status `.connecting` with its driver installed for the whole switch.
     @Test("An ordinary database switch is not a lost connection")
     func liveSessionWithDriverStaysConnected() {
         let phase = ConnectionWindowPhaseMachine.onSessionChanged(
@@ -74,8 +70,8 @@ struct ConnectionLivenessPhaseTests {
         #expect(phase == .unavailable(.disconnected(nil)))
     }
 
-    @Test("A snapshot with no liveness given behaves exactly as before")
-    func defaultLivenessPreservesTheOldTable() {
+    @Test("A snapshot with no liveness given reads the driver as before")
+    func defaultLivenessReadsTheDriver() {
         #expect(
             ConnectionWindowPhaseMachine.onSessionChanged(
                 phase: .connecting,
@@ -85,7 +81,7 @@ struct ConnectionLivenessPhaseTests {
         )
         #expect(
             ConnectionWindowPhaseMachine.onSessionChanged(
-                phase: .connected,
+                phase: .connecting,
                 session: ConnectionSessionSnapshot(exists: true, hasDriver: false),
                 ownsAttempt: false
             ) == .connecting
@@ -101,8 +97,6 @@ struct ConnectionLivenessReportingTests {
         return session
     }
 
-    /// The connections strip and the detail pane used to read different channels, which is how one
-    /// came to paint a failure while the other went on showing rows.
     @Test("An unreachable session reports the failure, whatever its status says")
     func unreachableSessionReportsTheFailure() {
         let reported = session(liveness: .unreachable(ConnectionFailureInfo(message: "gone")), status: .connecting)
@@ -127,60 +121,101 @@ struct ConnectionLivenessReportingTests {
 
         #expect(!live.isContentViewEquivalent(to: lost))
     }
+
+    @Test("An outside client reads a redial as connecting while the UI keeps reading connected")
+    func redialReadsAsConnectingOutside() {
+        var redialing = session(liveness: .recovering, status: .connected)
+        redialing.recovery = ConnectionRecoveryProgress(attempt: 3, cause: nil)
+
+        #expect(redialing.effectiveStatus == .connecting)
+        #expect(redialing.reportedStatus == .connected)
+    }
+
+    @Test("Without a redial the outside status is the reported one")
+    func noRedialKeepsTheReportedStatus() {
+        #expect(session(liveness: .recovering, status: .connected).effectiveStatus == .connected)
+        #expect(session(liveness: .live, status: .connected).effectiveStatus == .connected)
+        let lost = session(liveness: .unreachable(ConnectionFailureInfo(message: "gone")), status: .connected)
+        #expect(lost.effectiveStatus == .error("gone"))
+    }
+
+    @Test("Each reconnect attempt is a change the content view sees")
+    func recoveryProgressBreaksContentEquivalence() {
+        var first = ConnectionSession(connection: TestFixtures.makeConnection())
+        first.liveness = .recovering
+        first.recovery = ConnectionRecoveryProgress(attempt: 1, cause: nil)
+        var second = first
+        second.recovery = ConnectionRecoveryProgress(attempt: 2, cause: nil)
+
+        #expect(!first.isContentViewEquivalent(to: second))
+    }
 }
 
 @MainActor
 struct ReconnectDegradationTests {
-    private func injectLiveSession() -> UUID {
+    private func injectLiveSession() -> (id: UUID, driver: MockDatabaseDriver) {
         let connection = TestFixtures.makeConnection()
-        var session = ConnectionSession(connection: connection, driver: MockDatabaseDriver(connection: connection))
+        let driver = MockDatabaseDriver(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
         session.status = .connected
         DatabaseManager.shared.injectSession(session, for: connection.id)
-        return connection.id
+        return (connection.id, driver)
     }
 
-    /// Under the threshold the rows, the tabs and the toolbar stay exactly as they were, which is
-    /// what stops a wifi handoff or a brief server pause from blanking a window that repairs itself.
-    @Test("An early retry leaves the connection believable")
-    func earlyAttemptsOnlyMarkRecovering() {
-        let id = injectLiveSession()
+    private static let failure = ConnectionFailureInfo(message: "The connection stopped responding.")
+
+    @Test("A recovering session stays usable and carries the loop's progress")
+    func recoveringKeepsTheConnectionBelievable() {
+        let (id, _) = injectLiveSession()
+        defer { DatabaseManager.shared.removeSession(for: id) }
+        let progress = ConnectionRecoveryProgress(attempt: 3, cause: "SSH tunnel disconnected.")
+
+        DatabaseManager.shared.markSessionRecovering(id, progress: progress)
+
+        #expect(DatabaseManager.shared.activeSessions[id]?.liveness == .recovering)
+        #expect(DatabaseManager.shared.activeSessions[id]?.recovery == progress)
+        #expect(DatabaseManager.shared.isUsable(id))
+        #expect(DatabaseManager.shared.disconnectReason(for: id) == nil)
+    }
+
+    @Test("A lost session is not pulled back to recovering")
+    func lostSessionStaysLost() {
+        let (id, driver) = injectLiveSession()
         defer { DatabaseManager.shared.removeSession(for: id) }
 
-        for attempt in 1..<DatabaseManager.unreachableAfterAttempt {
-            DatabaseManager.shared.applyReconnectAttempt(attempt, lastFailure: nil, to: id)
-            #expect(DatabaseManager.shared.activeSessions[id]?.liveness == .recovering)
-        }
+        DatabaseManager.shared.markSessionUnreachable(id, startedWith: driver, info: Self.failure)
+        DatabaseManager.shared.markSessionRecovering(id, progress: ConnectionRecoveryProgress(attempt: 1, cause: nil))
+
+        #expect(DatabaseManager.shared.activeSessions[id]?.liveness == .unreachable(Self.failure))
+        #expect(DatabaseManager.shared.activeSessions[id]?.recovery == nil)
     }
 
-    @Test("A retry that has been failing for a whole ping cycle stops being believable")
-    func thresholdAttemptMarksUnreachable() {
-        let id = injectLiveSession()
+    @Test("Marking a session lost ends the progress it was showing")
+    func unreachableClearsTheProgress() {
+        let (id, driver) = injectLiveSession()
         defer { DatabaseManager.shared.removeSession(for: id) }
+        DatabaseManager.shared.markSessionRecovering(id, progress: ConnectionRecoveryProgress(attempt: 10, cause: nil))
 
-        DatabaseManager.shared.applyReconnectAttempt(DatabaseManager.unreachableAfterAttempt, lastFailure: nil, to: id)
+        DatabaseManager.shared.markSessionUnreachable(id, startedWith: driver, info: Self.failure)
 
-        guard case .unreachable = DatabaseManager.shared.activeSessions[id]?.liveness else {
-            Issue.record("the session should have stopped being believable at the threshold")
-            return
-        }
+        #expect(DatabaseManager.shared.activeSessions[id]?.liveness == .unreachable(Self.failure))
+        #expect(DatabaseManager.shared.activeSessions[id]?.recovery == nil)
+        #expect(DatabaseManager.shared.disconnectReason(for: id) == .sessionLost(Self.failure))
     }
 
-    /// The driver is deliberately left installed. Taking it away is what makes an ordinary database
-    /// switch on a reconnect-to-switch engine look like a dropped connection, and it is the handle
-    /// the reconnect itself still goes through.
     @Test("Being unreachable never removes the driver")
     func unreachableKeepsTheDriverInstalled() {
-        let id = injectLiveSession()
+        let (id, driver) = injectLiveSession()
         defer { DatabaseManager.shared.removeSession(for: id) }
 
-        DatabaseManager.shared.applyReconnectAttempt(DatabaseManager.unreachableAfterAttempt, lastFailure: nil, to: id)
+        DatabaseManager.shared.markSessionUnreachable(id, startedWith: driver, info: Self.failure)
 
-        #expect(DatabaseManager.shared.activeSessions[id]?.driver != nil)
+        #expect(DatabaseManager.shared.activeSessions[id]?.driver === driver)
     }
 
     @Test("A reconnect that lost its race cannot mark a connection someone else restored")
     func staleAttemptCannotMarkTheWinner() {
-        let id = injectLiveSession()
+        let (id, _) = injectLiveSession()
         defer { DatabaseManager.shared.removeSession(for: id) }
         let connection = TestFixtures.makeConnection(id: id)
 
@@ -193,12 +228,9 @@ struct ReconnectDegradationTests {
         #expect(DatabaseManager.shared.activeSessions[id]?.liveness == .live)
     }
 
-    /// The reconnect has to actually reconnect. Both the wrapper and the connect underneath it used
-    /// to return the moment they saw an installed driver, so Reconnect on the one connection that
-    /// needed it reported success and came straight back to the same pane.
     @Test("An unreachable session is not handed out as a live connection")
     func unreachableSessionIsNotLive() {
-        let id = injectLiveSession()
+        let (id, driver) = injectLiveSession()
         defer { DatabaseManager.shared.removeSession(for: id) }
 
         guard case .live = DatabaseManager.shared.connectionState(id) else {
@@ -206,145 +238,103 @@ struct ReconnectDegradationTests {
             return
         }
 
-        DatabaseManager.shared.applyReconnectAttempt(DatabaseManager.unreachableAfterAttempt, lastFailure: nil, to: id)
+        DatabaseManager.shared.markSessionUnreachable(id, startedWith: driver, info: Self.failure)
 
         if case .live = DatabaseManager.shared.connectionState(id) {
             Issue.record("a session that stopped answering must not be handed out as live")
         }
     }
 
-    @Test("An early retry after a certificate failure still leaves the connection believable")
-    func earlyAttemptWithAReasonOnlyMarksRecovering() {
-        let id = injectLiveSession()
-        defer { DatabaseManager.shared.removeSession(for: id) }
-
-        DatabaseManager.shared.applyReconnectAttempt(1, lastFailure: Self.certificateFailure, to: id)
-
-        #expect(DatabaseManager.shared.activeSessions[id]?.liveness == .recovering)
-        #expect(DatabaseManager.shared.disconnectReason(for: id) == nil)
-    }
-
-    @Test("A retry past the threshold names the certificate failure behind it")
-    func thresholdAttemptNamesTheLastFailure() {
-        let id = injectLiveSession()
-        defer { DatabaseManager.shared.removeSession(for: id) }
-
-        DatabaseManager.shared.applyReconnectAttempt(
-            DatabaseManager.unreachableAfterAttempt,
-            lastFailure: Self.certificateFailure,
-            to: id
-        )
-
-        #expect(DatabaseManager.shared.activeSessions[id]?.liveness == .unreachable(Self.certificateFailure))
-        #expect(DatabaseManager.shared.disconnectReason(for: id) == .sessionLost(Self.certificateFailure))
-    }
-
-    @Test("A retry past the threshold with no reason of its own says the connection stopped responding")
-    func thresholdAttemptWithoutAReasonIsGeneric() {
-        let id = injectLiveSession()
-        defer { DatabaseManager.shared.removeSession(for: id) }
-
-        DatabaseManager.shared.applyReconnectAttempt(DatabaseManager.unreachableAfterAttempt, lastFailure: nil, to: id)
-
-        #expect(
-            DatabaseManager.shared.activeSessions[id]?.liveness
-                == .unreachable(DatabaseManager.unreachableWhileRetryingInfo)
-        )
-    }
-
-    @Test("A later retry that fails for an ordinary reason replaces the certificate reason")
-    func laterGenericFailureReplacesTheReason() {
-        let id = injectLiveSession()
-        defer { DatabaseManager.shared.removeSession(for: id) }
-        let threshold = DatabaseManager.unreachableAfterAttempt
-
-        DatabaseManager.shared.applyReconnectAttempt(threshold, lastFailure: Self.certificateFailure, to: id)
-        DatabaseManager.shared.applyReconnectAttempt(threshold + 1, lastFailure: nil, to: id)
-
-        #expect(
-            DatabaseManager.shared.activeSessions[id]?.liveness
-                == .unreachable(DatabaseManager.unreachableWhileRetryingInfo)
-        )
-    }
-
-    private static let certificateFailure = ConnectionFailureClassifier.info(
-        for: SSLHandshakeError.untrustedCertificate(serverMessage: "self-signed certificate in certificate chain")
-    )
-
     @Test("A connection that comes back stops carrying why it failed")
     func markingLiveClearsTheFailure() {
-        let id = injectLiveSession()
+        let (id, driver) = injectLiveSession()
         defer { DatabaseManager.shared.removeSession(for: id) }
 
-        DatabaseManager.shared.applyReconnectAttempt(DatabaseManager.unreachableAfterAttempt, lastFailure: nil, to: id)
+        DatabaseManager.shared.markSessionUnreachable(id, startedWith: driver, info: Self.failure)
         DatabaseManager.shared.markSessionLive(id)
 
         #expect(DatabaseManager.shared.activeSessions[id]?.liveness == .live)
+        #expect(DatabaseManager.shared.activeSessions[id]?.recovery == nil)
         #expect(DatabaseManager.shared.disconnectReason(for: id) == nil)
     }
 }
 
-struct ConnectionHealthMonitorAbortTests {
-    /// The abort used to leave the state latched mid-reconnect, so the loop woke on every interval
-    /// for the life of the app to fail its own guard and return.
-    @Test("A monitor that gives up stops asking")
-    func abortEndsTheMonitoringLoop() async {
+private actor FailureReports {
+    private(set) var count = 0
+
+    func record() {
+        count += 1
+    }
+}
+
+struct ConnectionHealthMonitorHandoffTests {
+    @Test("A monitor whose ping fails hands the session off and stops asking")
+    func failedPingHandsOff() async {
         let monitor = ConnectionHealthMonitor(
             connectionId: UUID(),
             pingInterval: { .seconds(30) },
             pingHandler: { false },
-            reconnectHandler: { .abort },
-            onStateChanged: { _, _ in }
+            onPingFailed: { .handedOff }
         )
 
         await monitor.performHealthCheck()
 
-        #expect(await monitor.hasAborted)
-        #expect(await monitor.currentState == .aborted)
+        #expect(await monitor.hasHandedOff)
+        #expect(await monitor.currentState == .handedOff)
     }
 
-    @Test("A monitor whose reconnect succeeds is healthy again")
-    func successReturnsToHealthy() async {
+    @Test("A failure the manager declines keeps the monitor checking")
+    func ignoredFailureKeepsChecking() async {
         let monitor = ConnectionHealthMonitor(
             connectionId: UUID(),
             pingInterval: { .seconds(30) },
             pingHandler: { false },
-            reconnectHandler: { .success },
-            onStateChanged: { _, _ in }
+            onPingFailed: { .ignored }
         )
 
         await monitor.performHealthCheck()
 
-        #expect(await !monitor.hasAborted)
+        #expect(await !monitor.hasHandedOff)
+        #expect(await monitor.currentState == .healthy)
+    }
+
+    @Test("A ping that answers reports nothing")
+    func answeredPingReportsNothing() async {
+        let reports = FailureReports()
+        let monitor = ConnectionHealthMonitor(
+            connectionId: UUID(),
+            pingInterval: { .seconds(30) },
+            pingHandler: { true },
+            onPingFailed: {
+                await reports.record()
+                return .handedOff
+            }
+        )
+
+        await monitor.performHealthCheck()
+
+        #expect(await reports.count == 0)
         #expect(await monitor.currentState == .healthy)
     }
 }
 
 struct ConnectionHealthMonitorRetryTests {
-    @Test("A failed attempt's reason is announced with the attempt that follows it", .timeLimit(.minutes(1)))
-    func retryReasonReachesTheNextAttempt() async {
-        let reason = ConnectionFailureInfo(message: "The server's TLS certificate could not be verified.")
-        let (states, continuation) = AsyncStream<ConnectionHealthMonitor.HealthState>.makeStream()
+    @Test("A failed ping is reported once, and the monitor never redials on its own")
+    func failureIsReportedOnce() async {
+        let reports = FailureReports()
         let monitor = ConnectionHealthMonitor(
             connectionId: UUID(),
             pingInterval: { .seconds(30) },
             pingHandler: { false },
-            reconnectHandler: { .retry(reason) },
-            onStateChanged: { _, state in continuation.yield(state) }
+            onPingFailed: {
+                await reports.record()
+                return .handedOff
+            }
         )
 
-        let check = Task { await monitor.performHealthCheck() }
-        var announced: [ConnectionHealthMonitor.HealthState] = []
-        for await state in states {
-            announced.append(state)
-            if case .reconnecting(attempt: 2, _) = state { break }
-        }
-        check.cancel()
-        await check.value
+        await monitor.performHealthCheck()
+        await monitor.performHealthCheck()
 
-        #expect(announced == [
-            .reconnecting(attempt: 1, lastFailure: nil),
-            .reconnecting(attempt: 2, lastFailure: reason)
-        ])
+        #expect(await reports.count == 1)
     }
 }

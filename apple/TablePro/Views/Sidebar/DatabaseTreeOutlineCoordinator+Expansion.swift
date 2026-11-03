@@ -329,7 +329,7 @@ extension DatabaseTreeOutlineCoordinator {
     }
 
     private var isSearchListingPending: Bool {
-        guard DatabaseManager.shared.session(for: connectionId)?.status == .connected else { return false }
+        guard DatabaseManager.shared.session(for: connectionId)?.reportedStatus == .connected else { return false }
         return searchListingDatabases.contains { database in
             switch service.allSchemaTablesLoadState(connectionId: connectionId, database: database) {
             case .idle, .loading: return true

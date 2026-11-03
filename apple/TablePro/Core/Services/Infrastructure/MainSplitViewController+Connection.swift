@@ -6,6 +6,7 @@
 import AppKit
 import Foundation
 import os
+import TableProConnectionLibrary
 
 /// The rail asks the window which connection it is showing rather than remembering one, so the
 /// window answers from the registry that already knows.
@@ -54,9 +55,46 @@ internal extension MainSplitViewController {
         connect(connection, cancellingPrevious: false)
     }
 
+    // The menu bar's second connection command does what the state offers: Connect, Reconnect or Stop.
     @objc func retryConnection() {
-        guard let connectionId = workspaces.selectedConnectionId else { return }
-        reconnectWorkspace(connectionId)
+        guard let connectionId = workspaces.selectedConnectionId,
+              let action = menuConnectionAction else { return }
+        performConnectionAction(action, for: connectionId)
+    }
+
+    var selectedConnectionStatus: ConnectionDisplayStatus {
+        guard let workspace = workspaces.selected else { return .notConnected }
+        return ConnectionStatusResolver.status(of: workspace)
+    }
+
+    var menuConnectionAction: ConnectionStatusAction? {
+        guard payloadConnection != nil,
+              let action = ConnectionStatusPresentation(selectedConnectionStatus).primaryAction else { return nil }
+        guard action != .cancel else { return .cancel }
+        return ConnectionWindowPhaseMachine.allowsManualConnect(phase: phase) ? action : nil
+    }
+
+    var menuConnectionActionTitle: String {
+        ConnectionStatusPresentation(selectedConnectionStatus).primaryActionTitle ?? String(localized: "Reconnect")
+    }
+
+    // A cancel stops whichever dial is running: the window's own attempt or the session's reconnect loop.
+    func performConnectionAction(_ action: ConnectionStatusAction, for connectionId: UUID) {
+        guard let workspace = workspaces.workspace(for: connectionId) else { return }
+        switch action {
+        case .connect, .reconnect:
+            reconnectWorkspaceIfIdle(connectionId)
+        case .cancel:
+            if case .reconnecting = ConnectionStatusResolver.status(of: workspace) {
+                cancelRecovery(for: connectionId)
+            } else {
+                cancelConnectionAttempt(for: connectionId)
+            }
+        }
+    }
+
+    func cancelRecovery(for connectionId: UUID) {
+        DatabaseManager.shared.cancelRecovery(for: connectionId)
     }
 
     /// Reconnects the connection named, not whichever one the window happens to be showing.
@@ -116,12 +154,17 @@ internal extension MainSplitViewController {
         ConnectionFileLockAction.commandTitle(connectionId: workspaces.selectedConnectionId) != nil
     }
 
+    // A lost or reconnecting session still holds its driver and tunnels, so it can be ended too.
     var canDisconnect: Bool {
-        payloadConnection != nil && phase == .connected
+        guard let connection = payloadConnection else { return false }
+        return ConnectionMenuPolicy.showsDisconnect(
+            status: selectedConnectionStatus,
+            holdsSession: DatabaseManager.shared.session(for: connection.id) != nil
+        )
     }
 
     var canReconnect: Bool {
-        payloadConnection != nil && ConnectionWindowPhaseMachine.allowsManualConnect(phase: phase)
+        menuConnectionAction != nil
     }
 
     func cancelConnectionAttempt(for connectionId: UUID) {

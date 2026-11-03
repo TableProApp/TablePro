@@ -12,4 +12,24 @@ extension WorkspaceRailCellView {
     var renderedLabel: NSTextField? {
         subviews.lazy.compactMap { $0 as? NSTextField }.first
     }
+
+    /// The tile is its own view rather than the `imageView` outlet, for the same reason.
+    var renderedTile: ConnectionTileView? {
+        subviews.lazy.compactMap { $0 as? ConnectionTileView }.first
+    }
+
+    var renderedStatusMark: ConnectionStatusMarkView? {
+        subviews.lazy.compactMap { $0 as? ConnectionStatusMarkView }.first
+    }
+
+    /// The badge on the tile's corner, the only image view the cell holds directly.
+    var renderedTransactionBadge: NSImageView? {
+        subviews.lazy.compactMap { $0 as? NSImageView }.first
+    }
+}
+
+extension ConnectionStatusMarkView {
+    var renderedTint: NSColor? {
+        subviews.lazy.compactMap { $0 as? NSImageView }.first?.contentTintColor
+    }
 }

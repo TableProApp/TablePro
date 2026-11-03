@@ -87,9 +87,7 @@ extension DatabaseManager {
         }
     }
 
-    /// The transport-layer reason a tunneled connect failed, when the tunnel recorded one. The driver
-    /// only ever sees a local socket that was accepted and then stayed silent, so its own error
-    /// names a read timeout and never the cause. Read before the tunnel is torn down.
+    // The driver only sees a silent local socket, so its error never names the cause. Read before teardown.
     func attributedTunnelFailure(for connection: DatabaseConnection) async -> (any Error)? {
         if let manager = activeTunnelManager(for: connection) as? SSHTunnelManager {
             return await manager.consumeLastForwardFailure(connectionId: connection.id)
@@ -129,71 +127,10 @@ extension DatabaseManager {
         return await manager.hasTunnel(connectionId: connection.id)
     }
 
-    /// Reconnect a session whose tunnel died, with exponential backoff. Guarded by
-    /// `recoveringConnectionIds` so the keepalive death callback and the wake-from-sleep
-    /// handler don't recover the same connection twice. Shared by both tunnel types.
-    func recoverDeadTunnel(connectionId: UUID, kind: String, disconnectedMessage: String) async {
-        guard let session = activeSessions[connectionId],
-              !recoveringConnectionIds.contains(connectionId) else { return }
-
-        recoveringConnectionIds.insert(connectionId)
-        defer { recoveringConnectionIds.remove(connectionId) }
-
+    // The driver and the session stay; the session's reconnect loop redials through a rebuilt tunnel.
+    func recoverDeadTunnel(connectionId: UUID, kind: String, disconnectedMessage: String) {
+        guard let session = activeSessions[connectionId] else { return }
         Self.logger.warning("\(kind, privacy: .public) tunnel died for connection: \(session.connection.name)")
-
-        await stopHealthMonitor(for: connectionId)
-
-        await sessionLanes.closeAllNotingLostTransactions(for: connectionId)
-        activeSessions[connectionId]?.driver?.disconnect()
-        updateSession(connectionId) { session in
-            session.driver = nil
-            session.status = .connecting
-        }
-
-        let maxRetries = 10
-        for retryCount in 0..<maxRetries {
-            let delay = ExponentialBackoff.delay(for: retryCount + 1, maxDelay: 120)
-            Self.logger.info("\(kind, privacy: .public) reconnect attempt \(retryCount + 1)/\(maxRetries) in \(delay)s for: \(session.connection.name)")
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-
-            do {
-                // An edit saved while the tunnel was down is what the person expects the reconnect to dial.
-                let current = connectionStorage.loadConnection(id: connectionId) ?? session.connection
-                try await connectToSession(current, trigger: .background)
-                Self.logger.info("Successfully reconnected \(kind, privacy: .public) tunnel for: \(session.connection.name)")
-                return
-            } catch is PreConnectScriptConsentError, is EnvVarReferenceConsentError, is LocalCredentialConsentError {
-                // The refusal is already the session's recorded reason, and a retry gets the same one.
-                return
-            } catch {
-                Self.logger.warning("\(kind, privacy: .public) reconnect attempt \(retryCount + 1) failed: \(error.localizedDescription)")
-            }
-        }
-
-        Self.logger.error("All \(kind, privacy: .public) reconnect attempts failed for: \(session.connection.name)")
-
-        failTunnelRecovery(
-            connectionId: connectionId,
-            disconnectedMessage: disconnectedMessage,
-            attempts: maxRetries
-        )
-    }
-
-    /// Leaving the session entry in place kept `exists == true, hasDriver == nil`, which every
-    /// window reads as "still dialing", so an exhausted recovery painted a spinner that never
-    /// ended. The entry has to go, and the reason has to outlive it so the window can say why.
-    internal func failTunnelRecovery(connectionId: UUID, disconnectedMessage: String, attempts: Int) {
-        recordDisconnectReason(
-            .sessionLost(ConnectionFailureInfo(
-                message: disconnectedMessage,
-                failureReason: String(
-                    format: String(localized: "Reconnecting failed after %d attempts."),
-                    attempts
-                ),
-                recoverySuggestion: String(localized: "Check the tunnel host and your network, then try again.")
-            )),
-            for: connectionId
-        )
-        finalizeConnectionFailure(for: connectionId, cancelled: false)
+        beginRecovery(for: connectionId, cause: .transportClosed(disconnectedMessage))
     }
 }

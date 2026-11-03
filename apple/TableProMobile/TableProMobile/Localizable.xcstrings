@@ -29,6 +29,10 @@
         }
       }
     },
+    "%1$@: %2$@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "'%@' is not a Cloudflare D1 database name or UUID" : {
 
     },
@@ -80,8 +84,27 @@
     "Cloudflare D1 cannot bind a binary value through its API." : {
 
     },
+    "Connect" : {
+
+    },
+    "connected" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Connecting" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Connection lost" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Copy the Account ID from the Cloudflare dashboard. The API token needs the D1 Edit permission." : {
 
+    },
+    "Couldn't connect" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Database '%@' not found" : {
 
@@ -131,10 +154,28 @@
     "No Databases" : {
 
     },
+    "not connected" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Rate limited by Cloudflare. Please try again later." : {
 
     },
     "Rate limited by Cloudflare. Retry after %@ seconds." : {
+
+    },
+    "Reconnect" : {
+
+    },
+    "Reconnecting" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Reconnecting (%lld of %lld)" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Switching to %@…" : {
 
     },
     "The %@ setting holds a NUL character, which a PostgreSQL connection cannot carry." : {

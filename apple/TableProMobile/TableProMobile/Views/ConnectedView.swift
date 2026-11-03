@@ -1,4 +1,5 @@
 import SwiftUI
+import TableProConnectionLibrary
 import TableProDatabase
 import TableProModels
 
@@ -73,15 +74,20 @@ struct ConnectedView: View {
             }
             if case .connected = resolved.phase {
                 resolved.navigateToPendingTable()
+                // The session can die while the cover is closed, and nothing else pings it before a read fails.
+                await resolved.reconnectIfNeeded()
                 return
             }
             await resolved.connect()
             guard !Task.isCancelled else { return }
-            if case .connected = resolved.phase {
+            switch resolved.phase {
+            case .connected:
                 resolved.loadHistory()
                 hapticSuccess.toggle()
-            } else if case .error = resolved.phase {
+            case .failed, .lost:
                 hapticError.toggle()
+            case .notConnected, .connecting:
+                break
             }
         }
         .onChange(of: presenter.pendingTable) { _, _ in
@@ -103,19 +109,45 @@ struct ConnectedView: View {
 
     @ViewBuilder
     private func screen(for coordinator: ConnectionCoordinator) -> some View {
-        switch ConnectedScreen.resolve(phase: coordinator.phase, isHeldByEditor: presenter.isHeldByEditor) {
+        switch ConnectedScreen.resolve(
+            phase: coordinator.phase,
+            isReconnecting: coordinator.isReconnecting,
+            isHeldByEditor: presenter.isHeldByEditor
+        ) {
         case .connecting:
             statusScreen { connectingView }
+        case .notConnected:
+            statusScreen { notConnectedView }
         case .failed(let error):
+            statusScreen { unavailableView(error, title: nil, systemImage: nil) }
+        case .lost(let error):
+            let presentation = ConnectionStatusPresentation(coordinator.displayStatus)
             statusScreen {
-                ErrorView(
-                    error: error,
-                    onRetry: error.canRetry ? { retries += 1 } : nil,
-                    onEditConnection: connection.isSample ? nil : { presenter.presentConnectionEditor(for: connection.id) }
-                )
+                unavailableView(error, title: presentation.title, systemImage: presentation.symbol?.systemName)
             }
         case .tabs:
             connectedContent(coordinator)
+        }
+    }
+
+    private func unavailableView(_ error: AppError, title: String?, systemImage: String?) -> some View {
+        ErrorView(
+            error: error,
+            title: title,
+            systemImage: systemImage,
+            retryTitle: String(localized: "Reconnect"),
+            onRetry: error.canRetry ? { retries += 1 } : nil,
+            onEditConnection: connection.isSample ? nil : { presenter.presentConnectionEditor(for: connection.id) }
+        )
+    }
+
+    // A cancelled connect is neither a failure nor a lost session, so it offers Connect and no error.
+    private var notConnectedView: some View {
+        ContentUnavailableView {
+            Text(String(localized: "Not Connected"))
+        } actions: {
+            Button(String(localized: "Connect")) { retries += 1 }
+                .buttonStyle(.borderedProminent)
         }
     }
 
@@ -169,16 +201,18 @@ struct ConnectedView: View {
         return TabView(selection: $coordinator.selectedTab) {
             Tab("Tables", systemImage: "tablecells", value: .tables) {
                 NavigationSplitView {
-                    tabChrome(coordinator) {
+                    // Side by side, the detail column already shows the status and the bar.
+                    tabChrome(coordinator, showsStatus: horizontalSizeClass == .compact) {
                         TableListView(connectionId: connection.id)
                     }
-                    // Side by side, the detail column already shows the bar.
                     .transactionBar(for: coordinator, isEnabled: horizontalSizeClass == .compact)
                 } detail: {
                     NavigationStack {
                         if let table = coordinator.selectedTable {
                             DataBrowserView(table: table)
+                                .disabled(coordinator.isSwitching)
                                 .environment(coordinator)
+                                .connectionStatusToolbar(for: coordinator)
                                 .transactionBar(for: coordinator)
                         } else {
                             ContentUnavailableView(
@@ -186,6 +220,7 @@ struct ConnectedView: View {
                                 systemImage: "tablecells",
                                 description: Text("Pick a table to browse its rows.")
                             )
+                            .connectionStatusToolbar(for: coordinator)
                             .transactionBar(for: coordinator)
                         }
                     }
@@ -238,37 +273,10 @@ struct ConnectedView: View {
             menuState?.publishTabs(ConnectedTabActions { coordinator.selectedTab = $0 }, from: menuOwner)
         }
         .onDisappear { menuState?.withdrawTabs(menuOwner) }
-        .overlay(alignment: .top) {
-            if coordinator.isReconnecting {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text(String(localized: "Reconnecting..."))
-                        .font(.caption)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(.regularMaterial, in: Capsule())
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .padding(.top, 4)
-            }
-        }
-        .animation(.default, value: coordinator.isReconnecting)
-        .allowsHitTesting(!coordinator.isSwitching)
-        .overlay {
-            if coordinator.isSwitching {
-                ZStack {
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .ignoresSafeArea()
-                    ProgressView()
-                        .controlSize(.large)
-                }
-                .transition(.opacity)
-            }
-        }
-        .animation(.default, value: coordinator.isSwitching)
-        .alert("Error", isPresented: $coordinator.showFailureAlert) {
+        .alert(
+            coordinator.failureAlertTitle ?? String(localized: "Error"),
+            isPresented: $coordinator.showFailureAlert
+        ) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(coordinator.failureAlertMessage ?? "")
@@ -298,16 +306,20 @@ struct ConnectedView: View {
         }
     }
 
+    // A switch blocks edits on the content only, so the tabs, Connections and the status stay usable.
     private func tabChrome(
         _ coordinator: ConnectionCoordinator,
+        showsStatus: Bool = true,
         @ViewBuilder _ content: () -> some View
     ) -> some View {
         content()
+            .disabled(coordinator.isSwitching)
             .environment(coordinator)
             .navigationTitle(displayTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { closeToolbar }
             .toolbar { connectionToolbar(coordinator) }
+            .connectionStatusToolbar(for: coordinator, isEnabled: showsStatus)
     }
 
     // MARK: - Connection Toolbar
