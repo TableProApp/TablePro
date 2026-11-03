@@ -87,13 +87,16 @@ private enum NulTextProbe {
         let insert = "INSERT INTO mixed VALUES (?, DATE '2024-01-01', 1.5, 12.30, 0) RETURNING \(columns)"
         let result = try await driver.executeParameterized(query: insert, parameters: [.text(value)])
         try expect(texts(result.rows) == expected, "mixed INSERT RETURNING cut text or changed a type")
+        try expect(result.rowsAffected == 1, "mixed INSERT RETURNING reported the wrong count")
         let select = try await driver.execute(query: "SELECT \(columns) FROM mixed")
         try expect(texts(select.rows) == expected, "mixed SELECT cut text or changed a type")
+        try expect(select.rowsAffected == 0, "SELECT reported changed rows")
         try expect(try await streamed(driver, "SELECT \(columns) FROM mixed") == expected, "mixed SELECT stream failed")
         let update = try await driver.executeParameterized(
             query: "UPDATE mixed SET v = ?, edits = edits + 1 RETURNING \(columns)", parameters: [.text(edited)]
         )
         try expect(texts(update.rows) == [[edited, "2024-01-01", "1.5", "12.30", "1"]], "mixed UPDATE RETURNING failed")
+        try expect(update.rowsAffected == 1, "mixed UPDATE RETURNING reported the wrong count")
         let streamedInsert = "INSERT INTO mixed VALUES ('café'||chr(0)||'尾', DATE '2024-01-01', 1.5, 12.30, 0) RETURNING \(columns)"
         try expect(try await streamed(driver, streamedInsert) == expected, "mixed INSERT RETURNING stream failed")
         let streamedUpdate = "UPDATE mixed SET edits = edits + 1 WHERE edits = 0 RETURNING \(columns)"
@@ -103,6 +106,7 @@ private enum NulTextProbe {
         )
         let counts = try await driver.execute(query: "SELECT count(*), sum(edits) FROM mixed")
         try expect(texts(counts.rows) == [["2", "2"]], "a mutation ran more than once")
+        try expect(counts.rowsAffected == 0, "aggregate SELECT reported changed rows")
         _ = try await driver.execute(query: "CREATE TABLE nested (v VARCHAR, items INTEGER[], id UUID)")
         let uuid = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
         let nestedInsert = try await driver.executeParameterized(
@@ -110,11 +114,30 @@ private enum NulTextProbe {
             parameters: [.text(value), .text(uuid)]
         )
         try expect(texts(nestedInsert.rows) == [[value, "[1, NULL, 3]", uuid]], "nested INSERT RETURNING changed values")
+        try expect(nestedInsert.rowsAffected == 1, "nested INSERT RETURNING reported the wrong count")
         let nestedUpdate = "UPDATE nested SET v = 'été'||chr(0)||'終' RETURNING v, items, id"
         try expect(
             try await streamed(driver, nestedUpdate) == [[edited, "[1, NULL, 3]", uuid]],
             "nested UPDATE RETURNING stream changed values"
         )
+        let updatedNested = try await driver.execute(query: nestedUpdate)
+        try expect(updatedNested.rowsAffected == 1, "nested UPDATE RETURNING reported the wrong count")
+        let deleted = try await driver.execute(query: "DELETE FROM nested RETURNING v, items, id")
+        try expect(texts(deleted.rows) == [[edited, "[1, NULL, 3]", uuid]], "DELETE RETURNING changed values")
+        try expect(deleted.rowsAffected == 1, "DELETE RETURNING reported the wrong count")
+        for statement in [
+            "UPDATE nested SET v = 'none' RETURNING v, items, id",
+            "DELETE FROM nested RETURNING v, items, id",
+            "UPDATE nested SET v = 'none'",
+            "DELETE FROM nested",
+        ] {
+            let emptyMutation = try await driver.execute(query: statement)
+            try expect(emptyMutation.rowsAffected == 0, "empty mutation reported changed rows: \(statement)")
+        }
+        let ordinaryInsert = try await driver.execute(query: "INSERT INTO nested VALUES ('one', [], NULL), ('two', [], NULL)")
+        try expect(ordinaryInsert.rowsAffected == 2, "ordinary INSERT reported the wrong count")
+        let count = try await driver.execute(query: "SELECT count(*) FROM nested")
+        try expect(texts(count.rows) == [["2"]] && count.rowsAffected == 0, "SELECT count reported changed rows")
     }
 
     static func duckDBSessionResults(_ driver: any PluginDatabaseDriver) async throws {

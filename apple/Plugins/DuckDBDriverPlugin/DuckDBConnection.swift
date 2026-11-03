@@ -466,7 +466,16 @@ actor DuckDBConnectionActor {
     ) throws -> (result: duckdb_result, schema: ColumnSchema, rowsChanged: idx_t) {
         var result = try Self.runPrepared(query, parameters: parameters, on: connection)
         let schema = Self.schema(of: &result)
-        let rowsChanged = duckdb_rows_changed(&result)
+        var rowsChanged = duckdb_rows_changed(&result)
+        if rowsChanged == 0, duckdb_result_return_type(result) == DUCKDB_RESULT_TYPE_QUERY_RESULT {
+            switch duckdb_result_statement_type(result) {
+            case DUCKDB_STATEMENT_TYPE_INSERT, DUCKDB_STATEMENT_TYPE_UPDATE, DUCKDB_STATEMENT_TYPE_DELETE:
+                // RETURNING carries the changed rows themselves instead of a separate count.
+                rowsChanged = duckdb_row_count(&result)
+            default:
+                break
+            }
+        }
         guard DuckDBLogicalType.requiresTextProjection(anyOf: schema.logicalTypes),
               duckdb_row_count(&result) > 0 else {
             return (result, schema, rowsChanged)
