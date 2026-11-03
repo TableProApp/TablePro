@@ -6,9 +6,7 @@ use super::values::record_id;
 use super::{CloudConnection, CloudGroup, CloudPull, CloudRecords, records};
 use crate::ConnectionList;
 
-/// The records the library reads after a pull: the server's, as `base` updated by the pull, with each field this
-/// device changed since `base` laid over them, the same edit a push rebases onto the server's copy. A deletion
-/// wins from either side, and a record this device holds no base for takes the server's copy whole.
+// The records the library reads after a pull: the server's, as `base` updated by the pull, with each field this device changed since `base` laid over them, the same edit a push rebases onto the server's copy. A deletion wins from either side, and a record this device holds no base for takes the server's copy whole.
 pub fn merged(list: &ConnectionList, pull: &CloudPull) -> CloudRecords {
     let local = records(list, &pull.base);
     let mut groups = merge(
@@ -52,8 +50,7 @@ pub fn merged(list: &ConnectionList, pull: &CloudPull) -> CloudRecords {
     }
 }
 
-// A move made here that closes a cycle with a move another device pushed first yields to it: a tree cannot
-// hold both, and laying out the cycle would root both groups and undo the other device's move on the next push.
+// A move made here that closes a cycle with a move another device pushed first yields to it: a tree cannot hold both, and laying out the cycle would root both groups and undo the other device's move on the next push.
 fn yield_cycles(groups: &mut [CloudGroup], pull: &CloudPull, local: &[CloudGroup]) {
     let keyed = |records: &[CloudGroup]| -> HashMap<Uuid, CloudGroup> {
         records

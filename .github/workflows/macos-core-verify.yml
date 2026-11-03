@@ -23,17 +23,6 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
         with:
           key: macos-core-lane
-      - name: Rust tests and lint
-        run: |
-          cargo test --locked -p tablepro-storage
-          cargo test --locked -p tablepro-ffi --no-default-features --test cloud_library
-          cargo clippy --locked -p tablepro-storage -p tablepro-ffi -p tablepro-bindgen --no-default-features --all-targets -- -D warnings
-      - name: Generate Windows bindings
-        run: |
-          cargo build --locked -p tablepro-ffi --no-default-features
-          cargo install uniffi-bindgen-cs --locked --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag v0.11.1+v0.31.0
-          uniffi-bindgen-cs --library target/debug/libtablepro_ffi.dylib --config core/crates/ffi/uniffi.toml --no-format --out-dir windows/src/TablePro.Interop/Generated
-          cargo run --locked -p tablepro-ffi --no-default-features --example csbindgen -- windows/src/TablePro.Interop/Generated/WindowMethods.g.cs
       - name: Swift library and tests
         run: |
           apple/scripts/build-core.sh both
@@ -43,7 +32,39 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
-          name: macos-core-verification
+          name: macos-core-swift-verification
           path: |
-            windows/src/TablePro.Interop/Generated
             .analysis/feat-macos-core-library/logs
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTFLAGS: -D warnings
+      CARGO_BUILD_JOBS: 2
+      CARGO_INCREMENTAL: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0
+        with:
+          key: macos-core-lane-rust
+      - name: Rust tests and lint
+        run: |
+          cargo test --locked -p tablepro-storage
+          cargo test --locked -p tablepro-ffi --no-default-features --test cloud_library
+          cargo clippy --locked -p tablepro-storage -p tablepro-ffi -p tablepro-bindgen --no-default-features --all-targets -- -D warnings
+      - name: Generate Windows bindings
+        run: |
+          cargo build --locked -p tablepro-ffi --no-default-features
+          cargo install uniffi-bindgen-cs --locked --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag v0.11.1+v0.31.0
+          uniffi-bindgen-cs --library target/debug/libtablepro_ffi.so --config core/crates/ffi/uniffi.toml --no-format --out-dir windows/src/TablePro.Interop/Generated
+          cargo run --locked -p tablepro-ffi --no-default-features --example csbindgen -- windows/src/TablePro.Interop/Generated/WindowMethods.g.cs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: macos-core-windows-bindings
+          path: windows/src/TablePro.Interop/Generated

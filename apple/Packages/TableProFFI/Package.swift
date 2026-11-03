@@ -2,9 +2,7 @@
 
 import PackageDescription
 
-// The shared Rust core as the Apple apps link it. scripts/build-core.sh builds Build/TableProFFIC.xcframework and the
-// generated Sources/TableProFFI/TableProFFI.swift, neither in git (core/docs/decisions/0009-macos-on-the-core.md).
-// No NonisolatedNonsendingByDefault here: with it the generated async calls poll on the caller's actor, the main one.
+// The shared Rust core as the Apple apps link it. scripts/build-core.sh builds Build/TableProFFIC.xcframework and the generated Sources/TableProFFI/TableProFFI.swift, neither in git (core/docs/decisions/0009-macos-on-the-core.md). No NonisolatedNonsendingByDefault here: with it the generated async calls poll on the caller's actor, the main one.
 let package = Package(
     name: "TableProFFI",
     platforms: [

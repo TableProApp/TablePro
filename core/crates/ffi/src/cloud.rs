@@ -4,8 +4,7 @@ use uuid::Uuid;
 use crate::error::CoreError;
 use crate::library::{ConnectionLibrary, parse_id};
 
-// The CloudKit records of the connection library, field for field as the Apple apps sync them
-// (core/docs/decisions/0009-macos-on-the-core.md). None is a field the record lacks.
+// The CloudKit records of the connection library, field for field as the Apple apps sync them (core/docs/decisions/0009-macos-on-the-core.md). None is a field the record lacks.
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
 pub struct CloudGroupFields {
     pub group_id: String,
@@ -55,8 +54,7 @@ impl ConnectionLibrary {
             .await
     }
 
-    // The server's records with this device's unpushed edits over them; a deletion wins from either side. A push's
-    // saved copies come through here too, with the cache from before the push as the base, before they are cached.
+    // The server's records with this device's unpushed edits over them; a deletion wins from either side. A push's saved copies come through here too, with the cache from before the push as the base, before they are cached.
     pub async fn apply_cloud_pull(&self, pull: CloudLibraryPull) -> Result<(), CoreError> {
         let pull = CloudPull {
             base: pull.base.into(),

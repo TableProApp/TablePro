@@ -1,6 +1,4 @@
-//! The connection library as the Apple apps sync it through CloudKit: a `ConnectionGroup` record per group, and on
-//! each `Connection` record the fields that place it. The app moves the records; this maps them to and from a
-//! [`ConnectionList`] and merges a pull with the edits this device has not pushed yet.
+// The connection library as the Apple apps sync it through CloudKit: a `ConnectionGroup` record per group, and on each `Connection` record the fields that place it. The app moves the records; this maps them to and from a [`ConnectionList`] and merges a pull with the edits this device has not pushed yet.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -24,7 +22,7 @@ use values::{
     sort_key,
 };
 
-/// A `ConnectionGroup` record's fields. `None` is a field the record lacks.
+// A `ConnectionGroup` record's fields. `None` is a field the record lacks.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CloudGroup {
     pub group_id: String,
@@ -35,8 +33,7 @@ pub struct CloudGroup {
     pub sort_order: Option<i64>,
 }
 
-/// The fields of a `Connection` record that place it in the library. The name only breaks a tie in the order:
-/// [`records`] writes the one the record has, or the library's for a new record.
+// The fields of a `Connection` record that place it in the library. The name only breaks a tie in the order: [`records`] writes the one the record has, or the library's for a new record.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CloudConnection {
     pub connection_id: String,
@@ -60,19 +57,17 @@ pub struct CloudIds {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CloudPull {
-    /// Every library record this device held before the pull, as the server last gave it.
+    // Every library record this device held before the pull, as the server last gave it.
     pub base: CloudRecords,
     pub changed: CloudRecords,
     pub deleted: CloudIds,
-    /// Deleted on this device and not pushed yet.
+    // Deleted on this device and not pushed yet.
     pub deleted_here: CloudIds,
-    /// The favourites' order to keep, when the library does not hold it yet.
+    // The favourites' order to keep, when the library does not hold it yet.
     pub favorites_order: Option<Vec<Uuid>>,
 }
 
-/// The library `records` read as, for the connections `list` holds: the groups they make, where each connection
-/// sits, and the favourites, in `favorites_order` and then by name. A connection with no record keeps its place
-/// after the ones that have one. A record the core cannot hold, such as a group with no name, is left out.
+// The library `records` read as, for the connections `list` holds: the groups they make, where each connection sits, and the favourites, in `favorites_order` and then by name. A connection with no record keeps its place after the ones that have one. A record the core cannot hold, such as a group with no name, is left out.
 pub fn layout(list: &ConnectionList, records: &CloudRecords, favorites_order: &[Uuid]) -> ConnectionList {
     let groups = read_groups(&records.groups);
     let known: HashSet<Uuid> = groups.iter().map(|group| group.id).collect();
@@ -132,8 +127,7 @@ pub fn layout(list: &ConnectionList, records: &CloudRecords, favorites_order: &[
     }
 }
 
-/// Every record the library writes, keeping each value `base` holds wherever it reads as the library's, so a
-/// library read from `base` writes `base` back, and a value only another build understands survives.
+// Every record the library writes, keeping each value `base` holds wherever it reads as the library's, so a library read from `base` writes `base` back, and a value only another build understands survives.
 pub fn records(list: &ConnectionList, base: &CloudRecords) -> CloudRecords {
     CloudRecords {
         groups: group_records(list, base),
@@ -141,7 +135,7 @@ pub fn records(list: &ConnectionList, base: &CloudRecords) -> CloudRecords {
     }
 }
 
-/// The records a push sends: the new ones, and those with a field that differs from `base`.
+// The records a push sends: the new ones, and those with a field that differs from `base`.
 pub fn edits(list: &ConnectionList, base: &CloudRecords) -> CloudRecords {
     let all = records(list, base);
     let base_groups = by_id(&base.groups, |record| &record.group_id);
@@ -176,8 +170,7 @@ fn by_id<'a, R>(records: &'a [R], id: impl Fn(&R) -> &String) -> HashMap<Uuid, &
     found
 }
 
-// The groups as macOS reads them: a parent the records lack, or a cycle, roots the group, and siblings go by
-// `sortOrder`, then name.
+// The groups as macOS reads them: a parent the records lack, or a cycle, roots the group, and siblings go by `sortOrder`, then name.
 fn read_groups(records: &[CloudGroup]) -> Vec<ConnectionGroup> {
     let mut claimed = HashSet::with_capacity(records.len());
     let mut seen = HashSet::with_capacity(records.len());

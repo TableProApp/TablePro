@@ -559,8 +559,7 @@ impl Device {
         }
     }
 
-    // A push saves each edit onto the server's copy, then takes the saved copies in as a pull would: a copy rebased
-    // onto another device's change holds fields this library has not read yet.
+    // A push saves each edit onto the server's copy, then takes the saved copies in as a pull would: a copy rebased onto another device's change holds fields this library has not read yet.
     fn push(&mut self, server: &mut Server) {
         let sent = self.store.cloud_edits_blocking(&self.cache).expect("the edits");
         let mut saved = CloudRecords::default();
