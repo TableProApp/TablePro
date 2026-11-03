@@ -284,7 +284,7 @@ public sealed partial class ShellTests
 
         app.Front();
         music.RightClick();
-        app.OpenSubmenu("Tags", "New tag...").Click();
+        app.OpenSubmenu("Tags", "New tag...").Patterns.Invoke.Pattern.Invoke();
         app.Find("NameDialogBox").AsTextBox().Text = "demo";
         app.PressDialogButton();
         var tagged = Retry.WhileFalse(

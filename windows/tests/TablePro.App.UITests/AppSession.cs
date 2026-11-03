@@ -180,7 +180,7 @@ internal sealed class AppSession : IDisposable
         Retry.WhileNull(() => TryFindMenuItem(name), Wait, throwOnTimeout: false).Result
             ?? throw Failure($"No menu item {name} appeared.", screen: true);
 
-    // A click on a submenu item did not always open it on the runner, so it opens through ExpandCollapse.
+    // A click did not always open a submenu on the runner, and a pointer gliding to its item opens its neighbours'.
     public AutomationElement OpenSubmenu(string name, string child)
     {
         var item = FindMenuItem(name);
