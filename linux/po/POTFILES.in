@@ -72,6 +72,7 @@ crates/app/src/services/duplicate_name.rs
 crates/app/src/services/file_location.rs
 crates/app/src/services/file_location_kind.rs
 crates/app/src/services/file_resolution.rs
+crates/app/src/services/foreign_import.rs
 crates/app/src/services/grid/cell_editability.rs
 crates/app/src/services/grid/cell_editor_kind.rs
 crates/app/src/services/grid/cell_filter.rs
@@ -437,6 +438,10 @@ crates/app/src/ui/host_key_failure.rs
 crates/app/src/ui/host_key_review.rs
 crates/app/src/ui/icons.rs
 crates/app/src/ui/import_dialog.rs
+crates/app/src/ui/import_from_app/imp.rs
+crates/app/src/ui/import_from_app/mod.rs
+crates/app/src/ui/import_from_app/tests.rs
+crates/app/src/ui/import_from_app/wording.rs
 crates/app/src/ui/import_preview.rs
 crates/app/src/ui/key_tab/key_summary.rs
 crates/app/src/ui/key_tab/mod.rs
@@ -475,6 +480,7 @@ crates/app/src/ui/session_window/connecting_page.rs
 crates/app/src/ui/session_window/connections.rs
 crates/app/src/ui/session_window/file_location_dialog.rs
 crates/app/src/ui/session_window/imp.rs
+crates/app/src/ui/session_window/import_from_app.rs
 crates/app/src/ui/session_window/launch_notice.rs
 crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
@@ -708,6 +714,7 @@ data/resources/ui/filter-strip.ui
 data/resources/ui/find-bar.ui
 data/resources/ui/history-dialog.ui
 data/resources/ui/history-row.ui
+data/resources/ui/import-from-app-dialog.ui
 data/resources/ui/pager-bar.ui
 data/resources/ui/pending-changes-bar.ui
 data/resources/ui/picker-page.ui

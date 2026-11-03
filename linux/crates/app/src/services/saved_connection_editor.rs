@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::{SecretError, SecretKind, SecretLookup, SecretVault};
+use tablepro_foreign_import::review::{AppliedImport, ImportPlan, ImportReview, apply_blocking};
 use tablepro_session::runtime::Tasks;
 use tablepro_storage::{
     ConnectionColor, ConnectionGroupName, ConnectionIcon, ConnectionStore, ConnectionTag, ConnectionTagName,
@@ -14,6 +15,13 @@ use super::saved_connection_error::SavedConnectionError;
 use super::secret_change::SecretChange;
 use super::secret_changes::SecretChanges;
 use super::secret_labels::secret_label;
+
+// What an import from another app wrote: the connections, and how many of their secrets the
+// keyring refused, which the user then types at connect.
+pub struct ImportedFromApp {
+    pub applied: AppliedImport,
+    pub secrets_not_kept: usize,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GroupChoice {
@@ -209,6 +217,48 @@ impl SavedConnectionEditor {
                 Err(error)
             }
         }
+    }
+
+    // The list must still be the one reviewed; a refused secret leaves its connection saved.
+    pub async fn add_imported(
+        &self,
+        review: ImportReview,
+        plan: ImportPlan,
+    ) -> Result<ImportedFromApp, SavedConnectionError> {
+        let _turn = self.turn.lock().await;
+        let store = self.store.clone();
+        let applied = self
+            .tasks
+            .spawn_blocking_task(move || apply_blocking(&review, &plan, &store))
+            .await??;
+        let mut secrets_not_kept = 0;
+        for imported in &applied.connections {
+            for secret in &imported.secrets {
+                let label = secret_label(secret.kind, &imported.connection);
+                if let Err(error) = self
+                    .secrets
+                    .store(imported.connection.id, secret.kind, &secret.secret, &label)
+                    .await
+                {
+                    tracing::warn!(%error, kind = ?secret.kind, "a secret of an imported connection was not kept");
+                    secrets_not_kept += 1;
+                }
+            }
+        }
+        // A delete from another window can land between the write and the keyring, and its own
+        // clean-up ran before these secrets existed.
+        if let Ok(list) = self.list().await {
+            for imported in &applied.connections {
+                let id = imported.connection.id;
+                if !imported.secrets.is_empty() && !list.iter().any(|saved| saved.id == id) {
+                    self.forget_secrets(id).await;
+                }
+            }
+        }
+        Ok(ImportedFromApp {
+            applied,
+            secrets_not_kept,
+        })
     }
 
     /// A pick of the group it is already in writes nothing.

@@ -54,9 +54,12 @@ jobs:
         run: |
           cargo check --locked --target "$TARGET" \
             -p tablepro-core -p tablepro-net -p tablepro-storage -p tablepro-ssh -p tablepro-session \
-            -p tablepro-ai -p tablepro-mcp -p tablepro-test-support -p tablepro-test-fixtures \
+            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-test-support -p tablepro-test-fixtures \
             -p tablepro-driver-cassandra -p tablepro-driver-clickhouse -p tablepro-driver-duckdb \
             -p tablepro-driver-mongodb -p tablepro-driver-mssql -p tablepro-driver-mysql \
             -p tablepro-driver-postgres -p tablepro-driver-redis -p tablepro-driver-sqlite
       - name: Core unit tests
         run: cargo test --locked --target "$TARGET" -p tablepro-core --lib
+      # Each importer reads its app's files from this platform's own places.
+      - name: Importers from other apps
+        run: cargo test --locked --target "$TARGET" -p tablepro-foreign-import

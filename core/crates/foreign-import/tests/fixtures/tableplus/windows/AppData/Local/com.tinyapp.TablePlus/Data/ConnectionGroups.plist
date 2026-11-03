@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>GroupID</key>
+		<string></string>
+		<key>ID</key>
+		<string>w-root</string>
+		<key>IsExpanded</key>
+		<integer>1</integer>
+		<key>Name</key>
+		<string>Servers</string>
+	</dict>
+	<dict>
+		<key>GroupID</key>
+		<string>w-root</string>
+		<key>ID</key>
+		<string>w-eu</string>
+		<key>IsExpanded</key>
+		<integer>1</integer>
+		<key>Name</key>
+		<string>EU</string>
+	</dict>
+	<dict>
+		<key>GroupID</key>
+		<string>w-eu</string>
+		<key>ID</key>
+		<string>w-prod</string>
+		<key>IsExpanded</key>
+		<integer>0</integer>
+		<key>Name</key>
+		<string>Prod</string>
+	</dict>
+	<dict>
+		<key>GroupID</key>
+		<string>w-prod</string>
+		<key>ID</key>
+		<string>w-deep</string>
+		<key>IsExpanded</key>
+		<integer>0</integer>
+		<key>Name</key>
+		<string>Deep</string>
+	</dict>
+</array>
+</plist>

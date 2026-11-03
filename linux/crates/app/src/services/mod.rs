@@ -13,6 +13,7 @@ pub mod duplicate_name;
 pub mod file_location;
 mod file_location_kind;
 pub mod file_resolution;
+pub(crate) mod foreign_import;
 pub mod grid;
 pub mod history_availability;
 pub mod history_preferences;

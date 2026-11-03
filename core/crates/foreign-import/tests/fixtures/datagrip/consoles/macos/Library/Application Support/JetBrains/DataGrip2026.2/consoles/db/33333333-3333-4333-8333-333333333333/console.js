@@ -1,0 +1,1 @@
+db.dg_sample_items.find()

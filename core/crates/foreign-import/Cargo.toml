@@ -1,0 +1,44 @@
+[package]
+name = "tablepro-foreign-import"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablepro-core.workspace = true
+tablepro-storage.workspace = true
+aes.workspace = true
+base64.workspace = true
+blowfish.workspace = true
+cbc.workspace = true
+chacha20.workspace = true
+flate2.workspace = true
+hex.workspace = true
+# The same SQLite the storage crate links through sqlx, read directly
+# because a Beekeeper Studio database is read once, blocking, read-only.
+libsqlite3-sys.workspace = true
+plist.workspace = true
+roxmltree.workspace = true
+salsa20.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+sqlx = { workspace = true, features = ["sqlite-unbundled"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+sqlx = { workspace = true, features = ["sqlite"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

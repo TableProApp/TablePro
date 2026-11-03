@@ -205,7 +205,7 @@ impl ConnectionsDocument {
             .any(|group| group.parent_id == parent && !except.contains(&group.id) && group.name.same_name(name))
     }
 
-    fn group_named(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<ConnectionGroup> {
+    pub(super) fn group_named(&self, parent: Option<Uuid>, name: &ConnectionGroupName) -> Option<ConnectionGroup> {
         let siblings: Vec<&ConnectionGroup> = self.groups.iter().filter(|group| group.parent_id == parent).collect();
         siblings
             .iter()
