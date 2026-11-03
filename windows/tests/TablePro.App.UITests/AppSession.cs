@@ -91,6 +91,25 @@ internal sealed class AppSession : IDisposable
         Thread.Sleep(300);
     }
 
+    // A tree row's check box in selection mode, or its selection where the row lists no box of its own.
+    public void Check(AutomationElement row)
+    {
+        Front();
+        if (row.FindFirstDescendant(condition => condition.ByControlType(ControlType.CheckBox)) is { } box)
+        {
+            box.Click();
+            return;
+        }
+
+        if (row.Patterns.SelectionItem.PatternOrDefault is { } selection)
+        {
+            selection.AddToSelection();
+            return;
+        }
+
+        row.Click();
+    }
+
     // The open ContentDialog's primary button, which its template names PrimaryButton.
     public void PressDialogButton()
     {

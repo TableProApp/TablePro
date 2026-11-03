@@ -24,9 +24,11 @@ public sealed partial class HomeView : UserControl
     private readonly HashSet<string> _collapsed = [];
     private LibrarySnapshot _snapshot = new([], [], [], []);
     private int _reload;
+    private int _rebuild;
     private bool _rebuilding;
     private List<LibraryNode>? _dragging;
     private LibraryItem? _renaming;
+    private string? _reveal;
 
     internal HomeView(Workbench workbench, IShell shell)
     {
@@ -106,6 +108,7 @@ public sealed partial class HomeView : UserControl
         var searching = !string.IsNullOrWhiteSpace(query);
         // Clearing the rows reports them collapsed, which is not the user collapsing them.
         _rebuilding = true;
+        var rebuild = ++_rebuild;
         _renaming = null;
         Items.Clear();
         foreach (var node in LibraryTree.Build(_snapshot, query, _workbench.EngineName))
@@ -113,11 +116,31 @@ public sealed partial class HomeView : UserControl
             Items.Add(ToItem(node, searching));
         }
 
-        _rebuilding = false;
         ApplyExpansion(Items);
         UpdateSelectionCommands();
-
         NoResultsText.Visibility = searching && Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // The tree sets each new row's state in a pass of its own after this one, which can fold a row opened above
+        // (seen on the Arm64 runner). The rows open again after that pass, and a fold before it is not the user's.
+        var reveal = _reveal;
+        _reveal = null;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (rebuild != _rebuild)
+            {
+                return;
+            }
+
+            ApplyExpansion(Items);
+            if (reveal is not null
+                && Flatten(Items).FirstOrDefault(item => item.Node.Key == reveal) is { } group
+                && ConnectionTree.ContainerFromItem(group) is TreeViewItem row)
+            {
+                row.IsExpanded = true;
+            }
+
+            _rebuilding = false;
+        });
     }
 
     private LibraryItem ToItem(LibraryNode node, bool searching)
@@ -804,6 +827,13 @@ public sealed partial class HomeView : UserControl
             || LibraryDrop.Resolve(dragging, target.Node, _snapshot.Groups) is not { } drop)
         {
             return;
+        }
+
+        // The rows dropped are shown where they went.
+        _reveal = target.Node.Kind == LibraryNodeKind.Group ? target.Node.Key : null;
+        if (_reveal is { } key)
+        {
+            _collapsed.Remove(key);
         }
 
         await Write(() => drop switch

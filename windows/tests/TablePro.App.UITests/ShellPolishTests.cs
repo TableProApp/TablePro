@@ -284,6 +284,7 @@ public sealed partial class ShellTests
         app.Click(app.FindByNamePrefix("Chinook (Sample),", tree));
         Keyboard.Press(VirtualKeyShort.F2);
         app.Find("RenameBox").AsTextBox().Text = "Music";
+        app.Screenshot("25-home-renaming");
         Keyboard.Press(VirtualKeyShort.RETURN);
         var music = app.FindByNamePrefix("Music,", tree);
 
@@ -300,7 +301,7 @@ public sealed partial class ShellTests
             AppSession.Wait,
             throwOnTimeout: false).Success;
         Assert.True(tagged, app.FindByNamePrefix("Music,", tree).Name);
-        app.Screenshot("25-home-tagged");
+        app.Screenshot("26-home-tagged");
 
         // A row dropped on a group moves into it, through the core.
         app.Drag(app.FindByNamePrefix("Music,", tree), app.FindByName("Work", tree));
@@ -310,14 +311,21 @@ public sealed partial class ShellTests
             AppSession.Wait,
             throwOnTimeout: false).Success;
         Assert.True(moved, File.ReadAllText(AppSession.LibraryFile(app.DataFolder)));
-        app.Screenshot("26-home-dropped");
+        app.FindByNamePrefix("Music,", tree);
+        // The group the row went into opens, so the row shows there as well as under Recent.
+        var shown = Retry.WhileFalse(
+            () => tree.FindAllDescendants(condition => condition.ByName("Music, SQLite", PropertyConditionFlags.MatchSubstring)).Length == 2,
+            AppSession.Wait,
+            throwOnTimeout: false).Success;
+        Assert.True(shown);
+        app.Screenshot("27-home-dropped");
 
         // Selection mode acts on every checked connection.
         app.Find("SelectButton").AsToggleButton().Toggle();
         Assert.False(app.Find("SelectionFavoriteButton").IsEnabled);
-        app.Click(app.FindByNamePrefix("Music,", tree));
+        app.Check(app.FindByNamePrefix("Music,", tree));
         Retry.WhileFalse(() => app.Find("SelectionFavoriteButton").IsEnabled, AppSession.Wait, throwOnTimeout: false);
-        app.Screenshot("27-home-selecting");
+        app.Screenshot("28-home-selecting");
         app.Find("SelectionFavoriteButton").AsButton().Invoke();
         app.FindByName("Favorites", tree);
     }
