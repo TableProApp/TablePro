@@ -53,6 +53,16 @@ nonisolated enum MongoDocumentGuard {
     }
 
     static func filter(for original: MongoDocumentText) throws -> String {
+        try filter(for: original, actual: rootVariable)
+    }
+
+    // A grid save compares only the stored identity, so unrelated edits do not stop it.
+    static func identityFilter(for identity: MongoDocumentText.Value) throws -> String {
+        let original = try MongoDocumentText(parsing: #"{"_id":\#(identity.compactText)}"#)
+        return try filter(for: original, actual: #"{"_id":"$_id"}"#)
+    }
+
+    private static func filter(for original: MongoDocumentText, actual: String) throws -> String {
         let root = MongoDocumentText.Value.object(original.members)
         let depth = try self.depth(of: root)
         guard depth <= maximumDepth else { throw Refusal.tooDeep }
@@ -60,8 +70,8 @@ nonisolated enum MongoDocumentGuard {
             throw MongoDBDocumentEditingError.missingIdentity
         }
         let expected = try expectedSignature(ofContainer: root, depth: depth).compactText
-        let wholeDocument = #"{"$eq":["$$ROOT",{"$literal":\#(root.compactText)}]}"#
-        let types = #"{"$eq":[\#(signature(of: rootVariable, depth: depth)),{"$literal":\#(expected)}]}"#
+        let wholeDocument = #"{"$eq":[\#(actual),{"$literal":\#(root.compactText)}]}"#
+        let types = #"{"$eq":[\#(signature(of: actual, depth: depth)),{"$literal":\#(expected)}]}"#
         return #"{"_id":\#(identity.compactText),"$expr":{"$and":[\#(wholeDocument),\#(types)]}}"#
     }
 

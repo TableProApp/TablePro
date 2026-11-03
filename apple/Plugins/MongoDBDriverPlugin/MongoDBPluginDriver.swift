@@ -871,17 +871,17 @@ nonisolated final class MongoDBPluginDriver: PluginDatabaseDriver, @unchecked Se
         return generator.generateRestore(rows: rows, absentCells: absentCells)
     }
 
-    // Lenient matches come back too, a double for an int or another case under a collation, so the caller keeps only
-    // the row whose locator is the same text.
+    // Reads use the same typed predicate as writes, before any cursor limit can hide the row.
     func identityFilter(locator: String) throws -> String {
-        "{\"\(MongoDBCollectionDDL.idField)\": \(try MongoDBStatementGenerator.identityJson(locator: locator))}"
+        try MongoDBStatementGenerator.identityFilter(locator: locator)
     }
 
     func buildLocatorQuery(table: String, schema: String?, locators: [String], columns: [String]) -> String? {
         guard !locators.isEmpty,
-              let ids = try? locators.map(MongoDBStatementGenerator.identityJson(locator:)) else { return nil }
-        let filter = "{\"\(MongoDBCollectionDDL.idField)\": {\"$in\": [\(ids.joined(separator: ", "))]}}"
-        return MongoDBQueryBuilder().buildQuery(collection: table, filterDocument: filter, limit: locators.count)
+              let filters = try? locators.map(MongoDBStatementGenerator.identityFilter(locator:)) else { return nil }
+        let filter = "{\"$or\": [\(filters.joined(separator: ", "))]}"
+        let query = MongoDBQueryBuilder().buildQuery(collection: table, filterDocument: filter, limit: locators.count)
+        return query + #".collation({"locale":"simple"})"#
     }
 
     private func writeGenerator(for table: String, columns: [String], database: String? = nil) -> MongoDBStatementGenerator {

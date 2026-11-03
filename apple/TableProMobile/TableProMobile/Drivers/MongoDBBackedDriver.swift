@@ -93,10 +93,13 @@ nonisolated final class MongoDBBackedDriver: PluginRowWritingDriver, DriverQuery
             let matches = key.map { PluginQueryFilter(column: $0.column, op: "=", value: $0.value) }
             filter = builder.buildFilterDocument(from: matches, logicMode: "and")
         }
-        let query = builder.buildQuery(collection: table, filterDocument: filter, limit: 2)
+        var query = builder.buildQuery(collection: table, filterDocument: filter, limit: 2)
+        if byIdentity {
+            query += #".collation({"locale":"simple"})"#
+        }
         let context = statementContext(query)
         let found = try await inSessionDatabase { try await mongo.execute(query: query, context: context) }
-        // The _id filter also matches lenient twins, a double for an int or another case under a collation.
+        // Keep the locator check at the read boundary as well as in the server predicate.
         let matching = found.rows.indices.filter { rowIndex in
             guard byIdentity, let locator else { return true }
             return Self.locator(ofRow: rowIndex, in: found)?.utf8.elementsEqual(locator.utf8) == true

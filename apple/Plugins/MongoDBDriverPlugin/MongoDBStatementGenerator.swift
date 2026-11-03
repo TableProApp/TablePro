@@ -97,7 +97,7 @@ nonisolated struct MongoDBStatementGenerator {
                     writes.append(PluginRowWrite(statement: statement, rowIndices: [change.rowIndex]))
                 case .delete:
                     guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                    deletions.append((rowIndex: change.rowIndex, identity: try identityJson(of: change)))
+                    deletions.append((rowIndex: change.rowIndex, identity: try identityFilter(of: change)))
                 }
             } catch let refusal as MongoDBWriteRefusal {
                 throw refusal.refusal(ofRow: change.rowIndex)
@@ -221,7 +221,7 @@ nonisolated struct MongoDBStatementGenerator {
     /// A field the change names in `absentColumns` is removed with `$unset`; NULL is stored as null.
     private func updateStatement(for change: PluginRowChange) throws -> String? {
         guard !change.cellChanges.isEmpty else { return nil }
-        let identity = try identityJson(of: change)
+        let identity = try identityFilter(of: change)
         let removed = change.absentColumns ?? []
         let cellWrites = try change.cellChanges.map {
             try cellWrite(
@@ -230,7 +230,7 @@ nonisolated struct MongoDBStatementGenerator {
             )
         }
         let update = try updateDocument(for: cellWrites)
-        return "\(collectionAccessor).updateOne({\"_id\": \(identity)}, \(update))"
+        return "\(collectionAccessor).updateOne(\(identity), \(update), \(MongoDocumentWritePlan.replaceOptions))"
     }
 
     private func cellWrite(
@@ -330,22 +330,38 @@ nonisolated struct MongoDBStatementGenerator {
         let rowIndices = deletions.map(\.rowIndex)
         guard deletions.count > 1 else {
             return PluginRowWrite(
-                statement: "\(collectionAccessor).deleteOne({\"_id\": \(only.identity)})",
+                statement: "\(collectionAccessor).deleteOne(\(only.identity), \(MongoDocumentWritePlan.replaceOptions))",
                 rowIndices: rowIndices
             )
         }
         let inList = deletions.map(\.identity).joined(separator: ", ")
         return PluginRowWrite(
-            statement: "\(collectionAccessor).deleteMany({\"_id\": {\"$in\": [\(inList)]}})",
+            statement: "\(collectionAccessor).deleteMany({\"$or\": [\(inList)]}, \(MongoDocumentWritePlan.replaceOptions))",
             rowIndices: rowIndices
         )
     }
 
     // MARK: - Values
 
-    private func identityJson(of change: PluginRowChange) throws -> String {
+    private func identityFilter(of change: PluginRowChange) throws -> String {
         guard let locator = rowLocators[change.rowIndex] else { throw MongoDBWriteRefusal.unlocatedRow }
-        return try Self.identityJson(locator: locator)
+        return try Self.identityFilter(locator: locator)
+    }
+
+    // Equality alone accepts a collating string or a different numeric type in place of the loaded row.
+    static func identityFilter(locator: String) throws -> String {
+        _ = try identityJson(locator: locator)
+        let identity = try MongoDocumentIdentity(locator: locator)
+        let value = try MongoDocumentText.Value(parsing: identity.locator)
+        let filter: String
+        do {
+            filter = try MongoDocumentGuard.identityFilter(for: value)
+        } catch is MongoDocumentGuard.Refusal {
+            throw MongoDBWriteRefusal.unlocatedRow
+        }
+        return try MongoExtendedJsonForm.shellValue(
+            MongoDocumentText.Value(parsing: filter), field: MongoDBCollectionDDL.idField
+        ).compactText
     }
 
     // Canonical Extended JSON, which libbson reads back as exactly the stored value.

@@ -98,7 +98,7 @@ struct MongoDBRowLocatorWriteTests {
             )
             let write = try #require(writes.first, "\(learned)")
             #expect(writes.count == 1)
-            #expect(write.statement.hasPrefix(#"db.users.updateOne({"_id": \#(row.locator)}, "#), "\(learned)")
+            #expect(write.statement.hasPrefix(#"db.users.updateOne({"_id":\#(row.locator),"$expr":"#), "\(learned)")
             #expect(write.rowIndices == [0])
         }
     }
@@ -110,7 +110,9 @@ struct MongoDBRowLocatorWriteTests {
             let writes = try generator(row, kinds: learned.kinds(row)).generateRowWrites(
                 from: [delete(row)], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
             )
-            #expect(writes.map { $0.statement } == [#"db.users.deleteOne({"_id": \#(row.locator)})"#], "\(learned)")
+            let statement = try #require(writes.first?.statement)
+            #expect(statement.hasPrefix(#"db.users.deleteOne({"_id":\#(row.locator),"$expr":"#), "\(learned)")
+            #expect(statement.hasSuffix(#", {"collation":{"locale":"simple"}})"#))
         }
     }
 
@@ -124,8 +126,12 @@ struct MongoDBRowLocatorWriteTests {
             from: changes, insertedRowData: [:], deletedRowIndices: Set(changes.map(\.rowIndex)), insertedRowIndices: []
         )
 
-        let ids = Self.rows.map(\.locator).joined(separator: ", ")
-        #expect(writes.map { $0.statement } == [#"db.users.deleteMany({"_id": {"$in": [\#(ids)]}})"#])
+        let statement = try #require(writes.first?.statement)
+        #expect(statement.hasPrefix(#"db.users.deleteMany({"$or": ["#))
+        for row in Self.rows {
+            #expect(statement.contains(#"{"_id":\#(row.locator),"$expr":"#))
+        }
+        #expect(statement.hasSuffix(#", {"collation":{"locale":"simple"}})"#))
         #expect(writes.first?.rowIndices == Array(Self.rows.indices))
     }
 
@@ -154,7 +160,10 @@ struct MongoDBRowLocatorWriteTests {
         "",
         "not json",
         #"{"$regularExpression":{"pattern":"","options":""}}"#,
-        #"[{"$numberInt":"1"}]"#
+        #"[{"$numberInt":"1"}]"#,
+        #"{"$numberDouble":"NaN"}"#,
+        #"{"$numberDecimal":"NaN"}"#,
+        #"{"$code":"return x", "$scope":{"x":{"$numberInt":"1"}}}"#
     ])
     func malformedLocatorIsRefused(locator: String) {
         var generator = MongoDBStatementGenerator(collectionName: "users", columns: ["_id", "name"])
@@ -186,7 +195,7 @@ struct MongoDBRowLocatorWriteTests {
             let writes = try generator.generateRowWrites(
                 from: [delete(Self.rows[2])], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
             )
-            #expect(writes.map { $0.statement } == [#"db.users.deleteOne({"_id": \#(filtered)})"#])
+            #expect(writes.first?.statement.hasPrefix(#"db.users.deleteOne({"_id":\#(filtered),"$expr":"#) == true)
         }
     }
 
@@ -198,7 +207,7 @@ struct MongoDBRowLocatorWriteTests {
         let kept = try generator.generateRowWrites(
             from: [delete(Self.rows[2])], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
         )
-        #expect(kept.map { $0.statement } == [#"db.users.deleteOne({"_id": {"b":{"$numberInt":"1"},"a":"x"}})"#])
+        #expect(kept.first?.statement.hasPrefix(#"db.users.deleteOne({"_id":{"b":{"$numberInt":"1"},"a":"x"},"$expr":"#) == true)
 
         #expect(throws: MongoDBWriteRefusal.reorderedByTheShell(field: "_id").refusal(ofRow: 1)) {
             try generator.generateRowWrites(
@@ -235,9 +244,70 @@ struct MongoDBRowLocatorWriteTests {
 
         let query = mongo.buildLocatorQuery(table: "users", schema: nil, locators: locators, columns: ["_id", "name"])
 
-        #expect(query == #"db.users.find({"_id": {"$in": [\#(locators.joined(separator: ", "))]}}).limit(2)"#)
+        #expect(query?.contains(#"{"$or": ["#) == true)
+        for locator in locators {
+            #expect(query?.contains(#"{"_id":\#(locator),"$expr":"#) == true)
+        }
+        #expect(query?.contains(#".collation({"locale":"simple"})"#) == true)
         #expect(mongo.buildLocatorQuery(table: "users", schema: nil, locators: [], columns: []) == nil)
         #expect(mongo.buildLocatorQuery(table: "users", schema: nil, locators: [#"{"$gt":""}"#], columns: []) == nil)
+    }
+
+    @Test("An edit and delete require the loaded numeric type even when a replacement compares equal")
+    func numericReplacementDoesNotMatch() throws {
+        let cases = [
+            (#"{"$numberInt":"5"}"#, #"["int"]"#),
+            (#"{"$numberLong":"5"}"#, #"["long"]"#),
+            (#"{"$numberDouble":"5.0"}"#, #"["double"]"#),
+            (#"{"$numberDecimal":"5.0"}"#, #"[["decimal","5.0"]]"#),
+            (#"{"nested":{"$numberLong":"5"}}"#, #"[["object",["long"]]]"#)
+        ]
+        for (locator, signature) in cases {
+            var generator = generator(Self.rows[2], kinds: nil)
+            generator.rowLocators = [0: locator]
+            let updated = try generator.generateRowWrites(
+                from: [update(Self.rows[2])], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
+            )
+            let deleted = try generator.generateRowWrites(
+                from: [delete(Self.rows[2])], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: []
+            )
+            for write in updated + deleted {
+                #expect(write.statement.contains(#"{"$eq":[{"_id":"$_id"},{"$literal":{"_id":\#(locator)}}]}"#))
+                #expect(write.statement.contains(#"{"$literal":\#(signature)}"#))
+                #expect(write.statement.contains(#"{"$type":"$$this"}"#))
+                #expect(write.statement.hasSuffix(#", {"collation":{"locale":"simple"}})"#))
+            }
+        }
+    }
+
+    @Test("A collating replacement string cannot receive the loaded row's edit or delete")
+    func collatingReplacementDoesNotMatch() throws {
+        var generator = generator(Self.rows[2], kinds: nil)
+        generator.rowLocators = [0: #""abc""#]
+        for deleted in [false, true] {
+            let writes = try generator.generateRowWrites(
+                from: [deleted ? delete(Self.rows[2]) : update(Self.rows[2])], insertedRowData: [:],
+                deletedRowIndices: deleted ? [0] : [], insertedRowIndices: []
+            )
+            let statement = try #require(writes.first?.statement)
+            #expect(statement.contains(#"{"$eq":[{"_id":"$_id"},{"$literal":{"_id":"abc"}}]}"#))
+            #expect(statement.contains(#"{"$literal":["string"]}"#))
+            #expect(statement.hasSuffix(#", {"collation":{"locale":"simple"}})"#))
+        }
+    }
+
+    @Test("A limited locator read filters numeric and collating twins before counting rows")
+    func locatorReadFiltersBeforeLimit() throws {
+        let mongo = MongoDBPluginDriver(config: DriverConnectionConfig(
+            host: "db.example.com", port: 27_017, username: "u", password: "p", database: "app"
+        ))
+        let locators = [#""abc""#, #"{"$numberInt":"5"}"#, #"{"$numberLong":"5"}"#]
+        let query = try #require(mongo.buildLocatorQuery(table: "users", schema: nil, locators: locators, columns: []))
+        let filter = try #require(query.components(separatedBy: ").limit(").first)
+        #expect(filter.contains(#"{"$literal":["string"]}"#))
+        #expect(filter.contains(#"{"$literal":["int"]}"#))
+        #expect(filter.contains(#"{"$literal":["long"]}"#))
+        #expect(query.hasSuffix(#".limit(3).collation({"locale":"simple"})"#))
     }
 
     @Test("A deleted document read without a locator is not put back under an _id guessed from its text")
@@ -286,8 +356,10 @@ struct MongoDBBackedDriverLocatorTests {
         let deletes = try delete(driver, row, locator: row.locator)
 
         #expect(updates.count == 1)
-        #expect(updates.first?.statement.hasPrefix(#"db.users.updateOne({"_id": \#(row.locator)}, "#) == true)
-        #expect(deletes.map { $0.statement } == [#"db.users.deleteOne({"_id": \#(row.locator)})"#])
+        #expect(updates.first?.statement.hasPrefix(#"db.users.updateOne({"_id":\#(row.locator),"$expr":"#) == true)
+        #expect(deletes.first?.statement.hasPrefix(#"db.users.deleteOne({"_id":\#(row.locator),"$expr":"#) == true)
+        #expect(updates.first?.statement.hasSuffix(#", {"collation":{"locale":"simple"}})"#) == true)
+        #expect(deletes.first?.statement.hasSuffix(#", {"collation":{"locale":"simple"}})"#) == true)
     }
 
     @Test("After a reconnect, an edit and a delete filter on the _id the row was read with",
