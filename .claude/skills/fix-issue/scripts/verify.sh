@@ -19,6 +19,7 @@
 #                   is this repository, else the checkout this script lives in)
 #   --no-wait       do not wait for a concurrent build of the same checkout to finish
 #   --offline       resolve dependencies without the network
+#   --              ends the options: what follows goes to the step as it is, such as a test filter option
 #
 # Exit: 0 pass, 1 fail, 2 inconclusive (a named environment cause, not the change), 3 usage error.
 
@@ -72,6 +73,7 @@ while [ $# -gt 0 ]; do
         --no-wait) WAIT_FOR_BUILD=0; shift ;;
         --offline) OFFLINE=1; shift ;;
         -h | --help) HELP=1; shift ;;
+        --) shift; POSITIONAL+=("$@"); break ;;
         --*) echo "unknown option: $1" >&2; usage ;;
         *) POSITIONAL+=("$1"); shift ;;
     esac

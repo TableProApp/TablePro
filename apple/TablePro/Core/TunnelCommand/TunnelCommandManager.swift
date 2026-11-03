@@ -28,6 +28,7 @@ actor TunnelCommandManager: TunnelManaging {
     }
 
     private var tunnels: [UUID: TunnelState] = [:]
+    private var creations = TunnelCreationGenerations()
     private var pidRecords: [UUID: TunnelCommandPidRecord] = [:]
     private let runnerFactory: () -> any SupervisedProcessRunner
     private let executableLookup: (String) -> String?
@@ -55,13 +56,15 @@ actor TunnelCommandManager: TunnelManaging {
         remotePort: Int,
         deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> Int {
+        let generation = creations.begin(connectionId)
+        defer { creations.finish(generation, for: connectionId) }
         let timeoutEndpoint = ConnectionTimeoutEndpoint.tunnel("\(remoteHost):\(remotePort)")
         try deadline.check(endpoint: timeoutEndpoint)
         await sweepStalePidsIfNeeded()
         try deadline.check(endpoint: timeoutEndpoint)
 
         if tunnels[connectionId] != nil {
-            try await closeTunnel(connectionId: connectionId)
+            try await discardTunnel(connectionId: connectionId)
         }
 
         let environment = ProcessEnvironment.addingToolSearchPaths(to: ProcessEnvironment.inherited())
@@ -94,9 +97,9 @@ actor TunnelCommandManager: TunnelManaging {
                 throw TunnelCommandError.executableNotFound(invocation.executable)
             }
 
-            /// Every exit from here stops the process, cancellation included. A connect the user
-            /// cancels while the port is still being waited on would otherwise leave the forward
-            /// running until the next launch swept it, still holding its port.
+            // Every exit from here stops the process, cancellation included. A connect the user
+            // cancels while the port is still being waited on would otherwise leave the forward
+            // running until the next launch swept it, still holding its port.
             do {
                 try await awaitReadiness(
                     runner: runner,
@@ -117,6 +120,11 @@ actor TunnelCommandManager: TunnelManaging {
                 throw error
             }
 
+            // A newer createTunnel or a close for this connection came while this one dialed, so it must not adopt.
+            guard creations.isNewest(generation, for: connectionId) else {
+                runner.stop()
+                throw CancellationError()
+            }
             register(
                 connectionId: connectionId,
                 runner: runner,
@@ -133,7 +141,13 @@ actor TunnelCommandManager: TunnelManaging {
         throw lastError
     }
 
+    // Also ends a creation still dialing, so nothing it builds is adopted after the close returned.
     func closeTunnel(connectionId: UUID) async throws {
+        creations.invalidate(connectionId)
+        try await discardTunnel(connectionId: connectionId)
+    }
+
+    private func discardTunnel(connectionId: UUID) async throws {
         guard let state = tunnels.removeValue(forKey: connectionId) else { return }
         Self.runnerRegistry.withLock { $0[connectionId] = nil }
         pidRecords.removeValue(forKey: connectionId)
@@ -143,6 +157,7 @@ actor TunnelCommandManager: TunnelManaging {
     }
 
     func closeAllTunnels() async {
+        creations.invalidateAll()
         let current = tunnels
         tunnels.removeAll()
         pidRecords.removeAll()

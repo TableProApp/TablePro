@@ -13,6 +13,7 @@ struct ExportDialog: View {
     let mode: ExportMode
     var sidebarTables: [TableInfo] = []
     var initialFormatId: String?
+    var sheetWork: SheetWorkScope?
 
     // MARK: - State
 
@@ -976,18 +977,19 @@ struct ExportDialog: View {
         run.reset()
         let source = connection?.name ?? dataSourceRequest?.title ?? ""
         let stopper = run
-        run.workId = RunningWorkRegistry.shared.begin(
+        run.job = SheetJob(
             .dataExport,
             subject: url.lastPathComponent,
             connectionName: source,
-            connectionIds: Set([connection?.id].compactMap { $0 })
+            connectionIds: Set([connection?.id].compactMap { $0 }),
+            scope: sheetWork
         ) { stopper.stop() }
         showProgressDialog = true
     }
 
     private func endRunningWork() {
-        RunningWorkRegistry.shared.end(run.workId)
-        run.workId = nil
+        run.job?.end()
+        run.job = nil
     }
 
     private func adopt(_ service: ExportService) {
@@ -1113,7 +1115,7 @@ struct ExportDialog: View {
 private final class ExportRun {
     var service: ExportService?
     var task: Task<Void, Never>?
-    var workId: UUID?
+    var job: SheetJob?
     private(set) var isStopRequested = false
 
     func reset() {

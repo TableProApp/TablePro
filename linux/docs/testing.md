@@ -39,7 +39,7 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Five suites: `unit` is `cargo test --workspace --exclude tablepro`. `gtk`
+Five suites: `unit` is `cargo test --workspace --exclude tablepro --exclude tablepro-ffi`. `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
 `GDK_BACKEND=x11` and the build tree's schema directory, under a
 `dbus-run-session` of its own when one is installed, so its bus names

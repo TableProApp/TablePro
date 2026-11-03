@@ -67,14 +67,14 @@ struct TabFilterStateEditingTests {
         #expect(rawless.columnName.isEmpty)
     }
 
-    @Test("A new row takes the default operator and keeps the case setting it has always had")
+    @Test("A new row takes the default operator and that operator's usual case setting")
     func newFilterOperator() {
         let filter = TabFilterState.newFilter(
             settings: settings(.anyColumn, .contains), columns: ["name"], primaryKeyColumn: nil, offersRawFilter: true
         )
 
         #expect(filter.filterOperator == .contains)
-        #expect(filter.isCaseSensitive)
+        #expect(!filter.isCaseSensitive)
         #expect(filter.value.isEmpty)
         #expect(filter.isEnabled)
     }
@@ -100,6 +100,7 @@ struct TabFilterStateEditingTests {
 
         #expect(state.filters.map(\.columnName) == ["email"])
         #expect(state.filters.first?.filterOperator == .contains)
+        #expect(state.filters.first?.isCaseSensitive == false)
         #expect(state.isVisible)
     }
 
@@ -120,17 +121,29 @@ struct TabFilterStateEditingTests {
         #expect(copy.secondValue == "9")
     }
 
-    @Test("A duplicate keeps the operator's case default and no element scope, as it always has")
-    func duplicateDropsCaseAndScope() {
+    @Test("A duplicate keeps its source's case setting and element scope")
+    func duplicateKeepsCaseAndScope() throws {
         var source = TestFixtures.makeTableFilter(column: "name", op: .contains, value: "a")
         source.isCaseSensitive = true
         source.elementScope = "tags"
         var state = state([source])
 
-        state.duplicateFilter(source)
+        let copyID = state.duplicateFilter(source)
 
-        #expect(state.filters.last?.isCaseSensitive == false)
-        #expect(state.filters.last?.elementScope == nil)
+        let copy = try #require(state.filters.first { $0.id == copyID })
+        #expect(copy.isCaseSensitive)
+        #expect(copy.elementScope == "tags")
+        #expect(copy.hasSameCondition(as: source))
+    }
+
+    @Test("A duplicate of a raw row carries its condition")
+    func duplicateRawRow() {
+        let source = TableFilter.rawCondition("id > 5")
+        var state = state([source])
+
+        let copyID = state.duplicateFilter(source)
+
+        #expect(state.filters.first { $0.id == copyID }?.value == "id > 5")
     }
 
     @Test("Duplicating a row the state no longer holds appends the copy")
@@ -266,6 +279,54 @@ struct TabFilterStateEditingTests {
 
         #expect(filters.map(\.columnName) == ["name", "email"])
         #expect(filters.allSatisfy { $0.filterOperator == .contains && $0.value == "ana" && $0.isEnabled })
+    }
+
+    @Test("What reruns is what ran: the restored rows before the first query, then the running ones")
+    func rerunReadsRunningFilters() {
+        var state = state([TableFilter(columnName: "age", value: "10")], commit: .all)
+        #expect(state.rerunFilters.filters.map(\.value) == ["10"])
+
+        state.adoptAppliedFiltersAsRunning()
+        state.filters[0] = state.filters[0].selectingRawCondition()
+        state.filterLogicMode = .or
+
+        #expect(state.rerunFilters.filters.map(\.columnName) == ["age"])
+        #expect(state.rerunFilters.logicMode == .and)
+
+        state.commit = nil
+        #expect(state.rerunFilters.filters.isEmpty)
+    }
+
+    @Test("Removing a running row whose text was erased without Apply still stops it running")
+    func removingEditedRunningRowStopsIt() {
+        let running = TableFilter(columnName: "age", value: "10")
+        var state = state([running], commit: .all)
+        state.adoptAppliedFiltersAsRunning()
+        state.filters[0].value = ""
+
+        #expect(state.removeFilter(state.filters[0]) == .clear)
+    }
+
+    @Test("Renaming or removing a column carries what is running along with the draft")
+    func columnEditsReachRunningFilters() {
+        var state = state([TableFilter(columnName: "city", value: "Paris"), TableFilter(columnName: "age", value: "3")],
+                          commit: .all)
+        state.adoptAppliedFiltersAsRunning()
+
+        state.renameFilterColumn(from: "city", to: "town")
+        #expect(state.rerunFilters.filters.map(\.columnName) == ["town", "age"])
+        #expect(state.filters.map(\.columnName) == ["town", "age"])
+
+        state.removeFilters(onColumns: ["age"])
+        #expect(state.rerunFilters.filters.map(\.columnName) == ["town"])
+        #expect(state.filters.map(\.columnName) == ["town"])
+    }
+
+    @Test("A cross-column search ignores case, like the find that offers it")
+    func crossColumnSearchIgnoresCase() {
+        let filters = TabFilterState.crossColumnSearchFilters(term: "ana", columns: ["name", "email"])
+
+        #expect(filters.allSatisfy { !$0.isCaseSensitive })
     }
 
     @Test("Moving a row by direction or onto another row reorders the rows")

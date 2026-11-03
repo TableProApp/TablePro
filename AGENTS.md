@@ -1,10 +1,11 @@
 # TablePro
 
-Native database clients with a native UI per platform: `apple/` holds the macOS and iOS apps (Swift), `linux/` the Linux app (Rust, GTK 4), and `core/` the shared Rust core the Linux app builds on and the other apps will move to. Read `apple/AGENTS.md`, `linux/AGENTS.md` or `core/AGENTS.md` before working in that folder. Claude Code loads it through the folder's `CLAUDE.md`, Codex only when started there.
+Native database clients with a native UI per platform: `apple/` holds the macOS and iOS apps (Swift), `linux/` the Linux app (Rust, GTK 4), `windows/` the Windows app (C#, WinUI 3), and `core/` the shared Rust core the Linux and Windows apps build on and the Swift app will move to. Read `apple/AGENTS.md`, `linux/AGENTS.md`, `windows/AGENTS.md` or `core/AGENTS.md` before working in that folder. Claude Code loads it through the folder's `CLAUDE.md`, Codex only when started there.
 
 ## Repository map
 
 - `apple/`, `linux/`: each app with its scripts and changelog.
+- `windows/`: the Windows app's .NET solution. Today it holds the interop library over the core's FFI crate, `core/crates/ffi`, and its tests.
 - `core/`: the shared Rust core's crates, its architecture and its cross-platform decisions. `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `deny.toml` and `.config/nextest.toml` at the top are its Cargo workspace, which also holds the Linux app's crates.
 - `windows/`: the Windows app's decisions and its toolchain install script. The app is not in the tree yet.
 - `.github/`: workflows, actions, the PR template and `plugin-registry.json`.

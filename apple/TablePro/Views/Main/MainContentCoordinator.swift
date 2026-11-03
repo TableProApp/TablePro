@@ -260,6 +260,8 @@ final class MainContentCoordinator: ObservableObject {
     @Published var activeSheet: ActiveSheet? {
         didSet { releaseImportFileUnlessImporting() }
     }
+    // Export and transfer started from these sheets stop with `teardown()`, never with the pane.
+    private(set) lazy var sheetWork = SheetWorkScope { [weak self] in self?.windowId }
     // Commands present through this, not a flag: the toolbar view is gone when its item is in overflow or removed.
     var switcherPresenter: ToolbarSwitcherPresenter? {
         splitViewController?.switcherPresenter
@@ -833,6 +835,7 @@ final class MainContentCoordinator: ObservableObject {
         )
         _didTeardown.withLock { $0 = true }
 
+        sheetWork.stopAll()
         unregisterFromPersistence()
         dropMovesAwaitingRestore(reason: "coordinator torn down")
         SessionRecoveryTracker.sync()

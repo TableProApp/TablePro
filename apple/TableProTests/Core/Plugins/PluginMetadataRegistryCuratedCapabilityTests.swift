@@ -316,6 +316,25 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
             built.capabilities.exactRowCountIsFullScan == true,
             "Every automatic count would be a Scan of the whole table that AWS bills for"
         )
+        #expect(built.capabilities.supportsRawFilter == false, "its driver refuses every raw filter")
+    }
+
+    @Test("Engines whose driver refuses or misreads a raw condition are not offered one", arguments: [
+        "etcd", "DynamoDB", "Memcached", "Weaviate", "InfluxDB", "Kafka"
+    ])
+    func refusingEnginesOfferNoRawFilter(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsRawFilter == false)
+    }
+
+    @Test("Engines that run a raw condition natively still offer one", arguments: [
+        "MySQL", "PostgreSQL", "SQL Server", "Oracle", "MongoDB", "Elasticsearch"
+    ])
+    func nativeEnginesOfferRawFilter(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsRawFilter)
     }
 
     /// None of these has a `DriverPlugin` static, so a plugin that registers would reset them to the struct
@@ -567,6 +586,7 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.exactRowCountIsFullScan == false)
         #expect(built.capabilities.supportsColumnSort == true)
         #expect(built.capabilities.supportsMatchAnyFilters == true)
+        #expect(built.capabilities.supportsRawFilter == true)
         #expect(built.capabilities.columnsAreSampled == false)
         #expect(built.capabilities.patternFiltersReadAnyColumn == false)
         #expect(built.capabilities.filtersTypedByReadRows == false)

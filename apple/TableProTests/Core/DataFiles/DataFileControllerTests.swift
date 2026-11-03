@@ -135,6 +135,26 @@ struct DataFileControllerTests {
         #expect(column(controller, 1) == ["Rome"])
     }
 
+    @Test("A raw row or a column the file lacks refuses the apply instead of showing every row as filtered")
+    func unrunnableRowRefusesApply() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
+        controller.filterState.filters = [
+            TableFilter(columnName: "city", value: "London"),
+            TableFilter.rawCondition("id > 5"),
+        ]
+
+        controller.applyAllFilters()
+        await controller.waitForPendingWork()
+
+        #expect(controller.filterState.commit == nil)
+        #expect(controller.statusMessage == String(localized: "This file cannot filter rows with these conditions."))
+        #expect(column(controller, 0) == ["A", "B"])
+
+        controller.filterState.filters = [TableFilter(columnName: "country", value: "VN")]
+        controller.applyAllFilters()
+        #expect(controller.filterState.commit == nil)
+    }
+
     // Compared as text, "9" sorts after "50" and would be kept too.
     @Test("A cell filter on a number column compares numbers, not text")
     func cellFilterComparesNumbersAsNumbers() async throws {
@@ -742,6 +762,52 @@ struct DataFileControllerTests {
         #expect(controller.columnNames.displayNames == ["amount"])
         #expect(controller.filterState.filters.map(\.columnName) == ["amount"])
         #expect(controller.visibleRowCount == 1)
+    }
+
+    @Test("A sort after renaming a filtered column keeps filtering by it")
+    func sortAfterRenameKeepsFilter() async throws {
+        let (controller, _) = try await loaded("amount\n5\n50\n70\n")
+        controller.filterState.filters = [TableFilter(columnName: "amount", filterOperator: .greaterThan, value: "10")]
+        controller.applyAllFilters()
+        await controller.waitForPendingWork()
+
+        controller.renameColumn(controller.columnNames.ids[0], to: "total")
+        controller.updateSort(SortState(columns: [SortColumn(columnIndex: 0, direction: .descending)]))
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["70", "50"])
+    }
+
+    @Test("Deleting a column a running filter reads reruns, even after its row was edited away from it")
+    func deleteColumnOfRunningFilterReruns() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
+        controller.filterState.filters = [TableFilter(columnName: "city", value: "London")]
+        controller.applyAllFilters()
+        await controller.waitForPendingWork()
+        #expect(column(controller, 0) == ["B"])
+
+        controller.filterState.filters[0] = controller.filterState.filters[0].selectingColumn("name")
+        controller.deleteColumns([controller.columnNames.ids[1]])
+        await controller.waitForPendingWork()
+
+        #expect(column(controller, 0) == ["A", "B"])
+        controller.undoManager?.undo()
+        await controller.waitForPendingWork()
+        #expect(column(controller, 0) == ["B"])
+    }
+
+    @Test("Filters on columns a header toggle renamed stop counting as applied")
+    func headerToggleDropsUnresolvableFilters() async throws {
+        let (controller, _) = try await loaded("name,city\nA,Paris\nB,London\n")
+        controller.filterState.filters = [TableFilter(columnName: "city", value: "London")]
+        controller.applyAllFilters()
+        await controller.waitForPendingWork()
+
+        controller.setUsesFirstRowAsHeader(false)
+        await controller.waitForPendingWork()
+
+        #expect(controller.filterState.commit == nil)
+        #expect(controller.visibleRowCount == 3)
     }
 
     @Test("Undoing a column delete brings back its filter and sort")

@@ -67,7 +67,7 @@ struct ConnectionURLFilterTests {
         #expect(state.commit == .all)
         #expect(state.isVisible)
         #expect(filter.isRawSQL)
-        #expect(filter.rawSQL == "total > 1000")
+        #expect(filter.value == "total > 1000")
     }
 
     @Test("A column filter keeps its column and value and maps the operation")

@@ -182,7 +182,7 @@ extension DataFileController {
         guard isEditable, !ids.isEmpty, var updated = table else { return }
         let removedNames = ids.compactMap { columnNames.name(for: $0) }
         updated.deleteColumns(ids)
-        let referencedFilters = filterState.filters.contains { removedNames.contains($0.columnName) }
+        let referencedFilters = filterState.filtersOnAnyColumn(in: Set(removedNames))
         let referencedSort = sortReferences.contains { ids.contains($0.column) }
         commit(
             updated,
@@ -190,7 +190,7 @@ extension DataFileController {
             includesFilters: referencedFilters
         ) { controller in
             controller.columnLayout.hiddenColumns.subtract(removedNames)
-            controller.filterState.filters.removeAll { removedNames.contains($0.columnName) }
+            controller.filterState.removeFilters(onColumns: Set(removedNames))
         }
         if referencedFilters || referencedSort {
             runQuery()
@@ -203,13 +203,10 @@ extension DataFileController {
             adoptDisplayNamesAsHeader(in: &updated)
         }
         updated.renameColumn(id, to: name)
-        let referencedFilters = filterState.filters.contains { $0.columnName == oldName }
+        let referencedFilters = filterState.filtersOnAnyColumn(in: [oldName])
         commit(updated, actionName: String(localized: "Rename Column"), includesFilters: referencedFilters) { controller in
             guard let newName = controller.columnNames.name(for: id), newName != oldName else { return }
-            for index in controller.filterState.filters.indices
-                where controller.filterState.filters[index].columnName == oldName {
-                controller.filterState.filters[index].columnName = newName
-            }
+            controller.filterState.renameFilterColumn(from: oldName, to: newName)
             if controller.columnLayout.hiddenColumns.remove(oldName) != nil {
                 controller.columnLayout.hiddenColumns.insert(newName)
             }
@@ -244,7 +241,7 @@ extension DataFileController {
         } else {
             kindOverrides[id] = nil
         }
-        if sortState.isSorting || !filterState.appliedFilters.isEmpty {
+        if sortState.isSorting || !filterState.rerunFilters.filters.isEmpty {
             runQuery()
         } else {
             gridModel.summaryRulesDidChange()

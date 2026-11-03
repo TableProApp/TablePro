@@ -624,7 +624,7 @@ extension RowEditingCoordinator {
         parent.promotePreviewTab()
         parent.openTabInNewWindow(
             parent.makeFKReferencePayload(
-                filter: TableFilter(columnName: TableFilter.rawSQLColumn, rawSQL: condition),
+                filter: TableFilter.rawCondition(condition),
                 referencedTable: line.table,
                 databaseName: scope.database,
                 schemaName: scope.schema
