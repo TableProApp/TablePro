@@ -92,7 +92,7 @@ case "$SUITE" in
     linux|linux-docs)
         # The Linux app builds the shared core in the Cargo workspace whose files are at the top.
         PATTERNS=('linux/' 'core/' 'Cargo\.(toml|lock)$' '(rust-toolchain|rustfmt|clippy|deny)\.toml$'
-            '\.config/nextest\.toml$' 'scripts/ci/detect-changed-paths\.sh$'
+            '\.config/nextest\.toml$' 'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$'
             '\.github/workflows/(ci|build-linux|core|linux-packages|release-linux)\.yml$')
         # linux-docs decides the docs links job, which reads every path. The other Linux jobs skip
         # Markdown, except the files a Meson test reads and the notices the build installs.

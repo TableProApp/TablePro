@@ -81,32 +81,8 @@ impl ClientTls {
     }
 }
 
-/// A directory only the user can open, in the runtime directory where
-/// there is one, for files that live while a client is built.
-#[cfg(unix)]
 pub(crate) fn private_dir() -> io::Result<TempDir> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let builder = || {
-        let mut builder = tempfile::Builder::new();
-        // The default follows the umask, which leaves the directory
-        // listable by anyone.
-        builder
-            .prefix("tablepro-mongodb-")
-            .permissions(std::fs::Permissions::from_mode(0o700));
-        builder
-    };
-    match std::env::var_os("XDG_RUNTIME_DIR").filter(|dir| !dir.is_empty()) {
-        Some(runtime) => builder().tempdir_in(runtime).or_else(|_| builder().tempdir()),
-        None => builder().tempdir(),
-    }
-}
-
-/// A directory in the user's own temporary folder, which only they and
-/// the system can open.
-#[cfg(windows)]
-pub(crate) fn private_dir() -> io::Result<TempDir> {
-    tempfile::Builder::new().prefix("tablepro-mongodb-").tempdir()
+    tablepro_net::private_dir("tablepro-mongodb-")
 }
 
 fn write_private(dir: &Path, name: &str, contents: &[u8]) -> io::Result<PathBuf> {

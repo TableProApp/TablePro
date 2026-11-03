@@ -1,9 +1,12 @@
-// The configuration, destination and prompt types are portable. The
-// transport drives the system OpenSSH client over Unix sockets and an
-// askpass helper, so it builds on Unix alone.
+// Two transports: the system OpenSSH client over Unix sockets and an
+// askpass helper, on Unix, and one in process on russh behind the
+// `in-process` feature, on every target (core ADR 0008).
 
 mod config;
 mod destination;
+mod forget_error;
+#[cfg(feature = "in-process")]
+mod in_process;
 mod prompt;
 
 #[cfg(unix)]
@@ -41,12 +44,15 @@ mod sweep;
 
 pub use config::{SshAuth, SshConfig};
 pub use destination::SshDestination;
+pub use forget_error::ForgetHostKeyError;
+#[cfg(feature = "in-process")]
+pub use in_process::{InProcessForward, InProcessSession, InProcessSsh};
 pub use prompt::AskpassPrompt;
 
 #[cfg(unix)]
 pub use forward::SshForwardTransport;
 #[cfg(unix)]
-pub use known_hosts::{ForgetHostKeyError, forget_changed_host_key, forget_host_key};
+pub use known_hosts::{forget_changed_host_key, forget_host_key};
 #[cfg(unix)]
 pub use runtime::SshRuntime;
 #[cfg(unix)]
@@ -58,14 +64,14 @@ pub use session::SshSession;
 #[cfg(unix)]
 pub use sweep::sweep_stale_masters;
 
-#[cfg(unix)]
+#[cfg(any(unix, feature = "in-process"))]
 pub(crate) fn lock<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 // The panic hook has reported a panic, and a cancel comes only as the
 // runtime shuts down, so the error is logged, not shown.
-#[cfg(unix)]
+#[cfg(any(unix, feature = "in-process"))]
 pub(crate) fn setup_task_failed(error: &tokio::task::JoinError) -> tablepro_core::SshFailure {
     tracing::warn!(%error, "an SSH setup task stopped");
     tablepro_core::SshFailure::Internal

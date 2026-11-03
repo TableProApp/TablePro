@@ -12,11 +12,11 @@ What the connection names decides how the crate reaches it:
 |---|---|---|
 | A host, directly | That one host, with `directConnection`, as mongosh does with one host: a replica set member is used as named, never swapped for the names the set gives its members, which the app may not be able to reach | The crate's, from files the driver writes (below) |
 | DNS Seed List on | The servers the host's SRV records name, with the options its TXT record sets (`replicaSet`, `authSource`, `loadBalanced`), and the set's discovery | The crate's |
-| SSH | A private Unix socket the driver listens on; each connection the crate opens there is a new `Transport::open()` stream through the forward, one host, `directConnection` | The driver's, around each stream |
+| SSH | A private socket the driver listens on (`tablepro_net::PrivateListener`: a Unix socket, or on Windows a loopback port that serves only this process); each connection the crate opens there is a new `Transport::open()` stream through the forward, one host, `directConnection` | The driver's, around each stream |
 
 A seed list is a DNS lookup the forward cannot carry, so DNS Seed List over SSH is refused before anything is opened (`ConfigError::SeedListOverSsh`). The session's reachability check does not wait on a seed list's host, which may have no address of its own. The seed list's port is the records' to give, so the connect dialog hides the Port row while DNS Seed List is on.
 
-The relay socket sits in a private directory under `$XDG_RUNTIME_DIR` (the system temporary directory without one), mode 0700, and is removed with the connection. A stream the forward fails to open closes the crate's connection, and the transport's own error (the SSH master exited, the destination refused) is what the call reports.
+On Unix the relay socket sits in a private directory under `$XDG_RUNTIME_DIR` (the system temporary directory without one), mode 0700, and is removed with the connection. A stream the forward fails to open closes the crate's connection, and the transport's own error (the SSH master exited, the destination refused) is what the call reports.
 
 ## Clients
 

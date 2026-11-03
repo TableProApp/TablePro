@@ -1,6 +1,6 @@
 # 0001: One shared Rust core, a native UI per platform
 
-- **Status**: Accepted
+- **Status**: Accepted; SSH on Windows amended by [0008](0008-in-process-ssh-on-windows.md)
 - **Date**: 2026-11-02
 
 ## Context

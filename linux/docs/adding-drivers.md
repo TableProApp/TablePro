@@ -21,7 +21,7 @@ The library must:
 
 - be maintained and published on crates.io, used without a fork ([ADR 0005](decisions/0005-supply-chain-policy.md)); `deny.toml` allows no git source;
 - use rustls with aws-lc-rs, or no TLS of its own ([ADR 0009](decisions/0009-crypto-provider-and-sources.md));
-- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket ([Transports](../../core/ARCHITECTURE.md#transports)). A client that dials only TCP reaches the transport through a loopback relay, as the Cassandra driver's does ([ADR 0023](decisions/0023-loopback-relay-for-cql.md));
+- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket, and relay an in-process SSH channel, which has no address, through `tablepro_net::PrivateListener` ([Transports](../../core/ARCHITECTURE.md#transports)). A client that dials only TCP reaches the transport through a loopback relay, as the Cassandra driver's does ([ADR 0023](decisions/0023-loopback-relay-for-cql.md));
 - have a way to stop a statement already sent: a cancel request, a KILL, an attention, an interrupt. Where the protocol has none, as CQL's has not, it drops the request and keeps the connection serving (`StatementStop::Abandon`);
 - let the driver keep a connection clean for the next caller, with no server-side state it did not ask for.
 

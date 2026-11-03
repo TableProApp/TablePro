@@ -1,0 +1,517 @@
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use russh::client::{AuthResult, Handle, KeyboardInteractiveAuthResponse};
+use russh::keys::PrivateKeyWithHashAlg;
+use russh::keys::agent::AgentIdentity;
+use russh::keys::ssh_key::public::KeyData;
+use russh::keys::ssh_key::{Algorithm, Certificate, HashAlg, PrivateKey, PublicKey};
+use russh::{MethodKind, MethodSet};
+use secrecy::{ExposeSecret, SecretString};
+use tablepro_core::credentials::PromptReason;
+use tablepro_core::{SshFailure, TransportError};
+
+use super::agent::{AgentSlot, identity_algorithm, signs_for};
+use super::failure::from_russh;
+use super::handler::{HopHandler, SessionEnd};
+use super::identity::{self, KeySigner, TRIES};
+use super::prompts::Prompts;
+use super::services::InProcessSsh;
+use crate::SshAuth;
+
+// A server re-asking after a wrong answer gets this many rounds before the method is given up.
+const KEYBOARD_ROUNDS: usize = 8;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Method {
+    Password,
+    KeyboardInteractive,
+    Agent,
+    KeyFile(PathBuf),
+    DefaultKeyFiles,
+}
+
+impl Method {
+    fn kind(&self) -> MethodKind {
+        match self {
+            Self::Password => MethodKind::Password,
+            Self::KeyboardInteractive => MethodKind::KeyboardInteractive,
+            Self::Agent | Self::KeyFile(_) | Self::DefaultKeyFiles => MethodKind::PublicKey,
+        }
+    }
+}
+
+// The order the OpenSSH transport's PreferredAuthentications and identities give.
+pub(crate) fn destination_methods(auth: &SshAuth) -> Vec<Method> {
+    use Method::{Agent, DefaultKeyFiles, KeyFile, KeyboardInteractive, Password};
+    match auth {
+        SshAuth::Password { .. } => vec![Password, KeyboardInteractive, Agent, DefaultKeyFiles],
+        SshAuth::KeyboardInteractive => vec![KeyboardInteractive, Password, Agent, DefaultKeyFiles],
+        SshAuth::PrivateKey { path: Some(path), .. } => vec![KeyFile(path.clone()), KeyboardInteractive, Password],
+        SshAuth::Agent | SshAuth::PrivateKey { path: None, .. } => {
+            vec![Agent, DefaultKeyFiles, KeyboardInteractive, Password]
+        }
+    }
+}
+
+// A jump host has no fields of its own, so it tries what OpenSSH would, plus the connection's key file.
+pub(crate) fn hop_methods(auth: &SshAuth) -> Vec<Method> {
+    let mut methods = vec![Method::Agent];
+    if let SshAuth::PrivateKey { path: Some(path), .. } = auth {
+        methods.push(Method::KeyFile(path.clone()));
+    }
+    methods.extend([Method::DefaultKeyFiles, Method::KeyboardInteractive, Method::Password]);
+    methods
+}
+
+enum Step {
+    Done,
+    Partial(MethodSet),
+    Refused(MethodSet),
+    NotTried,
+}
+
+impl From<AuthResult> for Step {
+    fn from(result: AuthResult) -> Self {
+        match result {
+            AuthResult::Success => Self::Done,
+            AuthResult::Failure {
+                remaining_methods,
+                partial_success: true,
+            } => Self::Partial(remaining_methods),
+            AuthResult::Failure { remaining_methods, .. } => Self::Refused(remaining_methods),
+        }
+    }
+}
+
+// A key, or a certificate for it, offered once.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Offered {
+    Key(KeyData),
+    Certificate(KeyData),
+}
+
+impl Offered {
+    fn of(identity: &AgentIdentity) -> Self {
+        match identity {
+            AgentIdentity::PublicKey { key, .. } => Self::Key(key.key_data().clone()),
+            AgentIdentity::Certificate { certificate, .. } => Self::Certificate(certificate.public_key().clone()),
+        }
+    }
+}
+
+pub(crate) struct Login<'a> {
+    pub user: &'a str,
+    pub host: &'a str,
+    // Only the destination's; a jump host is never handed it.
+    pub password: Option<SecretString>,
+    // The connection names the agent, so its absence is the reason a login failed.
+    pub agent_chosen: bool,
+    pub passphrase: &'a mut Option<SecretString>,
+    // A key file opened for one hop serves the next without its passphrase again.
+    pub keys: &'a mut HashMap<PathBuf, Arc<PrivateKey>>,
+    // Keys already offered to this hop, so a second round after a partial success offers the rest.
+    pub offered: Vec<Offered>,
+    pub agent: &'a mut AgentSlot,
+    pub services: &'a InProcessSsh,
+    pub prompts: &'a Prompts,
+    pub end: &'a SessionEnd,
+}
+
+impl Login<'_> {
+    fn failed(&self, error: russh::Error) -> TransportError {
+        from_russh(error, self.host, self.end)
+    }
+
+    fn user_host(&self) -> String {
+        format!("{}@{}", self.user, self.host)
+    }
+}
+
+pub(crate) async fn log_in(
+    handle: &mut Handle<HopHandler>,
+    methods: &[Method],
+    login: &mut Login<'_>,
+) -> Result<(), TransportError> {
+    let mut allowed = match handle
+        .authenticate_none(login.user)
+        .await
+        .map_err(|error| login.failed(error))?
+    {
+        AuthResult::Success => return Ok(()),
+        AuthResult::Failure { remaining_methods, .. } => remaining_methods,
+    };
+    let mut used = vec![false; methods.len()];
+    'rounds: loop {
+        for (index, method) in methods.iter().enumerate() {
+            if used[index] || !allowed.contains(&method.kind()) {
+                continue;
+            }
+            used[index] = true;
+            match try_method(handle, method, login).await? {
+                Step::Done => return Ok(()),
+                // The server wants another method too, so earlier ones it now lists get their turn, and
+                // the agent and default identities their keys not yet offered.
+                Step::Partial(remaining) => {
+                    allowed = remaining;
+                    for (index, method) in methods.iter().enumerate() {
+                        if matches!(method, Method::Agent | Method::DefaultKeyFiles) {
+                            used[index] = false;
+                        }
+                    }
+                    continue 'rounds;
+                }
+                Step::Refused(remaining) => allowed = remaining,
+                Step::NotTried => {}
+            }
+        }
+        break;
+    }
+    // A server that ends the login, as on MaxAuthTries, says why in its disconnect.
+    if handle.is_closed() || login.end.closed().is_cancelled() {
+        return Err(login.failed(russh::Error::Disconnect));
+    }
+    if login.agent_chosen
+        && let Some(location) = login.agent.unavailable()
+    {
+        return Err(SshFailure::AgentUnavailable {
+            location: location.to_owned(),
+        }
+        .into());
+    }
+    Err(SshFailure::AuthenticationRejected {
+        user: login.user.to_owned(),
+        host: login.host.to_owned(),
+        methods: allowed.iter().map(|kind| <&str>::from(kind).to_owned()).collect(),
+    }
+    .into())
+}
+
+async fn try_method(
+    handle: &mut Handle<HopHandler>,
+    method: &Method,
+    login: &mut Login<'_>,
+) -> Result<Step, TransportError> {
+    match method {
+        Method::Password => password(handle, login).await,
+        Method::KeyboardInteractive => keyboard_interactive(handle, login).await,
+        Method::Agent => agent(handle, login, None).await,
+        Method::KeyFile(path) => key_file(handle, path, true, login).await,
+        Method::DefaultKeyFiles => {
+            let mut last = Step::NotTried;
+            for path in login.services.identity_files.clone() {
+                if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
+                    continue;
+                }
+                match key_file(handle, &path, false, login).await? {
+                    Step::Refused(remaining) if remaining.contains(&MethodKind::PublicKey) => {
+                        last = Step::Refused(remaining);
+                    }
+                    Step::NotTried => {}
+                    other => return Ok(other),
+                }
+            }
+            Ok(last)
+        }
+    }
+}
+
+async fn password(handle: &mut Handle<HopHandler>, login: &mut Login<'_>) -> Result<Step, TransportError> {
+    let mut reason = PromptReason::NotStored;
+    let mut last = Step::NotTried;
+    for _ in 0..TRIES {
+        let secret = match login.password.take() {
+            Some(stored) => stored,
+            None => match login.prompts.password(&login.user_host(), reason.clone()).await? {
+                Some(typed) => typed,
+                None => return Ok(last),
+            },
+        };
+        let result = handle
+            .authenticate_password(login.user, secret.expose_secret())
+            .await
+            .map_err(|error| login.failed(error))?;
+        match Step::from(result) {
+            Step::Refused(remaining) => {
+                reason = PromptReason::Rejected;
+                let again = remaining.contains(&MethodKind::Password);
+                last = Step::Refused(remaining);
+                if !again {
+                    break;
+                }
+            }
+            other => return Ok(other),
+        }
+    }
+    Ok(last)
+}
+
+async fn keyboard_interactive(handle: &mut Handle<HopHandler>, login: &mut Login<'_>) -> Result<Step, TransportError> {
+    let mut response = handle
+        .authenticate_keyboard_interactive_start(login.user, None)
+        .await
+        .map_err(|error| login.failed(error))?;
+    for _ in 0..KEYBOARD_ROUNDS {
+        let (name, instructions, prompts) = match response {
+            KeyboardInteractiveAuthResponse::Success => return Ok(Step::Done),
+            KeyboardInteractiveAuthResponse::Failure {
+                remaining_methods,
+                partial_success,
+            } => {
+                return Ok(match partial_success {
+                    true => Step::Partial(remaining_methods),
+                    false => Step::Refused(remaining_methods),
+                });
+            }
+            KeyboardInteractiveAuthResponse::InfoRequest {
+                name,
+                instructions,
+                prompts,
+            } => (name, instructions, prompts),
+        };
+        let answers = if prompts.is_empty() {
+            Vec::new()
+        } else if let Some(stored) = stored_password_answer(&prompts, login) {
+            vec![stored]
+        } else {
+            match login
+                .prompts
+                .keyboard_interactive(&login.user_host(), &name, &instructions, &prompts)
+                .await?
+            {
+                Some(answers) => answers,
+                // russh takes nothing but answers until the exchange ends, so nobody to ask answers blank.
+                None => prompts.iter().map(|_| SecretString::from("")).collect(),
+            }
+        };
+        let answers = answers.iter().map(|answer| answer.expose_secret().to_owned()).collect();
+        response = handle
+            .authenticate_keyboard_interactive_respond(answers)
+            .await
+            .map_err(|error| login.failed(error))?;
+    }
+    Ok(Step::NotTried)
+}
+
+// PAM asks for the password through keyboard-interactive, so the stored one answers its one hidden prompt.
+fn stored_password_answer(prompts: &[russh::client::Prompt], login: &mut Login<'_>) -> Option<SecretString> {
+    let [prompt] = prompts else {
+        return None;
+    };
+    if prompt.echo || !prompt.prompt.to_ascii_lowercase().contains("password") {
+        return None;
+    }
+    login.password.take()
+}
+
+// `only` limits the agent to one key, the connection's key file.
+async fn agent(
+    handle: &mut Handle<HopHandler>,
+    login: &mut Login<'_>,
+    only: Option<&PublicKey>,
+) -> Result<Step, TransportError> {
+    let (user, host, end) = (login.user, login.host, login.end);
+    let Some((agent, identities)) = login.agent.session(login.services).await else {
+        return Ok(Step::NotTried);
+    };
+    let wanted: Vec<AgentIdentity> = identities
+        .iter()
+        .filter(|identity| only.is_none_or(|key| signs_for(identity, key)))
+        .filter(|identity| !login.offered.contains(&Offered::of(identity)))
+        .cloned()
+        .collect();
+    let mut last = Step::NotTried;
+    for identity in wanted {
+        login.offered.push(Offered::of(&identity));
+        let hash = rsa_hash(handle, identity_algorithm(&identity)).await;
+        let result = match identity {
+            AgentIdentity::PublicKey { key, .. } => handle.authenticate_publickey_with(user, key, hash, agent).await,
+            AgentIdentity::Certificate { certificate, .. } => {
+                handle
+                    .authenticate_certificate_with(user, certificate, hash, agent)
+                    .await
+            }
+        };
+        let result = match result {
+            Ok(result) => result,
+            Err(error) if handle.is_closed() => {
+                tracing::debug!(%error, "the session ended while the agent signed");
+                return Err(from_russh(russh::Error::Disconnect, host, end));
+            }
+            Err(error) => {
+                tracing::debug!(%error, "the agent did not sign");
+                continue;
+            }
+        };
+        match Step::from(result) {
+            Step::Refused(remaining) => {
+                let more = remaining.contains(&MethodKind::PublicKey);
+                last = Step::Refused(remaining);
+                if !more {
+                    break;
+                }
+            }
+            other => return Ok(other),
+        }
+    }
+    Ok(last)
+}
+
+async fn key_file(
+    handle: &mut Handle<HopHandler>,
+    path: &Path,
+    chosen: bool,
+    login: &mut Login<'_>,
+) -> Result<Step, TransportError> {
+    let certificate = identity::certificate_beside(path).await;
+    // A key the agent holds signs there with no passphrase, certificates included (Linux ADR 0020).
+    if let Some(public) = identity::public_half(path).await
+        && login.agent.holds(login.services, &public).await
+    {
+        if let Some(certificate) = &certificate
+            && !login.offered.contains(&Offered::Certificate(public.key_data().clone()))
+        {
+            login.offered.push(Offered::Certificate(public.key_data().clone()));
+            match agent_certificate(handle, login, certificate).await? {
+                Step::Refused(remaining) if remaining.contains(&MethodKind::PublicKey) => {}
+                Step::NotTried => {}
+                other => return Ok(other),
+            }
+        }
+        let step = agent(handle, login, Some(&public)).await?;
+        if !matches!(step, Step::NotTried) {
+            return Ok(step);
+        }
+    }
+    let key = match login.keys.get(path) {
+        Some(key) => key.clone(),
+        None => {
+            let Some(key) = identity::load(path, chosen, &mut *login.passphrase, login.prompts).await? else {
+                return Ok(Step::NotTried);
+            };
+            let key = Arc::new(key);
+            login.keys.insert(path.to_owned(), key.clone());
+            key
+        }
+    };
+    let data = key.public_key().key_data().clone();
+    if let Some(certificate) = certificate
+        && !login.offered.contains(&Offered::Certificate(data.clone()))
+    {
+        login.offered.push(Offered::Certificate(data.clone()));
+        let hash = rsa_hash(handle, certificate.public_key().algorithm()).await;
+        let result = handle
+            .authenticate_certificate_with(login.user, certificate, hash, &mut KeySigner(key.clone()))
+            .await;
+        match result {
+            Ok(result) => match Step::from(result) {
+                Step::Refused(remaining) if remaining.contains(&MethodKind::PublicKey) => {}
+                other => return Ok(other),
+            },
+            Err(error) => tracing::debug!(%error, "the certificate beside the key file did not sign"),
+        }
+    }
+    if login.offered.contains(&Offered::Key(data.clone())) {
+        return Ok(Step::NotTried);
+    }
+    login.offered.push(Offered::Key(data));
+    let hash = rsa_hash(handle, key.algorithm()).await;
+    let result = handle
+        .authenticate_publickey(login.user, PrivateKeyWithHashAlg::new(key, hash))
+        .await
+        .map_err(|error| login.failed(error))?;
+    Ok(Step::from(result))
+}
+
+// The agent signs with the key a certificate kept on disk certifies.
+async fn agent_certificate(
+    handle: &mut Handle<HopHandler>,
+    login: &mut Login<'_>,
+    certificate: &Certificate,
+) -> Result<Step, TransportError> {
+    let (user, host, end) = (login.user, login.host, login.end);
+    let Some((agent, _)) = login.agent.session(login.services).await else {
+        return Ok(Step::NotTried);
+    };
+    let hash = rsa_hash(handle, certificate.public_key().algorithm()).await;
+    match handle
+        .authenticate_certificate_with(user, certificate.clone(), hash, agent)
+        .await
+    {
+        Ok(result) => Ok(Step::from(result)),
+        Err(error) if handle.is_closed() => {
+            tracing::debug!(%error, "the session ended while the agent signed");
+            Err(from_russh(russh::Error::Disconnect, host, end))
+        }
+        Err(error) => {
+            tracing::debug!(%error, "the agent did not sign the certificate");
+            Ok(Step::NotTried)
+        }
+    }
+}
+
+// rsa-sha2-512 or -256 when the server lists one, and ssh-rsa only for a server that names none.
+async fn rsa_hash(handle: &Handle<HopHandler>, algorithm: Algorithm) -> Option<HashAlg> {
+    if !algorithm.is_rsa() {
+        return None;
+    }
+    handle.best_supported_rsa_hash().await.ok().flatten().flatten()
+}
+
+#[cfg(test)]
+mod tests {
+    use secrecy::SecretString;
+
+    use super::*;
+
+    #[test]
+    fn each_auth_tries_methods_in_the_order_the_openssh_transport_does() {
+        let key = PathBuf::from("/keys/id_ed25519");
+        let password = SshAuth::Password {
+            password: SecretString::from("s3cret"),
+        };
+        let chosen = SshAuth::PrivateKey {
+            path: Some(key.clone()),
+            passphrase: None,
+        };
+
+        assert_eq!(
+            destination_methods(&password),
+            [
+                Method::Password,
+                Method::KeyboardInteractive,
+                Method::Agent,
+                Method::DefaultKeyFiles
+            ]
+        );
+        assert_eq!(
+            destination_methods(&chosen),
+            [
+                Method::KeyFile(key.clone()),
+                Method::KeyboardInteractive,
+                Method::Password
+            ]
+        );
+        assert_eq!(
+            destination_methods(&SshAuth::Agent),
+            [
+                Method::Agent,
+                Method::DefaultKeyFiles,
+                Method::KeyboardInteractive,
+                Method::Password
+            ]
+        );
+        assert_eq!(
+            hop_methods(&chosen),
+            [
+                Method::Agent,
+                Method::KeyFile(key),
+                Method::DefaultKeyFiles,
+                Method::KeyboardInteractive,
+                Method::Password
+            ]
+        );
+        assert_eq!(hop_methods(&password)[0], Method::Agent);
+    }
+}

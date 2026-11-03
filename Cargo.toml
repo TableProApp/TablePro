@@ -121,6 +121,10 @@ rustls-native-certs = "0.8"
 rustls-platform-verifier = "0.7"
 pem-rfc7468 = { version = "1", features = ["alloc"] }
 socket2 = { version = "0.6", features = ["all"] }
+# In-process SSH (core ADR 0008): aws-lc-rs, rsa for RSA keys, no compression.
+russh = { version = "0.65", default-features = false, features = ["aws-lc-rs", "rsa"] }
+# HMAC-SHA1 for hashed known_hosts names, on the one provider (ADR 0009).
+aws-lc-rs = "1"
 rustix = { version = "1.1", default-features = false, features = ["std"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "logging", "tls12"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
@@ -145,6 +149,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = "1.9"
 # The volume and index that name a file on Windows, which std reads only on nightly.
 winapi-util = "0.1"
+# The owning process of a loopback connection, from GetExtendedTcpTable.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock"] }
 tempfile = "3"
 testcontainers = { version = "0.27", default-features = false, features = ["aws-lc-rs"] }
 testcontainers-modules = { version = "0.15", default-features = false, features = ["aws-lc-rs"] }
