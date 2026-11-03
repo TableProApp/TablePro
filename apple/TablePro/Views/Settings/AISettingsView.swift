@@ -175,9 +175,8 @@ struct AISettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(provider.displayName)
                     .fontWeight(.regular)
-                Text(statusText(for: provider))
+                AIProviderStatusLabel(status: status(for: provider), showsReadySymbol: false)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -368,78 +367,35 @@ struct AISettingsView: View {
         return String(format: String(localized: "Remove %@?"), provider.displayName)
     }
 
-    // MARK: - Status text
+    // MARK: - Status
 
-    private func statusText(for provider: AIProviderConfig) -> String {
-        switch provider.authStyle {
-        case .oauth:
-            return oauthStatusText(for: provider.type)
-        case .apiKey:
-            return apiKeyStatusText(for: provider)
-        case .optionalApiKey:
-            if provider.type == .custom {
-                return customStatusText(for: provider)
-            }
-            return apiKeyStatusText(for: provider)
-        case .none:
-            if provider.type == .claudeAgent {
-                return claudeAgentStatusText()
-            }
-            let endpoint = provider.endpoint.isEmpty ? provider.defaultEndpoint : provider.endpoint
-            guard !endpoint.isEmpty else { return String(localized: "Not configured") }
-            if let host = URL(string: endpoint)?.host, host == "localhost" || host == "127.0.0.1" {
-                return String(localized: "Local")
-            }
-            return endpoint
-        }
+    private func status(for provider: AIProviderConfig) -> AIProviderStatus {
+        AIProviderStatus.resolve(
+            provider: provider,
+            hasAPIKey: providersWithKey.contains(provider.id),
+            oauthState: oauthState(for: provider.type),
+            serviceError: serviceError(for: provider.type),
+            claudeAgent: claudeAgentService.state
+        )
     }
 
-    private func apiKeyStatusText(for provider: AIProviderConfig) -> String {
-        providersWithKey.contains(provider.id)
-            ? String(localized: "API key set")
-            : String(localized: "Not configured")
+    // Copilot's sign-in is known only once its language server answers, which this row starts. A
+    // server stopped after it answered keeps the state it reported.
+    private func oauthState(for type: AIProviderType) -> OAuthAuthState? {
+        if type == .copilot, copilotService.status == .starting { return nil }
+        return OAuthProviderRegistry.service(for: type)?.oauthState
     }
 
-    private func oauthStatusText(for type: AIProviderType) -> String {
-        switch OAuthProviderRegistry.service(for: type)?.oauthState ?? .signedOut {
-        case .signedIn(let identity):
-            return identity.isEmpty
-                ? String(localized: "Signed in")
-                : String(format: String(localized: "Signed in as %@"), identity)
-        case .signingIn:
-            return String(localized: "Signing in…")
-        case .signedOut:
-            return String(localized: "Not signed in")
+    private func serviceError(for type: AIProviderType) -> String? {
+        switch type {
+        case .copilot:
+            if case .error(let message) = copilotService.status { return message }
+            return copilotService.statusMessage
+        case .chatgptCodex:
+            return chatGPTCodexService.errorMessage
+        default:
+            return nil
         }
-    }
-
-    /// Claude Agent authenticates through the CLI rather than an endpoint or a key, so the endpoint
-    /// arm this type used to fall into could only ever answer "Not configured", however well the
-    /// provider was working. The sheet has always read the service; this row now reads the same one.
-    private func claudeAgentStatusText() -> String {
-        switch claudeAgentService.state {
-        case .signedIn(let account, _):
-            guard let account, !account.isEmpty else { return String(localized: "Signed in") }
-            return String(format: String(localized: "Signed in as %@"), account)
-        case .signedOut:
-            return String(localized: "Not signed in")
-        case .outdated(let version):
-            return String(format: String(localized: "Claude Code %@ is too old"), version)
-        case .notInstalled:
-            return String(localized: "Claude Code not installed")
-        case .unknown:
-            return String(localized: "Checking…")
-        }
-    }
-
-    private func customStatusText(for provider: AIProviderConfig) -> String {
-        if providersWithKey.contains(provider.id) {
-            return String(localized: "API key set")
-        }
-        if let host = URL(string: provider.endpoint)?.host, !host.isEmpty {
-            return host
-        }
-        return String(localized: "Not configured")
     }
 
     private func refreshAccountStatus(of types: Set<AIProviderType>) async {

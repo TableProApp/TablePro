@@ -58,8 +58,11 @@ final class LicenseManager: ObservableObject {
     /// disable their buttons on it while a check runs.
     @Published private(set) var isValidating: Bool = false
 
-    /// Last error from an operation (cleared on success)
     @Published private(set) var lastError: LicenseError?
+
+    // Why the last check of this license reached no verdict, shown beside every control that starts
+    // one. A rejection the server spoke changes `status` instead.
+    @Published private(set) var checkFailure: LicenseError?
 
     private let storage = LicenseStorage.shared
     private let apiClient = LicenseAPIClient.shared
@@ -122,6 +125,9 @@ final class LicenseManager: ObservableObject {
     )
 
     private var revalidationTask: Task<Void, Never>?
+
+    // The check in flight. A second request joins it, so two answers never race to commit.
+    private var validation: Task<Void, Never>?
 
     private init() {
         loadCachedLicense()
@@ -413,6 +419,7 @@ final class LicenseManager: ObservableObject {
         await TeamLibrarySyncCoordinator.shared.clear()
         license = nil
         serverRejection = nil
+        checkFailure = nil
         lastServerContact = nil
         wasDeactivatedLocally = true
         resetDeviceList()
@@ -429,8 +436,26 @@ final class LicenseManager: ObservableObject {
         license?.daysUntilExpiry
     }
 
-    /// Periodic re-validation: refresh license from server, fall back to offline grace period
     func revalidate() async {
+        if let validation {
+            await validation.value
+            return
+        }
+        let task = Task { await performValidation() }
+        validation = task
+        await task.value
+        if validation == task {
+            validation = nil
+        }
+    }
+
+    // A deactivation or activation during the request makes its answer about a license this Mac no
+    // longer holds, so it is dropped rather than committed over the newer state.
+    nonisolated static func adoptsValidation(of checked: License, current: License?) -> Bool {
+        current == checked
+    }
+
+    private func performValidation() async {
         guard let license else { return }
 
         isValidating = true
@@ -446,6 +471,10 @@ final class LicenseManager: ObservableObject {
 
         do {
             let signedPayload = try await apiClient.validate(request: request)
+            guard Self.adoptsValidation(of: license, current: self.license) else {
+                Self.logger.info("Dropped a validation answer for a license that changed during the check")
+                return
+            }
             _ = try verifiedPayload(from: signedPayload)
 
             let updatedLicense = License(signedPayload: signedPayload, cachedOnMachineId: storage.machineId)
@@ -459,18 +488,27 @@ final class LicenseManager: ObservableObject {
 
             Self.logger.trace("License re-validated successfully")
         } catch {
+            guard Self.adoptsValidation(of: license, current: self.license) else {
+                Self.logger.info("Dropped a validation failure for a license that changed during the check")
+                return
+            }
             let licenseError = error as? LicenseError ?? .networkError(error)
 
             if let rejection = Self.revocationStatus(for: licenseError) {
-                Self.logger.error("License rejected by server: \(licenseError.localizedDescription)")
+                Self.logger.error("License rejected by server: \(licenseError.publicLogShape, privacy: .public)")
                 serverRejection = rejection
             } else {
-                Self.logger.warning("Re-validation failed: \(licenseError.localizedDescription)")
+                Self.logger.warning("Re-validation failed: \(licenseError.publicLogShape, privacy: .public)")
             }
 
             lastError = licenseError
+            checkFailure = Self.checkFailure(after: licenseError)
             evaluateStatus()
         }
+    }
+
+    nonisolated static func checkFailure(after error: LicenseError) -> LicenseError? {
+        revocationStatus(for: error) == nil ? error : nil
     }
 
     /// The status the server's own rejection implies, or nil when the request simply did not
@@ -493,6 +531,7 @@ final class LicenseManager: ObservableObject {
 
     private func acceptServerConfirmation() {
         serverRejection = nil
+        checkFailure = nil
         lastServerContact = Date()
         evaluateStatus()
     }

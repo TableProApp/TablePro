@@ -1,0 +1,74 @@
+namespace TablePro.Interop;
+
+// RowLimit: the most rows each set keeps, 10,000 by default. Timeout: beyond the connection's own limit.
+public sealed record QueryOptions(long? RowLimit = null, TimeSpan? Timeout = null);
+
+// TypeName: the type as the server spells it, for display.
+public sealed record ResultColumn(string Name, string TypeName, ValueKind ValueKind);
+
+public enum Truncation
+{
+    Complete,
+
+    // The statement was stopped at the row limit.
+    ServerStopped,
+
+    // There were rows past the limit, which were not kept.
+    ReadPastLimit,
+}
+
+// In order, Finished last. Rows that arrive between two reads come as one RowsAppended with the latest count.
+public abstract record QueryEvent
+{
+    private QueryEvent()
+    {
+    }
+
+    public sealed record ResultSetStarted(int SetIndex, IReadOnlyList<ResultColumn> Columns) : QueryEvent;
+
+    // For a set whose column types the engine knew only once rows arrived.
+    public sealed record ColumnsResolved(int SetIndex, IReadOnlyList<ResultColumn> Columns) : QueryEvent;
+
+    public sealed record RowsAppended(int SetIndex, long RowCount) : QueryEvent;
+
+    public sealed record RowLimitReached(int SetIndex, long Retained) : QueryEvent;
+
+    // TotalRows: every row the statement produced, where the engine counted past the limit.
+    public sealed record ResultSetFinished(int SetIndex, long RowCount, long? TotalRows, Truncation Truncation)
+        : QueryEvent;
+
+    public sealed record CommandCompleted(long? RowsAffected) : QueryEvent;
+
+    // Something the server said that is not an error.
+    public sealed record Notice(string Severity, string Message, string? Code) : QueryEvent;
+
+    // Transaction: the state the editor's connection is left in.
+    public sealed record Finished(QueryOutcome Outcome, TransactionState Transaction = TransactionState.Unknown)
+        : QueryEvent;
+}
+
+public enum TransactionState
+{
+    Idle,
+    InTransaction,
+
+    // A statement failed inside the transaction; the rest is refused until it is rolled back.
+    Failed,
+    Unknown,
+}
+
+// A statement the server refused is Failed, not an exception.
+public abstract record QueryOutcome
+{
+    private QueryOutcome()
+    {
+    }
+
+    public sealed record Completed(TimeSpan Elapsed) : QueryOutcome;
+
+    public sealed record Failed(CoreError Error) : QueryOutcome;
+
+    public sealed record Cancelled : QueryOutcome;
+
+    public sealed record TimedOut(bool ServerCancelled) : QueryOutcome;
+}

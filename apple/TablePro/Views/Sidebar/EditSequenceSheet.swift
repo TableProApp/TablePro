@@ -105,9 +105,7 @@ struct EditSequenceSheet: View {
                     TextField(String(localized: "Cache"), text: field(\.cacheSize))
                     Toggle(String(localized: "Cycle"), isOn: cycles)
                     if let message = problem ?? saveError {
-                        Text(message)
-                            .foregroundStyle(.red)
-                            .fixedSize(horizontal: false, vertical: true)
+                        NoticeLabel(message, severity: .error)
                             .textSelection(.enabled)
                     }
                 }

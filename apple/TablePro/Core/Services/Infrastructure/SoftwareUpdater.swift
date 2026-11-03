@@ -123,6 +123,8 @@ final class SoftwareUpdater: ObservableObject {
         let nsError = error as NSError
         guard nsError.code != Int(SUError.noUpdateError.rawValue) else { return }
         installOnQuitNow = nil
+        // A relaunch handed to Sparkle never quit, so its approval must not cover a later Quit.
+        AppRelauncher.shared.terminationWasCancelled()
         apply(.updateAborted)
         Self.logger.error("Update driver aborted: \(nsError.domain, privacy: .public) \(nsError.code, privacy: .public)")
     }

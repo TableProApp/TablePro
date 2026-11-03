@@ -17,6 +17,7 @@ actor SSHTunnelManager: TunnelManaging {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHTunnelManager")
 
     private var tunnels: [UUID: LibSSH2Tunnel] = [:]
+    private var creations = TunnelCreationGenerations()
     private let portRangeStart = 60_000
     private let portRangeEnd = 65_000
 
@@ -29,7 +30,6 @@ actor SSHTunnelManager: TunnelManaging {
 
     private init() {}
 
-    /// Create an SSH tunnel for a database connection.
     func createTunnel(
         connectionId: UUID,
         sshHost: String,
@@ -49,10 +49,12 @@ actor SSHTunnelManager: TunnelManaging {
         totpPeriod: Int = 30,
         deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> Int {
+        let generation = creations.begin(connectionId)
+        defer { creations.finish(generation, for: connectionId) }
         let timeoutEndpoint = ConnectionTimeoutEndpoint.tunnel("\(sshHost):\(sshPort ?? 22)")
         try deadline.check(endpoint: timeoutEndpoint)
         if tunnels[connectionId] != nil {
-            try await closeTunnel(connectionId: connectionId)
+            try await discardTunnel(connectionId: connectionId)
         }
 
         let config = SSHConfiguration(
@@ -103,6 +105,11 @@ actor SSHTunnelManager: TunnelManaging {
                     tunnel.close()
                     throw error
                 }
+                // A newer createTunnel or a close for this connection came while this one dialed, so it must not adopt.
+                guard creations.isNewest(generation, for: connectionId) else {
+                    tunnel.close()
+                    throw CancellationError()
+                }
 
                 tunnel.onDeath = { [weak self] id in
                     Task { [weak self] in
@@ -132,16 +139,21 @@ actor SSHTunnelManager: TunnelManaging {
         throw SSHTunnelError.noAvailablePort
     }
 
-    /// Close an SSH tunnel
+    // Also ends a creation still dialing, so nothing it builds is adopted after the close returned.
     func closeTunnel(connectionId: UUID) async throws {
+        creations.invalidate(connectionId)
+        try await discardTunnel(connectionId: connectionId)
+    }
+
+    private func discardTunnel(connectionId: UUID) async throws {
         guard let tunnel = tunnels.removeValue(forKey: connectionId) else { return }
         Self.tunnelRegistry.withLock { $0[connectionId] = nil }
         updateAppNapState()
         tunnel.close()
     }
 
-    /// Close all SSH tunnels
     func closeAllTunnels() async {
+        creations.invalidateAll()
         let currentTunnels = tunnels
         tunnels.removeAll()
         Self.tunnelRegistry.withLock { $0.removeAll(); return }

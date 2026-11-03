@@ -40,10 +40,8 @@ internal struct CopyObjectsSheet: View {
             await session.loadObjects()
             await session.loadCreateDatabaseForm()
         }
-        /// Escape has to leave every step. Three of the four carry a button that owns it, and the
-        /// result step's only button owns Return instead, so the key would otherwise die there.
-        /// A copy in flight is never abandoned by a keystroke that missed its Stop button: the
-        /// sheet is the only thing reporting what the run is doing.
+        // The result step's only button owns Return, so Escape would die there. While copying, Stop owns
+        // Escape and asks first.
         .onExitCommand {
             guard session.step != .copying else { return }
             close()
@@ -106,16 +104,16 @@ internal struct CopyObjectsSheet: View {
     @ViewBuilder
     private var statusText: some View {
         if let message = session.errorMessage {
-            /// A driver's message is the only account of what went wrong, and it is routinely
-            /// longer than two lines, so it stays selectable and reachable in full from the
-            /// pointer rather than being truncated into something nobody can act on.
+            // A driver's message often runs past two lines, so it stays selectable and whole in the tooltip.
             Label {
                 RevealedTextView(message)
+                    .foregroundStyle(.secondary)
             } icon: {
-                Image(systemName: "exclamationmark.triangle")
+                Image(systemName: NoticeSeverity.error.symbolName)
+                    .foregroundStyle(NoticeSeverity.error.tint)
+                    .accessibilityHidden(true)
             }
             .font(.callout)
-            .foregroundStyle(.red)
             .lineLimit(2)
             .textSelection(.enabled)
             .help(RevealedText(message).plainText)
@@ -146,8 +144,7 @@ internal struct CopyObjectsSheet: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(session.plan == nil)
         case .copying:
-            Button(String(localized: "Stop")) { session.cancel() }
-                .keyboardShortcut(.cancelAction)
+            TransferStopButton(policy: session.transferProgress.stopPolicy) { session.cancel() }
         case .finished:
             Button(String(localized: "Done")) { dismiss() }
                 .keyboardShortcut(.defaultAction)

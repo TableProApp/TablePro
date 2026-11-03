@@ -30,8 +30,8 @@ private struct PluginInstallModifier<Item>: ViewModifier {
     private func install(_ pending: Item) {
         let type = pending[keyPath: databaseType]
         Task {
-            let isInstalled = await PluginInstallPrompt.run(pluginName: type.displayName, window: nil) { progress in
-                try await PluginManager.shared.installMissingPlugin(for: type, progress: progress)
+            let isInstalled = await PluginInstallPrompt.run(pluginName: type.displayName, window: nil) { onBegin in
+                try await PluginManager.shared.installMissingPlugin(for: type, onBegin: onBegin)
             }
             if isInstalled {
                 onInstalled(pending)

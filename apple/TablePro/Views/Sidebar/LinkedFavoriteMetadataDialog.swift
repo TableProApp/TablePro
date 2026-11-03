@@ -36,13 +36,14 @@ internal struct LinkedFavoriteMetadataDialog: View {
             Form {
                 identitySection
                 keywordSection
+                if let saveError {
+                    Section {
+                        NoticeLabel(saveError, severity: .error)
+                            .font(.callout)
+                    }
+                }
             }
             .formStyle(.grouped)
-
-            if let saveError {
-                Divider()
-                errorBanner(saveError)
-            }
 
             Divider()
 
@@ -89,25 +90,10 @@ internal struct LinkedFavoriteMetadataDialog: View {
                 }
 
             if let message = keywordField.validation.displayText {
-                Text(message)
+                NoticeLabel(message, severity: keywordField.validation.isWarning ? .warning : .error)
                     .font(.callout)
-                    .foregroundStyle(keywordField.validation.isWarning ? Color.orange : Color.red)
             }
         }
-    }
-
-    private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
     }
 
     private var buttonBar: some View {

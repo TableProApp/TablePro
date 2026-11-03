@@ -8,6 +8,7 @@ import Combine
 import Observation
 import os
 import OSLog
+import TableProConnectionLibrary
 
 /// The window a rail belongs to. A window hosts several connections and shows one at a time, so
 /// which row the rail highlights is a question only the window can answer, and the answer changes.
@@ -120,6 +121,7 @@ internal final class WorkspaceRailViewController: NSViewController {
     private lazy var rowHeight = WorkspaceRailCellView.rowHeight(for: layout)
     private var reportedWidth: CGFloat = 0
     private var changeCancellable: AnyCancellable?
+    private var statusCancellable: AnyCancellable?
     private let activationObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private let scrollObserver = OSAllocatedUnfairLock<(any NSObjectProtocol)?>(uncheckedState: nil)
     private var contentTopConstraint: NSLayoutConstraint?
@@ -210,6 +212,11 @@ internal final class WorkspaceRailViewController: NSViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        statusCancellable = WorkspaceRailStore.statusChanges
+            .receive(on: RunLoop.main)
+            .sink { [weak self] connectionId in
+                self?.refreshStatus(of: connectionId)
+            }
         changeCancellable = WorkspaceRailStore.changes
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
@@ -355,6 +362,19 @@ internal final class WorkspaceRailViewController: NSViewController {
         applyBottomInset()
         applySelection()
         onEntryCountChange?(entries.count)
+    }
+
+    // A phase moves one connection's status and never which rows are listed, so only its rows repaint.
+    private func refreshStatus(of connectionId: UUID) {
+        let rows = IndexSet(entries.indices.filter { entries[$0].workspace.connectionId == connectionId })
+        guard !rows.isEmpty else { return }
+        let latest = WorkspaceRailStore.entries
+        guard latest.map(\.id) == entries.map(\.id) else {
+            reload()
+            return
+        }
+        entries = latest
+        tableView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
     }
 
     private static func describe(_ workspace: WorkspaceID) -> String {
@@ -719,6 +739,19 @@ internal final class WorkspaceRailViewController: NSViewController {
         }
     }
 
+    // Run by the hosting window so its pane shows the attempt and any failure; re-read, as the menu may have stayed open.
+    @objc
+    private func performWorkspaceConnectionAction(_ sender: NSMenuItem) {
+        guard let workspace = sender.representedObject as? WorkspaceID,
+              let action = ConnectionMenuPolicy.primaryAction(
+                  status: ConnectionStatusResolver.status(for: workspace.connectionId)
+              ),
+              let shown = show(workspace)
+        else { return }
+        applySelection()
+        shown.host.performConnectionAction(action, for: workspace.connectionId)
+    }
+
     /// Ends the session, which every workspace of the connection shares, so the other rows for it
     /// go quiet too. No window closes: each one repaints from its own phase.
     @objc
@@ -772,6 +805,16 @@ extension WorkspaceRailViewController: NSMenuDelegate {
 
     // Lighter actions first and the one that ends the connection last, the order Finder and Mail keep.
     internal func populate(_ menu: NSMenu, for entry: WorkspaceRailEntry, serverTools: [WorkspaceRailServerTool]) {
+        if let title = entry.presentation.primaryActionTitle {
+            addItem(
+                to: menu,
+                title: title,
+                action: #selector(performWorkspaceConnectionAction(_:)),
+                workspace: entry.workspace
+            )
+            menu.addItem(.separator())
+        }
+
         if WindowManager.shared.canMoveToNewWindow(connectionId: entry.workspace.connectionId) {
             addItem(
                 to: menu,
@@ -801,7 +844,7 @@ extension WorkspaceRailViewController: NSMenuDelegate {
             )
         }
 
-        if ConnectionMenuPolicy.showsDisconnect(status: entry.status) {
+        if ConnectionMenuPolicy.showsDisconnect(status: entry.status, holdsSession: entry.holdsSession) {
             addItem(
                 to: menu,
                 title: String(localized: "Disconnect"),

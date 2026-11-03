@@ -81,11 +81,12 @@ internal struct CompareDefinitionsPane: View {
             if let error = result.comparisonError {
                 Label {
                     RevealedTextView(error)
+                        .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(CompareStatusStyle.warning)
                 }
-                .foregroundStyle(CompareStatusStyle.warning)
                 .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -124,8 +125,8 @@ internal struct CompareDefinitionsPane: View {
                         .textSelection(.enabled)
                 } icon: {
                     Image(systemName: change.isDestructive ? "exclamationmark.triangle.fill" : "pencil")
+                        .foregroundStyle(changeTint(change))
                 }
-                .foregroundStyle(changeTint(change))
                 .font(.callout)
                 .fixedSize(horizontal: false, vertical: true)
             }

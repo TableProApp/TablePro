@@ -79,7 +79,6 @@ struct SQLReviewSheet: View {
     var onOpenInEditor: (() -> Void)?
 
     @State private var prepared: Prepared?
-    @State private var copied = false
     @State private var isExecuting = false
 
     enum DisplayMode {
@@ -225,10 +224,7 @@ struct SQLReviewSheet: View {
                 Spacer()
                 if !statements.isEmpty {
                     Button(action: copyAll) {
-                        Label(
-                            copied ? String(localized: "Copied") : String(localized: "Copy All"),
-                            systemImage: copied ? "checkmark" : "doc.on.doc"
-                        )
+                        Label(String(localized: "Copy All"), systemImage: "doc.on.doc")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -272,7 +268,7 @@ struct SQLReviewSheet: View {
     private var footer: some View {
         VStack(spacing: 8) {
             if let failure {
-                InlineErrorBanner(message: failure)
+                InlineErrorBanner(message: failure, onBar: false)
             }
             HStack(spacing: 12) {
                 if let onOpenInEditor {
@@ -340,10 +336,6 @@ struct SQLReviewSheet: View {
     private func copyAll() {
         guard let prepared else { return }
         ClipboardService.shared.writeText(prepared.full)
-        copied = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.5))
-            copied = false
-        }
+        AccessibilityAnnouncement.post(String(localized: "Copied to clipboard"))
     }
 }

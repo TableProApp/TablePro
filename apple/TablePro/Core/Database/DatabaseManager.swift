@@ -84,10 +84,9 @@ final class DatabaseManager: ObservableObject {
     /// `ensureConnectedDedup` because a verification can run while a connect is in flight.
     internal let verificationDedup = OnceTask<UUID, Void>()
 
-    /// Connection IDs currently undergoing SSH tunnel recovery.
-    /// Prevents duplicate concurrent recovery when both the keepalive death handler
-    /// and the wake-from-sleep handler fire for the same connection.
-    internal var recoveringConnectionIds = Set<UUID>()
+    // One reconnect loop per session, owned by DatabaseManager+Recovery.swift.
+    internal var recoveryLoops: [UUID: SessionRecoveryLoop] = [:]
+    internal let recoveryClock: any Clock<Duration>
 
     /// Why a session was torn down, kept past the session entry so a window that only observes
     /// the entry disappearing can still name the cause. Cleared when a fresh attempt begins.
@@ -191,7 +190,8 @@ final class DatabaseManager: ObservableObject {
         envVarReferenceConsent: EnvVarReferenceConsent = EnvVarReferenceConsent(),
         localCredentialConsent: LocalCredentialConsent = LocalCredentialConsent(),
         postDisconnectScripts: PostDisconnectScripts = PostDisconnectScripts(),
-        localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe()
+        localNetworkProbe: any LocalNetworkAccessProbing = NetworkFrameworkLocalNetworkProbe(),
+        recoveryClock: any Clock<Duration> = ContinuousClock()
     ) {
         self.connectionStorage = connectionStorage
         self.appSettingsStorage = appSettingsStorage
@@ -202,6 +202,7 @@ final class DatabaseManager: ObservableObject {
         self.localCredentialConsent = localCredentialConsent
         self.postDisconnectScripts = postDisconnectScripts
         self.localNetworkProbe = localNetworkProbe
+        self.recoveryClock = recoveryClock
         sessionLanes.onClose = { [weak self] connectionId in
             self?.sessionTransactions.prune(connectionId)
         }

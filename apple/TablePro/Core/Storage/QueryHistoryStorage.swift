@@ -32,6 +32,9 @@ actor QueryHistoryStorage {
     private var insertsSinceCleanup: Int = 0
     private var didBackfillFingerprints = false
 
+    var rewindRevision = 0
+    var rewindSubscribers: [UUID: AsyncStream<RewindAvailability>.Continuation] = [:]
+
     private let databaseURL: URL
     private let removeDatabaseOnDeinit: Bool
 
@@ -50,6 +53,9 @@ actor QueryHistoryStorage {
     }
 
     deinit {
+        for subscriber in rewindSubscribers.values {
+            subscriber.finish()
+        }
         if let pointer = dbHandle.pointer {
             sqlite3_close_v2(pointer)
         }
@@ -1098,13 +1104,8 @@ actor QueryHistoryStorage {
         return true
     }
 
-    /// Everything this connection left in the database, across all three tables.
-    ///
-    /// `clear(matching:)` cannot serve, because it deletes from `history` alone and both snapshot
-    /// tables hold their own copy of what the statement said: `plan_snapshots.subject_sql` and
-    /// `raw_plan`, and `rewind_snapshots.payload`, which is captured row data. Their `history_id`
-    /// is `ON DELETE SET NULL`, so deleting the history rows unlinks them and leaves them on disk,
-    /// out of reach of the UI and, for a pinned plan, out of reach of retention pruning too.
+    // Not clear(matching:): the snapshot tables keep their own copy of the statement and rows, and
+    // deleting history only unlinks them (ON DELETE SET NULL), out of reach of the UI and retention.
     @discardableResult
     func deleteEverything(forConnection connectionId: UUID) -> Bool {
         guard let db else { return false }
@@ -1126,6 +1127,7 @@ actor QueryHistoryStorage {
             }
             sqlite3_finalize(statement)
         }
+        rewindSnapshotsDidChange()
         return succeeded
     }
 

@@ -509,16 +509,21 @@ struct TabExecutionState: Equatable {
     var lastExecutedAt: Date?
 
     // Set when work finished out of sight, cleared on select; survives missed banners, denied notifications and Focus.
-    var finishedUnseenAt: Date?
+    var unseenOutcome: TabUnseenOutcome?
 
-    // Hand-written: every field the UI draws must be compared, or SwiftUI sees no change (finishedUnseenAt drives a dot).
+    // Hand-written: every field the UI draws must be compared, or SwiftUI sees no change (unseenOutcome drives the mark).
     static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
         lhs.executionTime == rhs.executionTime
             && lhs.statusMessage == rhs.statusMessage
             && lhs.errorMessage == rhs.errorMessage
             && lhs.rowsAffected == rhs.rowsAffected
-            && lhs.finishedUnseenAt == rhs.finishedUnseenAt
+            && lhs.unseenOutcome == rhs.unseenOutcome
     }
+}
+
+enum TabUnseenOutcome: Equatable, Sendable {
+    case succeeded
+    case failed
 }
 
 struct TabTableContext: Equatable {

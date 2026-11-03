@@ -35,7 +35,7 @@ struct OperationCompletionReporterTests {
         presenter: FakeNotificationPresenter,
         visibility: ResultVisibility = .offScreen,
         settings: NotificationSettings = .default,
-        marked: @escaping (OperationOwner) -> Void = { _ in }
+        marked: @escaping (OperationOwner, TabUnseenOutcome) -> Void = { _, _ in }
     ) -> OperationCompletionReporter {
         OperationCompletionReporter(
             presenter: presenter,
@@ -90,7 +90,7 @@ struct OperationCompletionReporterTests {
     func visibleResultPostsNothing() async throws {
         let presenter = FakeNotificationPresenter()
         var marked: [OperationOwner] = []
-        let reporter = makeReporter(presenter: presenter, visibility: .onScreen) { marked.append($0) }
+        let reporter = makeReporter(presenter: presenter, visibility: .onScreen) { owner, _ in marked.append(owner) }
 
         await reporter.report(completion())?.value
 
@@ -104,12 +104,47 @@ struct OperationCompletionReporterTests {
         presenter.status = .denied
         presenter.grantsWhenAsked = false
         var marked: [OperationOwner] = []
-        let reporter = makeReporter(presenter: presenter) { marked.append($0) }
+        let reporter = makeReporter(presenter: presenter) { owner, _ in marked.append(owner) }
 
         await reporter.report(completion())?.value
 
         #expect(presenter.posted.isEmpty)
         #expect(marked.count == 1)
+    }
+
+    @Test("The tab mark tells a failure from a success")
+    func markCarriesTheOutcome() async {
+        let presenter = FakeNotificationPresenter()
+        var outcomes: [TabUnseenOutcome] = []
+        let reporter = makeReporter(presenter: presenter) { _, outcome in outcomes.append(outcome) }
+
+        await reporter.report(completion())?.value
+        await reporter.report(completion(outcome: .failed(reason: "syntax error")))?.value
+
+        #expect(outcomes == [.succeeded, .failed])
+    }
+
+    @Test("A compare window owns its own notifications")
+    func compareWindowOwnerRoundTrips() throws {
+        let windowId = UUID()
+        let comparison = OperationCompletion(
+            kind: .compareApply,
+            owner: .compareWindow(windowId),
+            connectionId: UUID(),
+            connectionName: "staging",
+            elapsed: .seconds(90),
+            outcome: .succeeded(OperationSummary(statementCount: 4))
+        )
+        let decision = OperationCompletionPolicy.decide(
+            completion: comparison, visibility: .offScreen, settings: .default
+        )
+        let plan = try #require(decision.notification)
+        let payload = try #require(OperationNotificationPayload(userInfo: OperationNotificationPayload(plan: plan).userInfo))
+
+        #expect(payload.compareWindowId == windowId)
+        #expect(payload.tabId == nil)
+        #expect(plan.identifier.hasSuffix(windowId.uuidString))
+        #expect(!decision.marksOwnerUnseen || comparison.owner.tabId == nil)
     }
 
     /// Permission is asked for the first time there is something to say, never at launch, and the

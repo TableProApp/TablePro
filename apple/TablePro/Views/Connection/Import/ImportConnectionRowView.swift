@@ -36,7 +36,6 @@ internal struct ImportConnectionRowView: View {
                     let notes = Self.notes(for: row)
                     if let note = notes.first {
                         Text(verbatim: note)
-                            .foregroundStyle(.orange)
                             .help(notes.joined(separator: "\n"))
                     }
                 }
@@ -86,7 +85,7 @@ internal struct ImportConnectionRowView: View {
         } else if !row.warnings.isEmpty {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.callout)
-                .foregroundStyle(.yellow)
+                .foregroundStyle(.orange)
                 .accessibilityLabel(String(localized: "Warning"))
         } else {
             Image(systemName: "checkmark.circle.fill")
@@ -124,11 +123,5 @@ internal struct ImportRowTag: View {
         Text(verbatim: text)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(nsColor: .quaternaryLabelColor))
-            )
     }
 }

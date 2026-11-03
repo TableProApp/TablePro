@@ -10,7 +10,7 @@ extension PluginManager {
     func installFromRegistry(
         _ registryPlugin: RegistryPlugin,
         release: RegistryRelease? = nil,
-        progress: @escaping @MainActor @Sendable (Double) -> Void
+        trigger: PluginInstallTracker.Trigger
     ) async throws -> PluginEntry {
         if plugins.contains(where: { $0.id == registryPlugin.id }) {
             throw PluginError.pluginConflict(existingName: registryPlugin.name)
@@ -18,17 +18,23 @@ extension PluginManager {
         try reserveInstall(of: registryPlugin.id)
         defer { installsInFlight.remove(registryPlugin.id) }
 
-        let release = try release ?? Self.newestRelease(of: registryPlugin)
-
-        let finalURL = try await registryInstaller.install(
-            registryPlugin,
-            release: release,
-            into: userPluginsDir,
-            progress: { fraction in await progress(fraction) }
-        )
-
-        saveRegistryMetadata(pluginId: registryPlugin.id, pluginURL: finalURL)
-        return try await loadPluginAsync(at: finalURL, source: .userInstalled)
+        return try await installTracker.track(
+            pluginId: registryPlugin.id,
+            displayName: registryPlugin.name,
+            trigger: trigger,
+            retry: .registry(registryPlugin)
+        ) { [self] ticket in
+            let release = try release ?? Self.newestRelease(of: registryPlugin)
+            let finalURL = try await registryInstaller.install(
+                registryPlugin,
+                release: release,
+                into: userPluginsDir,
+                progress: ticket.reportProgress
+            )
+            ticket.markInstalling()
+            saveRegistryMetadata(pluginId: registryPlugin.id, pluginURL: finalURL)
+            return try await loadPluginAsync(at: finalURL, source: .userInstalled)
+        }
     }
 
     // A loaded bundle cannot be unloaded and Bundle(url:) caches per path, so it updates at the next launch.
@@ -39,15 +45,15 @@ extension PluginManager {
     func updateFromRegistry(
         _ registryPlugin: RegistryPlugin,
         release: RegistryRelease? = nil,
-        progress: @escaping @MainActor @Sendable (Double) -> Void
+        trigger: PluginInstallTracker.Trigger
     ) async throws -> PluginUpdateOutcome {
         switch registryUpdateMode(forPluginId: registryPlugin.id) {
         case .installNow:
-            let entry = try await installFromRegistry(registryPlugin, release: release, progress: progress)
+            let entry = try await installFromRegistry(registryPlugin, release: release, trigger: trigger)
             rejectedPlugins.removeAll { ($0.registryId ?? $0.bundleId) == registryPlugin.id }
             return .installed(entry)
         case .stageForNextLaunch:
-            try await stageFromRegistry(registryPlugin, release: release, progress: progress)
+            try await stageFromRegistry(registryPlugin, release: release, trigger: trigger)
             return .staged(pluginId: registryPlugin.id)
         }
     }
@@ -55,7 +61,7 @@ extension PluginManager {
     private func stageFromRegistry(
         _ registryPlugin: RegistryPlugin,
         release: RegistryRelease?,
-        progress: @escaping @MainActor @Sendable (Double) -> Void
+        trigger: PluginInstallTracker.Trigger
     ) async throws {
         guard let existing = plugins.first(where: { $0.id == registryPlugin.id }) else {
             throw PluginError.notFound
@@ -66,27 +72,33 @@ extension PluginManager {
         try reserveInstall(of: existing.id)
         defer { installsInFlight.remove(existing.id) }
 
-        let release = try release ?? Self.newestRelease(of: registryPlugin)
-
-        let stagedURL = try await registryInstaller.stage(
-            registryPlugin,
-            release: release,
+        try await installTracker.track(
             pluginId: existing.id,
-            bundleName: existing.url.lastPathComponent,
-            into: userPluginsDir,
-            progress: { fraction in await progress(fraction) }
-        )
-        // The next launch installs whatever build the staged bundle holds, whatever the manifest said.
-        guard Self.bundleBuild(at: stagedURL) > existing.build else {
-            removeStagedUpdate(pluginId: existing.id)
-            throw PluginError.installFailed(String(localized: "The downloaded plugin is not newer than the installed one."))
+            displayName: existing.name,
+            trigger: trigger,
+            retry: .registry(registryPlugin)
+        ) { [self] ticket in
+            let release = try release ?? Self.newestRelease(of: registryPlugin)
+            let stagedURL = try await registryInstaller.stage(
+                registryPlugin,
+                release: release,
+                pluginId: existing.id,
+                bundleName: existing.url.lastPathComponent,
+                into: userPluginsDir,
+                progress: ticket.reportProgress
+            )
+            ticket.markInstalling()
+            // The next launch installs whatever build the staged bundle holds, whatever the manifest said.
+            guard Self.bundleBuild(at: stagedURL) > existing.build else {
+                removeStagedUpdate(pluginId: existing.id)
+                throw PluginError.installFailed(String(localized: "The downloaded plugin is not newer than the installed one."))
+            }
+            guard plugins.contains(where: { $0.id == existing.id }) else {
+                removeStagedUpdate(pluginId: existing.id)
+                throw PluginError.notFound
+            }
+            stagedPluginIds.insert(existing.id)
         }
-        guard plugins.contains(where: { $0.id == existing.id }) else {
-            removeStagedUpdate(pluginId: existing.id)
-            throw PluginError.notFound
-        }
-        stagedPluginIds.insert(existing.id)
-        PluginInstallTracker.shared.completeInstall(pluginId: existing.id)
     }
 
     // One install per plugin at a time: a file and a registry download would overwrite each other's copy.
@@ -100,10 +112,23 @@ extension PluginManager {
     }
 
     func installPlugin(from url: URL) async throws -> PluginEntry {
-        if url.pathExtension == "tableplugin" {
-            return try await installLooseBundle(from: url)
+        try await installTracker.track(
+            pluginId: Self.fileInstallKey(for: url),
+            displayName: url.deletingPathExtension().lastPathComponent,
+            trigger: .user,
+            retry: .file(url),
+            startPhase: .installing
+        ) { [self] _ in
+            if url.pathExtension == "tableplugin" {
+                return try await installLooseBundle(from: url)
+            }
+            return try await installLocalZip(from: url)
         }
-        return try await installLocalZip(from: url)
+    }
+
+    // The bundle id is unknown until the file is read, so the file stands in for it.
+    nonisolated static func fileInstallKey(for url: URL) -> String {
+        "file:" + url.standardizedFileURL.path
     }
 
     func removeStagedUpdate(pluginId: String) {

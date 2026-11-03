@@ -18,7 +18,7 @@ enum IntegrationsFormatting {
         case .success: "checkmark.circle.fill"
         case .denied, .rateLimited: "exclamationmark.triangle.fill"
         case .error: "xmark.octagon.fill"
-        case .none: "circle.fill"
+        case .none: "questionmark.circle"
         }
     }
 

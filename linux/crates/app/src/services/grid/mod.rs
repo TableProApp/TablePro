@@ -23,7 +23,6 @@ mod row_snapshot;
 mod selection_summary;
 #[cfg(test)]
 mod test_columns;
-pub mod value_order;
 
 pub use self::cell_editability::cell_editability;
 pub use self::cell_editor_kind::{CellEditorKind, EDIT_MAX_BYTES, TextPurpose};

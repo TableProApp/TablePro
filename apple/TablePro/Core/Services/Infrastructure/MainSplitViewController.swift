@@ -711,6 +711,8 @@ internal final class MainSplitViewController: NSSplitViewController {
         /// container capsule hidden over a down PostgreSQL one. When nothing has moved this costs
         /// building the key and one comparison.
         toolbarOwner?.refreshContext()
+        // Two coordinator-less workspaces repoint from nothing to nothing, so the record-backed items re-read here.
+        toolbarOwner?.managedToolbar.validateVisibleItems()
     }
 
     private func applyPhase() {
@@ -781,8 +783,12 @@ internal final class MainSplitViewController: NSSplitViewController {
         if workspaces.selectedConnectionId == connectionId {
             applyPaneChrome()
             applyWindowTitle()
+            // A coordinator-less workspace answers the toolbar from its record; validation is how items re-read.
+            toolbarOwner?.managedToolbar.validateVisibleItems()
         }
         SessionRecoveryTracker.sync()
+        // The rail, Welcome and the switcher read the phase too, and nothing else tells them it moved.
+        AppEvents.shared.connectionPhaseChanged.send(connectionId)
     }
 
     internal func refreshFromActiveSessions() {
@@ -852,17 +858,22 @@ internal final class MainSplitViewController: NSSplitViewController {
         if let selected = workspaces.selected { bindSidebarChrome(to: selected) }
     }
 
-    /// Parents the sidebar and detail trees the selected connection's mode draws, and does nothing
-    /// else, so a mode toggle is the same view swap a workspace switch is.
-    ///
-    /// Parenting happens here and in no builder, so a connection put into Agent mode while another
-    /// is on screen has its panes built for the mode at once and parented only when it is selected:
-    /// `applySelectedWorkspace` calls through here after its sync, which is the same repair a
-    /// background connect relies on (#2545).
+    // The only place panes are parented, so a mode toggle is the same view swap a workspace switch is (#2545).
     func showSelectedContentPanes() {
         let selected = workspaces.selected
         navigationSidebar?.objectBrowser.show(selected.map { $0.panes.sidebarPane(for: $0.resolvedContentMode) })
         detailPaneHost?.show(selected.map { $0.panes.detailPane(for: $0.detailMode) })
+        if let selected { clearShownTabMark(of: selected) }
+    }
+
+    // A result that finished behind Agent mode or another connection marked the selected tab; it is in view now.
+    private func clearShownTabMark(of workspace: ConnectionWorkspace) {
+        guard workspace.resolvedPane == .content,
+              workspace.detailMode == .browse,
+              let tabManager = workspace.sessionState?.tabManager,
+              let tabId = tabManager.selectedTabId
+        else { return }
+        OperationUnseenMarker.clear(tabId: tabId, in: tabManager)
     }
 
     /// The scope control and the filter field live above the object list and belong to the window,
@@ -967,21 +978,31 @@ internal final class MainSplitViewController: NSSplitViewController {
                   let session = workspace.session,
                   let trailingPaneState = workspace.trailingPaneState,
                   let sessionState = workspace.sessionState {
-            MainContentView(
-                connection: session.connection,
-                payload: workspace.payload,
-                windowTitle: windowTitleBinding(for: workspace),
-                windowSubtitle: windowSubtitleBinding(for: workspace),
-                windowRepresentedURL: windowRepresentedURLBinding(for: workspace),
-                pendingTruncates: sessionBinding(for: workspace, get: { $0.pendingTruncates }, set: { $0.pendingTruncates = $1 }, defaultValue: []),
-                pendingDeletes: sessionBinding(for: workspace, get: { $0.pendingDeletes }, set: { $0.pendingDeletes = $1 }, defaultValue: []),
-                tableOperationOptions: sessionBinding(for: workspace, get: { $0.tableOperationOptions }, set: { $0.tableOperationOptions = $1 }, defaultValue: [:]),
-                trailingPaneState: trailingPaneState,
-                tabManager: sessionState.tabManager,
-                changeManager: sessionState.changeManager,
-                toolbarState: sessionState.toolbarState,
-                coordinator: sessionState.coordinator
-            )
+            // One stack whether or not the loop redials, so the content keeps its identity as the bar comes and goes.
+            VStack(spacing: 0) {
+                if let recovery = session.recovery {
+                    ConnectionRecoveryBar(
+                        content: ConnectionRecoveryBarContent(connectionName: session.connection.name, progress: recovery)
+                    ) { [weak self] in
+                        self?.cancelRecovery(for: workspace.connectionId)
+                    }
+                }
+                MainContentView(
+                    connection: session.connection,
+                    payload: workspace.payload,
+                    windowTitle: windowTitleBinding(for: workspace),
+                    windowSubtitle: windowSubtitleBinding(for: workspace),
+                    windowRepresentedURL: windowRepresentedURLBinding(for: workspace),
+                    pendingTruncates: sessionBinding(for: workspace, get: { $0.pendingTruncates }, set: { $0.pendingTruncates = $1 }, defaultValue: []),
+                    pendingDeletes: sessionBinding(for: workspace, get: { $0.pendingDeletes }, set: { $0.pendingDeletes = $1 }, defaultValue: []),
+                    tableOperationOptions: sessionBinding(for: workspace, get: { $0.tableOperationOptions }, set: { $0.tableOperationOptions = $1 }, defaultValue: [:]),
+                    trailingPaneState: trailingPaneState,
+                    tabManager: sessionState.tabManager,
+                    changeManager: sessionState.changeManager,
+                    toolbarState: sessionState.toolbarState,
+                    coordinator: sessionState.coordinator
+                )
+            }
             .transaction { $0.animation = nil }
         } else {
             Color.clear
@@ -1010,7 +1031,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         } else {
             TrailingPaneUnavailableView(
                 surface: .inspector,
-                reason: .notConnected,
+                reason: .forPane(workspace.resolvedPane),
                 contentMode: workspace.contentMode,
                 paneState: workspace.trailingPaneState
             )
@@ -1031,7 +1052,7 @@ internal final class MainSplitViewController: NSSplitViewController {
         } else {
             TrailingPaneUnavailableView(
                 surface: .assistant,
-                reason: .notConnected,
+                reason: .forPane(workspace.resolvedPane),
                 contentMode: workspace.contentMode,
                 paneState: workspace.trailingPaneState
             )

@@ -91,7 +91,7 @@ enum SessionStateFactory {
 
         let session = DatabaseManager.shared.session(for: connection.id)
         if let session {
-            toolbarSt.updateConnectionState(from: session.reportedStatus)
+            toolbarSt.updateConnectionState(from: session.effectiveStatus)
         }
 
         if connection.type.pluginTypeId == "Redis" {

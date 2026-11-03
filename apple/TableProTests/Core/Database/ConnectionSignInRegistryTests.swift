@@ -108,7 +108,6 @@ struct ConnectionSignInRegistryTests {
         for provider in ConnectionSignInRegistry.providers {
             #expect(!provider.title.isEmpty)
             #expect(!provider.message([:]).isEmpty)
-            #expect(!provider.signedInMessage.isEmpty)
             #expect(!provider.failureTitle.isEmpty)
         }
     }

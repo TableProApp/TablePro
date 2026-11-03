@@ -464,7 +464,17 @@ internal final class ObjectCopySession: ObservableObject {
         step = .copying
 
         let reporter = ObjectCopyProgress(progress: runProgress)
+        let target = plan.request.target
+        let workId = RunningWorkRegistry.shared.begin(
+            .objectCopy,
+            subject: target.databaseLabel.isEmpty ? target.connectionName : target.databaseLabel,
+            connectionName: sourceConnection.name,
+            connectionIds: [source.connectionId, target.connectionId]
+        ) { [weak self] in
+            self?.cancel()
+        }
         runTask = Task { [weak self] in
+            defer { RunningWorkRegistry.shared.end(workId) }
             guard let self else { return }
             let started = ContinuousClock.Instant.now
             do {

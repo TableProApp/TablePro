@@ -418,15 +418,7 @@ extension MainContentCoordinator {
         ) ?? []
     }
 
-    /// Runs against the database the object it names lives in, on a scoped lease.
-    ///
-    /// A maintenance statement names its table and nothing else, so where it lands is decided
-    /// entirely by the connection's current database. Executing on the session driver directly left
-    /// that to chance: a cross-database tab pins the shared handle to its own database for the
-    /// length of its query and deliberately writes no session state back, so `OPTIMIZE TABLE
-    /// role_ability` could optimize the copy in another database while the sheet reported success.
-    /// Every other statement the user owns takes a scoped lease; this one now does too, which also
-    /// puts it behind the same gate rather than interleaving with a tab's work on one handle.
+    // A scoped lease on the object's own database: a cross-database tab can pin the shared handle elsewhere.
     func executeMaintenance(
         operation: PluginMaintenanceOperation,
         tableName: String,
@@ -438,16 +430,11 @@ extension MainContentCoordinator {
             operation: operation, tableName: tableName, schema: schema, options: options
         )
         guard !statements.isEmpty else { return }
-        /// The object the user picked names its own database, and only a command that names none
-        /// falls back to where the browser is pointing. `resolvedScope` is what decides that, so a
-        /// schema is never carried across a database boundary.
+        // Only a command that names no database falls back to where the browser is pointing.
         guard let scope = services.databaseManager.resolvedScope(
             database: database, schema: schema, for: connectionId
         ) ?? browseScope else { return }
 
-        /// What the statement acts on, which is the database itself for an operation that names no
-        /// object. Reporting the table there claimed work the statement never asked for.
-        let subject = operation.target(tableName) ?? scope.database
         Task { [weak self] in
             guard let self else { return }
             let decision = await self.executionGate.authorize(
@@ -472,30 +459,25 @@ extension MainContentCoordinator {
                 return
             }
             do {
-                var lastResult: QueryResult?
+                var results: [QueryResult] = []
                 let route = DatabaseManager.shared.executionRoute(for: scope)
                 for sql in statements {
-                    /// `.protectedWrite`: a half-applied OPTIMIZE or REPAIR cannot be undone by
-                    /// retrying, so the lease is registered to mark the connection busy and is never
-                    /// reachable by Stop.
-                    lastResult = try await DatabaseManager.shared.withScopedDriver(
+                    // A half-applied OPTIMIZE or REPAIR cannot be undone by retrying, so Stop never reaches it.
+                    let result = try await DatabaseManager.shared.withScopedDriver(
                         scope: scope,
                         route: route,
                         cancellation: .protectedWrite
                     ) { scopedDriver in
                         try await scopedDriver.execute(query: sql)
                     }
+                    results.append(result)
                 }
-                await AlertHelper.showInfoSheet(
-                    title: String(format: String(localized: "%@ completed"), operation.name),
-                    message: lastResult?.statusMessage
-                        ?? String(
-                            format: String(localized: "%@ on %@ completed successfully."),
-                            operation.name,
-                            subject
-                        ),
-                    window: self.contentWindow
-                )
+                let title = String(format: String(localized: "%@ completed"), operation.name)
+                if let note = MaintenanceResultNote.note(from: results) {
+                    await AlertHelper.showInfoSheet(title: title, message: note, window: self.contentWindow)
+                } else {
+                    AccessibilityAnnouncement.post(title)
+                }
             } catch {
                 await AlertHelper.showErrorSheet(
                     title: String(format: String(localized: "%@ failed"), operation.name),
@@ -504,6 +486,40 @@ extension MainContentCoordinator {
                 )
             }
         }
+    }
+}
+
+// MySQL and MariaDB answer with Msg_text rows and SQLite's integrity_check with one row per problem.
+// A plain "OK" carries nothing the person has to read.
+internal enum MaintenanceResultNote {
+    private static let noteColumns: Set<String> = ["msg_text", "integrity_check", "quick_check"]
+
+    static func note(from results: [QueryResult]) -> String? {
+        let notes = results.flatMap(noteLines(in:))
+        return notes.isEmpty ? nil : notes.joined(separator: "\n")
+    }
+
+    private static func noteLines(in result: QueryResult) -> [String] {
+        var notes: [String] = []
+        if let status = result.statusMessage.map(trimmed), !isPlainOK(status) {
+            notes.append(status)
+        }
+        guard let column = result.columns.firstIndex(where: { noteColumns.contains($0.lowercased()) }) else {
+            return notes
+        }
+        for row in result.rows where column < row.count {
+            guard let text = row[column].asText.map(trimmed), !isPlainOK(text) else { continue }
+            notes.append(text)
+        }
+        return notes
+    }
+
+    private static func trimmed(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func isPlainOK(_ text: String) -> Bool {
+        text.isEmpty || text.caseInsensitiveCompare("OK") == .orderedSame
     }
 }
 

@@ -16,11 +16,11 @@ import Testing
 @Suite("Health monitor reconnect", .serialized)
 @MainActor
 struct HealthMonitorReconnectTests {
-    private func makeConnectedSession() -> DatabaseConnection {
+    private func makeConnectedSession(driver: MockDatabaseDriver = MockDatabaseDriver()) -> DatabaseConnection {
         FakeMSSQLPluginRegistration.registerIfNeeded()
         var connection = TestFixtures.makeConnection(name: "Prod")
         connection.type = DatabaseType(rawValue: FakeMSSQLPlugin.databaseTypeId)
-        var session = ConnectionSession(connection: connection)
+        var session = ConnectionSession(connection: connection, driver: driver)
         session.status = .connected
         DatabaseManager.shared.injectSession(session, for: connection.id)
         return connection
@@ -29,15 +29,15 @@ struct HealthMonitorReconnectTests {
     private func makeSessionFailingToReconnect(
         with error: any Error & Sendable
     ) -> (connection: DatabaseConnection, driver: MockDatabaseDriver) {
-        let connection = makeConnectedSession()
         let driver = MockDatabaseDriver()
-        DatabaseManager.shared.updateSession(connection.id) { $0.driver = driver }
+        let connection = makeConnectedSession(driver: driver)
         FakeMSSQLPlugin.failConnect(for: connection.id, with: error)
         return (connection, driver)
     }
 
     private func cleanUp(_ connectionId: UUID) async {
         FakeMSSQLPlugin.clearConnectFailure(for: connectionId)
+        await DatabaseManager.shared.stopHealthMonitor(for: connectionId)
         DatabaseManager.shared.removeSession(for: connectionId)
         await SchemaService.shared.invalidate(connectionId: connectionId)
     }
@@ -71,9 +71,11 @@ struct HealthMonitorReconnectTests {
 
         let outcome = await DatabaseManager.shared.performHealthMonitorReconnect(connectionId: connection.id)
 
+        let reason = ConnectionFailureClassifier.info(for: error)
         let session = DatabaseManager.shared.activeSessions[connection.id]
-        #expect(outcome == .retry(ConnectionFailureClassifier.info(for: error)))
-        #expect(session?.liveness == .live)
+        #expect(outcome == .retry(reason))
+        #expect(session?.liveness == .recovering)
+        #expect(session?.recovery == ConnectionRecoveryProgress(attempt: 2, cause: reason.message))
         #expect(session?.status == .connected)
         await cleanUp(connection.id)
     }
@@ -89,7 +91,8 @@ struct HealthMonitorReconnectTests {
 
         let session = DatabaseManager.shared.activeSessions[connection.id]
         #expect(outcome == .retry(nil))
-        #expect(session?.liveness == .live)
+        #expect(session?.liveness == .recovering)
+        #expect(session?.recovery?.attempt == 2)
         #expect(session?.status == .connected)
         await cleanUp(connection.id)
     }
@@ -106,12 +109,13 @@ struct HealthMonitorReconnectTests {
         let outcome = await DatabaseManager.shared.performHealthMonitorReconnect(connectionId: connection.id)
 
         #expect(outcome == .retry(nil))
-        #expect(DatabaseManager.shared.activeSessions[connection.id]?.liveness == .live)
+        #expect(DatabaseManager.shared.activeSessions[connection.id]?.liveness == .recovering)
+        #expect(DatabaseManager.shared.recoveryLoops[connection.id] != nil)
         await cleanUp(connection.id)
     }
 
     @Test("a late TLS failure from a reconnect that lost its race leaves the winner alone")
-    func lateConfigurationFailureLeavesTheWinnerAlone() async {
+    func lateConfigurationFailureLeavesTheWinnerAlone() async throws {
         let error = SSLHandshakeError.clientCertRequired(serverMessage: "certificate required")
         let (connection, _) = makeSessionFailingToReconnect(with: error)
         let connectionId = connection.id
@@ -122,17 +126,49 @@ struct HealthMonitorReconnectTests {
             await DatabaseManager.shared.performHealthMonitorReconnect(connectionId: connectionId)
         }
         await hold.waitUntilReached()
+        let loop = try #require(DatabaseManager.shared.recoveryLoops[connectionId]?.task)
         let replacement = MockDatabaseDriver()
         DatabaseManager.shared.updateSession(connectionId) { $0.driver = replacement }
+        DatabaseManager.shared.markSessionLive(connectionId)
+        await hold.release()
+        let outcome = await attempt.value
+        await loop.value
+
+        let session = DatabaseManager.shared.activeSessions[connectionId]
+        #expect(outcome == .success)
+        #expect(session?.driver === replacement)
+        #expect(session?.liveness == .live)
+        #expect(session?.status == .connected)
+        #expect(DatabaseManager.shared.disconnectReason(for: connectionId) == nil)
+        await cleanUp(connectionId)
+    }
+
+    @Test("an attempt a newer connect superseded finishes without taking the session")
+    func supersededAttemptIsNotAdopted() async {
+        let driver = MockDatabaseDriver()
+        let connection = makeConnectedSession(driver: driver)
+        let connectionId = connection.id
+        let hold = FakeMSSQLPlugin.holdConnect(for: connectionId)
+        defer { FakeMSSQLPlugin.clearConnectHold(for: connectionId) }
+        let generation = DatabaseManager.shared.connectionAttempts.begin(for: connectionId)
+
+        let attempt = Task { @MainActor in
+            await DatabaseManager.shared.performRecoveryAttempt(
+                connectionId: connectionId,
+                failedDriver: ObjectIdentifier(driver),
+                generation: generation
+            )
+        }
+        await hold.waitUntilReached()
+        _ = DatabaseManager.shared.connectionAttempts.begin(for: connectionId)
         await hold.release()
         let outcome = await attempt.value
 
         let session = DatabaseManager.shared.activeSessions[connectionId]
         #expect(outcome == .abort)
-        #expect(session?.driver === replacement)
+        #expect(session?.driver === driver)
         #expect(session?.liveness == .live)
-        #expect(session?.status == .connected)
-        #expect(DatabaseManager.shared.disconnectReason(for: connectionId) == nil)
+        DatabaseManager.shared.connectionAttempts.invalidate(for: connectionId)
         await cleanUp(connectionId)
     }
 

@@ -41,6 +41,8 @@ internal final class CompareSyncWindowController: NSWindowController,
     private static var controllers: [UUID?: CompareSyncWindowController] = [:]
 
     private let session = CompareSyncSession()
+    internal let windowId = UUID()
+    private var isCloseApproved = false
     private lazy var runner = CompareRunner(session: session)
     private lazy var endpointMenus = CompareEndpointToolbarController(
         session: session,
@@ -52,6 +54,10 @@ internal final class CompareSyncWindowController: NSWindowController,
     private weak var searchToolbarItem: NSSearchToolbarItem?
     private var renderedEndpoints: String?
     private let windowBackdrop: ThemeWindowBackdrop
+
+    internal static func window(for windowId: UUID) -> NSWindow? {
+        controllers.values.first { $0.windowId == windowId }?.window
+    }
 
     internal static func present(prefillSource connectionId: UUID?) {
         let controller = controllers[connectionId] ?? CompareSyncWindowController(prefillSource: connectionId)
@@ -66,6 +72,7 @@ internal final class CompareSyncWindowController: NSWindowController,
         windowBackdrop = ThemeWindowBackdrop(window: window)
         super.init(window: window)
 
+        CompareSyncRunRegistry.shared.track(session, windowId: windowId)
         applyPrefill(connectionId)
         window.contentViewController = makeContentController()
         window.delegate = self
@@ -728,27 +735,22 @@ internal final class CompareSyncWindowController: NSWindowController,
 
     // MARK: - NSWindowDelegate
 
-    /// The controller owns the window's delegate, so the close guard lives here. The view this
-    /// replaces installed a proxy delegate from a background `NSViewRepresentable` to answer this
-    /// one message, which meant a SwiftUI view reaching around AppKit's ownership to do it.
+    // Asked as a sheet, so the window closes again once the answer is yes.
     internal func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard session.activity == .applying else { return true }
-
-        let alert = NSAlert()
-        alert.alertStyle = .critical
-        alert.messageText = String(localized: "A sync is still running")
-        alert.informativeText = String(
-            localized: "Closing now stops the run between statements. Statements that already ran stay applied."
-        )
-        alert.addButton(withTitle: String(localized: "Keep Running"))
-        alert.addButton(withTitle: String(localized: "Stop and Close"))
-        guard alert.runModal() == .alertSecondButtonReturn else { return false }
-
-        session.cancelRunningWork()
-        return true
+        guard !isCloseApproved,
+              let work = CompareSyncRunRegistry.runningWork(for: session),
+              let prompt = RunningWorkPrompt.make(action: .close, work: [work]) else { return true }
+        Task { [weak self, weak sender] in
+            guard await RunningWorkApproval.confirm(prompt, window: sender), let self else { return }
+            self.isCloseApproved = true
+            self.session.cancelRunningWork()
+            sender?.performClose(nil)
+        }
+        return false
     }
 
     internal func windowWillClose(_ notification: Notification) {
+        // Stays listed until the run itself ends: a statement already sent can still be writing.
         session.cancelRunningWork()
         Self.controllers = Self.controllers.filter { $0.value !== self }
     }
