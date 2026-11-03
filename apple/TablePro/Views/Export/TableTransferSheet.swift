@@ -449,7 +449,9 @@ struct TableTransferSheet: View {
             subject: destinationConnection.name,
             connectionName: sourceConnection.name,
             connectionIds: [sourceConnection.id, destinationConnection.id],
-            scope: sheetWork
+            scope: sheetWork,
+            // Closing the destination's last window disconnects it, so that close has to list the transfer too.
+            listedOnlyForItsWindow: false
         ) {
             transferService.cancel()
         }

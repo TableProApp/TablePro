@@ -376,9 +376,13 @@ final class ImportService: ObservableObject {
             }
             guard ending == .completed else { break }
         }
-        // A Stop during the last file's last write: the run was promised a rollback, not a commit.
-        if ending == .completed, isStopRequested, !files.isEmpty {
-            ending = .stopped(file: files.count - 1)
+        // An explicit Stop wins over the error handling: the sheet promised a rollback, not Stop and Commit's commit.
+        if isStopRequested, !files.isEmpty {
+            switch ending {
+            case .completed: ending = .stopped(file: files.count - 1)
+            case .failed(let index): ending = .stopped(file: index)
+            case .stopped: break
+            }
         }
 
         if policy.usesTransaction {
@@ -554,7 +558,9 @@ final class ImportService: ObservableObject {
         guard let table else {
             // A file runs statements nobody read first; only DDL that rolls back keeps them all inside the transaction.
             let rollsBack = driver.supportsTransactionalDDL && !DataSyncTransactionality.needsStorageEngines(databaseType)
-            return rollsBack ? .rollsBack : .unknown
+            // A T-SQL batch goes whole, so a COMMIT inside it never reaches the scanner that watches for one.
+            let grammar = SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution
+            return rollsBack && !grammar.contains(.batchSeparatorLines) ? .rollsBack : .unknown
         }
         guard DataSyncTransactionality.needsStorageEngines(databaseType) else { return .rollsBack }
         do {

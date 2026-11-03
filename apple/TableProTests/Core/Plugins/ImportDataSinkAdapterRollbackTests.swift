@@ -538,7 +538,7 @@ struct ImportStopRollbackTests {
         #expect(await ImportService.targetRollback(of: "courses", schema: nil, on: adapter) == .unknown)
     }
 
-    @Test("A SQL file rolls back only where DDL does and no table engine decides")
+    @Test("A SQL file rolls back only where DDL does, no table engine decides and no batch hides a COMMIT")
     func sqlFileReach() async {
         let mysql = PluginDriverAdapter(
             connection: TestFixtures.makeConnection(type: .mysql),
@@ -553,7 +553,14 @@ struct ImportStopRollbackTests {
             pluginDriver: StatusFlagDriver(transactionalDDL: false)
         )
 
+        let sqlServer = PluginDriverAdapter(
+            connection: TestFixtures.makeConnection(type: .mssql),
+            pluginDriver: StatusFlagDriver(transactionalDDL: true)
+        )
+
         #expect(await ImportService.targetRollback(of: nil, schema: nil, on: mysql) == .unknown)
+        #expect(await ImportService.targetRollback(of: nil, schema: nil, on: sqlServer) == .unknown)
+        #expect(await ImportService.targetRollback(of: "orders", schema: nil, on: sqlServer) == .rollsBack)
         #expect(await ImportService.targetRollback(of: nil, schema: nil, on: postgres) == .rollsBack)
         #expect(await ImportService.targetRollback(of: nil, schema: nil, on: oracleLike) == .unknown)
         #expect(await ImportService.targetRollback(of: "orders", schema: nil, on: postgres) == .rollsBack)

@@ -211,6 +211,19 @@ struct ImportServiceBatchTests {
         #expect(!run.report.rowsKept)
     }
 
+    @Test("A Stop during a write that then fails rolls back even under Stop and Commit")
+    func stopBeforeAFailureRollsBackUnderStopAndCommit() async throws {
+        let commit = RowImportBatchPolicy(errorHandling: .stopAndCommit, wrapInTransaction: true)
+        let run = try await runFiles(["a1", "b1"], policy: commit, failingValue: "b1", heldValue: "b1") { service in
+            service.cancelImport()
+        }
+
+        #expect(run.report.ending == .stopped(file: 1))
+        #expect(run.driver.events.contains("ROLLBACK"))
+        #expect(!run.driver.events.contains("COMMIT"))
+        #expect(!run.report.rowsKept)
+    }
+
     @Test("A failure in a later file rolls back the files before it under Stop and Rollback")
     func failureRollsBackEveryFile() async throws {
         let contents = (1...20).map { "row\($0)" }

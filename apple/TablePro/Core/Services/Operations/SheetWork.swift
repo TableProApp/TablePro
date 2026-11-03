@@ -55,6 +55,7 @@ internal final class SheetJob {
         connectionIds: Set<UUID>,
         registry: RunningWorkRegistry = .shared,
         scope: SheetWorkScope?,
+        listedOnlyForItsWindow: Bool = true,
         stop: @escaping @MainActor () -> Void
     ) {
         self.registry = registry
@@ -64,7 +65,7 @@ internal final class SheetJob {
             subject: subject,
             connectionName: connectionName,
             connectionIds: connectionIds,
-            windowId: scope?.windowId,
+            windowId: listedOnlyForItsWindow ? scope?.windowId : nil,
             cancel: stop
         )
         scopeId = scope?.begin(stop: stop)

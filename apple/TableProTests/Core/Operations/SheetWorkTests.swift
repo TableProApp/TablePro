@@ -79,6 +79,26 @@ struct SheetWorkTests {
         job.end()
     }
 
+    @Test("A transfer is listed for the window closing its destination's last window")
+    func transferIsListedForItsDestinationWindow() {
+        let registry = RunningWorkRegistry(providers: [])
+        let scope = SheetWorkScope { UUID() }
+        let source = UUID()
+        let destination = UUID()
+        let job = SheetJob(
+            .tableTransfer,
+            subject: "Staging",
+            connectionName: "Production",
+            connectionIds: [source, destination],
+            registry: registry,
+            scope: scope,
+            listedOnlyForItsWindow: false
+        ) {}
+
+        #expect(registry.items(in: .window(ids: [UUID()], connectionIds: [destination])).count == 1)
+        job.end()
+    }
+
     @Test("The closers' question and the owner going away reach the same stop")
     func bothPathsReachTheStop() {
         let registry = RunningWorkRegistry(providers: [])
