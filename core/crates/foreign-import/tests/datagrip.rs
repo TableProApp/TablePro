@@ -243,6 +243,19 @@ fn disabled_ssh_properties_give_no_tunnel() {
 }
 
 #[test]
+fn ssh_and_ssl_the_local_file_disables_stay_off_though_the_shared_file_enables_them() {
+    let import = collect(&mac("local-disables", Arc::default()), request(false, false));
+    let off = &connection(&import, "turned_off").settings;
+    assert_eq!((&off.ssh, &off.ssl), (&None, &None));
+    let on = &connection(&import, "left_on").settings;
+    assert_eq!(
+        on.ssh.as_ref().map(|ssh| ssh.host.as_str()),
+        Some("bastion.example.com")
+    );
+    assert_eq!(on.ssl.as_ref().map(|ssl| ssl.mode), Some(ForeignSslMode::Required));
+}
+
+#[test]
 fn an_ssh_password_is_imported_from_c_kdbx() {
     let import = collect(&mac("connections", Arc::default()), request(true, false));
     let credentials = connection(&import, "ssh_kdbx")

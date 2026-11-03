@@ -119,6 +119,7 @@ fn record(
         .port
         .and_then(|port| u16::try_from(port).ok())
         .unwrap_or_else(|| engine::default_port(&engine));
+    let ssl = row.ssl.then(|| ssl(row, &engine));
     let settings = ForeignConnection {
         name: if row.name.is_empty() {
             "Untitled".to_owned()
@@ -135,7 +136,7 @@ fn record(
         username: row.username.clone().unwrap_or_default(),
         engine,
         ssh: row.ssh_enabled.then(|| ssh(row)),
-        ssl: row.ssl.then(|| ssl(row)),
+        ssl,
         color: map_color(row.label_color.as_deref()),
         additional_fields: BTreeMap::new(),
     };
@@ -209,17 +210,36 @@ fn map_ssh_auth(mode: Option<&str>) -> ForeignSshAuth {
     }
 }
 
-fn ssl(row: &SavedConnectionRow) -> ForeignSsl {
-    let mode = if row.ssl_reject_unauthorized && !row.trust_server_certificate {
-        ForeignSslMode::VerifyIdentity
-    } else {
-        ForeignSslMode::Required
-    };
+fn ssl(row: &SavedConnectionRow, engine: &str) -> ForeignSsl {
     ForeignSsl {
-        mode,
+        mode: ssl_mode(row, engine),
         ca_certificate_path: row.ssl_ca_file.clone(),
         client_certificate_path: row.ssl_cert_file.clone(),
         client_key_path: row.ssl_key_file.clone(),
+    }
+}
+
+// What each Beekeeper connector hands its driver (`lib/db/clients/*/*Connector.ts`). The saved
+// `trustServerCertificate` is SQL Server's alone, and TLS on replaces it there.
+fn ssl_mode(row: &SavedConnectionRow, engine: &str) -> ForeignSslMode {
+    let file = |path: &Option<String>| path.as_deref().is_some_and(|path| !path.is_empty());
+    let (ca, cert, key) = (
+        file(&row.ssl_ca_file),
+        file(&row.ssl_cert_file),
+        file(&row.ssl_key_file),
+    );
+    let verifies = match engine {
+        "SQL Server" => !(ca && cert && key) || row.ssl_reject_unauthorized,
+        // With no certificate file these connectors never check the server.
+        "PostgreSQL" | "Redshift" | "CockroachDB" | "MySQL" | "MariaDB" | "TiDB" => {
+            row.ssl_reject_unauthorized && (ca || cert || key)
+        }
+        _ => row.ssl_reject_unauthorized,
+    };
+    if verifies {
+        ForeignSslMode::VerifyIdentity
+    } else {
+        ForeignSslMode::Required
     }
 }
 
@@ -267,7 +287,6 @@ struct SavedConnectionRow {
     ssl_cert_file: Option<String>,
     ssl_key_file: Option<String>,
     ssl_reject_unauthorized: bool,
-    trust_server_certificate: bool,
     ssh_enabled: bool,
     ssh_host: Option<String>,
     ssh_port: Option<i64>,
@@ -288,7 +307,7 @@ struct SavedConnectionRow {
 // A cloud workspace's rows have a positive workspaceId and belong to that workspace's server copy.
 const SAVED_CONNECTIONS_SQL: &str = "
     SELECT id, name, connectionType, host, port, username, defaultDatabase, password,
-           ssl, sslCaFile, sslCertFile, sslKeyFile, sslRejectUnauthorized, trustServerCertificate,
+           ssl, sslCaFile, sslCertFile, sslKeyFile, sslRejectUnauthorized,
            sshEnabled, sshHost, sshPort, sshUsername, sshMode, sshKeyfile, sshKeyfilePassword, sshPassword,
            sshBastionHost, sshBastionHostPort, sshBastionUsername, sshBastionMode, sshBastionKeyfile,
            labelColor, connectionFolderId
@@ -323,22 +342,21 @@ fn saved_connection(row: &Row<'_>) -> SavedConnectionRow {
         ssl_cert_file: row.text(10),
         ssl_key_file: row.text(11),
         ssl_reject_unauthorized: flag(12),
-        trust_server_certificate: flag(13),
-        ssh_enabled: flag(14),
-        ssh_host: row.text(15),
-        ssh_port: row.optional_int64(16),
-        ssh_username: row.text(17),
-        ssh_mode: row.text(18),
-        ssh_keyfile: row.text(19),
-        ssh_keyfile_password: row.text(20),
-        ssh_password: row.text(21),
-        ssh_bastion_host: row.text(22),
-        ssh_bastion_port: row.optional_int64(23),
-        ssh_bastion_username: row.text(24),
-        ssh_bastion_mode: row.text(25),
-        ssh_bastion_keyfile: row.text(26),
-        label_color: row.text(27),
-        connection_folder_id: row.optional_int64(28),
+        ssh_enabled: flag(13),
+        ssh_host: row.text(14),
+        ssh_port: row.optional_int64(15),
+        ssh_username: row.text(16),
+        ssh_mode: row.text(17),
+        ssh_keyfile: row.text(18),
+        ssh_keyfile_password: row.text(19),
+        ssh_password: row.text(20),
+        ssh_bastion_host: row.text(21),
+        ssh_bastion_port: row.optional_int64(22),
+        ssh_bastion_username: row.text(23),
+        ssh_bastion_mode: row.text(24),
+        ssh_bastion_keyfile: row.text(25),
+        label_color: row.text(26),
+        connection_folder_id: row.optional_int64(27),
     }
 }
 

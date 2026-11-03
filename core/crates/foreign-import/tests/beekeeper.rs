@@ -490,7 +490,7 @@ fn ssh_ssl_colors_and_defaults_map_as_on_macos() {
     assert!(ssh.jump_hosts.is_empty());
     assert_eq!(
         untitled.settings.ssl.as_ref().map(|ssl| ssl.mode),
-        Some(ForeignSslMode::Required)
+        Some(ForeignSslMode::VerifyIdentity)
     );
 
     let lake = &collected.connections[3];
@@ -499,6 +499,35 @@ fn ssh_ssl_colors_and_defaults_map_as_on_macos() {
     let ssl = lake.settings.ssl.as_ref().expect("TLS");
     assert_eq!(ssl.mode, ForeignSslMode::Required);
     assert_eq!(ssl.ca_certificate_path, None);
+}
+
+#[test]
+fn tls_verification_follows_what_each_engine_s_connector_does() {
+    let (_home, importer) = mac_home(&["connections.sql", "queries.sql", "tls_connections.sql"]);
+
+    let collected = collect(&importer, &CONNECTIONS_ONLY);
+
+    let modes = [
+        ("PG no files", ForeignSslMode::Required),
+        ("PG with CA", ForeignSslMode::VerifyIdentity),
+        ("PG unverified", ForeignSslMode::Required),
+        ("MySQL no files", ForeignSslMode::Required),
+        ("SQL Server", ForeignSslMode::VerifyIdentity),
+        ("SQL Server trusted", ForeignSslMode::Required),
+        ("Redis", ForeignSslMode::VerifyIdentity),
+    ];
+    for (name, mode) in modes {
+        let connection = collected
+            .connections
+            .iter()
+            .find(|connection| connection.settings.name == name)
+            .expect("a connection");
+        assert_eq!(
+            connection.settings.ssl.as_ref().map(|ssl| ssl.mode),
+            Some(mode),
+            "{name}"
+        );
+    }
 }
 
 #[test]

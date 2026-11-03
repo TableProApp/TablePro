@@ -28,8 +28,26 @@ pub(crate) struct Fragment {
     pub jdbc_url: Option<String>,
     pub username: Option<String>,
     pub group_name: Option<String>,
-    pub ssh: Option<SshReference>,
-    pub ssl: Option<SslProperties>,
+    pub ssh: Section<SshReference>,
+    pub ssl: Section<SslProperties>,
+}
+
+// The local file can turn off a section the shared file turns on; a file without the section leaves it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) enum Section<T> {
+    #[default]
+    Absent,
+    Disabled,
+    Enabled(T),
+}
+
+impl<T: Clone> Section<T> {
+    fn enabled(&self) -> Option<T> {
+        match self {
+            Self::Enabled(value) => Some(value.clone()),
+            Self::Absent | Self::Disabled => None,
+        }
+    }
 }
 
 // Only an enabled `ssh-properties` becomes a reference.
@@ -70,8 +88,12 @@ impl Fragment {
         take(&mut self.jdbc_url, other.jdbc_url);
         take(&mut self.username, other.username);
         take(&mut self.group_name, other.group_name);
-        take(&mut self.ssh, other.ssh);
-        take(&mut self.ssl, other.ssl);
+        if other.ssh != Section::Absent {
+            self.ssh = other.ssh;
+        }
+        if other.ssl != Section::Absent {
+            self.ssl = other.ssl;
+        }
     }
 
     pub(crate) fn resolved(&self) -> Option<DataSource> {
@@ -84,8 +106,8 @@ impl Fragment {
             jdbc_url,
             username: self.username.clone().unwrap_or_default(),
             group_name: self.group_name.clone(),
-            ssh: self.ssh.clone(),
-            ssl: self.ssl.clone(),
+            ssh: self.ssh.enabled(),
+            ssl: self.ssl.enabled(),
         })
     }
 }
@@ -135,14 +157,16 @@ fn parse_fragment(element: Node<'_, '_>, uuid: &str, home: &Path) -> Fragment {
     }
 }
 
-fn parse_ssh_reference(element: Node<'_, '_>) -> Option<SshReference> {
-    let ssh = xml::child(element, "ssh-properties")?;
+fn parse_ssh_reference(element: Node<'_, '_>) -> Section<SshReference> {
+    let Some(ssh) = xml::child(element, "ssh-properties") else {
+        return Section::Absent;
+    };
     let enabled = xml::child_text(ssh, "enabled").or_else(|| ssh.attribute("enabled").map(str::to_owned));
     if enabled.as_deref() != Some("true") {
-        return None;
+        return Section::Disabled;
     }
     let config_id = xml::child_text(ssh, "ssh-config-id").or_else(|| ssh.attribute("ssh-config-id").map(str::to_owned));
-    Some(SshReference {
+    Section::Enabled(SshReference {
         config_id: non_empty(config_id),
         inline_host: ssh.attribute("host").map(str::to_owned),
         inline_port: ssh.attribute("port").and_then(|port| port.parse().ok()),
@@ -153,13 +177,15 @@ fn parse_ssh_reference(element: Node<'_, '_>) -> Option<SshReference> {
     })
 }
 
-fn parse_ssl_properties(element: Node<'_, '_>, home: &Path) -> Option<SslProperties> {
-    let ssl = xml::child(element, "ssl-config")?;
+fn parse_ssl_properties(element: Node<'_, '_>, home: &Path) -> Section<SslProperties> {
+    let Some(ssl) = xml::child(element, "ssl-config") else {
+        return Section::Absent;
+    };
     if xml::child_text(ssl, "enabled").as_deref() != Some("true") {
-        return None;
+        return Section::Disabled;
     }
     let cert_path = |name: &str| non_empty(xml::child_text(ssl, name)).map(|path| expand(&path, home));
-    Some(SslProperties {
+    Section::Enabled(SslProperties {
         mode: xml::child_text(ssl, "mode"),
         ca_cert_path: cert_path("ca-cert"),
         client_cert_path: cert_path("client-cert"),
@@ -220,14 +246,44 @@ mod tests {
             "<data-source uuid=\"3\"><ssh-properties enabled=\"TRUE\" host=\"b\"/></data-source>",
             "</a>"
         ));
-        let first = parsed[0].ssh.clone().expect("ssh");
+        let first = parsed[0].ssh.enabled().expect("ssh");
         assert_eq!(first.config_id.as_deref(), Some("S"));
-        let second = parsed[1].ssh.clone().expect("ssh");
+        let second = parsed[1].ssh.enabled().expect("ssh");
         assert_eq!(second.config_id, None);
         assert_eq!(second.inline_host.as_deref(), Some("b"));
         assert_eq!(second.inline_port, Some(2200));
         assert_eq!(second.inline_user.as_deref(), Some("u"));
-        assert_eq!(parsed[2].ssh, None);
+        assert_eq!(parsed[2].ssh, Section::Disabled);
+    }
+
+    #[test]
+    fn a_section_the_local_file_disables_turns_off_the_shared_one_and_an_absent_one_keeps_it() {
+        let shared = concat!(
+            "<a>",
+            "<data-source uuid=\"off\"><driver-ref>pg</driver-ref><jdbc-url>jdbc:postgresql://h/db</jdbc-url>",
+            "<ssh-properties><enabled>true</enabled><ssh-config-id>S</ssh-config-id></ssh-properties>",
+            "<ssl-config><enabled>true</enabled><mode>REQUIRE</mode></ssl-config></data-source>",
+            "<data-source uuid=\"kept\"><driver-ref>pg</driver-ref><jdbc-url>jdbc:postgresql://h/db</jdbc-url>",
+            "<ssh-properties><enabled>true</enabled><ssh-config-id>S</ssh-config-id></ssh-properties>",
+            "<ssl-config><enabled>true</enabled><mode>REQUIRE</mode></ssl-config></data-source>",
+            "</a>"
+        );
+        let local = concat!(
+            "<a>",
+            "<data-source uuid=\"off\"><ssh-properties><enabled>false</enabled><ssh-config-id>S</ssh-config-id>",
+            "</ssh-properties><ssl-config><enabled>false</enabled></ssl-config></data-source>",
+            "<data-source uuid=\"kept\"><user-name>me</user-name></data-source>",
+            "</a>"
+        );
+        let mut merged = fragments(shared);
+        for (fragment, local) in merged.iter_mut().zip(fragments(local)) {
+            fragment.merge(local);
+        }
+        let off = merged[0].resolved().expect("a data source");
+        assert_eq!((off.ssh, off.ssl), (None, None));
+        let kept = merged[1].resolved().expect("a data source");
+        assert_eq!(kept.ssh.and_then(|ssh| ssh.config_id).as_deref(), Some("S"));
+        assert_eq!(kept.ssl.and_then(|ssl| ssl.mode).as_deref(), Some("REQUIRE"));
     }
 
     #[test]

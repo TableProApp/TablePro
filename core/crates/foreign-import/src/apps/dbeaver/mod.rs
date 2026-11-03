@@ -67,7 +67,12 @@ impl AppReader for DBeaver {
         for source in &sources {
             for (id, connection) in &source.connections {
                 check_cancel(cancel)?;
-                let settings = settings(id, connection, source.credentials.username(id));
+                let settings = settings(
+                    id,
+                    connection,
+                    source.credentials.username(id),
+                    source.credentials.tunnel_username(id),
+                );
                 let credentials = request
                     .include_passwords
                     .then(|| source.credentials.secrets(id))
@@ -212,22 +217,33 @@ fn tunnel_secret_by_auth(mut credentials: ForeignCredentials, settings: &Foreign
     credentials
 }
 
-fn settings(id: &str, connection: &Value, credential_username: Option<&str>) -> ForeignConnection {
+fn settings(
+    id: &str,
+    connection: &Value,
+    credential_username: Option<&str>,
+    tunnel_username: Option<&str>,
+) -> ForeignConnection {
     let name = connection.get("name").and_then(Value::as_str).unwrap_or(id).to_owned();
     let engine = map_provider(connection.get("provider").and_then(Value::as_str).unwrap_or(""));
     let config = connection.get("configuration").unwrap_or(&NOTHING);
     let text = |key: &str| config.get(key).and_then(Value::as_str);
+    // In URL mode DBeaver connects with the URL as written, and the manual fields are leftovers.
+    let url_mode = text("configurationType") == Some("URL");
     // A connection given as a URL keeps only what the URL names, never the URL itself, which can
     // hold a password. The macOS port stored the whole URL as the database name.
     let endpoint = text("url")
-        .filter(|_| text("host").is_none_or(str::is_empty))
+        .filter(|_| url_mode || text("host").is_none_or(str::is_empty))
         .and_then(|url| jdbc::parse(url, &jdbc::subprotocol(url)));
-    let host = text("host")
+    let from_url = url_mode && endpoint.is_some();
+    let manual = |key: &str| config.get(key).filter(|_| !from_url);
+    let host = manual("host")
+        .and_then(Value::as_str)
         .filter(|host| !host.is_empty())
         .map(str::to_owned)
         .or_else(|| endpoint.as_ref().map(|endpoint| endpoint.host.clone()))
         .unwrap_or_else(|| "localhost".to_owned());
-    let database = text("database")
+    let database = manual("database")
+        .and_then(Value::as_str)
         .map(str::to_owned)
         .or_else(|| endpoint.as_ref().map(|endpoint| endpoint.database.clone()))
         .unwrap_or_default();
@@ -242,20 +258,25 @@ fn settings(id: &str, connection: &Value, credential_username: Option<&str>) -> 
     .unwrap_or("");
     // Read whether or not the host came from the URL: a seed list and an auth database live only there.
     let mut additional_fields = text("url").map(jdbc::url_fields).unwrap_or_default();
-    // A URL-only connection keeps the TLS its URL asks for, which the macOS port dropped.
-    let ssl = match ssl(config) {
-        Some(ssl) => Some(ssl),
-        None => text("url").and_then(|url| jdbc::url_ssl_or_mark(url, &mut additional_fields)),
+    let ssl = match handler_tls(config) {
+        HandlerTls::On(ssl) => Some(ssl),
+        tls => {
+            if matches!(tls, HandlerTls::Unread) {
+                additional_fields.insert(crate::TLS_SETTINGS_UNREAD.to_owned(), "true".to_owned());
+            }
+            // A URL-only connection keeps the TLS its URL asks for, which the macOS port dropped.
+            text("url").and_then(|url| jdbc::url_ssl_or_mark(url, &mut additional_fields))
+        }
     };
     ForeignConnection {
         name,
         host,
-        port: port(config.get("port"))
+        port: port(manual("port"))
             .or_else(|| endpoint.as_ref().and_then(|endpoint| endpoint.port))
             .unwrap_or_else(|| engine::default_port(&engine)),
         database,
         username: username.to_owned(),
-        ssh: ssh(config),
+        ssh: ssh(config, tunnel_username),
         ssl,
         color: color(config),
         additional_fields,
@@ -280,7 +301,7 @@ fn map_provider(provider: &str) -> String {
     known.to_owned()
 }
 
-fn ssh(config: &Value) -> Option<ForeignSsh> {
+fn ssh(config: &Value, credential_username: Option<&str>) -> Option<ForeignSsh> {
     let tunnel = config
         .get("handlers")?
         .get("ssh_tunnel")
@@ -307,42 +328,122 @@ fn ssh(config: &Value) -> Option<ForeignSsh> {
     } else {
         String::new()
     };
+    // DBeaver keeps the tunnel's user with its secrets, or beside its properties in an older file.
+    let username = [
+        text("username"),
+        tunnel.get("user").and_then(Value::as_str),
+        credential_username,
+    ]
+    .into_iter()
+    .flatten()
+    .find(|username| !username.is_empty())
+    .unwrap_or("");
     Some(ForeignSsh {
         host: text("host").unwrap_or("").to_owned(),
         port: port(property("port")),
-        username: text("username").unwrap_or("").to_owned(),
+        username: username.to_owned(),
         auth,
         private_key_path,
         jump_hosts: Vec::new(),
     })
 }
 
-fn ssl(config: &Value) -> Option<ForeignSsl> {
-    let handler = config
-        .get("handlers")?
-        .get("ssl")
-        .filter(|handler| handler.is_object())?;
-    if !handler.get("enabled").and_then(boolean).unwrap_or(false) {
-        return None;
+enum HandlerTls {
+    Absent,
+    Off,
+    On(ForeignSsl),
+    Unread,
+}
+
+// DBeaver names the TLS handler per engine: `postgre_ssl`, `mysql_ssl`, `mssql_ssl`, `clickhouse-ssl`.
+fn is_tls_handler(id: &str) -> bool {
+    id == "ssl" || id.ends_with("_ssl") || id.ends_with("-ssl")
+}
+
+fn handler_tls(config: &Value) -> HandlerTls {
+    let handlers = config.get("handlers").cloned().and_then(object).unwrap_or_default();
+    let mut outcome = HandlerTls::Absent;
+    for (id, handler) in &handlers {
+        if !is_tls_handler(id) || !handler.get("enabled").and_then(boolean).unwrap_or(false) {
+            continue;
+        }
+        let properties = handler.get("properties").unwrap_or(&NOTHING);
+        match tls_mode(id, properties) {
+            Some(ForeignSslMode::Disabled) => {
+                if matches!(outcome, HandlerTls::Absent) {
+                    outcome = HandlerTls::Off;
+                }
+            }
+            Some(mode) => return HandlerTls::On(tls_settings(mode, properties)),
+            None => outcome = HandlerTls::Unread,
+        }
     }
+    outcome
+}
+
+// The mode each engine's handler hands its driver; None when the handler keeps no mode this can read.
+fn tls_mode(id: &str, properties: &Value) -> Option<ForeignSslMode> {
     let text = |key: &str| {
-        handler
-            .get("properties")
-            .and_then(|properties| properties.get(key))
+        properties
+            .get(key)
             .and_then(Value::as_str)
+            .filter(|text| !text.is_empty())
     };
-    let mode = match text("sslMode").unwrap_or("") {
-        "require" => ForeignSslMode::Required,
-        "verify-ca" => ForeignSslMode::VerifyCa,
-        "verify-full" => ForeignSslMode::VerifyIdentity,
-        _ => ForeignSslMode::Preferred,
+    let flag = |key: &str| {
+        properties.get(key).is_some_and(|value| {
+            value.as_bool().unwrap_or(false) || value.as_str().is_some_and(|text| text.eq_ignore_ascii_case("true"))
+        })
     };
-    Some(ForeignSsl {
+    match id {
+        // The PostgreSQL driver takes `ssl=true` with no mode as verify-full.
+        "postgre_ssl" => text("sslMode").map_or(Some(ForeignSslMode::VerifyIdentity), named_mode),
+        // Connector/J's legacy switches: checking the certificate is verify-ca.
+        "mysql_ssl" => Some(if flag("ssl.verify.server") {
+            ForeignSslMode::VerifyCa
+        } else if flag("ssl.require") {
+            ForeignSslMode::Required
+        } else {
+            ForeignSslMode::Preferred
+        }),
+        // The ClickHouse driver checks the server unless the mode is NONE.
+        "clickhouse-ssl" => match text("ssl.mode").map(str::to_ascii_uppercase).as_deref() {
+            None | Some("STRICT") => Some(ForeignSslMode::VerifyIdentity),
+            Some("NONE") => Some(ForeignSslMode::Required),
+            Some(_) => None,
+        },
+        _ => text("sslMode").and_then(named_mode),
+    }
+}
+
+fn named_mode(mode: &str) -> Option<ForeignSslMode> {
+    match mode.to_ascii_lowercase().as_str() {
+        "disable" => Some(ForeignSslMode::Disabled),
+        "allow" | "prefer" => Some(ForeignSslMode::Preferred),
+        "require" => Some(ForeignSslMode::Required),
+        "verify-ca" => Some(ForeignSslMode::VerifyCa),
+        "verify-full" => Some(ForeignSslMode::VerifyIdentity),
+        _ => None,
+    }
+}
+
+// DBeaver's own keys first, then the PostgreSQL handler's older ones, then the macOS port's.
+fn tls_settings(mode: ForeignSslMode, properties: &Value) -> ForeignSsl {
+    let path = |keys: [&str; 3]| {
+        keys.into_iter()
+            .find_map(|key| {
+                properties
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .filter(|path| !path.is_empty())
+            })
+            .map(str::to_owned)
+    };
+    ForeignSsl {
         mode,
-        ca_certificate_path: text("caCertPath").map(str::to_owned),
-        client_certificate_path: text("clientCertPath").map(str::to_owned),
-        client_key_path: text("clientKeyPath").map(str::to_owned),
-    })
+        ca_certificate_path: path(["ssl.ca.cert", "rootCert", "caCertPath"]),
+        client_certificate_path: path(["ssl.client.cert", "clientCert", "clientCertPath"]),
+        client_key_path: path(["ssl.client.key", "clientKey", "clientKeyPath"]),
+    }
 }
 
 // DBeaver keeps any colour the user picks as `r,g,b`; only the clear hues map to a TablePro colour.
@@ -416,7 +517,7 @@ mod tests {
             r#"{"provider": "postgresql", "name": "cloud",
                 "configuration": {"url": "jdbc:postgresql://admin:hunter2@db.cloud.example:6543/app?password=hunter2&sslmode=require"}}"#,
         );
-        let settings = settings("cloud-id", &connection, None);
+        let settings = settings("cloud-id", &connection, None, None);
         assert_eq!(
             (settings.host.as_str(), settings.port, settings.database.as_str()),
             ("db.cloud.example", 6543, "app")
@@ -433,7 +534,7 @@ mod tests {
             r#"{"provider": "mongodb", "name": "atlas",
                 "configuration": {"url": "mongodb+srv://cluster0.example.net/app"}}"#,
         );
-        let settings = settings("atlas-id", &connection, None);
+        let settings = settings("atlas-id", &connection, None, None);
         assert_eq!(settings.host, "cluster0.example.net");
         assert_eq!(
             settings.additional_fields.get("mongoUseSrv").map(String::as_str),
@@ -449,7 +550,7 @@ mod tests {
                 "configuration": {"host": "mongo.example.com", "port": "27017", "database": "shop",
                                   "url": "mongodb://mongo.example.com:27017/shop?authSource=admin"}}"#,
         );
-        let settings = settings("mongo-id", &connection, None);
+        let settings = settings("mongo-id", &connection, None, None);
         assert_eq!(settings.host, "mongo.example.com");
         assert_eq!(
             settings.additional_fields.get("mongoAuthSource").map(String::as_str),
@@ -466,7 +567,7 @@ mod tests {
                 "configuration": {"host": "db", "handlers": {"ssh_tunnel": {"enabled": true,
                   "properties": {"host": "bastion", "authType": "PUBLIC_KEY", "keyPath": "~/.ssh/id"}}}}}"#,
         );
-        let settings = settings("tunnelled-id", &connection, None);
+        let settings = settings("tunnelled-id", &connection, None, None);
         let credentials = ForeignCredentials {
             ssh_password: Some(SecretString::from("phrase")),
             ..ForeignCredentials::default()
@@ -485,8 +586,89 @@ mod tests {
             r#"{"provider": "postgresql", "name": "verified",
                 "configuration": {"url": "jdbc:postgresql://db.example.com/app?sslmode=verify-full"}}"#,
         );
-        let settings = settings("verified-id", &connection, None);
+        let settings = settings("verified-id", &connection, None, None);
         assert_eq!(settings.ssl.map(|ssl| ssl.mode), Some(ForeignSslMode::VerifyIdentity));
+    }
+
+    #[test]
+    fn a_url_mode_url_without_a_port_takes_the_default_port_not_the_stale_one() {
+        let connection = parsed(
+            r#"{"provider": "postgresql", "name": "url",
+                "configuration": {"host": "old", "port": "6000", "database": "old",
+                                  "url": "jdbc:postgresql://new.example.com/app", "configurationType": "URL"}}"#,
+        );
+        let settings = settings("url-id", &connection, None, None);
+        assert_eq!(
+            (settings.host.as_str(), settings.port, settings.database.as_str()),
+            ("new.example.com", 5432, "app")
+        );
+    }
+
+    #[test]
+    fn a_url_mode_url_that_does_not_parse_leaves_the_manual_fields() {
+        let connection = parsed(
+            r#"{"provider": "postgresql", "name": "url",
+                "configuration": {"host": "db", "port": "6000", "url": "not a url", "configurationType": "URL"}}"#,
+        );
+        let settings = settings("url-id", &connection, None, None);
+        assert_eq!((settings.host.as_str(), settings.port), ("db", 6000));
+    }
+
+    #[test]
+    fn the_older_tls_handler_and_certificate_names_still_read() {
+        let tls = |handlers: &str| handler_tls(&parsed(&format!(r#"{{"handlers": {handlers}}}"#)));
+        let HandlerTls::On(legacy) = tls(r#"{"ssl": {"enabled": true, "properties": {"sslMode": "verify-ca",
+                "caCertPath": "/ca.pem", "clientCertPath": "/c.pem", "clientKeyPath": "/k.pem"}}}"#)
+        else {
+            panic!("TLS");
+        };
+        assert_eq!(legacy.mode, ForeignSslMode::VerifyCa);
+        assert_eq!(
+            (
+                legacy.ca_certificate_path.as_deref(),
+                legacy.client_certificate_path.as_deref(),
+                legacy.client_key_path.as_deref()
+            ),
+            (Some("/ca.pem"), Some("/c.pem"), Some("/k.pem"))
+        );
+        let HandlerTls::On(postgres) = tls(r#"{"postgre_ssl": {"enabled": true, "properties": {"sslMode": "",
+                "ssl.ca.cert": "", "rootCert": "/root.crt", "clientCert": "/old.crt"}}}"#)
+        else {
+            panic!("TLS");
+        };
+        assert_eq!(postgres.mode, ForeignSslMode::VerifyIdentity);
+        assert_eq!(postgres.ca_certificate_path.as_deref(), Some("/root.crt"));
+        assert_eq!(postgres.client_certificate_path.as_deref(), Some("/old.crt"));
+    }
+
+    #[test]
+    fn a_tls_handler_with_no_mode_this_reads_is_unread() {
+        let tls = |handlers: &str| handler_tls(&parsed(&format!(r#"{{"handlers": {handlers}}}"#)));
+        assert!(matches!(tls(r#"{"ssl": {"enabled": true}}"#), HandlerTls::Unread));
+        assert!(matches!(
+            tls(r#"{"databend-ssl": {"enabled": true}}"#),
+            HandlerTls::Unread
+        ));
+        assert!(matches!(
+            tls(r#"{"clickhouse-ssl": {"enabled": true, "properties": {"ssl.mode": "LAX"}}}"#),
+            HandlerTls::Unread
+        ));
+        assert!(matches!(
+            tls(r#"{"postgre_ssl": {"enabled": true, "properties": {"sslMode": "DISABLE"}}}"#),
+            HandlerTls::Off
+        ));
+        assert!(matches!(
+            tls(r#"{"postgre_ssl": {"enabled": false}, "ssh_tunnel": {"enabled": true}}"#),
+            HandlerTls::Absent
+        ));
+    }
+
+    #[test]
+    fn mysql_s_switches_read_as_booleans_or_strings() {
+        let mode = |properties: &str| tls_mode("mysql_ssl", &parsed(properties));
+        assert_eq!(mode(r#"{"ssl.verify.server": true}"#), Some(ForeignSslMode::VerifyCa));
+        assert_eq!(mode(r#"{"ssl.require": "TRUE"}"#), Some(ForeignSslMode::Required));
+        assert_eq!(mode(r#"{"ssl.require": "false"}"#), Some(ForeignSslMode::Preferred));
     }
 
     fn parsed(text: &str) -> Value {

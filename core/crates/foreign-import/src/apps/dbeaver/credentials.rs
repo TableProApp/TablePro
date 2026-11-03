@@ -39,16 +39,17 @@ impl Credentials {
         self.entries.get(id)?.get("#connection")?.get("user")?.as_str()
     }
 
+    pub(super) fn tunnel_username(&self, id: &str) -> Option<&str> {
+        tunnel_field(self.entries.get(id)?, "user")
+    }
+
     pub(super) fn secrets(&self, id: &str) -> Option<ForeignCredentials> {
         let entry = self.entries.get(id)?;
         let password = entry
             .get("#connection")
             .and_then(|block| block.get("password"))
             .and_then(Value::as_str);
-        let ssh_password = entry
-            .get("ssh_tunnel")
-            .and_then(|block| block.get("password"))
-            .and_then(Value::as_str);
+        let ssh_password = tunnel_field(entry, "password");
         if password.is_none() && ssh_password.is_none() {
             return None;
         }
@@ -58,6 +59,13 @@ impl Credentials {
             key_passphrase: None,
         })
     }
+}
+
+// DBeaver keys a network handler's secrets `network/<handler id>`; the bare id is the macOS port's guess.
+fn tunnel_field<'a>(entry: &'a Value, field: &str) -> Option<&'a str> {
+    ["network/ssh_tunnel", "ssh_tunnel"]
+        .into_iter()
+        .find_map(|node| entry.get(node)?.get(field)?.as_str())
 }
 
 fn secret(value: &str) -> SecretString {
@@ -152,6 +160,26 @@ mod tests {
         assert_eq!(empty.password.as_ref().map(|s| s.expose_secret()), Some(""));
         assert!(credentials.secrets("not-an-object").is_none());
         assert!(credentials.secrets("missing").is_none());
+    }
+
+    #[test]
+    fn a_tunnel_s_user_and_password_come_from_its_network_node_before_the_bare_one() {
+        let directory = tempfile::tempdir().expect("a temp dir");
+        let path = directory.path().join("credentials-config.json");
+        let plain = br##"{
+            "network": {"network/ssh_tunnel": {"user": "deploy", "password": "new"}, "ssh_tunnel": {"password": "old"}},
+            "mixed": {"network/ssh_tunnel": {"user": "deploy"}, "ssh_tunnel": {"password": "old"}}
+        }"##;
+        fs::write(&path, encrypt(plain, [5; 16])).expect("a file");
+        let credentials = Credentials::load(&path);
+
+        let network = credentials.secrets("network").expect("secrets");
+        assert_eq!(network.ssh_password.as_ref().map(|s| s.expose_secret()), Some("new"));
+        assert!(network.password.is_none());
+        assert_eq!(credentials.tunnel_username("network"), Some("deploy"));
+        let mixed = credentials.secrets("mixed").expect("secrets");
+        assert_eq!(mixed.ssh_password.as_ref().map(|s| s.expose_secret()), Some("old"));
+        assert_eq!(credentials.username("network"), None);
     }
 
     #[test]

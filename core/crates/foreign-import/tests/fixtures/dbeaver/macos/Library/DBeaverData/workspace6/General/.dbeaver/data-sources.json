@@ -404,9 +404,12 @@
 			"configuration": {
 				"host": "db.example.com",
 				"handlers": {
-					"ssl": {
+					"postgre_ssl": {
+						"type": "CONFIG",
 						"enabled": true,
+						"save-password": false,
 						"properties": {
+							"ssl.method": "CERTIFICATES",
 							"sslMode": "require"
 						}
 					}
@@ -419,9 +422,12 @@
 			"configuration": {
 				"host": "db.example.com",
 				"handlers": {
-					"ssl": {
+					"postgre_ssl": {
+						"type": "CONFIG",
 						"enabled": true,
+						"save-password": false,
 						"properties": {
+							"ssl.method": "CERTIFICATES",
 							"sslMode": "verify-ca"
 						}
 					}
@@ -434,9 +440,12 @@
 			"configuration": {
 				"host": "db.example.com",
 				"handlers": {
-					"ssl": {
+					"postgre_ssl": {
+						"type": "CONFIG",
 						"enabled": true,
+						"save-password": false,
 						"properties": {
+							"ssl.method": "CERTIFICATES",
 							"sslMode": "verify-full"
 						}
 					}
@@ -449,9 +458,14 @@
 			"configuration": {
 				"host": "db.example.com",
 				"handlers": {
-					"ssl": {
+					"postgre_ssl": {
+						"type": "CONFIG",
 						"enabled": true,
-						"properties": {}
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": ""
+						}
 					}
 				}
 			}
@@ -462,13 +476,16 @@
 			"configuration": {
 				"host": "db.example.com",
 				"handlers": {
-					"ssl": {
+					"postgre_ssl": {
+						"type": "CONFIG",
 						"enabled": true,
+						"save-password": false,
 						"properties": {
+							"ssl.method": "CERTIFICATES",
 							"sslMode": "verify-full",
-							"caCertPath": "/path/to/ca.pem",
-							"clientCertPath": "/path/to/cert.pem",
-							"clientKeyPath": "/path/to/key.pem"
+							"ssl.ca.cert": "/path/to/ca.pem",
+							"ssl.client.cert": "/path/to/cert.pem",
+							"ssl.client.key": "/path/to/key.pem"
 						}
 					}
 				}
@@ -480,9 +497,12 @@
 			"configuration": {
 				"host": "db.example.com",
 				"handlers": {
-					"ssl": {
+					"postgre_ssl": {
+						"type": "CONFIG",
 						"enabled": false,
+						"save-password": false,
 						"properties": {
+							"ssl.method": "CERTIFICATES",
 							"sslMode": "require"
 						}
 					}
@@ -501,6 +521,161 @@
 			"name": "Twin",
 			"configuration": {
 				"host": "a.example.com"
+			}
+		},
+		"ssh-user-in-credentials": {
+			"provider": "postgresql",
+			"name": "SSH user from credentials",
+			"configuration": {
+				"host": "db.internal",
+				"port": "5432",
+				"handlers": {
+					"ssh_tunnel": {
+						"type": "TUNNEL",
+						"enabled": true,
+						"save-password": true,
+						"properties": {
+							"host": "bastion.example.com",
+							"port": 22,
+							"authType": "PASSWORD"
+						}
+					}
+				}
+			}
+		},
+		"mysql-ssl-required": {
+			"provider": "mysql",
+			"name": "MySQL SSL required",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"mysql_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"ssl.require": "true",
+							"ssl.verify.server": "false",
+							"ssl.public.key.retrieve": "false"
+						}
+					}
+				}
+			}
+		},
+		"mysql-ssl-verified": {
+			"provider": "mysql",
+			"name": "MySQL SSL verified",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"mysql_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"ssl.ca.cert": "/certs/mysql-ca.pem",
+							"ssl.require": "true",
+							"ssl.verify.server": "true",
+							"ssl.public.key.retrieve": "false"
+						}
+					}
+				}
+			}
+		},
+		"clickhouse-ssl": {
+			"provider": "clickhouse",
+			"name": "ClickHouse SSL",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"clickhouse-ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"ssl.mode": "NONE"
+						}
+					}
+				}
+			}
+		},
+		"mssql-ssl": {
+			"provider": "sqlserver",
+			"name": "SQL Server SSL",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"mssql_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "KEYSTORE",
+							"ssl.keystore": "/certs/store.jks"
+						}
+					}
+				}
+			}
+		},
+		"ssl-off": {
+			"provider": "postgresql",
+			"name": "SSL Off",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": "disable"
+						}
+					}
+				}
+			}
+		},
+		"ssl-unknown-mode": {
+			"provider": "postgresql",
+			"name": "SSL Unknown Mode",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": "sometimes"
+						}
+					}
+				}
+			}
+		},
+		"url-mode": {
+			"provider": "postgresql",
+			"name": "URL mode",
+			"configuration": {
+				"host": "old.example.com",
+				"port": "5432",
+				"database": "old",
+				"url": "jdbc:postgresql://new.example.com:6543/current",
+				"configurationType": "URL"
+			}
+		},
+		"manual-mode": {
+			"provider": "postgresql",
+			"name": "Manual mode",
+			"configuration": {
+				"host": "manual.example.com",
+				"port": "5433",
+				"database": "manual",
+				"url": "jdbc:postgresql://url.example.com:6543/fromurl",
+				"configurationType": "MANUAL"
 			}
 		}
 	}

@@ -14,7 +14,7 @@ use secrecy::ExposeSecret;
 use tablepro_foreign_import::{
     CollectedConnection, CollectedImport, CollectedSavedQuery, ForeignApp, ForeignAppDirs, ForeignColor, ForeignHost,
     ForeignImportError, ForeignImporter, ForeignPlatform, ForeignSshAuth, ForeignSslMode, ImportRequest, Inventory,
-    PasswordOutcome, PlainHost, SavedQueryContent,
+    PasswordOutcome, PlainHost, SavedQueryContent, TLS_SETTINGS_UNREAD,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -22,7 +22,7 @@ const SYNC_LIMIT: u64 = 900_000;
 const CONNECTIONS_ONLY: ImportRequest = request(false, false);
 const WITH_PASSWORDS: ImportRequest = request(true, false);
 const WITH_SAVED_QUERIES: ImportRequest = request(false, true);
-const MACOS_CONNECTION_COUNT: usize = 48;
+const MACOS_CONNECTION_COUNT: usize = 57;
 
 const fn request(include_passwords: bool, include_saved_queries: bool) -> ImportRequest {
     ImportRequest {
@@ -299,6 +299,28 @@ fn an_ssh_port_reads_from_a_string() {
 }
 
 #[test]
+fn a_tunnel_without_a_user_in_its_settings_takes_the_one_in_the_credentials_file() {
+    for request in [CONNECTIONS_ONLY, WITH_PASSWORDS] {
+        let import = collect(&macos(), request);
+        let ssh = connection(&import, "SSH user from credentials")
+            .settings
+            .ssh
+            .as_ref()
+            .expect("a tunnel");
+        assert_eq!(ssh.username, "tunnel-user");
+    }
+    let import = collect(&macos(), WITH_PASSWORDS);
+    let credentials = connection(&import, "SSH user from credentials")
+        .credentials
+        .as_ref()
+        .expect("credentials");
+    assert_eq!(
+        credentials.ssh_password.as_ref().map(|secret| secret.expose_secret()),
+        Some("tunnel-secret")
+    );
+}
+
+#[test]
 fn no_ssh_tunnel_without_its_handler() {
     let import = collect(&macos(), CONNECTIONS_ONLY);
     assert!(connection(&import, "Local PG").settings.ssh.is_none());
@@ -458,18 +480,76 @@ fn connections_are_keyed_by_their_data_source_id_and_sorted_by_name_then_id() {
 }
 
 #[test]
-fn ssl_modes_map_and_an_empty_mode_is_preferred() {
+fn ssl_modes_map_and_an_empty_postgres_mode_verifies_the_server() {
     let import = collect(&macos(), CONNECTIONS_ONLY);
     let modes = [
         ("SSL Require", ForeignSslMode::Required),
         ("SSL Verify CA", ForeignSslMode::VerifyCa),
         ("SSL Verify Full", ForeignSslMode::VerifyIdentity),
-        ("SSL Default", ForeignSslMode::Preferred),
+        ("SSL Default", ForeignSslMode::VerifyIdentity),
     ];
     for (name, mode) in modes {
         let ssl = connection(&import, name).settings.ssl.as_ref().expect("SSL");
         assert_eq!(ssl.mode, mode, "{name}");
     }
+}
+
+#[test]
+fn each_engine_s_tls_handler_is_read_by_its_own_name() {
+    let import = collect(&macos(), CONNECTIONS_ONLY);
+    let modes = [
+        ("MySQL SSL required", ForeignSslMode::Required),
+        ("MySQL SSL verified", ForeignSslMode::VerifyCa),
+        ("ClickHouse SSL", ForeignSslMode::Required),
+    ];
+    for (name, mode) in modes {
+        let settings = &connection(&import, name).settings;
+        assert_eq!(settings.ssl.as_ref().map(|ssl| ssl.mode), Some(mode), "{name}");
+        assert!(!settings.additional_fields.contains_key(TLS_SETTINGS_UNREAD), "{name}");
+    }
+    let verified = connection(&import, "MySQL SSL verified")
+        .settings
+        .ssl
+        .as_ref()
+        .expect("SSL");
+    assert_eq!(verified.ca_certificate_path.as_deref(), Some("/certs/mysql-ca.pem"));
+}
+
+#[test]
+fn a_tls_handler_whose_mode_is_not_read_marks_the_connection_instead_of_turning_tls_off() {
+    let import = collect(&macos(), CONNECTIONS_ONLY);
+    for name in ["SQL Server SSL", "SSL Unknown Mode"] {
+        let settings = &connection(&import, name).settings;
+        assert_eq!(settings.ssl, None, "{name}");
+        assert_eq!(
+            settings.additional_fields.get(TLS_SETTINGS_UNREAD).map(String::as_str),
+            Some("true"),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn a_tls_handler_set_to_disable_turns_tls_off() {
+    let import = collect(&macos(), CONNECTIONS_ONLY);
+    let settings = &connection(&import, "SSL Off").settings;
+    assert_eq!(settings.ssl, None);
+    assert!(!settings.additional_fields.contains_key(TLS_SETTINGS_UNREAD));
+}
+
+#[test]
+fn in_url_mode_the_url_names_the_server_over_leftover_manual_fields() {
+    let import = collect(&macos(), CONNECTIONS_ONLY);
+    let url = &connection(&import, "URL mode").settings;
+    assert_eq!(
+        (url.host.as_str(), url.port, url.database.as_str()),
+        ("new.example.com", 6543, "current")
+    );
+    let manual = &connection(&import, "Manual mode").settings;
+    assert_eq!(
+        (manual.host.as_str(), manual.port, manual.database.as_str()),
+        ("manual.example.com", 5433, "manual")
+    );
 }
 
 #[test]
