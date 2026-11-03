@@ -60,6 +60,8 @@ struct SessionRecoveryLoopTests {
 
     private func makeProxiedFixture(through server: FakeSOCKS5Server) -> Fixture {
         makeFixture { connection in
+            // Network.framework never proxies a loopback target, so localhost would dial the Mac's own port.
+            connection.host = "db.internal.example"
             connection.socksProxyMode = .inline(SOCKSProxyConfiguration(host: "127.0.0.1", port: server.port))
         }
     }

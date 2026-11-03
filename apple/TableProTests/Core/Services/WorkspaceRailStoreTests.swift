@@ -714,10 +714,12 @@ struct WorkspaceRailCellTextTests {
         let label = try #require(marked.renderedLabel)
         let tileBottom = marked.isFlipped ? tile.frame.maxY : tile.frame.minY
         let markBottom = marked.isFlipped ? mark.frame.maxY : mark.frame.minY
+        // The 11 pt mark centres half a point off on a 1x screen.
+        let tolerance = 1 / (marked.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1)
 
         #expect(label.stringValue == "staging\napp")
-        #expect(abs(mark.frame.midX - tile.frame.maxX) < 0.5)
-        #expect(abs(markBottom - tileBottom) < 0.5)
+        #expect(abs(mark.frame.midX - tile.frame.maxX) < tolerance)
+        #expect(abs(markBottom - tileBottom) < tolerance)
         #expect(mark.frame.width == WorkspaceRailCellView.markSize(forIcon: WorkspaceRailMetrics.medium.iconSize))
         #expect(!mark.frame.intersects(label.frame))
         #expect(label.frame == plain.renderedLabel?.frame)
