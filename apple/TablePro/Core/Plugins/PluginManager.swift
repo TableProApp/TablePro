@@ -31,13 +31,10 @@ final class PluginManager: ObservableObject {
 
     @Published internal(set) var stagedPluginIds: Set<String> = []
 
+    internal let installTracker: PluginInstallTracker
+
     var isInstalling: Bool {
-        PluginInstallTracker.shared.activeInstalls.values.contains { progress in
-            switch progress.phase {
-            case .downloading, .installing: true
-            case .completed, .failed: false
-            }
-        }
+        installTracker.isInstalling
     }
 
     internal(set) var hasFinishedInitialLoad = false {
@@ -113,6 +110,8 @@ final class PluginManager: ObservableObject {
 
     internal var registryUpdateTask: Task<Void, Never>?
     internal var registryUpdateAttempts = 0
+    // A download the person cancelled waits for the next launch; a retry pass must not start it again.
+    internal var cancelledRegistryUpdateIds: Set<String> = []
     internal var installsInFlight: Set<String> = []
 
     // Held while the pass or a connection installs rejected plugins, never during a manifest fetch or a staging download.
@@ -135,12 +134,14 @@ final class PluginManager: ObservableObject {
         builtInPluginsURL: URL? = Bundle.main.builtInPlugInsURL,
         userPluginsDir: URL = PluginManager.defaultUserPluginsDir(),
         registryInstaller: any RegistryPluginInstalling = PluginInstaller.shared,
+        installTracker: PluginInstallTracker = .shared,
         initialLoadClock: any Clock<Duration> = ContinuousClock(),
         isUpdatingEnabled: Bool = SoftwareUpdater.isUpdatingEnabled
     ) {
         self.builtInPluginsURL = builtInPluginsURL
         self.userPluginsDir = userPluginsDir
         self.registryInstaller = registryInstaller
+        self.installTracker = installTracker
         self.initialLoadClock = initialLoadClock
         self.isUpdatingEnabled = isUpdatingEnabled
     }

@@ -10,6 +10,18 @@ import TableProImport
 
 @MainActor
 final class TeamLibrarySyncCoordinator: ObservableObject {
+    private struct PullCredentials: Equatable {
+        let key: String
+        let machineId: String
+    }
+
+    private struct InFlightPull {
+        let id: UUID
+        let credentials: PullCredentials
+        let generation: Int
+        let task: Task<Void, Never>
+    }
+
     static let shared = TeamLibrarySyncCoordinator()
 
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "TeamLibrarySyncCoordinator")
@@ -22,9 +34,13 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
     private let makeExporter: @MainActor () -> ConnectionBundleExporter
     private var licenseCancellable: AnyCancellable?
     private var wasFeatureAvailable = false
+    private var inFlightPull: InFlightPull?
 
     @Published private(set) var library: TeamLibraryPullResponse = .empty
     @Published private(set) var isPublishing = false
+    @Published private(set) var isPulling = false
+    @Published private(set) var lastRefreshedAt: Date?
+    @Published private(set) var lastPullError: String?
 
     init(
         apiClient: TeamLibraryAPIClient = LiveTeamLibraryAPIClient.shared,
@@ -45,6 +61,7 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
         self.credentialsProvider = credentialsProvider
         self.licenseStatusChanges = licenseStatusChanges
         self.makeExporter = makeExporter
+        self.lastRefreshedAt = TeamLibraryMetadataStorage.lastPullAt
     }
 
     func start() {
@@ -65,16 +82,54 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
     }
 
     func pull() async {
-        guard isFeatureAvailable(), let credentials = credentialsProvider() else { return }
+        guard isFeatureAvailable(), let credentials = currentCredentials() else { return }
+        let generation = store.generation
+        // Joined only for the same license with nothing invalidated since, or the previous team's pull would stand in.
+        if let inFlightPull, inFlightPull.credentials == credentials, inFlightPull.generation == generation {
+            await inFlightPull.task.value
+            return
+        }
+        let id = UUID()
+        let task = Task { await performPull(id: id, credentials: credentials, generation: generation) }
+        inFlightPull = InFlightPull(id: id, credentials: credentials, generation: generation, task: task)
+        isPulling = true
+        await task.value
+    }
+
+    private func performPull(id: UUID, credentials: PullCredentials, generation: Int) async {
+        defer {
+            if inFlightPull?.id == id {
+                inFlightPull = nil
+                isPulling = false
+            }
+        }
         do {
             let response = try await apiClient.pull(licenseKey: credentials.key, machineId: credentials.machineId)
-            await store.replace(response)
-            library = response
+            // Views build rows from `library`, so it gets the sanitized copy the cache holds, never the raw response.
+            guard isCurrent(credentials, generation),
+                  let sanitized = await store.replace(response, ifGeneration: generation),
+                  isCurrent(credentials, generation) else {
+                Self.logger.info("Dropped a team library pull that a clear or license change made stale")
+                return
+            }
+            library = sanitized
             TeamLibraryMetadataStorage.recordPull()
+            lastRefreshedAt = TeamLibraryMetadataStorage.lastPullAt
+            lastPullError = nil
             AppEvents.shared.teamLibraryDidUpdate.send()
         } catch {
-            Self.logger.warning("Team library pull failed: \(error.localizedDescription)")
+            guard isCurrent(credentials, generation) else { return }
+            Self.logger.warning("Team library pull failed: \(error.publicLogShape, privacy: .public)")
+            lastPullError = error.localizedDescription
         }
+    }
+
+    private func currentCredentials() -> PullCredentials? {
+        credentialsProvider().map { PullCredentials(key: $0.key, machineId: $0.machineId) }
+    }
+
+    private func isCurrent(_ credentials: PullCredentials, _ generation: Int) -> Bool {
+        generation == store.generation && isFeatureAvailable() && currentCredentials() == credentials
     }
 
     func refresh() {
@@ -92,19 +147,20 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
         let isAvailable = isFeatureAvailable()
         let becameAvailable = isAvailable && !wasFeatureAvailable
         wasFeatureAvailable = isAvailable
-        guard becameAvailable else { return }
+        let wasPulling = inFlightPull != nil
+        store.invalidatePendingWrites()
+        guard isAvailable, becameAvailable || wasPulling else { return }
         refresh()
     }
 
-    /// Drop the team's shared set, on disk and in the copy every view reads.
-    ///
-    /// Clearing the store alone is not enough: `library` is what the welcome window and the
-    /// Favorites sidebar render from, so a licence removed without this leaves the previous team's
-    /// connections and saved queries on screen, and openable, until the next launch.
+    // `library` is what Welcome and Favorites draw, so clearing only the store would leave the old team's rows openable.
     func clear() async {
+        store.invalidatePendingWrites()
         await store.clear()
         library = .empty
         TeamLibraryMetadataStorage.reset()
+        lastRefreshedAt = nil
+        lastPullError = nil
         AppEvents.shared.teamLibraryDidUpdate.send()
     }
 
@@ -116,6 +172,9 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
     ) async throws -> TeamLibraryPublishResponse {
         guard let credentials = credentialsProvider() else {
             throw TeamLibraryPublishError.notLicensed
+        }
+        guard !isPublishing else {
+            throw TeamLibraryPublishError.alreadyPublishing
         }
 
         isPublishing = true
@@ -157,6 +216,8 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
         )
 
         let response = try await apiClient.publish(request)
+        // A pull that started before the publish cannot hold what it just added.
+        await inFlightPull?.task.value
         await pull()
         return response
     }
@@ -164,11 +225,14 @@ final class TeamLibrarySyncCoordinator: ObservableObject {
 
 enum TeamLibraryPublishError: LocalizedError {
     case notLicensed
+    case alreadyPublishing
 
     var errorDescription: String? {
         switch self {
         case .notLicensed:
             return String(localized: "Activate a Team license to publish to the team library.")
+        case .alreadyPublishing:
+            return String(localized: "A publish to the team library is still running. Try again when it finishes.")
         }
     }
 }

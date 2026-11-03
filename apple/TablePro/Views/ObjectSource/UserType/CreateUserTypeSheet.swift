@@ -97,10 +97,15 @@ struct CreateUserTypeSheet: View {
             .disabled(isCreating)
             Divider()
             DialogFooter {
-                if let message = failure ?? draft.problems.first {
+                if let failure {
+                    NoticeLabel(failure, severity: .error)
+                        .font(.callout)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                } else if let message = draft.problems.first {
                     Text(message)
                         .font(.callout)
-                        .foregroundStyle(failure == nil ? Color.secondary : Color.red)
+                        .foregroundStyle(.secondary)
                         .lineLimit(3)
                         .textSelection(.enabled)
                 }

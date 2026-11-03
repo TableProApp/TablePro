@@ -30,11 +30,13 @@ internal struct SessionsTableView: View {
             if let error = viewModel.panelErrors[.activeSessions] {
                 Label {
                     RevealedTextView(error)
+                        .foregroundStyle(.secondary)
                 } icon: {
-                    Image(systemName: "exclamationmark.triangle")
+                    Image(systemName: NoticeSeverity.error.symbolName)
+                        .foregroundStyle(NoticeSeverity.error.tint)
+                        .accessibilityHidden(true)
                 }
                 .font(.caption)
-                .foregroundStyle(.red)
             }
             sessionActions
         }

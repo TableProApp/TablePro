@@ -59,7 +59,8 @@ endif
 test(
   'workspace',
   cargo,
-  args: ['test'] + cargo_options + ['--workspace', '--exclude', 'tablepro'],
+  # windows.yml tests tablepro-ffi, whose binaries each link every engine and filled a package builder's disk.
+  args: ['test'] + cargo_options + ['--workspace', '--exclude', 'tablepro', '--exclude', 'tablepro-ffi'],
   env: test_env,
   suite: 'unit',
   is_parallel: false,

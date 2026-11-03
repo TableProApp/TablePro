@@ -90,11 +90,17 @@ struct HistoryDetailPane: View {
             }
 
             if let errorMessage = entry.errorMessage {
-                RevealedTextView(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                Label {
+                    RevealedTextView(errorMessage)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: NoticeSeverity.error.symbolName)
+                        .foregroundStyle(NoticeSeverity.error.tint)
+                        .accessibilityHidden(true)
+                }
+                .font(.caption)
             }
         }
         .padding(10)

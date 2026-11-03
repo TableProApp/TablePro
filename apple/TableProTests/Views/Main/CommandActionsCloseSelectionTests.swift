@@ -141,4 +141,81 @@ struct CommandActionsCloseSelectionTests {
 
         #expect(harness.coordinator.tabManager.selectedTabId == tabs.last)
     }
+
+    private func runningQuery(in tab: UUID, stopped: @escaping @MainActor () -> Void) -> RunningWork {
+        RunningWork(
+            kind: .query,
+            subject: "Dirty",
+            connectionName: "db_a",
+            connectionIds: [],
+            tabId: tab,
+            cancel: stopped
+        )
+    }
+
+    @Test("Cancelling the save question leaves the tab's running work running")
+    func cancelledSaveKeepsWorkRunning() async throws {
+        let harness = makeHarness()
+        defer { harness.coordinator.teardown() }
+        let tabs = try openTabs(in: harness)
+        var stops = 0
+        var asked: [String] = []
+        let work = runningQuery(in: tabs.dirty) { stops += 1 }
+        harness.actions.runningWork = { scope in [work].filter(scope.contains) }
+        harness.actions.confirmSaveChanges = { message, _ in
+            asked.append(message)
+            return .cancel
+        }
+
+        await harness.actions.closeTabAwaiting(id: tabs.dirty)
+
+        #expect(stops == 0)
+        #expect(asked.count == 1)
+        #expect(asked.first?.contains("Running query in “Dirty”") == true)
+        #expect(harness.coordinator.tabManager.tabs.contains { $0.id == tabs.dirty })
+    }
+
+    @Test("Don't Save stops the running work once, with the one question it asked")
+    func dontSaveStopsWorkOnce() async throws {
+        let harness = makeHarness()
+        defer { harness.coordinator.teardown() }
+        let tabs = try openTabs(in: harness)
+        var stops = 0
+        var workQuestions = 0
+        let work = runningQuery(in: tabs.dirty) { stops += 1 }
+        harness.actions.runningWork = { scope in [work].filter(scope.contains) }
+        harness.actions.confirmStoppingWork = { _, _ in
+            workQuestions += 1
+            return true
+        }
+        harness.actions.confirmSaveChanges = { _, _ in .dontSave }
+
+        await harness.actions.closeTabAwaiting(id: tabs.dirty)
+
+        #expect(stops == 1)
+        #expect(workQuestions == 0)
+        #expect(!harness.coordinator.tabManager.tabs.contains { $0.id == tabs.dirty })
+    }
+
+    @Test("A clean tab with running work asks about the work alone, and a no keeps it")
+    func cleanTabAsksAboutWork() async throws {
+        let harness = makeHarness()
+        defer { harness.coordinator.teardown() }
+        let tabs = try openTabs(in: harness)
+        var stops = 0
+        let work = runningQuery(in: tabs.first) { stops += 1 }
+        harness.actions.runningWork = { scope in [work].filter(scope.contains) }
+        harness.actions.confirmStoppingWork = { _, _ in false }
+
+        await harness.actions.closeTabAwaiting(id: tabs.first)
+
+        #expect(stops == 0)
+        #expect(harness.coordinator.tabManager.tabs.contains { $0.id == tabs.first })
+
+        harness.actions.confirmStoppingWork = { _, _ in true }
+        await harness.actions.closeTabAwaiting(id: tabs.first)
+
+        #expect(stops == 1)
+        #expect(!harness.coordinator.tabManager.tabs.contains { $0.id == tabs.first })
+    }
 }

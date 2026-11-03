@@ -101,9 +101,7 @@ struct AWSDiscoveryConfigurationStep: View {
 
     private func credentialFailureView(_ failure: AWSDiscoverySession.CredentialFailure) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            Text(verbatim: failure.message)
+            NoticeLabel(failure.message)
                 .font(.caption)
                 .lineLimit(3)
                 .textSelection(.enabled)
@@ -117,9 +115,7 @@ struct AWSDiscoveryConfigurationStep: View {
                 .disabled(session.isSigningIn)
             }
         }
-        .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.orange.opacity(0.12))
     }
 
     private var footer: some View {

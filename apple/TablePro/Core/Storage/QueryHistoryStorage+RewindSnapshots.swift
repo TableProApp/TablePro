@@ -111,6 +111,7 @@ extension QueryHistoryStorage {
             logSqliteError(context: "rewind snapshot insert")
             return false
         }
+        rewindSnapshotsDidChange()
         return true
     }
 
@@ -209,24 +210,23 @@ extension QueryHistoryStorage {
             logSqliteError(context: "rewind snapshot delete")
             return false
         }
-        return sqlite3_changes(db) > 0
+        let deleted = sqlite3_changes(db) > 0
+        if deleted { rewindSnapshotsDidChange() }
+        return deleted
     }
 
     @discardableResult
     func clearRewindSnapshots() -> Bool {
         guard db != nil else { return false }
         execute("DELETE FROM rewind_snapshots;")
+        rewindSnapshotsDidChange()
         return true
     }
 
     // MARK: - Retention
 
-    /// Age, then per-table depth, then total bytes. Runs on query history's own cleanup cadence so
-    /// a save never pays for a full scan of the table.
-    ///
-    /// The byte budget measures what is already kept, excluding the row being judged, so a single
-    /// save larger than the whole budget is still the one save that survives rather than the one
-    /// that deletes itself the moment it is written.
+    // Runs on history's cleanup cadence, so a save never pays for a full scan. The byte budget
+    // excludes the row being judged, so one save larger than the budget survives its own write.
     @discardableResult
     func pruneRewindSnapshots(
         now: Date = Date(),
@@ -294,7 +294,80 @@ extension QueryHistoryStorage {
         }
         sqlite3_finalize(byteStatement)
 
+        if changed { rewindSnapshotsDidChange() }
         return changed
+    }
+
+    // MARK: - Availability
+
+    // Plain columns only, so knowing a save is kept costs no decrypt.
+    func rewindAvailability() -> RewindAvailability {
+        var targets = Set<RewindAvailability.Target>()
+        var historyIds = Set<UUID>()
+        guard let db else {
+            return RewindAvailability(revision: rewindRevision, targets: targets, historyIds: historyIds)
+        }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        let sql = """
+            SELECT DISTINCT connection_id, database_name, schema_name, table_name, history_id
+              FROM rewind_snapshots;
+            """
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            logSqliteError(context: "prepare rewind availability")
+            return RewindAvailability(revision: rewindRevision, targets: targets, historyIds: historyIds)
+        }
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let connectionId = Self.rewindUUID(statement, column: 0),
+                  let database = Self.rewindText(statement, column: 1),
+                  let table = Self.rewindText(statement, column: 3)
+            else { continue }
+            targets.insert(RewindAvailability.Target(
+                connectionId: connectionId,
+                database: database,
+                schema: Self.rewindText(statement, column: 2),
+                table: table
+            ))
+            if let historyId = Self.rewindUUID(statement, column: 4) {
+                historyIds.insert(historyId)
+            }
+        }
+        return RewindAvailability(revision: rewindRevision, targets: targets, historyIds: historyIds)
+    }
+
+    // Yields what is kept now, then again after every change that commits.
+    func rewindAvailabilityUpdates() -> AsyncStream<RewindAvailability> {
+        let (stream, continuation) = AsyncStream.makeStream(
+            of: RewindAvailability.self, bufferingPolicy: .bufferingNewest(1)
+        )
+        let id = UUID()
+        rewindSubscribers[id] = continuation
+        continuation.onTermination = { [weak self] _ in
+            Task { await self?.removeRewindSubscriber(id) }
+        }
+        continuation.yield(rewindAvailability())
+        return stream
+    }
+
+    func rewindSnapshotsDidChange() {
+        rewindRevision += 1
+        guard !rewindSubscribers.isEmpty else { return }
+        let current = rewindAvailability()
+        for subscriber in rewindSubscribers.values {
+            subscriber.yield(current)
+        }
+    }
+
+    private func removeRewindSubscriber(_ id: UUID) {
+        rewindSubscribers[id] = nil
+    }
+
+    private static func rewindText(_ statement: OpaquePointer?, column: Int32) -> String? {
+        sqlite3_column_text(statement, column).map { String(cString: $0) }
+    }
+
+    private static func rewindUUID(_ statement: OpaquePointer?, column: Int32) -> UUID? {
+        rewindText(statement, column: column).flatMap(UUID.init(uuidString:))
     }
 
     // MARK: - Helpers

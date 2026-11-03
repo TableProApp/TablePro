@@ -1,6 +1,6 @@
 # Architecture
 
-The shared core is the Rust workspace's UI-free crates under `core/crates`: the domain types and the driver contract, one crate per database engine, the network and SSH transports, sessions, storage, the MCP server and the AI client. Each platform's app builds on them with a native UI: the GTK app in `linux/` today, a Windows app and the Swift app later ([ADR 0001](docs/decisions/0001-shared-core.md)). `linux/ARCHITECTURE.md` covers the Linux app.
+The shared core is the Rust workspace's UI-free crates under `core/crates`: the domain types and the driver contract, one crate per database engine, the network and SSH transports, sessions, storage, the MCP server, the AI client, and the library other languages load. Each platform's app builds on them with a native UI: the GTK app in `linux/` directly, the Windows app in `windows/` through `ffi`, and the Swift app later ([ADR 0001](docs/decisions/0001-shared-core.md)). `linux/ARCHITECTURE.md` covers the Linux app.
 
 ## Crate layout
 
@@ -16,6 +16,7 @@ core/crates/
 ├── foreign-import/                connections and saved queries read from other apps' files, and their review
 ├── ai/                            the AI assistant's providers, prompts and replies
 ├── mcp/                           the MCP server: transport, token and tools
+├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
 ├── test-fixtures/                 dev-only container fixtures with a generated PKI
 ├── test-support/                  dev-only fakes and the conformance suites
 └── drivers/
@@ -42,6 +43,7 @@ core/crates/
 | `session` | `core`, `net`, `ssh`, `storage` |
 | `mcp` | `core`, `session`, `storage` |
 | `ai` | `core`, `net` |
+| `ffi` | `core`, `session`, `ssh` and every driver |
 | An app, such as `linux/crates/app` | every crate above, and its platform crate |
 
 Rules, enforced by review:
@@ -53,7 +55,8 @@ Rules, enforced by review:
 - `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`, and SSH through the `SshTunnels` the app passes in. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
 - `ai` depends on `core` and `net`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
-- No core crate depends on a GUI toolkit or on a platform crate. An app is the only crate that names every driver.
+- `ffi` stands in for an app outside Rust: it names every driver and passes the host's services in. No other core crate depends on it.
+- No core crate depends on a GUI toolkit or on a platform crate. An app, or `ffi` for one outside Rust, is the only crate that names every driver.
 - `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only an app's dev-dependencies turn on.
 
 Consequences:
@@ -67,13 +70,13 @@ Every core crate builds for Linux, Windows (x64 and Arm64) and macOS; `.github/w
 
 A value or a trait the app passes in:
 
-| Seam | Linux app |
-|---|---|
-| `StoragePaths` | `tablepro_linux_platform::storage_paths`, GLib's XDG directories |
-| `SecretVault` and `SecretItems`, labelled through `SecretLabeler` and `SecretItemLabeler` | `tablepro_linux_platform::SecretStore`, the Secret Service through oo7 |
-| `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client |
-| `ProcessHold` | `gio::Application::hold` |
-| `ForeignAppDirs` and `ForeignHost` (`tablepro-foreign-import`) | `tablepro_linux_platform::foreign_app_dirs`, the host's XDG directories inside a Flatpak, and `PlainHost`: no other app's keychain |
+| Seam | Linux app | An app through `ffi` |
+|---|---|---|
+| `StoragePaths` | `tablepro_linux_platform::storage_paths`, GLib's XDG directories | `HostConfig.storage_dir`, one folder for every root |
+| `SecretVault` and `SecretItems`, labelled through `SecretLabeler` and `SecretItemLabeler` | `tablepro_linux_platform::SecretStore`, the Secret Service through oo7 | `Core::with_system_secrets`, the platform's store the core reaches itself (below); `HostSecrets`, a callback interface, for a host with a store of its own |
+| `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | none yet: a route through SSH fails as with no client installed |
+| `ProcessHold` | `gio::Application::hold` | none |
+| `ForeignAppDirs` and `ForeignHost` (`tablepro-foreign-import`) | `tablepro_linux_platform::foreign_app_dirs`, the host's XDG directories inside a Flatpak, and `PlainHost`: no other app's keychain | none yet |
 
 A `cfg` split inside a crate:
 
@@ -85,11 +88,24 @@ A `cfg` split inside a crate:
 | SQLite | the distribution's | bundled | bundled |
 | DuckDB's file lock while a file is replaced | fcntl | fcntl | LockFileEx |
 | SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | the `kerberos` feature, which CI does not build | SSPI |
+| `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>` |
 | OpenSSH transport, askpass helper | yes | yes | not built |
 | MongoDB's relay for an SSH route | yes | yes | not built |
 | Cassandra's loopback relay | serves this user, from `/proc/net/tcp` | serves no one | serves no one |
 
 Each boundary error has a stable `code()`, such as `driver.timeout` or `ssh.host_key_changed`, so a UI outside Rust can word it from the code and the variant's fields. The core holds no translation; `linux/docs/error-handling.md` has the error types and how the Linux app words them.
+
+## Bindings
+
+`ffi` is the library an app outside Rust loads: the Windows app now, the Swift app later. Core ADRs 0002, on the bindings, and 0003, on result windows, hold the reasons.
+
+- One UniFFI API. `Core` lists the engines with the family each is listed under, opens a file, connects a saved connection or tests one from a form, and parses a connection URL. Its `ConnectionLibrary` reads and changes the saved connections, groups, favourites and tags in `connections.json` and stores their secrets. A `DatabaseSession` reads the catalog one level at a time, writes a table's sorted page at an offset and counts the table, writes a query re-run with a sort (`docs/decisions/0007-sorting-a-result.md`), reports and waits on the session's health, and opens a `QueryEditor`. `QueryEditor::run` returns a `QueryRun` at once; the app drains its events after a `RunListener` call, which comes only when no earlier one is waiting to be drained, and the last says which transaction the editor is left in. Each result set is a `ResultSet`, whose `sorted` gives the rows it holds in a column's order.
+- The grid reads a `ResultSet` through the C ABI in `src/window_abi.rs`: `tablepro_cursor_fetch` packs the display text of one visible range, and `tablepro_cursor_free` ends the cursor.
+- The library owns one tokio runtime. Each async export runs on it and is aborted when the foreign side drops the call; a `CancelToken` stops it sooner, since UniFFI cannot cancel.
+- A result set takes rows as the driver reads them. Each column keeps a kind byte, a raw `i64` and the exact text `tablepro_core::export::value_text` writes, or a binary value's bytes, in chunks of 65,536 rows. A window only cuts and copies.
+- A `CoreError` carries the `code()` of each error from the outermost in; the innermost decides.
+
+How the bindings are generated, and where they live: `windows/AGENTS.md`, Bindings.
 
 ## Driver layer
 

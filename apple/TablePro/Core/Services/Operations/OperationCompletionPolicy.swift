@@ -12,12 +12,7 @@ internal enum CompletionSuppression: Equatable, Sendable {
     case notificationsOff
 }
 
-/// What should happen now that an operation has finished.
-///
-/// The tab marker and the notification are separate channels on purpose. The marker is the
-/// in-app one and does not depend on notification permission, on the notification switch, or on
-/// the user ever having seen a banner, so a user who denied notifications still gets told which
-/// tab finished while they were away.
+// The tab mark is the in-app channel and needs no permission or switch; the notification is the other.
 internal struct CompletionDecision: Equatable {
     internal var notification: NotificationPlan?
     internal var marksOwnerUnseen: Bool
@@ -40,17 +35,14 @@ internal struct NotificationPlan: Equatable, Sendable {
     internal let revealURL: URL?
 }
 
-/// Every rule about whether a finished operation is worth telling the user about. Pure and
-/// AppKit-free so all of it is testable without a window, a notification permission, or a run
-/// loop, which is the only way these rules stay honest on CI.
+// Pure and AppKit-free, so the rules are testable without a window or a permission.
 internal enum OperationCompletionPolicy {
     internal static func decide(
         completion: OperationCompletion,
         visibility: ResultVisibility,
         settings: NotificationSettings
     ) -> CompletionDecision {
-        /// Work the user stopped themselves is never news. This is checked before the threshold
-        /// because a cancelled operation has still been running for a long time.
+        // Checked before the threshold: a cancelled operation can still have run a long time.
         if case .cancelled = completion.outcome {
             return .suppressed(.cancelled)
         }
@@ -59,17 +51,12 @@ internal enum OperationCompletionPolicy {
             return .suppressed(.belowThreshold)
         }
 
-        /// The result is already in front of the user. A failure is suppressed here too, and
-        /// deliberately: the tab shows an inline error banner, which is the alert the HIG asks
-        /// for, and a notification on top of it would be the same news twice.
+        // The tab's inline error is the alert for a failure on screen; a notification would repeat it.
         guard !visibility.resultIsOnScreen else {
             return .suppressed(.resultOnScreen)
         }
 
-        /// The mark says "this finished somewhere you were not looking", and a tab the user
-        /// already has selected is not that: they see the result the moment they come back to the
-        /// app. Marking it anyway left a dot nothing could clear, because the only clear paths are
-        /// keyed on a tab change and returning to the app is not one.
+        // A selected tab is not "somewhere you were not looking", and its mark would have nothing to clear it.
         let marksOwnerUnseen = !visibility.ownerIsSelectedInWindow
 
         guard settings.isEnabled else {
@@ -85,11 +72,7 @@ internal enum OperationCompletionPolicy {
         )
     }
 
-    /// Scoped by owner AND kind. Owner alone looked right and was wrong: one table tab owns its
-    /// query, its structure changes, its row saves and its fetch-all, so a single owner-keyed
-    /// identifier lets a later DDL completion silently replace a query completion the user had
-    /// not read yet. Re-running the same kind on the same owner is the only case that should
-    /// replace, and that is exactly what this key expresses.
+    // Keyed by owner and kind: one table tab owns queries, structure changes, saves and fetch-all.
     internal static func identifier(for completion: OperationCompletion) -> String {
         "\(identifierPrefix)\(completion.kind.rawValue).\(ownerKey(completion.owner))"
     }
@@ -98,10 +81,7 @@ internal enum OperationCompletionPolicy {
     internal static let copyErrorActionId = "operationCopyError"
     internal static let revealFileActionId = "operationRevealFile"
 
-    /// Three categories, because a category's actions are fixed when it is registered and the
-    /// content only picks which category it belongs to. One shared category meant every success
-    /// notification carried a Copy Error and a Show in Finder button whose handlers returned
-    /// without doing anything: visibly present, completely inert.
+    // A category's actions are fixed at registration, so a shared one showed inert buttons on every banner.
     internal enum Category {
         internal static let plain = "com.TablePro.operationFinished"
         internal static let failed = "com.TablePro.operationFailed"
@@ -146,6 +126,7 @@ internal enum OperationCompletionPolicy {
         switch owner {
         case .tab(_, let tabId): return tabId.uuidString
         case .connection(let connectionId): return connectionId.uuidString
+        case .compareWindow(let id): return id.uuidString
         }
     }
 }

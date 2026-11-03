@@ -13,7 +13,9 @@ final class RowDetailViewModel {
     let columnDetails: [ColumnInfo]
     let foreignKeys: [ForeignKeyInfo]
     let table: TableInfo?
-    let session: ConnectionSession?
+    // Decides what the row is and how it is located; writes go to `session`, which follows a redial.
+    private let openedSession: ConnectionSession?
+    @ObservationIgnored private let liveSession: (() -> Result<ConnectionSession, AppError>)?
     let databaseType: DatabaseType
     let schema: String?
     @ObservationIgnored private let readSafeModeLevel: () -> SafeModeLevel
@@ -29,7 +31,7 @@ final class RowDetailViewModel {
     var operationError: AppError?
     private(set) var showSaveSuccess = false
 
-    @ObservationIgnored private var writeGate = ConfirmedWriteGate<RowWriteBatch>()
+    @ObservationIgnored private var writeGate = ConfirmedWriteGate<PlannedRowWrite>()
 
     @ObservationIgnored let onSaved: (() -> Void)?
     @ObservationIgnored let loadFullValueProvider: ((CellRef) async throws -> String?)?
@@ -47,13 +49,15 @@ final class RowDetailViewModel {
         safeModeLevel: @escaping () -> SafeModeLevel = { .off },
         foreignKeys: [ForeignKeyInfo] = [],
         onSaved: (() -> Void)? = nil,
-        loadFullValue: ((CellRef) async throws -> String?)? = nil
+        loadFullValue: ((CellRef) async throws -> String?)? = nil,
+        liveSession: (() -> Result<ConnectionSession, AppError>)? = nil
     ) {
         self.columns = columns
         self.rows = rows
         self.currentIndex = initialIndex
         self.table = table
-        self.session = session
+        self.openedSession = session
+        self.liveSession = liveSession
         self.columnDetails = columnDetails
         self.databaseType = databaseType
         self.schema = schema
@@ -71,19 +75,24 @@ final class RowDetailViewModel {
 
     var safeModeLevel: SafeModeLevel { readSafeModeLevel() }
 
-    /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
-    /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
+    var session: ConnectionSession? {
+        guard let liveSession else { return openedSession }
+        return try? liveSession().get()
+    }
+
+    // Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
+    // which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
     var allowsRowEditing: Bool {
         table?.type.allowsRowEditing ?? false
     }
 
     var canEdit: Bool {
-        table != nil && session != nil && !columnDetails.isEmpty && allowsRowEditing
+        table != nil && openedSession != nil && !columnDetails.isEmpty && allowsRowEditing
             && !safeModeLevel.blocksWrites
             && currentLocator != nil
     }
 
-    private var rowIdentity: RowIdentity { RowLocator.identity(of: session?.driver) }
+    private var rowIdentity: RowIdentity { RowLocator.identity(of: openedSession?.driver) }
 
     private var currentLocator: RowLocator? {
         RowLocator.locate(
@@ -184,8 +193,8 @@ final class RowDetailViewModel {
         return columnDetail(for: column.name)?.isNullable ?? column.isNullable
     }
 
-    /// A key identifies the row and stays as it is, and a column the server owns cannot be given a value, however
-    /// the cell is drawn.
+    // A key identifies the row and stays as it is, and a column the server owns cannot be given a value, however
+    // the cell is drawn.
     func takesEdits(at index: Int) -> Bool {
         guard !isPrimaryKey(at: index), !isServerOwned(at: index) else { return false }
         return isEditableAsText(at: index)
@@ -275,17 +284,17 @@ final class RowDetailViewModel {
         }
     }
 
-    /// What Save writes for a field. An emptied date, number or boolean is NULL, since `''` is no
-    /// value of those types and MySQL without strict mode stores it as the zero date. In a NOT NULL
-    /// column, which holds neither, the field keeps the stored value and Save writes nothing for it.
-    /// A field left as it was is never read again: SQLite can hold `''` in a DATETIME column.
+    // What Save writes for a field. An emptied date, number or boolean is NULL, since `''` is no
+    // value of those types and MySQL without strict mode stores it as the zero date. In a NOT NULL
+    // column, which holds neither, the field keeps the stored value and Save writes nothing for it.
+    // A field left as it was is never read again: SQLite can hold `''` in a DATETIME column.
     func writtenValue(at index: Int) -> String? {
         let original = currentRow
         return writtenValue(at: index, stored: index < original.count ? original[index] : nil)
     }
 
-    /// Takes the stored value from the caller's snapshot of the row, which `currentRow` rebuilds on
-    /// every read, so a pass over every field stays linear.
+    // Takes the stored value from the caller's snapshot of the row, which `currentRow` rebuilds on
+    // every read, so a pass over every field stays linear.
     private func writtenValue(at index: Int, stored: String?) -> String? {
         guard index < editedValues.count else { return nil }
         let value = editedValues[index]
@@ -317,7 +326,15 @@ final class RowDetailViewModel {
     // MARK: - Save
 
     func saveChanges() async -> Bool {
-        guard let session, let table else { return false }
+        guard let opened = openedSession, let table else { return false }
+        let session: ConnectionSession
+        switch liveSession?() ?? .success(opened) {
+        case .success(let live):
+            session = live
+        case .failure(let unavailable):
+            operationError = unavailable
+            return false
+        }
 
         pendingWriteConfirmation = false
         writeGate.cancel()
@@ -384,33 +401,31 @@ final class RowDetailViewModel {
         }
         guard isEditing else { return false }
 
-        let batch: RowWriteBatch
+        let write = PlannedRowWrite.update(
+            table: table.name,
+            schema: schema,
+            type: databaseType,
+            columns: locator.columnNames(of: columns),
+            columnDetails: columnDetails,
+            locator: locator,
+            changes: changes
+        )
         do {
-            guard let built = try RowWriteBatch.update(
-                table: table.name,
-                schema: schema,
-                type: databaseType,
-                driver: session.driver,
-                columns: locator.columnNames(of: columns),
-                columnDetails: columnDetails,
-                locator: locator,
-                changes: changes
-            ) else { return false }
-            batch = built
+            guard try write.batch(on: session.driver) != nil else { return false }
         } catch {
             let context = ErrorContext(operation: "saveChanges", databaseType: databaseType)
             operationError = ErrorClassifier.classify(error, context: context)
             return false
         }
 
-        switch writeGate.submit(batch, under: safeModeLevel) {
+        switch writeGate.submit(write, under: safeModeLevel) {
         case .blocked:
             return false
         case .awaitConfirmation:
             pendingWriteConfirmation = true
             return false
-        case .run(let batch):
-            return await execute(batch)
+        case .run(let write):
+            return await execute(write)
         }
     }
 
@@ -420,7 +435,21 @@ final class RowDetailViewModel {
         return await execute(confirmed)
     }
 
-    private func execute(_ batch: RowWriteBatch) async -> Bool {
+    // Built on the live session, which a redial while the confirmation was up may have replaced.
+    private func execute(_ write: PlannedRowWrite) async -> Bool {
+        guard let opened = openedSession else { return false }
+        let batch: RowWriteBatch
+        do {
+            guard let built = try write.batch(on: liveSession?().get().driver ?? opened.driver) else { return false }
+            batch = built
+        } catch let unavailable as AppError {
+            operationError = unavailable
+            return false
+        } catch {
+            let context = ErrorContext(operation: "saveChanges", databaseType: databaseType)
+            operationError = ErrorClassifier.classify(error, context: context)
+            return false
+        }
         isSaving = true
         defer { isSaving = false }
         let rowIndex = currentIndex
@@ -492,7 +521,7 @@ final class RowDetailViewModel {
             return try ClipboardExporter.exportRow(
                 columns: columns, cells: completeCells(at: currentIndex),
                 format: format, tableName: table?.name,
-                databaseType: databaseType, driver: session?.driver
+                databaseType: databaseType, driver: openedSession?.driver
             )
         } catch {
             operationError = AppError(

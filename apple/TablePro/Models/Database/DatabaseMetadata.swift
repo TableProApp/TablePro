@@ -18,12 +18,6 @@ struct DatabaseMetadata: Identifiable, Equatable {
     let isSystemDatabase: Bool  // Whether this is a system database (mysql, information_schema, etc.)
     let icon: String            // SF Symbol name for icon
 
-    /// Formatted size string (e.g., "14.2 MB")
-    var formattedSize: String {
-        guard let bytes = sizeBytes else { return "—" }
-        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
-
     /// Relative time string (e.g., "2 hours ago", "just now")
     var relativeAccessTime: String {
         guard let accessed = lastAccessed else { return "never" }

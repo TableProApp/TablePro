@@ -47,9 +47,8 @@ struct CloudflareTransportSections: View {
                 }
                 .disabled(coordinator.cloudflareTunnel.state.accessHostname.trimmingCharacters(in: .whitespaces).isEmpty)
                 if let signInError = viewModel.signInError {
-                    Label(signInError, systemImage: "exclamationmark.triangle.fill")
+                    NoticeLabel(signInError)
                         .font(.caption)
-                        .foregroundStyle(.orange)
                 } else {
                     Text("Signs in to Cloudflare Access once and caches the token, so connecting doesn't open a browser.")
                         .font(.caption)
@@ -106,9 +105,8 @@ struct CloudflareTransportSections: View {
                     LabeledContent(String(localized: "Detected"), value: resolved)
                         .foregroundStyle(.secondary)
                 } else if viewModel.didResolveBinary {
-                    Label(viewModel.binaryNotFoundMessage, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .textSelection(.enabled)
+                    NoticeLabel(viewModel.binaryNotFoundMessage)
+                        .textSelection(.enabled)
                 }
             }
         } header: {

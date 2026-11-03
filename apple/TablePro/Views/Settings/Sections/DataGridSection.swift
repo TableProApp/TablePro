@@ -27,9 +27,8 @@ struct DataGridSection: View {
                     .help("Max \(SettingsValidationRules.nullDisplayMaxLength) characters")
 
                 if let error = settings.nullDisplayValidationError {
-                    Text(error)
+                    NoticeLabel(error, severity: .error)
                         .font(.caption)
-                        .foregroundStyle(.red)
                 }
             }
 
@@ -107,9 +106,8 @@ struct DataGridSection: View {
                 }
 
                 if let error = settings.queryResultRowCapValidationError {
-                    Text(error)
+                    NoticeLabel(error, severity: .error)
                         .font(.caption)
-                        .foregroundStyle(.red)
                 }
             }
         } header: {

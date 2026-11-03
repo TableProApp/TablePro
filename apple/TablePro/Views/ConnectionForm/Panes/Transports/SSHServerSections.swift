@@ -20,11 +20,7 @@ struct SSHServerSections: View {
 
         if sshState.selectedProfile == nil, sshState.profileId != nil {
             Section {
-                Label(
-                    String(localized: "Selected SSH profile no longer exists."),
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .foregroundStyle(.yellow)
+                NoticeLabel(String(localized: "Selected SSH profile no longer exists."))
                 Button(String(localized: "Switch to Inline Configuration")) {
                     sshState.profileId = nil
                 }

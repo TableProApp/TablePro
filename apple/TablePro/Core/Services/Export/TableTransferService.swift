@@ -381,6 +381,10 @@ final class TableTransferService: ObservableObject {
                     Self.logger.warning("Rollback after a failed transfer also failed: \(error.localizedDescription)")
                 }
             }
+            // A Stop stays a stop, so the sheet reports it as cancelled rather than as a failure.
+            if isCancelled || error is PluginImportCancellationError || error is CancellationError {
+                throw PluginImportCancellationError()
+            }
             state.errorMessage = error.localizedDescription
             throw TableTransferError.transferFailed(error.localizedDescription)
         }

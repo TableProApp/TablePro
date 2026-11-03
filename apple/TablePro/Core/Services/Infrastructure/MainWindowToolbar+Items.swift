@@ -17,15 +17,27 @@ extension MainWindowToolbar {
         return String(format: String(localized: "Preview %@"), language)
     }
 
+    // A connection with no coordinator (never up, failed, lost) is still named by the pane, so the toolbar names it too.
+    var workspaceConnection: DatabaseConnection? {
+        guard coordinator == nil else { return nil }
+        return windowController?.workspaces.selected?.connection
+    }
+
     /// Only the shape is the connection's. The image stays a template, so the identity colour never
     /// reaches it: painted over the engine's own colour it reads as a hue shift, not a signal.
     var connectionGlyph: ToolbarGlyph {
-        guard let state = coordinator?.toolbarState else {
+        let type: DatabaseType
+        let iconName: String?
+        if let state = coordinator?.toolbarState {
+            type = state.databaseType
+            iconName = state.iconName
+        } else if let connection = workspaceConnection {
+            type = connection.type
+            iconName = connection.iconName
+        } else {
             let label = String(localized: "Connection")
             return ToolbarGlyph(key: "", image: { NSImage(systemSymbolName: "network", accessibilityDescription: label) })
         }
-        let type = state.databaseType
-        let iconName = state.iconName
         return ToolbarGlyph(key: type.rawValue + "/" + (iconName ?? ""), image: {
             LibraryGlyph.connectionNSImage(type: type, iconName: iconName, accessibilityDescription: type.displayName)
         })
@@ -34,7 +46,16 @@ extension MainWindowToolbar {
     /// The connection's own name, which is what the centred item is for. Empty for a window that
     /// is between connections, where AppKit draws the glyph alone rather than an empty capsule.
     var connectionTitle: String {
-        coordinator?.toolbarState.connectionName ?? ""
+        coordinator?.toolbarState.connectionName ?? workspaceConnection?.name ?? ""
+    }
+
+    // From the session while one is left, else the record, so a window whose connection went away does not claim Silent.
+    var safeModeStatus: SafeModeStatus {
+        if let status = coordinator?.safeModeStatus { return status }
+        guard let connection = workspaceConnection else { return SafeModeStatus(level: .silent, floor: nil) }
+        let saved = AgentModeSafeModeFloor.status(for: connection)
+        guard let level = DatabaseManager.shared.session(for: connection.id)?.safeModeLevel else { return saved }
+        return SafeModeStatus(level: level, floor: saved.floor)
     }
 
     /// The container this control switches, and only that. It briefly read "app › public" on a
@@ -77,7 +98,7 @@ extension MainWindowToolbar {
         item.paletteLabel = label
         item.isBordered = true
         item.statusProvider = { [weak self] in
-            self?.coordinator?.safeModeStatus ?? SafeModeStatus(level: .silent, floor: nil)
+            self?.safeModeStatus ?? SafeModeStatus(level: .silent, floor: nil)
         }
         item.isEnabledProvider = enablement(of: Self.safeMode)
         /// The same class the Database menu's submenu uses, so the two lists cannot describe

@@ -3,12 +3,16 @@
 //  TablePro
 //
 
-import CryptoKit
 import Foundation
 import os
 import TableProUtilities
 
 actor CloudSQLProxyBinaryManager {
+    typealias Download = @Sendable (
+        _ url: URL,
+        _ progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> (URL, URLResponse)
+
     static let shared = CloudSQLProxyBinaryManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "CloudSQLProxyBinary")
 
@@ -19,45 +23,32 @@ actor CloudSQLProxyBinaryManager {
         "amd64": "8089f6bab724a68c5e47b74759671db091df44b36e84cd273c1b899068f7a173"
     ]
 
+    nonisolated let binaryExecutablePath: String
     private let baseDirectory: URL
     private let expectedSHA256: [String: String]
-    private let fetch: @Sendable (URL) async throws -> Data
-    private var downloadTask: Task<Void, Error>?
+    private let download: Download
 
     init(
         baseDirectory: URL? = nil,
         expectedSHA256: [String: String] = CloudSQLProxyBinaryManager.defaultExpectedSHA256,
-        fetch: @escaping @Sendable (URL) async throws -> Data = { try await URLSession.shared.data(from: $0).0 }
+        download: @escaping Download = { url, progress in
+            try await ProgressReportingDownload.download(url, with: .shared, progress: progress)
+        }
     ) {
         let appSupport = AppStorageEnvironment.shared.applicationSupportRoot
-        self.baseDirectory = baseDirectory
+        let directory = baseDirectory
             ?? appSupport.appendingPathComponent("TablePro/cloud-sql-proxy", isDirectory: true)
+        self.baseDirectory = directory
+        self.binaryExecutablePath = directory.appendingPathComponent("cloud-sql-proxy").path
         self.expectedSHA256 = expectedSHA256
-        self.fetch = fetch
-    }
-
-    var binaryExecutablePath: String {
-        baseDirectory.appendingPathComponent("cloud-sql-proxy").path
-    }
-
-    /// Whether a managed binary is present at all, for the connection form's "Downloaded" state.
-    ///
-    /// This answers a question about the UI, not about trust, and it must never be the way the
-    /// launch path obtains a path to execute. Use `ensureBinary()` for that, which verifies the
-    /// pinned version and checksum first and reinstalls when either no longer matches.
-    var isInstalled: Bool {
-        FileManager.default.isExecutableFile(atPath: binaryExecutablePath)
+        self.download = download
     }
 
     func installedVersion() -> String? {
-        let versionFile = baseDirectory.appendingPathComponent("version.txt")
-        return try? String(contentsOf: versionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        try? String(contentsOf: versionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The binary is executed directly, so a stale version or an altered file must be
-    /// refused rather than run. The checksum is re-read on every call because the file
-    /// lives in a user-writable directory and is only ad-hoc signed, which leaves the
-    /// pinned digest as the sole thing attesting to what is about to run.
+    // The file is ad-hoc signed in a user-writable folder, so the pinned digest, re-read on every call, is all that vouches for it.
     func installedBinaryIsCurrent() -> Bool {
         guard FileManager.default.isExecutableFile(atPath: binaryExecutablePath) else { return false }
 
@@ -78,35 +69,23 @@ actor CloudSQLProxyBinaryManager {
         return true
     }
 
-    func ensureBinary() async throws -> String {
+    // Runs in the caller's task, so cancelling the caller cancels the download.
+    func ensureBinary(progress: @escaping @Sendable (Double) async -> Void = { _ in }) async throws -> String {
         if installedBinaryIsCurrent() {
             return binaryExecutablePath
         }
-
-        if let existing = downloadTask {
-            try await existing.value
-            downloadTask = nil
-        } else {
-            let task = Task { try await downloadBinary() }
-            downloadTask = task
-            do {
-                try await task.value
-                downloadTask = nil
-            } catch {
-                downloadTask = nil
-                throw error
-            }
-        }
-
+        try await install(progress: progress)
         guard installedBinaryIsCurrent() else {
             throw CloudSQLProxyError.binaryNotFound
         }
         return binaryExecutablePath
     }
 
-    private func downloadBinary() async throws {
-        try FileManager.default.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+    private var versionFile: URL {
+        baseDirectory.appendingPathComponent("version.txt")
+    }
 
+    private func install(progress: @escaping @Sendable (Double) async -> Void) async throws {
         let arch = Self.arch
         guard let expected = expectedSHA256[arch],
               let url = URL(
@@ -115,23 +94,45 @@ actor CloudSQLProxyBinaryManager {
             throw CloudSQLProxyError.binaryNotFound
         }
 
-        let data = try await fetch(url)
-        guard data.sha256HexString() == expected else {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+
+        let downloaded: URL
+        let response: URLResponse
+        do {
+            (downloaded, response) = try await download(url, progress)
+        } catch {
+            if Task.isCancelled { throw CancellationError() }
+            throw error
+        }
+        defer { try? fileManager.removeItem(at: downloaded) }
+        try Task.checkCancellation()
+
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            Self.logger.error("cloud-sql-proxy download answered HTTP \(http.statusCode, privacy: .public)")
+            throw CloudSQLProxyError.downloadFailed(statusCode: http.statusCode)
+        }
+
+        guard DownloadedBinary.sha256Hex(ofFileAt: downloaded.path) == expected else {
             Self.logger.error("cloud-sql-proxy binary checksum mismatch, refusing to install")
-            throw CloudSQLProxyError.binaryNotFound
+            throw CloudSQLProxyError.checksumMismatch
         }
 
-        let tempPath = baseDirectory.appendingPathComponent("cloud-sql-proxy.download")
-        try data.write(to: tempPath, options: .atomic)
-        if FileManager.default.fileExists(atPath: binaryExecutablePath) {
-            try FileManager.default.removeItem(atPath: binaryExecutablePath)
+        let staged = baseDirectory.appendingPathComponent("cloud-sql-proxy.\(UUID().uuidString).download")
+        try fileManager.moveItem(at: downloaded, to: staged)
+        defer { try? fileManager.removeItem(at: staged) }
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: staged.path)
+        DownloadedBinary.stripQuarantine(at: staged)
+        try Task.checkCancellation()
+
+        // A swap rather than remove-then-move, so a failure here leaves the previous binary in place.
+        let destination = URL(fileURLWithPath: binaryExecutablePath)
+        if fileManager.fileExists(atPath: destination.path) {
+            _ = try fileManager.replaceItemAt(destination, withItemAt: staged, options: .usingNewMetadataOnly)
+        } else {
+            try fileManager.moveItem(at: staged, to: destination)
         }
-        try FileManager.default.moveItem(atPath: tempPath.path, toPath: binaryExecutablePath)
 
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binaryExecutablePath)
-        DownloadedBinary.stripQuarantine(at: URL(fileURLWithPath: binaryExecutablePath))
-
-        let versionFile = baseDirectory.appendingPathComponent("version.txt")
         try Self.pinnedVersion.write(to: versionFile, atomically: true, encoding: .utf8)
         Self.logger.info("Downloaded cloud-sql-proxy \(Self.pinnedVersion, privacy: .public)")
     }
@@ -142,11 +143,5 @@ actor CloudSQLProxyBinaryManager {
         #else
         return "amd64"
         #endif
-    }
-}
-
-private extension Data {
-    func sha256HexString() -> String {
-        SHA256.hash(data: self).map { String(format: "%02x", $0) }.joined()
     }
 }

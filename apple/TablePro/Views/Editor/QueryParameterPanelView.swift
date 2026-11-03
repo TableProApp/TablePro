@@ -52,13 +52,11 @@ struct QueryParameterPanelView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
 
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Close parameter panel"))
-            .accessibilityLabel(String(localized: "Close parameter panel"))
+            Button(String(localized: "Close parameter panel"), systemImage: "xmark", action: onDismiss)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help(String(localized: "Close parameter panel"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

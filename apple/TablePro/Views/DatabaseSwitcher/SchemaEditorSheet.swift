@@ -163,9 +163,15 @@ struct SchemaEditorSheet: View {
             .formStyle(.columns)
 
             if let problem = model.nameProblem, !model.name.isEmpty {
-                Label(problem.message, systemImage: "exclamationmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                Label {
+                    Text(problem.message)
+                        .foregroundStyle(.secondary)
+                } icon: {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(NoticeSeverity.error.tint)
+                        .accessibilityHidden(true)
+                }
+                .font(.caption)
             }
         }
     }
@@ -295,7 +301,7 @@ struct SchemaEditorSheet: View {
     private var footer: some View {
         VStack(spacing: 8) {
             if let failure = model.failure {
-                InlineErrorBanner(message: failure)
+                InlineErrorBanner(message: failure, onBar: false)
             }
             HStack(spacing: 12) {
                 if let count = statementCount {

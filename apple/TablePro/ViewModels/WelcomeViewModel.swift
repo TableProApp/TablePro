@@ -445,15 +445,15 @@ final class WelcomeViewModel: ObservableObject {
                 self?.teamLibraryConnections = Self.buildTeamLibraryConnections()
             }
 
-        /// A row's status badge reads `DatabaseManager.activeSessions`, which is not observable, and
-        /// the row is only rewritten when the outline revision moves. Nothing here listened for a
-        /// connection coming up or going away, so a row that said Connected went on saying it after
-        /// a Disconnect, for as long as the window stayed open.
-        connectionStatusCancellable = services.appEvents.connectionStatusChanged
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.outlineRevision += 1
-            }
+        // The row's mark reads the session and the window phase, neither observable, so the revision moves on both.
+        connectionStatusCancellable = Publishers.Merge(
+            services.appEvents.connectionStatusChanged.map { $0.connectionId },
+            services.appEvents.connectionPhaseChanged
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in
+            self?.outlineRevision += 1
+        }
 
         loadConnections()
         linkedConnections = services.linkedFolderWatcher.linkedConnections
@@ -652,28 +652,35 @@ final class WelcomeViewModel: ObservableObject {
 
     // MARK: - Connection Errors
 
+    internal enum ConnectErrorRoute: Equatable {
+        case ignore
+        case window
+        case pluginInstall
+        case alert
+    }
+
+    // A connect that reached a window reports there, inline in its pane. Only an error raised
+    // before any window could take the connection, such as a record that is gone, is shown here.
+    internal static func route(for error: Error, isShownInWindow: Bool) -> ConnectErrorRoute {
+        if error.isUserCancellation { return .ignore }
+        if isShownInWindow { return .window }
+        if case PluginError.pluginNotInstalled = error { return .pluginInstall }
+        return .alert
+    }
+
     func handleConnectError(_ error: Error, connection: DatabaseConnection) {
-        if error is CancellationError {
+        switch Self.route(for: error, isShownInWindow: WindowManager.shared.hasOpenWindow(for: connection.id)) {
+        case .ignore:
             Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .private(mask: .hash))")
-            return
-        }
-
-        if !WindowManager.shared.hasOpenWindow(for: connection.id) {
-            Self.logger.info(
-                "Connection failed after window was closed: \(error.publicLogShape, privacy: .public)")
-            return
-        }
-
-        if case PluginError.pluginNotInstalled = error {
+        case .window:
+            Self.logger.info("Connect failed in its window: \(error.publicLogShape, privacy: .public)")
+        case .pluginInstall:
             Self.logger.info("Plugin not installed for \(connection.type.rawValue, privacy: .public)")
-            WindowManager.shared.closeWindow(for: connection.id)
             pluginInstallConnection = connection
-            return
+        case .alert:
+            Self.logger.error("Failed to open the connection: \(error.publicLogShape, privacy: .public)")
+            presentConnectionFailure(error, connection: connection)
         }
-
-        Self.logger.error("Failed to connect: \(error.publicLogShape, privacy: .public)")
-        WindowManager.shared.closeWindow(for: connection.id)
-        presentConnectionFailure(error, connection: connection)
     }
 
     private func presentConnectionFailure(_ error: Error, connection: DatabaseConnection) {

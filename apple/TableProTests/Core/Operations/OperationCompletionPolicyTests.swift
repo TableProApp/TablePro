@@ -294,4 +294,18 @@ struct OperationCompletionPolicyTests {
     func largeCountsAreGrouped() {
         #expect(Self.grouped(1_204) != "1204")
     }
+
+    @Test("A backup names the file it wrote as a backup, not an export")
+    func backupBodySaysBackedUp() {
+        let backup = OperationCompletion(
+            kind: .backup,
+            owner: .connection(UUID()),
+            connectionId: UUID(),
+            connectionName: "Sales",
+            elapsed: .seconds(60),
+            outcome: .succeeded(OperationSummary(fileURL: URL(fileURLWithPath: "/tmp/sales.dump")))
+        )
+
+        #expect(OperationCompletionCopy.body(for: backup).hasPrefix("Backed up to sales.dump"))
+    }
 }

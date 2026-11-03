@@ -30,10 +30,10 @@ extension DatabaseManager {
     }
 
     func handleSOCKSProxyTunnelDied(connectionId: UUID) async {
-        await recoverDeadTunnel(
+        recoverDeadTunnel(
             connectionId: connectionId,
             kind: "SOCKS Proxy",
-            disconnectedMessage: String(localized: "SOCKS proxy disconnected. Click to reconnect.")
+            disconnectedMessage: String(localized: "SOCKS proxy disconnected.")
         )
     }
 }

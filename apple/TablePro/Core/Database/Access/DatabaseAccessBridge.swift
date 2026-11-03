@@ -52,8 +52,10 @@ internal actor DatabaseAccessBridge {
         let manager = await databaseManager
         let connection = try await resolveConnection(connectionId)
 
+        // A session the reconnect loop is redialing, or gave up on, keeps its driver; only a live one skips the redial.
         let alreadyLive = await MainActor.run {
-            manager.activeSessions[connectionId]?.driver != nil
+            if case .live = manager.connectionState(connectionId) { return true }
+            return false
         }
         if !alreadyLive {
             do {
@@ -86,10 +88,27 @@ internal actor DatabaseAccessBridge {
 
     internal func disconnect(connectionId: UUID) async throws {
         let manager = await databaseManager
-        let sessionExists = await MainActor.run {
-            manager.activeSessions[connectionId] != nil
+        try await Self.disconnectUnlessWorkIsLost(connectionId, manager: manager)
+    }
+
+    // TablePro asks the user before a disconnect that loses work; a caller that is not a person gets a refusal.
+    @MainActor
+    private static func disconnectUnlessWorkIsLost(_ connectionId: UUID, manager: DatabaseManager) async throws {
+        guard manager.activeSessions[connectionId] != nil else { throw DatabaseAccessError.notConnected(connectionId) }
+        let turnRevisionBefore = manager.sessionTransactions.turnRevision(for: connectionId)
+        let probed = await manager.transactionSafety(for: connectionId)
+        // Read after the probe and with no suspension before the disconnect, so work that started meanwhile counts.
+        guard manager.activeSessions[connectionId] != nil else { throw DatabaseAccessError.notConnected(connectionId) }
+        let transactions = manager.settledTransactionSafety(
+            probed, for: connectionId, turnRevisionBefore: turnRevisionBefore
+        )
+        if let refusal = ExternalDisconnectRefusal.message(
+            work: RunningWorkRegistry.shared.items(in: .connection(connectionId)),
+            transactions: transactions,
+            hasUnsavedWork: MainContentCoordinator.hasUnsavedWork(forConnection: connectionId)
+        ) {
+            throw DatabaseAccessError.forbidden(refusal)
         }
-        guard sessionExists else { throw DatabaseAccessError.notConnected(connectionId) }
         await manager.disconnectSession(connectionId)
     }
 
@@ -98,7 +117,7 @@ internal actor DatabaseAccessBridge {
         let snapshot = await MainActor.run { () -> ConnectionStatusSnapshot? in
             guard let session = manager.activeSessions[connectionId] else { return nil }
             return ConnectionStatusSnapshot(
-                status: session.reportedStatus,
+                status: session.effectiveStatus,
                 database: session.resolvedBrowseDatabase,
                 schema: session.browseSchema,
                 serverVersion: session.driver?.serverVersion,
@@ -691,4 +710,63 @@ internal actor DatabaseAccessBridge {
 /// passes nil, which is why this is optional rather than a required argument.
 internal protocol StatementCancellationSignal: Sendable {
     func onCancelRequested(_ handler: @escaping @Sendable () async -> Void) async
+}
+
+// Kinds only: a line naming the work could name a tab, a file or another connection the caller cannot see.
+@MainActor
+internal enum ExternalDisconnectRefusal {
+    internal enum Loss: Hashable, CaseIterable {
+        case query
+        case transfer
+        case agentReply
+        case comparison
+        case transaction
+        case unsavedChanges
+
+        internal var noun: String {
+            switch self {
+            case .query: return String(localized: "a running query")
+            case .transfer: return String(localized: "an import, export, backup, restore or copy")
+            case .agentReply: return String(localized: "an agent reply")
+            case .comparison: return String(localized: "a comparison or sync")
+            case .transaction: return String(localized: "an open transaction")
+            case .unsavedChanges: return String(localized: "unsaved changes")
+            }
+        }
+    }
+
+    internal static func message(
+        work: [RunningWork],
+        transactions: SessionTransactionSafety,
+        hasUnsavedWork: Bool
+    ) -> String? {
+        var losses = Set(work.map { loss(for: $0.kind) })
+        if transactions == .holding { losses.insert(.transaction) }
+        if hasUnsavedWork { losses.insert(.unsavedChanges) }
+        if let message = message(for: losses) { return message }
+        guard transactions == .unknown else { return nil }
+        return String(
+            localized: "TablePro cannot tell whether this connection holds an open transaction, so it stays connected. Try again once its work is done, or disconnect in TablePro."
+        )
+    }
+
+    internal static func message(for losses: Set<Loss>) -> String? {
+        let nouns = Loss.allCases.filter { losses.contains($0) }.map { $0.noun }
+        guard !nouns.isEmpty else { return nil }
+        return String(
+            format: String(
+                localized: "This connection has %@ in TablePro, which disconnecting would stop or discard. Finish it first, or disconnect in TablePro, which asks the user."
+            ),
+            ListFormatter.localizedString(byJoining: nouns)
+        )
+    }
+
+    private static func loss(for kind: RunningWorkKind) -> Loss {
+        switch kind {
+        case .query: return .query
+        case .restore, .dataImport, .dataExport, .backup, .tableTransfer, .objectCopy: return .transfer
+        case .agentReply: return .agentReply
+        case .compareRun, .compareApply: return .comparison
+        }
+    }
 }

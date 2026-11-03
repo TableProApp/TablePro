@@ -36,14 +36,23 @@ struct SyncStatusPresentationTests {
             .blocked(.dataDeletedFromICloud),
         ]
         for error in Self.everyError {
-            let offersRetry = SyncStatusPresentation(error).actions.contains(.tryAgain)
+            let offersRetry = SyncStatusPresentation(error).mobileActions.contains(.tryAgain)
             #expect(offersRetry == !cannotHelp.contains(error), "\(error)")
         }
     }
 
     @Test("Deleted iCloud data offers to upload again or to turn sync off, and nothing else")
     func deletedDataActions() {
-        #expect(SyncStatusPresentation(.blocked(.dataDeletedFromICloud)).actions == [.uploadAgain, .turnOffSync])
+        #expect(SyncStatusPresentation(.blocked(.dataDeletedFromICloud)).mobileActions == [.uploadAgain, .turnOffSync])
+    }
+
+    @Test("No action that needs a Mac-only path reaches iPhone or iPad")
+    func macOnlyActionsAreDropped() {
+        let macOnly: Set<SyncStatusAction> = [.manageStorage, .openAccountSettings, .checkForUpdates]
+        for error in Self.everyError {
+            #expect(macOnly.isDisjoint(with: SyncStatusPresentation(error).mobileActions), "\(error)")
+        }
+        #expect(SyncStatusPresentation(.blocked(.signedOut)).mobileActions == [.tryAgain])
     }
 
     @Test("Only full storage gives a path in words, since no public link opens iCloud settings")

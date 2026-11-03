@@ -17,6 +17,7 @@ final class AppRelauncher {
     }
 
     private let defaults: UserDefaults
+    private let approveStoppingWork: @MainActor () -> Bool
     private let reviewUnsavedDocuments: @MainActor (@escaping @MainActor (Bool) -> Void) -> Void
     private let installPendingUpdate: @MainActor () -> Bool
     private let terminate: @MainActor () -> Void
@@ -25,12 +26,18 @@ final class AppRelauncher {
 
     init(
         defaults: UserDefaults = AppStorageEnvironment.shared.defaults,
+        approveStoppingWork: @escaping @MainActor () -> Bool = {
+            // Everything that can still refuse asks here, before Sparkle or the quit takes over.
+            ThemeEditorWindows.shared.prepareToTerminate()
+                && QuitApproval.approvesStoppingWork(registry: .shared, action: .relaunch, stopsWork: false)
+        },
         reviewUnsavedDocuments: @escaping @MainActor (@escaping @MainActor (Bool) -> Void) -> Void = UnsavedDocumentReview.run,
         installPendingUpdate: @escaping @MainActor () -> Bool = { SoftwareUpdater.shared.installAndRelaunch() },
         terminate: @escaping @MainActor () -> Void = { NSApp.terminate(nil) },
         reopenAfterExit: @escaping @MainActor (_ pid: pid_t, _ bundleURL: URL) throws -> Void = AppRelauncher.reopenAfterExit(pid:bundleURL:)
     ) {
         self.defaults = defaults
+        self.approveStoppingWork = approveStoppingWork
         self.reviewUnsavedDocuments = reviewUnsavedDocuments
         self.installPendingUpdate = installPendingUpdate
         self.terminate = terminate
@@ -39,10 +46,13 @@ final class AppRelauncher {
 
     var isRelaunchPending: Bool { route != nil }
 
+    // The relaunch asked about running work itself, so the quit it starts does not ask again.
+    var hasApprovedRunningWork: Bool { route != nil }
+
     // Documents are reviewed first: AppKit cancels a quit there before the app delegate hears of it.
     func relaunch() {
         reviewUnsavedDocuments { [weak self] proceed in
-            guard let self, proceed else { return }
+            guard let self, proceed, self.approveStoppingWork() else { return }
             self.route = .sparkleInstall
             guard !self.installPendingUpdate() else { return }
             self.route = .reopenAfterExit

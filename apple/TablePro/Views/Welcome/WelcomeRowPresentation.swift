@@ -43,6 +43,8 @@ internal struct WelcomeConnectionRowModel: Equatable {
     internal let isLocalOnly: Bool
     internal let isDriverRejected: Bool
     internal let tooltip: String
+    // Part of the model so a reload hands a reused row a changed value; status has no observable home.
+    internal let status: ConnectionDisplayStatus
 }
 
 internal enum WelcomeSortOption: CaseIterable {
@@ -145,7 +147,8 @@ internal enum WelcomeRowPresentation {
             groupLabel: section == .connections ? nil : group.map { groupLabel($0) },
             isLocalOnly: connection.localOnly && !connection.isSample,
             isDriverRejected: isDriverRejected,
-            tooltip: tooltip(for: connection, groupPath: groupPath, tags: tags)
+            tooltip: tooltip(for: connection, groupPath: groupPath, tags: tags),
+            status: ConnectionStatusResolver.status(for: connection.id)
         )
     }
 
@@ -171,7 +174,8 @@ internal enum WelcomeRowPresentation {
             groupLabel: nil,
             isLocalOnly: false,
             isDriverRejected: false,
-            tooltip: [exportable.name, type.displayName, account + detail].joined(separator: "\n")
+            tooltip: [exportable.name, type.displayName, account + detail].joined(separator: "\n"),
+            status: ConnectionStatusResolver.status(for: linked.id)
         )
     }
 
