@@ -8,6 +8,15 @@
 
     <Grid x:Name="Root">
         <Grid.Resources>
+            <Style x:Key="FormSuccessTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+            </Style>
+            <Style x:Key="FormErrorTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            </Style>
+            <Style x:Key="FormNeutralTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
             <CollectionViewSource x:Name="EngineSource" IsSourceGrouped="True" ItemsPath="Items" />
         </Grid.Resources>
         <Grid.RowDefinitions>

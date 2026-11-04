@@ -297,13 +297,13 @@ public sealed partial class ConnectionFormWindow : Window
     };
 
     // The reason sits under the field, where the guidance for input errors puts it.
-    private static void SetError(Control field, string message)
+    private void SetError(Control field, string message)
     {
         var text = new TextBlock
         {
             Text = message,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
+            Style = (Style)Root.Resources["FormErrorTextStyle"],
         };
         switch (field)
         {
@@ -332,12 +332,12 @@ public sealed partial class ConnectionFormWindow : Window
     private void SetStatus(string text, bool? success)
     {
         StatusText.Text = text;
-        StatusText.Foreground = success switch
+        StatusText.Style = (Style)Root.Resources[success switch
         {
-            true => (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],
-            false => (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
-            null => (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-        };
+            true => "FormSuccessTextStyle",
+            false => "FormErrorTextStyle",
+            null => "FormNeutralTextStyle",
+        }];
         ToolTipService.SetToolTip(StatusText, string.IsNullOrEmpty(text) ? null : text);
     }
 
