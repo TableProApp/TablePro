@@ -56,7 +56,7 @@ enum DatabendStatementReadings {
             case .hintPrefix:
                 insideHint = true
             case .name:
-                words += nameWords(spelling)
+                words.append(word(spelling) { $0 == "$" ? "_" : $0 })
             case .variable:
                 words.append(word(spelling) { $0 == "$" || !isNameScalar($0) ? "_" : $0 })
             case .stageName:
@@ -112,14 +112,6 @@ enum DatabendStatementReadings {
             }
         }
         return tokens.count
-    }
-
-    // A keyword wins over the name that would run on past it into a non-ASCII scalar, so the server reads `TABLE中` as
-    // TABLE and then 中. The ASCII start is written apart, which keeps every keyword the server could read there.
-    private static func nameWords(_ spelling: ArraySlice<Unicode.Scalar>) -> [String] {
-        let asciiEnd = spelling.firstIndex { !$0.isASCII } ?? spelling.endIndex
-        let parts = [spelling[..<asciiEnd], spelling[asciiEnd...]].filter { !$0.isEmpty }
-        return parts.map { part in word(part) { $0 == "$" ? "_" : $0 } }
     }
 
     private static func word(

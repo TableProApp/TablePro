@@ -112,5 +112,9 @@ ask 'INSERT INTO `中tp` VALUES (1)' > /dev/null
 ask 'CREATE OR REPLACE TABLE中tp (v INT)' > /dev/null
 if [ "$BUILD" -ge 888 ]; then replaced=0; else replaced=1; fi
 report "keyword before a non-ASCII name" "$(ask 'SELECT count(*) FROM `中tp`')" "$replaced"
+before="$(ask 'SELECT count(*) FROM `中tp`')"
+ask "/*+ ' */ SELECT 1 -- ' */ REPLACE中tp ON (v) SELECT 4 'x" > /dev/null
+if [ "$BUILD" -ge 888 ]; then added=1; else added=0; fi
+report "REPLACE before a non-ASCII name and untokenizable text" "$(($(ask 'SELECT count(*) FROM `中tp`') - before))" "$added"
 
 exit "$STATUS"

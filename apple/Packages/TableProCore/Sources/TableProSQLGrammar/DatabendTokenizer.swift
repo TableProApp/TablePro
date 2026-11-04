@@ -3,10 +3,12 @@ import Foundation
 /// Databend's tokenizer, `src/query/ast/src/parser/token.rs`, as `Tokenizer::next` hands tokens to the parser: blanks
 /// and comments dropped, and a hint dropped unless the token before it is a statement word that takes one.
 ///
-/// The reading stops where the server meets text it cannot tokenize and refuses the statement. A name runs through any
-/// non-ASCII scalar, and a control character is a token of its own: the server either reads them so or refuses, and
-/// before 1.2.888 it refuses every non-ASCII scalar outside a literal. ``Rules`` holds each other rule a release since
-/// 1.2.473 changed.
+/// The reading stops where the server meets text it cannot tokenize and refuses the statement. A name that starts with
+/// a non-ASCII scalar runs through any other, and a control character is a token of its own: the server either reads
+/// them so or refuses, and before 1.2.888 it refuses every non-ASCII scalar outside a literal. A name that starts in
+/// ASCII ends at its first non-ASCII scalar, where a keyword ends on the server, so `TABLE中` is TABLE and then 中; any
+/// other ASCII start is read as a name of its own too, which moves no placeholder or hint. ``Rules`` holds each other
+/// rule a release since 1.2.473 changed.
 public enum DatabendTokenizer {
     public enum Kind: Sendable, Hashable {
         case name, variable, quoted, codeString, stageName, number, placeholder, hintPrefix, hintSuffix, symbol
@@ -155,7 +157,7 @@ private struct Reader {
         case "." where next.map(Self.isDigit) == true:
             return (numberEnd(at: index), .number)
         default:
-            if Self.startsName(scalar) { return (nameEnd(from: index + 1), .name) }
+            if Self.startsName(scalar) { return (nameEnd(from: index + 1, asciiOnly: scalar.isASCII), .name) }
         }
         if Self.operatorStarts.contains(scalar), let symbol = Self.operators.first(where: { matches($0, at: index) }) {
             return (index + symbol.count, symbol == ["*", "/"] ? .hintSuffix : .symbol)
@@ -242,7 +244,7 @@ private struct Reader {
             return nil
         }
         if Self.isDigit(next) { return (digitsEnd(from: index + 1), .variable) }
-        if Self.startsName(next), next.isASCII { return (nameEnd(from: index + 2), .variable) }
+        if Self.startsName(next), next.isASCII { return (nameEnd(from: index + 2, asciiOnly: true), .variable) }
         return (index + 1, .symbol)
     }
 
@@ -312,9 +314,10 @@ private struct Reader {
         return cursor
     }
 
-    private func nameEnd(from index: Int) -> Int {
+    private func nameEnd(from index: Int, asciiOnly: Bool) -> Int {
         var cursor = index
-        while let scalar = peek(cursor), Self.startsName(scalar) || Self.isDigit(scalar) || scalar == "$" {
+        while let scalar = peek(cursor), Self.startsName(scalar) || Self.isDigit(scalar) || scalar == "$",
+              scalar.isASCII || !asciiOnly {
             cursor += 1
         }
         return cursor

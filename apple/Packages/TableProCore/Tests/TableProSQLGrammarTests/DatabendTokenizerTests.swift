@@ -79,6 +79,14 @@ struct DatabendTokenizerTests {
         #expect(Self.kinds("SELECT $1, $a, $") == [.name, .variable, .symbol, .variable, .symbol, .symbol])
     }
 
+    // Measured on 1.2.958: `CREATE OR REPLACE TABLE中 (id INT)` replaced table 中.
+    @Test("A name that starts in ASCII ends at a non-ASCII scalar, and one that starts there runs on")
+    func nonASCIIEndsAnASCIIName() {
+        #expect(Self.spellings("REPLACE\u{4E2D} ON") == ["REPLACE", "\u{4E2D}", "ON"])
+        #expect(Self.spellings("SELECT \u{E9}t\u{E9}$$, a") == ["SELECT", "\u{E9}t\u{E9}$$", ",", "a"])
+        #expect(Self.spellings("SELECT $a\u{E9}") == ["SELECT", "$a", "\u{E9}"])
+    }
+
     @Test("A doubled backtick stays inside a name")
     func doubledBacktickStaysInAName() {
         #expect(Self.spellings("SELECT `a``b`, ?") == ["SELECT", "`a``b`", ",", "?"])
