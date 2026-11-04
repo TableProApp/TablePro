@@ -26,7 +26,7 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw`.
 - `src/TablePro.App.Model`: the app's settings and session files, the library tree, the connection form's fields and the object folders. Plain `net10.0`, so `tests/TablePro.App.Model.Tests` runs anywhere.
 - `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own, and the installed MSIX once `TABLEPRO_PACKAGE` names its family.
-- `ci/desktop.ps1`: readies a hosted runner's desktop for UI work (privacy settings window, WSL console, display size), for `windows.yml`, `release-windows.yml` and the grid gate.
+- `ci/desktop.ps1`: readies a hosted runner's desktop for UI work (privacy settings window, WSL console, display size, window dragging), for `windows.yml`, `release-windows.yml` and the grid gate.
 - `ci/winget-manifest.py`: writes a release's winget manifest, for `release-windows.yml`.
 - `scripts/engine-glyphs.py`: writes `src/TablePro.App/Resources/EngineGlyphs.xaml` from the macOS app's engine artwork. Run it after that artwork changes or an engine is added.
 - `scripts/package-assets.py`: writes the MSIX logos in `src/TablePro.App/Assets` from the app icon. Run it after the icon changes.

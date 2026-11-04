@@ -25,6 +25,8 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     private readonly List<OpenConnection> _open = [];
     private readonly Dictionary<string, ConnectionFormWindow> _forms = [];
     private readonly List<MainWindow> _tabWindows = [];
+    // Native AOT trims OverlappedPresenter's wrapper, so AppWindow.Presenter reads back as its base type.
+    private readonly OverlappedPresenter _presenter = OverlappedPresenter.Create();
     private readonly bool _restoreMaximized;
     private readonly IReadOnlyList<TabWindowState> _restoreWindows = [];
     private SettingsView? _settings;
@@ -105,9 +107,9 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
     public void ActivateRestored()
     {
         Activate();
-        if (_restoreMaximized && AppWindow.Presenter is OverlappedPresenter presenter)
+        if (_restoreMaximized)
         {
-            presenter.Maximize();
+            _presenter.Maximize();
         }
 
         foreach (var saved in _restoreWindows)
@@ -323,6 +325,10 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 
     private void Prepare()
     {
+        var scale = WindowInterop.Scale(this);
+        _presenter.PreferredMinimumWidth = (int)(720 * scale);
+        _presenter.PreferredMinimumHeight = (int)(480 * scale);
+        AppWindow.SetPresenter(_presenter);
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         var tabContextMenu = new WindowContextMenu(this, point => Workspace?.ShowTabContextMenu(point) == true);
@@ -333,7 +339,6 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             SystemBackdrop = new MicaBackdrop();
         }
 
-        var scale = WindowInterop.Scale(this);
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         var width = Math.Min((int)(1280 * scale), area.Width);
         var height = Math.Min((int)(820 * scale), area.Height);
@@ -342,12 +347,6 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
             area.Y + ((area.Height - height) / 2),
             width,
             height));
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.PreferredMinimumWidth = (int)(720 * scale);
-            presenter.PreferredMinimumHeight = (int)(480 * scale);
-        }
-
         Themes.Apply(this, _workbench.Settings.Theme);
         _workbench.SettingsChanged += OnSettingsChanged;
         _workbench.LibraryChanged += OnLibraryChanged;

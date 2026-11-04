@@ -56,6 +56,22 @@ function Clear-FirstLogon {
     $log -join '; '
 }
 
+Add-Type -Namespace TpGate -Name Desktop -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint action, uint param, IntPtr value, uint flags);
+[DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint action, uint param, ref int value, uint flags);
+'@
+
+# windows-2025 moves a dragged window as an outline, so a tab merged into another strip only on release.
+function Set-DragFullWindows {
+    $before = 0
+    [TpGate.Desktop]::SystemParametersInfo(0x0026, 0, [ref]$before, 0) | Out-Null
+    # SPI_SETDRAGFULLWINDOWS, saved and broadcast as the Performance Options dialog does.
+    [TpGate.Desktop]::SystemParametersInfo(0x0025, 1, [IntPtr]::Zero, 3) | Out-Null
+    $after = 0
+    [TpGate.Desktop]::SystemParametersInfo(0x0026, 0, [ref]$after, 0) | Out-Null
+    "drag full windows before=$before after=$after"
+}
+
 # The Arm64 image runs wsl.exe a minute after first logon, and its update prompt opens over the desktop.
 function Start-WslWatch([string]$Log, [int]$Minutes = 20) {
     $script = @"

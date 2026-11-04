@@ -21,6 +21,8 @@ public sealed partial class ConnectionFormWindow : Window
     private static readonly string[] Colors = ["", "blue", "teal", "green", "yellow", "orange", "red", "pink", "purple", "slate"];
 
     private readonly Workbench _workbench;
+    // Native AOT trims OverlappedPresenter's wrapper, so AppWindow.Presenter reads back as its base type.
+    private readonly OverlappedPresenter _presenter = OverlappedPresenter.Create();
     private readonly bool _isNew;
     private ConnectionDraft? _draft;
     private DatabaseEngine? _engine;
@@ -83,12 +85,10 @@ public sealed partial class ConnectionFormWindow : Window
             center.Y + Math.Max(0, (ownerSize.Height - size.Height) / 2),
             size.Width,
             size.Height));
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.IsMinimizable = false;
-            presenter.PreferredMinimumWidth = (int)(560 * scale);
-            presenter.PreferredMinimumHeight = (int)(480 * scale);
-        }
+        _presenter.IsMinimizable = false;
+        _presenter.PreferredMinimumWidth = (int)(560 * scale);
+        _presenter.PreferredMinimumHeight = (int)(480 * scale);
+        AppWindow.SetPresenter(_presenter);
     }
 
     // By family, as the macOS app lists them.
