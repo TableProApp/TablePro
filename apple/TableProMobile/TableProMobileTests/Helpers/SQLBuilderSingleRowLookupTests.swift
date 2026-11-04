@@ -189,5 +189,25 @@ struct SQLBuilderSingleRowLookupTests {
         #expect(SQLBuilder.buildInsert(table: "t", schema: nil, type: .mssql, driver: sqlDriver,
             columns: ["k"], values: [value]) == "INSERT INTO [t] ([k]) VALUES (" + literal + ")")
     }
+
+    // Under a SQL collation a varchar key holds both `Wessels` and `Weßels`, which compare equal against N'…' text.
+    @Test("A SQL Server varchar key also matches its exact stored text")
+    func sqlServerNarrowKeyMatchesExactly() {
+        let sqlDriver = MSSQLDriver(connection: DatabaseConnection(name: "test", type: .mssql), password: nil)
+        let exact = "[k] = N'Weßels' AND CAST([k] AS NVARCHAR(MAX)) COLLATE Latin1_General_100_BIN2 = N'Weßels'"
+        let narrow = [ColumnInfo(name: "k", typeName: "varchar(20)")]
+        #expect(SQLBuilder.buildDelete(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver, primaryKeys: [("k", "Weßels")], columns: narrow
+        ) == "DELETE FROM [dbo].[t] WHERE " + exact)
+        #expect(SQLBuilder.buildUpdate(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver,
+            changes: [("v", "x")], primaryKeys: [("k", "Weßels")], columns: narrow
+        ) == "UPDATE [dbo].[t] SET [v] = N'x' WHERE " + exact)
+        #expect(lookup([("k", "Weßels")], columns: narrow, type: .mssql).contains("WHERE " + exact + " "))
+        let unicode = [ColumnInfo(name: "k", typeName: "nvarchar(20)")]
+        #expect(SQLBuilder.buildDelete(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver, primaryKeys: [("k", "Weßels")], columns: unicode
+        ) == "DELETE FROM [dbo].[t] WHERE [k] = N'Weßels'")
+    }
 }
 

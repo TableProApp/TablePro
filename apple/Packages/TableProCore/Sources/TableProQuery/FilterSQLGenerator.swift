@@ -127,6 +127,11 @@ public struct FilterSQLGenerator: Sendable {
         "\(stringLiteralPrefix)'\(literalBody(value))'"
     }
 
+    // By scalar: a combining mark after the quote joins it into one Character, so `hasPrefix` misses it.
+    private func isStringLiteral(_ sql: String) -> Bool {
+        sql.unicodeScalars.starts(with: "\(stringLiteralPrefix)'".unicodeScalars)
+    }
+
     // A number, a boolean or a bit has no case, and compared folded as text `5.50` would no longer equal `5.5`.
     // A pattern still folds: `contains TRUE` finds PostgreSQL's `true`.
     private func caseFolding(for filter: TableFilter, column: ColumnInfo?) -> PluginSQLCaseFolding {
@@ -146,7 +151,7 @@ public struct FilterSQLGenerator: Sendable {
     private func comparisonCondition(
         _ column: String, _ operand: String, _ operatorText: String, _ literal: String, folding: PluginSQLCaseFolding
     ) -> String {
-        guard folding.foldsComparisonOperands, literal.hasPrefix("'") || literal.hasPrefix("N'") else {
+        guard folding.foldsComparisonOperands, isStringLiteral(literal) else {
             return "\(column) \(operatorText) \(literal)"
         }
         return "\(folding.fold(operand)) \(operatorText) \(folding.fold(literal))"
@@ -201,7 +206,7 @@ public struct FilterSQLGenerator: Sendable {
     ) -> String {
         let keyword = negated ? "NOT IN" : "IN"
         let items = listItems(rawValue).map { escapeValue($0, kind: kind) }
-        let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.hasPrefix("'") || $0.hasPrefix("N'") }
+        let foldable = folding.foldsComparisonOperands && items.allSatisfy(isStringLiteral)
         let rendered = foldable ? items.map { folding.fold($0) } : items
         let subject = foldable ? folding.fold(operand) : column
         return "\(subject) \(keyword) (\(rendered.joined(separator: ", ")))"

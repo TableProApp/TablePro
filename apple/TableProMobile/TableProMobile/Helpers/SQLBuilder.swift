@@ -90,7 +90,11 @@ nonisolated enum SQLBuilder {
             case .number(let value):
                 return "\(column) = \(value)"
             case .text(let value):
-                return "\(column) = \(stringLiteral(value, for: type, driver: driver))"
+                let literal = stringLiteral(value, for: type, driver: driver)
+                guard type == .mssql, MSSQLRowMatch.comparesNarrowText(typeName: info?.typeName) else {
+                    return "\(column) = \(literal)"
+                }
+                return "\(column) = \(literal) AND \(MSSQLRowMatch.exactText(column, equals: literal))"
             case .numberOrText(let value):
                 // CAST is the text the grid read, so a REAL another spelling of the same number parses to stays out.
                 return "\(column) IN (\(value), '\(value)') AND CAST(\(column) AS TEXT) = '\(value)'"
