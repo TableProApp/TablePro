@@ -561,7 +561,26 @@ public sealed partial class ConnectionFormWindow : Window
         SetStatus(Strings.Get("Testing"), null);
         try
         {
-            await _workbench.Core.TestConnectionAsync(draft.ToConnection(), draft.Secrets(), testing.Token).ConfigureAwait(true);
+            var prompter = new CredentialDialogs(Root);
+            var record = draft.ToConnection();
+            var replaced = new HashSet<string>(StringComparer.Ordinal);
+            while (true)
+            {
+                try
+                {
+                    await _workbench.Core.TestConnectionAsync(record, draft.Secrets(), prompter, testing.Token).ConfigureAwait(true);
+                    break;
+                }
+                catch (TableProException exception) when (exception.Error.HostKey is { TrustAllowed: true } key && replaced.Add(key.Host))
+                {
+                    if (!await prompter.RecoverHostKeyAsync(
+                        _workbench.Core, record, exception.Error.HostKey!, testing.Token).ConfigureAwait(true))
+                    {
+                        throw;
+                    }
+                }
+            }
+
             SetStatus(Strings.Get("TestSucceeded"), true);
         }
         catch (TableProException exception)

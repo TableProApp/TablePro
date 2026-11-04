@@ -28,6 +28,8 @@ public sealed record FieldError(FormField Field, FieldProblem Problem);
 // Numbers stay text as typed, so Validate can name the field that does not parse.
 public sealed class ConnectionDraft
 {
+    private SshSettings? _savedSsh;
+
     public Guid? Id { get; set; }
 
     public string EngineId { get; set; } = string.Empty;
@@ -99,6 +101,7 @@ public sealed class ConnectionDraft
         ArgumentNullException.ThrowIfNull(engine);
         return new ConnectionDraft
         {
+            _savedSsh = connection.Ssh,
             Id = connection.Id,
             EngineId = connection.EngineId,
             IsFileEngine = engine.DefaultPort is null,
@@ -238,9 +241,11 @@ public sealed class ConnectionDraft
                     SshHost.Trim(),
                     ParsePort(SshPort),
                     Blank(SshUserName),
-                    [],
+                    _savedSsh?.JumpHosts ?? [],
                     SshAuth,
-                    SshAuth == SshAuthMethod.PrivateKey ? Blank(SshKeyPath) : null)
+                    SshAuth == SshAuthMethod.PrivateKey ? Blank(SshKeyPath) : null,
+                    SshAuth == SshAuthMethod.PrivateKey && _savedSsh is { KeyHasPassphrase: true }
+                        && string.Equals(_savedSsh.KeyPath, Blank(SshKeyPath), StringComparison.Ordinal))
                 : null,
             QueryTimeoutSeconds: string.IsNullOrWhiteSpace(Timeout)
                 ? null

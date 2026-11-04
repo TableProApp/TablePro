@@ -101,6 +101,12 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         SetRunning(true);
         try
         {
+            var held = WorkspaceNotices.Holds(Transaction);
+            if (await ReleaseLostEditorAsync().ConfigureAwait(true) && held)
+            {
+                return;
+            }
+
             _editor ??= await _session.OpenEditorAsync().ConfigureAwait(true);
             _run?.Dispose();
             var settings = _workbench.Settings;
@@ -122,24 +128,34 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         }
     }
 
-    // A lost connection is not reopened by itself, since its transaction would not come back.
     private async Task AfterRunAsync()
     {
-        if (_editor is { IsLost: true } lost)
+        if (await ReleaseLostEditorAsync().ConfigureAwait(true))
         {
-            _editor = null;
-            await lost.DisposeAsync().ConfigureAwait(true);
-            if (WorkspaceNotices.Holds(Transaction))
-            {
-                Results.ShowError(Strings.Get("TransactionLost"));
-            }
-
-            ShowTransaction(TransactionState.Idle);
             return;
         }
 
         var state = Results.Transaction == TransactionState.Unknown ? Transaction : Results.Transaction;
         ShowTransaction(WorkspaceNotices.Holds(state) ? state : TransactionState.Idle);
+    }
+
+    // A new user run may open an idle editor, but must never continue a transaction whose connection was lost.
+    private async Task<bool> ReleaseLostEditorAsync()
+    {
+        if (_editor is not { IsLost: true } lost)
+        {
+            return false;
+        }
+
+        _editor = null;
+        await lost.DisposeAsync().ConfigureAwait(true);
+        if (WorkspaceNotices.Holds(Transaction))
+        {
+            Results.ShowError(Strings.Get("TransactionLost"));
+        }
+
+        ShowTransaction(TransactionState.Idle);
+        return true;
     }
 
     private void ShowTransaction(TransactionState state)

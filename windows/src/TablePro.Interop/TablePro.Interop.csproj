@@ -30,6 +30,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="TablePro.Interop.Tests" />
     <None Include="$(CoreLibraryPath)" Link="$(CoreLibraryName)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
 

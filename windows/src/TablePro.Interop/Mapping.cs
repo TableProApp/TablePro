@@ -19,7 +19,10 @@ internal static class Mapping
                 server.Position is { } position ? checked((int)position) : null)
             : null,
         info.Path,
-        info.Secret is { } secret ? Kind(secret) : null);
+        info.Secret is { } secret ? Kind(secret) : null,
+        info.HostKey is { } key
+            ? new HostKeyFailure(key.Host, key.Algorithm, key.Fingerprint, key.KnownHosts, key.Line, key.TrustAllowed)
+            : null);
 
     public static DatabaseEngine Engine(Native.DriverInfo driver) => new(
         driver.Id,
@@ -180,7 +183,10 @@ internal static class Mapping
                 server.Position is { } position ? checked((uint)position) : null)
             : null,
         error.Path,
-        error.Secret is { } secret ? Kind(secret) : null);
+        error.Secret is { } secret ? Kind(secret) : null,
+        error.HostKey is { } key
+            ? new Native.HostKeyFailure(key.Host, key.Algorithm, key.Fingerprint, key.KnownHosts, key.Line, key.TrustAllowed)
+            : null);
 
     public static SecretItem Item(Native.SecretItemTag item) => item switch
     {

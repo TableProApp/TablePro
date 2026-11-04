@@ -7067,6 +7067,7 @@ dependencies = [
  "csbindgen",
  "futures",
  "percent-encoding",
+ "russh",
  "secrecy",
  "tablepro-core",
  "tablepro-driver-cassandra",

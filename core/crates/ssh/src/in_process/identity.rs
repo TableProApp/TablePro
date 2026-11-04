@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -16,17 +18,69 @@ use super::prompts::Prompts;
 // OpenSSH's NumberOfPasswordPrompts default, which also bounds a key's passphrase.
 pub(crate) const TRIES: usize = 3;
 
+// Keys and certificates need far less space; match the bound for TLS identity files.
+const MAX_IDENTITY_BYTES: u64 = 1024 * 1024;
+
+async fn read_identity(path: &Path) -> io::Result<Zeroizing<String>> {
+    let path = path.to_owned();
+    tokio::task::spawn_blocking(move || read_identity_blocking(&path))
+        .await
+        .map_err(io::Error::other)?
+}
+
+fn read_identity_blocking(path: &Path) -> io::Result<Zeroizing<String>> {
+    if !std::fs::metadata(path)?.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular identity file",
+        ));
+    }
+    let file = open_identity(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular identity file",
+        ));
+    }
+    if metadata.len() > MAX_IDENTITY_BYTES {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "identity file is too large"));
+    }
+    let mut text = Zeroizing::new(String::new());
+    // The file can grow after its metadata was read.
+    file.take(MAX_IDENTITY_BYTES + 1).read_to_string(&mut text)?;
+    if text.len() as u64 > MAX_IDENTITY_BYTES {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "identity file is too large"));
+    }
+    Ok(text)
+}
+
+#[cfg(unix)]
+fn open_identity(path: &Path) -> io::Result<File> {
+    use rustix::fs::{Mode, OFlags, open};
+
+    // A FIFO swapped in after metadata must not wait for a writer on the blocking pool.
+    open(path, OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NONBLOCK, Mode::empty())
+        .map(File::from)
+        .map_err(Into::into)
+}
+
+#[cfg(not(unix))]
+fn open_identity(path: &Path) -> io::Result<File> {
+    File::open(path)
+}
+
 // The key's public half without its passphrase: the `.pub` beside it, or the
 // copy an OpenSSH key file keeps in the clear.
 pub(crate) async fn public_half(path: &Path) -> Option<PublicKey> {
     let mut beside = path.as_os_str().to_owned();
     beside.push(".pub");
-    if let Ok(text) = tokio::fs::read_to_string(PathBuf::from(beside)).await
+    if let Ok(text) = read_identity(&PathBuf::from(beside)).await
         && let Ok(key) = PublicKey::from_openssh(text.trim())
     {
         return Some(key);
     }
-    let text = Zeroizing::new(tokio::fs::read_to_string(path).await.ok()?);
+    let text = read_identity(path).await.ok()?;
     PrivateKey::from_openssh(text.as_bytes())
         .ok()
         .map(|key| key.public_key().clone())
@@ -36,7 +90,7 @@ pub(crate) async fn public_half(path: &Path) -> Option<PublicKey> {
 pub(crate) async fn certificate_beside(path: &Path) -> Option<Certificate> {
     let mut beside = path.as_os_str().to_owned();
     beside.push("-cert.pub");
-    let text = tokio::fs::read_to_string(PathBuf::from(beside)).await.ok()?;
+    let text = read_identity(&PathBuf::from(beside)).await.ok()?;
     Certificate::from_openssh(text.trim()).ok()
 }
 
@@ -49,8 +103,8 @@ pub(crate) async fn load(
     stored: &mut Option<SecretString>,
     prompts: &Prompts,
 ) -> Result<Option<PrivateKey>, SshFailure> {
-    let text = match tokio::fs::read_to_string(path).await {
-        Ok(text) => Arc::new(Zeroizing::new(text)),
+    let text = match read_identity(path).await {
+        Ok(text) => Arc::new(text),
         Err(error) if chosen => {
             return Err(SshFailure::IdentityFileUnreadable {
                 path: path.to_owned(),
@@ -340,6 +394,84 @@ mod tests {
         );
         assert!(load(&missing, false, &mut None, &prompts).await.unwrap().is_none());
         assert!(load(&garbage, false, &mut None, &prompts).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn oversized_private_keys_are_refused_before_decoding() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_key(dir.path(), None);
+        let mut contents = std::fs::read_to_string(&path).unwrap();
+        contents.extend(std::iter::repeat_n('\n', MAX_IDENTITY_BYTES as usize));
+        std::fs::write(&path, contents).unwrap();
+        let (prompts, prompter) = prompts(Vec::new());
+
+        assert!(matches!(
+            load(&path, true, &mut None, &prompts).await,
+            Err(SshFailure::IdentityFileUnreadable {
+                kind: io::ErrorKind::InvalidData,
+                ..
+            })
+        ));
+        assert!(load(&path, false, &mut None, &prompts).await.unwrap().is_none());
+        assert!(public_half(&path).await.is_none());
+        assert!(prompter.requests().is_empty());
+    }
+
+    #[tokio::test]
+    async fn oversized_optional_public_keys_and_certificates_are_skipped() {
+        use russh::keys::ssh_key::certificate::{Builder, CertType};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("id_ed25519");
+        let public_path = dir.path().join("id_ed25519.pub");
+        let certificate_path = dir.path().join("id_ed25519-cert.pub");
+        let key = key();
+        let public = key.public_key().to_openssh().unwrap();
+        let mut builder = Builder::new(vec![7; 16], key.public_key().key_data().clone(), 100, 200).unwrap();
+        builder.cert_type(CertType::User).unwrap();
+        builder.valid_principal("deploy").unwrap();
+        let certificate = builder.sign(&key).unwrap().to_openssh().unwrap();
+        std::fs::write(&public_path, &public).unwrap();
+        std::fs::write(&certificate_path, &certificate).unwrap();
+        assert!(public_half(&path).await.is_some());
+        assert!(certificate_beside(&path).await.is_some());
+
+        let padding = " ".repeat(MAX_IDENTITY_BYTES as usize);
+        std::fs::write(&public_path, format!("{public}{padding}")).unwrap();
+        std::fs::write(&certificate_path, format!("{certificate}{padding}")).unwrap();
+
+        assert!(public_half(&path).await.is_none());
+        assert!(certificate_beside(&path).await.is_none());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_fifo_or_device_is_refused_without_reading_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("identity");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg("-m")
+                .arg("600")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let (prompts, _) = prompts(Vec::new());
+
+        for path in [fifo.as_path(), Path::new("/dev/zero")] {
+            assert!(matches!(
+                load(path, true, &mut None, &prompts).await,
+                Err(SshFailure::IdentityFileUnreadable {
+                    kind: io::ErrorKind::InvalidInput,
+                    ..
+                })
+            ));
+        }
+        // Opening the FIFO alone also cannot wait if it replaces a regular file after metadata.
+        let opened = open_identity(&fifo).unwrap();
+        assert!(!opened.metadata().unwrap().is_file());
     }
 
     #[tokio::test]

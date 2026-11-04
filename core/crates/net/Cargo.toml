@@ -19,8 +19,8 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["net", "rt"] }
 tracing.workspace = true
 
-[target.'cfg(target_os = "linux")'.dependencies]
-rustix = { workspace = true, features = ["process"] }
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, features = ["fs", "process"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

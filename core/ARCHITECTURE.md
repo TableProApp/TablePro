@@ -72,7 +72,7 @@ A value or a trait the app passes in:
 |---|---|---|
 | `StoragePaths` | `tablepro_linux_platform::storage_paths`, GLib's XDG directories | `HostConfig.storage_dir`, one folder for every root |
 | `SecretVault` and `SecretItems`, labelled through `SecretLabeler` and `SecretItemLabeler` | `tablepro_linux_platform::SecretStore`, the Secret Service through oo7 | `Core::with_system_secrets`, the platform's store the core reaches itself (below); `HostSecrets`, a callback interface, for a host with a store of its own |
-| `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | none yet, so a route through SSH fails as with no client installed; `tablepro_ssh::InProcessSsh`, behind `tablepro-session`'s `in-process-ssh` feature, is the transport for it ([ADR 0008](docs/decisions/0008-in-process-ssh-on-windows.md)) |
+| `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | `tablepro_ssh::InProcessSsh`, behind `tablepro-session`'s `in-process-ssh` feature ([ADR 0008](docs/decisions/0008-in-process-ssh-on-windows.md)) |
 | `ProcessHold` | `gio::Application::hold` | none |
 
 A `cfg` split inside a crate:

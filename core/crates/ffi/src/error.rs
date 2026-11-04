@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tablepro_core::{DriverError, ServerDiagnostics, TransportError};
+use tablepro_core::{DriverError, ServerDiagnostics, SshFailure, TransportError};
 use tablepro_session::{ConnectError, OperationError};
 
 use crate::host::SecretKindTag;
@@ -13,7 +13,7 @@ pub enum CoreError {
     #[error("cancelled")]
     Cancelled,
     #[error("{}", info.message)]
-    Failed { info: ErrorInfo },
+    Failed { info: BoxedErrorInfo },
 }
 
 /// An error as the app words it: by `code`, the innermost of `codes`,
@@ -31,6 +31,25 @@ pub struct ErrorInfo {
     pub path: Option<String>,
     /// The secret a keyring error is about, so the app can ask for it.
     pub secret: Option<SecretKindTag>,
+    pub host_key: Option<HostKeyFailure>,
+}
+
+// Error details stay off the stack while bindings keep the same record values.
+pub type BoxedErrorInfo = Box<ErrorInfo>;
+
+uniffi::custom_type!(BoxedErrorInfo, ErrorInfo, {
+    lower: |value| *value,
+    try_lift: |value| Ok(Box::new(value)),
+});
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HostKeyFailure {
+    pub host: String,
+    pub algorithm: String,
+    pub fingerprint: String,
+    pub known_hosts: String,
+    pub line: u64,
+    pub trust_allowed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -46,14 +65,15 @@ pub struct ServerMessage {
 impl CoreError {
     pub(crate) fn failed(code: &str, message: impl Into<String>) -> Self {
         Self::Failed {
-            info: ErrorInfo {
+            info: Box::new(ErrorInfo {
                 code: code.to_owned(),
                 codes: vec![code.to_owned()],
                 message: message.into(),
                 server: None,
                 path: None,
                 secret: None,
-            },
+                host_key: None,
+            }),
         }
     }
 
@@ -81,6 +101,7 @@ impl ErrorInfo {
             server: server_message(cause),
             path: file_path(cause).map(|path| path.display().to_string()),
             secret: None,
+            host_key: host_key_failure(cause),
         }
     }
 
@@ -92,8 +113,31 @@ impl ErrorInfo {
             server: None,
             path: None,
             secret: None,
+            host_key: None,
         }
     }
+}
+
+fn host_key_failure(error: &DriverError) -> Option<HostKeyFailure> {
+    let DriverError::Transport(TransportError::Ssh(SshFailure::HostKeyChanged {
+        host,
+        algorithm,
+        sha256_fingerprint,
+        known_hosts,
+        line,
+        trust_allowed,
+    })) = error
+    else {
+        return None;
+    };
+    Some(HostKeyFailure {
+        host: host.clone(),
+        algorithm: algorithm.clone(),
+        fingerprint: sha256_fingerprint.clone(),
+        known_hosts: known_hosts.display().to_string(),
+        line: u64::try_from(*line).unwrap_or(u64::MAX),
+        trust_allowed: *trust_allowed,
+    })
 }
 
 fn driver_codes(error: &DriverError, codes: &mut Vec<String>) {
@@ -146,7 +190,7 @@ impl From<DriverError> for CoreError {
         match error {
             DriverError::Cancelled => Self::Cancelled,
             error => Self::Failed {
-                info: ErrorInfo::from_driver(&error),
+                info: ErrorInfo::from_driver(&error).into(),
             },
         }
     }
@@ -157,10 +201,10 @@ impl From<&OperationError> for CoreError {
         match error {
             OperationError::Cancelled | OperationError::Driver(DriverError::Cancelled) => Self::Cancelled,
             OperationError::Driver(driver) => Self::Failed {
-                info: ErrorInfo::wrapping(&[error.code()], driver, error.to_string()),
+                info: ErrorInfo::wrapping(&[error.code()], driver, error.to_string()).into(),
             },
             other => Self::Failed {
-                info: ErrorInfo::plain(&[other.code()], other.to_string()),
+                info: ErrorInfo::plain(&[other.code()], other.to_string()).into(),
             },
         }
     }
@@ -183,16 +227,16 @@ impl From<ConnectError> for CoreError {
         match &error {
             ConnectError::Cancelled | ConnectError::Driver(DriverError::Cancelled) => Self::Cancelled,
             ConnectError::Driver(driver) => Self::Failed {
-                info: ErrorInfo::wrapping(&[error.code()], driver, error.to_string()),
+                info: ErrorInfo::wrapping(&[error.code()], driver, error.to_string()).into(),
             },
             ConnectError::Keyring(keyring) => Self::Failed {
-                info: ErrorInfo {
+                info: Box::new(ErrorInfo {
                     secret: Some(keyring.kind().into()),
                     ..ErrorInfo::plain(&[error.code(), keyring.code()], error.to_string())
-                },
+                }),
             },
             other => Self::Failed {
-                info: ErrorInfo::plain(&[other.code()], other.to_string()),
+                info: ErrorInfo::plain(&[other.code()], other.to_string()).into(),
             },
         }
     }
@@ -208,7 +252,7 @@ mod tests {
 
     fn info(error: CoreError) -> ErrorInfo {
         match error {
-            CoreError::Failed { info } => info,
+            CoreError::Failed { info } => *info,
             CoreError::Cancelled => panic!("cancelled"),
         }
     }
@@ -237,6 +281,50 @@ mod tests {
             info.codes,
             ["operation.driver", "driver.config", "config.relative_path"]
         );
+    }
+
+    #[test]
+    fn a_changed_host_key_carries_the_facts_needed_for_an_explicit_recovery() {
+        let known_hosts = PathBuf::from("/keys/known_hosts");
+        for trust_allowed in [false, true] {
+            let error = ConnectError::Driver(DriverError::from(TransportError::Ssh(SshFailure::HostKeyChanged {
+                host: "[db.internal]:2222".to_owned(),
+                algorithm: "ED25519".to_owned(),
+                sha256_fingerprint: "SHA256:new-key".to_owned(),
+                known_hosts: known_hosts.clone(),
+                line: 7,
+                trust_allowed,
+            })));
+
+            let info = info(error.into());
+
+            assert_eq!(info.code, "ssh.host_key_changed");
+            assert_eq!(
+                info.host_key,
+                Some(HostKeyFailure {
+                    host: "[db.internal]:2222".to_owned(),
+                    algorithm: "ED25519".to_owned(),
+                    fingerprint: "SHA256:new-key".to_owned(),
+                    known_hosts: known_hosts.display().to_string(),
+                    line: 7,
+                    trust_allowed,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn a_revoked_host_key_has_no_recovery_action() {
+        let info = info(
+            DriverError::from(TransportError::Ssh(SshFailure::HostKeyRevoked {
+                host: "db.internal".to_owned(),
+                detail: "revoked".to_owned(),
+            }))
+            .into(),
+        );
+
+        assert_eq!(info.code, "ssh.host_key_revoked");
+        assert!(info.host_key.is_none());
     }
 
     #[test]
