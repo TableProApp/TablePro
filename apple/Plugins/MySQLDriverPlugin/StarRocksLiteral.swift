@@ -7,6 +7,7 @@ import Foundation
 import TableProPluginKit
 
 internal enum StarRocksLiteral {
+    // AstBuilder.escapeBackSlash reads `\f` as `f`, so a form feed stays a raw character, which the literal takes.
     static func escapeString(_ value: String) -> String {
         var result = ""
         result.reserveCapacity(value.utf8.count + 2)
@@ -19,7 +20,6 @@ internal enum StarRocksLiteral {
             case "\t": result += "\\t"
             case "\0": result += "\\0"
             case "\u{08}": result += "\\b"
-            case "\u{0C}": result += "\\f"
             default: result.unicodeScalars.append(scalar)
             }
         }
@@ -56,8 +56,9 @@ internal enum StarRocksLiteral {
             return position < scalars.count ? scalars[position] : nil
         }
 
+        // StarRocksLex.g4 ends `--` at a carriage return as well as a line feed.
         func copyThroughLineEnd() {
-            while index < scalars.count, scalars[index] != "\n" {
+            while index < scalars.count, scalars[index] != "\n", scalars[index] != "\r" {
                 output.append(scalars[index])
                 index += 1
             }
