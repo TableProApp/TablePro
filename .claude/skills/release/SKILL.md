@@ -7,7 +7,7 @@ description: >
   release. Use whenever the user says "release", "cut a beta", "ship version", "tag a release",
   "promote the beta", "backport", or gives a version number ("/release 0.83.0", "/release
   0.83.0-beta.2"). Not for the blog post, newsletter or X posts (the announce skill in
-  TableProApp/web), and not for the iOS app.
+  TableProApp/web), and not for the iOS app. The Windows app releases from `windows/RELEASING.md`.
 ---
 
 # Release

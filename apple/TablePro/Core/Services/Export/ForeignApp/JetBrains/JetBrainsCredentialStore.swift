@@ -8,16 +8,7 @@ import Foundation
 import os
 import Security
 
-/// Resolves JetBrains credentials. The IDE names each secret with
-/// `generateServiceName(subsystem, key)`, formatted
-/// `IntelliJ Platform <subsystem> \u{2014} <key>`:
-/// - DB password: subsystem `DB`, key `<data-source uuid>`.
-/// - SSH tunnel password: subsystem `SshConfigPassword`, key `<host>:<port> <ssh-config-id>`.
-/// - SSH key passphrase: subsystem `SshConfigPassphrase`, same key shape.
-///
-/// SSH secrets only exist once a connection authenticated and saved them. On macOS
-/// the secret lives in the native Keychain; only the "In KeePass" mode writes the
-/// encrypted `c.kdbx`, so the Keychain is tried first and the KDBX is a fallback.
+// The Keychain holds the IDE's secrets by default; only the "In KeePass" setting writes `c.kdbx`.
 final class JetBrainsCredentialStore {
     enum Lookup {
         case found(String)
@@ -27,8 +18,6 @@ final class JetBrainsCredentialStore {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "JetBrainsCredentialStore")
 
-    /// ASCII bytes of "Proxy Config Sec", the hardcoded AES-128 key the IDE uses
-    /// for the BUILT_IN encryption of the KDBX main key in `c.pwd`.
     private static let builtInKey: [UInt8] = Array("Proxy Config Sec".utf8)
 
     private let configDir: URL
@@ -111,7 +100,7 @@ final class JetBrainsCredentialStore {
 
         let kdbxURL = configDir.appendingPathComponent("c.kdbx")
         guard FileManager.default.fileExists(atPath: kdbxURL.path),
-              let fileData = try? Data(contentsOf: kdbxURL),
+              let fileData = try? ForeignAppFile.read(kdbxURL),
               let mainKey = loadMainKey() else { return nil }
 
         do {
@@ -124,20 +113,28 @@ final class JetBrainsCredentialStore {
     }
 
     private func loadMainKey() -> [UInt8]? {
-        for fileName in ["c.pwd", "pdb.pwd"] {
-            let url = configDir.appendingPathComponent(fileName)
-            guard let text = try? String(contentsOf: url, encoding: .utf8),
-                  let parsed = parseMainKeyFile(text) else { continue }
-            guard parsed.encryption == "BUILT_IN" else {
-                Self.logger.warning("Unsupported c.pwd encryption: \(parsed.encryption)")
-                storeLocked = true
-                continue
-            }
-            if let key = decryptBuiltIn(parsed.value) {
-                return key
-            }
+        let encryption: String
+        let blob: [UInt8]
+        do {
+            let data = try ForeignAppFile.read(configDir.appendingPathComponent("c.pwd"))
+            guard let text = String(data: data, encoding: .utf8),
+                  let parsed = parseMainKeyFile(text) else { return nil }
+            encryption = parsed.encryption
+            blob = parsed.value
+        } catch let error where ForeignAppFile.isMissing(error) {
+            // The IDE reads the older `pdb.pwd`, raw bytes rather than YAML, only when `c.pwd` is missing.
+            guard let data = try? ForeignAppFile.read(configDir.appendingPathComponent("pdb.pwd")) else { return nil }
+            encryption = "BUILT_IN"
+            blob = [UInt8](data)
+        } catch {
+            return nil
         }
-        return nil
+        guard encryption == "BUILT_IN" else {
+            Self.logger.warning("Unsupported c.pwd encryption: \(encryption)")
+            storeLocked = true
+            return nil
+        }
+        return decryptBuiltIn(blob)
     }
 
     private func parseMainKeyFile(_ text: String) -> (encryption: String, value: [UInt8])? {

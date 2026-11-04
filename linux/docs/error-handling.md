@@ -8,7 +8,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 |---|---|---|
 | `tablepro-core` | `DriverError`, `ConfigError`, `TransportError`, `SshFailure`, `CertificateFileProblem`, `SecretError` | The contract every driver, transport and keyring speaks. |
 | `tablepro-net` | `tls::TlsSetupError` | Wraps a `ConfigError`, a rustls error or a PEM encoding error while a TLS config is built; drivers turn it into `DriverError`. |
-| `tablepro-ssh` | `SshFailure`, inside `TransportError::Ssh` | Classified from OpenSSH's exit status and stderr. |
+| `tablepro-ssh` | `SshFailure`, inside `TransportError::Ssh` | Classified from OpenSSH's exit status and stderr, or in the in-process transport from russh's errors and the server's disconnect ([core ADR 0009](../../core/docs/decisions/0009-in-process-ssh-on-windows.md)). |
 | `drivers/<engine>` | `DriverError` only | The client library's error never leaves the crate. |
 | `tablepro-storage` | `StorageError`, `KeyringError`, `CredentialError` | `KeyringError::Secret` wraps core's `SecretError`. |
 | `tablepro-linux-platform` | `SettingsError` | GSettings. The Secret Service's errors map to core's `SecretError`. |
@@ -24,7 +24,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `Transport(TransportError)` | The route failed: name resolution, refused, unreachable, a connect or SSH timeout, or an `SshFailure`. |
 | `Auth { diagnostics }` | The server refused the credentials, with its own explanation when it gave one. |
 | `LoginRefused(ServerDiagnostics)` | The server turned the login away for a reason other than the password, such as PostgreSQL's pg_hba.conf rules. The app offers no new password for it. |
-| `IntegratedAuth(String)` | A Kerberos login failed before the server saw it. |
+| `IntegratedAuth(String)` | An integrated login failed before the server saw it: GSSAPI on Linux and macOS, SSPI on Windows. |
 | `Tls { failure, detail }` | The handshake failed; `TlsFailure` says why. |
 | `Server(ServerDiagnostics)` | The server refused the statement. |
 | `ReadOnly(ReadOnlyRefusal)` | A write on a read-only connection: `ClientGuard` (the driver refused before sending) or `ServerRejected` (the server refused). |
@@ -97,8 +97,8 @@ A driver maps the codes the app acts on to their own variants and passes everyth
 |---|---|---|
 | `Connect` | `LivenessPolicy::connect_timeout`, 10 s | No TCP connection, or the socket did not open. |
 | `Login` | `login_timeout`, 15 s | Connected, but the login or TLS handshake did not finish. |
-| `SshHandshake` | `ssh_handshake_timeout`, 20 s, paused while a prompt is open | OpenSSH did not authenticate in time. |
-| `SshChannelOpen` | `ssh_channel_open_timeout`, 10 s | `ssh -O forward` did not answer in time. |
+| `SshHandshake` | `ssh_handshake_timeout`, 20 s, paused while a prompt is open | The SSH login, every jump host included, did not finish in time. |
+| `SshChannelOpen` | `ssh_channel_open_timeout`, 10 s | `ssh -O forward`, or the in-process transport's channel open, did not answer in time. |
 | `LockWait` | `WorkspaceSettings::lock_timeout`, 10 s | Another session holds a lock this statement needs. |
 | `Statement` | The call's deadline, or the workspace statement timeout of 60 s | The statement ran too long. `server_cancelled` says whether the server confirmed the stop. |
 | `Probe` | `probe_timeout`, 5 s | The server did not answer a liveness check. |
@@ -113,7 +113,9 @@ Drivers classify a handshake failure with `tablepro_net::tls::classify`, which w
 | `NameMismatch` | The certificate is for another name. | **Set TLS Server Name**, which opens the connect dialog at the server name row, where the route shows that row; MySQL over a direct route checks the host it dials and offers only **Edit Connection…**. |
 | `Expired`, `NotYetValid`, `Revoked` | The certificate itself is bad. | Nothing: the server's certificate has to be replaced. |
 | `ServerRefusedTls` | The server does not speak TLS on this port. | The message; turn TLS off or use the TLS port. |
-| `ServerRequiresTls` | TLS was off and the server insists on it. | The message; turn TLS on. |
+| `ServerRequiresTls` | TLS was off and the server insists on it. | **Change Encryption**, which opens the connect dialog at the Encryption row. |
+| `ServerRefusedStrict` | SQL Server closed a strict (TDS 8.0) login before answering: it does not speak TDS 8.0 (before 2022 on Windows, before 2025 on Linux) or has no certificate for it. | **Change Encryption**; Verify full suits an older server. |
+| `ServerRequiresStrict` | SQL Server closed a TDS 7.4 login before answering, as a server that requires strict encryption does. | **Change Encryption**, to Strict. |
 | `HandshakeRejected` | The server ended the handshake, for example over the client certificate. | The server's reason. |
 | `CaFileInvalid`, `ClientIdentityInvalid` | A file the user chose cannot be used. | The message names the file. |
 | `Other` | Anything else. | The rustls message. |

@@ -76,7 +76,7 @@ fn read_pem_file(path: &Path) -> Result<Vec<u8>, CertificateFileProblem> {
     if !std::fs::metadata(path).map_err(unreadable)?.is_file() {
         return Err(CertificateFileProblem::NotRegularFile);
     }
-    let file = File::open(path).map_err(unreadable)?;
+    let file = open_pem_file(path).map_err(unreadable)?;
     // What was opened may not be what was looked at a moment before.
     if !file.metadata().map_err(unreadable)?.is_file() {
         return Err(CertificateFileProblem::NotRegularFile);
@@ -91,6 +91,21 @@ fn read_pem_file(path: &Path) -> Result<Vec<u8>, CertificateFileProblem> {
         });
     }
     Ok(bytes)
+}
+
+#[cfg(unix)]
+fn open_pem_file(path: &Path) -> std::io::Result<File> {
+    use rustix::fs::{Mode, OFlags, open};
+
+    // A FIFO swapped in after metadata must not wait for a writer.
+    open(path, OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NONBLOCK, Mode::empty())
+        .map(File::from)
+        .map_err(Into::into)
+}
+
+#[cfg(not(unix))]
+fn open_pem_file(path: &Path) -> std::io::Result<File> {
+    File::open(path)
 }
 
 fn parse_certificates(bytes: &[u8]) -> Result<Vec<CertificateDer<'static>>, CertificateFileProblem> {
@@ -117,5 +132,34 @@ fn certificate_problem(error: pem::Error) -> CertificateFileProblem {
             tracing::debug!(error = %other, "the certificate file is not valid PEM");
             CertificateFileProblem::InvalidCertificate
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fifo_at_open_time_does_not_wait_for_a_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("certificate.pem");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg("-m")
+                .arg("600")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+
+        // Bypass the path check to cover a FIFO replacing a regular file before open.
+        let file = open_pem_file(&path).unwrap();
+
+        assert!(!file.metadata().unwrap().is_file());
+        assert!(matches!(
+            read_pem_file(&path),
+            Err(CertificateFileProblem::NotRegularFile)
+        ));
     }
 }

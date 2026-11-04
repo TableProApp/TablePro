@@ -8,6 +8,15 @@
 
     <Grid x:Name="Root">
         <Grid.Resources>
+            <Style x:Key="FormSuccessTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+            </Style>
+            <Style x:Key="FormErrorTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            </Style>
+            <Style x:Key="FormNeutralTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
             <CollectionViewSource x:Name="EngineSource" IsSourceGrouped="True" ItemsPath="Items" />
         </Grid.Resources>
         <Grid.RowDefinitions>
@@ -117,6 +126,10 @@
                         <TextBox x:Uid="HostBox" x:Name="HostBox" VerticalAlignment="Top" AutomationProperties.AutomationId="HostBox" />
                         <TextBox x:Uid="PortBox" x:Name="PortBox" Grid.Column="1" VerticalAlignment="Top" AutomationProperties.AutomationId="PortBox" InputScope="Number" />
                     </Grid>
+                    <ComboBox x:Name="AuthBox" x:Uid="AuthBox" HorizontalAlignment="Stretch" AutomationProperties.AutomationId="AuthBox" SelectionChanged="OnAuthChanged">
+                        <ComboBoxItem x:Uid="AuthPassword" Tag="Password" />
+                        <ComboBoxItem x:Uid="AuthIntegrated" Tag="Integrated" />
+                    </ComboBox>
                     <TextBox x:Uid="UserBox" x:Name="UserBox" AutomationProperties.AutomationId="UserBox" />
                     <PasswordBox x:Uid="PasswordInput" x:Name="PasswordInput" AutomationProperties.AutomationId="PasswordInput" />
                     <TextBox x:Uid="DatabaseBox" x:Name="DatabaseBox" AutomationProperties.AutomationId="DatabaseBox" />
@@ -136,19 +149,19 @@
                 <StackPanel x:Name="Sections" Spacing="{StaticResource SettingsCardSpacing}">
                     <toolkit:SettingsExpander x:Uid="SshExpander" x:Name="SshExpander" AutomationProperties.AutomationId="SshExpander">
                         <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="Permissions" /></toolkit:SettingsExpander.HeaderIcon>
-                        <ToggleSwitch x:Uid="SshSwitch" x:Name="SshSwitch" Toggled="OnSshToggled" />
+                        <ToggleSwitch x:Uid="SshSwitch" x:Name="SshSwitch" AutomationProperties.AutomationId="SshSwitch" Toggled="OnSshToggled" />
                         <toolkit:SettingsExpander.Items>
                             <toolkit:SettingsCard x:Uid="SshHostCard">
-                                <TextBox x:Name="SshHostBox" x:Uid="SshHostBox" MinWidth="240" />
+                                <TextBox x:Name="SshHostBox" AutomationProperties.AutomationId="SshHostBox" x:Uid="SshHostBox" MinWidth="240" />
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshPortCard">
-                                <TextBox x:Name="SshPortBox" x:Uid="SshPortBox" MinWidth="120" InputScope="Number" />
+                                <TextBox x:Name="SshPortBox" AutomationProperties.AutomationId="SshPortBox" x:Uid="SshPortBox" MinWidth="120" InputScope="Number" />
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshUserCard">
-                                <TextBox x:Name="SshUserBox" x:Uid="SshUserBox" MinWidth="240" />
+                                <TextBox x:Name="SshUserBox" AutomationProperties.AutomationId="SshUserBox" x:Uid="SshUserBox" MinWidth="240" />
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshAuthCard">
-                                <ComboBox x:Name="SshAuthBox" x:Uid="SshAuthBox" MinWidth="240" SelectionChanged="OnSshAuthChanged">
+                                <ComboBox x:Name="SshAuthBox" AutomationProperties.AutomationId="SshAuthBox" x:Uid="SshAuthBox" MinWidth="240" SelectionChanged="OnSshAuthChanged">
                                     <ComboBoxItem x:Uid="SshAuthAgent" Tag="Agent" />
                                     <ComboBoxItem x:Uid="SshAuthKey" Tag="PrivateKey" />
                                     <ComboBoxItem x:Uid="SshAuthPassword" Tag="Password" />
@@ -157,37 +170,36 @@
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshKeyCard" x:Name="SshKeyCard">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBox x:Name="SshKeyBox" x:Uid="SshKeyBox" MinWidth="240" />
+                                    <TextBox x:Name="SshKeyBox" AutomationProperties.AutomationId="SshKeyBox" x:Uid="SshKeyBox" MinWidth="240" />
                                     <Button x:Uid="BrowseButton" Click="OnBrowseKey" />
                                 </StackPanel>
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshPasswordCard" x:Name="SshPasswordCard">
-                                <PasswordBox x:Name="SshPasswordInput" x:Uid="SshPasswordInput" MinWidth="240" />
+                                <PasswordBox x:Name="SshPasswordInput" AutomationProperties.AutomationId="SshPasswordInput" x:Uid="SshPasswordInput" MinWidth="240" />
                             </toolkit:SettingsCard>
                         </toolkit:SettingsExpander.Items>
                     </toolkit:SettingsExpander>
 
                     <toolkit:SettingsExpander x:Uid="TlsExpander" x:Name="TlsExpander" AutomationProperties.AutomationId="TlsExpander">
                         <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="ProtectedDocument" /></toolkit:SettingsExpander.HeaderIcon>
-                        <ComboBox x:Name="TlsModeBox" x:Uid="TlsModeBox" MinWidth="240" SelectionChanged="OnSummaryChanged">
-                            <ComboBoxItem x:Uid="TlsDisable" Tag="Disable" />
-                            <ComboBoxItem x:Uid="TlsRequire" Tag="Require" />
-                            <ComboBoxItem x:Uid="TlsVerifyFull" Tag="VerifyFull" />
-                        </ComboBox>
+                        <ComboBox x:Name="TlsModeBox" x:Uid="TlsModeBox" MinWidth="240" MaxWidth="400" AutomationProperties.AutomationId="TlsModeBox" SelectionChanged="OnTlsChanged" />
                         <toolkit:SettingsExpander.Items>
-                            <toolkit:SettingsCard x:Uid="CaFileCard">
+                            <toolkit:SettingsCard x:Uid="CaFileCard" x:Name="CaFileCard">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBox x:Name="CaFileBox" x:Uid="CaFileBox" MinWidth="240" />
+                                    <TextBox x:Name="CaFileBox" x:Uid="CaFileBox" AutomationProperties.AutomationId="CaFileBox" MinWidth="240" />
                                     <Button x:Uid="BrowseButton" Tag="CaFileBox" Click="OnBrowseCertificate" />
                                 </StackPanel>
                             </toolkit:SettingsCard>
-                            <toolkit:SettingsCard x:Uid="ClientCertificateCard">
+                            <toolkit:SettingsCard x:Uid="ServerNameCard" x:Name="ServerNameCard">
+                                <TextBox x:Name="ServerNameBox" x:Uid="ServerNameBox" MinWidth="240" AutomationProperties.AutomationId="ServerNameBox" />
+                            </toolkit:SettingsCard>
+                            <toolkit:SettingsCard x:Uid="ClientCertificateCard" x:Name="ClientCertificateCard">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <TextBox x:Name="ClientCertificateBox" x:Uid="ClientCertificateBox" MinWidth="240" />
                                     <Button x:Uid="BrowseButton" Tag="ClientCertificateBox" Click="OnBrowseCertificate" />
                                 </StackPanel>
                             </toolkit:SettingsCard>
-                            <toolkit:SettingsCard x:Uid="ClientKeyCard">
+                            <toolkit:SettingsCard x:Uid="ClientKeyCard" x:Name="ClientKeyCard">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <TextBox x:Name="ClientKeyBox" x:Uid="ClientKeyBox" MinWidth="240" />
                                     <Button x:Uid="BrowseButton" Tag="ClientKeyBox" Click="OnBrowseCertificate" />
@@ -243,14 +255,16 @@
             </Grid.ColumnDefinitions>
             <Button x:Uid="TestButton" x:Name="TestButton" AutomationProperties.AutomationId="TestButton" Click="OnTest" />
             <ProgressRing x:Name="TestRing" Grid.Column="1" Width="16" Height="16" IsActive="False" />
-            <TextBlock
-                x:Name="StatusText"
-                Grid.Column="2"
-                VerticalAlignment="Center"
-                AutomationProperties.AutomationId="FormStatus"
-                AutomationProperties.LiveSetting="Assertive"
-                TextTrimming="CharacterEllipsis"
-                TextWrapping="NoWrap" />
+            <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                <TextBlock
+                    x:Name="StatusText"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="FormStatus"
+                    AutomationProperties.LiveSetting="Assertive"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
+                <HyperlinkButton x:Name="ChangeEncryptionButton" x:Uid="ChangeEncryptionButton" AutomationProperties.AutomationId="ChangeEncryptionButton" Visibility="Collapsed" Click="OnChangeEncryption" />
+            </StackPanel>
             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
                 <Button x:Uid="ConnectButton" x:Name="ConnectButton" AutomationProperties.AutomationId="ConnectButton" Click="OnConnect" />
                 <Button x:Uid="SaveButton" x:Name="SaveButton" AutomationProperties.AutomationId="SaveButton" Click="OnSave" />

@@ -57,7 +57,7 @@ impl TlsFormState {
     /// not show is left out rather than cleared, so looking at another
     /// driver or mode and coming back keeps what was chosen.
     pub fn config(&self, caps: &TlsCapabilities, route: TransportClass) -> TlsConfig {
-        if self.mode == TlsMode::Disable {
+        if !self.mode.encrypts() {
             return TlsConfig::disabled();
         }
         let client_identity = (caps.client_identity
@@ -71,7 +71,7 @@ impl TlsFormState {
             ca_file: self
                 .ca_file
                 .clone()
-                .filter(|_| caps.ca_file && self.mode == TlsMode::VerifyFull),
+                .filter(|_| caps.ca_file && self.mode.verifies_certificate()),
             client_identity,
             server_name: Some(self.server_name.trim().to_owned())
                 .filter(|name| !name.is_empty() && shows_server_name(caps, route)),
@@ -79,8 +79,9 @@ impl TlsFormState {
     }
 }
 
-/// Verify full is the only mode that proves who is on the other end,
-/// so a new connection starts there whenever the driver offers it.
+/// Verify full proves who is on the other end and, unlike Strict, works
+/// with any server version, so a new connection starts there whenever
+/// the driver offers it.
 pub fn default_tls_mode(caps: Option<&TlsCapabilities>) -> TlsMode {
     match caps {
         Some(caps) if caps.modes.contains(&TlsMode::VerifyFull) => TlsMode::VerifyFull,
@@ -875,6 +876,23 @@ mod tests {
         .validate(mssql().tls.as_ref().expect("tls"), TransportClass::DirectTcp)
         .expect_err("SQL Server takes no client certificate");
         assert_eq!(tls_field(&refused, &tls), FormField::ClientCertificate);
+    }
+
+    #[test]
+    fn strict_keeps_the_ca_file_as_verify_full_does() {
+        let mut form = filled("mssql", mssql());
+        form.tls.mode = TlsMode::Strict;
+        form.tls.ca_file = Some(PathBuf::from("/etc/tls/ca.pem"));
+
+        let valid = form.validate(mssql()).expect("SQL Server offers strict");
+        let tls = network(&valid.target).3;
+
+        assert_eq!(tls.mode, TlsMode::Strict);
+        assert_eq!(tls.ca_file.as_deref(), Some(Path::new("/etc/tls/ca.pem")));
+
+        form.tls.mode = TlsMode::Require;
+        let require = form.validate(mssql()).expect("valid");
+        assert_eq!(network(&require.target).3.ca_file, None, "Require sent a CA file");
     }
 
     #[test]

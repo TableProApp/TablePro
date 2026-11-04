@@ -200,6 +200,10 @@ jobs:
           esac
       - name: Clippy
         run: meson devenv -C _build cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Clippy with the in-process SSH transport
+        run: |
+          meson devenv -C _build cargo clippy --locked --workspace --all-targets \
+            --features tablepro-ssh/in-process,tablepro-session/in-process-ssh -- -D warnings
       - name: Clippy without default features
         run: meson devenv -C _build cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
       - name: Build
@@ -300,7 +304,7 @@ jobs:
             echo "::error::the license files do not match Cargo.lock: run linux/build-aux/update-third-party-licenses.sh and commit the result"
             exit 1
           fi
-      - name: The Linux, core and Windows workflows
+      - name: The Linux and core workflows
         # Offline, so the verdict depends on these files alone and not on
         # where a branch the pins name has moved since.
         working-directory: .
@@ -310,8 +314,7 @@ jobs:
             .github/workflows/build-linux.yml \
             .github/workflows/core.yml \
             .github/workflows/linux-packages.yml \
-            .github/workflows/release-linux.yml \
-            .github/workflows/windows.yml
+            .github/workflows/release-linux.yml
 
   i18n:
     name: Translations
@@ -444,12 +447,14 @@ jobs:
         include:
           - package: tablepro-ssh
             apt: openssh-client
+            features: tablepro-ssh/in-process
           - package: tablepro-test-fixtures
             apt: openssh-client
           - package: tablepro-ssh
             release: openssh-9.9
             openssh: "9.9"
             apt: openssh-client
+            features: tablepro-ssh/in-process
           - package: tablepro-driver-postgres
             release: postgres-14
             postgres: "14"
@@ -525,7 +530,8 @@ jobs:
           TABLEPRO_TEST_REDIS: ${{ matrix.redis }}
           TABLEPRO_TEST_MONGO: ${{ matrix.mongo }}
           TABLEPRO_TEST_OPENSSH: ${{ matrix.openssh }}
-        run: cargo nextest run --locked --profile ci -p "$PACKAGE" --run-ignored only
+          FEATURES: ${{ matrix.features }}
+        run: cargo nextest run --locked --profile ci -p "$PACKAGE" ${FEATURES:+--features "$FEATURES"} --run-ignored only
       - name: Upload JUnit report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

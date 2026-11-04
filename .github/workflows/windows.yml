@@ -30,11 +30,12 @@ jobs:
             app: true
             rid: win-arm64
             platform: ARM64
-          # Also checks that the committed bindings match the library.
+          # Also checks that the committed bindings match the library, and the Windows workflows.
           - name: macOS
             runner: macos-15
             target: aarch64-apple-darwin
             bindings: true
+            workflows: true
     runs-on: ${{ matrix.runner }}
     # DuckDB's C++ takes most of it, and MSVC builds it slowly.
     timeout-minutes: 150
@@ -65,16 +66,38 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
+      - name: Start Windows' OpenSSH Server
+        if: matrix.name == 'x64'
+        shell: pwsh
+        run: scripts/ci/start-windows-sshd.ps1 -Out (Join-Path $env:RUNNER_TEMP 'tablepro-ssh')
+      - name: Prepare PostgreSQL for the SSH connection tests
+        if: matrix.name == 'x64'
+        shell: pwsh
+        run: windows/ci/ssh-postgres.ps1
       - name: Test the interop library
         # The test build runs cargo for the core first (windows/AGENTS.md, Commands).
         working-directory: windows
         run: dotnet test --solution TablePro.slnx
 
-      # The app and its UI tests build on Windows only (windows/AGENTS.md, Commands).
-      - name: Build the app
+      # The app and its UI tests build on Windows only (windows/AGENTS.md, Commands). The UI tests run the
+      # Native AOT build that ships; CargoProfile=dev keeps the core the test step already built.
+      - name: Publish the app with Native AOT
         if: matrix.app
         working-directory: windows
-        run: dotnet build src/TablePro.App -r "${{ matrix.rid }}" -p:Platform="${{ matrix.platform }}"
+        run: |
+          dotnet publish src/TablePro.App -c Release -r "${{ matrix.rid }}" -p:Platform="${{ matrix.platform }}" \
+            -p:CargoProfile=dev -o "$RUNNER_TEMP/app"
+          if [ -e "$RUNNER_TEMP/app/TablePro.dll" ]; then
+            echo "::error::the publish holds TablePro.dll: the app was not compiled ahead of time"
+            exit 1
+          fi
+          while IFS= read -r -d '' asset; do
+            relative="${asset#src/TablePro.App/}"
+            if ! cmp -s "$asset" "$RUNNER_TEMP/app/$relative"; then
+              echo "::error::the published app is missing or changed $relative"
+              exit 1
+            fi
+          done < <(git ls-files -z -- src/TablePro.App/Assets)
       # The Arm64 image opens its privacy settings window over the desktop, where it takes the tests' clicks.
       - name: Prepare the desktop
         if: matrix.app
@@ -84,15 +107,24 @@ jobs:
           Clear-FirstLogon
           Start-WslWatch "$env:GITHUB_WORKSPACE/windows/tests/TablePro.App.UITests/TestResults/wsl-watch.log"
           Set-Display 1920 1080
+      # A native crash can end the app before its managed exception handler writes crash.log.
+      - name: Keep native crash dumps during UI tests
+        if: matrix.app
+        shell: pwsh
+        run: |
+          $folder = "$env:RUNNER_TEMP/crash-dumps"
+          New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\TablePro.exe'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -Value $folder -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpCount -Value 4 -PropertyType DWord -Force | Out-Null
       - name: UI tests
         if: matrix.app
         working-directory: windows
         env:
           TABLEPRO_UI_SCREENSHOTS: ${{ github.workspace }}/screenshots
-        run: |
-          TABLEPRO_APP=$(find "$PWD/src/TablePro.App/bin" -name TablePro.exe | head -1)
-          export TABLEPRO_APP
-          dotnet test --project tests/TablePro.App.UITests
+        run: TABLEPRO_APP="$RUNNER_TEMP/app/TablePro.exe" dotnet test --project tests/TablePro.App.UITests
       - name: Keep the screenshots
         if: always() && matrix.app
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -100,6 +132,31 @@ jobs:
           name: windows-screenshots-${{ matrix.name }}
           path: screenshots
           if-no-files-found: ignore
+      - name: Collect crash diagnostics
+        if: failure() && matrix.app
+        shell: pwsh
+        run: |
+          $folder = "$env:RUNNER_TEMP/crash-dumps"
+          New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000, 1001, 1026 } -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match 'TablePro' } |
+            Format-List TimeCreated, Id, Message | Out-File "$folder/events.txt"
+          if (Get-ChildItem $folder -Filter '*.dmp') {
+            Copy-Item "$env:RUNNER_TEMP/app/TablePro.exe" $folder
+            Get-ChildItem windows/src/TablePro.App/bin -Recurse -Filter TablePro.pdb |
+              Where-Object { $_.Directory.Name -eq 'native' } | Copy-Item -Destination $folder
+          }
+      - name: Keep crash diagnostics
+        if: failure() && matrix.app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-crashes-${{ matrix.name }}
+          path: ${{ runner.temp }}/crash-dumps
+          if-no-files-found: ignore
+      - name: The OpenSSH Server's log
+        if: failure() && matrix.name == 'x64'
+        shell: pwsh
+        run: Get-Content (Join-Path $env:ProgramData 'ssh\logs\sshd.log') -Tail 300 -ErrorAction Continue
 
       - name: Restore uniffi-bindgen-cs
         if: matrix.bindings
@@ -131,3 +188,17 @@ jobs:
             echo "::error::the bindings in windows/src/TablePro.Interop/Generated are stale: run the GenerateBindings target and commit the result (windows/AGENTS.md, Bindings)"
             exit 1
           fi
+
+      # The Linux workflows' supply chain checks run in build-linux.yml; these are the Windows ones.
+      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+        if: matrix.workflows
+        with:
+          tool: zizmor@1.30.1
+      - name: The Windows workflows
+        if: matrix.workflows
+        # Offline, so the verdict depends on these files alone.
+        run: |
+          zizmor --offline --format=github --min-severity=medium \
+            .github/workflows/windows.yml \
+            .github/workflows/release-windows.yml \
+            .github/workflows/windows-grid-gate.yml

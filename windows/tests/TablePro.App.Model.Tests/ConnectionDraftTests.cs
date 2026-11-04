@@ -4,11 +4,32 @@ namespace TablePro.App.Model.Tests;
 
 public sealed class ConnectionDraftTests
 {
-    private static readonly DatabaseEngine Postgres = new("postgres", "PostgreSQL", DataModel.Relational, 5432, []);
+    private static readonly DatabaseEngine Postgres = new("postgres", "PostgreSQL", DataModel.Relational, 5432, [])
+    {
+        SupportsClientIdentity = true,
+    };
     private static readonly DatabaseEngine Sqlite = new("sqlite", "SQLite", DataModel.Relational, null, ["sqlite", "db"]);
 
     private static string AbsolutePath(string name) =>
         Path.Combine(Path.GetPathRoot(Path.GetTempPath())!, "data", name);
+
+    [Fact]
+    public void EditingKeepsTheSshJumpRouteAndSavedKeyPassphrase()
+    {
+        var saved = new SavedConnection(
+            Guid.NewGuid(), "Server", "postgres", "db", 5432, "app", "user", TlsSettings.Disabled,
+            Ssh: new SshSettings("bastion", 22, "ops", ["jump1", "jump2"],
+                SshAuthMethod.PrivateKey, @"C:\id_ed25519", KeyHasPassphrase: true));
+        var draft = ConnectionDraft.From(saved, Postgres);
+        draft.Name = "Renamed";
+
+        var ssh = Assert.IsType<SshSettings>(draft.ToConnection().Ssh);
+
+        Assert.Equal(saved.Ssh!.JumpHosts, ssh.JumpHosts);
+        Assert.True(ssh.KeyHasPassphrase);
+        draft.SshKeyPath = @"C:\another_key";
+        Assert.False(draft.ToConnection().Ssh!.KeyHasPassphrase);
+    }
 
     [Fact]
     public void ANewNetworkConnectionStartsAtLocalhostOnTheEnginesPort()
@@ -31,6 +52,7 @@ public sealed class ConnectionDraftTests
         draft.UseSsh = true;
         draft.SshPort = "ssh";
         draft.SshAuth = SshAuthMethod.PrivateKey;
+        draft.TlsMode = TlsMode.Require;
         draft.ClientCertificate = "client.pem";
         draft.Timeout = "soon";
 
@@ -85,6 +107,80 @@ public sealed class ConnectionDraftTests
         Assert.Equal(saved.Ssh.Port, back.Ssh.Port);
         Assert.Equal(saved.Ssh.KeyPath, back.Ssh.KeyPath);
         Assert.Equal(SshAuthMethod.PrivateKey, back.Ssh.Auth);
+    }
+
+    [Fact]
+    public void StrictAndIntegratedAuthenticationSurviveEditing()
+    {
+        var engine = new DatabaseEngine("mssql", "SQL Server", DataModel.Relational, 1433, []);
+        var saved = new SavedConnection(
+            Guid.NewGuid(), "prod", "mssql", "127.0.0.1", 1433, "shop", "saved-user",
+            new TlsSettings(TlsMode.Strict, CaFile: @"C:\ca.pem", ServerName: "db.example.com"),
+            IntegratedAuth: true);
+
+        var draft = ConnectionDraft.From(saved, engine);
+        draft.Password = "hidden-password";
+        draft.SshPassword = "ssh-password";
+        draft.UseSsh = true;
+        draft.SshAuth = SshAuthMethod.Password;
+        draft.SshHost = "bastion";
+
+        Assert.Equal(saved, draft.ToConnection() with { Ssh = null });
+        Assert.Null(draft.Secrets().DatabasePassword);
+        Assert.Equal("ssh-password", draft.Secrets().SshPassword);
+    }
+
+    [Fact]
+    public void ReturningToPasswordAuthenticationUsesTheEnteredPassword()
+    {
+        var draft = ConnectionDraft.New(Postgres);
+        draft.IntegratedAuth = true;
+        draft.Password = "entered";
+        Assert.Null(draft.Secrets().DatabasePassword);
+
+        draft.IntegratedAuth = false;
+        Assert.Equal("entered", draft.Secrets().DatabasePassword);
+    }
+
+    [Theory]
+    [InlineData(TlsMode.VerifyFull, TlsMode.Require)]
+    [InlineData(TlsMode.VerifyFull, TlsMode.Disable)]
+    [InlineData(TlsMode.Strict, TlsMode.Require)]
+    [InlineData(TlsMode.Strict, TlsMode.Disable)]
+    public void LeavingCertificateVerificationOmitsInactiveFieldsAndSwitchingBackRestoresThem(TlsMode original, TlsMode mode)
+    {
+        var draft = ConnectionDraft.New(Postgres);
+        draft.TlsMode = original;
+        draft.CaFile = AbsolutePath("ca.pem");
+        draft.ServerName = "db.example.com";
+        draft.ClientCertificate = AbsolutePath("client.pem");
+        draft.ClientKey = AbsolutePath("client.key");
+        var verified = draft.ToConnection().Tls;
+
+        draft.TlsMode = mode;
+        var inactive = draft.ToConnection().Tls;
+        Assert.Null(inactive.CaFile);
+        Assert.Null(inactive.ServerName);
+        Assert.Equal(mode == TlsMode.Disable ? null : verified.ClientCertificate, inactive.ClientCertificate);
+        Assert.Equal(mode == TlsMode.Disable ? null : verified.ClientKey, inactive.ClientKey);
+
+        draft.TlsMode = original;
+        Assert.Equal(verified, draft.ToConnection().Tls);
+    }
+
+    [Fact]
+    public void AnInactiveClientIdentityDoesNotBlockValidation()
+    {
+        var draft = ConnectionDraft.New(Postgres);
+        draft.ClientCertificate = AbsolutePath("client.pem");
+        Assert.Empty(draft.Validate());
+        Assert.Null(draft.ToConnection().Tls.ClientCertificate);
+
+        draft.TlsMode = TlsMode.Require;
+        Assert.Equal([new FieldError(FormField.ClientKey, FieldProblem.Required)], draft.Validate());
+        draft.SupportsClientIdentity = false;
+        Assert.Empty(draft.Validate());
+        Assert.Null(draft.ToConnection().Tls.ClientCertificate);
     }
 
     [Fact]

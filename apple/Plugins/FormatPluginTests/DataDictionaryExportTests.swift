@@ -259,13 +259,89 @@ struct DataDictionaryExportTests {
         #expect(!html.contains("<script"))
         #expect(!html.contains("<link"))
         #expect(!html.contains("src="))
-        #expect(!html.contains("http"))
+        #expect(!html.contains("https://"))
+        #expect(!html.contains("http://"))
         #expect(html.contains("&lt;script&gt;alert(1)&lt;/script&gt; &amp; co"))
         #expect(html.contains("<li><a href=\"#users\"><code>users</code></a></li>"))
         #expect(html.contains("<section id=\"users\">"))
         #expect(html.contains("<a href=\"#orgs\"><code>orgs.id</code></a>"))
         #expect(html.contains("@media print"))
         #expect(html.contains("thead { display: table-header-group; }"))
+    }
+
+    @Test("HTML escapes syntax inside grapheme clusters", arguments: ["\u{0D4E}", "\u{0600}"])
+    func htmlEscapesScalars(prepend: String) {
+        let entities = [("&", "&amp;"), ("<", "&lt;"), (">", "&gt;"), ("\"", "&quot;"), ("'", "&#39;")]
+        for (symbol, entity) in entities {
+            #expect(DataDictionaryHTMLRenderer.escape(prepend + symbol) == prepend + entity)
+            #expect(DataDictionaryHTMLRenderer.escape(symbol + "\u{0301}") == entity + "\u{0301}")
+        }
+        let unicode = "café e\u{0301} 日本語 👩🏽‍💻"
+        #expect(DataDictionaryHTMLRenderer.escape(unicode).unicodeScalars.elementsEqual(unicode.unicodeScalars))
+    }
+
+    @Test("Markdown escapes syntax inside grapheme clusters", arguments: ["\u{0D4E}", "\u{0600}"])
+    func markdownEscapesScalars(prepend: String) {
+        for scalar in "\\`*_[]<>#&|".unicodeScalars {
+            let symbol = String(scalar)
+            #expect(DataDictionaryMarkdownRenderer.text(prepend + symbol, inTable: true) == prepend + "\\" + symbol)
+            #expect(DataDictionaryMarkdownRenderer.text(symbol + "\u{0301}", inTable: true) == "\\" + symbol + "\u{0301}")
+        }
+    }
+
+    @Test("Markdown code fences count scalar backticks", arguments: ["\u{0D4E}", "\u{0600}"])
+    func markdownCodeScalars(prepend: String) {
+        #expect(DataDictionaryMarkdownRenderer.code(prepend + "`x") == "``" + prepend + "`x``")
+        #expect(DataDictionaryMarkdownRenderer.code(prepend + "`") == "`` " + prepend + "` ``")
+        #expect(DataDictionaryMarkdownRenderer.code("`\u{0301}x") == "`` `\u{0301}x ``")
+        #expect(DataDictionaryMarkdownRenderer.code(prepend + "``\u{0301}x") == "```" + prepend + "``\u{0301}x```")
+        #expect(DataDictionaryMarkdownRenderer.code(prepend + "|\u{0301}", inTable: true) == "`" + prepend + "\\|\u{0301}`")
+        #expect(DataDictionaryMarkdownRenderer.code(" x ") == "`  x  `")
+        #expect(DataDictionaryMarkdownRenderer.code("   ") == "`   `")
+    }
+
+    @Test("Anchors exclude markup joined to letters", arguments: ["\u{0D4E}", "\u{0600}"])
+    func anchorsExcludeSyntax(prepend: String) {
+        let names = ["&", "<", ">", "\"", "'", "`", "[", "]", "(", ")", "|", " "].map { "table" + prepend + $0 + "name" }
+        let anchors = DataDictionaryAnchors.make(for: names)
+        #expect(Set(anchors).count == names.count)
+        for anchor in anchors {
+            #expect(!anchor.unicodeScalars.contains { "&<>\"'`[]()| ".unicodeScalars.contains($0) })
+        }
+        #expect(DataDictionaryAnchors.slug("日本語_123") == "日本語_123")
+    }
+
+    @Test("Catalog markup stays text in both exports", arguments: ["\u{0D4E}", "\u{0600}"])
+    func catalogMarkupStaysText(prepend: String) async throws {
+        let payload = prepend + "<img src=x onerror=alert(1) " + prepend + ">"
+        let name = "table" + prepend + "\"" + prepend + ">" + payload
+        let source = CatalogOnlyDataSource()
+        source.comments[name] = payload
+        source.columns[name] = [PluginColumnInfo(name: payload, dataType: payload, defaultValue: payload, comment: payload)]
+        let (document, _) = try await readDocument([object(name)], from: source)
+        let html = DataDictionaryHTMLRenderer.render(document)
+        let markdown = DataDictionaryMarkdownRenderer.render(document)
+        let escaped = prepend + "&lt;img src=x onerror=alert(1) " + prepend + "&gt;"
+        #expect(!html.contains("<img"))
+        #expect(html.contains("<td>\(escaped)</td>"))
+        #expect(html.contains("<code>\(escaped)</code>"))
+        #expect(html.contains("Table.</span> \(escaped)</p>"))
+        #expect(html.contains("<section id=\"\(document.anchors[0])\">"))
+        #expect(html.contains("href=\"#\(document.anchors[0])\""))
+        #expect(markdown.contains("**Table.** " + prepend + "\\<img src=x onerror=alert(1) " + prepend + "\\>"))
+        #expect(markdown.contains("<a id=\"\(document.anchors[0])\"></a>"))
+    }
+
+    @Test("HTML blocks active content before rendering catalog values")
+    func htmlContentSecurityPolicy() async throws {
+        let (document, _) = try await readDocument([object("users")], from: shopSource())
+        let html = DataDictionaryHTMLRenderer.render(document)
+        let policy = #"<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">"#
+        let policyRange = try #require(html.range(of: policy))
+        let titleRange = try #require(html.range(of: "<title>"))
+        let styleRange = try #require(html.range(of: "<style>"))
+        #expect(policyRange.lowerBound < titleRange.lowerBound)
+        #expect(policyRange.lowerBound < styleRange.lowerBound)
     }
 
     @Test("A read that fails is named in the file and in the warnings, and the export goes on")

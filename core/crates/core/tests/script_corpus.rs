@@ -74,32 +74,31 @@ fn escape_string_backslash_quote() {
 }
 
 /// A string that follows `E'...'` after a line break continues it, and
-/// the server reads it with backslash escapes on, so `\'` does not end it.
+/// PostgreSQL reads it with backslash escapes on, so `\'` does not end it.
 #[test]
 fn escape_string_continues_past_a_line_break() {
-    for grammar in [SqlGrammar::PostgreSql, SqlGrammar::DuckDb] {
-        for continued in [
-            "SELECT E'a'\n'\\'; b'",
-            "SELECT E'a'\r'\\'; b'",
-            "SELECT E'a' \t\x0c-- note\n\x0b -- note\r\n '\\'; b'",
-            "SELECT E'a'\n'b'\n'\\'; c'",
-        ] {
-            let text = format!("{continued}; SELECT 2;");
-            assert_eq!(
-                statements(grammar, &text),
-                [continued, "SELECT 2"],
-                "{grammar:?}: {continued:?}"
-            );
-        }
+    for continued in [
+        "SELECT E'a'\n'\\'; b'",
+        "SELECT E'a'\r'\\'; b'",
+        "SELECT E'a' \t\x0c-- note\n\x0b -- note\r\n '\\'; b'",
+        "SELECT E'a'\n'b'\n'\\'; c'",
+        "SELECT E'a'\x0b\n'\\'; b'",
+        "SELECT E'a' \x0b-- note\n'\\'; b'",
+    ] {
+        let text = format!("{continued}; SELECT 2;");
+        assert_eq!(
+            statements(SqlGrammar::PostgreSql, &text),
+            [continued, "SELECT 2"],
+            "{continued:?}"
+        );
     }
-    // Without a line break, past a block comment, past anything but a
-    // blank or a `--` comment, or after a vertical tab before the line
-    // break, the server ends the string and so must the lexer.
+    // Without a line break, past a block comment, or past anything but a
+    // blank or a `--` comment, the server ends the string and so must the
+    // lexer.
     for apart in [
         "SELECT E'a' '\\'",
         "SELECT E'a' /* note */\n'\\'",
         "SELECT E'a'\n, '\\'",
-        "SELECT E'a'\x0b\n'\\'",
     ] {
         let text = format!("{apart}; SELECT 2;");
         assert_eq!(
@@ -109,12 +108,29 @@ fn escape_string_continues_past_a_line_break() {
         );
     }
     assert_eq!(
+        statements(
+            SqlGrammar::PostgreSql,
+            "SELECT E'x'\x0b\n'\\' || ' || '\\' ; COMMIT; DELETE FROM orders; --'"
+        ),
+        ["SELECT E'x'\x0b\n'\\' || ' || '\\'", "COMMIT", "DELETE FROM orders"]
+    );
+    assert_eq!(
         plan(SqlGrammar::PostgreSql, "SELECT E'a'\n'b").diagnostics(),
         [ScriptDiagnostic::Unterminated {
             construct: OpenConstruct::StringLiteral,
             start: 7,
         }]
     );
+}
+
+#[test]
+fn duckdb_ends_an_escape_string_at_its_quote_whatever_follows() {
+    let text = "SELECT E'x'\n'\\'; DELETE FROM orders; --'";
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, text),
+        ["SELECT E'x'\n'\\'", "DELETE FROM orders"]
+    );
+    assert_eq!(statements(SqlGrammar::PostgreSql, text), [text]);
 }
 
 #[test]
@@ -614,9 +630,19 @@ fn duckdb_nests_comments_and_quotes_with_dollar_tags() {
 }
 
 #[test]
-fn duckdb_reads_a_backtick_as_no_quote() {
-    let text = "SELECT `a;b` FROM t;";
-    assert_eq!(statements(SqlGrammar::DuckDb, text), ["SELECT `a", "b` FROM t"]);
+fn duckdb_quotes_a_name_in_backticks() {
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, "SELECT `a;b` FROM t;"),
+        ["SELECT `a;b` FROM t"]
+    );
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, "SELECT 1 AS `a``b`; SELECT 2;"),
+        ["SELECT 1 AS `a``b`", "SELECT 2"]
+    );
+    assert_eq!(
+        statements(SqlGrammar::DuckDb, "SELECT 1 AS `'`; DROP TABLE orders; --'"),
+        ["SELECT 1 AS `'`", "DROP TABLE orders"]
+    );
 }
 
 #[test]

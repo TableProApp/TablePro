@@ -27,6 +27,8 @@ public enum SQLStringEscapes: Sendable, Hashable {
     // A quote is doubled and nothing else is special. NUL is dropped: no such engine stores it in
     // text, and C clients end the statement at it.
     case standard
+    // SQL Server consumes backslash before LF, CRLF or CR; a bare CR remains in the value.
+    case sqlServer
     // A backslash starts an escape. Doubles the backslash and the quote and writes every other scalar
     // as it is, which each such engine reads back, and a doubled quote stays one quote if the session
     // turns backslash escapes off. NUL is `\0`, or `\x00` before a digit, which Snowflake would read
@@ -47,7 +49,7 @@ public enum SQLStringEscapes: Sendable, Hashable {
     }
 
     public var backslashEscapes: Bool {
-        self != .standard
+        self != .standard && self != .sqlServer
     }
 }
 
@@ -109,6 +111,16 @@ public enum SQLQuoting {
                 value.append("'")
                 index += 2
                 continue
+            }
+            if escapes == .sqlServer, scalar == "\\", index + 1 < end {
+                if scalars[index + 1] == "\n" {
+                    index += 2
+                    continue
+                }
+                if scalars[index + 1] == "\r" {
+                    index += index + 2 < end && scalars[index + 2] == "\n" ? 3 : 1
+                    continue
+                }
             }
             guard scalar == "\\", escapes.backslashEscapes else {
                 value.append(scalar)
@@ -192,6 +204,24 @@ public enum SQLQuoting {
         escapes: SQLStringEscapes,
         to output: inout String.UnicodeScalarView
     ) {
+        if escapes == .sqlServer {
+            // Microsoft KB 164291 doubles both the backslash and CRLF. The engine also consumes
+            // backslash-LF, but keeps a bare CR. Strip NUL before checking adjacent scalars.
+            let scalars = Array(stringLiteralBody(value, escapes: .standard).unicodeScalars)
+            for (index, scalar) in scalars.enumerated() {
+                output.append(scalar)
+                guard scalar == "\\", index + 1 < scalars.count else { continue }
+                if scalars[index + 1] == "\n" {
+                    output.append(contentsOf: "\\\n".unicodeScalars)
+                } else if scalars[index + 1] == "\r" {
+                    output.append("\\")
+                    if index + 2 < scalars.count, scalars[index + 2] == "\n" {
+                        output.append(contentsOf: "\r\n".unicodeScalars)
+                    }
+                }
+            }
+            return
+        }
         let scalars = Array(value.unicodeScalars)
         for (index, scalar) in scalars.enumerated() {
             switch (scalar, escapes) {

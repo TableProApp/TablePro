@@ -176,8 +176,11 @@ impl MysqlConnection {
         Ok(engine.atomicity())
     }
 
+    // The server ends a read-only transaction before DDL and its other
+    // implicit commits, so the session is held read-only as well.
     fn stream_limits(&self) -> SessionLimits {
         SessionLimits {
+            read_only: true,
             statement_timeout: None,
             ..SessionLimits::workspace(&self.settings)
         }

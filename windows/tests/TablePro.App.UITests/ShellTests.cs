@@ -97,12 +97,14 @@ public sealed partial class ShellTests
             Assert.StartsWith("Rows: 347", app.Find("TableStatus").Name, StringComparison.Ordinal);
             app.Screenshot("05-table-sorted");
 
-            app.Find("Tabs");
-            app.Chord(() => app.TryFind("SqlEditor") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
-            var editor = app.Find("SqlEditor");
-            app.TypeInto(editor, "SELECT Name FROM Artist");
+            var tabs = app.Find("Tabs");
             app.Chord(
-                () => app.Find("QueryStatus").Name.StartsWith("Rows: 275", StringComparison.Ordinal),
+                () => tabs.FindFirstDescendant(condition => condition.ByName("Query 2")) is not null,
+                VirtualKeyShort.CONTROL,
+                VirtualKeyShort.KEY_T);
+            app.TypeInto("Query 2", "SELECT Name FROM Artist");
+            app.Chord(
+                () => app.Find("QueryStatus").Properties.Name.ValueOrDefault?.StartsWith("Rows: 275", StringComparison.Ordinal) == true,
                 VirtualKeyShort.CONTROL,
                 VirtualKeyShort.ENTER);
             var query = AppSession.WaitForText(app.Find("QueryStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal));
@@ -123,7 +125,7 @@ public sealed partial class ShellTests
                 StringComparison.Ordinal);
 
             // A script cannot run again for a sort, so the rows it returned are sorted where they are.
-            app.TypeInto(editor, "SELECT Name FROM Artist ORDER BY ArtistId; SELECT 1");
+            app.TypeInto("Query 2", "SELECT Name FROM Artist ORDER BY ArtistId; SELECT 1");
             app.Chord(
                 () => results.Patterns.Grid.Pattern.GetItem(0, 0)?.Properties.Name.ValueOrDefault == "AC/DC",
                 VirtualKeyShort.CONTROL,

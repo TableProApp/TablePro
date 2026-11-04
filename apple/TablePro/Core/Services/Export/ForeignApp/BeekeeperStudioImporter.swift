@@ -32,8 +32,10 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
             return ForeignAppInventory(connections: 0, savedQueries: 0)
         }
         defer { sqlite3_close(db) }
+        // Only the rows collect imports: one with no connection type is skipped there.
+        let rows = (try? readSavedConnections(db: db)) ?? []
         return ForeignAppInventory(
-            connections: (try? readSavedConnections(db: db).count) ?? 0,
+            connections: rows.count { Self.mapDriver($0.connectionType) != nil },
             savedQueries: BeekeeperSavedQueryReader.count(db: db)
         )
     }
@@ -60,6 +62,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
                 Self.logger.warning("Skipping a Beekeeper connection with no connection type")
                 continue
             }
+            var notes: [String] = []
             let settings = ExportableConnection(
                 name: row.name.isEmpty ? "Untitled" : row.name,
                 host: row.host.isEmpty ? "localhost" : row.host,
@@ -68,14 +71,15 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
                 username: row.username ?? "",
                 type: type,
                 sshConfig: row.sshEnabled ? Self.buildSSHConfig(row) : nil,
-                sslConfig: row.ssl ? Self.buildSSLConfig(row) : nil,
+                sslConfig: buildSSLConfig(row, type: type, notes: &notes),
                 color: Self.mapColor(row.labelColor)
             )
             records.append(ForeignConnectionRecord(
                 sourceId: String(row.id),
                 settings: settings,
                 groupPath: row.connectionFolderId.flatMap { folderMap[$0] }.map { [$0] } ?? [],
-                credentials: userKey.flatMap { Self.extractCredentials(row: row, key: $0) }
+                credentials: userKey.flatMap { Self.extractCredentials(row: row, key: $0) },
+                notes: notes
             ))
         }
 
@@ -156,16 +160,38 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
 
     // MARK: - SSL Mapping
 
-    private static func buildSSLConfig(_ row: SavedConnectionRow) -> ExportableSSLConfig {
-        let mode = row.sslRejectUnauthorized && !row.trustServerCertificate
-            ? "Verify Identity"
-            : "Required"
+    private func buildSSLConfig(_ row: SavedConnectionRow, type: String, notes: inout [String]) -> ExportableSSLConfig? {
+        guard row.ssl else {
+            // With `ssl` off mssql still hands tedious `encrypt: true`, and the saved `trustServerCertificate`
+            // decides the certificate check. The other connectors connect in the clear.
+            guard type == "SQL Server" else { return nil }
+            let mode: SSLMode = row.trustServerCertificate ? .required : .verifyIdentity
+            notes.append(ForeignImportNote.tlsFromDriverDefault(mode, appName: displayName))
+            return ExportableSSLConfig(mode: mode.rawValue)
+        }
         return ExportableSSLConfig(
-            mode: mode,
+            mode: Self.verifiesServer(row, type: type) ? SSLMode.verifyIdentity.rawValue : SSLMode.required.rawValue,
             caCertificatePath: row.sslCaFile,
             clientCertificatePath: row.sslCertFile,
             clientKeyPath: row.sslKeyFile
         )
+    }
+
+    // What each Beekeeper connector hands its driver (`lib/db/clients/*/*Connector.ts`). The saved
+    // `trustServerCertificate` is SQL Server's alone, and TLS on replaces it there.
+    private static func verifiesServer(_ row: SavedConnectionRow, type: String) -> Bool {
+        let hasCA = !(row.sslCaFile ?? "").isEmpty
+        let hasCert = !(row.sslCertFile ?? "").isEmpty
+        let hasKey = !(row.sslKeyFile ?? "").isEmpty
+        switch type {
+        case "SQL Server":
+            return !(hasCA && hasCert && hasKey) || row.sslRejectUnauthorized
+        // With no certificate file these connectors never check the server.
+        case "PostgreSQL", "Redshift", "CockroachDB", "MySQL", "MariaDB", "TiDB":
+            return row.sslRejectUnauthorized && (hasCA || hasCert || hasKey)
+        default:
+            return row.sslRejectUnauthorized
+        }
     }
 
     // MARK: - Color
@@ -187,7 +213,7 @@ struct BeekeeperStudioImporter: ForeignAppImporter {
     // MARK: - Credentials
 
     private func loadUserEncryptionKey() -> String? {
-        guard let data = try? Data(contentsOf: keyFileURL),
+        guard let data = try? ForeignAppFile.read(keyFileURL),
               let payload = String(data: data, encoding: .utf8),
               let decoded = BeekeeperEncryptor.decryptDictionary(payload, key: BeekeeperEncryptor.defaultKey),
               let key = decoded["encryptionKey"] as? String else {

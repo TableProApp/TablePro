@@ -20,6 +20,7 @@ pub enum TlsModeTag {
     Disable,
     Require,
     VerifyFull,
+    Strict,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -147,7 +148,18 @@ impl ConnectionLibrary {
         Self { store, secrets, tasks }
     }
 
-    async fn blocking<T, F>(&self, work: F) -> Result<T, CoreError>
+    pub(crate) async fn delete_secrets(&self, ids: Vec<Uuid>) -> Result<(), CoreError> {
+        let vault = self.secrets.clone();
+        on_runtime(&self.tasks, async move {
+            for id in ids {
+                vault.delete_connection(id).await.map_err(secret_error)?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    pub(crate) async fn blocking<T, F>(&self, work: F) -> Result<T, CoreError>
     where
         T: Send + 'static,
         F: FnOnce(&ConnectionStore) -> Result<T, CoreError> + Send + 'static,
@@ -259,11 +271,7 @@ impl ConnectionLibrary {
             Ok(())
         })
         .await?;
-        let vault = self.secrets.clone();
-        on_runtime(&self.tasks, async move {
-            vault.delete_connection(id).await.map_err(secret_error)
-        })
-        .await
+        self.delete_secrets(vec![id]).await
     }
 
     pub async fn set_favorite(&self, id: String, favorite: bool) -> Result<(), CoreError> {
@@ -529,12 +537,13 @@ fn path(text: Option<&String>) -> Option<PathBuf> {
 fn tls_config(settings: &TlsSettings) -> TlsConfig {
     let mut config = match settings.mode {
         TlsModeTag::Disable => TlsConfig::disabled(),
-        TlsModeTag::Require | TlsModeTag::VerifyFull => TlsConfig::verify_full(),
+        TlsModeTag::Require | TlsModeTag::VerifyFull | TlsModeTag::Strict => TlsConfig::verify_full(),
     };
     config.mode = match settings.mode {
         TlsModeTag::Disable => TlsMode::Disable,
         TlsModeTag::Require => TlsMode::Require,
         TlsModeTag::VerifyFull => TlsMode::VerifyFull,
+        TlsModeTag::Strict => TlsMode::Strict,
     };
     config.ca_file = path(settings.ca_file.as_ref());
     config.client_identity = match (
@@ -602,6 +611,7 @@ impl From<&SavedConnection> for ConnectionRecord {
                     TlsMode::Disable => TlsModeTag::Disable,
                     TlsMode::Require => TlsModeTag::Require,
                     TlsMode::VerifyFull => TlsModeTag::VerifyFull,
+                    TlsMode::Strict => TlsModeTag::Strict,
                 },
                 ca_file: saved.tls.ca_file.as_deref().map(shown),
                 client_certificate: saved

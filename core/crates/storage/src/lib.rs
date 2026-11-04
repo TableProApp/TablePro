@@ -1,3 +1,4 @@
+pub mod cloudkit;
 mod connection_color;
 mod connection_group;
 mod connection_group_name;
@@ -29,7 +30,7 @@ pub use connection_tag::ConnectionTag;
 pub use connection_tag_name::ConnectionTagName;
 pub use connections::{
     ConnectionList, ConnectionListSnapshot, ConnectionListState, ConnectionStore, ImportChange, ImportEntry,
-    ImportPreview, ImportReport, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig,
+    ImportPreview, ImportReport, ImportedConnection, RemoveOutcome, SavedConnection, SavedSshAuth, SavedSshConfig,
 };
 pub use credentials::{
     CredentialDemand, CredentialError, KeyringCredentials, KeyringError, ResolvedSecret, SecretItemLabeler,

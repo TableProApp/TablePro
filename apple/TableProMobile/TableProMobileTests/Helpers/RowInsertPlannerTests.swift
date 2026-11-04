@@ -135,7 +135,7 @@ struct RowInsertPlannerTests {
             table: "events", schema: "sales", type: .mssql,
             driver: ansiDriver(), columns: columns, rows: [row]
         )
-        #expect(statements == ["INSERT INTO [sales].[events] ([name]) VALUES ('Ada')"])
+        #expect(statements == ["INSERT INTO [sales].[events] ([name]) VALUES (N'Ada')"])
     }
 
     @Test("leaves a backslash alone on a database that does not treat it as an escape")

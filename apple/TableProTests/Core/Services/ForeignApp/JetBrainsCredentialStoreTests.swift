@@ -65,6 +65,42 @@ struct JetBrainsCredentialStoreTests {
         }
     }
 
+    @Test("A raw pdb.pwd unlocks c.kdbx when c.pwd is missing")
+    func rawLegacyMainKey() throws {
+        let uuid = "legacy-\(UUID().uuidString)"
+        let mainKey = KdbxTestFixture.randomBytes(64)
+        let service = JetBrainsCredentialStore.serviceName(forDataSourceUUID: uuid)
+        try KdbxTestFixture.makeKdbx(mainKey: mainKey, title: service, userName: "u", password: "legacy-secret")
+            .write(to: configDir.appendingPathComponent("c.kdbx"))
+        try Data(KdbxTestFixture.builtInBlob(mainKey: mainKey)).write(to: configDir.appendingPathComponent("pdb.pwd"))
+
+        let store = JetBrainsCredentialStore(configDir: configDir)
+        guard case .found(let password) = store.password(forDataSourceUUID: uuid) else {
+            Issue.record("Expected the pdb.pwd main key to open c.kdbx")
+            return
+        }
+        #expect(password == "legacy-secret")
+    }
+
+    @Test("pdb.pwd is ignored while c.pwd exists")
+    func legacyMainKeyIgnoredBesideCurrent() throws {
+        let uuid = "legacy-\(UUID().uuidString)"
+        let mainKey = KdbxTestFixture.randomBytes(64)
+        let service = JetBrainsCredentialStore.serviceName(forDataSourceUUID: uuid)
+        try KdbxTestFixture.makeKdbx(mainKey: mainKey, title: service, userName: "u", password: "legacy-secret")
+            .write(to: configDir.appendingPathComponent("c.kdbx"))
+        try "encryption: BUILT_IN\nvalue: !!binary AAAA\n"
+            .write(to: configDir.appendingPathComponent("c.pwd"), atomically: true, encoding: .utf8)
+        try KdbxTestFixture.makeMainKeyFile(mainKey: mainKey)
+            .write(to: configDir.appendingPathComponent("pdb.pwd"), atomically: true, encoding: .utf8)
+
+        let store = JetBrainsCredentialStore(configDir: configDir)
+        guard case .notFound = store.password(forDataSourceUUID: uuid) else {
+            Issue.record("Expected pdb.pwd to be ignored while c.pwd exists")
+            return
+        }
+    }
+
     @Test("ssh password service name matches DataGrip's keychain format")
     func sshPasswordServiceName() {
         #expect(JetBrainsCredentialStore.sshPasswordServiceName(host: "localhost", port: 22, configId: "cfg")

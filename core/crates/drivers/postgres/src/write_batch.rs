@@ -187,9 +187,9 @@ async fn count(client: &Client, probe: &Statement) -> Result<u64, DriverError> {
 /// lost can be asked about afterwards.
 async fn transaction_id(client: &Client, legacy: bool) -> Result<CommitToken, DriverError> {
     let sql = if legacy {
-        "SELECT txid_current()::text"
+        "SELECT pg_catalog.txid_current()::pg_catalog.text"
     } else {
-        "SELECT pg_current_xact_id()::text"
+        "SELECT pg_catalog.pg_current_xact_id()::pg_catalog.text"
     };
     let messages = client.simple_query(sql).await.map_err(|error| map_error(&error))?;
     let xid = messages

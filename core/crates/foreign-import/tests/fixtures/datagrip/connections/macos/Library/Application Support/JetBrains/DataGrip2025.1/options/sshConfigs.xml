@@ -1,0 +1,9 @@
+<application>
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig host="bastion.example.com" id="SSH1" keyPath="$USER_HOME$/.ssh/id_ed25519" port="2222" username="deploy" useOpenSSHConfig="true" />
+      <sshConfig authType="PASSWORD" host="localhost" id="SSH2" port="22" username="u" useOpenSSHConfig="false" />
+      <sshConfig host="h" id="SSH3" keyPath="$USER_HOME$/.ssh/unused" port="22" username="u" authType="PASSWORD" />
+    </configs>
+  </component>
+</application>

@@ -1,0 +1,1 @@
+select * from dg_sample_items;

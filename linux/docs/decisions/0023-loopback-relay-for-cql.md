@@ -1,6 +1,6 @@
 # 0023: A loopback relay for the CQL client
 
-- **Status**: Accepted
+- **Status**: Accepted; the Linux-only relay amended by core 0008
 - **Date**: 2026-10-23
 
 ## Context

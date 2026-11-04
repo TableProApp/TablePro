@@ -16,6 +16,7 @@ Read this when a `verify.sh` verdict needs interpreting for the Windows app, bef
 - **A warning fails the build**: `TreatWarningsAsErrors`, the latest recommended analyzers and the `.editorconfig` style run in every project (`windows/Directory.Build.props`). That includes CA1416, the version floor's check.
 - **On macOS and Linux the WinUI projects compile only.** `TablePro.Editor`, `TablePro.Graphics` and `TablePro.DataGrid` skip their PRI step off Windows. A build that passes on a Mac can still fail on Windows in the PRI or manifest steps, which the pull request's Windows jobs run.
 - **The app and its UI tests build on Windows only** and sit outside the solution (`windows/AGENTS.md`, Commands). `app` and `ui` report INCONCLUSIVE elsewhere and name the CI jobs that run them.
+- **`app` publishes with Native AOT**, as `windows.yml` does, so a trim or AOT warning fails it: ILC treats warnings as errors with the rest of the build, and `TrimmerSingleWarn` is off in the app's csproj, so each warning names its own call site.
 - **A file in use on Windows.** A running `TablePro.exe` or test host holds its DLLs, and MSBuild's copy fails with MSB3027 or MSB3021. The wrapper reports it as INCONCLUSIVE; close the process.
 - **The pinned Rust toolchain needs the Windows targets**: `rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc` once per checkout (`windows/docs/decisions/0001-toolchain-baseline.md`, Consequences).
 
@@ -30,7 +31,7 @@ Read this when a `verify.sh` verdict needs interpreting for the Windows app, bef
 
 ## UI tests
 
-- **They drive the real app through UI Automation (FlaUI)** and take the mouse and keyboard. `TABLEPRO_APP` names the built `TablePro.exe`, which the `ui` step finds under `windows/src/TablePro.App/bin/` for the SDK's runtime identifier; run `app` first.
+- **They drive the real app through UI Automation (FlaUI)** and take the mouse and keyboard. `TABLEPRO_APP` names the published `TablePro.exe`, which the `ui` step finds under `windows/src/TablePro.App/bin/` in the `publish` folder for the SDK's runtime identifier; run `app` first.
 - **Each launch gets a new data folder** through `TABLEPRO_DATA_DIR`, with its theme and row limit written into `settings.json`, so the user's connections never show and nothing carries over.
 - **`windows/ci/desktop.ps1` is for hosted runners.** It writes a machine policy, stops system processes and changes the display mode. Never run it on a developer's machine.
 - **Keys and clicks go through `AppSession`.** It brings the app to the front first, and `Chord`, `Click(element, landed)`, `Drag(..., landed)` and `TypeInto` try up to three times, waiting 5 seconds each for the app to show the input landed. A new test sends a shortcut with `Chord` and a `landed` check, never a bare `Keyboard.TypeSimultaneously`.
@@ -58,7 +59,7 @@ These hold on GitHub's `windows-2025` and `windows-11-arm` images, where CI and 
 
 ## Reading CI
 
-- `ci.yml` calls `windows.yml` when the `windows` suite changed (`.claude/rules/ci.md`). Its jobs are `windows / Windows (x64)`, `windows / Windows (Arm64)` and `windows / Windows (macOS)`. The Windows jobs test the solution, build the app, ready the desktop, run the UI tests and keep the screenshots; the macOS job tests the solution and checks the bindings. A change under `core/` also runs `core.yml` on the same runners.
+- `ci.yml` calls `windows.yml` when the `windows` suite changed (`.claude/rules/ci.md`). Its jobs are `windows / Windows (x64)`, `windows / Windows (Arm64)` and `windows / Windows (macOS)`. The Windows jobs test the solution, publish the app with Native AOT, ready the desktop, run the UI tests and keep the screenshots; the macOS job tests the solution, checks the bindings and runs zizmor on the Windows workflows. A change under `core/` also runs `core.yml` on the same runners.
 - A failed job's tail: `gh run view --repo TableProApp/TablePro --job <job-id> --log-failed`. The screenshots, failure shots included: `windows-screenshots-x64` and `windows-screenshots-Arm64` (`references/platform-windows.md`, Screen). The UI tests' `TestResults/` and the WSL watch log are not uploaded.
 - **Fork pull request runs need approval.** A push to a fork's pull request starts its workflow runs with conclusion `action_required`, and no job starts until a maintainer approves. Before the 45-minute rule in `SKILL.md`, Phase 7, applies, look for them:
   ```bash

@@ -25,9 +25,12 @@ This is the guide for work under `windows/`. The root `AGENTS.md` holds the rule
 - `tests/TablePro.DataGrid.Gate` and `tests/TablePro.DataGrid.Gate.Uia`: the grid's timing and behavior gate, outside the solution. `ci/run-gate.ps1` builds and runs it; `.github/workflows/windows-grid-gate.yml` runs it by dispatch.
 - `src/TablePro.App`: the WinUI app: one window, the rail, the Connections page, the connection form window, Settings and a workspace per connection (`docs/decisions/0004-app-shell.md`). Strings are in `Strings/en-US/Resources.resw`.
 - `src/TablePro.App.Model`: the app's settings and session files, the library tree, the connection form's fields and the object folders. Plain `net10.0`, so `tests/TablePro.App.Model.Tests` runs anywhere.
-- `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own.
-- `ci/desktop.ps1`: readies a hosted runner's desktop for UI work (privacy settings window, WSL console, display size), for `windows.yml` and the grid gate.
+- `tests/TablePro.App.UITests`: UI Automation tests (FlaUI) that launch the built app with a data folder of their own, and the installed MSIX once `TABLEPRO_PACKAGE` names its family.
+- `ci/desktop.ps1`: readies a hosted runner's desktop for UI work (privacy settings window, WSL console, display size), for `windows.yml`, `release-windows.yml` and the grid gate.
+- `ci/winget-manifest.py`: writes a release's winget manifest, for `release-windows.yml`.
 - `scripts/engine-glyphs.py`: writes `src/TablePro.App/Resources/EngineGlyphs.xaml` from the macOS app's engine artwork. Run it after that artwork changes or an engine is added.
+- `scripts/package-assets.py`: writes the MSIX logos in `src/TablePro.App/Assets` from the app icon. Run it after the icon changes.
+- `RELEASING.md`: how a release is built, signed, published and sent to winget.
 - `docs/decisions/`: the decisions only the Windows app makes.
 - The core's side of the boundary: `core/crates/ffi` (`core/ARCHITECTURE.md`, Bindings).
 
@@ -54,16 +57,17 @@ dotnet test --solution TablePro.slnx
 
 On macOS the solution builds `TablePro.Editor` as a compile check only: WinUI's PRI and manifest tools run on Windows.
 
-The app and its UI tests build on Windows only, so they sit outside the solution:
+The app and its UI tests build on Windows only, so they sit outside the solution. The UI tests run the Native AOT publish, as CI does:
 
 ```bash
 dotnet build src/TablePro.App -r win-x64 -p:Platform=x64
-TABLEPRO_APP="$PWD/src/TablePro.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/TablePro.exe" dotnet test --project tests/TablePro.App.UITests
+dotnet publish src/TablePro.App -c Release -r win-x64 -p:Platform=x64 -p:CargoProfile=dev
+TABLEPRO_APP="$PWD/src/TablePro.App/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64/publish/TablePro.exe" dotnet test --project tests/TablePro.App.UITests
 ```
 
-Use `win-arm64` and `ARM64` on Arm64. The build runs unpackaged with the Windows App SDK beside it and keeps its files in `%LOCALAPPDATA%\TablePro`, or in `TABLEPRO_DATA_DIR`; the UI tests give each launch a new folder there. `-p:WindowsPackageType=MSIX -p:GenerateAppxPackageOnBuild=true` with `dotnet publish` makes the MSIX, signed with `-p:PackageCertificateThumbprint=` and a certificate whose subject is `CN=TablePro Development`. `TABLEPRO_UI_SCREENSHOTS` names a folder for the tests' light and dark screenshots.
+Use `win-arm64` and `ARM64` on Arm64. `dotnet build` makes a JIT build for the debugger; `dotnet publish` compiles with Native AOT, and a trim or AOT warning fails it. Both run unpackaged with the Windows App SDK beside them and keep their files in `%LOCALAPPDATA%\TablePro`, or in `TABLEPRO_DATA_DIR`; the UI tests give each launch a new folder there. `-p:WindowsPackageType=MSIX -p:GenerateAppxPackageOnBuild=true` with `dotnet publish` makes the MSIX, as `RELEASING.md` does, signed with `-p:PackageCertificateThumbprint=` and a certificate whose subject is `CN=TablePro Development`. `TABLEPRO_UI_SCREENSHOTS` names a folder for the tests' light and dark screenshots.
 
-The build runs `cargo build -p tablepro-ffi` for the runtime identifier, or for the SDK's own platform when none is given, and copies the library next to the assembly. `-r win-x64` or `-r win-arm64` picks the target, `-c Release` builds the core with Cargo's release profile, `CARGO_TARGET_DIR` is honoured, and `-p:SkipCoreBuild=true` leaves cargo out. Building needs the Rust toolchain that `rust-toolchain.toml` names, with the target added, and the .NET 10 SDK; on Windows, MSVC.
+The build runs `cargo build -p tablepro-ffi` for the runtime identifier, or for the SDK's own platform when none is given, and copies the library next to the assembly. `-r win-x64` or `-r win-arm64` picks the target, `-c Release` builds the core with Cargo's release profile unless `-p:CargoProfile=` names another, `CARGO_TARGET_DIR` is honoured, and `-p:SkipCoreBuild=true` leaves cargo out. On Windows the core links the hybrid CRT, so `RUSTFLAGS` gains `CoreRustFlags` from `src/TablePro.Interop/TablePro.Interop.csproj` (`docs/decisions/0005-distribution.md`). Building needs the Rust toolchain that `rust-toolchain.toml` names, with the target added, and the .NET 10 SDK; on Windows, MSVC.
 
 The core's Rust tests: `cargo test -p tablepro-ffi`, from the top of the repository.
 
@@ -90,4 +94,4 @@ Pass `-p:UniffiBindgenCs=<path>` when it is not on `PATH`; the target refuses an
 
 ## CI
 
-`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, builds the app and runs its UI tests on the Windows runners with their screenshots as an artifact, and checks the committed bindings on macOS.
+`.github/workflows/windows.yml`, which `ci.yml` calls when the `windows` suite changed (`.claude/rules/ci.md`). It builds the core and runs the tests on x64, Arm64 and macOS runners, publishes the app with Native AOT and runs its UI tests on the Windows runners with their screenshots as an artifact, and on macOS checks the committed bindings and runs zizmor on the Windows workflows. `.github/workflows/release-windows.yml` builds and ships a release (`RELEASING.md`).

@@ -1,3 +1,4 @@
+#![cfg(feature = "engines")]
 #![expect(
     clippy::unwrap_used,
     reason = "the setup helpers fail a test the way the test functions themselves do"
@@ -7,11 +8,15 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use russh::keys::HashAlg;
+use russh::keys::ssh_key::PrivateKey;
+use russh::keys::ssh_key::private::Ed25519Keypair;
 use tablepro_ffi::{
-    ConnectionRecord, ConnectionSecrets, Core, CoreError, FileOpenRequest, HostConfig, HostSecretError, HostSecrets,
-    ObjectScopeArg, RunOutcome, RunSettings, SafeModeTag, SecretItemTag, SecretKindTag, TableName, TlsModeTag,
-    TlsSettings,
+    ConnectionRecord, ConnectionSecrets, Core, CoreError, FileOpenRequest, HostConfig, HostPrompter, HostSecretError,
+    HostSecrets, ObjectScopeArg, PromptAnswer, PromptPurposeTag, PromptRequest, RunOutcome, RunSettings, SafeModeTag,
+    SecretItemTag, SecretKindTag, SshAuthTag, SshSettings, TableName, TlsModeTag, TlsSettings,
 };
+use tokio::net::TcpListener;
 
 type Stored = Arc<Mutex<HashMap<(String, SecretKindTag), String>>>;
 
@@ -221,7 +226,7 @@ async fn a_saved_sqlite_file_connects_lists_its_tables_and_becomes_recent() {
         .unwrap();
 
     let session = core
-        .connect_saved(saved.id.clone(), ConnectionSecrets::default(), None)
+        .connect_saved(saved.id.clone(), ConnectionSecrets::default(), None, None)
         .await
         .unwrap();
     let objects = session.objects(ObjectScopeArg::DefaultSchema, None).await.unwrap();
@@ -260,6 +265,7 @@ async fn a_test_logs_in_and_a_missing_file_fails_by_code() {
         record("test", "sqlite", &path.display().to_string()),
         ConnectionSecrets::default(),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -267,6 +273,7 @@ async fn a_test_logs_in_and_a_missing_file_fails_by_code() {
         .test_connection(
             record("gone", "sqlite", &dir.path().join("gone.sqlite").display().to_string()),
             ConnectionSecrets::default(),
+            None,
             None,
         )
         .await
@@ -286,7 +293,7 @@ async fn a_network_login_with_no_saved_password_says_so() {
     let saved = library.save(shop, ConnectionSecrets::default()).await.unwrap();
 
     let error = core
-        .connect_saved(saved.id, ConnectionSecrets::default(), None)
+        .connect_saved(saved.id, ConnectionSecrets::default(), None, None)
         .await
         .unwrap_err();
 
@@ -315,12 +322,164 @@ async fn a_password_typed_at_connect_is_used_when_none_is_saved() {
                 ..ConnectionSecrets::default()
             },
             None,
+            None,
         )
         .await
         .unwrap_err();
 
     // Past the keyring, the connect reaches the closed port.
     assert_ne!(error.code(), "keyring.secret_not_stored");
+}
+
+struct Refusing;
+
+impl russh::server::Handler for Refusing {
+    type Error = russh::Error;
+}
+
+#[derive(Clone, Default)]
+struct Declining(Arc<Mutex<Vec<PromptRequest>>>);
+
+impl HostPrompter for Declining {
+    fn prompt(&self, prompt: PromptRequest) -> PromptAnswer {
+        self.0.lock().unwrap().push(prompt);
+        PromptAnswer::Cancelled
+    }
+}
+
+// None when the server stops before the connects are done.
+async fn against_ssh_server<F: Future>(key: PrivateKey, connect: impl FnOnce(u16) -> F) -> Option<F::Output> {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let config = Arc::new(russh::server::Config {
+        keys: vec![key],
+        ..russh::server::Config::default()
+    });
+    let serving = async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            if let Ok(session) = russh::server::run_stream(config.clone(), stream, Refusing).await {
+                session.await.ok();
+            }
+        }
+    };
+    tokio::select! {
+        done = connect(port) => Some(done),
+        () = serving => None,
+    }
+}
+
+fn through_ssh(port: u16) -> ConnectionRecord {
+    let mut shop = record("shop", "postgres", "shop");
+    shop.host = "127.0.0.1".to_owned();
+    shop.port = 5432;
+    shop.ssh = Some(SshSettings {
+        host: "127.0.0.1".to_owned(),
+        port: Some(port),
+        username: Some("tester".to_owned()),
+        jump_hosts: Vec::new(),
+        auth: SshAuthTag::Password,
+    });
+    shop
+}
+
+#[tokio::test]
+async fn an_ssh_login_asks_the_app_about_a_host_key_it_does_not_know() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let key = PrivateKey::from(Ed25519Keypair::from_seed(&[7; 32]));
+    let fingerprint = key.public_key().fingerprint(HashAlg::Sha256).to_string();
+    let prompter = Declining::default();
+    let secrets = ConnectionSecrets {
+        database_password: Some(String::new()),
+        ssh_password: Some("typed".to_owned()),
+        ssh_passphrase: None,
+    };
+
+    let prompts = &prompter;
+    let (port, unattended, declined) = against_ssh_server(key, |port| async move {
+        let unattended = core
+            .test_connection(through_ssh(port), secrets.clone(), None, None)
+            .await;
+        let declined = core
+            .test_connection(
+                through_ssh(port),
+                secrets.clone(),
+                Some(Box::new(prompts.clone())),
+                None,
+            )
+            .await;
+        (port, unattended, declined)
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(unattended.unwrap_err().code(), "ssh.host_key_unknown");
+    assert_eq!(declined.unwrap_err().code(), "ssh.host_key_unknown");
+    let asked = prompter.0.lock().unwrap();
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert_eq!(
+        asked[0].purpose,
+        PromptPurposeTag::SshHostKey {
+            host: format!("[127.0.0.1]:{port}"),
+            algorithm: "ED25519".to_owned(),
+            fingerprint,
+        }
+    );
+}
+
+#[tokio::test]
+async fn an_empty_database_password_survives_a_separately_stored_ssh_password() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = core(dir.path(), MemorySecrets::default());
+    let key = PrivateKey::from(Ed25519Keypair::from_seed(&[8; 32]));
+    against_ssh_server(key, |port| async move {
+        let saved = core
+            .library()
+            .unwrap()
+            .save(
+                through_ssh(port),
+                ConnectionSecrets {
+                    ssh_password: Some("saved ssh password".to_owned()),
+                    ..ConnectionSecrets::default()
+                },
+            )
+            .await
+            .unwrap();
+        let error = core
+            .connect_saved(
+                saved.id,
+                ConnectionSecrets {
+                    database_password: Some(String::new()),
+                    ..ConnectionSecrets::default()
+                },
+                None,
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), "ssh.host_key_unknown");
+
+        let mut with_key = through_ssh(port);
+        with_key.ssh.as_mut().unwrap().auth = SshAuthTag::PrivateKey {
+            path: Some(dir.path().join("id_ed25519").display().to_string()),
+            has_passphrase: false,
+        };
+        let error = core
+            .test_connection(
+                with_key,
+                ConnectionSecrets {
+                    database_password: Some(String::new()),
+                    ..ConnectionSecrets::default()
+                },
+                None,
+                None,
+            )
+            .await
+            .unwrap_err();
+        assert_ne!(error.code(), "keyring.secret_not_stored");
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]

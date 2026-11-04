@@ -23,9 +23,22 @@ pub struct ClickHouseTlsEngine {
     fixture: ClickHouseFixture,
     ca: PathBuf,
     unrelated_ca: PathBuf,
+    server_certificate: PathBuf,
 }
 
 impl ClickHouseTlsEngine {
+    fn from_fixture(fixture: ClickHouseFixture) -> Self {
+        let ca = fixture.pki().path(PkiFile::Ca);
+        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
+        let server_certificate = fixture.pki().path(PkiFile::ServerCertificate);
+        Self {
+            fixture,
+            ca,
+            unrelated_ca,
+            server_certificate,
+        }
+    }
+
     fn options(&self, port: u16, credentials: Credentials, tls: TlsConfig) -> ConnectOptions {
         let liveness = test_liveness();
         options_over(
@@ -45,14 +58,17 @@ impl TlsConformanceEngine for ClickHouseTlsEngine {
     }
 
     async fn start() -> Result<Self, ConformanceFailure> {
-        let fixture = ClickHouseFixture::start().await.map_err(ConformanceFailure::setup)?;
-        let ca = fixture.pki().path(PkiFile::Ca);
-        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
-        Ok(Self {
-            fixture,
-            ca,
-            unrelated_ca,
-        })
+        ClickHouseFixture::start()
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
+    }
+
+    async fn start_self_signed() -> Result<Self, ConformanceFailure> {
+        ClickHouseFixture::start_self_signed()
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
     }
 
     fn connect_options(&self, tls: TlsConfig) -> ConnectOptions {
@@ -69,6 +85,10 @@ impl TlsConformanceEngine for ClickHouseTlsEngine {
 
     fn unrelated_ca_file(&self) -> &Path {
         &self.unrelated_ca
+    }
+
+    fn server_certificate_file(&self) -> &Path {
+        &self.server_certificate
     }
 
     fn served_name(&self) -> &str {

@@ -67,6 +67,9 @@ pub(crate) struct ScriptSyntax {
     pub backtick: Option<QuoteRule>,
     pub bracket_identifier: BracketIdentifier,
     pub escape_string_prefix: bool,
+    /// A string after a line break carries on an `E'...'` string with its
+    /// backslash escapes, as PostgreSQL's `quotecontinue` rule reads it.
+    pub escape_string_continues: bool,
     pub dash_comment_needs_space: bool,
     /// A line comment ends at a carriage return as well as a line feed,
     /// as PostgreSQL's scanner and SQL Server read it. Elsewhere only a
@@ -118,6 +121,7 @@ const POSTGRESQL: ScriptRules = ScriptRules {
         backtick: None,
         bracket_identifier: BracketIdentifier::None,
         escape_string_prefix: true,
+        escape_string_continues: true,
         dash_comment_needs_space: false,
         line_comment_ends_at_cr: true,
         hash_comment: HashComment::None,
@@ -144,6 +148,7 @@ const MYSQL: ScriptRules = ScriptRules {
         backtick: Some(quote(QuoteKind::QuotedIdentifier, BackslashPolicy::Never)),
         bracket_identifier: BracketIdentifier::None,
         escape_string_prefix: false,
+        escape_string_continues: false,
         dash_comment_needs_space: true,
         line_comment_ends_at_cr: false,
         hash_comment: HashComment::Always,
@@ -170,6 +175,7 @@ const SQLITE: ScriptRules = ScriptRules {
         backtick: Some(quote(QuoteKind::QuotedIdentifier, BackslashPolicy::Never)),
         bracket_identifier: BracketIdentifier::NoDoubling,
         escape_string_prefix: false,
+        escape_string_continues: false,
         dash_comment_needs_space: false,
         line_comment_ends_at_cr: false,
         hash_comment: HashComment::None,
@@ -196,6 +202,7 @@ const MSSQL: ScriptRules = ScriptRules {
         backtick: None,
         bracket_identifier: BracketIdentifier::Doubling,
         escape_string_prefix: false,
+        escape_string_continues: false,
         dash_comment_needs_space: false,
         line_comment_ends_at_cr: true,
         hash_comment: HashComment::None,
@@ -222,6 +229,7 @@ const CLICKHOUSE: ScriptRules = ScriptRules {
         backtick: Some(quote(QuoteKind::QuotedIdentifier, BackslashPolicy::Always)),
         bracket_identifier: BracketIdentifier::None,
         escape_string_prefix: false,
+        escape_string_continues: false,
         dash_comment_needs_space: false,
         line_comment_ends_at_cr: false,
         hash_comment: HashComment::SpaceOrBang,
@@ -248,6 +256,7 @@ const CQL: ScriptRules = ScriptRules {
         backtick: None,
         bracket_identifier: BracketIdentifier::None,
         escape_string_prefix: false,
+        escape_string_continues: false,
         dash_comment_needs_space: false,
         line_comment_ends_at_cr: true,
         hash_comment: HashComment::None,
@@ -263,9 +272,9 @@ const CQL: ScriptRules = ScriptRules {
     },
 };
 
-/// DuckDB's parser is PostgreSQL's scanner without its procedural
-/// bodies: a string escapes only with an `E` prefix, block comments
-/// nest, `$tag$` quotes, and a backtick quotes nothing.
+/// DuckDB 2.0's PEG tokenizer: a string escapes only with an `E` prefix
+/// and ends at its quote, with no continuation on the next line; block
+/// comments nest, `$tag$` quotes, and a backtick quotes a name as `"` does.
 const DUCKDB: ScriptRules = ScriptRules {
     boundary: Boundary::Semicolon,
     compound: CompoundRule::None,
@@ -274,9 +283,10 @@ const DUCKDB: ScriptRules = ScriptRules {
     syntax: ScriptSyntax {
         single_quote: quote(QuoteKind::StringLiteral, BackslashPolicy::Never),
         double_quote: quote(QuoteKind::QuotedIdentifier, BackslashPolicy::Never),
-        backtick: None,
+        backtick: Some(quote(QuoteKind::QuotedIdentifier, BackslashPolicy::Never)),
         bracket_identifier: BracketIdentifier::None,
         escape_string_prefix: true,
+        escape_string_continues: false,
         dash_comment_needs_space: false,
         line_comment_ends_at_cr: true,
         hash_comment: HashComment::None,

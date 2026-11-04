@@ -930,7 +930,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    /// Escape single quotes for N'...' string literals in SQL Server.
+    func escapeStringLiteral(_ value: String) -> String {
+        MSSQLStringLiteral.escaped(value)
+    }
 
     func effectiveSchema(_ schema: String?) -> String {
         guard let schema, !schema.isEmpty else { return currentSchemaName }

@@ -23,7 +23,8 @@
 #
 # With no server listening on the engine's port, the script starts one in Docker as tablepro-corpus-<engine> and
 # leaves it running for the next run. TP_CORPUS_HOST, TP_CORPUS_PORT, TP_CORPUS_USER, TP_CORPUS_PASSWORD and
-# TP_CORPUS_DATABASE point it at another server instead. TP_CORPUS_BUILD_DIR keeps the harness between runs.
+# TP_CORPUS_DATABASE point it at another server instead and disable Docker access.
+# TP_CORPUS_BUILD_DIR keeps the harness between runs.
 # Exits 1 when a check fails, 3 when it cannot run.
 
 set -uo pipefail
@@ -98,7 +99,7 @@ case "$ENGINE" in
         ;;
     mssql)
         FOLDER=MSSQLDriverPlugin CLASS=MSSQLPlugin C_MODULE=CFreeTDS
-        PRODUCTS="TableProCoreTypes TableProLogRedaction TableProMSSQLCore"
+        PRODUCTS="TableProCoreTypes TableProKerberos TableProLogRedaction TableProMSSQLCore TableProSQLQuoting TableProSQLVocabulary"
         LINK="$ROOT/Libs/libsybdb.a -lssl.3 -lcrypto.3 -liconv -framework GSS -lcom_err"
         # SQL Server proper rather than Azure SQL Edge, which has no CLR types (geometry, geography, hierarchyid).
         IMAGE=mcr.microsoft.com/mssql/server:2022-latest PORT_IN=1433 PORT=14367 USER_DEFAULT=sa DATABASE_DEFAULT=tp_corpus
@@ -138,8 +139,16 @@ USER_NAME="${TP_CORPUS_USER:-$USER_DEFAULT}"
 PASSWORD="${TP_CORPUS_PASSWORD:-$PASSWORD_DEFAULT}"
 DATABASE="${TP_CORPUS_DATABASE:-$DATABASE_DEFAULT}"
 CONTAINER="tablepro-corpus-$ENGINE"
+EXTERNAL_SERVER=0
+if [ -n "${TP_CORPUS_HOST+x}${TP_CORPUS_PORT+x}${TP_CORPUS_USER+x}${TP_CORPUS_PASSWORD+x}${TP_CORPUS_DATABASE+x}" ]; then
+    EXTERNAL_SERVER=1
+fi
 
 if [ -n "$IMAGE" ] && ! nc -z "$HOST" "$PORT" > /dev/null 2>&1; then
+    if [ "$EXTERNAL_SERVER" -eq 1 ]; then
+        echo "no server at $HOST:$PORT; explicit connection settings disable Docker startup" >&2
+        exit 3
+    fi
     command -v docker > /dev/null || { echo "no server at $HOST:$PORT and no docker to start one" >&2; exit 3; }
     if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
         echo "starting container $CONTAINER"
@@ -150,7 +159,7 @@ if [ -n "$IMAGE" ] && ! nc -z "$HOST" "$PORT" > /dev/null 2>&1; then
             > /dev/null || exit 3
     fi
 fi
-if [ ${#READY[@]} -gt 0 ] && docker ps --format '{{.Names}}' 2> /dev/null | grep -qx "$CONTAINER"; then
+if [ "$EXTERNAL_SERVER" -eq 0 ] && [ ${#READY[@]} -gt 0 ] && docker ps --format '{{.Names}}' 2> /dev/null | grep -qx "$CONTAINER"; then
     for _ in $(seq 1 120); do
         docker exec "$CONTAINER" "${READY[@]}" > /dev/null 2>&1 && break
         sleep 2

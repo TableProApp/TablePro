@@ -11,7 +11,7 @@ use tablepro_session::{FailureCause, MonitorSignal, OperationError, OperationKin
 use crate::cancel_token::{CancelToken, token};
 use crate::catalog::{ColumnEntry, ObjectEntry, ObjectScopeArg, SchemaEntry, TableName};
 use crate::editor::QueryEditor;
-use crate::error::{CoreError, ErrorInfo};
+use crate::error::{BoxedErrorInfo, CoreError};
 use crate::runtime::on_runtime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
@@ -39,7 +39,7 @@ pub enum SessionHealthTag {
     Offline,
     Failed {
         cause: FailureCauseTag,
-        reason: Option<ErrorInfo>,
+        reason: Option<BoxedErrorInfo>,
     },
 }
 

@@ -172,6 +172,7 @@ pub(crate) enum SessionWindowInput {
     },
     /// What importing that file would do, for the user to agree to.
     ImportPreviewed(Box<tablepro_storage::ImportPreview>),
+    ImportFromApp,
     ShowToast(String),
 }
 

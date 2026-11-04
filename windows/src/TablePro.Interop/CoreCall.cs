@@ -72,8 +72,8 @@ internal static class CoreCall
     private static Exception Translate(Native.CoreException exception, CancellationToken cancellationToken) =>
         exception switch
         {
-            Native.CoreException.Failed failed => new TableProException(Mapping.Error(failed.info)),
             _ when cancellationToken.IsCancellationRequested => new OperationCanceledException(cancellationToken),
+            Native.CoreException.Failed failed => new TableProException(Mapping.Error(failed.info)),
             _ => new OperationCanceledException(),
         };
 }

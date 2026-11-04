@@ -124,7 +124,7 @@ struct MCPSqlExportDialect: Sendable {
     }
 
     func literal(_ value: String) -> String {
-        SQLQuoting.stringLiteral(value, escapes: stringEscapes)
+        (stringEscapes == .sqlServer ? "N" : "") + SQLQuoting.stringLiteral(value, escapes: stringEscapes)
     }
 
     func boolean(_ value: Bool) -> String {

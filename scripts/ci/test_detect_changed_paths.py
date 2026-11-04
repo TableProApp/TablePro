@@ -78,13 +78,20 @@ class DetectChangedPathsTests(unittest.TestCase):
             ".github/workflows/build-linux.yml",
             ".github/workflows/linux-packages.yml",
             ".github/workflows/release-linux.yml",
+            "scripts/ci/start-windows-sshd.ps1",
         ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "true")
+
+    def test_linux_runs_on_the_cores_swift_bindings(self):
+        for path in ["apple/Packages/TableProFFI/Package.swift", "apple/scripts/build-core.sh",
+                     "apple/scripts/lib/deployment-target.sh", "apple/project.yml"]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "true")
 
     def test_linux_skips_the_apple_apps(self):
         for path in ["apple/TablePro/App.swift", "apple/TableProMobile/App.swift", "apple/Plugins/Shared/Timeout.swift",
-                     "apple/project.yml", "apple/CHANGELOG.md", ".github/workflows/macos-tests.yml"]:
+                     "apple/CHANGELOG.md", ".github/workflows/macos-tests.yml"]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "false")
 
@@ -163,6 +170,9 @@ class DetectChangedPathsTests(unittest.TestCase):
             "core/crates/ffi/src/lib.rs",
             "core/crates/ffi/uniffi.toml",
             ".github/workflows/windows.yml",
+            ".github/workflows/release-windows.yml",
+            ".github/workflows/windows-grid-gate.yml",
+            "windows/ci/winget-manifest.py",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("windows", path), "true")
@@ -187,6 +197,7 @@ class DetectChangedPathsTests(unittest.TestCase):
             "linux/Cargo.toml",
             "apple/TablePro/App.swift",
             "windows/AGENTS.md",
+            "windows/RELEASING.md",
             "core/AGENTS.md",
             "core/docs/decisions/0001-shared-core.md",
             "rustfmt.toml",

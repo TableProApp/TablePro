@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using TablePro.App.Model;
 using TablePro.App.Services;
@@ -16,6 +18,7 @@ public sealed partial class WorkspaceView : UserControl
 {
     private readonly Workbench _workbench;
     private readonly OpenConnection _connection;
+    private SessionShare? _share;
     private DatabaseSession? _session;
     private IReadOnlyList<ObjectEntry>? _everyObject;
     private bool _singleSchema;
@@ -25,7 +28,12 @@ public sealed partial class WorkspaceView : UserControl
     // Schemas a refresh reads again, the next time each one opens.
     private readonly HashSet<string> _stale = [];
     private readonly ClosedTabs _closed = new();
+    private readonly HashSet<TabViewItem> _closingTabs = [];
     private CancellationTokenSource? _watching;
+    private Windows.Foundation.Point _stripOrigin;
+    private WindowId _tearOutWindow;
+    private CancellationTokenSource? _recoveringHostKey;
+    private HostKeyFailure? _hostKeyFailure;
 
     internal WorkspaceView(Workbench workbench, OpenConnection connection)
     {
@@ -50,11 +58,23 @@ public sealed partial class WorkspaceView : UserControl
 
         KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         ApplyPaneWidth();
+        Tabs.Loaded += (_, _) => UpdateTearOut();
+        Tabs.LayoutUpdated += OnTabsLayoutUpdated;
     }
 
     public event EventHandler? EditRequested;
 
     public event EventHandler? CommandsChanged;
+
+    // The user closed the last tab; a window a tab was moved into closes with it.
+    public event EventHandler? Emptied;
+
+    internal IWorkspaceHost? Host { get; set; }
+
+    public int TabCount => Tabs.TabItems.Count;
+
+    // A tab may leave a window that keeps another, or the window with the rail.
+    public bool CanMoveActiveTab => Host is { CanMoveTabs: true } && ActiveTab is not null && (Host is { IsPrimary: true } || TabCount > 1);
 
     public ObservableCollection<ObjectNode> Objects { get; } = [];
 
@@ -75,50 +95,19 @@ public sealed partial class WorkspaceView : UserControl
         }
     }
 
-    // Asked when the core has no secret saved for the connection. Null when the dialog is closed.
-    internal async Task<SecretAnswer?> AskSecretAsync(SecretKind kind)
-    {
-        if (XamlRoot is null)
-        {
-            var loaded = new TaskCompletionSource();
-            void OnLoaded(object sender, RoutedEventArgs e) => loaded.TrySetResult();
-            Loaded += OnLoaded;
-            await loaded.Task.ConfigureAwait(true);
-            Loaded -= OnLoaded;
-        }
+    internal CredentialDialogs CredentialPrompter => new CredentialDialogs(this);
 
-        var label = Strings.Get("Secret_" + kind);
-        var box = new PasswordBox { Header = label };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "SecretBox");
-        var save = new CheckBox { Content = Strings.Get("SaveSecret") };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(save, "SaveSecretBox");
-        var message = new TextBlock
+    internal async Task<SecretAnswer?> AskSecretAsync(SecretKind kind, CancellationToken cancellationToken)
+    {
+        PromptPurpose purpose = kind switch
         {
-            Text = Strings.Format("SecretRequiredMessage", _connection.Name),
-            TextWrapping = TextWrapping.Wrap,
+            SecretKind.SshPassword => new PromptPurpose.SshPassword(PromptReason.NotStored),
+            SecretKind.SshPassphrase => new PromptPurpose.SshPassphrase(string.Empty, PromptReason.NotStored),
+            _ => new PromptPurpose.DatabasePassword(PromptReason.NotStored),
         };
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            RequestedTheme = ActualTheme,
-            Title = Strings.Get("SecretRequiredTitle"),
-            Content = new StackPanel { Spacing = 12, Children = { message, box, save } },
-            PrimaryButtonText = Strings.Get("ConnectButtonText"),
-            CloseButtonText = Strings.Get("Cancel"),
-            DefaultButton = ContentDialogButton.Primary,
-        };
-        box.Loaded += (_, _) => box.Focus(FocusState.Programmatic);
-        try
-        {
-            return await dialog.ShowAsync() == ContentDialogResult.Primary
-                ? new SecretAnswer(box.Password, save.IsChecked == true)
-                : null;
-        }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            // Another dialog is open on this thread; the connect ends as cancelled and can be asked for again.
-            return null;
-        }
+        var answer = await CredentialPrompter.PromptAsync(new CredentialPrompt(
+            purpose, _connection.Name, [new PromptField(string.Empty, true)], true), cancellationToken).ConfigureAwait(true);
+        return answer is { Values.Count: 1 } ? new SecretAnswer(answer.Values[0], answer.Remember) : null;
     }
 
     public void Rename(string name)
@@ -156,21 +145,31 @@ public sealed partial class WorkspaceView : UserControl
         RetryButton.Focus(FocusState.Programmatic);
     }
 
-    public async void ShowConnected(DatabaseSession session, SessionConnection? restore)
+    // A workspace a tab is moved into starts with none, and reads its tree once the tab is there (Start).
+    internal void ShowConnected(SessionShare share, SessionConnection? restore, bool adopted = false)
     {
-        _session = session;
+        _share = share;
+        _session = share.Session;
         _everyObject = null;
         ConnectingRing.IsActive = false;
         ConnectingPanel.Visibility = Visibility.Collapsed;
         FailedPanel.Visibility = Visibility.Collapsed;
         WorkspaceGrid.Visibility = Visibility.Visible;
+        if (adopted)
+        {
+            UpdateTearOut();
+            CommandsChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         if (restore is { Tabs.Count: > 0 })
         {
             foreach (var tab in restore.Tabs)
             {
                 if (tab is { Kind: TabKind.Table, Table: { } table })
                 {
-                    OpenTable(tab.Schema, table);
+                    // Tabs merged from two windows can show one table twice; each comes back.
+                    AddTable(tab.Schema, table, null, tab);
                 }
                 else
                 {
@@ -185,6 +184,17 @@ public sealed partial class WorkspaceView : UserControl
             NewQueryTab();
         }
 
+        Start();
+    }
+
+    public async void Start()
+    {
+        if (_session is not { } session)
+        {
+            return;
+        }
+
+        UpdateTearOut();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
         WatchHealth(session);
         await LoadTreeAsync().ConfigureAwait(true);
@@ -193,7 +203,8 @@ public sealed partial class WorkspaceView : UserControl
     public SessionConnection Snapshot(SessionConnection origin)
     {
         ArgumentNullException.ThrowIfNull(origin);
-        if (Tabs.TabItems.Count == 0)
+        // Until it connects, the tabs it was saved with are still to come; once connected, the strip is the truth.
+        if (_session is null)
         {
             return origin;
         }
@@ -206,8 +217,36 @@ public sealed partial class WorkspaceView : UserControl
         return origin with { Tabs = tabs, SelectedTab = Math.Max(0, Tabs.SelectedIndex) };
     }
 
+    internal bool HasUnconfirmedTransactions(ISet<ITabContent> confirmed) => Tabs.TabItems.OfType<TabViewItem>()
+        .Any(item => item.Content is ITabContent content && WorkspaceNotices.Holds(content.Transaction) && !confirmed.Contains(content));
+
+    internal async Task<bool> ConfirmCloseAsync(ISet<ITabContent> confirmed)
+    {
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>().ToList())
+        {
+            if (item.Content is ITabContent content && WorkspaceNotices.Holds(content.Transaction) && !confirmed.Contains(content))
+            {
+                Tabs.SelectedItem = item;
+                if (!await ConfirmCloseHeldAsync(content).ConfigureAwait(true))
+                {
+                    return false;
+                }
+
+                confirmed.Add(content);
+            }
+        }
+
+        return true;
+    }
+
     public async Task CloseTabsAsync()
     {
+        CancelRecovery();
+        _hostKeyFailure = null;
+        // A pending individual close must not create a replacement while disconnect is awaiting it.
+        _share = null;
+        _session = null;
+        Tabs.CanTearOutTabs = false;
         _watching?.Cancel();
         _watching = null;
         HealthBar.IsOpen = false;
@@ -221,7 +260,6 @@ public sealed partial class WorkspaceView : UserControl
         Tabs.TabItems.Clear();
         Objects.Clear();
         ObjectList.ItemsSource = null;
-        _session = null;
         _everyObject = null;
         WorkspaceGrid.Visibility = Visibility.Collapsed;
         CommandsChanged?.Invoke(this, EventArgs.Empty);
@@ -229,17 +267,17 @@ public sealed partial class WorkspaceView : UserControl
 
     public void NewQueryTab(string? sql = null, string? title = null)
     {
-        if (_session is null)
+        if (_share is null)
         {
             return;
         }
 
-        AddTab(new QueryTabView(_workbench, _session, title ?? NextQueryTitle(), sql), Symbol.Document);
+        AddTab(new QueryTabView(_workbench, _share, title ?? NextQueryTitle(), sql), Symbol.Document);
     }
 
-    public void OpenTable(string? schema, string name, int? index = null)
+    public void OpenTable(string? schema, string name, int? index = null, SessionTab? restore = null)
     {
-        if (_session is null)
+        if (_share is null)
         {
             return;
         }
@@ -252,7 +290,17 @@ public sealed partial class WorkspaceView : UserControl
             return;
         }
 
-        var table = new TableTabView(_workbench, _session, schema, name);
+        AddTable(schema, name, index, restore);
+    }
+
+    private void AddTable(string? schema, string name, int? index, SessionTab? restore)
+    {
+        if (_share is null)
+        {
+            return;
+        }
+
+        var table = new TableTabView(_workbench, _share, schema, name, restore);
         AddTab(table, Symbol.ViewAll, index);
         table.Run();
     }
@@ -277,7 +325,7 @@ public sealed partial class WorkspaceView : UserControl
 
     public void ReopenClosedTab()
     {
-        if (_session is null || _closed.Pop() is not { } closed)
+        if (_share is null || _closed.Pop() is not { } closed)
         {
             return;
         }
@@ -285,11 +333,11 @@ public sealed partial class WorkspaceView : UserControl
         var index = Math.Min(closed.Index, Tabs.TabItems.Count);
         if (closed.Tab is { Kind: TabKind.Table, Table: { } table })
         {
-            OpenTable(closed.Tab.Schema, table, index);
+            AddTable(closed.Tab.Schema, table, index, closed.Tab);
         }
         else
         {
-            AddTab(new QueryTabView(_workbench, _session, closed.Tab.Title, closed.Tab.Sql), Symbol.Document, index);
+            AddTab(new QueryTabView(_workbench, _share, closed.Tab.Title, closed.Tab.Sql), Symbol.Document, index);
         }
 
         CommandsChanged?.Invoke(this, EventArgs.Empty);
@@ -360,11 +408,21 @@ public sealed partial class WorkspaceView : UserControl
             IconSource = new SymbolIconSource { Symbol = icon },
             Content = content,
         };
-        content.StateChanged += (_, _) =>
+        Take(item, index);
+    }
+
+    // The workspace whose strip a tab is in, which moves with the tab between windows.
+    internal static WorkspaceView? HolderOf(TabViewItem tab) => tab.Tag as WorkspaceView;
+
+    internal void Take(TabViewItem item, int? index = null)
+    {
+        item.Tag = this;
+        item.ContextRequested += OnTabContextRequested;
+        if (item.Content is ITabContent content)
         {
-            UpdateElsewhereBar();
-            CommandsChanged?.Invoke(this, EventArgs.Empty);
-        };
+            content.StateChanged += OnTabStateChanged;
+        }
+
         if (index is { } at && at >= 0 && at <= Tabs.TabItems.Count)
         {
             Tabs.TabItems.Insert(at, item);
@@ -375,26 +433,206 @@ public sealed partial class WorkspaceView : UserControl
         }
 
         Tabs.SelectedItem = item;
+        UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    // Closing a tab ends its own connection, and its transaction with it, so a held one is asked about first.
-    private async Task CloseTabAsync(TabViewItem item)
+    // The tab keeps its content, its connection and its run; only this workspace lets go of it.
+    internal void Release(TabViewItem item)
     {
+        item.ContextRequested -= OnTabContextRequested;
         if (item.Content is ITabContent content)
         {
-            if (WorkspaceNotices.Holds(content.Transaction) && !await ConfirmCloseHeldAsync(content).ConfigureAwait(true))
-            {
-                return;
-            }
-
-            _closed.Push(content.Snapshot(), Tabs.TabItems.IndexOf(item));
-            await content.CloseAsync().ConfigureAwait(true);
+            content.StateChanged -= OnTabStateChanged;
         }
 
         Tabs.TabItems.Remove(item);
+        // Native tear-out cannot drop back into an empty primary strip.
+        if (Tabs.TabItems.Count == 0 && Host is { IsPrimary: true })
+        {
+            NewQueryTab();
+        }
+
         UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void MoveActiveTabToNewWindow()
+    {
+        if (CanMoveActiveTab && Tabs.SelectedItem is TabViewItem item)
+        {
+            Host?.MoveToNewWindow(item);
+        }
+    }
+
+    // Before the workspace leaves its window, while TabView can still reach the window to unmark its strip.
+    public void Leave() => Tabs.CanTearOutTabs = false;
+
+    internal void UpdateTearOut()
+    {
+        Tabs.CanTearOutTabs = false;
+        if (Tabs.IsLoaded && _session is not null && Host is { CanMoveTabs: true })
+        {
+            Tabs.CanTearOutTabs = true;
+            _stripOrigin = Tabs.TransformToVisual(null).TransformPoint(default);
+        }
+    }
+
+    // TabView marks its strip as the window's caption, to drag tabs out, and marks it again only when the strip
+    // resizes; a bar opening above it or the object pane resizing moves it, so it is set again to mark the new place.
+    private void OnTabsLayoutUpdated(object? sender, object e)
+    {
+        if (!Tabs.CanTearOutTabs || !Tabs.IsLoaded)
+        {
+            return;
+        }
+
+        var origin = Tabs.TransformToVisual(null).TransformPoint(default);
+        if (!origin.Equals(_stripOrigin))
+        {
+            _stripOrigin = origin;
+            Tabs.CanTearOutTabs = false;
+            Tabs.CanTearOutTabs = true;
+        }
+    }
+
+    private void OnTabStateChanged(object? sender, EventArgs e)
+    {
+        UpdateElsewhereBar();
+        CommandsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Built when asked for, since a menu keeps the window it first opened in and a tab can move to another.
+    private void OnTabContextRequested(UIElement sender, ContextRequestedEventArgs args)
+    {
+        if (sender is not TabViewItem item)
+        {
+            return;
+        }
+
+        args.Handled = true;
+        ShowTabContextMenu(item, args.TryGetPosition(item, out var point) ? point : null);
+    }
+
+    internal bool ShowTabContextMenu(Windows.Graphics.PointInt32 screenPoint)
+    {
+        var point = XamlRoot.CoordinateConverter.ConvertScreenToLocal(screenPoint);
+        foreach (var item in Tabs.TabItems.OfType<TabViewItem>().Where(item => item.IsLoaded))
+        {
+            var bounds = item.TransformToVisual(null).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, item.ActualWidth, item.ActualHeight));
+            if (bounds.Contains(point))
+            {
+                ShowTabContextMenu(item, XamlRoot.Content.TransformToVisual(item).TransformPoint(point));
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void ShowTabContextMenu(TabViewItem item, Windows.Foundation.Point? position)
+    {
+        Tabs.SelectedItem = item;
+        var menu = new MenuFlyout();
+        var move = new MenuFlyoutItem
+        {
+            Text = Strings.Get("MenuMoveToNewWindow"),
+            Icon = new SymbolIcon(Symbol.NewWindow),
+            IsEnabled = CanMoveActiveTab,
+        };
+        move.Click += (_, _) => Host?.MoveToNewWindow(item);
+        var close = new MenuFlyoutItem { Text = Strings.Get("MenuCloseThisTab"), Icon = new SymbolIcon(Symbol.Cancel) };
+        close.Click += async (_, _) => await CloseTabAsync(item).ConfigureAwait(true);
+        menu.Items.Add(move);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(close);
+        if (position is { } point)
+        {
+            menu.ShowAt(item, new FlyoutShowOptions { Position = point });
+        }
+        else
+        {
+            menu.ShowAt(item);
+        }
+    }
+
+    // Each press on a tab may start a drag out of the strip, so the window is asked for before any drag.
+    private void OnTabTearOutWindowRequested(TabView sender, TabViewTabTearOutWindowRequestedEventArgs args)
+    {
+        if (Host is { } host)
+        {
+            _tearOutWindow = host.TearOutWindow(_connection);
+            args.NewWindowId = _tearOutWindow;
+        }
+    }
+
+    private void OnTabTearOutRequested(TabView sender, TabViewTabTearOutRequestedEventArgs args)
+    {
+        foreach (var tab in args.Tabs.OfType<TabViewItem>())
+        {
+            // WinUI 2.6.4 leaves this event's NewWindowId empty; retain the window supplied at drag start.
+            Host?.TearOut(tab, _tearOutWindow);
+        }
+    }
+
+    private void OnExternalTornOutTabsDropping(TabView sender, TabViewExternalTornOutTabsDroppingEventArgs args) =>
+        args.AllowDrop = Host is { AcceptsTabs: true } && args.Tabs.OfType<TabViewItem>().All(Accepts);
+
+    // A tab keeps the connection it was opened on, so it joins only a workspace of that connection.
+    private bool Accepts(TabViewItem tab) =>
+        HolderOf(tab) is { } source
+        && _connection.Matches(source._connection.ConnectionId, source._connection.Origin.FilePath)
+        && !(source.Host is { IsPrimary: true } && source.TabCount == 1);
+
+    private void OnExternalTornOutTabsDropped(TabView sender, TabViewExternalTornOutTabsDroppedEventArgs args)
+    {
+        var index = args.DropIndex;
+        foreach (var tab in args.Tabs.OfType<TabViewItem>())
+        {
+            if (HolderOf(tab) is { } source)
+            {
+                // The drag can leave this strip again before the pointer is released.
+                _tearOutWindow = source.XamlRoot.ContentIslandEnvironment.AppWindowId;
+                source.Release(tab);
+            }
+
+            Take(tab, index++);
+        }
+    }
+
+    // Closing a tab ends its own connection, and its transaction with it, so a held one is asked about first.
+    // A second request while the first is closing the tab, or asking about its transaction, does nothing.
+    private async Task CloseTabAsync(TabViewItem item)
+    {
+        if (!_closingTabs.Add(item))
+        {
+            return;
+        }
+
+        try
+        {
+            if (item.Content is ITabContent content)
+            {
+                if (WorkspaceNotices.Holds(content.Transaction) && !await ConfirmCloseHeldAsync(content).ConfigureAwait(true))
+                {
+                    return;
+                }
+
+                _closed.Push(content.Snapshot(), Tabs.TabItems.IndexOf(item));
+                await content.CloseAsync().ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            _closingTabs.Remove(item);
+        }
+
+        Release(item);
+        if (Tabs.TabItems.Count == 0)
+        {
+            Emptied?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private async Task<bool> ConfirmCloseHeldAsync(ITabContent content)
@@ -409,7 +647,7 @@ public sealed partial class WorkspaceView : UserControl
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        return await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary;
     }
 
     // The tab shown names its own transaction; this bar names one another tab holds.
@@ -465,6 +703,11 @@ public sealed partial class WorkspaceView : UserControl
             while (!watching.IsCancellationRequested)
             {
                 health = await session.WaitForHealthChangeAsync(health, watching.Token).ConfigureAwait(true);
+                if (!ReferenceEquals(_session, session) || watching.IsCancellationRequested)
+                {
+                    break;
+                }
+
                 ShowHealth(health);
             }
         }
@@ -483,6 +726,14 @@ public sealed partial class WorkspaceView : UserControl
 
     private void ShowHealth(SessionHealth health)
     {
+        var hostKey = health is SessionHealth.Failed { Reason.HostKey: { TrustAllowed: true } failure }
+            ? failure : null;
+        if (hostKey != _hostKeyFailure)
+        {
+            CancelRecovery();
+            _hostKeyFailure = hostKey;
+        }
+
         if (WorkspaceNotices.For(health) is not { } notice)
         {
             HealthBar.IsOpen = false;
@@ -503,7 +754,62 @@ public sealed partial class WorkspaceView : UserControl
         HealthBar.IsOpen = true;
     }
 
-    private void OnReconnect(object sender, RoutedEventArgs e) => _session?.Reconnect();
+    internal void CancelRecovery() => _recoveringHostKey?.Cancel();
+
+    private async void OnReconnect(object sender, RoutedEventArgs e)
+    {
+        var session = _session;
+        if (session is null || _recoveringHostKey is not null)
+        {
+            return;
+        }
+
+        if (_hostKeyFailure is not { } failure || _connection.ConnectionId is not { } id)
+        {
+            session.Reconnect();
+            return;
+        }
+
+        using var recovering = new CancellationTokenSource();
+        _recoveringHostKey = recovering;
+        ReconnectButton.IsEnabled = false;
+        try
+        {
+            var snapshot = await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true);
+            recovering.Token.ThrowIfCancellationRequested();
+            var saved = snapshot.Connections.FirstOrDefault(connection => connection.Id == id);
+            if (saved is null || !await CredentialPrompter.RecoverHostKeyAsync(
+                _workbench.Core, saved, failure, recovering.Token).ConfigureAwait(true))
+            {
+                return;
+            }
+
+            recovering.Token.ThrowIfCancellationRequested();
+            if (ReferenceEquals(_session, session) && _hostKeyFailure == failure)
+            {
+                session.Reconnect();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Closing the workspace or a new health state ends this recovery attempt.
+        }
+        catch (TableProException exception)
+        {
+            if (ReferenceEquals(_session, session) && !recovering.IsCancellationRequested)
+            {
+                HealthBar.Message = Strings.Error(exception.Error);
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_recoveringHostKey, recovering))
+            {
+                _recoveringHostKey = null;
+                ReconnectButton.IsEnabled = true;
+            }
+        }
+    }
 
     private void OnObjectsPaneSizeChanged(object sender, SizeChangedEventArgs e)
     {
