@@ -147,6 +147,39 @@ struct SQLStatementClassifierTests {
         #expect(Self.tier(sql, engine) == .safe)
     }
 
+    @Test("An extension function that runs SQL, changes a job or a chunk, or stops a worker is a write", arguments: [
+        "SELECT pg_background_launch('SELECT 1')",
+        "SELECT * FROM pg_background_run_query_v2('SELECT 1') AS r(n int)",
+        "SELECT pg_background_cancel_all()",
+        "SELECT pg_background_grant_privileges('app')",
+        "SELECT cron.schedule('0 3 * * *', 'VACUUM orders')",
+        "SELECT cron.unschedule('nightly')",
+        "SELECT drop_chunks('conditions', INTERVAL '3 months')",
+        "SELECT compress_chunk(c) FROM show_chunks('conditions') c",
+        "SELECT create_hypertable('conditions', by_range('time'))",
+        "SELECT add_retention_policy('conditions', INTERVAL '1 year')",
+        "SELECT alter_job(1000, schedule_interval => INTERVAL '1 day')",
+        "SELECT timescaledb_experimental.remove_all_policies('conditions')",
+        "SELECT timescaledb_pre_restore()",
+        "SELECT dblink_close('app', 'c')",
+        "SELECT dblink_cancel_query('app')",
+    ])
+    func extensionFunctionWrites(sql: String) {
+        #expect(Self.tier(sql, "PostgreSQL") == .write)
+    }
+
+    @Test("An extension function that only reads stays a read", arguments: [
+        "SELECT * FROM pg_background_result(123) AS r(n int)",
+        "SELECT pg_background_detach(123)",
+        "SELECT show_chunks('conditions')",
+        "SELECT * FROM cron.job",
+        "SELECT dblink_connect('app', 'dbname=shop')",
+        "SELECT schedule FROM jobs",
+    ])
+    func extensionReadStaysSafe(sql: String) {
+        #expect(Self.tier(sql, "PostgreSQL") == .safe)
+    }
+
     @Test("SurrealQL's REMOVE drops what it names, wherever the statement stands", arguments: [
         "REMOVE TABLE person",
         "remove table if exists person;",

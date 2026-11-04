@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::script::{ScriptPlan, ScriptToken, ScriptTokenKind};
-use crate::sql_syntax::state_changing_functions::changes_state;
+use crate::sql_syntax::state_changing_functions::{changes_state, duckdb_call};
 use crate::unicode_blank::is_blank;
 
 /// What running a piece of SQL can do, from its own words. Ordered, so
@@ -467,16 +467,14 @@ fn in_expression(part: &[Code<'_>], index: usize) -> bool {
 fn calls_mutator(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
     let arguments = match decodes_unicode_names(grammar) && spelled_in_escapes(part, index) {
         true => after_uescape(part, index + 1),
-        false if changes_state(part[index].text) || runs_query_text(&part[index], grammar) => index + 1,
+        false if changes_state(part[index].text) || runs_duckdb_call(&part[index], grammar) => index + 1,
         false => return false,
     };
     part.get(arguments).is_some_and(|next| next.kind == Kind::Open)
 }
 
-/// DuckDB's `query('…')` runs the SELECT in its text, which can take a
-/// value from a sequence. Elsewhere `query` is any function's name.
-fn runs_query_text(token: &Code<'_>, grammar: SqlGrammar) -> bool {
-    grammar == SqlGrammar::DuckDb && is(token.text, &["QUERY"])
+fn runs_duckdb_call(token: &Code<'_>, grammar: SqlGrammar) -> bool {
+    grammar == SqlGrammar::DuckDb && duckdb_call(token.text)
 }
 
 /// The grammars whose scanner is PostgreSQL's, which reads `U&"…"`.
@@ -1561,6 +1559,21 @@ mod tests {
             "SELECT pg_import_system_collations('public'::regnamespace)",
             "SELECT heap_force_kill('orders'::regclass, ARRAY['(0,1)']::tid[])",
             "SELECT pg_file_write('postgresql.auto.conf', 'x', true)",
+            "SELECT pg_background_launch('SELECT 1')",
+            "SELECT * FROM pg_background_run_query_v2('SELECT 1') AS r(n int)",
+            "SELECT pg_background_cancel_all()",
+            "SELECT pg_background_grant_privileges('app')",
+            "SELECT cron.schedule('0 3 * * *', 'VACUUM orders')",
+            "SELECT cron.unschedule('nightly')",
+            "SELECT drop_chunks('conditions', INTERVAL '3 months')",
+            "SELECT compress_chunk(c) FROM show_chunks('conditions') c",
+            "SELECT create_hypertable('conditions', by_range('time'))",
+            "SELECT add_retention_policy('conditions', INTERVAL '1 year')",
+            "SELECT alter_job(1000, schedule_interval => INTERVAL '1 day')",
+            "SELECT timescaledb_experimental.remove_all_policies('conditions')",
+            "SELECT timescaledb_pre_restore()",
+            "SELECT dblink_close('app', 'c')",
+            "SELECT dblink_cancel_query('app')",
         ] {
             assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Write, "{sql}");
         }
@@ -1572,17 +1585,40 @@ mod tests {
         ] {
             assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Write, "{sql}");
         }
-        assert_eq!(
-            access("SELECT * FROM query('SELECT nextval(''s'')')", SqlGrammar::DuckDb),
-            StatementAccess::Write
-        );
+        for sql in [
+            "SELECT * FROM query('SELECT nextval(''s'')')",
+            "SELECT * FROM postgres_execute('pg', 'SELECT 1')",
+            "SELECT * FROM postgres_query('pg', 'SELECT nextval(''s'')')",
+            "SELECT * FROM mysql_query('my', 'SELECT 1')",
+            "CALL mysql_execute('my', 'UPDATE orders SET total = 0 WHERE id = 1')",
+            "SELECT * FROM sqlite_query('lite', 'SELECT 1')",
+            "SELECT * FROM json_execute_serialized_sql(json_serialize_sql('SELECT nextval(''s'')'))",
+            "SELECT * FROM dbgen(sf = 0.01)",
+            "SELECT * FROM DSDGEN(sf = 0.01)",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Write, "{sql}");
+        }
         for sql in [
             "SELECT dblink_build_sql_insert('t', '1', 1, '{1}', '{2}')",
             "SELECT dblink FROM links",
             "SELECT file, url, query(1) FROM downloads",
+            "SELECT * FROM postgres_execute('pg', 'SELECT 1')",
+            "SELECT * FROM pg_background_result(123) AS r(n int)",
+            "SELECT pg_background_detach(123)",
+            "SELECT show_chunks('conditions')",
+            "SELECT * FROM cron.job",
+            "SELECT dblink_connect('app', 'dbname=shop')",
+            "SELECT schedule FROM jobs",
         ] {
             assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Read, "{sql}");
         }
+        assert_eq!(
+            access(
+                "SELECT * FROM postgres_scan('pg', 'public', 'orders')",
+                SqlGrammar::DuckDb
+            ),
+            StatementAccess::Read
+        );
     }
 
     #[test]
