@@ -1,11 +1,17 @@
-use std::sync::Arc;
-
 use tablepro_core::{AuthMode, DataModel, DatabaseDriver, DriverRegistry, EndpointKind, EngineCategory, TlsMode};
 
 use crate::library::TlsModeTag;
 
-// Compiled in until the driver ABI lands (core/docs/decisions/0004-driver-plugin-abi.md).
+#[cfg(not(feature = "engines"))]
 pub(crate) fn registry() -> DriverRegistry {
+    DriverRegistry::new()
+}
+
+// Compiled in until the driver ABI lands (core/docs/decisions/0004-driver-plugin-abi.md).
+#[cfg(feature = "engines")]
+pub(crate) fn registry() -> DriverRegistry {
+    use std::sync::Arc;
+
     let mut registry = DriverRegistry::new();
     registry.register(Arc::new(tablepro_driver_cassandra::CassandraDriver));
     registry.register(Arc::new(tablepro_driver_clickhouse::ClickhouseDriver));
@@ -111,7 +117,7 @@ impl DriverInfo {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "engines"))]
 mod tests {
     use super::*;
 

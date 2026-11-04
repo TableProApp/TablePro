@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a3d4d65d59dd0d3797cb279b3fa496e5fa31fa6d5fe9d517f52c0370320d131b # shrinks to records = CloudRecords { groups: [CloudGroup { group_id: "18E66214-40A4-432B-BFCD-56E6ECA87325", name: Some("Work"), color: None, icon_name: None, parent_id: None, sort_order: Some(9223372036854775807) }, CloudGroup { group_id: "8E705A90-0DA5-445A-8949-947B6C3D2E7E", name: Some("Work"), color: None, icon_name: None, parent_id: None, sort_order: None }], connections: [] }

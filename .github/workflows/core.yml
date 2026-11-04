@@ -132,3 +132,29 @@ jobs:
         run: |
           cargo test --locked -p tablepro-driver-mssql --test integration -- --ignored windows_server::force_strict:: 2>&1 | tee force-strict.log
           grep "test result: ok. 1 passed" force-strict.log
+
+  swift:
+    name: Core (Swift bindings)
+    runs-on: macos-15
+    # Release with fat LTO, without the engines (core/docs/decisions/0010-macos-on-the-core.md).
+    timeout-minutes: 90
+    env:
+      RUSTFLAGS: -D warnings
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: swift-bindings
+      - name: Build the static library and its Swift bindings
+        run: apple/scripts/build-core.sh arm64
+      - name: Swift binding tests
+        run: swift test --package-path apple/Packages/TableProFFI
