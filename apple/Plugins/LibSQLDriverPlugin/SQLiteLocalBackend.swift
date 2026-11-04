@@ -233,7 +233,7 @@ actor SQLiteLocalBackend {
             case .null:
                 bindResult = sqlite3_bind_null(statement, bindIndex)
             case .text(let stringValue):
-                bindResult = sqlite3_bind_text(statement, bindIndex, stringValue, -1, sqliteTransient)
+                bindResult = SQLiteText.bind(stringValue, to: statement, at: bindIndex)
             case .bytes(let data):
                 bindResult = data.withUnsafeBytes { rawBuffer -> Int32 in
                     let baseAddress = rawBuffer.baseAddress
@@ -261,10 +261,10 @@ actor SQLiteLocalBackend {
                 }
                 return .bytes(Data(bytes: blobPtr, count: byteCount))
             }
-            guard let text = sqlite3_column_text(statement, index) else {
+            guard let text = SQLiteText.column(statement, index) else {
                 return .null
             }
-            return .text(String(cString: text))
+            return .text(text)
         }
     }
 
