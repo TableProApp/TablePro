@@ -172829,6 +172829,9 @@
         }
       }
     },
+    "SSL %1$@ is on because %2$@ encrypts this connection by default" : {
+
+    },
     "SSL Mode" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,

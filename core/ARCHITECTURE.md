@@ -13,6 +13,7 @@ core/crates/
 ├── ssh/                           system OpenSSH transport and the askpass helper (Unix)
 ├── session/                       connect, sessions, health monitor, operation runner
 ├── storage/                       saved connections, history, drafts, credentials, file persistence
+├── foreign-import/                connections and saved queries read from other apps' files, and their review
 ├── ai/                            the AI assistant's providers, prompts and replies
 ├── mcp/                           the MCP server: transport, token and tools
 ├── ffi/                           the library C# and Swift load: one UniFFI API and the grid's C ABI
@@ -36,6 +37,7 @@ core/crates/
 |---|---|
 | `core` | no workspace crate |
 | `net`, `ssh`, `storage` | `core` |
+| `foreign-import` | `core`, `storage` |
 | `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse`, `drivers/cassandra`, `drivers/redis`, `drivers/mongodb` | `core`, `net` |
 | `drivers/sqlite`, `drivers/duckdb` | `core` |
 | `session` | `core`, `net`, `ssh`, `storage` |
@@ -48,6 +50,7 @@ Rules, enforced by review:
 
 - `core` depends on **no other workspace crate**. It holds the domain types and the driver contract, and no I/O beyond the traits and the file identity the file engines share.
 - `net`, `ssh` and `storage` depend on `core` only.
+- `foreign-import` depends on `core` and `storage`. It reads other apps' files and never a platform service: a keychain or an installed-app lookup comes in through `ForeignHost`.
 - Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
 - `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`, and SSH through the `SshTunnels` the app passes in. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
 - `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
@@ -73,6 +76,7 @@ A value or a trait the app passes in:
 | `SecretVault` and `SecretItems`, labelled through `SecretLabeler` and `SecretItemLabeler` | `tablepro_linux_platform::SecretStore`, the Secret Service through oo7 | `Core::with_system_secrets`, the platform's store the core reaches itself (below); `HostSecrets`, a callback interface, for a host with a store of its own |
 | `SshTunnels` | `tablepro_ssh::SshServices`, the system OpenSSH client | none yet: a route through SSH fails as with no client installed |
 | `ProcessHold` | `gio::Application::hold` | none |
+| `ForeignAppDirs` and `ForeignHost` (`tablepro-foreign-import`) | `tablepro_linux_platform::foreign_app_dirs`, the host's XDG directories inside a Flatpak, and `PlainHost`: no other app's keychain | none yet |
 
 A `cfg` split inside a crate:
 

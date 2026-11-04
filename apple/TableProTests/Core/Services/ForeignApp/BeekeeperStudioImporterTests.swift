@@ -160,6 +160,94 @@ struct BeekeeperStudioImporterTests {
         #expect(importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 3))
     }
 
+    @Test("inventory counts only the connections collect imports")
+    func inventorySkipsUntypedConnections() throws {
+        try makeDatabase(Self.connectionSchema + """
+            INSERT INTO saved_connection (id, name, connectionType, host) VALUES (3, 'No type', NULL, 'h');
+            """)
+
+        let result = try importer.collect(.connectionsOnly)
+
+        #expect(result.connections.map { $0.name } == ["Shop"])
+        #expect(importer.inventory().connections == result.connections.count)
+    }
+
+    @Test("inventory and collect agree on which saved queries are blank")
+    func blankQueriesAgree() throws {
+        try makeDatabase(Self.connectionSchema + """
+            CREATE TABLE favorite_query (id INTEGER PRIMARY KEY, title TEXT, text TEXT);
+            INSERT INTO favorite_query (id, title, text) VALUES
+                (1, 'Orders', 'select * from orders;'),
+                (2, 'Form feed', char(12)),
+                (3, 'Blank', ' ' || char(9) || char(10) || char(13));
+            """)
+
+        let result = try importer.collect(.withSavedQueries)
+
+        #expect(result.savedQueryNames == ["Orders", "Form feed"])
+        #expect(importer.inventory().savedQueries == result.bundle.savedQueries.count)
+    }
+
+    @Test("TLS verification follows what each engine's Beekeeper connector does")
+    func tlsVerificationPerEngine() throws {
+        // Beekeeper saves sslRejectUnauthorized and trustServerCertificate as 1 unless the user turns them off.
+        try makeDatabase(Self.connectionSchema + """
+            INSERT INTO saved_connection (id, name, connectionType, host, ssl, sslCaFile, sslCertFile, sslKeyFile,
+                sslRejectUnauthorized, trustServerCertificate) VALUES
+                (11, 'PG no files', 'postgresql', 'pg', 1, NULL, NULL, NULL, 1, 1),
+                (12, 'PG with CA', 'postgresql', 'pg', 1, '/certs/ca.pem', NULL, NULL, 1, 1),
+                (13, 'PG unverified', 'postgresql', 'pg', 1, '/certs/ca.pem', NULL, NULL, 0, 1),
+                (14, 'MySQL no files', 'mysql', 'my', 1, NULL, NULL, NULL, 1, 1),
+                (15, 'SQL Server', 'sqlserver', 'ms', 1, NULL, NULL, NULL, 0, 1),
+                (16, 'SQL Server trusted', 'sqlserver', 'ms', 1, '/certs/ca.pem', '/certs/c.pem', '/certs/c.key', 0, 0),
+                (17, 'Redis', 'redis', 'cache', 1, NULL, NULL, NULL, 1, 1);
+            """)
+
+        var modes: [String: PortableSSLMode] = [:]
+        for connection in try importer.collect(.connectionsOnly).connections {
+            modes[connection.name] = connection.sslConfig?.portableMode
+        }
+
+        #expect(modes["PG no files"] == .required)
+        #expect(modes["PG with CA"] == .verifyIdentity)
+        #expect(modes["PG unverified"] == .required)
+        #expect(modes["MySQL no files"] == .required)
+        #expect(modes["SQL Server"] == .verifyIdentity)
+        #expect(modes["SQL Server trusted"] == .required)
+        #expect(modes["Redis"] == .verifyIdentity)
+    }
+
+    @Test("With SSL off only SQL Server encrypts, as mssql does by default")
+    func tlsWithSSLOff() throws {
+        try makeDatabase(Self.connectionSchema + """
+            INSERT INTO saved_connection (id, name, connectionType, host, ssl, sslRejectUnauthorized, trustServerCertificate)
+                VALUES
+                (21, 'SQL Server trusting', 'sqlserver', 'ms', 0, 1, 1),
+                (22, 'SQL Server checking', 'sqlserver', 'ms', 0, 1, 0),
+                (23, 'PG plain', 'postgresql', 'pg', 0, 1, 1),
+                (24, 'MySQL plain', 'mysql', 'my', 0, 1, 1);
+            """)
+
+        let collected = try importer.collect(.connectionsOnly)
+        let connections = Dictionary(uniqueKeysWithValues: collected.connections.map { ($0.name, $0) })
+
+        let trusting = try #require(connections["SQL Server trusting"]?.sslConfig)
+        #expect(trusting.portableMode == .required)
+        #expect(trusting.caCertificatePath == nil)
+        #expect(connections["SQL Server checking"]?.sslConfig?.portableMode == .verifyIdentity)
+        #expect(connections["PG plain"]?.sslConfig == nil)
+        #expect(connections["MySQL plain"]?.sslConfig == nil)
+
+        #expect(collected.notes(named: "SQL Server trusting") == [
+            "SSL Required (skip verify) is on because Beekeeper Studio encrypts this connection by default"
+        ])
+        #expect(collected.notes(named: "SQL Server checking") == [
+            "SSL Verify Identity is on because Beekeeper Studio encrypts this connection by default"
+        ])
+        #expect(collected.notes(named: "PG plain").isEmpty)
+        #expect(collected.notes(named: "MySQL plain").isEmpty)
+    }
+
     @Test("Saved queries import as global queries in a folder named after the app")
     func savedQuerySupport() {
         guard case .reads(let caption) = importer.savedQuerySupport else {

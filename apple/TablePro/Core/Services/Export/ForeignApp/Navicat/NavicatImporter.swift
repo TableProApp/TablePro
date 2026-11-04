@@ -136,11 +136,14 @@ private extension NavicatImporter {
             ? decryptField(attr(element, "Password")) : nil
         let sshPassword = attr(element, "SSH_SavePassword").lowercased() == "true"
             ? decryptField(attr(element, "SSH_Password")) : nil
-        guard password != nil || sshPassword != nil else { return nil }
+        // The export spells the passphrase attributes in either case.
+        let keyPassphrase = attrAnyCase(element, "SSH_SavePassphrase").lowercased() == "true"
+            ? decryptField(attrAnyCase(element, "SSH_Passphrase")) : nil
+        guard password != nil || sshPassword != nil || keyPassphrase != nil else { return nil }
         return ExportableCredentials(
             password: password,
             sshPassword: sshPassword,
-            keyPassphrase: nil,
+            keyPassphrase: keyPassphrase,
             sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
@@ -159,6 +162,11 @@ private extension NavicatImporter {
 
     func attr(_ element: XMLElement, _ name: String) -> String {
         element.attribute(forName: name)?.stringValue ?? ""
+    }
+
+    func attrAnyCase(_ element: XMLElement, _ name: String) -> String {
+        let lowered = name.lowercased()
+        return element.attributes?.first { $0.name?.lowercased() == lowered }?.stringValue ?? ""
     }
 
     func nonEmpty(_ value: String) -> String? {

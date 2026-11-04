@@ -16,6 +16,7 @@ mod connecting_page;
 mod connections;
 mod file_location_dialog;
 mod imp;
+mod import_from_app;
 mod launch_notice;
 mod locate_file;
 mod notification_request;
@@ -529,6 +530,7 @@ impl SessionWindow {
             SessionWindowInput::ImportConnections => self.on_import_connections(),
             SessionWindowInput::ConnectionsFileRead { path, bytes } => self.on_connections_file_read(path, bytes),
             SessionWindowInput::ImportPreviewed(preview) => self.on_import_previewed(*preview),
+            SessionWindowInput::ImportFromApp => self.on_import_from_app(),
             SessionWindowInput::ShowToast(message) => self.show_toast(&message),
         }
     }

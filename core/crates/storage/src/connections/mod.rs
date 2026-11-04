@@ -14,9 +14,12 @@ use crate::document_problem::{DocumentProblem, DocumentProblemKind};
 use crate::error::StorageError;
 use crate::{ConnectionGroup, ConnectionTag, ConnectionTagName, GroupTree};
 
+mod additions;
 mod legacy_groups;
 mod library;
 mod placement;
+
+pub use additions::ImportedConnection;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {
@@ -115,7 +118,7 @@ impl SavedConnection {
     /// Whether the two differ at most in how the list shows them. A
     /// field added later counts as part of the connection until it is
     /// listed here.
-    fn connects_like(&self, other: &Self) -> bool {
+    pub fn connects_like(&self, other: &Self) -> bool {
         let shown_alike = |saved: &Self| Self {
             name: String::new(),
             last_opened_at: None,

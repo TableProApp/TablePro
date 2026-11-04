@@ -1,0 +1,52 @@
+{
+  "objects": [
+    {
+      "id": "lx-1",
+      "name": "Linux Postgres",
+      "db-driver": "PostgreSQL",
+      "db-host": "db.internal",
+      "db-port": "5433",
+      "db-user": "app",
+      "db-name": "shop",
+      "db-path": "",
+      "use-ssh-tunnel": 1,
+      "ssh-host": "bastion",
+      "ssh-port": "2222",
+      "ssh-user": "deploy",
+      "ssh-key-path": "/home/me/.ssh/id_ed25519",
+      "ssl-mode": 2,
+      "ssl-key-path-1": "/home/me/tls/client.key",
+      "tag": 1,
+      "color": "#d0021b",
+      "group-id": "lg-2",
+      "db-use-command-line-password": false
+    },
+    {
+      "id": "lx-2",
+      "name": "Linux SQLite",
+      "db-driver": "SQLite",
+      "db-host": "",
+      "db-port": "",
+      "db-path": "/home/me/data.db",
+      "use-ssh-tunnel": 0,
+      "ssh-key-path": "",
+      "ssl-mode": -1,
+      "group-id": ""
+    },
+    {
+      "id": "lx-3",
+      "name": "Linux Command",
+      "db-driver": "MySQL",
+      "db-host": "localhost",
+      "db-port": "",
+      "use-ssh-tunnel": 0,
+      "db-use-command-line-password": true,
+      "db-command-line-password": "pass show db"
+    },
+    {
+      "id": "lx-4",
+      "db-driver": "MySQL"
+    }
+  ],
+  "updated_at": 1730600000
+}

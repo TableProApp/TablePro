@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>ConnectionName</key>
+		<string>Team Redis</string>
+		<key>DatabaseHost</key>
+		<string>cache.local</string>
+		<key>DatabaseName</key>
+		<string></string>
+		<key>DatabasePasswordMode</key>
+		<integer>0</integer>
+		<key>DatabasePort</key>
+		<string></string>
+		<key>DatabaseUser</key>
+		<string></string>
+		<key>Driver</key>
+		<string>Redis</string>
+		<key>Enviroment</key>
+		<string></string>
+		<key>GroupID</key>
+		<string>t-1</string>
+		<key>ID</key>
+		<string>team-1</string>
+		<key>ServerPasswordMode</key>
+		<integer>0</integer>
+		<key>isOverSSH</key>
+		<integer>0</integer>
+	</dict>
+</array>
+</plist>

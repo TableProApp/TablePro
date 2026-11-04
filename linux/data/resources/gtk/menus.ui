@@ -44,6 +44,10 @@
         <attribute name="action">win.import-connections</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">Import f_rom Another App…</attribute>
+        <attribute name="action">win.import-from-app</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">_Export Connections…</attribute>
         <attribute name="action">win.export-connections</attribute>
       </item>
