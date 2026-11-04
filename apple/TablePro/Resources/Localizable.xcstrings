@@ -31686,6 +31686,10 @@
     "Binary values limit must be between 1 and 1,048,576 KB." : {
 
     },
+    "Binding parameters needs Databend 1.2.473 or later." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Black Friday: %lld%% off Pro until %@" : {
       "localizations" : {
         "en" : {
@@ -60432,6 +60436,10 @@
           }
         }
       }
+    },
+    "Databend versions end this statement's comments in different places, so its parameters cannot be bound. Rewrite comments such as /**/ or one ending in **/." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Date" : {
       "localizations" : {

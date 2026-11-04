@@ -101,7 +101,8 @@ struct MCPSqlExportDialect: Sendable {
     let booleanStyle: SQLDialectDescriptor.BooleanLiteralStyle
     let stringEscapes: SQLStringEscapes
     let binaryStyle: CompareSQLLiteral.BinaryStyle
-    var identifierBackslashEscapes = false
+    // `resolve` sets the engine's own quoter; a dialect built by hand doubles its quote.
+    var quoteIdentifier: (@Sendable (String) -> String)?
 
     // The file runs later on a session nobody settled, so its literals are written as kept text.
     static func resolve(
@@ -109,22 +110,17 @@ struct MCPSqlExportDialect: Sendable {
         session: PluginSessionLexicalState? = nil
     ) -> MCPSqlExportDialect? {
         guard let dialect = try? resolveSQLDialect(for: databaseType) else { return nil }
-        let quote = SQLIdentifierQuote(dialectQuote: dialect.identifierQuote)
         return MCPSqlExportDialect(
             identifierQuote: dialect.identifierQuote,
             booleanStyle: dialect.booleanLiteralStyle,
             stringEscapes: SQLLexicalResolver.keptTextStringEscapes(for: databaseType, session: session),
             binaryStyle: CompareSQLLiteral.binaryStyle(for: databaseType),
-            identifierBackslashEscapes: databaseType.lexicalGrammar.backslashEscapes(in: quote)
+            quoteIdentifier: quoteIdentifierFromDialect(dialect, databaseType: databaseType)
         )
     }
 
     func quote(_ name: String) -> String {
-        SQLQuoting.identifier(
-            name,
-            quote: SQLIdentifierQuote(dialectQuote: identifierQuote),
-            backslashEscapes: identifierBackslashEscapes
-        )
+        quoteIdentifier?(name) ?? SQLQuoting.identifier(name, quote: SQLIdentifierQuote(dialectQuote: identifierQuote))
     }
 
     func literal(_ value: String) -> String {

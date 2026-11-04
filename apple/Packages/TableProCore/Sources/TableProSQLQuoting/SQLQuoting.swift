@@ -73,6 +73,13 @@ public enum SQLQuoting {
         return String(quoted)
     }
 
+    // Databend before 1.2.945 ends a backtick name at the next backtick, so a name holding one goes in double
+    // quotes. Its QuotedIdent keeps a backslash there as written, so only the quote is doubled: a backslash that
+    // pairs with a quote makes the name fail to parse rather than name another object.
+    public static func databendIdentifier(_ name: String) -> String {
+        identifier(name, quote: name.unicodeScalars.contains("`") ? .doubleQuote : .backtick)
+    }
+
     public static func stringLiteral(_ value: String, escapes: SQLStringEscapes = .standard) -> String {
         var quoted = String.UnicodeScalarView()
         quoted.append("'")
