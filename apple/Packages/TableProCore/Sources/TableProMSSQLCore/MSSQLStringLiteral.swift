@@ -14,11 +14,11 @@ import TableProSQLQuoting
 /// binary literal and a fixed catalog constant such as `'PRIMARY KEY'` must stay as they are.
 public enum MSSQLStringLiteral {
     public static func escaped(_ value: String) -> String {
-        SQLQuoting.stringLiteralBody(value)
+        SQLQuoting.stringLiteralBody(value, escapes: .sqlServer)
     }
 
     public static func quoted(_ value: String) -> String {
-        "N" + SQLQuoting.stringLiteral(value)
+        "N'\(escaped(value))'"
     }
 
     /// `LIKE` takes its pattern as an ordinary string literal, so the prefix belongs here too. The

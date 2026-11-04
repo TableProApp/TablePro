@@ -314,7 +314,7 @@ private struct Reader {
     // taken as written, since the procedure names the object with the literal's text.
     mutating func storedProcedureCall(grammar: SQLLexicalGrammar) -> TableEditStatement {
         guard let procedure = name(), Self.isRenameProcedure(procedure) else { return .runsUnseenCode }
-        let escapes = grammar.stringEscapes
+        let escapes = SQLStringEscapes.sqlServer
         guard let source = stringLiteral(escapes: escapes).flatMap({ Self.multipartName(in: $0, grammar: grammar) }),
               acceptSymbol(SQLTokenCursor.comma),
               let target = stringLiteral(escapes: escapes), !target.isEmpty else { return .other }

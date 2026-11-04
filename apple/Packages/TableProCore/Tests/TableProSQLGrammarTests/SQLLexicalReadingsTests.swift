@@ -1,5 +1,6 @@
 import Foundation
 import TableProSQLGrammar
+import TableProSQLQuoting
 import Testing
 
 @Suite("SQL lexical readings")
@@ -230,5 +231,11 @@ struct SQLLexicalReadingsTests {
         #expect(sent("CREATE FUNCTION f() RETURNS integer AS $b$ BEGIN RETURN 1; END; $b$ LANGUAGE plpgsql; SELECT 2;").count == 2)
         #expect(sent("CREATE FUNCTION f RETURN NUMBER AS BEGIN RETURN 1; END;\n/\nSELECT 2;").count == 2)
         #expect(sent("CREATE FUNCTION f RETURN NUMBER AS \"v\" NUMBER := 1; BEGIN RETURN \"v\"; END;\n/\nSELECT 2;").count == 2)
+    }
+    @Test("SQL Server selects continuation escaping without general backslash escapes")
+    func sqlServerStringEscapes() {
+        let escapes = SQLLexicalReadings.stringEscapes(databaseTypeId: "SQL Server", declared: nil, session: nil)
+        #expect(escapes == .sqlServer)
+        #expect(!escapes.backslashEscapes)
     }
 }
