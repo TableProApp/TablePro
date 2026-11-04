@@ -163,8 +163,7 @@ final class PaginationCoordinator: ObservableObject {
         guard let scope = parent.scope(for: tab) else { return }
         let tabId = tab.id
         let schemaName = tab.tableContext.schemaName
-        let filters = tab.filterState.hasAppliedFilters ? tab.filterState.appliedFilters : []
-        let logicMode = tab.filterState.filterLogicMode
+        let (filters, logicMode) = tab.filterState.rerunFilters
         // A plugin search replaces the table filters in a narrowed browse, so the count must read it or it counts the whole table.
         let browseFilters = parent.filterCoordinator.activeBrowseSearch(for: tab.filterState)?.pluginQueryFilters
         let isNonSQL = PluginManager.shared.editorLanguage(for: parent.connection.type) != .sql
@@ -362,6 +361,7 @@ final class PaginationCoordinator: ObservableObject {
                         rows.replace(
                             rows: result.rows,
                             rowLocators: isTableTab ? result.rowLocators : nil,
+                            exportDocuments: result.exportDocuments,
                             absentCells: result.absentCells,
                             unloadedCells: result.unloadedCells
                         )

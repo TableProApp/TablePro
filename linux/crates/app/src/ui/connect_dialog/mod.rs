@@ -1000,6 +1000,7 @@ pub fn remedy_field(remedy: TlsRemedy) -> FormField {
     match remedy {
         TlsRemedy::ChooseCaCertificate => FormField::CaFile,
         TlsRemedy::SetServerName => FormField::ServerName,
+        TlsRemedy::ChangeEncryption => FormField::Encryption,
     }
 }
 

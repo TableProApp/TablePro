@@ -227,6 +227,38 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         )
     }
 
+    @Test("Curated DuckDB offers port forwards, no SSL section, and names the fields that hold its server")
+    func duckDBCuratedTransportCapabilities() throws {
+        let curated = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: "DuckDB"))
+
+        #expect(curated.capabilities.supportsSSH, "Remote mode dials a TCP server a forward can carry")
+        #expect(!curated.capabilities.supportsSSL, "Quack's TLS lives in the Remote fields, never the built-in section")
+        #expect(
+            curated.capabilities.serverEndpointFields
+                == ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort")
+        )
+        let declared = Set(curated.connection.additionalConnectionFields.map(\.id))
+        #expect(declared.isSuperset(of: ["duckdbHost", "duckdbPort"]))
+    }
+
+    @Test("DuckDB keeps its server fields when its plugin registers")
+    func duckDBKeepsItsServerEndpointFields() {
+        let built = PluginMetadataRegistry.shared.buildMetadataSnapshot(from: MockDuckDBPlugin.self)
+
+        #expect(
+            built.capabilities.serverEndpointFields
+                == ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort"),
+            "No DriverPlugin declares them, so loading the plugin would otherwise forward the built-in Host"
+        )
+    }
+
+    @Test("Only DuckDB keeps its server outside the built-in Host and Port")
+    func onlyDuckDBNamesServerEndpointFields() {
+        for entry in PluginMetadataRegistry.shared.builtInDefaults() where entry.typeId != "DuckDB" {
+            #expect(entry.snapshot.capabilities.serverEndpointFields == nil, "\(entry.typeId)")
+        }
+    }
+
     @Test("DuckDB keeps its file signatures when its plugin registers")
     func duckDBKeepsItsFileSignatures() {
         let registry = PluginMetadataRegistry.shared
@@ -316,6 +348,25 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
             built.capabilities.exactRowCountIsFullScan == true,
             "Every automatic count would be a Scan of the whole table that AWS bills for"
         )
+        #expect(built.capabilities.supportsRawFilter == false, "its driver refuses every raw filter")
+    }
+
+    @Test("Engines whose driver refuses or misreads a raw condition are not offered one", arguments: [
+        "etcd", "DynamoDB", "Memcached", "Weaviate", "InfluxDB", "Kafka"
+    ])
+    func refusingEnginesOfferNoRawFilter(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsRawFilter == false)
+    }
+
+    @Test("Engines that run a raw condition natively still offer one", arguments: [
+        "MySQL", "PostgreSQL", "SQL Server", "Oracle", "MongoDB", "Elasticsearch"
+    ])
+    func nativeEnginesOfferRawFilter(typeId: String) throws {
+        let snapshot = try #require(PluginMetadataRegistry.shared.snapshot(forRegisteredTypeId: typeId))
+
+        #expect(snapshot.capabilities.supportsRawFilter)
     }
 
     /// None of these has a `DriverPlugin` static, so a plugin that registers would reset them to the struct
@@ -567,6 +618,7 @@ struct PluginMetadataRegistryCuratedCapabilityTests {
         #expect(built.capabilities.exactRowCountIsFullScan == false)
         #expect(built.capabilities.supportsColumnSort == true)
         #expect(built.capabilities.supportsMatchAnyFilters == true)
+        #expect(built.capabilities.supportsRawFilter == true)
         #expect(built.capabilities.columnsAreSampled == false)
         #expect(built.capabilities.patternFiltersReadAnyColumn == false)
         #expect(built.capabilities.filtersTypedByReadRows == false)

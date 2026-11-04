@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProSSHConfig
 
@@ -23,7 +24,7 @@ struct ConnectionURLFormatter {
         }
 
         if connection.type == .duckdb {
-            return formatDuckDB(connection)
+            return formatDuckDB(connection, sshPassword: sshPassword)
         }
 
         let ssh = connection.resolvedSSHConfig
@@ -61,9 +62,9 @@ struct ConnectionURLFormatter {
         return "sqlite://\(database)"
     }
 
-    private static func formatDuckDB(_ connection: DatabaseConnection) -> String {
+    private static func formatDuckDB(_ connection: DatabaseConnection, sshPassword: String?) -> String {
         if connection.additionalFields["duckdbMode"] == "remote" {
-            return formatDuckDBRemote(connection)
+            return formatDuckDBRemote(connection, sshPassword: sshPassword)
         }
         let database = connection.additionalFields["duckdbFilePath"].flatMap { $0.isEmpty ? nil : $0 }
             ?? connection.database
@@ -73,16 +74,43 @@ struct ConnectionURLFormatter {
         return "duckdb://\(database)"
     }
 
-    private static func formatDuckDBRemote(_ connection: DatabaseConnection) -> String {
+    private static func formatDuckDBRemote(_ connection: DatabaseConnection, sshPassword: String?) -> String {
         let host = connection.additionalFields["duckdbHost"] ?? ""
-        var url = "quack://\(host)"
-        if let portString = connection.additionalFields["duckdbPort"],
-           let port = Int(portString.trimmingCharacters(in: .whitespaces)) {
+        let port = connection.additionalFields["duckdbPort"].flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        let alias = connection.additionalFields["duckdbAlias"] ?? ""
+
+        // The SSH shape names the server in Host and Port, so the row's own fields stand in for the placeholder there.
+        let ssh = connection.resolvedSSHConfig
+        if ssh.enabled {
+            var server = connection
+            server.host = host
+            server.port = port ?? connection.type.defaultPort
+            server.database = alias
+            server.username = ""
+            return formatSSH(
+                server, sshConfig: ssh, scheme: "quack", defaultPort: connection.type.defaultPort,
+                password: nil, sshPassword: sshPassword
+            )
+        }
+
+        var url = "quack://\(HostListEndpoint.urlHost(host))"
+        if let port {
             url += ":\(port)"
         }
-        let alias = connection.additionalFields["duckdbAlias"] ?? ""
         if !alias.isEmpty {
-            url += "/\(alias)"
+            // Encoded as the other formats' database is: a raw `#` or `?` would end the path and drop the
+            // TLS parameters after it, and the copy would reopen as Automatic.
+            url += "/\(alias.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? alias)"
+        }
+        var params: [String] = []
+        if let sslParam = sslModeParam(for: connection) {
+            params.append("sslmode=\(sslParam)")
+        }
+        if let fingerprintParam = DuckDBSSLModeField.fingerprintParam(for: connection.additionalFields) {
+            params.append(fingerprintParam)
+        }
+        if !params.isEmpty {
+            url += "?" + params.joined(separator: "&")
         }
         return url
     }
@@ -124,7 +152,7 @@ struct ConnectionURLFormatter {
             }
             result += "@"
         }
-        result += ssh.host
+        result += HostListEndpoint.urlHost(ssh.host)
         if let port = ssh.port, port != 22 {
             result += ":\(port)"
         }
@@ -139,7 +167,7 @@ struct ConnectionURLFormatter {
             result += "@"
         }
 
-        result += connection.host
+        result += HostListEndpoint.urlHost(connection.host)
         if connection.port != defaultPort {
             result += ":\(connection.port)"
         }
@@ -151,7 +179,9 @@ struct ConnectionURLFormatter {
             sshPathComponent = redisPath(for: connection)
         }
         sshPathComponent += catalogSchemaSuffix(for: connection, path: sshPathComponent)
-        result += "/\(sshPathComponent)"
+        // As the direct form encodes its path. A raw `?` or `#` here ended the path and dropped every
+        // parameter after it, TLS included, and the parser takes the last `@` as the end of the login.
+        result += "/\(sshPathComponent.addingPercentEncoding(withAllowedCharacters: sshPathAllowed) ?? sshPathComponent)"
 
         let query = buildQueryString(connection, sshConfig: ssh)
         if !query.isEmpty {
@@ -188,7 +218,7 @@ struct ConnectionURLFormatter {
            let mongoHosts = connection.additionalFields["mongoHosts"], !mongoHosts.isEmpty {
             result += mongoHosts
         } else {
-            result += connection.host
+            result += HostListEndpoint.urlHost(connection.host)
             if connection.port != defaultPort {
                 result += ":\(connection.port)"
             }
@@ -239,6 +269,8 @@ struct ConnectionURLFormatter {
     }
 
     // Trino and Presto read the path as /catalog/schema, as ConnectionURLParser does.
+    private static let sshPathAllowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "@"))
+
     private static func catalogSchemaSuffix(for connection: DatabaseConnection, path: String) -> String {
         guard connection.type.pluginTypeId == DatabaseType.trino.rawValue, !path.isEmpty,
               let schema = connection.additionalFields["trinoSchema"]?.trimmingCharacters(in: .whitespaces),
@@ -281,6 +313,11 @@ struct ConnectionURLFormatter {
 
         if let sslParam = sslModeParam(for: connection) {
             params.append("sslmode=\(sslParam)")
+        }
+
+        if connection.type == .duckdb,
+           let fingerprintParam = DuckDBSSLModeField.fingerprintParam(for: connection.additionalFields) {
+            params.append(fingerprintParam)
         }
 
         if let hex = colorHex(connection.color) {
@@ -347,6 +384,10 @@ struct ConnectionURLFormatter {
     private static func sslModeParam(for connection: DatabaseConnection) -> String? {
         guard connection.type != .etcd else {
             return EtcdTLSModeField.sslMode(forFieldValue: connection.additionalFields[EtcdTLSModeField.fieldId])
+                .map(sslModeParamValue)
+        }
+        guard connection.type != .duckdb else {
+            return DuckDBSSLModeField.sslMode(forFieldValue: connection.additionalFields[DuckDBSSLModeField.fieldId])
                 .map(sslModeParamValue)
         }
         guard !connection.localSocketSkipsTLS else { return nil }

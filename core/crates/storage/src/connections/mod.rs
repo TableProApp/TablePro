@@ -58,11 +58,7 @@ pub struct SavedConnection {
     pub auth_mode: AuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<SavedSshConfig>,
-    /// Last successful open of this connection. Drives the welcome
-    /// view's recency-first sort. `None` for connections saved before
-    /// this field shipped (legacy files just deserialize into None);
-    /// they sort after every connection that has been opened at least
-    /// once and fall back to alphabetical against each other.
+    // The picker's Recent section reads it; `None` for one never opened or saved before it existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<DateTime<Utc>>,
     /// A colour the user put on this connection to tell production
@@ -538,6 +534,40 @@ impl ConnectionStore {
         self.commit(&mut state, document)
     }
 
+    // One write, so no publish shows a copy at the end of its group before it moves up.
+    pub fn insert_after_blocking(&self, connection: SavedConnection, after: Uuid) -> Result<(), StorageError> {
+        let mut state = self.lock();
+        let mut document = self.ensure_loaded(&mut state)?;
+        let mut connection = connection;
+        let stored = document
+            .connections
+            .iter()
+            .find(|saved| saved.id == connection.id)
+            .map(|saved| (saved.group_id, saved.order));
+        document.connections.retain(|saved| saved.id != connection.id);
+        let anchor = document
+            .connections
+            .iter()
+            .find(|saved| saved.id == after)
+            .map(|saved| (saved.group_id, saved.order));
+        match anchor {
+            Some((group, order)) => {
+                for later in document
+                    .connections
+                    .iter_mut()
+                    .filter(|saved| saved.group_id == group && saved.order > order)
+                {
+                    later.order = later.order.saturating_add(1);
+                }
+                connection.group_id = group;
+                connection.order = order.saturating_add(1);
+            }
+            None => document.settle_place(&mut connection, stored),
+        }
+        document.connections.push(connection);
+        self.commit(&mut state, document)
+    }
+
     pub fn remove_blocking(&self, id: Uuid) -> Result<RemoveOutcome, StorageError> {
         let mut state = self.lock();
         let mut document = self.ensure_loaded(&mut state)?;
@@ -633,9 +663,7 @@ impl ConnectionStore {
         Ok(Some(updated))
     }
 
-    /// Stamp the last-opened time so the welcome view can sort
-    /// recency-first. An id that is not in the list writes nothing:
-    /// a connection opened without saving has nothing to update.
+    // For the picker's Recent section. A connection opened without saving has no entry, so nothing is written.
     pub fn touch_last_opened_blocking(&self, id: Uuid) -> Result<(), StorageError> {
         let mut state = self.lock();
         let mut document = self.ensure_loaded(&mut state)?;

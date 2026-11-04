@@ -7728,6 +7728,9 @@
         }
       }
     },
+    "%1$@: %2$@, %3$@." : {
+
+    },
     "%1$@: %2$lld rows" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -10554,6 +10557,9 @@
         }
       }
     },
+    "%lld additional errors are in Copy Details." : {
+
+    },
     "%lld bytes" : {
       "localizations" : {
         "fr" : {
@@ -11636,6 +11642,9 @@
         }
       }
     },
+    "%lld rows submitted in completed writes." : {
+
+    },
     "%lld seconds" : {
       "localizations" : {
         "fr" : {
@@ -11852,6 +11861,9 @@
           }
         }
       }
+    },
+    "%lld statements completed." : {
+
     },
     "%lld statements executed" : {
       "localizations" : {
@@ -13631,6 +13643,9 @@
     "1 row in %@ blocks the delete" : {
 
     },
+    "1 row submitted in a completed write." : {
+
+    },
     "1 saved query found" : {
 
     },
@@ -13655,6 +13670,9 @@
           }
         }
       }
+    },
+    "1 statement completed." : {
+
     },
     "1 statement stays out of this run and %@ keeps what it has for it." : {
       "extractionState" : "stale",
@@ -15702,6 +15720,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A document could not be read" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A document field could not be read" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A document is one JSON object, written between { and }." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -15773,6 +15799,9 @@
           }
         }
       }
+    },
+    "A failed write may have made additional changes." : {
+
     },
     "A field named “%@” can only be changed on MongoDB 5.0 or later, which can address a dot or a leading $ in a name." : {
       "extractionState" : "manual",
@@ -16568,6 +16597,9 @@
     "A raw Firestore filter is a JSON Filter object, such as %@." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "A raw SQL filter must be one condition: no comment, no second statement, and every quote and parenthesis closed." : {
+
     },
     "A raw SurrealDB filter must be one condition that only reads. Run anything else in the SurrealQL editor." : {
       "extractionState" : "manual",
@@ -17419,6 +17451,9 @@
 
     },
     "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
+
+    },
+    "A transaction is still open on this connection. Commit or roll it back." : {
 
     },
     "A tunnel forwards one address, and the node Sentinel names is on the server's own network, so Sentinel mode cannot run through one. Connect to a data node directly, or turn the tunnel off." : {
@@ -29754,6 +29789,10 @@
         }
       }
     },
+    "Automatic does not work through a tunnel to %@. DuckDB would use HTTPS and check the certificate against 127.0.0.1, not against the server's name. Set SSL Mode to Verify Fingerprint or Required (skip verify), or to Disabled if the server serves plain HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Automatically check for updates" : {
       "localizations" : {
         "fr" : {
@@ -35322,6 +35361,10 @@
         }
       }
     },
+    "Certificate Fingerprint" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Certificate Not Available" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -36197,6 +36240,9 @@
         }
       }
     },
+    "Changes a rollback cannot undo stay either way." : {
+
+    },
     "Changes applied" : {
       "localizations" : {
         "fr" : {
@@ -36237,7 +36283,19 @@
         }
       }
     },
+    "changes are in the open transaction" : {
+
+    },
+    "changes committed" : {
+
+    },
     "Changes from iCloud could not be saved on this Mac. They download again on the next sync." : {
+
+    },
+    "changes kept" : {
+
+    },
+    "changes may stay" : {
 
     },
     "Changes Not Saved" : {
@@ -36291,6 +36349,9 @@
     "Changes the routine makes are committed when it finishes. Stop rolls them back." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Changes to %@ cannot roll back and stay either way." : {
+
     },
     "Changes Unavailable" : {
 
@@ -39023,6 +39084,9 @@
           }
         }
       }
+    },
+    "Choose whether to roll back or commit the import's open transaction." : {
+
     },
     "Choose which columns the grid shows" : {
       "localizations" : {
@@ -64868,6 +64932,12 @@
         }
       }
     },
+    "direct changes rolled back" : {
+
+    },
+    "Direct changes to %@ are in that transaction." : {
+
+    },
     "Direct partitions" : {
       "localizations" : {
         "fr" : {
@@ -66303,6 +66373,9 @@
           }
         }
       }
+    },
+    "Documents do not match their rows" : {
+
     },
     "does not equal" : {
       "extractionState" : "stale",
@@ -68659,6 +68732,22 @@
         }
       }
     },
+    "DuckDB could not install its %@ extension. It downloads the extension from extensions.duckdb.org the first time it connects to a remote database." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not load its %@ extension." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not read the CA Certificate. It reads PEM files only." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "DuckDB could not verify the server's certificate. Either no CA it trusts signed it, or it was not issued for this host name. DuckDB checks certificates against /etc/ssl/cert.pem and the CA Certificate, and does not read the macOS keychain, so a CA added in Keychain Access is not trusted." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "DuckDB database file" : {
       "localizations" : {
         "fr" : {
@@ -68692,6 +68781,10 @@
           }
         }
       }
+    },
+    "DuckDB reported: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "duplicate" : {
       "localizations" : {
@@ -69350,6 +69443,9 @@
           }
         }
       }
+    },
+    "Each file below reports what happened to its changes." : {
+
     },
     "Each row takes a value that exists in the referenced table." : {
 
@@ -75572,6 +75668,9 @@
         }
       }
     },
+    "Execute a SQL query against a connection. The connection's safe mode policy applies. Multi-statement queries are rejected, except on SQL Server, where a whole script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, are blocked here; use confirm_destructive_operation instead." : {
+
+    },
     "Execute All" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -75814,6 +75913,9 @@
           }
         }
       }
+    },
+    "Execute what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, after explicit confirmation: one statement, or on SQL Server a whole script. Pass confirmation_phrase exactly as: I understand this is irreversible" : {
+
     },
     "Execute Without Limit" : {
       "extractionState" : "stale",
@@ -77566,6 +77668,10 @@
           }
         }
       }
+    },
+    "Export documents do not match their columns and rows" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Export ER Diagram" : {
       "localizations" : {
@@ -91823,6 +91929,9 @@
         }
       }
     },
+    "Import did not finish." : {
+
+    },
     "Import failed" : {
       "comment" : "Title of the alert when an import fails.",
       "isCommentAutoGenerated" : true,
@@ -92716,6 +92825,9 @@
           }
         }
       }
+    },
+    "In Agent mode, use confirm_destructive_operation with the explicit confirmation phrase." : {
+
     },
     "IN Clause" : {
       "localizations" : {
@@ -108302,6 +108414,10 @@
         }
       }
     },
+    "Maximum documents per batch. Large documents use smaller batches to fit the server limit." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Maximum entries cannot be negative" : {
       "localizations" : {
         "fr" : {
@@ -119792,6 +119908,9 @@
         }
       }
     },
+    "No rows from this run have been imported. Earlier table preparation is listed below." : {
+
+    },
     "No Rows Match" : {
       "localizations" : {
         "fr" : {
@@ -121064,6 +121183,10 @@
           }
         }
       }
+    },
+    "No typed documents. Update the database driver, save changes and reload before exporting MQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "No types" : {
       "localizations" : {
@@ -123549,6 +123672,9 @@
         }
       }
     },
+    "Nothing has been imported yet." : {
+
+    },
     "Nothing here matches the search." : {
       "localizations" : {
         "fr" : {
@@ -123919,6 +124045,9 @@
           }
         }
       }
+    },
+    "Nothing was imported." : {
+
     },
     "Nothing was saved, and every change is still pending. Undo what cannot be written, or make it with a query, then save again." : {
       "localizations" : {
@@ -133111,6 +133240,9 @@
           }
         }
       }
+    },
+    "Pausing…" : {
+
     },
     "Paw Print" : {
       "extractionState" : "manual",
@@ -153698,6 +153830,9 @@
         }
       }
     },
+    "Rows arrived before their columns" : {
+
+    },
     "Rows Compare Data" : {
       "localizations" : {
         "fr" : {
@@ -153793,6 +153928,10 @@
           }
         }
       }
+    },
+    "Rows per batch" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Rows per group" : {
       "extractionState" : "manual",
@@ -154829,6 +154968,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. Destructive statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
+
+    },
     "Run one statement, or on SQL Server a whole script. Reads need tools:read; anything that writes needs tools:write and is subject to the connection's Safe Mode, which asks the user to approve it. DROP and TRUNCATE go through confirm_destructive_operation instead. Statements that read or write files, or run server-side code, are refused. Send one statement per call, except on SQL Server, where a script runs batch by batch at its GO lines and result_sets lists every result set when there is more than one." : {
       "localizations" : {
         "fr" : {
@@ -155255,6 +155397,9 @@
           }
         }
       }
+    },
+    "Run what execute_query refuses as destructive, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE: one statement, or on SQL Server a whole script. Anything else is refused. The user approves it before it runs: through your elicitation prompt when your client supports elicitation, otherwise through TablePro's own confirmation dialog on the user's Mac. Needs tools:write and a connection the user left writable for external clients." : {
+
     },
     "Run Without Limit" : {
       "localizations" : {
@@ -163948,6 +164093,18 @@
           }
         }
       }
+    },
+    "Set SSL Mode to Verify Fingerprint, or to Required (skip verify) to encrypt without checking the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Set SSL Mode to Verify Identity and choose the CA that signed the certificate in CA Certificate, or set SSL Mode to Verify Fingerprint and enter the server's Certificate Fingerprint. Required (skip verify) also connects, but does not check the certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Set SSL Mode to Verify Identity, or to Verify Fingerprint for a server with a self-signed certificate." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Set the comment" : {
 
@@ -172676,6 +172833,8 @@
 
     },
     "SSL Mode" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false,
       "localizations" : {
         "fr" : {
           "stringUnit" : {
@@ -174679,6 +174838,9 @@
         }
       }
     },
+    "Stop and Commit" : {
+
+    },
     "Stop and keep what ran" : {
       "localizations" : {
         "fr" : {
@@ -174798,6 +174960,9 @@
           }
         }
       }
+    },
+    "Stop and Rollback" : {
+
     },
     "Stop Backup" : {
 
@@ -178696,6 +178861,12 @@
         }
       }
     },
+    "table cleared before row import" : {
+
+    },
+    "table clearing failed before row import" : {
+
+    },
     "Table collation differs: %@ on source, %@ on target." : {
       "localizations" : {
         "en" : {
@@ -178785,6 +178956,12 @@
       }
     },
     "Table Created with Errors" : {
+
+    },
+    "table creation completed before row import" : {
+
+    },
+    "table creation failed before row import" : {
 
     },
     "Table Data" : {
@@ -180389,6 +180566,10 @@
     "TablePro could not reach the Schema Registry: %@" : {
 
     },
+    "TablePro could not read the CA Certificate at %@: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro could not read the database's own name from the connection." : {
       "localizations" : {
         "fr" : {
@@ -180438,6 +180619,10 @@
           }
         }
       }
+    },
+    "TablePro could not write the CA bundle DuckDB reads: %@" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro couldn't check which rows in other tables reference these rows." : {
 
@@ -180584,6 +180769,10 @@
     },
     "TablePro does not have Local Network access, so it cannot reach the SSH server at %@." : {
 
+    },
+    "TablePro does not have this row's stored _id, so it cannot tell which document it is." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "TablePro does not know what %@ holds. Reload the collection, then save again." : {
       "extractionState" : "manual",
@@ -185038,6 +185227,10 @@
         }
       }
     },
+    "The CA Certificate at %@ is not a PEM certificate. DuckDB reads PEM files only. Convert a DER file with: openssl x509 -inform der -in ca.der -out ca.pem" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The CA certificate path cannot be passed to FreeTDS. Use a shorter path, without “;”, “#” or repeated spaces." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -185105,6 +185298,10 @@
         }
       }
     },
+    "The Certificate Fingerprint is not a SHA-256 fingerprint. Enter the 64 hex digits that quack_server_list() shows on the server, with or without colons." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The change could not be applied: %@" : {
       "localizations" : {
         "fr" : {
@@ -185126,6 +185323,9 @@
       }
     },
     "The change to this table's structure will be lost." : {
+
+    },
+    "The changes are in an open transaction on this connection. Commit or roll it back yourself." : {
 
     },
     "The changes were edited while the save was checking other tables. Save again to include them." : {
@@ -185799,6 +185999,10 @@
           }
         }
       }
+    },
+    "The column stream cannot represent every document field" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "the command" : {
       "extractionState" : "manual",
@@ -187094,6 +187298,9 @@
         }
       }
     },
+    "The details below show what happened to the import." : {
+
+    },
     "The diagram could not be converted to a PNG image." : {
       "comment" : "Error message when the ER diagram could not be exported as PNG.",
       "extractionState" : "stale",
@@ -188174,6 +188381,21 @@
         }
       }
     },
+    "The import's transaction failed and can only be rolled back." : {
+
+    },
+    "The import's transaction was already committed." : {
+
+    },
+    "The import's transaction was already rolled back." : {
+
+    },
+    "the import's transaction was committed" : {
+
+    },
+    "the import's transaction was rolled back" : {
+
+    },
     "The increment cannot be zero." : {
 
     },
@@ -188208,6 +188430,9 @@
           }
         }
       }
+    },
+    "The installed %@ driver cannot connect through a tunnel yet. Update the database driver in Settings > Extensions, then connect again." : {
+
     },
     "The installed %1$@ does not support %2$@. Update it in Settings > Extensions." : {
 
@@ -189239,6 +189464,12 @@
           }
         }
       }
+    },
+    "The open transaction failed. Roll it back on this connection." : {
+
+    },
+    "The open transaction failed. Roll it back yourself." : {
+
     },
     "The operation failed." : {
       "localizations" : {
@@ -190831,6 +191062,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The result has no stored documents" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
 
     },
@@ -191745,6 +191980,10 @@
         }
       }
     },
+    "The server did not answer the TLS handshake. If it serves plain HTTP, set SSL Mode to Disabled." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server did not say which InfluxDB version it runs." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -192043,6 +192282,10 @@
         }
       }
     },
+    "The server uses HTTPS, and this connection sent plain HTTP." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The server writes the file, so it lands where the server can reach, not on this Mac." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -192076,6 +192319,10 @@
       }
     },
     "the server's certificate does not cover the hostname you connected to" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The server's certificate does not match the Certificate Fingerprint. If the server has a new certificate, copy its fingerprint again from quack_server_list() on the server." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -193266,6 +193513,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The statements already ran outside an import transaction. Their changes stay." : {
+
+    },
     "The statements may or may not be saved. Check the table before running them again." : {
       "localizations" : {
         "fr" : {
@@ -193521,6 +193771,9 @@
           }
         }
       }
+    },
+    "The table was emptied before importing rows." : {
+
     },
     "The table's primary key is not loaded, so the row cannot be written." : {
       "extractionState" : "manual",
@@ -194273,6 +194526,9 @@
           }
         }
       }
+    },
+    "the transaction failed and needs rollback" : {
+
     },
     "The transaction on this connection can no longer be committed. Roll it back." : {
       "localizations" : {
@@ -195669,6 +195925,14 @@
         }
       }
     },
+    "This BSON date is outside the shell's supported date range" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This BSON value cannot be represented by the shell's Extended JSON reader" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This build of DuckDB does not accept a read-only access mode" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -195682,6 +195946,10 @@
       }
     },
     "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This build of DuckDB does not accept turning off persistent secrets" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
@@ -196274,6 +196542,9 @@
           }
         }
       }
+    },
+    "This connection sets %1$@, which the installed %2$@ driver does not support yet. Update the database driver in Settings > Extensions, then connect again." : {
+
     },
     "This connection signs in with Kerberos, which TablePro on iPhone and iPad can't do." : {
       "extractionState" : "manual",
@@ -198022,6 +198293,9 @@
           }
         }
       }
+    },
+    "This file cannot filter rows with these conditions." : {
+
     },
     "This file has unsaved changes in an editor tab. The commit takes the saved file." : {
 
@@ -199931,6 +200205,9 @@
         }
       }
     },
+    "This plan runs the statement. Explain it without analyze, with a variant that only plans it." : {
+
+    },
     "This plugin is not in the registry, so it can't be updated automatically." : {
       "localizations" : {
         "fr" : {
@@ -200214,6 +200491,10 @@
           }
         }
       }
+    },
+    "This row has no key, so it cannot be addressed from the grid." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This row has no point id, so Qdrant cannot tell which point to change." : {
       "extractionState" : "manual",
@@ -200857,6 +201138,9 @@
         }
       }
     },
+    "This statement is destructive, like DROP, TRUNCATE or a DELETE with no WHERE." : {
+
+    },
     "This statement is too long to send (%d characters). Select a smaller part of it." : {
       "localizations" : {
         "fr" : {
@@ -201059,6 +201343,9 @@
           }
         }
       }
+    },
+    "This tool runs only destructive statements, like DROP, TRUNCATE or a DELETE with no WHERE. Use execute_query for everything else." : {
+
     },
     "This tool takes your password on its command line." : {
       "localizations" : {
@@ -203231,6 +203518,10 @@
           }
         }
       }
+    },
+    "Token is required. Enter the token the server was started with, from quack_serve." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Token Name" : {
       "localizations" : {
@@ -212228,6 +212519,14 @@
         }
       }
     },
+    "Verify Fingerprint" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "Verify Fingerprint needs the server's Certificate Fingerprint. Run quack_server_list() on the server to read it." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Verify Identity" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -212269,6 +212568,10 @@
           }
         }
       }
+    },
+    "Verify Identity does not work through a tunnel. DuckDB checks the certificate against 127.0.0.1 there, not against the server's name. Set SSL Mode to Verify Fingerprint, or to Required (skip verify)." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Verify Identity through a tunnel checks the certificate against the server's host name, and %@ is an IP address. Enter the server's host name, or set SSL Mode to Verify CA." : {
       "extractionState" : "manual",

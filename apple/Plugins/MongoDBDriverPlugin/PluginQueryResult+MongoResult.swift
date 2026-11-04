@@ -29,6 +29,7 @@ nonisolated extension PluginQueryResult {
         var result = rebuilt(rows: Array(rows.prefix(max(rowCap, 0))), isTruncated: true)
         result.rowLocators = rowLocators.map { Array($0.prefix(max(rowCap, 0))) }
         result.absentCells = absentCells?.filter { $0.key < rowCap }
+        result.exportDocuments = exportDocuments.map { Array($0.prefix(max(rowCap, 0))) }
         return result
     }
 
@@ -50,6 +51,7 @@ nonisolated extension PluginQueryResult {
         )
         result.rowLocators = rowLocators
         result.absentCells = absentCells
+        result.exportDocuments = exportDocuments
         return result
     }
 }

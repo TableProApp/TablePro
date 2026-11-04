@@ -486,7 +486,7 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
             case .null:
                 bindResult = sqlite3_bind_null(statement, bindIndex)
             case .text(let stringValue):
-                bindResult = sqlite3_bind_text(statement, bindIndex, stringValue, -1, sqliteTransient)
+                bindResult = SQLiteText.bind(stringValue, to: statement, at: bindIndex)
             case .bytes(let data):
                 bindResult = data.withUnsafeBytes { rawBuffer -> Int32 in
                     sqlite3_bind_blob(statement, bindIndex, rawBuffer.baseAddress, Int32(data.count), sqliteTransient)
@@ -511,8 +511,8 @@ actor SQLiteLocalBackend: SQLiteExecutionBackend {
                 } else {
                     row.append(.bytes(Data()))
                 }
-            } else if let text = sqlite3_column_text(statement, i) {
-                row.append(.text(String(cString: text)))
+            } else if let text = SQLiteText.column(statement, i) {
+                row.append(.text(text))
             } else {
                 row.append(.null)
             }

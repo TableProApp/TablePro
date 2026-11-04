@@ -45,11 +45,14 @@ public struct CellRef: Sendable, Hashable {
     public let table: String
     public let column: String
     public let primaryKey: [PrimaryKeyComponent]
+    // The row's `Row.locator`, for a driver that finds a row by it rather than by the key's display text.
+    public let locator: String?
 
-    public init(table: String, column: String, primaryKey: [PrimaryKeyComponent]) {
+    public init(table: String, column: String, primaryKey: [PrimaryKeyComponent], locator: String? = nil) {
         self.table = table
         self.column = column
         self.primaryKey = primaryKey
+        self.locator = locator
     }
 }
 
@@ -65,9 +68,12 @@ public struct PrimaryKeyComponent: Sendable, Hashable {
 
 public struct Row: Sendable {
     public let cells: [Cell]
+    // Text the driver that read the row finds it by again, as `PluginQueryResult.rowLocators` holds it.
+    public let locator: String?
 
-    public init(cells: [Cell]) {
+    public init(cells: [Cell], locator: String? = nil) {
         self.cells = cells
+        self.locator = locator
     }
 }
 

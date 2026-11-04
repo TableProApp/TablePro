@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProSSHConfig
 import Testing
 
 @MainActor
@@ -58,6 +59,31 @@ struct PromptedPasswordKeyTests {
         #expect(summary.contains("es.corp.internal:9200"))
         #expect(summary.contains("attacker.example:9200"))
         #expect(!summary.contains("more"))
+    }
+
+    @Test("A DuckDB Remote prompt names the server its fields hold, once, and not the Host placeholder")
+    func summaryNamesTheDuckDBServer() {
+        let connection = DatabaseConnection(
+            name: "Quack",
+            host: "localhost",
+            port: 9_494,
+            type: .duckdb,
+            additionalFields: ["duckdbMode": "remote", "duckdbHost": "quack.attacker.example", "duckdbPort": "9500"]
+        )
+
+        #expect(connection.destinationSummary == "quack.attacker.example:9500")
+    }
+
+    @Test("A stored SSH server the connect goes around is not named")
+    func summaryOmitsAnUnusedTunnel() {
+        var connection = DatabaseConnection(
+            name: "File",
+            type: .duckdb,
+            additionalFields: ["duckdbMode": "local", "duckdbFilePath": "/tmp/a.duckdb"]
+        )
+        connection.sshTunnelMode = .inline(SSHConfiguration(enabled: true, host: "bastion.example.com"))
+
+        #expect(!connection.destinationSummary.contains("bastion.example.com"))
     }
 
     @Test("A Snowflake account on another engine is not named")

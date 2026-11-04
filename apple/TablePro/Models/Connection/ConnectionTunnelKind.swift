@@ -146,15 +146,21 @@ extension DatabaseConnection {
         return capabilities.supportsRemoteDatabaseSession && capabilities.localFilePathField != nil
     }
 
+    /// A port-forwarding kind counts only where the driver dials the forward. A DuckDB row switched
+    /// back to Local File keeps the SSH server it used in Remote, and the driver opens a file: the
+    /// tunnel would ask for a password and then carry nothing. Such a row connects as it shows, with
+    /// no transport. A `.network` driver always dials its host, so its rows keep every kind they carry.
     var enabledTunnelKinds: [ConnectionTunnelKind] {
         var kinds: [ConnectionTunnelKind] = []
+        let forwards = dialsForwardedEndpoint
         if opensRemoteDatabaseSession {
             kinds.append(.remoteDatabaseSession)
         } else if opensRemoteDatabaseFile {
             kinds.append(.remoteFile)
-        } else if resolvedSSHConfig.enabled {
+        } else if resolvedSSHConfig.enabled, forwards {
             kinds.append(.ssh)
         }
+        guard forwards else { return kinds }
         if isCloudflareEnabled { kinds.append(.cloudflare) }
         if isCloudSQLProxyEnabled { kinds.append(.cloudSQLProxy) }
         if isSOCKSProxyEnabled { kinds.append(.socksProxy) }

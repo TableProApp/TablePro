@@ -9,7 +9,7 @@ import TableProSQLGrammar
 extension QueryClassifier {
     static func etcdClassification(_ trimmed: String) -> QueryClassification {
         guard let operation = try? EtcdCommandParser.parse(trimmed) else {
-            return etcdUnparsedClassification(command: EtcdCommandParser.tokenize(trimmed).first?.lowercased() ?? "")
+            return etcdUnparsedClassification(command: EtcdCommandParser.commandName(trimmed) ?? "")
         }
         return etcdClassification(of: operation)
     }
@@ -21,16 +21,16 @@ extension QueryClassifier {
     private static let etcdCommandsReachingFilesystem: Set<String> = ["snapshot", "defrag"]
 
     private static func etcdClassification(of operation: EtcdOperation) -> QueryClassification {
-        switch operation {
-        case .get, .watch, .leaseTimetolive, .leaseList, .memberList, .endpointStatus, .endpointHealth,
-             .userList, .roleList:
-            return .safe
-        case .put, .leaseGrant, .leaseKeepAlive, .authEnable, .userAdd, .roleAdd, .userGrantRole, .userRevokeRole:
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
-        case .del, .compaction, .leaseRevoke, .authDisable, .userDelete, .roleDelete:
-            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
-        case .unknown(let command, _):
+        if case .unknown(let command, _) = operation {
             return etcdUnparsedClassification(command: command)
+        }
+        switch operation.tier {
+        case .read:
+            return .safe
+        case .write, nil:
+            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        case .destructive:
+            return QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
         }
     }
 

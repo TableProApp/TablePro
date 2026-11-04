@@ -133,6 +133,7 @@ extension MainContentCoordinator {
         source: ResultSourceChange = .newSource,
         serverOutput: PluginServerOutput = .none,
         rowLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:]
     ) {
@@ -159,6 +160,7 @@ extension MainContentCoordinator {
             source: source,
             serverOutput: serverOutput,
             rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
             absentCells: absentCells,
             unloadedCells: unloadedCells
         )

@@ -197,9 +197,10 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
         let keyIndices = options.lazyContext.map { context in
             context.primaryKeyColumns.map { key in result.columns.firstIndex(of: key) }
         }
+        let locators = result.rowLocators.flatMap { $0.count == result.rows.count ? $0 : nil } ?? []
 
         var emitted = 0
-        for row in result.rows {
+        for (rowIndex, row) in result.rows.enumerated() {
             if Task.isCancelled {
                 continuation.yield(.truncated(reason: .cancelled))
                 return
@@ -208,10 +209,12 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
                 continuation.yield(.truncated(reason: .rowCap(options.maxRows)))
                 return
             }
+            let locator = locators.indices.contains(rowIndex) ? locators[rowIndex] : nil
             let cells = row.enumerated().map { index, value -> Cell in
                 let ref = cellRef(
                     column: index < result.columns.count ? result.columns[index] : "",
                     row: row,
+                    locator: locator,
                     keyIndices: keyIndices,
                     options: options
                 )
@@ -226,7 +229,7 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
                     return Cell.from(legacyValue: text, columnTypeName: typeName, options: options, ref: ref)
                 }
             }
-            continuation.yield(.row(Row(cells: cells)))
+            continuation.yield(.row(Row(cells: cells, locator: locator)))
             emitted += 1
         }
 
@@ -248,6 +251,7 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
     private static func cellRef(
         column: String,
         row: [PluginCellValue],
+        locator: String?,
         keyIndices: [Int?]?,
         options: StreamOptions
     ) -> CellRef? {
@@ -257,7 +261,7 @@ nonisolated class PluginBackedDriver: DatabaseDriver, @unchecked Sendable {
             guard let index, index < row.count, case .text(let value) = row[index] else { return nil }
             components.append(PrimaryKeyComponent(column: key, value: value))
         }
-        return CellRef(table: context.table, column: column, primaryKey: components)
+        return CellRef(table: context.table, column: column, primaryKey: components, locator: locator)
     }
 
     // MARK: - Catalog

@@ -1,7 +1,8 @@
 /// Emit the TLS conformance cases for one engine adapter.
 ///
 /// Every case starts a TLS-only server, so every case is
-/// `#[ignore = "requires docker"]`. `client_identity: true` adds the
+/// `#[ignore = "requires docker"]`. The self-signed case starts it
+/// through `start_self_signed`. `client_identity: true` adds the
 /// client-certificate case and needs `ClientIdentityEngine`; `false`
 /// emits no such case. An engine whose server asks every client for a
 /// certificate or none, as Cassandra and ScyllaDB do, names a second
@@ -31,6 +32,9 @@
 /// #     async fn start() -> Result<Self, ConformanceFailure> {
 /// #         Ok(Self)
 /// #     }
+/// #     async fn start_self_signed() -> Result<Self, ConformanceFailure> {
+/// #         Ok(Self)
+/// #     }
 /// #     fn connect_options(&self, _tls: TlsConfig) -> ConnectOptions {
 /// #         let file = FileEndpoint::open_existing(PathBuf::from("/example.db")).unwrap();
 /// #         ConnectOptions {
@@ -45,6 +49,9 @@
 /// #     }
 /// #     fn unrelated_ca_file(&self) -> &Path {
 /// #         Path::new("/tls/unrelated-ca.pem")
+/// #     }
+/// #     fn server_certificate_file(&self) -> &Path {
+/// #         Path::new("/tls/server.pem")
 /// #     }
 /// #     fn served_name(&self) -> &str {
 /// #         "db.tablepro.test"
@@ -137,6 +144,17 @@ macro_rules! tls_conformance_suite {
             $engine as TlsConformanceEngine,
             disable_against_tls_only_server_is_refused,
             $crate::conformance::cases::tls::disable_against_tls_only_server_is_refused::<$engine>
+        }
+        #[::tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        #[ignore = "requires docker"]
+        async fn self_signed_certificate_is_refused_until_trusted()
+        -> ::core::result::Result<(), $crate::conformance::ConformanceFailure> {
+            $crate::conformance::run_case(
+                "self_signed_certificate_is_refused_until_trusted",
+                <$engine as $crate::conformance::TlsConformanceEngine>::start_self_signed(),
+                $crate::conformance::cases::tls::self_signed_certificate_is_refused_until_trusted::<$engine>,
+            )
+            .await
         }
         $crate::__tls_identity_case! { $identity, $identity_engine }
 

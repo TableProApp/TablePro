@@ -58,6 +58,8 @@ final class TeradataPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseGroupingStrategy: GroupingStrategy = .byDatabase
     static let containerEntityName = "Database"
     static let supportsForeignKeys = true
+    // Teradata has no session setting that suspends referential checks, so the option would add no statement.
+    static let supportsForeignKeyDisable = false
     static let supportsRoutines = true
     static let supportsDatabaseTriggerBrowse = true
     static let supportsSchemaEditing = true

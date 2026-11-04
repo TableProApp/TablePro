@@ -32,6 +32,7 @@ mod import_dialog;
 mod import_from_app;
 pub(crate) mod import_preview;
 mod key_tab;
+mod library_drag;
 mod menu_label;
 mod name_entry;
 mod picker;
@@ -46,6 +47,7 @@ mod shell;
 mod source_dialog;
 mod ssh_inputs;
 mod ssh_section;
+pub(crate) mod store_sync;
 mod structure_tab;
 mod style_scheme_grid;
 mod style_scheme_resolver;
@@ -59,5 +61,7 @@ pub(crate) mod write_confirmation;
 pub(crate) use menu_label::menu_label;
 pub(crate) use plain_toast::plain_toast;
 pub(crate) use preferences_dialog::PreferencesDialog;
-pub(crate) use session_window::{LaunchNotice, MovedTab, SessionWindow, SessionWindowInit, SessionWindowInput};
+pub(crate) use session_window::{
+    LaunchNotice, LibraryEdit, MovedTab, SessionWindow, SessionWindowInit, SessionWindowInput,
+};
 pub(crate) use structure_tab::review_dialog;

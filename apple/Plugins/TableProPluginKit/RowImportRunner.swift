@@ -95,11 +95,9 @@ public enum RowImportRunner {
             inserted += batch.count
             progress.incrementStatement(by: batch.count)
         } catch is PluginImportCancellationError {
-            /// A Stop keeps its own type. The sink splits one hand-off into several statements and
-            /// checks cancellation before each, so this catch sees cancellation where it used to see
-            /// only driver errors; wrapped as a statement failure, Stop-and-Commit committed the
-            /// prefix already written and recorded the stop as a failed import.
             throw PluginImportCancellationError()
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             let firstLine = batch.first?.line ?? 0
             throw PluginImportError.statementFailed(
@@ -124,6 +122,10 @@ public enum RowImportRunner {
             do {
                 try await sink.insertRow(entry.row)
                 inserted += 1
+            } catch is PluginImportCancellationError {
+                throw PluginImportCancellationError()
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 skipped += 1
                 if errors.count < configuration.maxRecordedErrors {
@@ -145,21 +147,22 @@ public enum RowImportRunner {
         configuration: Configuration
     ) async throws -> Never {
         if useTransaction {
-            if configuration.errorHandling == .stopAndCommit, !(error is PluginImportCancellationError) {
+            if configuration.errorHandling == .stopAndCommit,
+               !(error is PluginImportCancellationError), !(error is CancellationError) {
                 do {
                     try await sink.commitTransaction()
                 } catch {
-                    logger.warning("Commit of partial import failed: \(error.localizedDescription)")
+                    logger.warning("Commit of partial import failed")
                 }
             } else {
                 do {
                     try await sink.rollbackTransaction()
                 } catch {
-                    logger.warning("Rollback after failed import also failed: \(error.localizedDescription)")
+                    logger.warning("Rollback after failed import also failed")
                 }
             }
         }
-        if error is PluginImportCancellationError { throw error }
+        if error is PluginImportCancellationError || error is CancellationError { throw error }
         if error is PluginImportError { throw error }
         throw PluginImportError.importFailed(error.localizedDescription)
     }
