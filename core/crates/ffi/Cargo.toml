@@ -1,0 +1,64 @@
+[package]
+name = "tablepro-ffi"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# No staticlib until an app links the core in: a debug one is 1.9 GB, and every test run would build it.
+[lib]
+name = "tablepro_ffi"
+crate-type = ["cdylib", "lib"]
+
+[features]
+default = ["engines"]
+# Every engine the core has. The Apple build leaves them out until a slice moves one (docs/decisions/0010-macos-on-the-core.md).
+engines = [
+    "dep:tablepro-driver-cassandra",
+    "dep:tablepro-driver-clickhouse",
+    "dep:tablepro-driver-duckdb",
+    "dep:tablepro-driver-mongodb",
+    "dep:tablepro-driver-mssql",
+    "dep:tablepro-driver-mysql",
+    "dep:tablepro-driver-postgres",
+    "dep:tablepro-driver-redis",
+    "dep:tablepro-driver-sqlite",
+]
+
+[dependencies]
+tablepro-core.workspace = true
+tablepro-driver-cassandra = { workspace = true, optional = true }
+tablepro-driver-clickhouse = { workspace = true, optional = true }
+tablepro-driver-duckdb = { workspace = true, optional = true }
+tablepro-driver-mongodb = { workspace = true, optional = true }
+tablepro-driver-mssql = { workspace = true, optional = true }
+tablepro-driver-mysql = { workspace = true, optional = true }
+tablepro-driver-postgres = { workspace = true, optional = true }
+tablepro-driver-redis = { workspace = true, optional = true }
+tablepro-driver-sqlite = { workspace = true, optional = true }
+tablepro-session = { workspace = true, features = ["in-process-ssh"] }
+tablepro-ssh = { workspace = true, features = ["in-process"] }
+tablepro-storage.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+futures.workspace = true
+percent-encoding.workspace = true
+secrecy.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio-util.workspace = true
+tracing.workspace = true
+uniffi.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[dev-dependencies]
+csbindgen.workspace = true
+russh.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

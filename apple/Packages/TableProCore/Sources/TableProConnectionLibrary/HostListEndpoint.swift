@@ -15,7 +15,14 @@ public struct HostListEndpoint: Equatable, Sendable {
     }
 
     public var entry: String {
-        host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"
+        "\(Self.urlHost(host)):\(port)"
+    }
+
+    /// A host as a URL or a `host:port` pair writes it. An IPv6 address is all colons, so written bare its
+    /// last group reads back as the port and names another server.
+    public static func urlHost(_ host: String) -> String {
+        guard host.contains(":"), !host.hasPrefix("[") else { return host }
+        return "[\(host)]"
     }
 
     /// Takes `host`, `host:port`, `[address]:port`, a bare IPv6 address, or a pasted `http://` or

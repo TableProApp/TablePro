@@ -27,6 +27,7 @@ final class MemcachedPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let supportsSSL = true
     static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let tableEntityName = "Keys"
+    static let containerEntityName = "Server"
     static let supportsForeignKeyDisable = false
     static let supportsReadOnlyMode = true
     static let databaseGroupingStrategy: GroupingStrategy = .flat

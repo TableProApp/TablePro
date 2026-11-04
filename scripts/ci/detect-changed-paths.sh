@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Prints "true" when a suite has to run for the changes from <base> to <head>, "false" when it can skip.
 # Usage: detect-changed-paths.sh [--base <sha>] [--head <rev>] [--ref <git ref>] <suite>
-# Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs.
+# Suites: macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs, windows.
 
 BASE=""
 HEAD_REV="HEAD"
@@ -90,9 +90,11 @@ case "$SUITE" in
         PATTERNS=('.*\.swift$' '(.*/)?\.swiftlint\.yml$' 'scripts/ci/detect-changed-paths\.sh$'
             '\.github/workflows/(ci|swiftlint)\.yml$') ;;
     linux|linux-docs)
-        # The Linux app builds the shared core in the Cargo workspace whose files are at the top.
+        # The Linux app builds the shared core in the Cargo workspace whose files are at the top. core.yml also
+        # builds the core's Swift bindings and runs their tests.
         PATTERNS=('linux/' 'core/' 'Cargo\.(toml|lock)$' '(rust-toolchain|rustfmt|clippy|deny)\.toml$'
-            '\.config/nextest\.toml$' 'scripts/ci/detect-changed-paths\.sh$'
+            '\.config/nextest\.toml$' 'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$'
+            'apple/project\.yml$' 'apple/Packages/TableProFFI/' 'apple/scripts/build-core\.sh$' 'apple/scripts/lib/deployment-target\.sh$'
             '\.github/workflows/(ci|build-linux|core|linux-packages|release-linux)\.yml$')
         # linux-docs decides the docs links job, which reads every path. The other Linux jobs skip
         # Markdown, except the files a Meson test reads and the notices the build installs.
@@ -100,8 +102,13 @@ case "$SUITE" in
             SKIP='(linux|core)/.*\.md$'
             KEEP='linux/CHANGELOG\.md$|linux/docs/regression-tests\.md$|linux/data/'
         fi ;;
+    windows)
+        # The .NET tests run the whole core through its FFI crate, so any core or workspace change runs them.
+        PATTERNS=('windows/' 'core/' 'Cargo\.(toml|lock)$' 'rust-toolchain\.toml$'
+            'scripts/ci/(detect-changed-paths\.sh|start-windows-sshd\.ps1)$' '\.github/workflows/(ci|windows|release-windows|windows-grid-gate)\.yml$')
+        SKIP='(windows|core)/.*\.md$' ;;
     *)
-        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux or linux-docs, got '$SUITE'" >&2
+        echo "detect-changed-paths.sh: expected macos, plugins, ios, oracle, hana, release, shipped, swiftlint, linux, linux-docs or windows, got '$SUITE'" >&2
         exit 2 ;;
 esac
 

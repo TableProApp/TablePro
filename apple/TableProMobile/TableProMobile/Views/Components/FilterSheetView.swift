@@ -31,6 +31,13 @@ struct FilterSheetView: View {
         return $draft[index]
     }
 
+    private func operatorSelection(_ filter: Binding<TableFilter>) -> Binding<FilterOperator> {
+        Binding(
+            get: { filter.wrappedValue.filterOperator },
+            set: { filter.wrappedValue = filter.wrappedValue.selectingOperator($0) }
+        )
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -53,7 +60,7 @@ struct FilterSheetView: View {
                                 }
                             }
 
-                            Picker("Operator", selection: binding.filterOperator) {
+                            Picker("Operator", selection: operatorSelection(binding)) {
                                 ForEach(operators, id: \.self) { op in
                                     Text(op.displayName).tag(op)
                                 }

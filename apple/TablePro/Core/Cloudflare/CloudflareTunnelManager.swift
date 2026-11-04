@@ -24,6 +24,7 @@ actor CloudflareTunnelManager: TunnelManaging {
     }
 
     private var tunnels: [UUID: TunnelState] = [:]
+    private var creations = TunnelCreationGenerations()
     private var pidRecords: [UUID: CloudflaredPidRecord] = [:]
     private let runnerFactory: () -> any SupervisedProcessRunner
     private var staleSweep: Task<Void, Never>?
@@ -43,8 +44,6 @@ actor CloudflareTunnelManager: TunnelManaging {
         self.reaperTimings = reaperTimings
     }
 
-    /// Create a Cloudflare Access TCP tunnel for a database connection.
-    /// Returns the local loopback port the database driver should connect to.
     func createTunnel(
         connectionId: UUID,
         config: CloudflareConfiguration,
@@ -52,15 +51,17 @@ actor CloudflareTunnelManager: TunnelManaging {
         tokenSecret: String? = nil,
         deadline: ConnectionDeadline = ConnectionDeadline(configuredSeconds: nil)
     ) async throws -> Int {
+        let generation = creations.begin(connectionId)
+        defer { creations.finish(generation, for: connectionId) }
         let timeoutEndpoint = ConnectionTimeoutEndpoint.tunnel(config.accessHostname)
         try deadline.check(endpoint: timeoutEndpoint)
-        /// A `cloudflared` a crashed session left behind still owns the port this is about to ask
-        /// for, and a configuration with a fixed `localPort` gets exactly one attempt at it.
+        // A `cloudflared` a crashed session left behind still owns the port this is about to ask
+        // for, and a configuration with a fixed `localPort` gets exactly one attempt at it.
         await sweepStalePidsIfNeeded()
         try deadline.check(endpoint: timeoutEndpoint)
 
         if tunnels[connectionId] != nil {
-            try await closeTunnel(connectionId: connectionId)
+            try await discardTunnel(connectionId: connectionId)
         }
 
         let binaryPath = try resolveBinaryPath(config: config)
@@ -114,6 +115,11 @@ actor CloudflareTunnelManager: TunnelManaging {
                 throw error
             }
 
+            // A newer createTunnel or a close for this connection came while this one dialed, so it must not adopt.
+            guard creations.isNewest(generation, for: connectionId) else {
+                runner.stop()
+                throw CancellationError()
+            }
             register(connectionId: connectionId, runner: runner, port: port, binaryPath: binaryPath)
             Self.logger.info("Cloudflare tunnel ready for \(connectionId.uuidString, privacy: .public) on 127.0.0.1:\(port)")
             return port
@@ -122,7 +128,13 @@ actor CloudflareTunnelManager: TunnelManaging {
         throw lastError
     }
 
+    // Also ends a creation still dialing, so nothing it builds is adopted after the close returned.
     func closeTunnel(connectionId: UUID) async throws {
+        creations.invalidate(connectionId)
+        try await discardTunnel(connectionId: connectionId)
+    }
+
+    private func discardTunnel(connectionId: UUID) async throws {
         guard let state = tunnels.removeValue(forKey: connectionId) else { return }
         Self.runnerRegistry.withLock { $0[connectionId] = nil }
         pidRecords.removeValue(forKey: connectionId)
@@ -132,6 +144,7 @@ actor CloudflareTunnelManager: TunnelManaging {
     }
 
     func closeAllTunnels() async {
+        creations.invalidateAll()
         let current = tunnels
         tunnels.removeAll()
         pidRecords.removeAll()

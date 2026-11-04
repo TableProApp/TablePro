@@ -68,6 +68,24 @@ impl Library {
     fn revision(&self) -> u64 {
         self.store.snapshot().revision
     }
+
+    fn seeded(document: &ConnectionsDocument) -> Self {
+        let library = Self::new();
+        let file = library.store.path().to_owned();
+        std::fs::create_dir_all(file.parent().expect("a parent")).expect("the directory");
+        std::fs::write(&file, encoded(document)).expect("the file");
+        library
+    }
+
+    fn import(&self, document: &ConnectionsDocument) {
+        self.store
+            .import_blocking(Path::new("/tmp/c.json"), &encoded(document))
+            .expect("the import");
+    }
+}
+
+fn encoded(document: &ConnectionsDocument) -> Vec<u8> {
+    crate::document::encode_document(document).expect("encode")
 }
 
 fn group_name(name: &str) -> ConnectionGroupName {
@@ -293,6 +311,78 @@ fn two_moving_groups_of_one_name_are_refused_together() {
         matches!(refused, Err(StorageError::GroupNameTaken { .. })),
         "{refused:?}"
     );
+}
+
+#[test]
+fn a_group_reorders_in_place_beside_a_sibling_that_differs_only_in_case() {
+    let upper = ConnectionGroup::new(group_name("Work"), None);
+    let lower = ConnectionGroup {
+        order: 1,
+        ..ConnectionGroup::new(group_name("work"), None)
+    };
+    let library = Library::seeded(&ConnectionsDocument {
+        groups: vec![upper.clone(), lower.clone()],
+        ..ConnectionsDocument::default()
+    });
+
+    library
+        .store
+        .move_groups_blocking(&[lower.id], None, Some(upper.id))
+        .expect("work before Work");
+    assert_eq!(library.under(None), ["work", "Work"]);
+
+    library
+        .store
+        .move_groups_blocking(&[lower.id], None, None)
+        .expect("work last again");
+    assert_eq!(library.under(None), ["Work", "work"]);
+}
+
+#[test]
+fn a_group_moving_in_beside_a_case_only_name_is_refused_even_with_that_sibling_moving_too() {
+    let library = Library::new();
+    let work = library.group("Work", None);
+    let home = library.group("Home", None);
+    let lower = library.group("work", Some(&home));
+    let revision = library.revision();
+
+    let alone = library.store.move_groups_blocking(&[lower.id], None, None);
+    let after_it = library.store.move_groups_blocking(&[work.id, lower.id], None, None);
+    let before_it = library
+        .store
+        .move_groups_blocking(&[lower.id, work.id], None, Some(home.id));
+
+    for refused in [alone, after_it, before_it] {
+        assert!(
+            matches!(&refused, Err(StorageError::GroupNameTaken { name }) if name == "work"),
+            "{refused:?}"
+        );
+    }
+    assert_eq!(library.revision(), revision, "a refused move was written");
+    assert_eq!(library.under(None), ["Work", "Home"]);
+}
+
+#[test]
+fn a_group_nested_past_the_third_level_still_reorders_in_place() {
+    let a = ConnectionGroup::new(group_name("A"), None);
+    let b = ConnectionGroup::new(group_name("B"), Some(a.id));
+    let c = ConnectionGroup::new(group_name("C"), Some(b.id));
+    let d = ConnectionGroup::new(group_name("D"), Some(c.id));
+    let e = ConnectionGroup {
+        order: 1,
+        ..ConnectionGroup::new(group_name("E"), Some(c.id))
+    };
+    let library = Library::seeded(&ConnectionsDocument {
+        groups: vec![a, b, c.clone(), d.clone(), e.clone()],
+        ..ConnectionsDocument::default()
+    });
+
+    library
+        .store
+        .move_groups_blocking(&[e.id], Some(c.id), Some(d.id))
+        .expect("the reorder");
+
+    assert_eq!(library.under(Some(&c)), ["E", "D"]);
 }
 
 #[test]
@@ -560,6 +650,80 @@ fn an_upsert_or_an_update_that_changes_group_goes_last_there() {
 }
 
 #[test]
+fn an_insert_lands_right_after_its_anchor_in_the_anchors_group_in_one_write() {
+    let library = Library::new();
+    let (work, home) = (library.group("Work", None), library.group("Home", None));
+    let a = library.connection("a", Some(&work));
+    library.connection("b", Some(&work));
+    let c = library.connection("c", Some(&work));
+    let revision = library.revision();
+
+    let copy = SavedConnection {
+        group_id: Some(home.id),
+        ..connection("a (Copy)")
+    };
+    library.store.insert_after_blocking(copy, a).expect("the copy");
+
+    assert_eq!(library.revision(), revision + 1, "one write, one publish");
+    assert_eq!(library.in_group(Some(&work)), ["a", "a (Copy)", "b", "c"]);
+    assert!(library.in_group(Some(&home)).is_empty());
+    let list = library.store.list_blocking().expect("the list");
+    let orders: Vec<u32> = list
+        .connections_in(Some(work.id))
+        .iter()
+        .map(|saved| saved.order)
+        .collect();
+    assert_eq!(orders, [0, 1, 2, 3]);
+
+    library
+        .store
+        .insert_after_blocking(connection("c (Copy)"), c)
+        .expect("after the last");
+    assert_eq!(library.in_group(Some(&work)), ["a", "a (Copy)", "b", "c", "c (Copy)"]);
+    let loose = library.connection("loose", None);
+    library
+        .store
+        .insert_after_blocking(connection("loose (Copy)"), loose)
+        .expect("at the top of the list");
+    assert_eq!(library.in_group(None), ["loose", "loose (Copy)"]);
+}
+
+#[test]
+fn an_insert_after_an_entry_the_list_lacks_is_saved_as_an_upsert_would_save_it() {
+    let library = Library::new();
+    let work = library.group("Work", None);
+    library.connection("a", Some(&work));
+
+    let copy = SavedConnection {
+        group_id: Some(work.id),
+        tags: vec![Uuid::new_v4()],
+        ..connection("copy")
+    };
+    library
+        .store
+        .insert_after_blocking(copy.clone(), Uuid::new_v4())
+        .expect("the copy");
+    let lost = SavedConnection {
+        group_id: Some(Uuid::new_v4()),
+        ..connection("lost")
+    };
+    library
+        .store
+        .insert_after_blocking(lost, Uuid::new_v4())
+        .expect("a group the list lacks");
+
+    assert_eq!(library.in_group(Some(&work)), ["a", "copy"]);
+    assert_eq!(library.in_group(None), ["lost"]);
+    let list = library.store.list_blocking().expect("the list");
+    let stored = list
+        .connections
+        .iter()
+        .find(|saved| saved.id == copy.id)
+        .expect("the copy");
+    assert!(stored.tags.is_empty(), "a tag the list lacks was kept");
+}
+
+#[test]
 fn a_crafted_tree_reads_without_cycles_strays_or_doubles() {
     let root = TempDir::new().expect("tempdir");
     let paths = StoragePaths::under(root.path(), "tablepro", "app.tablepro.TablePro");
@@ -749,4 +913,191 @@ fn an_import_that_moves_a_saved_connection_puts_it_last_in_the_new_group() {
     assert_eq!(report.updated, 1);
     assert_eq!(target.in_group(Some(&work)), ["b", "a"]);
     assert_eq!(target.favorites(), ["a"]);
+}
+
+#[test]
+fn an_import_matches_a_group_by_name_in_any_case_under_the_same_parent() {
+    let target = Library::new();
+    let work = target.group("Work", None);
+    let theirs = ConnectionGroup::new(group_name("work"), None);
+    let nested = ConnectionGroup::new(group_name("Staging"), Some(theirs.id));
+
+    target.import(&ConnectionsDocument {
+        groups: vec![theirs.clone(), nested],
+        connections: vec![SavedConnection {
+            group_id: Some(theirs.id),
+            ..connection("x")
+        }],
+        ..ConnectionsDocument::default()
+    });
+
+    assert_eq!(target.under(None), ["Work"], "a case-only sibling was added");
+    assert_eq!(target.under(Some(&work)), ["Staging"]);
+    assert_eq!(target.in_group(Some(&work)), ["x"]);
+}
+
+#[test]
+fn an_import_prefers_the_group_of_the_exact_name_over_one_that_differs_in_case() {
+    let upper = ConnectionGroup::new(group_name("Work"), None);
+    let lower = ConnectionGroup {
+        order: 1,
+        ..ConnectionGroup::new(group_name("work"), None)
+    };
+    let target = Library::seeded(&ConnectionsDocument {
+        groups: vec![upper.clone(), lower.clone()],
+        ..ConnectionsDocument::default()
+    });
+    let theirs = ConnectionGroup::new(group_name("work"), None);
+
+    target.import(&ConnectionsDocument {
+        groups: vec![theirs.clone()],
+        connections: vec![SavedConnection {
+            group_id: Some(theirs.id),
+            ..connection("x")
+        }],
+        ..ConnectionsDocument::default()
+    });
+
+    assert_eq!(target.under(None), ["Work", "work"]);
+    assert_eq!(target.in_group(Some(&lower)), ["x"]);
+    assert!(target.in_group(Some(&upper)).is_empty());
+}
+
+#[test]
+fn a_version_2_file_with_groups_that_differ_only_in_case_imports_them_as_two() {
+    let target = Library::new();
+    let bytes = br#"{"version": 2, "connections": [
+        {"id": "550e8400-e29b-41d4-a716-446655440001", "name": "upper", "driver_id": "postgres", "host": "h",
+         "port": 5432, "database": "d", "username": "u", "tls": {"mode": "disable"}, "safe_mode": "off",
+         "group": "Work"},
+        {"id": "550e8400-e29b-41d4-a716-446655440002", "name": "lower", "driver_id": "postgres", "host": "h",
+         "port": 5432, "database": "d", "username": "u", "tls": {"mode": "disable"}, "safe_mode": "off",
+         "group": "work"}
+    ]}"#;
+
+    target
+        .store
+        .import_blocking(Path::new("/tmp/c.json"), bytes)
+        .expect("the import");
+
+    assert_eq!(
+        target.under(None),
+        ["Work", "work"],
+        "reading the file gives two groups"
+    );
+    let list = target.store.list_blocking().expect("the list");
+    let filed: Vec<(&str, Option<String>)> = list
+        .connections
+        .iter()
+        .map(|saved| {
+            (
+                saved.name.as_str(),
+                saved.group_id.and_then(|id| list.group_tree().label(id)),
+            )
+        })
+        .collect();
+    assert_eq!(
+        filed,
+        [("upper", Some("Work".to_owned())), ("lower", Some("work".to_owned()))]
+    );
+}
+
+#[test]
+fn an_import_renames_the_groups_it_knows_before_it_matches_the_rest_by_name() {
+    let target = Library::new();
+    let old = target.group("Work", None);
+    target.connection("mine", Some(&old));
+    let fresh = ConnectionGroup::new(group_name("Work"), None);
+
+    target.import(&ConnectionsDocument {
+        groups: vec![
+            fresh.clone(),
+            ConnectionGroup {
+                name: group_name("Archive"),
+                order: 1,
+                ..old.clone()
+            },
+        ],
+        connections: vec![SavedConnection {
+            group_id: Some(fresh.id),
+            ..connection("theirs")
+        }],
+        ..ConnectionsDocument::default()
+    });
+
+    assert_eq!(target.under(None), ["Archive", "Work"]);
+    assert_eq!(target.in_group(Some(&old)), ["mine"]);
+    assert_eq!(target.in_group(Some(&fresh)), ["theirs"]);
+}
+
+#[test]
+fn an_import_under_a_third_level_group_files_its_connections_in_that_group() {
+    let target = Library::new();
+    let a = target.group("A", None);
+    let b = target.group("B", Some(&a));
+    let c = target.group("C", Some(&b));
+    let d = ConnectionGroup::new(group_name("D"), Some(c.id));
+    let e = ConnectionGroup::new(group_name("E"), Some(d.id));
+
+    target.import(&ConnectionsDocument {
+        groups: vec![
+            ConnectionGroup {
+                parent_id: None,
+                ..c.clone()
+            },
+            d.clone(),
+            e.clone(),
+        ],
+        connections: vec![
+            SavedConnection {
+                group_id: Some(d.id),
+                ..connection("x")
+            },
+            SavedConnection {
+                group_id: Some(e.id),
+                ..connection("y")
+            },
+        ],
+        ..ConnectionsDocument::default()
+    });
+
+    let list = target.store.list_blocking().expect("the list");
+    assert_eq!(list.groups.len(), 3, "a group was added past the third level");
+    assert!(target.under(Some(&c)).is_empty());
+    let mut held = target.in_group(Some(&c));
+    held.sort();
+    assert_eq!(held, ["x", "y"]);
+}
+
+#[test]
+fn an_import_of_a_tree_five_levels_deep_keeps_three() {
+    let target = Library::new();
+    let mut groups: Vec<ConnectionGroup> = Vec::new();
+    for name in ["One", "Two", "Three", "Four", "Five"] {
+        let parent = groups.last().map(|group| group.id);
+        groups.push(ConnectionGroup::new(group_name(name), parent));
+    }
+    let deepest = groups.last().map(|group| group.id);
+
+    target.import(&ConnectionsDocument {
+        groups,
+        connections: vec![SavedConnection {
+            group_id: deepest,
+            ..connection("z")
+        }],
+        ..ConnectionsDocument::default()
+    });
+
+    let list = target.store.list_blocking().expect("the list");
+    let tree = list.group_tree();
+    assert_eq!(list.groups.len(), 3);
+    assert!(
+        list.groups
+            .iter()
+            .all(|group| tree.depth(Some(group.id)) <= ConnectionGroup::MAX_DEPTH)
+    );
+    assert_eq!(
+        list.connections[0].group_id.and_then(|id| tree.label(id)).as_deref(),
+        Some("One / Two / Three")
+    );
 }

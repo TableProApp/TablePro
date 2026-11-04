@@ -62,7 +62,7 @@ mod tests {
         let pki = TestPki::generate().unwrap();
         let files = [
             MysqlFixture::files(&pki, &MysqlOptions::new(MysqlFlavour::Mysql), "secret").unwrap(),
-            MssqlFixture::files(&pki).unwrap(),
+            MssqlFixture::files(&pki, false).unwrap(),
             ClickHouseFixture::files(&pki, "secret").unwrap(),
         ]
         .concat();

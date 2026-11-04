@@ -494,6 +494,38 @@ struct SQLiteDriverFileTests {
         #expect(tables == ["sqlitebrowser_backup", "t"])
     }
 
+    @Test("Text with a NUL inserts, reads, streams and edits by its key whole")
+    func nulTextRoundTrips() async throws {
+        let driver = try await connectedDriver("nul.db")
+        _ = try await driver.execute(query: "CREATE TABLE notes (id TEXT PRIMARY KEY, body TEXT)")
+        let columns = try await driver.fetchColumns(table: "notes", schema: nil)
+        let key = "k\u{0}1"
+        let body = "a\u{0}b and enough text to be cut for the grid"
+        let insert = try #require(SQLBuilder.buildInsert(
+            table: "notes", schema: nil, type: .sqlite, driver: driver, columns: ["id", "body"], values: [key, body]
+        ))
+        try await driver.executeWrite([insert, "INSERT INTO notes VALUES ('k', 'other')"])
+
+        let read = try await driver.execute(query: "SELECT id, body FROM notes WHERE body <> 'other'")
+        var refs: [CellRef] = []
+        let options = StreamOptions(textTruncationBytes: 8, lazyContext: LazyContext(table: "notes", primaryKeyColumns: ["id"]))
+        for try await element in driver.executeStreaming(query: "SELECT id, body FROM notes WHERE body <> 'other'", options: options) {
+            guard case .row(let row) = element else { continue }
+            refs.append(contentsOf: row.cells.compactMap { $0.fullValueRef })
+        }
+        let streamedKey = try #require(refs.first?.primaryKey.first?.value)
+        try await driver.executeWrite([SQLBuilder.buildUpdate(
+            table: "notes", schema: nil, type: .sqlite, driver: driver,
+            changes: [(column: "body", value: "x\u{0}y")], primaryKeys: [(column: "id", value: streamedKey)], columns: columns
+        )])
+        let after = try await driver.execute(query: "SELECT id, body FROM notes ORDER BY id")
+        try await driver.disconnect()
+
+        #expect(read.rows == [[key, body]])
+        #expect(streamedKey == key)
+        #expect(after.rows == [["k", "other"], [key, "x\u{0}y"]])
+    }
+
     // MARK: - Helpers
 
     private static let createStudent = """

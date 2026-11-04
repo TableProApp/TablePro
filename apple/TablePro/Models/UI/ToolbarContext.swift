@@ -6,38 +6,22 @@
 import Foundation
 import TableProPluginKit
 
-/// Everything the connection window's toolbar is allowed to know about what the window is showing.
-///
-/// The toolbar used to carry one tab-shaped fact, `isTableTab`, and no content mode at all, so a
-/// single list of identifiers was vended for every tab kind, every pane and both content modes and
-/// the only lever anyone had was dimming. Every feature that arrived then had to buy a permanent
-/// slot in the titlebar.
-///
-/// Nothing global is read inside this struct or inside the resolvers that take it. The toolbar
-/// builds it once per validation pass and once per Actions menu open and passes it down, so the
-/// resolvers stay pure and testable with no host app and no session.
-///
-/// Every field is one a resolver reads. A fact nothing reads is a fact every pass pays to look up.
+// A value snapshot keeps toolbar validation independent of the live session.
 internal struct ToolbarContext: Equatable {
-    /// What the window's detail pane is drawing. `nil` when no tab is selected, which is a real
-    /// state on a window that has just opened.
+    // A newly opened window can have no selected tab.
     internal let tabKind: TabType?
     internal let resultsMode: ResultsViewMode?
     internal let contentMode: ConnectionWorkspaceContentMode
     internal let pane: ConnectionWindowPane
 
-    /// True whenever the session is alive, which includes a query in flight. A running query is not
-    /// a reason to disable Refresh, and the menu bar derives its own answer from the window phase
-    /// rather than from execution.
+    // A running query does not make the session unavailable.
     internal let isConnected: Bool
-    /// A connection is on screen, whether or not it has finished connecting.
+    // A connection is on screen, whether or not it has finished connecting.
     internal let hasSelectedWorkspace: Bool
     internal let canToggleTrailingPane: Bool
 
     internal let pendingChange: PendingChangeKind?
-    /// Not a projection of `pendingChange`. The two are computed from different inputs: a dirty
-    /// query file raises the commit control and leaves this false, which is exactly the distinction
-    /// Preview SQL is gated on.
+    // Dirty query files enable Save but have no data edits to preview.
     internal let hasDataPendingChanges: Bool
     internal let blocksAllWrites: Bool
 
@@ -53,7 +37,7 @@ internal struct ToolbarContext: Equatable {
 
     internal let isAIEnabled: Bool
 
-    /// A type's tab queues changes the commit control saves; every other object tab only reads.
+    // A type's tab queues changes the commit control saves; every other object tab only reads.
     internal let stagesObjectChanges: Bool
 
     // Whether the Routine Debugger module puts its controls in the toolbar at all.
@@ -61,17 +45,9 @@ internal struct ToolbarContext: Equatable {
     // What the selected debug tab can do now; empty and false everywhere else.
     internal let debugCommands: Set<PluginDebugCommand>
     internal let canStopDebugging: Bool
+    internal let isPresentingSheet: Bool
 
-    /// The subset of the context that may move an item in or out of the titlebar, or change what
-    /// one says.
-    ///
-    /// This is the whole anti-reflow rule in one type. `isHidden` and the commit control's label are
-    /// written only from these fields, so the titlebar can change shape on a tab switch, a mode
-    /// switch or a connection switch and on nothing else; everything transient rides `isEnabled`
-    /// instead. The toolbar computes this from its eight inputs directly rather than from a whole
-    /// context, so a keystroke costs the selected-tab lookup, four locked reads of the plugin
-    /// metadata registry, a switch over the engine for the dashboard and one comparison, and writes
-    /// nothing.
+    // Only these stable facts may change the toolbar layout or labels.
     internal struct VisibilityKey: Equatable {
         internal let tabKind: TabType?
         internal let resultsMode: ResultsViewMode?
@@ -123,7 +99,8 @@ internal struct ToolbarContext: Equatable {
         stagesObjectChanges: Bool = false,
         showsDebugItems: Bool = false,
         debugCommands: Set<PluginDebugCommand> = [],
-        canStopDebugging: Bool = false
+        canStopDebugging: Bool = false,
+        isPresentingSheet: Bool = false
     ) {
         self.tabKind = tabKind
         self.resultsMode = resultsMode
@@ -148,10 +125,10 @@ internal struct ToolbarContext: Equatable {
         self.showsDebugItems = showsDebugItems
         self.debugCommands = debugCommands
         self.canStopDebugging = canStopDebugging
+        self.isPresentingSheet = isPresentingSheet
     }
 
-    /// The whole context over a key the caller already computed, so the eight slow-moving facts
-    /// are read once per context rather than once for the key and again for the context.
+    // Over a key the caller already computed, so the slow-moving facts are read once per context.
     internal init(
         key: VisibilityKey,
         pane: ConnectionWindowPane,
@@ -166,7 +143,8 @@ internal struct ToolbarContext: Equatable {
         canNavigateBack: Bool,
         canNavigateForward: Bool,
         debugCommands: Set<PluginDebugCommand> = [],
-        canStopDebugging: Bool = false
+        canStopDebugging: Bool = false,
+        isPresentingSheet: Bool = false
     ) {
         self.init(
             tabKind: key.tabKind,
@@ -191,7 +169,8 @@ internal struct ToolbarContext: Equatable {
             stagesObjectChanges: key.stagesObjectChanges,
             showsDebugItems: key.showsDebugItems,
             debugCommands: debugCommands,
-            canStopDebugging: canStopDebugging
+            canStopDebugging: canStopDebugging,
+            isPresentingSheet: isPresentingSheet
         )
     }
 }

@@ -2,7 +2,10 @@
 resolver = "3"
 members = [
     "core/crates/ai",
+    "core/crates/bindgen",
     "core/crates/core",
+    "core/crates/ffi",
+    "core/crates/foreign-import",
     "core/crates/mcp",
     "core/crates/net",
     "core/crates/session",
@@ -41,6 +44,7 @@ tablepro-driver-mysql = { path = "core/crates/drivers/mysql" }
 tablepro-driver-postgres = { path = "core/crates/drivers/postgres" }
 tablepro-driver-redis = { path = "core/crates/drivers/redis" }
 tablepro-driver-sqlite = { path = "core/crates/drivers/sqlite" }
+tablepro-foreign-import = { path = "core/crates/foreign-import" }
 tablepro-mcp = { path = "core/crates/mcp" }
 tablepro-net = { path = "core/crates/net" }
 tablepro-linux-platform = { path = "linux/crates/platform" }
@@ -59,6 +63,9 @@ tokio-util = { version = "0.7", default-features = false, features = ["codec", "
 secrecy = { version = "0.10", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+# Pinned to the minor uniffi-bindgen-cs supports; the default feature pulls in a generator the library never runs.
+uniffi = { version = "=0.31.2", default-features = false }
+csbindgen = "1.9.8"
 # The driver dials through its own hyper-rustls connector, so the crate's
 # own TLS features would only add a second, unused TLS stack.
 clickhouse = { version = "0.15", default-features = false }
@@ -68,7 +75,7 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 # feature is needed.
 scylla = { version = "1.9", default-features = false, features = ["rustls-023"] }
 # The driver reads and writes DECIMAL through tiberius's own Numeric.
-tiberius = { version = "0.13", default-features = false, features = ["tds73", "rustls", "chrono"] }
+tiberius = { version = "0.13", default-features = false, features = ["tds80", "rustls", "chrono"] }
 # The driver hands redis-rs a stream it opened and wrapped in TLS itself, so
 # none of the crate's TLS features is on: rustls stays on aws-lc-rs.
 redis = { version = "1.7", default-features = false, features = ["aio", "tokio-comp"] }
@@ -91,6 +98,8 @@ csv = "1.4"
 # table turns that off itself (force_no_tty).
 comfy-table = "8.0"
 unicode-width = "0.2"
+# Folds accents out of a name for the Finder-like order the Apple apps sort a library by.
+unicode-normalization = "0.1.25"
 # No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps
 # the build free of another C dependency. Constant memory lets a sheet
 # spill its rows to a temporary file instead of holding them.
@@ -121,6 +130,10 @@ rustls-native-certs = "0.8"
 rustls-platform-verifier = "0.7"
 pem-rfc7468 = { version = "1", features = ["alloc"] }
 socket2 = { version = "0.6", features = ["all"] }
+# In-process SSH (core ADR 0009): aws-lc-rs, rsa for RSA keys, no compression.
+russh = { version = "0.65", default-features = false, features = ["aws-lc-rs", "rsa"] }
+# HMAC-SHA1 for hashed known_hosts names, on the one provider (ADR 0009).
+aws-lc-rs = "1"
 rustix = { version = "1.1", default-features = false, features = ["std"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["aws_lc_rs", "logging", "tls12"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
@@ -142,6 +155,29 @@ gio-unix = { version = "0.22", features = ["v2_84"] }
 glib = { version = "0.22", features = ["v2_88"] }
 glib-build-tools = "0.22"
 uuid = { version = "1", features = ["v4", "serde"] }
+url = "2"
+percent-encoding = "2"
+# The Windows Credential Manager, where the core keeps secrets on Windows, and the
+# owning process of a loopback connection, from GetExtendedTcpTable.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_Networking_WinSock",
+    "Win32_Security_Credentials",
+] }
+# What other apps' saved connections are kept in: binary and XML property
+# lists, XML, and the fixed-key ciphers those apps use for passwords.
+plist = { version = "1.7", default-features = false }
+roxmltree = "0.20"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+blowfish = "0.9"
+salsa20 = "0.10"
+chacha20 = "0.9"
+sha1 = "0.11"
+sha2 = "0.11"
+hex = "0.4"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 zeroize = "1.9"
 # The volume and index that name a file on Windows, which std reads only on nightly.
 winapi-util = "0.1"

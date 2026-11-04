@@ -21,7 +21,8 @@ ROOT = Path(__file__).resolve().parents[2]
 PROJECT_CONTAINER = "container:TablePro.xcodeproj"
 # TableProCore test targets depend on the package TableProPluginKit; in the app's build they would make
 # the app and plugins compile against that non-resilient module, so both packages run under swift test.
-SWIFT_TEST_PACKAGES = {"TableProCore", "TableProOracle"}
+# TableProFFI runs in core.yml because the app does not link it yet.
+SWIFT_TEST_PACKAGES = {"TableProCore", "TableProOracle", "TableProFFI"}
 PLAN_KINDS = {"Unit": "bundle.unit-test", "UI": "bundle.ui-testing"}
 
 TOP_LEVEL_KEY = re.compile(r"^([A-Za-z_][\w-]*):")

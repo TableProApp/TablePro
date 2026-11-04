@@ -1,0 +1,17 @@
+{
+  "objects": [
+    {
+      "id": "lg-1",
+      "name": "Work",
+      "group-id": "",
+      "is-expanded": true
+    },
+    {
+      "id": "lg-2",
+      "name": "Databases",
+      "group-id": "lg-1",
+      "is-expanded": false
+    }
+  ],
+  "updated_at": 1730600000
+}

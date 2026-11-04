@@ -13,6 +13,7 @@ use crate::{FixtureError, PkiAlgorithm, PkiFile};
 pub struct TestPki {
     dir: TempDir,
     algorithm: PkiAlgorithm,
+    self_signed: bool,
 }
 
 impl TestPki {
@@ -24,6 +25,19 @@ impl TestPki {
     }
 
     pub fn generate_with(algorithm: PkiAlgorithm) -> Result<Self, FixtureError> {
+        Self::build(algorithm, false)
+    }
+
+    /// A server certificate signed with its own key, which nothing vouches
+    /// for until a client trusts that certificate itself. The CA still
+    /// issues the client certificate. `ca.pem` holds the CA certificate
+    /// and then the server's, so a server that checks its peers or itself
+    /// against it trusts both.
+    pub fn generate_self_signed() -> Result<Self, FixtureError> {
+        Self::build(PkiAlgorithm::default(), true)
+    }
+
+    fn build(algorithm: PkiAlgorithm, self_signed: bool) -> Result<Self, FixtureError> {
         let (ca_pem, ca) = certificate_authority("TablePro Test CA", algorithm)?;
         let (unrelated_ca_pem, _) = certificate_authority("Unrelated Test CA", algorithm)?;
 
@@ -32,7 +46,10 @@ impl TestPki {
         server.distinguished_name = common_name(Self::SERVER_NAMES[0]);
         server.key_usages = leaf_key_usages(algorithm);
         server.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
-        let server_certificate = server.signed_by(&server_key, &ca)?;
+        let server_pem = match self_signed {
+            true => server.self_signed(&server_key)?.pem(),
+            false => server.signed_by(&server_key, &ca)?.pem(),
+        };
 
         let client_key = KeyPair::generate_for(algorithm.signature_algorithm())?;
         let mut client = CertificateParams::new(Vec::<String>::new())?;
@@ -41,13 +58,19 @@ impl TestPki {
         client.extended_key_usages = vec![ExtendedKeyUsagePurpose::ClientAuth];
         let client_certificate = client.signed_by(&client_key, &ca)?;
 
+        let trusted = match self_signed {
+            true => format!("{ca_pem}{server_pem}"),
+            false => ca_pem,
+        };
+
         let pki = Self {
             dir: tempfile::tempdir()?,
             algorithm,
+            self_signed,
         };
-        pki.write(PkiFile::Ca, ca_pem.as_bytes())?;
+        pki.write(PkiFile::Ca, trusted.as_bytes())?;
         pki.write(PkiFile::UnrelatedCa, unrelated_ca_pem.as_bytes())?;
-        pki.write(PkiFile::ServerCertificate, server_certificate.pem().as_bytes())?;
+        pki.write(PkiFile::ServerCertificate, server_pem.as_bytes())?;
         pki.write(PkiFile::ServerKey, server_key.serialize_pem().as_bytes())?;
         pki.write(PkiFile::ClientCertificate, client_certificate.pem().as_bytes())?;
         pki.write(PkiFile::ClientKey, client_key.serialize_pem().as_bytes())?;
@@ -60,6 +83,10 @@ impl TestPki {
 
     pub fn algorithm(&self) -> PkiAlgorithm {
         self.algorithm
+    }
+
+    pub fn is_self_signed(&self) -> bool {
+        self.self_signed
     }
 
     pub fn path(&self, file: PkiFile) -> PathBuf {
@@ -120,23 +147,45 @@ mod tests {
 
     use rustls::client::WebPkiServerVerifier;
     use rustls::client::danger::ServerCertVerifier;
+    use rustls::crypto::CryptoProvider;
     use rustls::pki_types::pem::PemObject;
     use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+    use rustls::server::WebPkiClientVerifier;
     use rustls::{CertificateError, RootCertStore};
 
     use super::*;
 
-    fn verify(pki: &TestPki, ca: PkiFile, server_name: &str) -> Result<(), rustls::Error> {
+    fn provider() -> Arc<CryptoProvider> {
+        Arc::new(rustls::crypto::aws_lc_rs::default_provider())
+    }
+
+    fn certificates(pki: &TestPki, file: PkiFile) -> Vec<CertificateDer<'static>> {
+        CertificateDer::pem_file_iter(pki.path(file))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    }
+
+    fn roots(certificates: Vec<CertificateDer<'static>>) -> Arc<RootCertStore> {
         let mut roots = RootCertStore::empty();
-        for certificate in CertificateDer::pem_file_iter(pki.path(ca)).unwrap() {
-            roots.add(certificate.unwrap()).unwrap();
+        for certificate in certificates {
+            roots.add(certificate).unwrap();
         }
-        let verifier = WebPkiServerVerifier::builder_with_provider(
-            Arc::new(roots),
-            Arc::new(rustls::crypto::aws_lc_rs::default_provider()),
-        )
-        .build()
-        .unwrap();
+        Arc::new(roots)
+    }
+
+    fn verify(pki: &TestPki, ca: PkiFile, server_name: &str) -> Result<(), rustls::Error> {
+        verify_against(pki, certificates(pki, ca), server_name)
+    }
+
+    fn verify_against(
+        pki: &TestPki,
+        trusted: Vec<CertificateDer<'static>>,
+        server_name: &str,
+    ) -> Result<(), rustls::Error> {
+        let verifier = WebPkiServerVerifier::builder_with_provider(roots(trusted), provider())
+            .build()
+            .unwrap();
         let server_certificate = CertificateDer::from_pem_file(pki.path(PkiFile::ServerCertificate)).unwrap();
         verifier
             .verify_server_cert(
@@ -165,6 +214,53 @@ mod tests {
                 "{algorithm:?}: {error}"
             );
         }
+    }
+
+    fn is_unknown_issuer(outcome: &Result<(), rustls::Error>) -> bool {
+        matches!(
+            outcome,
+            Err(rustls::Error::InvalidCertificate(CertificateError::UnknownIssuer))
+        )
+    }
+
+    #[test]
+    fn a_self_signed_server_certificate_verifies_only_against_itself() {
+        for algorithm in PkiAlgorithm::ALL {
+            let pki = TestPki::build(algorithm, true).unwrap();
+            for name in TestPki::SERVER_NAMES {
+                for trusted in [PkiFile::ServerCertificate, PkiFile::Ca] {
+                    verify(&pki, trusted, name).unwrap_or_else(|error| panic!("{algorithm:?} {trusted:?}: {error}"));
+                }
+            }
+            let issuing_ca = certificates(&pki, PkiFile::Ca)[..1].to_vec();
+            let outcome = verify_against(&pki, issuing_ca, "localhost");
+            assert!(is_unknown_issuer(&outcome), "{algorithm:?}: {outcome:?}");
+            let outcome = verify(&pki, PkiFile::UnrelatedCa, "localhost");
+            assert!(is_unknown_issuer(&outcome), "{algorithm:?}: {outcome:?}");
+        }
+    }
+
+    #[test]
+    fn a_self_signed_pki_appends_the_server_certificate_to_the_ca_file() {
+        let pki = TestPki::generate_self_signed().unwrap();
+        let trusted = certificates(&pki, PkiFile::Ca);
+        let server = CertificateDer::from_pem_file(pki.path(PkiFile::ServerCertificate)).unwrap();
+
+        assert!(pki.is_self_signed());
+        assert_eq!(trusted.len(), 2);
+        assert_eq!(trusted[1], server);
+    }
+
+    #[test]
+    fn a_self_signed_pki_still_issues_the_client_certificate_from_the_ca() {
+        let pki = TestPki::generate_self_signed().unwrap();
+        let issuing_ca = certificates(&pki, PkiFile::Ca)[..1].to_vec();
+        let verifier = WebPkiClientVerifier::builder_with_provider(roots(issuing_ca), provider())
+            .build()
+            .unwrap();
+        let client = CertificateDer::from_pem_file(pki.path(PkiFile::ClientCertificate)).unwrap();
+
+        verifier.verify_client_cert(&client, &[], UnixTime::now()).unwrap();
     }
 
     #[test]

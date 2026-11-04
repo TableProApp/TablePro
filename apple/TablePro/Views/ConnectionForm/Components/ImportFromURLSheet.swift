@@ -5,6 +5,7 @@
 
 import AppKit
 import SwiftUI
+import TableProConnectionLibrary
 import TableProPluginKit
 
 struct ImportFromURLSheet: View {
@@ -124,8 +125,10 @@ struct ImportFromURLSheet: View {
                 } else if let multiHost = parsed.multiHost, multiHost.contains(",") {
                     previewRow(String(localized: "Hosts"), multiHost)
                 } else if !parsed.host.isEmpty {
-                    let portStr = parsed.port.map { ":\($0)" } ?? ""
-                    previewRow(String(localized: "Host"), parsed.host + portStr)
+                    previewRow(
+                        String(localized: "Host"),
+                        parsed.port.map { HostListEndpoint(host: parsed.host, port: $0).entry } ?? parsed.host
+                    )
                 }
                 if !parsed.username.isEmpty {
                     previewRow(String(localized: "User"), parsed.username)

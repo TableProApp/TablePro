@@ -7,18 +7,7 @@ use tablepro_core::{SshDestinationPart, SshDestinationProblem, SshFailure};
 use tokio::process::Command;
 
 use crate::route::{lookup, trace_route};
-use crate::{SshConfig, SshServices};
-
-/// Why a key ssh reported as changed was left in known_hosts.
-#[derive(Debug, thiserror::Error)]
-pub enum ForgetHostKeyError {
-    /// `ssh -G` names no host of this connection by `host` that reads
-    /// `known_hosts`, so the report did not come from ssh's own check.
-    #[error("{host} in {} is not a host key this connection uses", .known_hosts.display())]
-    NotThisConnection { host: String, known_hosts: PathBuf },
-    #[error(transparent)]
-    Ssh(#[from] SshFailure),
-}
+use crate::{ForgetHostKeyError, SshConfig, SshServices};
 
 pub async fn forget_host_key(services: &SshServices, config: &SshConfig, known_hosts: &Path) -> Result<(), SshFailure> {
     let mut args: Vec<OsString> = vec!["-G".into()];

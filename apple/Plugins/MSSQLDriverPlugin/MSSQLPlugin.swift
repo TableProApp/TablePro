@@ -241,6 +241,9 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let supportsDropDatabase = true
     static let supportsDropSchema = true
+    // DROP and TRUNCATE refuse a referenced table even with its constraints set to NOCHECK, and no session
+    // setting suspends the checks, so the option would add no statement.
+    static let supportsForeignKeyDisable = false
     static let supportsTriggers = true
     static let supportsRoutines = true
     static let supportsUserDefinedTypeBrowse = true
@@ -865,6 +868,10 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         quoteIdentifier(identifier)
     }
 
+    /// The column the host names for a row holding the reader's own condition, which the shared
+    /// builder writes as given whatever operator the row last showed.
+    private static let rawConditionColumn = "__RAW__"
+
     /// The shared builder writes the `LIKE` arms' literal itself rather than asking for one, so
     /// SQL Server answers those arms first and lets every other operator fall through to it.
     private func mssqlWhereClause(
@@ -874,7 +881,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     ) -> String {
         let conditions = filters.compactMap { filter -> String? in
             let quoted = mssqlQuoteIdentifier(filter.column)
-            if let like = MSSQLStringLiteral.likeCondition(
+            if filter.column != Self.rawConditionColumn, let like = MSSQLStringLiteral.likeCondition(
                 quotedColumn: quoted, op: filter.op, value: filter.value
             ) {
                 return like
@@ -923,7 +930,9 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
     }
 
-    /// Escape single quotes for N'...' string literals in SQL Server.
+    func escapeStringLiteral(_ value: String) -> String {
+        MSSQLStringLiteral.escaped(value)
+    }
 
     func effectiveSchema(_ schema: String?) -> String {
         guard let schema, !schema.isEmpty else { return currentSchemaName }

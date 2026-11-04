@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Connections [
+	<!ENTITY secret SYSTEM "file:///etc/hosts">
+]>
+<Connections Ver="1.5">
+	<Connection ConnectionName="&secret;" ConnType="MYSQL" Host="db.example.com" Port="3306" UserName="admin"/>
+</Connections>

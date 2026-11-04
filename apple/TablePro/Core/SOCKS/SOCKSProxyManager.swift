@@ -71,6 +71,7 @@ actor SOCKSProxyManager: TunnelManaging {
     }
 
     private var tunnels: [UUID: TunnelState] = [:]
+    private var creations = TunnelCreationGenerations()
     private var appNapActivity: NSObjectProtocol?
     private let connectTimeout: TimeInterval
     private let now: @Sendable () -> ContinuousClock.Instant
@@ -112,15 +113,17 @@ actor SOCKSProxyManager: TunnelManaging {
         guard config.isValid, Self.nwPort(config.port) != nil, Self.nwPort(targetPort) != nil else {
             throw SOCKSProxyError.invalidConfiguration
         }
+        let generation = creations.begin(connectionId)
+        defer { creations.finish(generation, for: connectionId) }
         let timeoutEndpoint = ConnectionTimeoutEndpoint.proxy("\(config.host):\(config.port)")
         try deadline.check(endpoint: timeoutEndpoint, at: now())
 
         if tunnels[connectionId] != nil {
-            try await closeTunnel(connectionId: connectionId)
+            try await discardTunnel(connectionId: connectionId)
         }
 
-        /// `ProxyConfiguration` is macOS 14. Network.framework offers no SOCKS5 path before
-        /// it, so the connection is refused with a reason rather than failing obscurely.
+        // `ProxyConfiguration` is macOS 14. Network.framework offers no SOCKS5 path before
+        // it, so the connection is refused with a reason rather than failing obscurely.
         guard #available(macOS 14.0, *) else {
             throw SOCKSProxyError.unsupportedOnThisSystem
         }
@@ -170,6 +173,12 @@ actor SOCKSProxyManager: TunnelManaging {
             listener.cancel()
             throw error
         }
+        // A newer createTunnel or a close for this connection came while this one dialed, so it must not adopt.
+        guard creations.isNewest(generation, for: connectionId) else {
+            listener.stateUpdateHandler = nil
+            listener.cancel()
+            throw CancellationError()
+        }
         let state = TunnelState(
             listener: listener,
             localPort: localPort,
@@ -183,7 +192,13 @@ actor SOCKSProxyManager: TunnelManaging {
         return localPort
     }
 
+    // Also ends a creation still dialing, so nothing it builds is adopted after the close returned.
     func closeTunnel(connectionId: UUID) async throws {
+        creations.invalidate(connectionId)
+        try await discardTunnel(connectionId: connectionId)
+    }
+
+    private func discardTunnel(connectionId: UUID) async throws {
         guard let state = tunnels.removeValue(forKey: connectionId) else { return }
         updateAppNapState()
         state.listener.stateUpdateHandler = nil
@@ -195,6 +210,7 @@ actor SOCKSProxyManager: TunnelManaging {
     }
 
     func closeAllTunnels() async {
+        creations.invalidateAll()
         let connectionIds = Array(tunnels.keys)
         for connectionId in connectionIds {
             try? await closeTunnel(connectionId: connectionId)

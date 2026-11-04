@@ -24,6 +24,7 @@ struct Row: Equatable, Sendable {
     var absentColumns: Set<Int> = []
     // Column to byte length of a value the page left on the server; it reads `.null` until loaded.
     var unloadedColumns: [Int: Int] = [:]
+    var exportSnapshot: DocumentExportSnapshot?
 
     func isAbsent(_ column: Int) -> Bool {
         absentColumns.contains(column)
@@ -41,5 +42,18 @@ struct Row: Equatable, Sendable {
             guard column >= 0, column < values.count else { return }
             values[column] = newValue
         }
+    }
+}
+
+/// The original cells let an undo restore document export without assigning types to edited text.
+struct DocumentExportSnapshot: Equatable, Sendable {
+    var document: PluginExportDocument
+    var values: ContiguousArray<PluginCellValue>
+    let absentColumns: Set<Int>
+    var maskedFields: Set<String> = []
+
+    func document(matching row: Row) -> PluginExportDocument? {
+        guard values == row.values, absentColumns == row.absentColumns else { return nil }
+        return document
     }
 }

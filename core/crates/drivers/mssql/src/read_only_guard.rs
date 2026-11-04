@@ -98,6 +98,8 @@ mod tests {
             "SET NOCOUNT ON",
             "SELECT 1\nDELETE FROM t",
             "SELECT * FROM OPENQUERY(remote, 'DELETE FROM t')",
+            "SHOW: UPDATE t SET a = 1 WHERE id = 1",
+            "SHOW: COMMIT TRANSACTION UPDATE t SET a = 1 WHERE id = 1 BEGIN TRANSACTION",
         ] {
             assert_eq!(
                 refuse_writes(write),

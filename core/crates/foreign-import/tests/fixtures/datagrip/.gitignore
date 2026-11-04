@@ -1,0 +1,2 @@
+# DataGrip keeps project data sources in .idea, which the repository ignores.
+!.idea/

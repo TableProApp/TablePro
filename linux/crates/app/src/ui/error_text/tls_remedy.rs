@@ -7,6 +7,7 @@ use tablepro_session::ConnectError;
 pub enum TlsRemedy {
     ChooseCaCertificate,
     SetServerName,
+    ChangeEncryption,
 }
 
 impl TlsRemedy {
@@ -15,21 +16,25 @@ impl TlsRemedy {
         match self {
             Self::ChooseCaCertificate => crate::i18n::gettext("Choose CA Certificate…"),
             Self::SetServerName => crate::i18n::gettext("Set TLS Server Name"),
+            Self::ChangeEncryption => crate::i18n::gettext("Change Encryption"),
         }
     }
 }
 
-/// Only an unknown issuer and a name mismatch are fixed from this side;
-/// an expired or revoked certificate is the server's to replace.
+/// An unknown issuer, a name mismatch and an encryption mode the server
+/// does not take are fixed from this side; an expired or revoked
+/// certificate is the server's to replace.
 pub fn remedy(failure: TlsFailure) -> Option<TlsRemedy> {
     match failure {
         TlsFailure::UnknownIssuer => Some(TlsRemedy::ChooseCaCertificate),
         TlsFailure::NameMismatch => Some(TlsRemedy::SetServerName),
+        TlsFailure::ServerRequiresTls | TlsFailure::ServerRefusedStrict | TlsFailure::ServerRequiresStrict => {
+            Some(TlsRemedy::ChangeEncryption)
+        }
         TlsFailure::Expired
         | TlsFailure::NotYetValid
         | TlsFailure::Revoked
         | TlsFailure::ServerRefusedTls
-        | TlsFailure::ServerRequiresTls
         | TlsFailure::HandshakeRejected
         | TlsFailure::CaFileInvalid
         | TlsFailure::ClientIdentityInvalid
@@ -54,13 +59,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unknown_issuer_and_name_mismatch_have_actions() {
+    fn failures_fixed_in_the_dialog_have_actions() {
         assert_eq!(remedy(TlsFailure::UnknownIssuer), Some(TlsRemedy::ChooseCaCertificate));
         assert_eq!(remedy(TlsFailure::NameMismatch), Some(TlsRemedy::SetServerName));
+        for failure in [
+            TlsFailure::ServerRequiresTls,
+            TlsFailure::ServerRefusedStrict,
+            TlsFailure::ServerRequiresStrict,
+        ] {
+            assert_eq!(remedy(failure), Some(TlsRemedy::ChangeEncryption), "{failure:?}");
+        }
         for failure in [TlsFailure::Expired, TlsFailure::Revoked, TlsFailure::Other] {
             assert_eq!(remedy(failure), None, "{failure:?}");
         }
-        assert_ne!(TlsRemedy::ChooseCaCertificate.label(), TlsRemedy::SetServerName.label());
+        let labels: std::collections::HashSet<String> = [
+            TlsRemedy::ChooseCaCertificate,
+            TlsRemedy::SetServerName,
+            TlsRemedy::ChangeEncryption,
+        ]
+        .into_iter()
+        .map(TlsRemedy::label)
+        .collect();
+        assert_eq!(labels.len(), 3, "{labels:?}");
     }
 
     #[test]
@@ -90,5 +110,15 @@ mod tests {
             connect_remedy(&unknown_issuer, false),
             Some(TlsRemedy::ChooseCaCertificate)
         );
+    }
+
+    #[test]
+    fn a_closed_strict_connect_offers_the_encryption_row() {
+        let error = ConnectError::Driver(DriverError::Tls {
+            failure: TlsFailure::ServerRequiresStrict,
+            detail: "closed before the prelogin answer".to_owned(),
+        });
+
+        assert_eq!(connect_remedy(&error, false), Some(TlsRemedy::ChangeEncryption));
     }
 }

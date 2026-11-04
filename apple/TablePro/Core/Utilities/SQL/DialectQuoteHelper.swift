@@ -23,10 +23,14 @@ enum SQLDialectError: Error, LocalizedError {
 }
 
 // ClickHouse and GoogleSQL read a backslash inside a quoted name as an escape, so a name ending in `\` would run on.
+// Databend shares MySQL's descriptor but not its doubled backtick, so it takes the driver's own spelling.
 func quoteIdentifierFromDialect(
     _ dialect: SQLDialectDescriptor,
     databaseType: DatabaseType? = nil
 ) -> @Sendable (String) -> String {
+    if databaseType == .databend {
+        return { SQLQuoting.databendIdentifier($0) }
+    }
     let quote = SQLIdentifierQuote(dialectQuote: dialect.identifierQuote)
     let backslashEscapes = databaseType?.lexicalGrammar.backslashEscapes(in: quote) ?? false
     return { SQLQuoting.identifier($0, quote: quote, backslashEscapes: backslashEscapes) }
@@ -50,7 +54,9 @@ func escapeStringLiteralFromDialect(
     databaseType: DatabaseType? = nil
 ) -> @Sendable (String) -> String {
     let escapes: SQLStringEscapes
-    if !dialect.requiresBackslashEscaping {
+    if databaseType == .mssql {
+        escapes = .sqlServer
+    } else if !dialect.requiresBackslashEscaping {
         escapes = .standard
     } else if let databaseType, SqlDialect.from(databaseTypeId: databaseType.rawValue) != .mysql {
         escapes = .backslash

@@ -419,17 +419,27 @@ fn failed_beside(name: &str, failure: FakeEstablish) -> (TestWindow, SessionKey,
 /// to the page that shows the other connect from then on.
 #[gtk4::test]
 fn a_failure_while_another_connect_runs_toasts_on_the_page_left_on_screen() {
+    let release = tokio_util::sync::CancellationToken::new();
     let test = TestWindow::with_script(
         "FailedWhileConnecting",
         Script {
-            establish: vec![refused(), FakeEstablish::UntilCancelled],
+            establish: vec![
+                FakeEstablish::FailAfterRelease {
+                    release: release.clone(),
+                    error: ConnectError::Driver(DriverError::Auth { diagnostics: None }),
+                },
+                FakeEstablish::UntilCancelled,
+            ],
             ..Script::default()
         },
     );
     let other = second_connection(&test);
     test.window
         .send(SessionWindowInput::OpenSaved(Box::new(test.saved.clone())));
+    wait_until(WAIT, || test.connector.calls().len() == 1).expect("the first connect to reach its failure gate");
     test.window.send(SessionWindowInput::OpenSaved(Box::new(other)));
+    wait_until(WAIT, || test.connector.calls().len() == 2).expect("the second connect to remain pending");
+    release.cancel();
 
     let title = format!("Could not connect to “{}”", test.saved.name);
     let on_screen = || {

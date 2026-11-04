@@ -98,16 +98,7 @@ struct SequelAceImporterTests {
 
     // MARK: - isAvailable
 
-    /// `isAvailable()` answers "is Sequel Ace installed", not "is there a favorites file". #1318
-    /// moved every foreign-app importer to LaunchServices and deleted this one's file-based
-    /// override; the case kept asserting the old contract and was quarantined rather than updated.
-    /// Its sibling below passed on CI only because Sequel Ace is not installed on the runner, which
-    /// made it assert nothing. Both now drive `resolveAppURL`, so neither depends on what happens to
-    /// be installed on the machine running them.
-    ///
-    /// DBeaver and DataGrip do keep a data-file arm on top of LaunchServices, because a Toolbox or
-    /// portable install can be invisible to it. A Sequel Ace install is an ordinary `.app`, so it
-    /// has no such arm and none is expected here.
+    // Sequel Ace installs as an ordinary .app, so unlike DBeaver and DataGrip it has no data-file arm.
     @Test("isAvailable returns true when the app is installed")
     func testIsAvailable_whenAppInstalled_returnsTrue() throws {
         var imp = importer
@@ -136,6 +127,23 @@ struct SequelAceImporterTests {
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
         #expect(importer.inventory() == ForeignAppInventory(connections: 3, savedQueries: 0))
+    }
+
+    @Test("inventory counts what collect reads: a connection without a host or numeric id, and a group's children")
+    func testInventory_countsWhatCollectReads() throws {
+        var socket = makeConnection(name: "Socket", type: 1)
+        socket.removeValue(forKey: "host")
+        socket["id"] = "socket-id"
+        var group = makeGroup(name: "Group", children: [
+            makeConnection(name: "DB1", id: 1),
+            makeConnection(name: "DB2", id: 2)
+        ])
+        group["host"] = "stray"
+        try writeFavorites(makeFavoritesRoot(children: [socket, group]))
+
+        let collected = try importer.collect(.connectionsOnly).connections.count
+        #expect(collected == 3)
+        #expect(importer.inventory().connections == collected)
     }
 
     @Test("inventory is empty when the files are missing")
@@ -236,15 +244,47 @@ struct SequelAceImporterTests {
         #expect(ssl?.clientKeyPath == "/path/to/client-key.pem")
     }
 
-    @Test("collect no SSL when useSSL is 0")
-    func testCollect_noSSLWhenDisabled() throws {
+    @Test("collect keeps the TLS libmysqlclient used with SSL off: preferred over TCP")
+    func testCollect_sslOffOverTCPPrefersTLS() throws {
         let children: [[String: Any]] = [
             makeConnection(name: "No SSL", id: 1, useSSL: 0)
         ]
         try writeFavorites(makeFavoritesRoot(children: children))
 
         let result = try importer.collect(.connectionsOnly)
-        #expect(result.connections[0].sslConfig == nil)
+        #expect(result.connections[0].sslConfig == ExportableSSLConfig(mode: "Preferred"))
+    }
+
+    @Test("collect reads SSL off as preferred over SSH, required for cleartext and AWS IAM, and off over a socket")
+    func testCollect_sslOffFollowsTheClientDefault() throws {
+        var cleartext = makeConnection(name: "Cleartext", id: 3, useSSL: 0)
+        cleartext["enableClearTextPlugin"] = 1
+        cleartext["sslCACertFileLocation"] = "/unused/ca.pem"
+        try writeFavorites(makeFavoritesRoot(children: [
+            makeConnection(name: "SSH", type: 2, id: 2, sshHost: "bastion.example.com", useSSL: 0),
+            cleartext,
+            makeConnection(name: "IAM", type: 3, id: 4, useSSL: 0),
+            makeConnection(name: "Socket", type: 1, id: 5, useSSL: 0),
+            makeConnection(name: "Socket SSL", type: 1, id: 6, useSSL: 1, sslCACert: "/certs/ca.pem")
+        ]))
+
+        let collected = try importer.collect(.connectionsOnly)
+        let byName = Dictionary(uniqueKeysWithValues: collected.connections.map { ($0.name, $0.sslConfig) })
+        #expect(byName["SSH"] == ExportableSSLConfig(mode: "Preferred"))
+        #expect(byName["Cleartext"] == ExportableSSLConfig(mode: "Required"))
+        #expect(byName["IAM"] == ExportableSSLConfig(mode: "Required"))
+        #expect(byName["Socket"] == .some(nil))
+        #expect(byName["Socket SSL"]??.mode == "Required")
+        #expect(byName["Socket SSL"]??.caCertificatePath == "/certs/ca.pem")
+
+        let required = "SSL Required (skip verify) is on because Sequel Ace encrypts this connection by default"
+        #expect(collected.notes(named: "SSH") == [
+            "SSL Preferred is on because Sequel Ace encrypts this connection by default"
+        ])
+        #expect(collected.notes(named: "Cleartext") == [required])
+        #expect(collected.notes(named: "IAM") == [required])
+        #expect(collected.notes(named: "Socket").isEmpty)
+        #expect(collected.notes(named: "Socket SSL").isEmpty)
     }
 
     @Test("collect recursive group parsing")
@@ -337,7 +377,6 @@ struct SequelAceImporterTests {
 
         let result = try importer.collect(.connectionsOnly)
         let conn = result.connections[0]
-        // Socket connections (type 1) should not have SSH config
         #expect(conn.sshConfig == nil)
         #expect(conn.type == "MySQL")
     }

@@ -15,6 +15,8 @@ mod connection_writes;
 mod connector;
 mod credential_source;
 mod driver_connector;
+#[cfg(feature = "in-process-ssh")]
+mod in_process_tunnels;
 mod keyring_source;
 mod no_stored_credentials;
 #[cfg(unix)]

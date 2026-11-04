@@ -4,8 +4,8 @@ use std::cmp::Ordering;
 use num_bigint::BigInt;
 use tablepro_core::Value;
 use tablepro_core::value::SqlDecimal;
+use tablepro_core::value::order::decimal_of;
 
-use super::value_order::decimal_of;
 use super::{CellDisplay, GridColumn};
 
 const AVERAGE_EXTRA_DIGITS: u32 = 4;

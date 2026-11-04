@@ -77,6 +77,18 @@ struct ForeignConnectionRecord: Sendable {
     let settings: ExportableConnection
     let groupPath: [String]
     let credentials: ExportableCredentials?
+    // Shown on the review row only: foreign imports skip sanitizedForImport, so a field would be saved.
+    var notes: [String] = []
+}
+
+enum ForeignImportNote {
+    static func tlsFromDriverDefault(_ mode: SSLMode, appName: String) -> String {
+        String(
+            format: String(localized: "SSL %1$@ is on because %2$@ encrypts this connection by default"),
+            mode.displayLabel,
+            appName
+        )
+    }
 }
 
 struct ForeignSavedQuery: Sendable, Equatable {

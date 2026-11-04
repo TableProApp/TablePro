@@ -1,6 +1,9 @@
 #!/usr/bin/make -f
 
 include /usr/share/dpkg/buildopts.mk
+include /usr/share/dpkg/architecture.mk
+
+builddir := obj-$(DEB_HOST_GNU_TYPE)
 
 # rustc-1.97 and cargo-1.97 install rustc, rustdoc and cargo here, and
 # Meson looks for cargo on PATH only. 1.97 is the workspace rust-version.
@@ -33,7 +36,11 @@ export DEB_BUILD_MAINT_OPTIONS = hardening=+all optimize=-lto
 # The tarball holds the repository's layout: the Meson project is linux/,
 # and the Cargo workspace and vendor/ are at the top.
 %:
-	dh $@ --buildsystem=meson --sourcedirectory=linux
+	dh $@ --buildsystem=meson --sourcedirectory=linux --builddirectory=$(builddir)
+
+# Tests change Cargo's LTO profile; install the package binaries already built before them.
+override_dh_auto_install:
+	meson install -C $(builddir) --no-rebuild --destdir "$(CURDIR)/debian/tablepro"
 
 # The upstream changelog is the Linux app's, not a file at the top.
 override_dh_installchangelogs:

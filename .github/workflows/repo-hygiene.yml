@@ -91,6 +91,10 @@ jobs:
       - name: Check every plugin Info.plist declares the ids its class provides
         run: python3 apple/scripts/ci/check-plugin-provides.py
 
+      # The curated entry answers until the plugin loads, then the plugin's static replaces it (#2700).
+      - name: Check curated driver capabilities match their plugins
+        run: python3 apple/scripts/ci/check-capability-parity.py
+
       # Import, export and sync drop a field the trust catalog does not classify.
       - name: Check every connection field has a trust class
         run: python3 apple/scripts/ci/check-connection-field-trust.py

@@ -9,12 +9,8 @@ import TableProPluginKit
 import TableProSQLQuoting
 
 internal enum DatabendCatalog {
-    // Databend reads a backslash in a double-quoted name as an escape, so a name with a backtick doubles both.
     static func quoteIdentifier(_ name: String) -> String {
-        guard name.unicodeScalars.contains("`") else { return SQLQuoting.identifier(name, quote: .backtick) }
-        return SQLQuoting.identifier(
-            name.replacingOccurrences(of: "\\", with: "\\\\", options: .literal), quote: .doubleQuote
-        )
+        SQLQuoting.databendIdentifier(name)
     }
 
     static func columnsQuery(database: String, table: String) -> String {

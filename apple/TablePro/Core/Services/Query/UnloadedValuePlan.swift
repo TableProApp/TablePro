@@ -139,6 +139,7 @@ extension QueryResult {
             columnMeta: fold.columnMeta,
             rowLocators: rowLocators,
             serverOutput: serverOutput,
+            exportDocuments: exportDocuments,
             absentCells: absentCells
         )
         folded.unloadedCells = fold.unloadedCells
@@ -164,6 +165,7 @@ extension QueryFetchResult {
             timing: timing,
             serverOutput: serverOutput,
             rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
             absentCells: absentCells
         )
         folded.unloadedCells = fold.unloadedCells

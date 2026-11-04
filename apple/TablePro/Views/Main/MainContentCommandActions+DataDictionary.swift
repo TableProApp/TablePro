@@ -7,6 +7,7 @@ import Foundation
 
 extension MainContentCommandActions {
     func exportDataDictionary() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openExportDataDictionaryDialog()
     }
 

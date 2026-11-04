@@ -14,7 +14,6 @@ mod dialect;
 mod driver;
 mod editor;
 mod errors;
-mod peer_owner;
 mod pin;
 mod relay;
 mod rows;

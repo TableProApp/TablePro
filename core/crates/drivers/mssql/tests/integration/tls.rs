@@ -21,6 +21,21 @@ pub struct MssqlTlsEngine {
     fixture: MssqlFixture,
     ca: PathBuf,
     unrelated_ca: PathBuf,
+    server_certificate: PathBuf,
+}
+
+impl MssqlTlsEngine {
+    fn from_fixture(fixture: MssqlFixture) -> Self {
+        let ca = fixture.pki().path(PkiFile::Ca);
+        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
+        let server_certificate = fixture.pki().path(PkiFile::ServerCertificate);
+        Self {
+            fixture,
+            ca,
+            unrelated_ca,
+            server_certificate,
+        }
+    }
 }
 
 #[async_trait]
@@ -30,14 +45,17 @@ impl TlsConformanceEngine for MssqlTlsEngine {
     }
 
     async fn start() -> Result<Self, ConformanceFailure> {
-        let fixture = MssqlFixture::start().await.map_err(ConformanceFailure::setup)?;
-        let ca = fixture.pki().path(PkiFile::Ca);
-        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
-        Ok(Self {
-            fixture,
-            ca,
-            unrelated_ca,
-        })
+        MssqlFixture::start()
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
+    }
+
+    async fn start_self_signed() -> Result<Self, ConformanceFailure> {
+        MssqlFixture::start_self_signed()
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
     }
 
     fn connect_options(&self, tls: TlsConfig) -> ConnectOptions {
@@ -50,6 +68,10 @@ impl TlsConformanceEngine for MssqlTlsEngine {
 
     fn unrelated_ca_file(&self) -> &Path {
         &self.unrelated_ca
+    }
+
+    fn server_certificate_file(&self) -> &Path {
+        &self.server_certificate
     }
 
     fn served_name(&self) -> &str {

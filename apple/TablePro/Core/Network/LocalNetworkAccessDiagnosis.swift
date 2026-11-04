@@ -131,7 +131,11 @@ internal enum LocalNetworkAccessDiagnosis {
         return bytes[12] == 127
     }
 
+    // DuckDB's Remote mode dials the server its own fields name, though its type is not `.network`.
     private static func directHosts(of connection: DatabaseConnection) -> [String] {
+        if connection.activeServerEndpointFields != nil {
+            return [connection.serverEndpoint.host]
+        }
         let mode = PluginMetadataRegistry.shared.snapshot(for: connection.type)?.connectionMode ?? .network
         guard mode == .network, connection.localSocketPath == nil else { return [] }
         let listed = connection.hostListEndpoints.map(\.host)

@@ -79,9 +79,11 @@ var ca = certificate("ca.pem");
 var pem = new java.lang.String(Files.readAllBytes(dir.resolve("server.key")), StandardCharsets.US_ASCII);
 var der = Base64.getMimeDecoder().decode(pem.replaceAll("-----[A-Z ]+-----", ""));
 var key = KeyFactory.getInstance(server.getPublicKey().getAlgorithm()).generatePrivate(new PKCS8EncodedKeySpec(der));
+// A keystore refuses a chain whose next certificate did not issue the one before.
+var chain = server.getIssuerX500Principal().equals(ca.getSubjectX500Principal()) ? [server, ca] : [server];
 var keystore = KeyStore.getInstance("PKCS12");
 keystore.load(null, null);
-keystore.setKeyEntry("server", key, password, Java.to([server, ca], "java.security.cert.Certificate[]"));
+keystore.setKeyEntry("server", key, password, Java.to(chain, "java.security.cert.Certificate[]"));
 store(keystore, "keystore.p12");
 var truststore = KeyStore.getInstance("PKCS12");
 truststore.load(null, null);
@@ -121,7 +123,21 @@ impl CassandraFixture {
         tls: CassandraTls,
         network: Option<&TestNetwork>,
     ) -> Result<Self, FixtureError> {
-        let pki = TestPki::generate()?;
+        Self::start_with_pki(flavour, tls, network, TestPki::generate()?).await
+    }
+
+    /// A TLS node whose certificate is self-signed, which a client
+    /// accepts only by trusting that certificate itself.
+    pub async fn start_self_signed(flavour: CassandraFlavour, tls: CassandraTls) -> Result<Self, FixtureError> {
+        Self::start_with_pki(flavour, tls, None, TestPki::generate_self_signed()?).await
+    }
+
+    async fn start_with_pki(
+        flavour: CassandraFlavour,
+        tls: CassandraTls,
+        network: Option<&TestNetwork>,
+        pki: TestPki,
+    ) -> Result<Self, FixtureError> {
         let password = FixtureCredentials::generate_password();
         let alias = network.map(|network| (network, network.container_name(Self::NETWORK_ROLE)));
         let fixture = Self::launch(flavour, tls, alias, None, pki, password).await?;
@@ -290,7 +306,10 @@ impl CassandraFixture {
             (CassandraFlavour::Cassandra, true, true) => {
                 let mut combined = pki.read(PkiFile::ServerKey)?;
                 combined.extend(pki.read(PkiFile::ServerCertificate)?);
-                combined.extend(pki.read(PkiFile::Ca)?);
+                // A self-signed certificate is its whole chain.
+                if !pki.is_self_signed() {
+                    combined.extend(pki.read(PkiFile::Ca)?);
+                }
                 files.push(ContainerFile::readable(
                     format!("{tls_dir}/server-combined.pem"),
                     combined,
@@ -673,6 +692,16 @@ mod tests {
             assert!(!keystores && combined.is_none(), "{flavour:?} {tls:?}");
             assert!(!script.contains("jjs"), "{script}");
         }
+    }
+
+    #[test]
+    fn a_self_signed_node_serves_its_certificate_alone() {
+        let pki = TestPki::generate_self_signed().unwrap();
+        let files =
+            CassandraFixture::files(CassandraFlavour::Cassandra, (5, 0), CassandraTls::Required, &pki, "pw").unwrap();
+
+        let combined = file(&files, "/tablepro/tls/server-combined.pem").map(text).unwrap();
+        assert_eq!(combined.matches("-----BEGIN CERTIFICATE-----").count(), 1);
     }
 
     #[test]

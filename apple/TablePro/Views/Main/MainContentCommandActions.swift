@@ -217,6 +217,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func deleteSelectedRows() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         // A selected definition that cannot be removed refuses here; Delete never reaches the sidebar's tables.
         if selectsSchemaDefinition {
             removeSchemaRows()
@@ -500,6 +501,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func buildJoinQuery() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openJoinBuilder(seededWith: selectedTables.wrappedValue)
     }
 
@@ -818,6 +820,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func truncateTables() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         guard canTruncateSelectedTables else { return }
         coordinator?.sidebarViewModel?.batchToggleTruncate()
     }
@@ -874,10 +877,12 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func restorePreviousValues() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.rewindLastSave()
     }
 
     func saveChanges() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.commitActiveGridEdit()
         if isUsersRolesTab {
             coordinator?.usersRolesActions?.reviewAndApply()
@@ -924,6 +929,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func saveFileAs() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         Task { await saveFileAsAwaiting() }
     }
 
@@ -980,18 +986,22 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func exportTables() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openExportDialog()
     }
 
     func exportQueryResults() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openExportQueryResultsDialog()
     }
 
     func importData() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openImportPanel()
     }
 
     func importTables(formatId: String) {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.openImportDialog(formatId: formatId)
     }
 
@@ -1000,6 +1010,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func backupDatabase() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.activeSheet = .backupDatabase(databases: [])
     }
 
@@ -1014,12 +1025,14 @@ final class MainContentCommandActions: ObservableObject {
     var supportsRestore: Bool { supportsBackup }
 
     func restoreDatabase() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         Task { @MainActor [weak self] in
             await self?.presentRestoreSourcePicker()
         }
     }
 
     private func presentRestoreSourcePicker() async {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -1066,6 +1079,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func saveAsFavorite() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.saveCurrentQueryAsFavorite()
     }
 
@@ -1075,6 +1089,7 @@ final class MainContentCommandActions: ObservableObject {
     }
 
     func previewSQL() {
+        guard coordinator?.admitsSheetCommand() == true else { return }
         coordinator?.handlePreviewSQL(
             pendingTruncates: pendingTruncates.wrappedValue,
             pendingDeletes: pendingDeletes.wrappedValue,

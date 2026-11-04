@@ -198,6 +198,7 @@ extension QueryExecutionCoordinator {
         source: ResultSourceChange = .newSource,
         serverOutput: PluginServerOutput = .none,
         rowLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:]
     ) {
@@ -256,9 +257,12 @@ extension QueryExecutionCoordinator {
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
             foreignKeysFetched: resolved.foreignKeysFetched,
             rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
             absentCells: absentCells,
             unloadedCells: unloadedCells,
-            masks: masks
+            masks: masks,
+            exportPolicy: parent.exportMaskingPolicy(forTabId: tabId),
+            exportTable: tableName
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)
@@ -703,8 +707,9 @@ extension QueryExecutionCoordinator {
                 )
                 guard case let .exactCount(filtered) = plan else { return (plan, nil, scope) }
                 let queryColumns = parent.queryColumns(for: tab)
-                let filters = filtered ? tab.filterState.appliedFilters : []
-                let logicMode = tab.filterState.filterLogicMode
+                let rerun = tab.filterState.rerunFilters
+                let filters = filtered ? rerun.filters : []
+                let logicMode = rerun.logicMode
                 let sql = parent.queryBuilder.buildFilteredCountQuery(
                     tableName: tableName,
                     schemaName: tab.tableContext.schemaName,
@@ -807,16 +812,17 @@ extension QueryExecutionCoordinator {
         if let browseSearch {
             return countsAutomatically ? .browseSearch(browseSearch, tableSizeLimit: threshold) : .skip
         }
+        let rerun = filterState.rerunFilters
         guard countsAutomatically else {
-            return filterState.hasAppliedFilters ? .clear : .skip
+            return rerun.filters.isEmpty ? .skip : .clear
         }
         if isNonSQL {
-            return filterState.hasAppliedFilters
-                ? .filteredNonSQL(filters: filterState.appliedFilters, logicMode: filterState.filterLogicMode)
-                : .approximate
+            return rerun.filters.isEmpty
+                ? .approximate
+                : .filteredNonSQL(filters: rerun.filters, logicMode: rerun.logicMode)
         }
         let exceedsThreshold = (approximateRowCount ?? 0) >= threshold
-        if filterState.hasAppliedFilters {
+        if !rerun.filters.isEmpty {
             return exceedsThreshold ? .clear : .exactCount(filtered: true)
         }
         return exceedsThreshold ? .skip : .exactCount(filtered: false)

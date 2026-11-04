@@ -2,6 +2,9 @@
 # Full debuginfo adds to what each rustc of the app and the final link
 # need, and an 8 GB builder ran out of memory with it.
 %global rustflags_debuginfo 1
+# Native objects and their archive coexist; full DuckDB DWARF can fill the builder before linking.
+%global _pkg_extra_cflags -g1
+%global _pkg_extra_cxxflags -g1
 # Fedora's one codegen unit puts the whole app crate through LLVM as one
 # module, and its unit test build passed 7 GB that way. Cargo's release
 # default of 16 splits the work, and thin LTO still optimizes across it.
@@ -25,6 +28,7 @@ Summary:        Work with your databases
 License:        %{shrink:
     AGPL-3.0-or-later AND
     CC0-1.0 AND
+    (0BSD OR Apache-2.0 OR MIT) AND
     Apache-2.0 AND
     (Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT) AND
     (Apache-2.0 OR BSD-2-Clause OR MIT) AND

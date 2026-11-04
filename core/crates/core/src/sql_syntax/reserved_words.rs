@@ -149,7 +149,7 @@ impl SqlGrammar {
             .any(|reserved| reserved.eq_ignore_ascii_case(word))
     }
 
-    fn reserved_words(self) -> &'static str {
+    pub(crate) fn reserved_words(self) -> &'static str {
         match self {
             Self::PostgreSql => POSTGRESQL,
             Self::MySql => MYSQL,

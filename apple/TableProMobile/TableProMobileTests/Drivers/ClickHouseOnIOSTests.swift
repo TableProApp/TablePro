@@ -25,6 +25,7 @@ struct ClickHouseOnIOSTests {
             schema: nil,
             columns: ["id", "name", "note"],
             originalRow: ["1", "signup", nil],
+            documentLocator: nil,
             changes: [(column: "name", value: "purchase")]
         )
 
@@ -38,7 +39,7 @@ struct ClickHouseOnIOSTests {
     @Test("A row delete matches every column the row was read with, pinned to the part its lookup finds")
     func deleteMatchesTheWholeRow() throws {
         let writes = try driver().deleteWrites(
-            table: "events", schema: nil, columns: ["id", "name"], originalRow: ["1", "signup"]
+            table: "events", schema: nil, columns: ["id", "name"], originalRow: ["1", "signup"], documentLocator: nil
         )
 
         #expect(writes.map(\.statement) == ["DELETE FROM `events` WHERE `id` = ? AND `name` = ? AND _part IN (?)"])

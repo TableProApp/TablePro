@@ -21,7 +21,7 @@ The library must:
 
 - be maintained and published on crates.io, used without a fork ([ADR 0005](decisions/0005-supply-chain-policy.md)); `deny.toml` allows no git source;
 - use rustls with aws-lc-rs, or no TLS of its own ([ADR 0009](decisions/0009-crypto-provider-and-sources.md));
-- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket ([Transports](../../core/ARCHITECTURE.md#transports)). A client that dials only TCP reaches the transport through a loopback relay, as the Cassandra driver's does ([ADR 0023](decisions/0023-loopback-relay-for-cql.md));
+- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket, and relay an in-process SSH channel, which has no address, through `tablepro_net::PrivateListener` ([Transports](../../core/ARCHITECTURE.md#transports)). A client that dials only TCP reaches the transport through a loopback relay, as the Cassandra driver's does ([ADR 0023](decisions/0023-loopback-relay-for-cql.md));
 - have a way to stop a statement already sent: a cancel request, a KILL, an attention, an interrupt. Where the protocol has none, as CQL's has not, it drops the request and keeps the connection serving (`StatementStop::Abandon`);
 - let the driver keep a connection clean for the next caller, with no server-side state it did not ask for.
 
@@ -120,7 +120,7 @@ The shipped drivers:
 | `endpoint` | 5432 | 3306 | `File` | `File` | 1433 | 8123 | 9042 | 6379 | 27017 |
 | `auth_modes` | Password | Password | none | none | Password, Kerberos | Password | Password | Password | Password |
 | `username_required` | yes | yes | | | yes | yes | no | no | no |
-| TLS modes | all three | all three | none | none | all three | all three | all three | all three | all three |
+| TLS modes | all three | all three | none | none | all three and `Strict` | all three | all three | all three | all three |
 | CA file | yes | yes | | | yes | yes | yes | yes | yes |
 | Client certificate | yes | yes | | | no | yes | yes | yes | yes |
 | Server name override | `AnyRoute` | `SshForwardOnly` | | | `AnyRoute` | `AnyRoute` | `AnyRoute` | `AnyRoute` | `SshForwardOnly` |
@@ -133,7 +133,7 @@ The shipped drivers:
 | `database_required` | no | yes | no | no | no | no | no | no | no |
 | `statement_stop` | `Server` | `Server` | `Server` | `Server` | `Server` | `Server` | `Abandon` | `Server` | `Server` |
 
-SQL Server offers Kerberos only when built with the `kerberos` feature. MySQL's `dml_writes` is what InnoDB gives; the driver reads each table's storage engine before a save and writes statement by statement on one that cannot roll back.
+SQL Server offers Kerberos on Linux and macOS only when built with the `kerberos` feature, and always on Windows, where it signs in through SSPI. MySQL's `dml_writes` is what InnoDB gives; the driver reads each table's storage engine before a save and writes statement by statement on one that cannot roll back.
 
 ### Connecting
 

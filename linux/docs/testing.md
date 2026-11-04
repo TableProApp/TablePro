@@ -39,7 +39,7 @@ meson setup _build -Dprofile=development
 dbus-run-session -- meson test -C _build --print-errorlogs
 ```
 
-Five suites: `unit` is `cargo test --workspace --exclude tablepro`. `gtk`
+Five suites: `unit` is `cargo test --workspace --exclude tablepro --exclude tablepro-ffi`. `gtk`
 is `cargo test -p tablepro` with `GSK_RENDERER=cairo`, `GTK_A11Y=test`,
 `GDK_BACKEND=x11` and the build tree's schema directory, under a
 `dbus-run-session` of its own when one is installed, so its bus names
@@ -105,7 +105,7 @@ Keep the fixture alive for the whole test: dropping it stops the container.
 
 `core/crates/test-fixtures` (`tablepro-test-fixtures`) holds the containers that need more than a default image: a generated PKI, TLS turned on in the engine's own config format, and OpenSSH servers with a chosen auth method. It is a dev-dependency only and depends on no other TablePro crate.
 
-`TestPki::generate()` writes `ca.pem`, `unrelated-ca.pem`, `server.pem`, `server.key`, `client.pem` and `client.key` to a `TempDir`, private keys at 0600. The server certificate carries SANs `localhost` and `db.tablepro.test` and no IP SAN, so verifying against `127.0.0.1` is a name mismatch. The client certificate's CN is `tablepro_client`, which PostgreSQL `cert` auth matches against the role name.
+`TestPki::generate()` writes `ca.pem`, `unrelated-ca.pem`, `server.pem`, `server.key`, `client.pem` and `client.key` to a `TempDir`, private keys at 0600. The server certificate carries SANs `localhost` and `db.tablepro.test` and no IP SAN, so verifying against `127.0.0.1` is a name mismatch. The client certificate's CN is `tablepro_client`, which PostgreSQL `cert` auth matches against the role name. `TestPki::generate_self_signed()` signs the server certificate with its own key instead; the CA still issues the client certificate, and `ca.pem` holds the CA followed by the server certificate, so a server that checks peers against it, as a MongoDB replica set member does, trusts itself. Every TLS fixture starts on one through its self-signed constructor (`PostgresFixture::start_self_signed`, `MysqlFixture::start_self_signed`, `MssqlFixture::start_self_signed`, `ClickHouseFixture::start_self_signed`, `RedisFixture::start_tls_self_signed`, `MongoFixture::start_tls_self_signed`, `CassandraFixture::start_self_signed`). `MssqlFixture::start_force_strict` sets `network.forcestrict`, so the server takes only strict (TDS 8.0) logins; mssql-conf has it from SQL Server 2025.
 
 Every TLS fixture has two principals:
 
@@ -275,14 +275,15 @@ tablepro_test_support::tls_conformance_suite! {
 }
 ```
 
-The adapter (`TlsConformanceEngine`) gives the issuing and the unrelated CA file, the name on the server certificate and the error category a plaintext connect gets. The cases: Verify full with the issuing CA connects; with an unrelated CA it reports `UnknownIssuer`; with the wrong server name it reports `NameMismatch`; Require connects without a CA, and a CA file with Require is refused as a `ConfigError::CaFileUnsupported` before anything is sent; Disable against the TLS-only server is refused. `client_identity: true` adds a case where the server requires the client certificate, through `ClientIdentityEngine`; SQL Server passes `false`. An engine whose server asks every client for a certificate or none names a second engine for that case with `identity_engine:`, as the Cassandra driver does, so the other cases run against a server that asks for none. MongoDB runs the suite twice, on a direct route, where the client library does TLS, and on a forward, where the driver's relay does. Every case needs Docker, and `tls_suite_flags_match_driver_capabilities` checks the flag against the driver's TLS capabilities without it.
+The adapter (`TlsConformanceEngine`) gives the issuing and the unrelated CA file, the name on the server certificate and the error category a plaintext connect gets. The cases: Verify full with the issuing CA connects; with an unrelated CA it reports `UnknownIssuer`; with the wrong server name it reports `NameMismatch`; Require connects without a CA, and a CA file with Require is refused as a `ConfigError::CaFileUnsupported` before anything is sent; Disable against the TLS-only server is refused; against the same server started with a self-signed certificate (`start_self_signed`), Verify full on the system store alone reports `UnknownIssuer`, and trusting the server's own certificate (`server_certificate_file`) as the CA file connects. `client_identity: true` adds a case where the server requires the client certificate, through `ClientIdentityEngine`; SQL Server passes `false`. An engine whose server asks every client for a certificate or none names a second engine for that case with `identity_engine:`, as the Cassandra driver does, so the other cases run against a server that asks for none. MongoDB runs the suite twice, on a direct route, where the client library does TLS, and on a forward, where the driver's relay does. SQL Server adds its strict (TDS 8.0) cases in `tests/integration/strict.rs`: Strict reaches TDS 8.0 on 2025 and is refused as `ServerRefusedStrict` by 2017, 2019 and 2022, which on Linux closes a strict login, it checks the issuer, the name and a self-signed certificate as Verify full does, and against a 2025 server that requires it a TDS 7.4 login is `ServerRequiresStrict`. Every case needs Docker, and `tls_suite_flags_match_driver_capabilities` checks the flag against the driver's TLS capabilities without it.
 
 ### Ignore reasons
 
-Two reasons are allowed:
+Three reasons are allowed:
 
 - `#[ignore = "requires docker"]` for testcontainers suites.
 - `#[ignore = "requires a Secret Service"]` for tests that talk to a keyring.
+- `#[ignore = "requires a SQL Server on this Windows machine"]` for the SQL Server driver's integrated login through SSPI (`tests/integration/windows_server.rs`). SQL Server installs on x64 Windows only, so `core.yml`'s `sql-server-windows` job runs them on `windows-2025`: `tests/windows/sql-server.ps1 -Install` sets up SQL Server 2022 Express with a self-signed certificate, the `sspi` tests sign in over TDS 7.4 and strict TLS, `-ForceStrict` turns on Force Strict Encryption, and the `force_strict` test checks that a TDS 7.4 login is refused and a strict one gets in. The runner is in no domain, so SSPI signs in with NTLM.
 
 The workspace denies `clippy::ignore_without_reason`, so a bare `#[ignore]` fails the build.
 
@@ -517,6 +518,8 @@ Left for a machine with a GPU and a HiDPI screen: the GL and Vulkan renderers on
 ## CI
 
 `.github/workflows/build-linux.yml` builds and tests the app, `.github/workflows/linux-packages.yml` builds, installs and starts the .deb and .rpm, and `.github/workflows/release-linux.yml` publishes a `linux-v*` tag. Each workflow's `on:` and each job's `if:` say when it runs; its steps say what it runs. To run the same checks locally: the [fast-job commands](../CONTRIBUTING.md#fast-job-commands) and `build-aux/packaging/build-packages.sh`.
+
+`.github/workflows/core.yml` builds the core crates for Windows x64 and Arm64 and macOS, runs the unit tests of `tablepro-core` and the SQL Server driver there, with the driver's `kerberos` feature on macOS, where it links the system's GSS framework, and runs the SSPI login tests above.
 
 `.github/workflows/ci.yml` calls `build-linux.yml` for a pull request, a push to `main` and a manual run, never for a `release/**` push. A change to Markdown alone, other than `CHANGELOG.md` and `docs/regression-tests.md`, runs only its Documentation links job. The required check is `CI` (`.claude/rules/ci.md`).
 

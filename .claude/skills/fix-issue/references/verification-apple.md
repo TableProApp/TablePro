@@ -5,8 +5,8 @@ Read this when a verdict, a test name or a red CI check needs explaining. The co
 ## Usage
 
 - `verify.sh [options] <step> [args]`, plus `verify.sh tail <log> [lines]` and `verify.sh parse <log>`.
-- Options go before or after the step: `--platform <name>`, `--root <dir>`, `--run <dir>`, `--no-wait`, `--offline`. An unknown option is a usage error.
-- The platform comes from `uname -s`, and Darwin is `apple`. A platform named with `--platform` that has no backend exits 3; a default one with no backend is INCONCLUSIVE.
+- Options go before or after the step: `--platform <name>`, `--root <dir>`, `--run <dir>`, `--no-wait`, `--offline`. An unknown option is a usage error, and `--` ends the options.
+- The platform comes from `uname -s`: Darwin is `apple`, Linux is `linux`, and a Windows shell (`MINGW*`, `MSYS*`, `CYGWIN*`) is `windows`. A platform named with `--platform` that has no backend exits 3; a default one with no backend is INCONCLUSIVE.
 - The root is the checkout your shell is in when it shares the script's git common directory, else the checkout the script lives in. `--root` overrides both. Check the `root:` line.
 - `--offline` adds `-disableAutomaticPackageResolution -onlyUsePackageVersionsFromResolvedFile` to `build`, `plugins`, `test` and `uitest`.
 - The Apple steps live in `.claude/skills/fix-issue/scripts/lib/platform-apple.sh`, whose header lists each one with its arguments.

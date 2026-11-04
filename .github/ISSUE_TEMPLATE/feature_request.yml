@@ -36,6 +36,7 @@ body:
         - macOS
         - iOS
         - Linux
+        - Windows
         - All
     validations:
       required: false

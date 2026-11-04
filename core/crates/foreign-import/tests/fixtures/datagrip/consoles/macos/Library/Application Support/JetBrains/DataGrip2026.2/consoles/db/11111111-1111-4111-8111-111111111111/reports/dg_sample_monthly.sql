@@ -1,0 +1,1 @@
+select count(*) from dg_sample_items;

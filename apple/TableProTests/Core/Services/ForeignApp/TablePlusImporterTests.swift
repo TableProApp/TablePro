@@ -183,6 +183,17 @@ struct TablePlusImporterTests {
         #expect(importer.inventory() == ForeignAppInventory(connections: 3, savedQueries: 0))
     }
 
+    @Test("inventory counts only the connections collect reads")
+    func testInventory_skipsEntriesWithoutAName() throws {
+        try writeConnections([
+            makeConnection(name: "Valid", id: "valid-1"),
+            ["Driver": "MySQL", "DatabaseHost": "localhost", "ID": "nameless"]
+        ])
+
+        #expect(importer.inventory().connections == 1)
+        #expect(try importer.collect(.connectionsOnly).connections.count == 1)
+    }
+
     @Test("inventory is empty when the file is missing")
     func testInventory_fileMissing_returnsZero() {
         #expect(importer.inventory() == ForeignAppInventory(connections: 0, savedQueries: 0))
@@ -518,8 +529,8 @@ struct TablePlusImporterTests {
         #expect(ssl?.clientKeyPath == nil)
     }
 
-    @Test("collect drops an SSL mode past the end of the driver's own popup")
-    func testCollect_noSSLForTLSModePastDriverVocabulary() throws {
+    @Test("collect keeps an SSL mode past the end of the driver's own popup as a mode the review warns about")
+    func testCollect_unreadTLSModePastDriverVocabulary() throws {
         try writeConnections([
             makeConnection(name: "Unknown TLS", id: "ssl-unknown", tlsMode: 99),
             makeConnection(name: "Past MySQL", driver: "MySQL", id: "ssl-past-mysql", tlsMode: 5),
@@ -527,9 +538,8 @@ struct TablePlusImporterTests {
         ])
 
         let connections = try importer.collect(.connectionsOnly).connections
-        #expect(connections[0].sslConfig == nil)
-        #expect(connections[1].sslConfig == nil)
-        #expect(connections[2].sslConfig == nil)
+        #expect(connections.map { $0.sslConfig?.mode } == ["99", "5", "2"])
+        #expect(connections.allSatisfy { $0.sslConfig?.portableMode == nil })
     }
 
     @Test("collect keeps Preferred for a driver whose form has no SSL picker")
@@ -539,9 +549,13 @@ struct TablePlusImporterTests {
             makeConnection(name: "Snowflake", driver: "Snowflake", id: "ssl-snowflake", tlsMode: 0)
         ])
 
-        let connections = try importer.collect(.connectionsOnly).connections
-        #expect(connections[0].sslConfig?.mode == "Preferred")
-        #expect(connections[1].sslConfig?.mode == "Preferred")
+        let collected = try importer.collect(.connectionsOnly)
+        #expect(collected.connections[0].sslConfig?.mode == "Preferred")
+        #expect(collected.connections[1].sslConfig?.mode == "Preferred")
+        #expect(collected.notes(named: "SQL Server") == [
+            "SSL Preferred is on because TablePlus encrypts this connection by default"
+        ])
+        #expect(collected.notes(named: "Snowflake").isEmpty)
     }
 
     @Test("collect treats empty TablePlus TLS paths as none")
@@ -619,7 +633,6 @@ struct TablePlusImporterTests {
 
     @Test("collect skips invalid entries")
     func testCollect_skipsInvalidEntries() throws {
-        // Entry without ConnectionName should be skipped
         let invalidEntry: [String: Any] = [
             "Driver": "MySQL",
             "DatabaseHost": "localhost",
@@ -643,7 +656,6 @@ struct TablePlusImporterTests {
 
     @Test("collect empty file throws noConnectionsFound")
     func testCollect_emptyFile_throwsNoConnectionsFound() throws {
-        // Write an empty array plist
         try writeConnections([])
 
         #expect(throws: ForeignAppImportError.self) {
@@ -653,7 +665,6 @@ struct TablePlusImporterTests {
 
     @Test("collect with only invalid entries throws noConnectionsFound")
     func testCollect_allInvalid_throwsNoConnectionsFound() throws {
-        // All entries missing ConnectionName
         let invalid: [String: Any] = ["Driver": "MySQL", "ID": "x"]
         try writeConnections([invalid, invalid])
 
@@ -1082,6 +1093,40 @@ struct TablePlusImporterTests {
 
         #expect(result.savedQuery(named: "tp_root_kw")?.keyword == "kwone")
         #expect(result.savedQuery(named: "tp_top")?.keyword == "tpok")
+    }
+
+    @Test("A keyword file that links to another file is never read")
+    func testCollect_linkedKeywordFileIsNotRead() throws {
+        try writeFavoriteFixture()
+        let secret = tempDir.appendingPathComponent("secret.txt")
+        try ForeignFixture.write("token", to: secret)
+        try FileManager.default.createSymbolicLink(
+            at: favoriteRoot.appendingPathComponent("tp_top.sql.tag"),
+            withDestinationURL: secret
+        )
+
+        let result = try importer.collect(.withSavedQueries)
+
+        #expect(result.savedQuery(named: "tp_top")?.keyword == nil)
+        #expect(result.savedQuery(named: "tp_root_kw")?.keyword == "kwone")
+    }
+
+    @Test("A keyword file that is a pipe is never opened")
+    func testKeyword_pipeIsNeverOpened() throws {
+        let query = favoriteRoot.appendingPathComponent("piped.sql")
+        try ForeignFixture.write("SELECT 1;", to: query)
+        let pipePath = favoriteRoot.appendingPathComponent("piped.sql.tag").path
+        try #require(mkfifo(pipePath, 0o600) == 0)
+        // Opening the pipe would wait for a writer; this one turns a regression into a failure, not a hang.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
+            let descriptor = open(pipePath, O_WRONLY | O_NONBLOCK)
+            guard descriptor >= 0 else { return }
+            _ = "leaked".withCString { write(descriptor, $0, 6) }
+            close(descriptor)
+        }
+        let entry = ForeignSQLFileTree.Entry(url: query, folderPath: [], fileName: "piped.sql", byteCount: 9)
+
+        #expect(TablePlusFavoriteReader.keyword(for: entry) == nil)
     }
 
     @Test("collect reads no favorites unless saved queries are requested")

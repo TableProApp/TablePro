@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 pub enum AuthMode {
     #[default]
     Password,
-    /// SQL Server integrated login over Kerberos, with the ticket the
-    /// user already holds from `kinit`. No username or password is
-    /// sent.
+    /// SQL Server integrated login: the Kerberos ticket the user already
+    /// holds on Linux and macOS, the signed-in account through SSPI on
+    /// Windows. No username or password is sent.
     Kerberos,
 }
 

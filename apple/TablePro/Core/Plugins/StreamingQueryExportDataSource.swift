@@ -36,6 +36,17 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
         return adapter.streamRows(query: query)
     }
 
+    func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        streamExportRows(table: object.name, databaseName: object.databaseName)
+    }
+
+    func streamExportRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        guard let adapter = driver as? PluginDriverAdapter else {
+            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
+        }
+        return adapter.streamExportRows(query: query)
+    }
+
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? {
         nil
     }
@@ -54,13 +65,16 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
 
     func execute(query: String) async throws -> PluginQueryResult {
         let result = try await driver.execute(query: query)
-        return PluginQueryResult(
+        var mapped = PluginQueryResult(
             columns: result.columns,
             columnTypeNames: result.columnTypes.map { $0.rawType ?? "" },
             rows: result.rows,
             rowsAffected: result.rowsAffected,
             executionTime: result.executionTime
         )
+        mapped.exportDocuments = result.exportDocuments
+        mapped.absentCells = result.absentCells
+        return mapped
     }
 
     func fetchDependentSequences(table: String, databaseName: String) async throws -> [PluginSequenceInfo] {

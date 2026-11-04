@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="idea_source" uuid="ffffffff-0000-4000-8000-000000000006">
+      <driver-ref>mysql.8</driver-ref>
+      <jdbc-url>jdbc:mysql://idea.example.com/x</jdbc-url>
+    </data-source>
+  </component>
+</application>

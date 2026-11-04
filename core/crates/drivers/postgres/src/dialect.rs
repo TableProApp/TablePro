@@ -755,6 +755,8 @@ mod tests {
             "ALTER SYSTEM SET primary_conninfo = 'password=x'",
             "SELECT 1; CREATE USER u PASSWORD 'p'",
             "DO $$ BEGIN CREATE ROLE app LOGIN PASSWORD 'p'; END $$",
+            "DO $$ BEGIN EXECUTE 'CREATE ROLE app LOGIN PASSWORD ''p'''; END $$",
+            "DO $$ BEGIN EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', 'app', 'p'); END $$",
             "DO 'BEGIN CREATE ROLE r PASSWORD ''p''; END'",
             "CREATE FUNCTION f() RETURNS text AS 'SELECT dblink_connect(''password=x'')' LANGUAGE sql",
             "SELECT pgp_sym_encrypt('data', 'passphrase')",
