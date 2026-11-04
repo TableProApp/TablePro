@@ -32,7 +32,7 @@
 
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
-    <Content Include="Assets\**" />
+    <Content Include="Assets\**" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(RepositoryRoot)apple/TablePro/Resources/SampleDatabases/Chinook.sqlite"
              Link="Assets\Samples\Chinook.sqlite"
              CopyToOutputDirectory="PreserveNewest" />

@@ -83,6 +83,13 @@ jobs:
             echo "::error::the publish holds TablePro.dll: the app was not compiled ahead of time"
             exit 1
           fi
+          while IFS= read -r -d '' asset; do
+            relative="${asset#src/TablePro.App/}"
+            if ! cmp -s "$asset" "$RUNNER_TEMP/app/$relative"; then
+              echo "::error::the published app is missing or changed $relative"
+              exit 1
+            fi
+          done < <(git ls-files -z -- src/TablePro.App/Assets)
       # The Arm64 image opens its privacy settings window over the desktop, where it takes the tests' clicks.
       - name: Prepare the desktop
         if: matrix.app
