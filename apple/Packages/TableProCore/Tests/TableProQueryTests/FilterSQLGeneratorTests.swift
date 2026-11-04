@@ -277,7 +277,7 @@ struct FilterSQLGeneratorTests {
     func mssqlLikeEscapesBracket() {
         let generator = FilterSQLGenerator(dialect: makeDialect(quote: "["), databaseType: .mssql)
         let filter = TableFilter(columnName: "code", filterOperator: .contains, value: "[a]")
-        #expect(generator.generateWhereClause(from: [filter], logicMode: .and) == "WHERE [code] LIKE '%![a]%' ESCAPE '!'")
+        #expect(generator.generateWhereClause(from: [filter], logicMode: .and) == "WHERE [code] LIKE N'%![a]%' ESCAPE '!'")
     }
 
     // A combining mark joins the quote into one grapheme cluster.
