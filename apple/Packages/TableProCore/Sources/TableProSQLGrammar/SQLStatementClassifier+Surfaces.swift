@@ -158,17 +158,6 @@ extension SQLStatementTiering {
         }
     }
 
-    // DuckDB's query() and json_execute_serialized_sql() run the SELECT in their text, which can take a value from a
-    // sequence; the second does so outside a read-only transaction (both measured on 2.0.0). The postgres, mysql and
-    // sqlite extensions' query and execute functions run any statement on an attached database, and dbgen and dsdgen
-    // create and fill tables.
-    static let stateChangingCalls: [String: Set<String>] = [
-        duckDB: [
-            "QUERY", "JSON_EXECUTE_SERIALIZED_SQL", "POSTGRES_QUERY", "POSTGRES_EXECUTE", "MYSQL_QUERY", "MYSQL_EXECUTE",
-            "SQLITE_QUERY", "DBGEN", "DSDGEN",
-        ],
-    ]
-
     // An EXPLAIN that runs its statement is tiered by that statement's own calls.
     func stateChangingCallTier(
         _ code: StatementCode,
@@ -177,10 +166,10 @@ extension SQLStatementTiering {
     ) -> StatementTier {
         guard !SQLExplainStatement.keywords.contains(code.keyword) else { return .safe }
         if advancesSequence(code) { return .write }
-        let engineCalls = Self.stateChangingCalls[databaseTypeId] ?? []
         let changesState = calls.contains { call in
             guard case .named(let name, _) = call.callee else { return true }
-            return SQLStateChangingFunctions.contains(name) || engineCalls.contains(name.uppercased())
+            return SQLStateChangingFunctions.contains(name)
+                || (databaseTypeId == Self.duckDB && SQLStateChangingFunctions.isDuckDBCall(name))
         }
         guard !changesState else { return .write }
         let namesTable = SQLStateChangingFunctions.namesStateChangingTable(
