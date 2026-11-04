@@ -5,7 +5,8 @@ import Foundation
 /// The app sends a text one statement at a time, cut where the grammar cuts it, and the server tokenizes each statement
 /// alone, so each reading of ``DatabendTokenizer/Rules`` gives the tokens of every statement, joined by `;`, and those
 /// of the whole text. A token is written so the Databend grammar lexes it alone: a hint, a comment or a blank is
-/// dropped, and a `$` or a quote that would open a literal the server does not read is spelled `_`.
+/// dropped, and a `$` or a quote that would open a literal the server does not read is spelled `_`. A statement opening
+/// with `SETTINGS` and its optional `( ... )` runs the statement after them, so only that one is written.
 enum DatabendStatementReadings {
     static func texts(of text: String, grammar: SQLLexicalGrammar) -> [String] {
         let scalars = Array(text.unicodeScalars)
@@ -27,14 +28,24 @@ enum DatabendStatementReadings {
 
     // A hint the parser takes holds settings, never a statement, so it is dropped with the rest.
     static func code(of scalars: [Unicode.Scalar], rules: DatabendTokenizer.Rules) -> String {
+        let tokens = DatabendTokenizer.read(scalars, rules: rules).tokens
         var words: [String] = []
         var insideHint = false
-        for token in DatabendTokenizer.read(scalars, rules: rules).tokens {
+        var statementStart = true
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            let spelling = scalars[token.range]
+            index += 1
             if insideHint {
                 insideHint = token.kind != .hintSuffix
                 continue
             }
-            let spelling = scalars[token.range]
+            if statementStart, token.kind == .name, String(String.UnicodeScalarView(spelling)).uppercased() == "SETTINGS" {
+                index = settingsEnd(in: tokens, scalars: scalars, from: index)
+                continue
+            }
+            statementStart = token.kind == .symbol && spelling.elementsEqual([";"])
             switch token.kind {
             case .hintPrefix:
                 insideHint = true
@@ -53,6 +64,32 @@ enum DatabendStatementReadings {
             }
         }
         return words.joined(separator: " ")
+    }
+
+    // Past the `( ... )` that may follow `SETTINGS`, whose tokens start at `index`.
+    private static func settingsEnd(
+        in tokens: [DatabendTokenizer.Token],
+        scalars: [Unicode.Scalar],
+        from index: Int
+    ) -> Int {
+        var depth = 0
+        for position in index..<tokens.count {
+            let token = tokens[position]
+            guard token.kind == .symbol else {
+                if depth == 0 { return position }
+                continue
+            }
+            switch scalars[token.range.lowerBound] {
+            case "(":
+                depth += 1
+            case ")" where depth > 0:
+                depth -= 1
+                if depth == 0 { return position + 1 }
+            default:
+                if depth == 0 { return position }
+            }
+        }
+        return tokens.count
     }
 
     // A keyword wins over the name that would run on past it into a non-ASCII scalar, so the server reads `TABLE中` as

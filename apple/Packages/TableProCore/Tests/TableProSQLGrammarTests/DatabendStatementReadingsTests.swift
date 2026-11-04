@@ -42,6 +42,22 @@ struct DatabendStatementReadingsTests {
         #expect(Self.tier("SELECT 1 AS \u{540D}\u{524D} FROM customers") == .safe)
     }
 
+    // Measured on 1.2.880 and 1.2.958: each text dropped the table.
+    @Test("A statement under SETTINGS is tiered as itself", arguments: [
+        "SETTINGS (max_threads=1) DROP TABLE customers",
+        "SETTINGS DROP TABLE customers",
+        "settings (max_threads = (1)) /*+ ' */ SELECT 1 -- ' */ DROP TABLE customers",
+    ])
+    func settingsWrapperIsTieredByItsStatement(sql: String) {
+        #expect(Self.tier(sql) == .destructive)
+    }
+
+    @Test("A DELETE under SETTINGS deletes every row")
+    func deleteUnderSettings() {
+        #expect(Self.deletesEveryRow("SETTINGS (max_threads=1) DELETE FROM customers"))
+        #expect(!Self.deletesEveryRow("SETTINGS (max_threads=1) DELETE FROM customers WHERE id = 1"))
+    }
+
     @Test("A DELETE behind a skipped hint deletes every row")
     func deleteBehindASkippedHint() {
         #expect(Self.deletesEveryRow("/*+ ' */ SELECT 1 -- ' */ DELETE FROM customers"))

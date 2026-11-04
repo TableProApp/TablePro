@@ -8,9 +8,9 @@
 #
 # Runs against a throwaway server on this Mac only, since the client connects without TLS. Needs the mysql or mariadb
 # client. The password, if any, comes from DATABEND_PASSWORD. Everything it creates lives in a database of its own,
-# dropped on exit. The server's version picks the expectation for the rules that changed: a block comment ends at its
-# first `*/` from 1.2.884, a keyword ends where a non-ASCII name starts from 1.2.888, and a backtick name reads a
-# doubled backtick from 1.2.945. Exits 0 when the server reads
+# dropped on exit. The server's version picks the expectation for the rules that changed: `SETTINGS` runs the statement
+# after it from 1.2.652, a block comment ends at its first `*/` from 1.2.884, a keyword ends where a non-ASCII name
+# starts from 1.2.888, and a backtick name reads a doubled backtick from 1.2.945. Exits 0 when the server reads
 # every text as the app expects, 1 when it does not, and 3 when the check could not run.
 #
 #   docker run -d --rm --name databend-probe -p 127.0.0.1:3307:3307 datafuselabs/databend:v1.2.880-nightly
@@ -99,6 +99,9 @@ if [ "$BUILD" -ge 884 ]; then paired=kept; else paired=dropped; fi
 report "comment ending in **/ before a DROP" "$(dropped '/** x **/ SELECT 1 /* */ DROP TABLE tp_victim')" "$paired"
 report "empty comment /**/ before a DROP" "$(dropped '/**/ SELECT 1 /* */ DROP TABLE tp_victim')" "$paired"
 report "carriage return in a line comment" "$(dropped "$(printf 'SELECT 1 -- x\rDROP TABLE tp_victim')")" kept
+if [ "$BUILD" -ge 652 ]; then wrapped=dropped; else wrapped=kept; fi
+report "DROP under SETTINGS" "$(dropped 'SETTINGS (max_threads=1) DROP TABLE tp_victim')" "$wrapped"
+report "DROP under SETTINGS with no list" "$(dropped 'SETTINGS DROP TABLE tp_victim')" "$wrapped"
 
 # From 1.2.888 a keyword ends where a non-ASCII name starts, so TABLE中tp is TABLE and then 中tp.
 ask 'CREATE OR REPLACE TABLE `中tp` (v INT)' > /dev/null

@@ -254,6 +254,18 @@ struct StarRocksLiteralTests {
         }
     }
 
+    // Measured on StarRocks 4.1.7: `a$$`, `$$x$$`, `1e5$$` and `.5$$` are names, and `$$ x $$` after `1.5` an attachment.
+    @Test("A `$$` in a name or a number opens nothing, and one alone opens an attachment only where it closes")
+    func dollarsFollowStarRocksTokens() throws {
+        let quoted = try StarRocksLiteral.inline("SELECT 1 AS a$$, '$$ --\r? -- ', ?", parameters: [.text("v")])
+        #expect(quoted == "SELECT 1 AS a$$, '$$ --\r? -- ', 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT 1 AS $$x$$, ?", parameters: [.text("v")]) == "SELECT 1 AS $$x$$, 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT 1.5$$ ? $$, ?", parameters: [.text("v")]) == "SELECT 1.5$$ ? $$, 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT 1e5$$, ?", parameters: [.text("v")]) == "SELECT 1e5$$, 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT .5$$ ?", parameters: [.text("v")]) == "SELECT .5$$ 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT $$ ?", parameters: [.text("v")]) == "SELECT $$ 'v'")
+    }
+
     @Test("A carriage return ends a line comment, so the placeholder after it is bound")
     func carriageReturnEndsLineComment() throws {
         let sql = try StarRocksLiteral.inline("SELECT 1 -- x\r, ?", parameters: [.text("v")])

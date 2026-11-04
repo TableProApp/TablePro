@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Check the StarRocks lexer and unescape facts StarRocksLiteral binds values by: which escapes a string literal reads,
-# and where a `--` comment ends.
+# where a `--` comment ends, and where `$$` continues a name rather than opening an attachment.
 #
 # Usage:
 #   scripts/probes/check-starrocks-literals.sh [port] [user]
@@ -42,11 +42,17 @@ report() {
     echo "$1: $2 (app expects $3)"
     [ "$2" = "$3" ] || STATUS=1
 }
+refused() {
+    case "$1" in *ERROR\ 1064*) echo refused ;; *) echo "$1" ;; esac
+}
 
 report "backslash-f reads as f" "$(ask "SELECT hex('a\\fb')")" 616662
 report "raw form feed stays" "$(ask "$(printf "SELECT hex('a\fb')")")" 610C62
 report "escapes the app writes" "$(ask "SELECT hex('\\0\\b\\n\\r\\t''\\\\x')")" 00080A0D09275C78
 report "NUL before a digit" "$(ask "SELECT hex('\\071')")" 003731
 report "carriage return ends a line comment" "$(ask "$(printf 'SELECT 1 -- x\r, 2')")" $'1\t2'
+report "\$\$ continues a name" "$(ask "SELECT 1 AS a\$\$, '\$\$ ? ', 2")" $'1\t$$ ? \t2'
+report "\$\$x\$\$ is a name" "$(ask 'SELECT 1 AS $$x$$')" 1
+report "\$\$ after a decimal opens an attachment" "$(refused "$(ask 'SELECT 1 AS x, 1.5$$ y $$')")" refused
 
 exit "$STATUS"
