@@ -179,6 +179,7 @@ mod tests {
         for (name, sql) in [
             ("schemas", objects::SCHEMAS_SQL.to_owned()),
             ("objects", objects::OBJECTS_SQL.to_owned()),
+            ("databases", objects::DATABASES_SQL.to_owned()),
             ("function definitions", definitions::FUNCTIONS_SQL.to_owned()),
             ("sequence definition", definitions::SEQUENCE_SQL.to_owned()),
             ("trigger definition", definitions::TRIGGER_SQL.to_owned()),

@@ -458,11 +458,18 @@ async fn a_read_attaches_nothing_sets_no_pragma_and_runs_one_statement() {
     let attach = format!("ATTACH '{}' AS other", file.path.display());
     let vacuum = format!("VACUUM INTO '{copy_name}'");
     let hidden = format!("SELECT $1('); VACUUM INTO '{copy_name}'; --'");
+    let other = TestFile::new().await;
+    let pages = format!(
+        "SELECT $1(') AS pgno, 2 AS data WHERE 0; ATTACH DATABASE '{}' AS other; \
+         SELECT pgno, hex(data) FROM sqlite_dbpage('other'); --'",
+        other.path.display()
+    );
 
     for sql in [
         vacuum.as_str(),
         attach.as_str(),
         hidden.as_str(),
+        pages.as_str(),
         "PRAGMA foreign_keys = OFF",
         "EXPLAIN PRAGMA hard_heap_limit = 1",
         "PRAGMA user_version = 7",
@@ -484,5 +491,39 @@ async fn a_read_attaches_nothing_sets_no_pragma_and_runs_one_statement() {
         assert!(read.is_ok(), "{sql}: {read:?}");
         assert!(!collected.rows().is_empty(), "{sql}");
     }
+    connection.close().await.unwrap();
+}
+
+/// SQLite takes a NUL as the end of the text, and sqlx then prepares what
+/// follows it again and again without moving on.
+#[tokio::test]
+async fn a_statement_holding_a_nul_is_refused_at_once() {
+    let file = TestFile::new().await;
+    let connection = file.open().await;
+    let session = connection
+        .open_editor_session(EditorSessionOptions::default(), CancellationToken::new())
+        .await
+        .unwrap();
+    let collected = Collected::default();
+
+    let read = tokio::time::timeout(
+        Duration::from_secs(5),
+        connection.stream_read(
+            &ReadStatement::User(UserSql::new("SELECT 1\u{0}")),
+            collected.sink(),
+            call(),
+        ),
+    )
+    .await
+    .expect("the read came back");
+    let (summary, ran) = tokio::time::timeout(Duration::from_secs(5), run(session.as_ref(), "SELECT 1\u{0}; SELECT 2"))
+        .await
+        .expect("the run came back");
+
+    assert!(read.is_err(), "{read:?}");
+    assert!(collected.rows().is_empty());
+    assert!(matches!(summary.end, RunEnd::Failed(_)), "{:?}", summary.end);
+    assert!(ran.rows().is_empty(), "a statement before the NUL ran");
+    session.close().await;
     connection.close().await.unwrap();
 }

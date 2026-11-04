@@ -11,8 +11,18 @@ use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
 use tablepro_core::meta::IndexKey;
 
-/// One key per entry of the list. A list sqlparser cannot read is kept
-/// whole, as the server wrote it.
+/// A key the server wrote is far shorter; longer text is kept whole
+/// rather than tokenized.
+const MAX_KEY_LEN: usize = 4096;
+
+/// sqlparser prints and drops an expression by recursing once per level,
+/// and every level takes a token, so this bounds the stack a worker
+/// spends on one entry. A debug build takes about 12 KB a level.
+const MAX_ENTRY_TOKENS: usize = 64;
+
+/// One key per entry of the list. A list sqlparser cannot read, or one
+/// too long or too deep to read on a worker's stack, is kept whole, as
+/// the server wrote it.
 pub(crate) fn index_keys(text: &str) -> Vec<IndexKey> {
     let text = text.trim();
     if text.is_empty() {
@@ -28,10 +38,41 @@ pub(crate) fn index_keys(text: &str) -> Vec<IndexKey> {
 }
 
 fn parse_list(text: &str) -> Option<Vec<OrderByExpr>> {
+    if text.len() > MAX_KEY_LEN {
+        return None;
+    }
     let dialect = ClickHouseDialect {};
+    let tokens = Tokenizer::new(&dialect, text).tokenize().ok()?;
+    if !entries_within(&tokens, MAX_ENTRY_TOKENS) {
+        return None;
+    }
     let mut parser = Parser::new(&dialect).try_with_sql(text).ok()?;
     let keys = parser.parse_comma_separated(Parser::parse_order_by_expr).ok()?;
     (parser.peek_token().token == Token::EOF).then_some(keys)
+}
+
+/// Whether every entry of the list, split at commas outside any
+/// bracket, holds at most `limit` tokens.
+fn entries_within(tokens: &[Token], limit: usize) -> bool {
+    let mut nesting = 0usize;
+    let mut in_entry = 0;
+    for token in tokens {
+        match token {
+            Token::Whitespace(_) => continue,
+            Token::Comma if nesting == 0 => {
+                in_entry = 0;
+                continue;
+            }
+            Token::LParen | Token::LBracket | Token::LBrace => nesting += 1,
+            Token::RParen | Token::RBracket | Token::RBrace => nesting = nesting.saturating_sub(1),
+            _ => {}
+        }
+        in_entry += 1;
+        if in_entry > limit {
+            return false;
+        }
+    }
+    true
 }
 
 fn key(entry: OrderByExpr) -> IndexKey {
@@ -118,6 +159,48 @@ mod tests {
                 descending: true
             }]
         );
+    }
+
+    fn expression(sql: &str) -> IndexKey {
+        IndexKey::Expression {
+            sql: sql.to_owned(),
+            descending: false,
+        }
+    }
+
+    /// Runs `check` where a runtime worker would, on the 2 MiB default stack.
+    fn on_a_worker_stack(check: fn()) {
+        let worker = std::thread::Builder::new().stack_size(2 << 20);
+        worker.spawn(check).unwrap().join().unwrap();
+    }
+
+    #[test]
+    fn a_key_of_100000_chained_terms_is_kept_whole_on_a_worker_stack() {
+        on_a_worker_stack(|| {
+            // 100,000 terms, then 2,048 in 4,095 characters, under the length limit.
+            for terms in [100_000, 2048] {
+                let text = format!("{}a", "a+".repeat(terms - 1));
+
+                assert_eq!(index_keys(&text), vec![expression(&text)], "{terms} terms");
+            }
+        });
+    }
+
+    #[test]
+    fn an_entry_at_the_token_limit_is_read_on_a_worker_stack() {
+        on_a_worker_stack(|| {
+            let chain = format!("{}a", "a+".repeat(MAX_ENTRY_TOKENS / 2 - 1));
+            let calls = format!("{}a{}", "f(".repeat(21), ")".repeat(21));
+            let past_the_limit = format!("{}a", "a+".repeat(MAX_ENTRY_TOKENS / 2));
+
+            assert_eq!(
+                index_keys(&format!("{chain}, id")),
+                vec![expression(&["a"; MAX_ENTRY_TOKENS / 2].join(" + ")), column("id")],
+                "each entry counts its own tokens"
+            );
+            assert_eq!(index_keys(&calls), vec![expression(&calls)]);
+            assert_eq!(index_keys(&past_the_limit), vec![expression(&past_the_limit)]);
+        });
     }
 
     #[test]

@@ -7319,6 +7319,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "unicode-normalization",
  "uuid",
 ]
 

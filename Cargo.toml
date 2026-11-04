@@ -97,6 +97,7 @@ csv = "1.4"
 # table turns that off itself (force_no_tty).
 comfy-table = "8.0"
 unicode-width = "0.2"
+unicode-normalization = "0.1.25"
 # No zlib feature: it pulls libz-sys, and the pure-Rust deflate keeps
 # the build free of another C dependency. Constant memory lets a sheet
 # spill its rows to a temporary file instead of holding them.
