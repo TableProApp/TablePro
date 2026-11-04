@@ -560,8 +560,11 @@ extension QueryExecutionCoordinator {
                 queryRows: result.rows,
                 columns: columns,
                 columnTypes: result.columnTypes,
+                exportDocuments: result.exportDocuments,
                 absentCells: result.absentCells,
-                masks: parent.columnMasks(forTabId: tabId, table: nil, columns: columns, columnTypes: result.columnTypes)
+                masks: parent.columnMasks(forTabId: tabId, table: nil, columns: columns, columnTypes: result.columnTypes),
+                exportPolicy: parent.exportMaskingPolicy(forTabId: tabId),
+                exportTable: nil
             )
         )
         resultSet.statementAnchor = anchor

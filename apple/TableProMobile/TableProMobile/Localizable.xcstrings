@@ -1,6 +1,23 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "A document could not be read" : {
+
+    },
+    "A document field could not be read" : {
+
+    },
+    "The result has no stored documents" : {
+
+    },
+    "Export documents do not match their columns and rows" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "The column stream cannot represent every document field" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro does not have this row's stored _id, so it cannot tell which document it is." : {
 
     },

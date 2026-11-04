@@ -361,6 +361,7 @@ final class PaginationCoordinator: ObservableObject {
                         rows.replace(
                             rows: result.rows,
                             rowLocators: isTableTab ? result.rowLocators : nil,
+                            exportDocuments: result.exportDocuments,
                             absentCells: result.absentCells,
                             unloadedCells: result.unloadedCells
                         )

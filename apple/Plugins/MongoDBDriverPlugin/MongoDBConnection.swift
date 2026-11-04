@@ -841,13 +841,14 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         filter: String,
         optionsJson: String,
         census: MongoFieldCensus.Request?
-    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
         let streamState = MongoStreamState()
 
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             continuation.onTermination = { @Sendable _ in
+                streamState.lock.withLock { streamState.cancelled = true }
                 queue.async {
                     streamState.lock.lock()
                     let cur = streamState.cursor
@@ -910,13 +911,14 @@ nonisolated final class MongoDBConnection: @unchecked Sendable {
         pipeline: String,
         optionsJson: String?,
         census: MongoFieldCensus.Request?
-    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    ) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
         #if canImport(CLibMongoc)
         let queue = self.queue
         let streamState = MongoStreamState()
 
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             continuation.onTermination = { @Sendable _ in
+                streamState.lock.withLock { streamState.cancelled = true }
                 queue.async {
                     streamState.lock.lock()
                     let cur = streamState.cursor
@@ -990,6 +992,7 @@ nonisolated final class MongoStreamState: @unchecked Sendable {
     var cursor: OpaquePointer?
     var collection: OpaquePointer?
     var drained = false
+    var cancelled = false
     let lock = NSLock()
 }
 

@@ -15720,6 +15720,14 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "A document could not be read" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "A document field could not be read" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "A document is one JSON object, written between { and }." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -66366,6 +66374,9 @@
         }
       }
     },
+    "Documents do not match their rows" : {
+
+    },
     "does not equal" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -77657,6 +77668,10 @@
           }
         }
       }
+    },
+    "Export documents do not match their columns and rows" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Export ER Diagram" : {
       "localizations" : {
@@ -108399,6 +108414,10 @@
         }
       }
     },
+    "Maximum documents per batch. Large documents use smaller batches to fit the server limit." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "Maximum entries cannot be negative" : {
       "localizations" : {
         "fr" : {
@@ -121164,6 +121183,10 @@
           }
         }
       }
+    },
+    "No typed documents. Update the database driver, save changes and reload before exporting MQL." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "No types" : {
       "localizations" : {
@@ -153807,6 +153830,9 @@
         }
       }
     },
+    "Rows arrived before their columns" : {
+
+    },
     "Rows Compare Data" : {
       "localizations" : {
         "fr" : {
@@ -153902,6 +153928,10 @@
           }
         }
       }
+    },
+    "Rows per batch" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "Rows per group" : {
       "extractionState" : "manual",
@@ -185967,6 +185997,10 @@
         }
       }
     },
+    "The column stream cannot represent every document field" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "the command" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -191025,6 +191059,10 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The result has no stored documents" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "The right result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the left." : {
 
     },
@@ -195883,6 +195921,14 @@
           }
         }
       }
+    },
+    "This BSON date is outside the shell's supported date range" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
+    "This BSON value cannot be represented by the shell's Extended JSON reader" : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
     },
     "This build of DuckDB does not accept a read-only access mode" : {
       "extractionState" : "manual",

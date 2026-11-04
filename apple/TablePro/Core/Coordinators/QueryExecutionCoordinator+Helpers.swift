@@ -198,6 +198,7 @@ extension QueryExecutionCoordinator {
         source: ResultSourceChange = .newSource,
         serverOutput: PluginServerOutput = .none,
         rowLocators: [String?]? = nil,
+        exportDocuments: [PluginExportDocument]? = nil,
         absentCells: [Int: Set<Int>] = [:],
         unloadedCells: [Int: [Int: Int]] = [:]
     ) {
@@ -256,9 +257,12 @@ extension QueryExecutionCoordinator {
             hasAuthoritativeSchema: resolved.hasAuthoritativeSchema,
             foreignKeysFetched: resolved.foreignKeysFetched,
             rowLocators: rowLocators,
+            exportDocuments: exportDocuments,
             absentCells: absentCells,
             unloadedCells: unloadedCells,
-            masks: masks
+            masks: masks,
+            exportPolicy: parent.exportMaskingPolicy(forTabId: tabId),
+            exportTable: tableName
         )
         let previousTableName = parent.tabManager.tabs[idx].tableContext.tableName
         let definitionChanged = parent.tabSessionRegistry.needsDefinition(existingTabId)

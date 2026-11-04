@@ -764,6 +764,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// The same stream with what the host decided about the statement. This is what the host calls; the default
     /// forwards to the requirement above.
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error>
+    func streamExportRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginExportStreamElement, Error>
 }
 
 public extension PluginDatabaseDriver {
@@ -1483,6 +1484,14 @@ public extension PluginDatabaseDriver {
         try await PluginParameterBinder.$hostFeatures.withValue(context.lexicalFeatures) {
             try await executeParameterized(query: query, parameters: parameters)
         }
+    }
+
+    func streamExportRows(query: String) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        streamExportRows(query: query, context: PluginStatementContext())
+    }
+
+    func streamExportRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+        PluginExportStreamElement.wrapping(streamRows(query: query, context: context))
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {

@@ -433,14 +433,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
         try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters, context: PluginStatementContext())
     }
 
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        if let error = StatementTextValidator.error(for: query) {
-            return AsyncThrowingStream { $0.finish(throwing: error) }
-        }
-        return pluginDriver.streamRows(query: query, context: statementContext(query))
-    }
-
-    private func statementContext(_ query: String) -> PluginStatementContext {
+    func statementContext(_ query: String) -> PluginStatementContext {
         var context = PluginStatementContext.statement(query, databaseType: connection.type)
         context.lexicalFeatures = sessionLexicalFeatures
         return context
@@ -1342,6 +1335,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable, DatabaseRepor
             ResultColumnMeta(isPrimaryKey: $0.isPrimaryKey, isNullable: $0.isNullable, isAutoIncrement: $0.isIdentity)
         }
         result.rowLocators = pluginResult.rowLocators
+        result.exportDocuments = pluginResult.exportDocuments
         result.absentCells = pluginResult.absentCells ?? [:]
         return result
     }
