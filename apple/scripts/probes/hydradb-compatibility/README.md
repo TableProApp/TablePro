@@ -45,7 +45,15 @@ export check requires the Python probe's 1,002-node fixture and checks a propert
 that first appears beyond the browser's 1,000-entity sample. Set
 `HYDRADB_PROBE_BUILD_ONLY=1` to compile without connecting.
 
-This is a single-node plaintext development test. It does not establish GUI,
-TLS, cluster routing, failover or cancellation behavior. The server's Rust tests
+For a TLS-only health probe, mount a development certificate and key in the
+server container, set `GRAPH_TLS_CERTIFICATE` and `GRAPH_TLS_PRIVATE_KEY` to their
+container paths, and set `HYDRADB_PROBE_ALLOW_PLAINTEXT=false`. On the native
+probe set `HYDRADB_PROBE_CONNECTION_ONLY=1`, `HYDRADB_PROBE_SSL_MODE='Verify Identity'`
+and `HYDRADB_PROBE_CA` to the certificate's local absolute path. Its subject
+alternative names must include `127.0.0.1`. Repeat without that CA to verify
+that the untrusted certificate is rejected. Keep development private keys out of git.
+
+These are single-node development tests. They do not establish GUI,
+cluster routing, failover or cancellation behavior. The server's Rust tests
 separately exercise metadata scan budgets and a 10,000-node local-store fixture;
 that result does not measure object-store network requests.

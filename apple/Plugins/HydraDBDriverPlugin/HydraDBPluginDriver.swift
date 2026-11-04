@@ -191,7 +191,7 @@ final class HydraDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ filters: [PluginQueryFilter], logicMode: String, columnKinds: [String: PluginColumnKind] = [:]
     ) throws -> String {
         let clauses = try filters.map { filter -> String in
-            let op = filter.op.uppercased()
+            let op = filter.op == "!=" ? "<>" : filter.op.uppercased()
             let numericKind = [PluginColumnKind.integer, .decimal, .boolean].contains(columnKinds[filter.column] ?? .other)
             guard filter.isCaseSensitive || numericKind, filter.elementScope == nil, filter.secondValue == nil,
                   ["=", "<>", "<", "<=", ">", ">=", "STARTS WITH"].contains(op),

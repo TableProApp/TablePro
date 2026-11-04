@@ -10,7 +10,7 @@ printf '%s\n' "${HYDRADB_PROBE_TOKEN:?provide a disposable development token}" >
 export CLOUD_PROVIDER=local LOCAL_PATH="$runtime_root/store"
 export GRAPH_NAMESPACE=tablepro-probe GRAPH_ID=default
 export GRAPH_CELL_ID=cell-0 GRAPH_CELLS=cell-0 GRAPH_DATA_PATH=data
-export GRAPH_ALLOW_PLAINTEXT=true GRAPH_AUTH_TOKEN_FILE="$runtime_root/auth-token"
+export GRAPH_ALLOW_PLAINTEXT="${HYDRADB_PROBE_ALLOW_PLAINTEXT:-true}" GRAPH_AUTH_TOKEN_FILE="$runtime_root/auth-token"
 export GRAPH_DATA_CACHE_BYTES=67108864 GRAPH_DATA_CACHE_DIR="$runtime_root/cache"
 export GRAPH_NODE_ID=node-0
 export GRAPH_BOLT_ADDR=0.0.0.0:17687 GRAPH_ADVERTISED_BOLT_ADDR=127.0.0.1:17687

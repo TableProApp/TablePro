@@ -4,13 +4,16 @@ import TableProPluginKit
 
 let environment = ProcessInfo.processInfo.environment
 var failures = 0
+var ssl = SSLConfiguration()
+ssl.mode = SSLMode(rawValue: environment["HYDRADB_PROBE_SSL_MODE"] ?? "") ?? .disabled
+ssl.caCertificatePath = environment["HYDRADB_PROBE_CA"] ?? ""
 let driver = HydraDBPluginDriver(config: DriverConnectionConfig(
     host: "127.0.0.1",
     port: 17_687,
     username: "tablepro-probe",
     password: environment["HYDRADB_PROBE_TOKEN"] ?? "",
     database: "default",
-    ssl: SSLConfiguration()
+    ssl: ssl
 ))
 
 @MainActor
@@ -34,6 +37,12 @@ func record(_ name: String, operation: () async throws -> Any) async {
 }
 
 try await driver.connect()
+if environment["HYDRADB_PROBE_CONNECTION_ONLY"] == "1" {
+    try await driver.ping()
+    print("HydraDB connection and health check passed")
+    driver.disconnect()
+    exit(0)
+}
 await record("tablepro-ping") {
     try await driver.ping()
     return true
@@ -87,6 +96,20 @@ await record("tablepro-property-filter") {
     ) else { throw NSError(domain: "Probe.Filter", code: 1) }
     let result = try await driver.execute(query: query)
     guard result.rows.count == 1 else { throw NSError(domain: "Probe.Filter", code: 2) }
+    return result.rows.count
+}
+await record("tablepro-not-equal-filter") {
+    let filters = [PluginQueryFilter(column: "id", op: "!=", value: "1")]
+    guard let query = driver.buildFilteredQuery(
+        table: "TableProProbe", schema: "Labels",
+        queryFilters: filters,
+        logicMode: "and", sortColumns: [], columns: [], limit: 100, offset: 0, columnKinds: ["id": .integer]
+    ) else { throw NSError(domain: "Probe.Filter", code: 3) }
+    let result = try await driver.execute(query: query)
+    let count = try await driver.fetchExactRowCount(
+        table: "TableProProbe", schema: "Labels", queryFilters: filters, logicMode: "and"
+    )
+    guard result.rows.count == 1, count == 1 else { throw NSError(domain: "Probe.Filter", code: 4) }
     return result.rows.count
 }
 await record("tablepro-unsupported-filter-rejected") {
