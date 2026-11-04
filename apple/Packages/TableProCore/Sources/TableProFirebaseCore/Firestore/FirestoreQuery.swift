@@ -17,7 +17,7 @@ public struct FirebaseFilterSpec: Codable, Sendable, Equatable {
     /// so the lower bound is `value` without that suffix, whatever commas the bounds hold.
     public var betweenBounds: (lower: String, upper: String)? {
         guard let upper = secondValue else {
-            let parts = value.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            let parts = FirebaseScalars.split(value, separator: ",", omittingEmpty: false)
             return parts.count == 2 ? (parts[0], parts[1]) : nil
         }
         let suffix = Array(("," + upper).unicodeScalars)
@@ -83,9 +83,8 @@ public struct FirestoreCollectionTarget: Sendable, Equatable {
 
     public init(table: String) throws {
         let trimmed = table.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-        if trimmed.hasPrefix(Self.groupPrefix) {
-            let id = String(trimmed.dropFirst(Self.groupPrefix.count))
-            guard !id.isEmpty, !id.contains("/") else { throw Self.invalid(table) }
+        if let id = FirebaseScalars.removingPrefix(Self.groupPrefix, from: trimmed) {
+            guard !id.isEmpty, !id.unicodeScalars.contains("/") else { throw Self.invalid(table) }
             self.parentPath = ""
             self.collectionId = id
             self.isGroup = true
@@ -113,7 +112,7 @@ public struct FirestoreCollectionTarget: Sendable, Equatable {
     }
 
     public func documentPath(forRowName name: String) -> String {
-        if isGroup || name.contains("/") {
+        if isGroup || name.unicodeScalars.contains("/") {
             return name.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         }
         return collectionPath + "/" + name
@@ -280,36 +279,37 @@ public enum FirestoreQueryBuilder {
 
     public static func maskFields(_ text: String) -> [String] {
         var fields: [String] = []
-        var current = ""
+        var current = String.UnicodeScalarView()
         var quoted = false
         var escaping = false
         var wasQuoted = false
         func finish() {
-            let name = wasQuoted ? current : current.trimmingCharacters(in: .whitespaces)
+            let collected = String(current)
+            let name = wasQuoted ? collected : collected.trimmingCharacters(in: .whitespaces)
             if !name.isEmpty { fields.append(name) }
-            current = ""
+            current.removeAll()
             wasQuoted = false
         }
-        for character in text {
+        for scalar in text.unicodeScalars {
             if escaping {
-                current.append(character)
+                current.append(scalar)
                 escaping = false
             } else if quoted {
-                switch character {
+                switch scalar {
                 case "\\": escaping = true
                 case "`": quoted = false
-                default: current.append(character)
+                default: current.append(scalar)
                 }
             } else {
-                switch character {
+                switch scalar {
                 case "`":
                     quoted = true
                     wasQuoted = true
-                    current = ""
+                    current.removeAll()
                 case ",":
                     finish()
                 default:
-                    current.append(character)
+                    current.append(scalar)
                 }
             }
         }
@@ -363,6 +363,6 @@ public enum FirestoreQueryBuilder {
         if let json = try? FirebaseJSON.parse(text), case .array(let values) = json {
             return values.map { value in value.stringValue ?? value.text() }
         }
-        return text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return FirebaseScalars.split(text, separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 }

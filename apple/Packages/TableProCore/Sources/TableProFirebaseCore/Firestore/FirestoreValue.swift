@@ -170,13 +170,12 @@ public extension FirestoreValue {
 
 public enum FirestorePath {
     public static func relative(_ name: String, documentRoot: String) -> String {
-        let prefix = documentRoot + "/"
-        return name.hasPrefix(prefix) ? String(name.dropFirst(prefix.count)) : name
+        FirebaseScalars.removingPrefix(documentRoot + "/", from: name) ?? name
     }
 
     public static func absolute(_ path: String, documentRoot: String) -> String {
         let trimmed = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if trimmed.hasPrefix("projects/") {
+        if trimmed.unicodeScalars.starts(with: "projects/".unicodeScalars) {
             return trimmed
         }
         return trimmed.isEmpty ? documentRoot : documentRoot + "/" + trimmed
@@ -184,17 +183,17 @@ public enum FirestorePath {
 
     /// A path with an even number of segments names a document, an odd number a collection.
     public static func isDocument(_ path: String) -> Bool {
-        let segments = path.split(separator: "/", omittingEmptySubsequences: true)
+        let segments = FirebaseScalars.split(path, separator: "/")
         return !segments.isEmpty && segments.count.isMultiple(of: 2)
     }
 
     public static func lastSegment(_ path: String) -> String {
-        path.split(separator: "/").last.map(String.init) ?? path
+        FirebaseScalars.split(path, separator: "/").last ?? path
     }
 
     /// The parent of a collection path: the root for `users`, the document for `users/a/orders`.
     public static func split(collectionPath: String) -> (parent: String, collectionId: String) {
-        var segments = collectionPath.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        var segments = FirebaseScalars.split(collectionPath, separator: "/")
         let collectionId = segments.popLast() ?? ""
         return (segments.joined(separator: "/"), collectionId)
     }

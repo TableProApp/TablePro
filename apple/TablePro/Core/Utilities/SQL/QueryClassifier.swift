@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProFirebaseCore
 import TableProPluginKit
 import TableProQdrantCore
 import TableProRedisCore
@@ -451,42 +452,30 @@ private extension QueryClassifier {
         return QueryClassification(tier: tier, reachesFilesystemOrExecutesCode: kind.touchesServerFiles)
     }
 
-    /// A grid page is a tagged spec and anything else a request line read the way the driver reads
-    /// it. A write that leaves a node holding nothing deletes it, so it ranks with DELETE.
-    static func firebaseClassification(_ trimmed: String, databaseType: DatabaseType) -> QueryClassification {
-        if trimmed.hasPrefix("FIREBASE_BROWSE:") {
+    /// A grid page is a tagged spec, which only reads. Anything else is read with the driver's own parser, so the path
+    /// tiered is the path the driver writes. A write that leaves a node holding nothing deletes it, so it ranks with DELETE.
+    static func firebaseClassification(_ statement: String, databaseType: DatabaseType) -> QueryClassification {
+        let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.unicodeScalars.starts(with: FirebaseStatement.browseTag.unicodeScalars) {
             return .safe
         }
         let destructive = QueryClassification(tier: .destructive, reachesFilesystemOrExecutesCode: false)
-        let request = firebaseRequestLine(trimmed)
-        switch request.verb {
-        case "GET", "QUERY":
+        let write = QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        // The driver refuses any other text, and an unknown request is a write all the same.
+        guard case .request(let request)? = try? FirebaseStatement.parse(trimmed) else { return write }
+        let body = request.body ?? ""
+        switch request.method {
+        case .get, .query:
             return .safe
-        case "DELETE":
+        case .delete:
             return destructive
-        case "PUT" where request.isRoot || firebaseHoldsNothing(request.body):
+        case .put where request.path.isEmpty || firebaseHoldsNothing(body):
             return destructive
-        case "PATCH" where databaseType == .firebaseRealtimeDatabase && firebaseRemovesChild(request.body):
+        case .patch where databaseType == .firebaseRealtimeDatabase && firebaseRemovesChild(body):
             return destructive
-        default:
-            return QueryClassification(tier: .write, reachesFilesystemOrExecutesCode: false)
+        case .put, .patch, .post:
+            return write
         }
-    }
-
-    /// The body is the rest of the first line and every line after it, as the driver takes it.
-    static func firebaseRequestLine(_ trimmed: String) -> (verb: String, isRoot: Bool, body: String) {
-        let lines = trimmed.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        let header = lines.first.map(String.init) ?? ""
-        let parts = header.split(maxSplits: 2, omittingEmptySubsequences: true, whereSeparator: \.isWhitespace).map(String.init)
-        let target = parts.count > 1 ? String(parts[1].prefix { $0 != "?" }) : ""
-        let path = target.removingPercentEncoding ?? target
-        let inline = parts.count > 2 ? parts[2] : ""
-        let following = lines.count > 1 ? String(lines[1]) : ""
-        return (
-            parts.first?.uppercased() ?? "",
-            path.split(separator: "/").isEmpty,
-            [inline, following].joined(separator: "\n")
-        )
     }
 
     static func firebaseHoldsNothing(_ body: String) -> Bool {
@@ -504,12 +493,22 @@ private extension QueryClassifier {
         return try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
     }
 
+    // Read as the Realtime Database stores JSON: a non-null `.value` is the node's value, `.sv` is one the server fills
+    // in, and any other key starting with `.` is metadata, so `{".priority": 1}` stores nothing.
     private static func firebaseHoldsNothing(json: Any) -> Bool {
         switch json {
         case is NSNull:
             return true
         case let members as [String: Any]:
-            return members.values.allSatisfy { firebaseHoldsNothing(json: $0) }
+            if let value = members[".value"], !(value is NSNull) {
+                return firebaseHoldsNothing(json: value)
+            }
+            if members[".sv"] != nil {
+                return false
+            }
+            return members.allSatisfy { key, value in
+                key.unicodeScalars.first == "." || firebaseHoldsNothing(json: value)
+            }
         case let items as [Any]:
             return items.allSatisfy { firebaseHoldsNothing(json: $0) }
         default:
