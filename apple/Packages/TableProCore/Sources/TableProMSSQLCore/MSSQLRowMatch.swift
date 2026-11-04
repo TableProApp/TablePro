@@ -15,13 +15,4 @@ public enum MSSQLRowMatch {
     public static func exactText(_ quotedColumn: String, equals value: String) -> String {
         "CAST(\(quotedColumn) AS NVARCHAR(MAX)) COLLATE Latin1_General_100_BIN2 = \(value)"
     }
-
-    // A foreign key finds its parent by the column's own rules, where `weßels` equals `Weßels` but not `Wessels`, so
-    // the value is compared as varchar. It reaches varchar through the database's code page; when that loses a
-    // character, the Unicode comparison stands in rather than one against the `?` it became.
-    public static func columnRules(_ quotedColumn: String, equals literal: String) -> String {
-        let narrow = "CAST(\(literal) AS VARCHAR(MAX))"
-        let lossless = "CAST(\(narrow) AS NVARCHAR(MAX)) COLLATE Latin1_General_100_BIN2 = \(literal)"
-        return "((\(quotedColumn) = \(narrow) AND \(lossless)) OR (\(quotedColumn) = \(literal) AND NOT \(lossless)))"
-    }
 }

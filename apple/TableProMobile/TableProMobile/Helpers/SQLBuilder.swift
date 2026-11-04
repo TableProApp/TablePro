@@ -58,8 +58,7 @@ nonisolated enum SQLBuilder {
     }
 
     // Every pair of a composite key is matched: one column alone can return another tenant's row. A foreign key's
-    // value finds its parent by the column's own rules, so `abc` finds `ABC`. Where SQL Server falls back to the
-    // Unicode comparison, `Weßels` can also match `Wessels`, so a lookup that matches more than one row shows none.
+    // value finds its parent by the column's collation, so `abc` finds `ABC`, and is never held to the exact text.
     static func buildSingleRowLookup(
         table: String,
         schema: String?,
@@ -69,14 +68,8 @@ nonisolated enum SQLBuilder {
         driver: any DatabaseDriver
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
-        var predicate = key.isEmpty
-            ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver, reference: true)
-        let narrow = key.contains { pair in
-            MSSQLRowMatch.comparesNarrowText(typeName: FilterColumnKind.column(named: pair.column, in: columns)?.typeName)
-        }
-        if type == .mssql, narrow {
-            predicate += " AND (SELECT COUNT(*) FROM \(quotedTable) WHERE \(predicate)) = 1"
-        }
+        let predicate = key.isEmpty
+            ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver, exactText: false)
         let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
         return "SELECT * FROM \(quotedTable) WHERE \(predicate) \(pagination)"
     }
@@ -91,7 +84,7 @@ nonisolated enum SQLBuilder {
         type: DatabaseType,
         driver: any DatabaseDriver,
         uniqueIn quotedTable: String? = nil,
-        reference: Bool = false
+        exactText: Bool = true
     ) -> String {
         let predicate = key.map { pair in
             let column = quoteIdentifier(pair.column, for: type)
@@ -101,13 +94,10 @@ nonisolated enum SQLBuilder {
                 return "\(column) = \(value)"
             case .text(let value):
                 let literal = stringLiteral(value, for: type, driver: driver)
-                guard type == .mssql, MSSQLRowMatch.comparesNarrowText(typeName: info?.typeName) else {
+                guard exactText, type == .mssql, MSSQLRowMatch.comparesNarrowText(typeName: info?.typeName) else {
                     return "\(column) = \(literal)"
                 }
-                // A row's own key holds the exact text; a reference matches by the column's rules.
-                return reference
-                    ? MSSQLRowMatch.columnRules(column, equals: literal)
-                    : "\(column) = \(literal) AND \(MSSQLRowMatch.exactText(column, equals: literal))"
+                return "\(column) = \(literal) AND \(MSSQLRowMatch.exactText(column, equals: literal))"
             case .numberOrText(let value):
                 // CAST is the text the grid read, so a REAL another spelling of the same number parses to stays out.
                 return "\(column) IN (\(value), '\(value)') AND CAST(\(column) AS TEXT) = '\(value)'"
