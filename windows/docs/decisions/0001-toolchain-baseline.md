@@ -1,6 +1,6 @@
 # 0001: Windows toolchain and build baseline
 
-- **Status**: Accepted
+- **Status**: Accepted; amended by [0005](0005-distribution.md)
 - **Date**: 2026-11-02
 
 ## Context

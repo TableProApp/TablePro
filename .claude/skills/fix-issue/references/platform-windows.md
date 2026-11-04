@@ -40,7 +40,7 @@ Pass `--platform windows`, which a Windows shell (Git Bash, MSYS2, Cygwin) picks
 | `test` | before the pull request: every test project in the solution, as CI runs them |
 | `core [package] [filter]` | `core/crates/ffi` or a core crate changed; `tablepro-ffi` unless a package is named |
 | `bindings` | the FFI crate's exported API, its UniFFI items or `src/window_abi.rs` changed |
-| `app` | Windows only: anything under `windows/src/TablePro.App` changed, before `ui` |
+| `app` | Windows only: anything under `windows/src/TablePro.App` changed, before `ui`; the Native AOT publish CI tests |
 | `ui [filter]` | Windows only: the change is visible in the app, or a flow the UI tests cover changed |
 
 - Pick tests by what you changed: `src/<Name>` has its tests in `tests/<Name>.Tests` where that folder exists. `TablePro.Graphics` is reached through `TablePro.DataGrid.Tests`, and `TablePro.Editor` and `TablePro.App` through the UI tests. A core crate has its tests in its own folder.

@@ -1,6 +1,6 @@
 # 0004: The app shell: one window, a rail of connections, a page per surface
 
-- **Status**: Accepted
+- **Status**: Accepted; packaging amended by [0005](0005-distribution.md)
 - **Date**: 2026-11-02
 
 ## Context
