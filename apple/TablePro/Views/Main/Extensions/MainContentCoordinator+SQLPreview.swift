@@ -119,7 +119,8 @@ extension MainContentCoordinator {
                 schema: scope.schema,
                 containsTableOperation: hasPendingTableOps,
                 rowsWithUnloadedValues: rowsWithUnloadedValues(),
-                writesThroughView: viewTarget != nil
+                writesThroughView: viewTarget != nil,
+                rowLocators: activeRowLocators()
             )
             steps.append(contentsOf: rowWrite.steps)
             rowOperations = rowWrite.operations
@@ -148,6 +149,12 @@ extension MainContentCoordinator {
         plan.viewTarget = viewTarget
         plan.sessionLexicalState = services.databaseManager.sessionDriver(holding: scope)?.sessionLexicalState
         return plan
+    }
+
+    // Read when the plan is built: no reload replaces a tab's rows while it holds unsaved changes.
+    func activeRowLocators() -> [RowID: String] {
+        guard let tabId = tabManager.selectedTab?.id else { return [:] }
+        return tabSessionRegistry.tableRows(for: tabId).rowLocators
     }
 
     private func writeScope(

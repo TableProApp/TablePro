@@ -31,25 +31,30 @@ enum RowWriteOperationBuilder {
         generatedColumns: Set<String>,
         containsTableOperation: Bool,
         rowsWithUnloadedValues: Set<RowID> = [],
-        writesThroughView: Bool = false
+        writesThroughView: Bool = false,
+        rowLocators: [RowID: String] = [:]
     ) -> [RowWriteOperation] {
         changes.compactMap { change in
             switch change.type {
             case .update:
-                return update(
+                var operation = update(
                     change, target: target, columns: columns,
                     primaryKeyColumns: primaryKeyColumns, generatedColumns: generatedColumns,
                     containsTableOperation: containsTableOperation
                 )
+                operation.rowLocator = rowLocators[change.rowID]
+                return operation
             case .delete:
                 guard deletedRowIDs.contains(change.rowID) else { return nil }
-                return delete(
+                var operation = delete(
                     change, target: target, columns: columns,
                     primaryKeyColumns: primaryKeyColumns,
                     containsTableOperation: containsTableOperation,
                     hasUnloadedValues: rowsWithUnloadedValues.contains(change.rowID),
                     throughView: writesThroughView
                 )
+                operation.rowLocator = rowLocators[change.rowID]
+                return operation
             case .insert:
                 guard insertedRowIDs.contains(change.rowID) else { return nil }
                 return insert(

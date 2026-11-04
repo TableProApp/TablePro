@@ -65,7 +65,7 @@ enum DataGripConsoleReader {
 
     static func baseName(configDir: URL) -> String {
         let url = configDir.appendingPathComponent("options/QueryFileSettings.xml")
-        guard let data = try? Data(contentsOf: url),
+        guard let data = try? ForeignAppFile.read(url),
               let document = try? XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever]),
               let node = try? document.nodes(forXPath: "//option[@name='scratchesName']/@value").first,
               let value = node.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),

@@ -19,12 +19,16 @@ private final class RecordingSink: PluginImportDataSink, @unchecked Sendable {
 
     var calls: [Call] = []
     var statementsToFail: Set<String> = []
+    var cancellation: (any Error)?
+    var executed = 0
     var rollbackFails = false
     var enableForeignKeysFails = false
 
     let databaseTypeId = "SQLite"
 
     func execute(statement: String) async throws {
+        executed += 1
+        if let cancellation { throw cancellation }
         if statementsToFail.contains(statement) {
             throw FailingStatementError(message: "no such table: nope")
         }
@@ -75,12 +79,6 @@ private final class StatementSource: PluginImportSource, @unchecked Sendable {
     func fileSizeBytes() -> Int64 { 0 }
 }
 
-/// A transaction is committed at most once and rolled back only while it is open. Rolling back a
-/// transaction that already committed fails on the server, and that failure used to be reported to
-/// the user in place of the real one (#2314).
-///
-/// Serialized because `SQLImportPlugin.settings` persists through plugin storage, so two
-/// instances in flight at once read each other's error-handling mode.
 @Suite("SQL import transaction lifecycle", .serialized)
 struct SQLImportTransactionTests {
     private func runImport(
@@ -89,8 +87,6 @@ struct SQLImportTransactionTests {
         errorHandling: ImportErrorHandling,
         sink: RecordingSink
     ) async -> (any Error)? {
-        /// `settings` persists through plugin storage, so a test that writes it changes the
-        /// developer's own preference unless it puts the value back.
         let plugin = SQLImportPlugin()
         let original = plugin.settings
         defer { plugin.settings = original }
@@ -124,7 +120,6 @@ struct SQLImportTransactionTests {
         #expect(sink.calls.contains(.rollback) == false)
     }
 
-    /// The rollback would fail, and that failure would replace the statement error the user needs.
     @Test("Stop and commit still reports the statement that failed")
     func stopAndCommitReportsTheStatement() async throws {
         let sink = RecordingSink()
@@ -157,8 +152,6 @@ struct SQLImportTransactionTests {
         #expect(sink.calls.contains(.commit) == false)
     }
 
-    /// The rows are in the database. Telling the user the import failed invites a re-run and a
-    /// second copy of every row.
     @Test("A committed import is not failed by the foreign key restore")
     func committedImportSurvivesAFailedForeignKeyRestore() async {
         let sink = RecordingSink()
@@ -171,5 +164,19 @@ struct SQLImportTransactionTests {
         #expect(error == nil)
         #expect(sink.calls.contains(.commit))
         #expect(sink.calls.contains(.rollback) == false)
+    }
+}
+
+
+extension SQLImportTransactionTests {
+    @Test("Cancellation is never swallowed by Skip and Continue", arguments: [false, true])
+    func skipDoesNotSwallowCancellation(taskCancellation: Bool) async {
+        let sink = RecordingSink()
+        sink.cancellation = taskCancellation ? CancellationError() : PluginImportCancellationError()
+        let error = await runImport(["INSERT INTO t VALUES (1)", "INSERT INTO t VALUES (2)"],
+                                    errorHandling: .skipAndContinue, sink: sink)
+        #expect(error is PluginImportCancellationError || error is CancellationError)
+        #expect(sink.executed == 1)
+        #expect(!sink.calls.contains(.commit))
     }
 }

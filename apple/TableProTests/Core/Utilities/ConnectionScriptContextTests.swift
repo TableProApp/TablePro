@@ -45,6 +45,19 @@ struct ConnectionScriptContextTests {
         #expect(context.port == 5_439)
     }
 
+    @Test("A DuckDB Remote row reports the server its fields name, not the Host placeholder")
+    func duckdbRemoteReportsItsServer() {
+        let connection = DatabaseConnection(
+            name: "Quack", host: "localhost", port: 9_494, type: .duckdb,
+            additionalFields: ["duckdbMode": "remote", "duckdbHost": "quack.internal", "duckdbPort": "9500"]
+        )
+
+        let context = ConnectionScriptContext(connection: connection)
+
+        #expect(context.host == "quack.internal")
+        #expect(context.port == 9_500)
+    }
+
     @Test("Each value reaches bash as one literal word however the placeholder is quoted", arguments: [
         "printf '%s|' {host} {port}",
         "printf '%s|' \"{host}\" \"{port}\"",

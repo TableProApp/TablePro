@@ -69,7 +69,7 @@ internal struct QueryTabFilterPanel: View {
             enumValuesByColumn: enumValuesByColumn,
             fieldPaths: fieldPaths,
             valueCompletionKeywords: isSQLDialect ? Self.sqlKeywords : [],
-            offersRawFilter: true,
+            offersRawFilter: PluginManager.shared.supportsRawFilter(for: databaseType),
             rawFilterLabel: rawFilterLabel,
             rawSQLCompletionProvider: rawSQLCompletionProvider,
             caseMatching: .engine(PluginManager.shared.caseSensitivityStyle(for: databaseType)),

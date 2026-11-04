@@ -72,6 +72,7 @@ crates/app/src/services/duplicate_name.rs
 crates/app/src/services/file_location.rs
 crates/app/src/services/file_location_kind.rs
 crates/app/src/services/file_resolution.rs
+crates/app/src/services/foreign_import.rs
 crates/app/src/services/grid/cell_editability.rs
 crates/app/src/services/grid/cell_editor_kind.rs
 crates/app/src/services/grid/cell_filter.rs
@@ -97,6 +98,7 @@ crates/app/src/services/grid/test_columns.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_preferences.rs
 crates/app/src/services/history_service.rs
+crates/app/src/services/library_outline.rs
 crates/app/src/services/mcp_service.rs
 crates/app/src/services/mcp_status.rs
 crates/app/src/services/mod.rs
@@ -436,18 +438,27 @@ crates/app/src/ui/host_key_failure.rs
 crates/app/src/ui/host_key_review.rs
 crates/app/src/ui/icons.rs
 crates/app/src/ui/import_dialog.rs
+crates/app/src/ui/import_from_app/imp.rs
+crates/app/src/ui/import_from_app/mod.rs
+crates/app/src/ui/import_from_app/tests.rs
+crates/app/src/ui/import_from_app/wording.rs
 crates/app/src/ui/import_preview.rs
 crates/app/src/ui/key_tab/key_summary.rs
 crates/app/src/ui/key_tab/mod.rs
 crates/app/src/ui/key_tab/tests.rs
+crates/app/src/ui/library_drag.rs
 crates/app/src/ui/menu_label.rs
 crates/app/src/ui/mod.rs
 crates/app/src/ui/name_entry.rs
 crates/app/src/ui/picker/connection_menu.rs
 crates/app/src/ui/picker/connection_row.rs
+crates/app/src/ui/picker/delete_group_dialog.rs
+crates/app/src/ui/picker/group_menu.rs
+crates/app/src/ui/picker/library_node.rs
 crates/app/src/ui/picker/mod.rs
 crates/app/src/ui/picker/new_group_dialog.rs
 crates/app/src/ui/picker/picker_actions.rs
+crates/app/src/ui/picker/rename_group_dialog.rs
 crates/app/src/ui/picker/tests.rs
 crates/app/src/ui/plain_toast.rs
 crates/app/src/ui/preferences_dialog/ai_page.rs
@@ -474,6 +485,7 @@ crates/app/src/ui/session_window/connecting_page.rs
 crates/app/src/ui/session_window/connections.rs
 crates/app/src/ui/session_window/file_location_dialog.rs
 crates/app/src/ui/session_window/imp.rs
+crates/app/src/ui/session_window/import_from_app.rs
 crates/app/src/ui/session_window/launch_notice.rs
 crates/app/src/ui/session_window/locate_file.rs
 crates/app/src/ui/session_window/mod.rs
@@ -501,6 +513,7 @@ crates/app/src/ui/shell/primary_menu_button.rs
 crates/app/src/ui/source_dialog.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
+crates/app/src/ui/store_sync.rs
 crates/app/src/ui/structure_tab/character_set_choices.rs
 crates/app/src/ui/structure_tab/character_set_fetch.rs
 crates/app/src/ui/structure_tab/column_handlers.rs
@@ -587,7 +600,6 @@ crates/app/src/ui/workspace/sidebar/sidebar_model.rs
 crates/app/src/ui/workspace/sidebar/sidebar_object.rs
 crates/app/src/ui/workspace/sidebar/sidebar_object_imp.rs
 crates/app/src/ui/workspace/sidebar/sidebar_view.rs
-crates/app/src/ui/workspace/sidebar/store_sync.rs
 crates/app/src/ui/workspace/sidebar/tests.rs
 crates/app/src/ui/workspace/sidebar/tree_menu.rs
 crates/app/src/ui/workspace/sidebar/tree_node.rs
@@ -707,6 +719,7 @@ data/resources/ui/filter-strip.ui
 data/resources/ui/find-bar.ui
 data/resources/ui/history-dialog.ui
 data/resources/ui/history-row.ui
+data/resources/ui/import-from-app-dialog.ui
 data/resources/ui/pager-bar.ui
 data/resources/ui/pending-changes-bar.ui
 data/resources/ui/picker-page.ui

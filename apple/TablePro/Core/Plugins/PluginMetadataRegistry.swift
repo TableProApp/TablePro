@@ -99,6 +99,10 @@ struct PluginMetadataSnapshot: Sendable {
         var supportsColumnSort: Bool = true
         /// Whether filters can ask for rows matching any one of several conditions. CQL has no `OR`.
         var supportsMatchAnyFilters: Bool = true
+        /// Whether a filter row can hold a condition written in the engine's own query language. A
+        /// driver that answers one with an error, such as etcd or DynamoDB, or reads it as a column
+        /// name, is not offered the row at all.
+        var supportsRawFilter: Bool = true
         /// Whether a table's columns are a sample of its rows rather than a declared schema. A
         /// MongoDB collection lists the fields found in its first documents, so a field missing from
         /// one side's list says nothing about whether that side holds it.
@@ -116,6 +120,17 @@ struct PluginMetadataSnapshot: Sendable {
         /// for the types that open one. Nil for every driver that reaches its database over the
         /// network, which is what makes it the test for "can this connection name a remote file".
         var localFilePathField: LocalFilePathField?
+
+        /// The plugin fields that name the server, for a type the built-in Host and Port do not
+        /// reach. Nil for every type whose driver dials `config.host`, which is what keeps a tunnel
+        /// forwarding and rewriting the built-in endpoint there.
+        var serverEndpointFields: ServerEndpointFields?
+
+        /// Fields a driver older than this app ignores to the user's cost. A connection that sets one
+        /// away from its default, while it is in use, is refused when the loaded driver does not
+        /// declare it: DuckDB's SSL Mode read by a driver from before it existed would connect as
+        /// Automatic, which is plain HTTP on a loopback host, however the user set it.
+        var fieldsRequiringDriverSupport: [String] = []
 
         /// The extensions a new database file can be named with, the first one preferred. Empty
         /// when the driver refuses a path with nothing at it, as Beancount does, so the form offers
@@ -621,6 +636,14 @@ final class PluginMetadataRegistry: @unchecked Sendable {
     ///
     /// This is the only way to read a snapshot for a `DatabaseType`. `pluginTypeId` answers a
     /// different question, "which plugin serves this type", and belongs to driver lookup alone.
+    /// The entry the app ships for a type, kept after a plugin registers over it: what a driver
+    /// built with this app declares, against which an older loaded driver can be told apart.
+    func curatedSnapshot(for databaseType: DatabaseType) -> PluginMetadataSnapshot? {
+        lock.lock()
+        defer { lock.unlock() }
+        return defaultSnapshots[databaseType.rawValue]
+    }
+
     func snapshot(for databaseType: DatabaseType) -> PluginMetadataSnapshot? {
         lock.lock()
         defer { lock.unlock() }
@@ -793,11 +816,14 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 exactRowCountIsFullScan: existingSnapshot?.capabilities.exactRowCountIsFullScan ?? false,
                 supportsColumnSort: existingSnapshot?.capabilities.supportsColumnSort ?? true,
                 supportsMatchAnyFilters: existingSnapshot?.capabilities.supportsMatchAnyFilters ?? true,
+                supportsRawFilter: existingSnapshot?.capabilities.supportsRawFilter ?? true,
                 columnsAreSampled: existingSnapshot?.capabilities.columnsAreSampled ?? false,
                 patternFiltersReadAnyColumn: existingSnapshot?.capabilities.patternFiltersReadAnyColumn ?? false,
                 filtersTypedByReadRows: existingSnapshot?.capabilities.filtersTypedByReadRows ?? false,
                 isEngineReadOnly: existingSnapshot?.capabilities.isEngineReadOnly ?? false,
                 localFilePathField: existingSnapshot?.capabilities.localFilePathField,
+                serverEndpointFields: existingSnapshot?.capabilities.serverEndpointFields,
+                fieldsRequiringDriverSupport: existingSnapshot?.capabilities.fieldsRequiringDriverSupport ?? [],
                 newDatabaseFileExtensions: existingSnapshot?.capabilities.newDatabaseFileExtensions ?? [],
                 supportsRemoteDatabaseFile: existingSnapshot?.capabilities
                     .supportsRemoteDatabaseFile ?? false,

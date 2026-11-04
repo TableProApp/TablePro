@@ -25,6 +25,7 @@ Summary:        Work with your databases
 License:        %{shrink:
     AGPL-3.0-or-later AND
     CC0-1.0 AND
+    (0BSD OR Apache-2.0 OR MIT) AND
     Apache-2.0 AND
     (Apache-2.0 OR Apache-2.0 WITH LLVM-exception OR MIT) AND
     (Apache-2.0 OR BSD-2-Clause OR MIT) AND

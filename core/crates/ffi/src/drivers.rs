@@ -1,4 +1,6 @@
-use tablepro_core::{DataModel, DatabaseDriver, DriverRegistry, EndpointKind, EngineCategory};
+use tablepro_core::{AuthMode, DataModel, DatabaseDriver, DriverRegistry, EndpointKind, EngineCategory, TlsMode};
+
+use crate::library::TlsModeTag;
 
 #[cfg(not(feature = "engines"))]
 pub(crate) fn registry() -> DriverRegistry {
@@ -31,6 +33,9 @@ pub struct DriverInfo {
     pub data_model: DataModelTag,
     pub category: EngineCategoryTag,
     pub endpoint: EndpointInfo,
+    pub supported_tls_modes: Vec<TlsModeTag>,
+    pub supports_integrated_auth: bool,
+    pub supports_client_identity: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -87,6 +92,19 @@ impl DriverInfo {
                 DataModel::Document => DataModelTag::Document,
             },
             category: driver.category().into(),
+            supported_tls_modes: capabilities.tls.map_or_else(Vec::new, |tls| {
+                tls.modes
+                    .iter()
+                    .map(|mode| match mode {
+                        TlsMode::Disable => TlsModeTag::Disable,
+                        TlsMode::Require => TlsModeTag::Require,
+                        TlsMode::VerifyFull => TlsModeTag::VerifyFull,
+                        TlsMode::Strict => TlsModeTag::Strict,
+                    })
+                    .collect()
+            }),
+            supports_integrated_auth: capabilities.supports(AuthMode::Kerberos),
+            supports_client_identity: capabilities.tls.is_some_and(|tls| tls.client_identity),
             endpoint: match &capabilities.endpoint {
                 EndpointKind::Network { default_port } => EndpointInfo::Network {
                     default_port: *default_port,
@@ -143,6 +161,26 @@ mod tests {
         assert_eq!(category("clickhouse"), Some(EngineCategoryTag::Analytical));
         assert_eq!(category("duckdb"), Some(EngineCategoryTag::Analytical));
         assert_eq!(category("cassandra"), Some(EngineCategoryTag::WideColumn));
+    }
+
+    #[test]
+    fn the_form_gets_each_drivers_tls_and_login_capabilities() {
+        for driver in registry().iter() {
+            let info = DriverInfo::of(driver.as_ref());
+            assert_eq!(
+                info.supported_tls_modes.contains(&TlsModeTag::Strict),
+                driver.id() == "mssql"
+            );
+            assert_eq!(
+                info.supports_integrated_auth,
+                driver.capabilities().supports(AuthMode::Kerberos)
+            );
+        }
+        assert!(
+            DriverInfo::of(&tablepro_driver_sqlite::SqliteDriver)
+                .supported_tls_modes
+                .is_empty()
+        );
     }
 
     #[test]

@@ -96,8 +96,13 @@ final class RowDetailViewModel {
 
     private var currentLocator: RowLocator? {
         RowLocator.locate(
-            cells: cells(at: currentIndex), columns: columns, columnDetails: columnDetails, identity: rowIdentity
+            cells: cells(at: currentIndex), columns: columns, columnDetails: columnDetails, identity: rowIdentity,
+            documentLocator: documentLocator(at: currentIndex)
         )
+    }
+
+    private func documentLocator(at index: Int) -> String? {
+        rows.indices.contains(index) ? rows[index].locator : nil
     }
 
     private func primaryKeyValues(at rowIndex: Int) -> [(column: String, value: String)]? {
@@ -508,9 +513,10 @@ final class RowDetailViewModel {
         guard rowIdentity == .keyColumns, let loadFullValueProvider, let table,
               let pkValues = primaryKeyValues(at: rowIndex) else { return nil }
         let keys = pkValues.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
+        let locator = documentLocator(at: rowIndex)
         var stored: [Int: Cell] = [:]
         for index in columnIndices {
-            let ref = CellRef(table: table.name, column: columns[index].name, primaryKey: keys)
+            let ref = CellRef(table: table.name, column: columns[index].name, primaryKey: keys, locator: locator)
             stored[index] = try await loadFullValueProvider(ref).map { Cell.text($0) } ?? .null
         }
         return stored
@@ -539,7 +545,7 @@ final class RowDetailViewModel {
         let cells = rows[rowIndex].cells.enumerated().map { index, cell in
             savedCells[index] ?? cell
         }
-        rows[rowIndex] = Row(cells: cells)
+        rows[rowIndex] = Row(cells: cells, locator: rows[rowIndex].locator)
         let overrides = (fullValueOverrides[rowIndex] ?? [:]).filter { savedCells[$0.key] == nil }
         fullValueOverrides[rowIndex] = overrides.isEmpty ? nil : overrides
     }

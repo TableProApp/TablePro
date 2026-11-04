@@ -17,7 +17,6 @@ mod sidebar_model;
 mod sidebar_object;
 mod sidebar_object_imp;
 mod sidebar_view;
-mod store_sync;
 #[cfg(test)]
 pub(crate) mod tests;
 mod tree_menu;

@@ -27,12 +27,14 @@ struct DataFileFilterPanel: View {
 extension DataFileController: FilterPanelActions {
     func clearAppliedFiltersAndReload() {
         filterState.commit = nil
+        filterState.adoptAppliedFiltersAsRunning()
         runQuery()
     }
 
     func removeAllFiltersAndReload() {
         filterState.filters = []
         filterState.commit = nil
+        filterState.adoptAppliedFiltersAsRunning()
         runQuery()
     }
 

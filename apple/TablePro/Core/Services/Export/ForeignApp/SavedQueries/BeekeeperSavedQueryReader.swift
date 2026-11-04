@@ -12,6 +12,9 @@ enum BeekeeperSavedQueryReader {
 
     private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+    // The blanks `count` trims in SQL, so the two agree on what a blank query is.
+    private static let countedBlanks = CharacterSet(charactersIn: " \t\n\r")
+
     private struct Folder {
         let name: String
         let parentId: Int?
@@ -45,7 +48,7 @@ enum BeekeeperSavedQueryReader {
             let content: ForeignSavedQuery.Content
             if byteCount > limit {
                 content = .oversized(byteCount: byteCount)
-            } else if let sql = text(statement, 1), !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            } else if let sql = text(statement, 1), !sql.trimmingCharacters(in: countedBlanks).isEmpty {
                 content = .text(sql)
             } else {
                 continue

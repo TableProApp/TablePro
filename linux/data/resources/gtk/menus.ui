@@ -9,6 +9,10 @@
         <attribute name="action">win.new-connection</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">New _Group…</attribute>
+        <attribute name="action">win.new-group</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">New _Window</attribute>
         <attribute name="action">app.new-window</attribute>
       </item>
@@ -38,6 +42,10 @@
       <item>
         <attribute name="label" translatable="yes">_Import Connections…</attribute>
         <attribute name="action">win.import-connections</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Import f_rom Another App…</attribute>
+        <attribute name="action">win.import-from-app</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Export Connections…</attribute>

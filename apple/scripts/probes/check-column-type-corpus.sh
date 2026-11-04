@@ -182,7 +182,8 @@ for shared in PluginConnectTimeout PluginQueryTimeout PluginURLSessionTaskBox; d
 done
 
 dependencies='.product(name: "TableProPluginKit", package: "TableProCore"),
-                .product(name: "TableProSQLGrammar", package: "TableProCore"),'
+                .product(name: "TableProSQLGrammar", package: "TableProCore"),
+                .product(name: "TableProProcess", package: "TableProCore"),'
 for product in $PRODUCTS; do
     dependencies="$dependencies
                 .product(name: \"$product\", package: \"TableProCore\"),"

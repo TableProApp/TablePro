@@ -40,6 +40,9 @@ impl ClientTls {
         let roots = match tls.mode {
             TlsMode::VerifyFull => Some(tablepro_net::tls::ca_bundle_pem(tls).map_err(crate::endpoint::setup_error)?),
             TlsMode::Disable | TlsMode::Require => None,
+            TlsMode::Strict => {
+                return Err(DriverError::Config(tablepro_core::ConfigError::UnsupportedTlsMode));
+            }
         };
         let identity = match tablepro_net::tls::client_identity_pem(tls).map_err(crate::endpoint::setup_error)? {
             Some(pem) => {

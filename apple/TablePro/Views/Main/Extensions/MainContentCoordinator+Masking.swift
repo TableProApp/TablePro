@@ -17,6 +17,10 @@ extension MainContentCoordinator {
         return maskingPolicy.columnMasks(table: table, columns: columns, columnTypes: columnTypes)
     }
 
+    func exportMaskingPolicy(forTabId tabId: UUID) -> MaskingPolicy {
+        tabManager.tabs.first(where: { $0.id == tabId })?.revealsMaskedValues == true ? .none : maskingPolicy
+    }
+
     func observeMaskingRuleChanges() -> AnyCancellable {
         services.appEvents.connectionUpdated
             .filter { [connectionId] changed in changed == nil || changed == connectionId }
@@ -33,11 +37,11 @@ extension MainContentCoordinator {
         for tab in tabManager.tabs where !tab.revealsMaskedValues {
             let table = tab.tabType == .table ? tab.tableContext.tableName : nil
             mutateActiveTableRows(for: tab.id) { rows in
-                rows.addMasks(policy.columnMasks(table: table, columns: rows.columns, columnTypes: rows.columnTypes))
+                rows.addMasks(policy.columnMasks(table: table, columns: rows.columns, columnTypes: rows.columnTypes), policy: policy, table: table)
             }
             for resultSet in tab.display.resultSets {
                 let rows = resultSet.tableRows
-                resultSet.tableRows.addMasks(policy.columnMasks(table: nil, columns: rows.columns, columnTypes: rows.columnTypes))
+                resultSet.tableRows.addMasks(policy.columnMasks(table: nil, columns: rows.columns, columnTypes: rows.columnTypes), policy: policy)
             }
         }
     }

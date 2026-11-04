@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="shared_new" uuid="bbbbbbbb-0000-4000-8000-000000000002">
+      <driver-ref>mysql.8</driver-ref>
+      <jdbc-url>jdbc:mysql://new.example.com:3306/shop</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="flatpak_only" uuid="cccccccc-0000-4000-8000-000000000003">
+      <driver-ref>clickhouse</driver-ref>
+      <jdbc-url>jdbc:clickhouse://ch.example.com:8123/metrics</jdbc-url>
+    </data-source>
+  </component>
+</application>

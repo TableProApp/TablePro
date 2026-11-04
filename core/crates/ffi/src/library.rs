@@ -20,6 +20,7 @@ pub enum TlsModeTag {
     Disable,
     Require,
     VerifyFull,
+    Strict,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -536,12 +537,13 @@ fn path(text: Option<&String>) -> Option<PathBuf> {
 fn tls_config(settings: &TlsSettings) -> TlsConfig {
     let mut config = match settings.mode {
         TlsModeTag::Disable => TlsConfig::disabled(),
-        TlsModeTag::Require | TlsModeTag::VerifyFull => TlsConfig::verify_full(),
+        TlsModeTag::Require | TlsModeTag::VerifyFull | TlsModeTag::Strict => TlsConfig::verify_full(),
     };
     config.mode = match settings.mode {
         TlsModeTag::Disable => TlsMode::Disable,
         TlsModeTag::Require => TlsMode::Require,
         TlsModeTag::VerifyFull => TlsMode::VerifyFull,
+        TlsModeTag::Strict => TlsMode::Strict,
     };
     config.ca_file = path(settings.ca_file.as_ref());
     config.client_identity = match (
@@ -609,6 +611,7 @@ impl From<&SavedConnection> for ConnectionRecord {
                     TlsMode::Disable => TlsModeTag::Disable,
                     TlsMode::Require => TlsModeTag::Require,
                     TlsMode::VerifyFull => TlsModeTag::VerifyFull,
+                    TlsMode::Strict => TlsModeTag::Strict,
                 },
                 ca_file: saved.tls.ca_file.as_deref().map(shown),
                 client_certificate: saved

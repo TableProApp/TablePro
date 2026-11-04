@@ -91,7 +91,7 @@ Each slice ships when all of these pass:
 - **Bindings**: `apple/scripts/build-core.sh` then `swift test --package-path apple/Packages/TableProFFI`, which `core.yml` runs on macOS.
 - **App**: the app's existing suites for the store a slice replaces pass unchanged against the core, with new tests for the Swift side's adapter, and `ProductionSchemaParityTests` shows no new CloudKit field.
 
-Local verification on 2026-11-04 built both macOS architectures with Rust 1.98. The universal archive was 44,684,712 bytes (about 43 MiB), and its highest recorded minimum OS was macOS 13.0. The package linked with its declared system libraries and passed all three Swift tests on Apple silicon. The Foundation ordering probe passed all 16 pairs.
+Local verification on 2026-11-04 built both macOS architectures with Rust 1.98. The universal archive was 44,703,568 bytes (about 43 MiB), and its highest recorded minimum OS was macOS 13.0. The package linked with its declared system libraries and passed all three Swift tests on Apple silicon. The Foundation ordering probe passed all 16 pairs.
 
 ## Alternatives considered
 

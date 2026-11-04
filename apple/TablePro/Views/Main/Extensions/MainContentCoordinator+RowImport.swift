@@ -24,7 +24,7 @@ internal extension MainContentCoordinator {
             databaseType: connection.type,
             connectionName: connection.name,
             safeModeLevel: safeModeLevel,
-            isPresentingSheet: activeSheet != nil || workspaceWindow?.attachedSheet != nil,
+            isPresentingSheet: isPresentingSheet,
             lookup: importFormatLookup
         )
     }
@@ -94,7 +94,7 @@ internal extension MainContentCoordinator {
         releaseImportFile()
     }
 
-    private var workspaceWindow: NSWindow? {
+    var workspaceWindow: NSWindow? {
         guard let splitViewController, splitViewController.isViewLoaded else { return contentWindow }
         return splitViewController.view.window ?? contentWindow
     }

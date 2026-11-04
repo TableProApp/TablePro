@@ -21,14 +21,17 @@ struct KdbxEntry {
     let password: String
 }
 
-/// Reader for the KDBX 3.1 file (`c.kdbx`) that JetBrains IDEs write with their
-/// own `com.intellij.credentialStore` implementation. Decryption is AES-KDF
-/// (iterated AES-256-ECB) plus AES-256-CBC, so CommonCrypto is sufficient.
+// The KDBX 3.1 file (`c.kdbx`) JetBrains IDEs write: AES-KDF, an AES-256-CBC body, optionally gzipped XML.
 enum KdbxDatabase {
     private static let logger = Logger(subsystem: "com.TablePro", category: "KdbxDatabase")
 
     private static let sig1: UInt32 = 0x9AA2_D903
     private static let sig2: UInt32 = 0xB54B_FB67
+
+    // Far above what the IDE writes, and a second or two of work at most, so a crafted file cannot
+    // hold the import for good.
+    static let maximumTransformRounds: UInt64 = 50_000_000
+    static let maximumBodyByteCount = ForeignAppFile.maximumByteCount
 
     private struct Header {
         var mainSeed: [UInt8] = []
@@ -70,17 +73,18 @@ enum KdbxDatabase {
     private static func parseHeader(_ data: [UInt8]) throws -> (Header, Int) {
         guard data.count > 12,
               readUInt32LE(data, 0) == sig1,
-              readUInt32LE(data, 4) == sig2 else {
+              readUInt32LE(data, 4) == sig2,
+              let version = readUInt32LE(data, 8) else {
             throw KdbxError.malformedHeader
         }
-        let version = readUInt32LE(data, 8)
         guard (version & 0xFFFF_0000) <= 0x0003_0000 else { throw KdbxError.unsupportedVersion }
 
         var header = Header()
         var pos = 12
         while pos + 3 <= data.count {
             let fieldType = data[pos]
-            let length = Int(readUInt16LE(data, pos + 1))
+            guard let rawLength = readUInt16LE(data, pos + 1) else { throw KdbxError.malformedHeader }
+            let length = Int(rawLength)
             pos += 3
             guard pos + length <= data.count else { throw KdbxError.malformedHeader }
             let field = Array(data[pos..<pos + length])
@@ -88,23 +92,30 @@ enum KdbxDatabase {
 
             switch fieldType {
             case 0: return (header, pos)
-            case 3: header.compression = readUInt32LE(field, 0)
+            case 3: header.compression = try numeric(readUInt32LE(field, 0))
             case 4: header.mainSeed = field
             case 5: header.transformSeed = field
-            case 6: header.transformRounds = readUInt64LE(field, 0)
+            case 6: header.transformRounds = try numeric(readUInt64LE(field, 0))
             case 7: header.encryptionIV = field
             case 8: header.protectedStreamKey = field
             case 9: header.streamStartBytes = field
-            case 10: header.innerStreamID = readUInt32LE(field, 0)
+            case 10: header.innerStreamID = try numeric(readUInt32LE(field, 0))
             default: break
             }
         }
         throw KdbxError.malformedHeader
     }
 
+    // A numeric field shorter than its type is malformed, not read past its end.
+    private static func numeric<Value>(_ value: Value?) throws -> Value {
+        guard let value else { throw KdbxError.malformedHeader }
+        return value
+    }
+
     // MARK: - Key Derivation
 
     private static func deriveFinalKey(header: Header, mainKey: [UInt8]) throws -> [UInt8] {
+        guard header.transformRounds <= maximumTransformRounds else { throw KdbxError.malformedHeader }
         let composite = sha256(sha256(mainKey))
         guard let transformed = aesKdf(
             input: composite,
@@ -150,7 +161,8 @@ enum KdbxDatabase {
         var pos = 0
         while pos + 40 <= data.count {
             let hashStart = pos + 4
-            let size = Int(readUInt32LE(data, pos + 36))
+            guard let rawSize = readUInt32LE(data, pos + 36) else { return nil }
+            let size = Int(rawSize)
             pos += 40
             if size == 0 { return result }
             guard pos + size <= data.count else { return nil }
@@ -186,7 +198,7 @@ enum KdbxDatabase {
         if var activeCipher = cipher, let valueNodes = try? document.nodes(forXPath: "//Value") {
             for node in valueNodes {
                 guard let element = node as? XMLElement,
-                      (element.attribute(forName: "Protected")?.stringValue ?? "").lowercased() == "true",
+                      isProtected(element),
                       let encoded = element.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
                       let data = Data(base64Encoded: encoded) else { continue }
                 let plain = activeCipher.process([UInt8](data))
@@ -214,11 +226,22 @@ enum KdbxDatabase {
             case "Title": title = valueElement.stringValue ?? ""
             case "UserName": userName = valueElement.stringValue ?? ""
             case "Password":
-                password = decryptedValues[ObjectIdentifier(valueElement)] ?? (valueElement.stringValue ?? "")
+                if let decrypted = decryptedValues[ObjectIdentifier(valueElement)] {
+                    password = decrypted
+                } else if !isProtected(valueElement) {
+                    password = valueElement.stringValue ?? ""
+                } else {
+                    // A protected value that did not decrypt is ciphertext, never a password.
+                    password = ""
+                }
             default: break
             }
         }
         return KdbxEntry(title: title, userName: userName, password: password)
+    }
+
+    private static func isProtected(_ value: XMLElement) -> Bool {
+        (value.attribute(forName: "Protected")?.stringValue ?? "").lowercased() == "true"
     }
 
     // MARK: - Crypto Primitives
@@ -258,27 +281,39 @@ enum KdbxDatabase {
 
     // MARK: - GZIP
 
+    private struct BodyTooLarge: Error {}
+
     private static func gunzip(_ data: [UInt8]) -> [UInt8]? {
-        guard let inflated = try? GzipInflater.decompress(Data(data)) else { return nil }
-        return [UInt8](inflated)
+        var inflated: [UInt8] = []
+        do {
+            try GzipInflater.decompress(Data(data)) { chunk in
+                guard inflated.count + chunk.count <= maximumBodyByteCount else { throw BodyTooLarge() }
+                inflated.append(contentsOf: chunk)
+            }
+        } catch {
+            return nil
+        }
+        return inflated
     }
 
     // MARK: - Little-Endian Readers
 
-    private static func readUInt16LE(_ data: [UInt8], _ index: Int) -> UInt16 {
-        UInt16(data[index]) | (UInt16(data[index + 1]) << 8)
+    private static func readUInt16LE(_ data: [UInt8], _ index: Int) -> UInt16? {
+        readLittleEndian(data, index, byteCount: 2).map { UInt16($0) }
     }
 
-    private static func readUInt32LE(_ data: [UInt8], _ index: Int) -> UInt32 {
-        UInt32(data[index])
-            | (UInt32(data[index + 1]) << 8)
-            | (UInt32(data[index + 2]) << 16)
-            | (UInt32(data[index + 3]) << 24)
+    private static func readUInt32LE(_ data: [UInt8], _ index: Int) -> UInt32? {
+        readLittleEndian(data, index, byteCount: 4).map { UInt32($0) }
     }
 
-    private static func readUInt64LE(_ data: [UInt8], _ index: Int) -> UInt64 {
+    private static func readUInt64LE(_ data: [UInt8], _ index: Int) -> UInt64? {
+        readLittleEndian(data, index, byteCount: 8)
+    }
+
+    private static func readLittleEndian(_ data: [UInt8], _ index: Int, byteCount: Int) -> UInt64? {
+        guard index >= 0, index + byteCount <= data.count else { return nil }
         var value: UInt64 = 0
-        for offset in 0..<8 {
+        for offset in 0..<byteCount {
             value |= UInt64(data[index + offset]) << (8 * offset)
         }
         return value

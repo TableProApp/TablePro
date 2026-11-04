@@ -171,11 +171,13 @@ final class WritePolicyRig {
 
     // Not live: only the auth policy knows the connection, so a call the gates pass stops at the tool's lookup.
     // `executionGate` replaces the recording Safe Mode gate when a test reads what the gate was asked.
+    // `sessionDriver` replaces the plugin driver, for a test that runs SQL Server scripts.
     init(
         connection: DatabaseConnection,
         prompts: WritePolicyPrompts,
         live: Bool,
-        executionGate: (any ExecutionGate)? = nil
+        executionGate: (any ExecutionGate)? = nil,
+        sessionDriver: (any DatabaseDriver)? = nil
     ) {
         self.connection = connection
         self.prompts = prompts
@@ -212,7 +214,7 @@ final class WritePolicyRig {
         ConnectionStorage.shared.saveConnections(saved + [connection])
         let session = ConnectionSession(
             connection: connection,
-            driver: PluginDriverAdapter(connection: connection, pluginDriver: driver)
+            driver: sessionDriver ?? PluginDriverAdapter(connection: connection, pluginDriver: driver)
         )
         DatabaseManager.shared.injectSession(session, for: connection.id)
     }

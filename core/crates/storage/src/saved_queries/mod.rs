@@ -99,6 +99,48 @@ impl SavedQueries {
         Ok(SaveOutcome { id, replaced })
     }
 
+    // An import never overwrites what the user saved, even when another window saves the same
+    // name between the import's look and its write. `None` when the name is taken.
+    pub async fn save_if_new(&self, query: NewSavedQuery) -> Result<Option<i64>, StorageError> {
+        let name = query.name.trim();
+        if name.is_empty() {
+            return Err(StorageError::EmptyName);
+        }
+        if name.chars().count() > MAX_NAME_CHARS {
+            return Err(StorageError::TooLarge {
+                got: name.chars().count(),
+                limit: MAX_NAME_CHARS,
+            });
+        }
+        if query.query.len() > MAX_QUERY_BYTES {
+            return Err(StorageError::TooLarge {
+                got: query.query.len(),
+                limit: MAX_QUERY_BYTES,
+            });
+        }
+        let now = to_unix(SystemTime::now());
+        let inserted = sqlx::query(
+            r#"
+            INSERT INTO saved_queries (name, query, connection_id, connection_name, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (connection_id, name) DO NOTHING
+            RETURNING id
+            "#,
+        )
+        .bind(name)
+        .bind(&query.query)
+        .bind(query.connection_id.to_string())
+        .bind(&query.connection_name)
+        .bind(now)
+        .bind(now)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(match inserted {
+            Some(row) => Some(row.try_get("id")?),
+            None => None,
+        })
+    }
+
     /// Everything saved against `connection`, or everything at all when
     /// no connection is given. Ordered by name, because the user
     /// looking for one knows what they called it.
@@ -242,6 +284,33 @@ mod tests {
         assert_eq!(saved.query, "SELECT 1");
         assert_eq!(saved.connection_id, connection);
         assert_eq!(saved.connection_name, "local");
+    }
+
+    #[tokio::test]
+    async fn saving_if_new_leaves_a_held_name_alone() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = store(&root).await;
+        let connection = Uuid::new_v4();
+
+        let first = store
+            .save_if_new(new_query("daily report", "SELECT 1", connection))
+            .await
+            .expect("save");
+        let second = store
+            .save_if_new(new_query("daily report", "SELECT 2", connection))
+            .await
+            .expect("save again");
+        let elsewhere = store
+            .save_if_new(new_query("daily report", "SELECT 3", Uuid::new_v4()))
+            .await
+            .expect("save on another connection");
+
+        assert!(first.is_some());
+        assert_eq!(second, None, "the held name was overwritten");
+        assert!(elsewhere.is_some());
+        let all = store.list(Some(connection)).await.expect("list");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].query, "SELECT 1");
     }
 
     #[tokio::test]

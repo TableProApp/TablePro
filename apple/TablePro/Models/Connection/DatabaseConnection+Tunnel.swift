@@ -66,13 +66,57 @@ extension DatabaseConnection {
             .connection.additionalConnectionFields ?? []
     }
 
-    /// Where a tunnel should forward to.
+    /// The plugin fields that hold the server this connection dials, while its settings use them.
+    var activeServerEndpointFields: ServerEndpointFields? {
+        PluginMetadataRegistry.shared.snapshot(for: type)?
+            .activeServerEndpointFields(forValues: additionalFields)
+    }
+
+    /// Whether a TCP forward can carry this connection's traffic. A type the registry does not
+    /// know keeps the tunnel it always opened. A server port its driver would refuse opens no tunnel:
+    /// the forward would be dialed at it first, and a value past `Int32` traps in the SSH channel, while
+    /// the driver refuses it with a message. The form keeps the transport, so a typo loses no settings.
+    var dialsForwardedEndpoint: Bool {
+        guard serverEndpointPortIsUsable else { return false }
+        return PluginMetadataRegistry.shared.snapshot(for: type)?
+            .dialsForwardedEndpoint(forValues: additionalFields) ?? true
+    }
+
+    /// The server the driver dials, as the person named it.
     ///
-    /// A tunnel carries one local port to one remote address, so a connection that names its
-    /// servers in a host list rather than in Host and Port has to nominate one of them: the first.
-    var tunnelForwardEndpoint: (host: String, port: Int) {
+    /// A DuckDB Remote row keeps it in its own fields while the built-in Host stays `localhost`,
+    /// so anything that names the server, forwards to it or diagnoses it reads this rather than
+    /// `host`. A connection that names its servers in a host list nominates the first, since a
+    /// tunnel carries one local port to one remote address.
+    var serverEndpoint: (host: String, port: Int) {
+        if let fields = activeServerEndpointFields {
+            return endpoint(inServerFields: fields)
+        }
         guard let first = firstHostListEntry?.endpoint else { return (host, port) }
         return (first.host, first.port)
+    }
+
+    var tunnelForwardEndpoint: (host: String, port: Int) {
+        serverEndpoint
+    }
+
+    /// Whether the server's port field holds a port the driver would dial: empty, which means the
+    /// field's default, or a number in range.
+    var serverEndpointPortIsUsable: Bool {
+        guard let fields = activeServerEndpointFields else { return true }
+        let typed = (additionalFields[fields.portFieldId] ?? "").trimmingCharacters(in: .whitespaces)
+        guard !typed.isEmpty else { return true }
+        guard let port = Int(typed) else { return false }
+        return (1...65_535).contains(port)
+    }
+
+    // An empty port means what its placeholder shows, as the driver reads it.
+    private func endpoint(inServerFields fields: ServerEndpointFields) -> (host: String, port: Int) {
+        let serverHost = (additionalFields[fields.hostFieldId] ?? "").trimmingCharacters(in: .whitespaces)
+        let typed = (additionalFields[fields.portFieldId] ?? "").trimmingCharacters(in: .whitespaces)
+        let declaredDefault = declaredConnectionFields.first { $0.id == fields.portFieldId }?.defaultValue
+        let serverPort = Int(typed) ?? declaredDefault.flatMap { Int($0) } ?? type.defaultPort
+        return (serverHost, serverPort)
     }
 
     /// An app that predates the form's normalizing stored rows as typed, so a row can still say

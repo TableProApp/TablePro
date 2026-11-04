@@ -83,8 +83,6 @@ impl DatabaseDriver for MssqlDriver {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use tablepro_core::{ConnectEnvironment, FileEndpoint, LivenessPolicy, WorkspaceSettings};
 
     use super::*;
@@ -98,7 +96,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_database_file_is_refused() {
-        let file = FileEndpoint::open_existing(PathBuf::from("/tmp/tablepro.db")).unwrap();
+        let file = FileEndpoint::open_existing(std::env::temp_dir().join("tablepro.db")).unwrap();
         let options = ConnectOptions {
             target: ConnectTarget::File(file),
             workspace_settings: WorkspaceSettings::workspace(false),

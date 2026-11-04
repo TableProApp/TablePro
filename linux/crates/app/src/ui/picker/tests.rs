@@ -1,18 +1,28 @@
 use std::rc::Rc;
 use std::time::Duration;
 
+use chrono::{TimeDelta, Utc};
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use tablepro_storage::{ConnectionListState, ConnectionStore, SavedConnection, StoragePaths};
+use tablepro_storage::{
+    ConnectionGroup, ConnectionGroupName, ConnectionList, ConnectionListState, ConnectionStore, SavedConnection,
+    StoragePaths,
+};
 use uuid::Uuid;
 
 use crate::runtime::AppRuntime;
+use crate::services::library_outline::{LibraryItem, LibraryMove, LibrarySection};
 use crate::services::saved_connection_list::SavedConnectionList;
-use crate::test_support::{descendants, drain_main_context, respond, test_runtime, wait_until};
+use crate::test_support::{
+    NestedLibrary, OwnedWindow, descendants, drain_main_context, respond, save_filed, saved_connection, test_runtime,
+    wait_until,
+};
 use crate::ui::delete_connection_dialog;
+use crate::ui::library_drag::LibraryDragItem;
+use crate::ui::picker::LibraryRow;
 use crate::ui::session_window::SessionWindow;
 use crate::ui::session_window::tests::{Script, TestWindow};
 use crate::ui::welcome_view::WelcomeView;
@@ -21,32 +31,16 @@ const WAIT: Duration = Duration::from_secs(10);
 
 fn connection(name: &str, group: Option<&str>) -> SavedConnection {
     SavedConnection {
-        id: Uuid::new_v4(),
-        name: name.to_owned(),
-        driver_id: "postgres".to_owned(),
-        host: "db".to_owned(),
-        port: 5432,
-        database: "app".to_owned(),
-        username: "postgres".to_owned(),
-        tls: tablepro_core::TlsConfig::verify_full(),
-        safe_mode: tablepro_core::SafeModeLevel::Off,
-        external_access: tablepro_core::ExternalAccess::ReadOnly,
-        ai_policy: tablepro_core::AiPolicy::Ask,
-        query_timeout_secs: None,
-        auth_mode: tablepro_core::AuthMode::Password,
-        ssh: None,
-        last_opened_at: None,
-        color: None,
         group_id: group.map(crate::test_support::group_id),
-        order: 0,
-        tags: Vec::new(),
-        icon: None,
-        options: Default::default(),
+        ..saved_connection(name)
     }
 }
 
-/// One connection store, the list that follows it, and two pickers on
-/// that list, as two windows have.
+fn group(name: &str) -> ConnectionGroup {
+    ConnectionGroup::new(ConnectionGroupName::new(name).expect("a group name"), None)
+}
+
+// Two pickers on one list, as two windows have.
 struct Pickers {
     runtime: AppRuntime,
     store: ConnectionStore,
@@ -75,7 +69,7 @@ impl Pickers {
         }
     }
 
-    /// Write as the connect dialog and a connect do: off the GTK thread.
+    // Off the GTK thread, as the connect dialog and a connect write.
     fn write(&self, write: impl FnOnce(&ConnectionStore) + Send + 'static) {
         let store = self.store.clone();
         let writing = self.runtime.tasks().spawn_blocking_task(move || write(&store));
@@ -86,6 +80,10 @@ impl Pickers {
 
     fn every_picker(&self, mut shows: impl FnMut(&[(String, Vec<String>)]) -> bool) -> bool {
         self.views.iter().all(|view| shows(&view.sections()))
+    }
+
+    fn show(&self, library: ConnectionList) {
+        self.list.apply(ConnectionListState::Ready(library));
     }
 }
 
@@ -106,6 +104,19 @@ fn rows(sections: &[(String, Vec<String>)]) -> Vec<String> {
     sections.iter().flat_map(|(_, rows)| rows.clone()).collect()
 }
 
+fn section(title: &str, rows: &[&str]) -> (String, Vec<String>) {
+    (title.to_owned(), rows.iter().map(|row| (*row).to_owned()).collect())
+}
+
+fn tag_names(view: &WelcomeView, title: &str) -> Vec<String> {
+    view.node(LibrarySection::Tree, title)
+        .unwrap_or_else(|| panic!("no row for {title}"))
+        .tags()
+        .into_iter()
+        .map(|tag| tag.name.as_str().to_owned())
+        .collect()
+}
+
 #[gtk4::test]
 fn connect_dialog_save_updates_every_picker() {
     let pickers = Pickers::new();
@@ -118,70 +129,141 @@ fn connect_dialog_save_updates_every_picker() {
 }
 
 #[gtk4::test]
-fn successful_connect_stamp_reorders_every_picker() {
+fn a_connect_stamp_moves_the_connection_into_recent_not_within_its_group() {
     let pickers = Pickers::new();
-    let (first, second) = (connection("Alpha", None), connection("Beta", None));
-    let stamped = second.id;
+    let (alpha, beta) = (connection("Alpha", Some("Work")), connection("Beta", Some("Work")));
+    let stamped = beta.id;
     pickers.write(move |store| {
-        store.upsert_blocking(first).expect("the save");
-        store.upsert_blocking(second).expect("the save");
+        save_filed(store, alpha);
+        save_filed(store, beta);
     });
+    let tree = section("Connections", &["Work", "  Alpha", "  Beta"]);
     wait_until(WAIT, || {
-        pickers.every_picker(|sections| rows(sections) == ["Alpha", "Beta"])
+        pickers.every_picker(|sections| sections == [tree.clone()].as_slice())
     })
-    .expect("both connections, by name");
+    .expect("both connections in the group, in the order they were saved");
 
     pickers.write(move |store| store.touch_last_opened_blocking(stamped).expect("the stamp"));
 
-    wait_until(WAIT, || {
-        pickers.every_picker(|sections| rows(sections) == ["Beta", "Alpha"])
-    })
-    .expect("the connection opened last to lead every picker");
+    let after = [section("Recent", &["Beta"]), tree.clone()];
+    wait_until(WAIT, || pickers.every_picker(|sections| sections == after.as_slice()))
+        .expect("the connection opened last in Recent, and its group as it was");
+    let recent = pickers.views[0]
+        .node(LibrarySection::Recent, "Beta")
+        .expect("Beta's Recent row");
+    assert!(recent.subtitle().ends_with(" · Work"), "{}", recent.subtitle());
 }
 
 #[gtk4::test]
-fn picker_renders_one_group_per_section() {
+fn nested_and_empty_groups_show_in_the_librarys_order() {
     let pickers = Pickers::new();
-    let (loose, a, b, c) = (
-        connection("loose", None),
-        connection("a", Some("Work")),
-        connection("b", Some("Work")),
-        connection("c", Some("R&D")),
+    let mut library = NestedLibrary::default();
+    library.connection("Zeta", None);
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    library.group("Empty", Some(staging));
+    library.group("Home", None);
+    library.connection("W1", Some(work));
+    library.connection("S1", Some(staging));
+    library.connection("Alpha", None);
+
+    pickers.show(library.list());
+
+    assert_eq!(
+        pickers.views[0].sections(),
+        [section(
+            "Connections",
+            &[
+                "Work",
+                "  Staging",
+                "    Empty",
+                "    S1",
+                "  W1",
+                "Home",
+                "Zeta",
+                "Alpha"
+            ]
+        )]
     );
-    pickers.list.apply(ready([loose, a.clone(), b, c]));
+    assert_eq!(pickers.views[0].visible_page().as_deref(), Some("list"));
+}
+
+#[gtk4::test]
+fn favourites_follow_the_librarys_order_and_recent_leaves_them_out() {
+    let pickers = Pickers::new();
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let a = library.connection("a", None);
+    library.add(SavedConnection {
+        last_opened_at: Some(Utc::now()),
+        ..saved_connection("b")
+    });
+    let c = library.add(SavedConnection {
+        last_opened_at: Some(Utc::now() - TimeDelta::hours(1)),
+        ..saved_connection("c")
+    });
+    let d = library.connection("d", Some(work));
+    for id in [c, d, a] {
+        library.favourite(id);
+    }
+
+    pickers.show(library.list());
+
+    assert_eq!(
+        pickers.views[0].sections(),
+        [
+            section("Favourites", &["c", "d", "a"]),
+            section("Recent", &["b"]),
+            section("Connections", &["Work", "  d", "a", "b", "c"]),
+        ]
+    );
+}
+
+#[gtk4::test]
+fn a_connection_outside_the_tree_names_its_groups_path() {
+    let pickers = Pickers::new();
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    let nested = library.connection("nested", Some(staging));
+    library.connection("filed", Some(work));
+    library.connection("loose", None);
+    library.favourite(nested);
+
+    pickers.show(library.list());
 
     let view = &pickers.views[0];
     assert_eq!(
         view.sections(),
         [
-            ("Connections".to_owned(), vec!["loose".to_owned()]),
-            ("R&amp;D".to_owned(), vec!["c".to_owned()]),
-            ("Work".to_owned(), vec!["a".to_owned(), "b".to_owned()]),
+            section("Favourites", &["nested"]),
+            section("Connections", &["Work", "  Staging", "    nested", "  filed", "loose"]),
         ]
     );
+    let favourite = view
+        .node(LibrarySection::Favourites, "nested")
+        .expect("the Favourites row");
+    let filed = view.node(LibrarySection::Tree, "nested").expect("the tree's row");
+    assert!(
+        favourite.subtitle().ends_with(" · Work / Staging"),
+        "{}",
+        favourite.subtitle()
+    );
+    assert!(!filed.subtitle().contains("Work / Staging"), "{}", filed.subtitle());
+    assert!(favourite.favourite() && filed.favourite());
+}
 
-    pickers.list.apply(ready([a, connection("d", None)]));
+#[gtk4::test]
+fn an_empty_group_alone_shows_the_list() {
+    let pickers = Pickers::new();
+    let mut library = NestedLibrary::default();
+    library.group("Archive", None);
 
-    assert_eq!(
-        view.sections(),
-        [
-            ("Connections".to_owned(), vec!["d".to_owned()]),
-            ("Work".to_owned(), vec!["a".to_owned()]),
-        ],
-        "a group with no connection left kept its section"
-    );
-    pickers.list.apply(ready([connection("e", Some("Work"))]));
-    assert_eq!(
-        view.sections(),
-        [("Work".to_owned(), vec!["e".to_owned()])],
-        "an empty ungrouped section stayed"
-    );
-    pickers.list.apply(ready([connection("f", None)]));
-    assert_eq!(
-        view.sections(),
-        [("Saved Connections".to_owned(), vec!["f".to_owned()])],
-        "with no group left the list is not one section among others"
-    );
+    pickers.show(library.list());
+
+    let view = &pickers.views[0];
+    assert_eq!(view.visible_page().as_deref(), Some("list"));
+    assert_eq!(view.sections(), [section("Connections", &["Archive"])]);
 }
 
 #[gtk4::test]
@@ -202,30 +284,96 @@ fn the_empty_page_shows_only_for_a_list_that_is_read_and_empty() {
 }
 
 #[gtk4::test]
-fn a_name_is_shown_as_text_not_markup() {
+fn a_group_stays_open_after_a_reorder() {
     let pickers = Pickers::new();
-    pickers.list.apply(ready([connection("R&D <prod>", None)]));
+    let view = &pickers.views[0];
+    let window = OwnedWindow::presented(adw::Window::new());
+    window.set_content(Some(view));
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    let home = library.group("Home", None);
+    library.connection("s1", Some(staging));
+    library.connection("h1", Some(home));
+    let list = library.list();
+    pickers.show(list.clone());
+    wait_until(WAIT, || view.row(LibrarySection::Tree, "Home").is_some()).expect("Home's row");
+    view.tree_row("Home").expect("Home's tree row").set_expanded(false);
+    assert_eq!(
+        view.sections(),
+        [section("Connections", &["Work", "  Staging", "    s1", "Home"])]
+    );
 
-    let row = descendants(&pickers.views[0])
-        .into_iter()
-        .find_map(|widget| widget.downcast::<adw::ActionRow>().ok())
-        .expect("the row");
+    let reordered: Vec<ConnectionGroup> = list
+        .groups
+        .iter()
+        .map(|group| ConnectionGroup {
+            order: match group.id {
+                id if id == home => 0,
+                id if id == work => 1,
+                _ => group.order,
+            },
+            ..group.clone()
+        })
+        .collect();
+    pickers.show(ConnectionList::new(list.connections.to_vec(), Vec::new()).with_groups(reordered));
 
-    assert!(!row.uses_markup());
-    assert_eq!(row.title(), "R&D <prod>");
+    assert_eq!(
+        view.sections(),
+        [section("Connections", &["Home", "Work", "  Staging", "    s1"])],
+        "a moved group folded, or a folded one opened"
+    );
 }
 
-fn picker_row(window: &SessionWindow, name: &str) -> adw::ActionRow {
+fn picker_view(window: &SessionWindow) -> WelcomeView {
+    descendants(window)
+        .into_iter()
+        .find_map(|widget| widget.downcast::<WelcomeView>().ok())
+        .expect("the picker")
+}
+
+fn picker_row_in(window: &SessionWindow, section: LibrarySection, name: &str) -> LibraryRow {
+    let view = picker_view(window);
     let mut found = None;
     wait_until(WAIT, || {
-        found = descendants(window)
-            .into_iter()
-            .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
-            .find(|row| row.title() == name);
+        found = view.row(section, name);
         found.is_some()
     })
     .expect("the connection's row");
     found.expect("the row")
+}
+
+fn picker_row(window: &SessionWindow, name: &str) -> LibraryRow {
+    picker_row_in(window, LibrarySection::Tree, name)
+}
+
+fn expander(row: &LibraryRow) -> gtk::TreeExpander {
+    row.parent()
+        .and_downcast::<gtk::TreeExpander>()
+        .expect("the row's expander")
+}
+
+// The row's choices are made as its menu opens, from the list as it is then.
+fn open_menu(row: &LibraryRow) -> gtk::MenuButton {
+    let button = row.menu_button();
+    row.popup_menu();
+    wait_until(WAIT, || button.popover().is_some_and(|popover| popover.is_visible())).expect("the row's menu to open");
+    button
+}
+
+fn focused_title(window: &SessionWindow) -> Option<String> {
+    let mut widget = gtk::prelude::GtkWindowExt::focus(window);
+    while let Some(current) = widget {
+        if let Some(expander) = current.downcast_ref::<gtk::TreeExpander>() {
+            return expander
+                .child()
+                .and_downcast::<LibraryRow>()
+                .and_then(|row| row.node())
+                .map(|node| node.title());
+        }
+        widget = current.parent();
+    }
+    None
 }
 
 fn alert_dialogs(window: &SessionWindow) -> Vec<adw::AlertDialog> {
@@ -271,11 +419,50 @@ fn delete_action_presents_exactly_one_dialog() {
 fn activating_a_row_connects_to_its_connection() {
     let test = TestWindow::picker("PickerActivate");
     let row = picker_row(&test.window, "Fake");
+    let list = row
+        .ancestor(gtk::ListView::static_type())
+        .and_downcast::<gtk::ListView>()
+        .expect("the row's list");
+    let position = row.list_item().expect("the row's list item").position();
 
-    WidgetExt::activate(&row);
+    list.activate_action("list.activate-item", Some(&position.to_variant()))
+        .expect("list.activate-item");
 
     wait_until(WAIT, || !test.connector.calls().is_empty()).expect("the connect");
     assert_eq!(test.connector.calls()[0].request.metadata.id, test.saved.id);
+}
+
+#[gtk4::test]
+fn activating_a_group_row_folds_and_opens_it() {
+    let test = TestWindow::picker("PickerFold");
+    let work = test
+        .services
+        .storage
+        .connections()
+        .create_group_blocking(group("Work"))
+        .expect("the group");
+    test.services
+        .storage
+        .connections()
+        .move_connections_blocking(&[test.saved.id], Some(work.id), None)
+        .expect("the move");
+    let row = picker_row(&test.window, "Work");
+    picker_row(&test.window, "Fake");
+    let view = picker_view(&test.window);
+    let list = row
+        .ancestor(gtk::ListView::static_type())
+        .and_downcast::<gtk::ListView>()
+        .expect("the row's list");
+    let position = row.list_item().expect("the row's list item").position();
+
+    list.activate_action("list.activate-item", Some(&position.to_variant()))
+        .expect("list.activate-item");
+    assert_eq!(view.sections(), [section("Connections", &["Work"])]);
+    list.activate_action("list.activate-item", Some(&position.to_variant()))
+        .expect("list.activate-item");
+
+    assert_eq!(view.sections(), [section("Connections", &["Work", "  Fake"])]);
+    assert!(test.connector.calls().is_empty(), "a group's row connected");
 }
 
 #[gtk4::test]
@@ -306,12 +493,11 @@ fn invalid_action_target_is_ignored() {
 fn row_menu_key_opens_menu() {
     let test = TestWindow::picker("PickerRowMenu");
     let row = picker_row(&test.window, "Fake");
-    let button = descendants(&row)
-        .into_iter()
-        .find_map(|widget| widget.downcast::<gtk::MenuButton>().ok())
-        .expect("the row's menu button");
+    let button = row.menu_button();
 
-    row.activate_action("picker-row.menu", None).expect("picker-row.menu");
+    expander(&row)
+        .activate_action("picker-row.menu", None)
+        .expect("picker-row.menu");
 
     wait_until(WAIT, || button.popover().is_some_and(|popover| popover.is_visible())).expect("the row's menu to open");
     assert_eq!(button.tooltip_text().as_deref(), Some("Connection Options"));
@@ -323,9 +509,11 @@ fn the_menu_keys_reach_the_row_menu_action() {
     let test = TestWindow::picker("PickerRowKeys");
     let row = picker_row(&test.window, "Fake");
 
-    let bound =
-        crate::test_support::shortcut_keys::owner_controller(&row, crate::application::ShortcutOwner::PickerRow)
-            .expect("the row's keys");
+    let bound = crate::test_support::shortcut_keys::owner_controller(
+        &expander(&row),
+        crate::application::ShortcutOwner::PickerRow,
+    )
+    .expect("the row's keys");
     let actions: Vec<String> = crate::test_support::shortcut_keys::shortcuts(&bound)
         .into_iter()
         .filter_map(|shortcut| shortcut.action().and_downcast::<gtk::NamedAction>())
@@ -338,9 +526,10 @@ fn the_menu_keys_reach_the_row_menu_action() {
 #[gtk4::test]
 fn a_colour_picked_from_the_row_reaches_the_store() {
     let test = TestWindow::picker("PickerColour");
-    let row = picker_row(&test.window, "Fake");
+    let button = open_menu(&picker_row(&test.window, "Fake"));
 
-    row.activate_action("picker-row.color", Some(&"red".to_variant()))
+    button
+        .activate_action("picker-row.color", Some(&"red".to_variant()))
         .expect("picker-row.color");
 
     wait_until(WAIT, || {
@@ -350,6 +539,94 @@ fn a_colour_picked_from_the_row_reaches_the_store() {
             .is_some_and(|saved| saved.color == Some(tablepro_storage::ConnectionColor::Red))
     })
     .expect("the colour saved and shown");
+    button.popdown();
+}
+
+#[gtk4::test]
+fn move_up_from_a_rows_menu_reaches_the_store() {
+    let test = TestWindow::picker("PickerMoveUp");
+    let second = connection("Second", None);
+    test.services
+        .storage
+        .connections()
+        .upsert_blocking(second.clone())
+        .expect("the save");
+    let button = open_menu(&picker_row(&test.window, "Second"));
+
+    button
+        .activate_action("picker-row.move-up", None)
+        .expect("picker-row.move-up");
+
+    let wanted = [
+        LibraryItem::Connection(second.id),
+        LibraryItem::Connection(test.saved.id),
+    ];
+    wait_until(WAIT, || {
+        test.services.saved_connections.outline().children(None) == wanted
+    })
+    .expect("Second above Fake in the store");
+    button.popdown();
+}
+
+#[gtk4::test]
+fn a_drop_through_change_library_reaches_the_store() {
+    let test = TestWindow::picker("PickerChangeLibrary");
+    let work = test
+        .services
+        .storage
+        .connections()
+        .create_group_blocking(group("Work"))
+        .expect("the group");
+    picker_row(&test.window, "Work");
+    let change = LibraryMove::Connections {
+        ids: vec![test.saved.id],
+        group: Some(work.id),
+        before: None,
+    };
+
+    picker_view(&test.window)
+        .activate_action("picker.change-library", Some(&change.to_variant()))
+        .expect("picker.change-library");
+
+    wait_until(WAIT, || {
+        test.services
+            .saved_connections
+            .get(test.saved.id)
+            .is_some_and(|saved| saved.group_id == Some(work.id))
+    })
+    .expect("the connection filed in the group");
+}
+
+#[gtk4::test]
+fn a_connection_dropped_in_the_middle_of_a_group_row_moves_into_it() {
+    let test = TestWindow::picker("PickerDropOnGroup");
+    let work = test
+        .services
+        .storage
+        .connections()
+        .create_group_blocking(group("Work"))
+        .expect("the group");
+    let row = picker_row(&test.window, "Work");
+    let expander = expander(&row);
+    let controllers = expander.observe_controllers();
+    let target = (0..controllers.n_items())
+        .find_map(|at| controllers.item(at).and_downcast::<gtk::DropTarget>())
+        .expect("the row's drop target");
+    let dragged = LibraryDragItem::new((LibrarySection::Tree, LibraryItem::Connection(test.saved.id)));
+    test.window.present();
+    wait_until(WAIT, || expander.height() > 0).expect("the row laid out");
+    let middle = f64::from(expander.height()) / 2.0;
+
+    let dropped = target.emit_by_name::<bool>("drop", &[&glib::BoxedValue(dragged.to_value()), &0.0_f64, &middle]);
+
+    assert!(dropped, "the group's row refused the connection");
+    wait_until(WAIT, || {
+        test.services
+            .saved_connections
+            .get(test.saved.id)
+            .is_some_and(|saved| saved.group_id == Some(work.id))
+    })
+    .expect("the connection filed in the group");
 }
 
 #[gtk4::test]
@@ -401,70 +678,52 @@ fn duplicate_focuses_the_new_row() {
     row.activate_action("picker.duplicate", Some(&test.saved.id.to_string().to_variant()))
         .expect("picker.duplicate");
 
-    let copy = picker_row(&test.window, "Fake (Copy)");
-    // The focus widget of its window, which may not be the active one
-    // while other tests run.
-    wait_until(WAIT, || copy.is_focus()).expect("the copy to take the focus");
+    picker_row(&test.window, "Fake (Copy)");
+    // The focus widget of its window, which may not be the active one while other tests run.
+    wait_until(WAIT, || focused_title(&test.window).as_deref() == Some("Fake (Copy)"))
+        .expect("the copy to take the focus");
     assert_eq!(test.services.saved_connections.connections().len(), 2);
-}
-
-#[gtk4::test]
-fn a_group_nested_elsewhere_has_a_section_named_by_its_path() {
-    let pickers = Pickers::new();
-    let name = |name: &str| tablepro_storage::ConnectionGroupName::new(name).expect("a group name");
-    let work = tablepro_storage::ConnectionGroup::new(name("Work"), None);
-    let staging = tablepro_storage::ConnectionGroup::new(name("Staging"), Some(work.id));
-    let nested = SavedConnection {
-        group_id: Some(staging.id),
-        ..connection("nested", None)
-    };
-    let filed = SavedConnection {
-        group_id: Some(work.id),
-        ..connection("filed", None)
-    };
-
-    pickers.list.apply(ConnectionListState::Ready(
-        tablepro_storage::ConnectionList::new(vec![nested, filed, connection("loose", None)], Vec::new())
-            .with_groups(vec![work, staging]),
-    ));
-
-    assert_eq!(
-        pickers.views[0].sections(),
-        [
-            ("Connections".to_owned(), vec!["loose".to_owned()]),
-            ("Work".to_owned(), vec!["filed".to_owned()]),
-            ("Work / Staging".to_owned(), vec!["nested".to_owned()]),
-        ]
-    );
-    assert_eq!(pickers.list.groups(), ["Work", "Work / Staging"]);
 }
 
 #[gtk4::test]
 fn a_group_picked_from_the_row_reaches_the_store() {
     let test = TestWindow::picker("PickerGroup");
-    let row = picker_row(&test.window, "Fake");
+    let work = test
+        .services
+        .storage
+        .connections()
+        .create_group_blocking(group("Work"))
+        .expect("the group");
+    picker_row(&test.window, "Work");
+    let button = open_menu(&picker_row(&test.window, "Fake"));
 
-    row.activate_action("picker-row.group", Some(&"Work".to_variant()))
+    button
+        .activate_action("picker-row.group", Some(&work.id.to_string().to_variant()))
         .expect("picker-row.group");
 
     wait_until(WAIT, || {
         test.services
             .saved_connections
             .get(test.saved.id)
-            .is_some_and(|saved| test.services.saved_connections.group_label(&saved).as_deref() == Some("Work"))
+            .is_some_and(|saved| saved.group_id == Some(work.id))
     })
     .expect("the group saved and shown");
-    let row = picker_row(&test.window, "Fake");
-    row.activate_action("picker-row.group", Some(&"   ".to_variant()))
-        .expect("picker-row.group");
+    button.popdown();
+    let button = open_menu(&picker_row(&test.window, "Fake"));
+    for unknown in ["   ", "Work"] {
+        button
+            .activate_action("picker-row.group", Some(&unknown.to_variant()))
+            .expect("picker-row.group");
+    }
     drain_main_context();
     assert!(
         test.services
             .saved_connections
             .get(test.saved.id)
-            .is_some_and(|saved| saved.group_id.is_some()),
-        "a blank group took the connection out of its group"
+            .is_some_and(|saved| saved.group_id == Some(work.id)),
+        "a target that names no group took the connection out of its group"
     );
+    button.popdown();
 }
 
 fn tag(name: &str) -> tablepro_storage::ConnectionTag {
@@ -481,22 +740,7 @@ fn tagged(name: &str, group: Option<&str>, tags: &[&tablepro_storage::Connection
     }
 }
 
-fn pills(view: &WelcomeView, row_title: &str) -> Vec<String> {
-    let row = descendants(view)
-        .into_iter()
-        .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
-        .find(|row| row.title() == row_title)
-        .unwrap_or_else(|| panic!("no row for {row_title}"));
-    descendants(&row)
-        .into_iter()
-        .filter(|widget| widget.has_css_class("tp-tag-pill"))
-        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
-        .map(|label| label.label().to_string())
-        .collect()
-}
-
-/// The issue's "Done means": both tags show, and a search for one lists
-/// every connection that has it, in every group.
+// The issue's "Done means": both tags show, and a search for one lists every connection that has it.
 #[gtk4::test]
 fn a_search_for_a_tag_lists_every_connection_that_has_it() {
     let pickers = Pickers::new();
@@ -513,24 +757,50 @@ fn a_search_for_a_tag_lists_every_connection_that_has_it() {
             vec![production.clone(), acme.clone()],
         )));
     let view = &pickers.views[0];
-    assert_eq!(pills(view, "acme-prod"), ["acme", "production"]);
+    assert_eq!(tag_names(view, "acme-prod"), ["acme", "production"]);
 
     view.set_search("production");
 
-    assert_eq!(
-        view.sections(),
-        [
-            ("Acme".to_owned(), vec!["acme-prod".to_owned()]),
-            ("Globex".to_owned(), vec!["globex-prod".to_owned()]),
-        ]
+    assert_eq!(view.sections(), [section("", &["acme-prod", "globex-prod"])]);
+    let everything = section(
+        "Connections",
+        &[
+            "Acme",
+            "  acme-prod",
+            "  acme-dev",
+            "Globex",
+            "  globex-prod",
+            "scratch",
+        ],
     );
     assert_eq!(
-        rows(&pickers.views[1].sections()).len(),
-        4,
+        pickers.views[1].sections(),
+        std::slice::from_ref(&everything),
         "a search in one window filtered another"
     );
     view.set_search("");
-    assert_eq!(rows(&view.sections()).len(), 4);
+    assert_eq!(view.sections(), [everything]);
+}
+
+#[gtk4::test]
+fn a_search_finds_a_connection_by_a_word_of_its_group_path_and_shows_the_path() {
+    let pickers = Pickers::new();
+    let mut library = NestedLibrary::default();
+    let work = library.group("Work", None);
+    let staging = library.group("Staging", Some(work));
+    library.connection("api", Some(staging));
+    library.connection("web", None);
+    pickers.show(library.list());
+    let view = &pickers.views[0];
+
+    view.set_search("staging");
+
+    assert_eq!(view.visible_page().as_deref(), Some("found"));
+    assert_eq!(view.sections(), [section("", &["api"])]);
+    let found = view.found_node("api").expect("the found row");
+    assert!(found.subtitle().ends_with(" · Work / Staging"), "{}", found.subtitle());
+    view.set_search("work api");
+    assert_eq!(rows(&view.sections()), ["api"]);
 }
 
 #[gtk4::test]
@@ -546,7 +816,7 @@ fn a_search_that_matches_nothing_says_so() {
     pickers
         .list
         .apply(ready([connection("Corp", None), connection("nothing-like-it", None)]));
-    assert_eq!(view.visible_page().as_deref(), Some("list"));
+    assert_eq!(view.visible_page().as_deref(), Some("found"));
     assert_eq!(rows(&view.sections()), ["nothing-like-it"]);
 }
 
@@ -563,7 +833,10 @@ fn a_renamed_tag_reaches_every_row_and_the_search() {
     let corp = tagged("Corp", None, &[&production]);
     pickers.write(move |store| store.upsert_blocking(corp).expect("the save"));
     wait_until(WAIT, || {
-        pickers.views.iter().all(|view| pills(view, "Corp") == ["production"])
+        pickers
+            .views
+            .iter()
+            .all(|view| view.node(LibrarySection::Tree, "Corp").is_some() && tag_names(view, "Corp") == ["production"])
     })
     .expect("the tag on every row");
 
@@ -577,7 +850,7 @@ fn a_renamed_tag_reaches_every_row_and_the_search() {
     });
 
     wait_until(WAIT, || {
-        pickers.views.iter().all(|view| pills(view, "Corp") == ["prod"])
+        pickers.views.iter().all(|view| tag_names(view, "Corp") == ["prod"])
     })
     .expect("the new name on every row");
     pickers.views[0].set_search("prod");
@@ -587,13 +860,14 @@ fn a_renamed_tag_reaches_every_row_and_the_search() {
 #[gtk4::test]
 fn enter_in_the_search_connects_to_the_first_match() {
     let test = TestWindow::picker("PickerSearchEnter");
-    // Sorts first, so Enter before the search applies would pick it.
-    test.services
-        .storage
-        .connections()
-        .upsert_blocking(connection("Aardvark", None))
-        .expect("the save");
-    picker_row(&test.window, "Aardvark");
+    let store = test.services.storage.connections();
+    // A favourite leads the list, so Enter before the search applies would pick it.
+    let aardvark = connection("Aardvark", None);
+    store.upsert_blocking(aardvark.clone()).expect("the save");
+    store
+        .add_favorites_blocking(&[aardvark.id], None)
+        .expect("the favourite");
+    picker_row_in(&test.window, LibrarySection::Favourites, "Aardvark");
     let (bar, entry) = test.window.picker_search().expect("the picker's search");
 
     bar.set_search_mode(true);
@@ -602,6 +876,37 @@ fn enter_in_the_search_connects_to_the_first_match() {
 
     wait_until(WAIT, || !test.connector.calls().is_empty()).expect("the connect");
     assert_eq!(test.connector.calls()[0].request.metadata.id, test.saved.id);
+}
+
+#[gtk4::test]
+fn enter_with_no_search_skips_a_connection_in_a_folded_group() {
+    let test = TestWindow::picker("PickerEnterFolded");
+    let store = test.services.storage.connections();
+    crate::test_support::save_filed(store, connection("Hidden", Some("Work")));
+    picker_row(&test.window, "Hidden");
+    let work = picker_row(&test.window, "Work");
+    expander(&work)
+        .activate_action("listitem.collapse", None)
+        .expect("the group folds");
+    let (_, entry) = test.window.picker_search().expect("the picker's search");
+
+    entry.emit_activate();
+
+    wait_until(WAIT, || !test.connector.calls().is_empty()).expect("the connect");
+    assert_eq!(test.connector.calls()[0].request.metadata.id, test.saved.id);
+}
+
+#[gtk4::test]
+fn the_keyboard_lands_on_the_row_not_its_menu_button() {
+    let test = TestWindow::picker("PickerRowFocus");
+    test.window.present();
+    let row = picker_row(&test.window, "Fake");
+    let expander = expander(&row);
+    wait_until(WAIT, || expander.height() > 0).expect("the row laid out");
+
+    expander.grab_focus();
+
+    assert!(expander.has_focus(), "the focus went inside the row");
 }
 
 #[gtk4::test]
@@ -653,12 +958,17 @@ fn a_tag_ticked_in_the_row_menu_reaches_the_store_and_the_row() {
         )
         .expect("the tag");
     let action = format!("picker-row.tag-{}", production.id);
-    let mut row = picker_row(&test.window, "Fake");
     wait_until(WAIT, || {
-        row = picker_row(&test.window, "Fake");
-        row.activate_action(&action, None).is_ok()
+        test.services
+            .saved_connections
+            .tags()
+            .iter()
+            .any(|held| held.id == production.id)
     })
-    .expect("the row's tag action");
+    .expect("the tag in the list");
+    let button = open_menu(&picker_row(&test.window, "Fake"));
+
+    button.activate_action(&action, None).expect(&action);
 
     wait_until(WAIT, || {
         test.services
@@ -667,6 +977,9 @@ fn a_tag_ticked_in_the_row_menu_reaches_the_store_and_the_row() {
             .is_some_and(|saved| saved.tags == [production.id])
     })
     .expect("the tag saved");
+    let view = picker_view(&test.window);
+    wait_until(WAIT, || tag_names(&view, "Fake") == ["production"]).expect("the tag on the row");
+    button.popdown();
 }
 
 #[gtk4::test]
