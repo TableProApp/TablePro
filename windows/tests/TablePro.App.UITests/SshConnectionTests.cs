@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using FlaUI.Core.AutomationElements;
-using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
 using TablePro.Testing;
@@ -24,8 +23,8 @@ public sealed partial class ShellTests
         app.Find("PortBox", form).AsTextBox().Text = SshTestEnvironment.DatabasePort.ToString(CultureInfo.InvariantCulture);
         app.Find("UserBox", form).AsTextBox().Text = "tablepro_ssh";
         app.Find("DatabaseBox", form).AsTextBox().Text = "tablepro_ssh";
-        app.Click(app.Find("PasswordInput", form), form);
-        Keyboard.Type(SshTestEnvironment.DatabasePassword);
+        // SetValue finishes before Test reads the field; queued keyboard input can arrive after UIA actions.
+        app.Find("PasswordInput", form).Patterns.Value.Pattern.SetValue(SshTestEnvironment.DatabasePassword);
 
         app.Find("SshSwitch", form).AsToggleButton().Toggle();
         app.Find("SshHostBox", form).AsTextBox().Text = "127.0.0.1";
