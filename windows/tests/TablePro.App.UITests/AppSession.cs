@@ -24,7 +24,11 @@ internal sealed class AppSession : IDisposable
         DataFolder = dataFolder;
         Theme = theme;
         _application = launch();
-        Window = _application.GetMainWindow(_automation, Wait)
+        // A restored tab window can be the process's first visible ownerless window.
+        Window = Retry.WhileNull(
+                () => TopLevelWindow("TablePro"),
+                Wait,
+                throwOnTimeout: false).Result
             ?? throw new InvalidOperationException("The main window did not open.");
         // The runner's screen is small; a maximized window fits it whole for the screenshots.
         if (maximize)
@@ -39,11 +43,10 @@ internal sealed class AppSession : IDisposable
 
     public Window Window { get; }
 
-    // rowLimit sets how many rows a page holds, so a small table has later pages.
-    public static string NewDataFolder(string theme, int? rowLimit = null)
+    public static string NewDataFolder(string theme)
     {
         var folder = Directory.CreateTempSubdirectory("tablepro-ui-").FullName;
-        WriteSettings(folder, theme, rowLimit);
+        WriteSettings(folder, theme);
         return folder;
     }
 
@@ -69,11 +72,8 @@ internal sealed class AppSession : IDisposable
         return new(folder, theme, () => Application.LaunchStoreApp(familyName + "!App"));
     }
 
-    private static void WriteSettings(string folder, string theme, int? rowLimit = null)
-    {
-        var limit = rowLimit is { } rows ? $$""", "rowLimit": {{rows}}""" : string.Empty;
-        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}"{{limit}} }""");
-    }
+    private static void WriteSettings(string folder, string theme) =>
+        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}" }""");
 
     private static Application LaunchBuild(string dataFolder)
     {
@@ -102,8 +102,54 @@ internal sealed class AppSession : IDisposable
     public void Drag(Func<AutomationElement> from, Func<AutomationElement> to, Func<bool> landed) =>
         Again(() => Drag(from(), to()), landed, "The drag");
 
+    public void Drag(Window window, Func<System.Drawing.Point> start, Func<System.Drawing.Point> end, Func<bool> landed) =>
+        Again(() => Drag(start(), end()), landed, "The drag", window);
+
+    public void DragThrough(Window window, Func<System.Drawing.Point> start, Func<System.Drawing.Point> via,
+        Func<bool> reachedVia, Func<System.Drawing.Point> end, Func<bool> landed)
+    {
+        Front(window);
+        var first = start();
+        var middle = via();
+        var last = end();
+        var merged = false;
+        PointerInput.Move(first);
+        Thread.Sleep(100);
+        PointerInput.Button(down: true);
+        try
+        {
+            MovePointer(first, middle);
+            merged = Retry.WhileFalse(reachedVia, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success;
+            if (merged)
+            {
+                MovePointer(middle, last);
+            }
+        }
+        finally
+        {
+            PointerInput.Button(down: false);
+        }
+
+        if (!merged)
+        {
+            throw Failure("The dragged window did not merge into the target strip.", screen: true);
+        }
+
+        if (!Retry.WhileFalse(landed, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
+        {
+            throw Failure("The merged tab did not tear out again before the drag ended.", screen: true);
+        }
+    }
+
+    public void RightClick(AutomationElement element, Func<bool> landed) =>
+        Again(() => element.RightClick(), landed, "The right-click");
+
     public void Chord(Func<bool> landed, params VirtualKeyShort[] keys) =>
         Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys));
+
+    // Keys reach the foreground window, so a chord for another window brings that one forward.
+    public void Chord(Window window, Func<bool> landed, params VirtualKeyShort[] keys) =>
+        Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys), window);
 
     public void TypeInto(string title, string text) =>
         Again(
@@ -144,11 +190,11 @@ internal sealed class AppSession : IDisposable
                 throwOnTimeout: false).Result
             ?? throw Failure($"The {title} editor did not become ready.", screen: true);
 
-    private void Again(Action act, Func<bool> landed, string what)
+    private void Again(Action act, Func<bool> landed, string what, Window? window = null)
     {
         for (var attempt = 0; attempt < 3; attempt++)
         {
-            Front();
+            Front(window);
             act();
             if (Retry.WhileFalse(landed, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
             {
@@ -165,6 +211,20 @@ internal sealed class AppSession : IDisposable
         PointerInput.Move(start);
         Thread.Sleep(100);
         PointerInput.Button(down: true);
+        try
+        {
+            MovePointer(start, end);
+        }
+        finally
+        {
+            PointerInput.Button(down: false);
+        }
+
+        Thread.Sleep(300);
+    }
+
+    private static void MovePointer(System.Drawing.Point start, System.Drawing.Point end)
+    {
         Thread.Sleep(200);
         for (var step = 1; step <= 20; step++)
         {
@@ -174,8 +234,6 @@ internal sealed class AppSession : IDisposable
             Thread.Sleep(40);
         }
 
-        Thread.Sleep(300);
-        PointerInput.Button(down: false);
         Thread.Sleep(300);
     }
 
@@ -232,8 +290,8 @@ internal sealed class AppSession : IDisposable
     }
 
     // A menu flyout's item, which UI Automation lists under the window that opened it.
-    public AutomationElement FindMenuItem(string name) =>
-        Retry.WhileNull(() => TryFindMenuItem(name), Wait, throwOnTimeout: false).Result
+    public AutomationElement FindMenuItem(string name, Window? window = null) =>
+        Retry.WhileNull(() => TryFindMenuItem(name, window), Wait, throwOnTimeout: false).Result
             ?? throw Failure($"No menu item {name} appeared.", screen: true);
 
     // A click did not always open a submenu on the runner, and a pointer gliding to its item opens its neighbours'.
@@ -261,8 +319,9 @@ internal sealed class AppSession : IDisposable
         throw Failure($"No menu item {child} appeared.", screen: true);
     }
 
-    private AutomationElement? TryFindMenuItem(string name) =>
-        Window.FindFirstDescendant(condition => condition.ByControlType(ControlType.MenuItem).And(condition.ByName(name)));
+    public AutomationElement? TryFindMenuItem(string name, Window? window = null) =>
+        (window ?? Window).FindFirstDescendant(condition =>
+            condition.ByControlType(ControlType.MenuItem).And(condition.ByName(name)));
 
     public static string EditorText(AutomationElement editor) =>
         editor.Patterns.Text.Pattern.DocumentRange.GetText(-1);
@@ -395,9 +454,14 @@ internal sealed class AppSession : IDisposable
     }
 
     private Window? OpenWindow(string title) =>
-        _application.GetAllTopLevelWindows(_automation).FirstOrDefault(window => window.Title == title)
+        TopLevelWindow(title)
         ?? Window.FindFirstChild(condition => condition.ByControlType(ControlType.Window).And(condition.ByName(title)))
             ?.AsWindow();
+
+    // Query the name with the window, since a closing window can expire before a later property read.
+    private Window? TopLevelWindow(string title) =>
+        _automation.GetDesktop().FindFirstChild(condition => condition.ByControlType(ControlType.Window)
+            .And(condition.ByProcessId(_application.ProcessId)).And(condition.ByName(title)))?.AsWindow();
 
     private InvalidOperationException Failure(string message, bool screen = false)
     {
@@ -454,7 +518,11 @@ internal sealed class AppSession : IDisposable
     {
         if (!_application.HasExited)
         {
-            _application.Close();
+            if (Window.IsAvailable)
+            {
+                Window.Close();
+            }
+
             if (!Retry.WhileFalse(() => _application.HasExited, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
             {
                 _application.Kill();

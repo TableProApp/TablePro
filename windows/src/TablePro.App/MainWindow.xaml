@@ -55,6 +55,9 @@
                         <KeyboardAccelerator Modifiers="Control,Shift" Key="T" />
                     </MenuFlyoutItem.KeyboardAccelerators>
                 </MenuFlyoutItem>
+                <MenuFlyoutItem x:Uid="MenuMoveTab" x:Name="MenuMoveTab" Click="OnMoveTab" IsEnabled="False">
+                    <MenuFlyoutItem.Icon><SymbolIcon Symbol="NewWindow" /></MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem x:Uid="MenuSettings" x:Name="MenuSettings" Click="OnShowSettings">
                     <MenuFlyoutItem.Icon><SymbolIcon Symbol="Setting" /></MenuFlyoutItem.Icon>

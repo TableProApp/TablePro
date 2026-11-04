@@ -14,6 +14,11 @@ public sealed record AppSettings
 {
     public const int DefaultRowLimit = 10_000;
 
+    public const int DefaultPageSize = 1_000;
+
+    // The sizes the Settings page offers for a new table tab, as macOS offers them.
+    public static IReadOnlyList<int> PageSizeChoices { get; } = [100, 500, 1_000, 5_000, 10_000];
+
     public AppTheme Theme { get; set; } = AppTheme.System;
 
     public bool ReopenSession { get; set; } = true;
@@ -21,6 +26,9 @@ public sealed record AppSettings
     public double EditorFontSize { get; set; } = 14;
 
     public int RowLimit { get; set; } = DefaultRowLimit;
+
+    // Rows a new table tab shows on each page; a tab can pick its own.
+    public int PageSize { get; set; } = DefaultPageSize;
 
     // Zero leaves the statement to the connection's own limit.
     public int QueryTimeoutSeconds { get; set; }
@@ -30,6 +38,7 @@ public sealed record AppSettings
         Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
         EditorFontSize = Math.Clamp(EditorFontSize, 8, 36),
         RowLimit = Math.Clamp(RowLimit, 1, 1_000_000),
+        PageSize = Math.Clamp(PageSize, 10, 100_000),
         QueryTimeoutSeconds = Math.Clamp(QueryTimeoutSeconds, 0, 86_400),
     };
 }

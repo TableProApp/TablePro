@@ -11,6 +11,7 @@ internal static partial class WindowInterop
     private const int GwlpHwndParent = -8;
     private const int SwHide = 0;
     private const int SwShowMaximized = 3;
+    private const int DwmwaCloak = 13;
 
     // XAML has no owner property; a Win32 owner keeps the window above the main one and off the taskbar.
     public static void SetOwner(Window window, Window owner)
@@ -73,6 +74,17 @@ internal static partial class WindowInterop
         };
         return SetWindowPlacement(WindowNative.GetWindowHandle(window), ref placement);
     }
+
+    // DWM keeps drawing a cloaked window but shows nothing of it, so a window shown for a moment does not flash.
+    public static void Cloak(Window window, bool cloaked)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        var value = cloaked ? 1 : 0;
+        _ = DwmSetWindowAttribute(WindowNative.GetWindowHandle(window), DwmwaCloak, ref value, sizeof(int));
+    }
+
+    [LibraryImport("dwmapi.dll")]
+    private static partial int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 
     [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
     private static partial IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr value);
