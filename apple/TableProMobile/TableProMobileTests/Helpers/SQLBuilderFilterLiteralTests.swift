@@ -102,7 +102,7 @@ struct SQLBuilderFilterLiteralTests {
 
     @Test("A SQL Server search escapes an opening bracket")
     func mssqlSearchEscapesBracket() {
-        #expect(search(.mssql, "[a]") == "SELECT COUNT(*) FROM [t] WHERE (CAST([name] AS NVARCHAR(MAX)) LIKE '%![a]%' ESCAPE '!')")
+        #expect(search(.mssql, "[a]") == "SELECT COUNT(*) FROM [t] WHERE (CAST([name] AS NVARCHAR(MAX)) LIKE N'%![a]%' ESCAPE '!')")
     }
 
     // A combining mark joins the quote into one grapheme cluster.

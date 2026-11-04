@@ -557,4 +557,13 @@ struct FilterSQLGeneratorTests {
         #expect(FilterColumnKind.keyLiteral("05", column: nil, databaseType: .sqlite) == .text("05"))
         #expect(FilterColumnKind.keyLiteral("2.5", column: nil, databaseType: .sqlite) == .numberOrText("2.5"))
     }
+    @Test("SQL Server filters keep Unicode and backslash line endings")
+    func sqlServerTextConstants() {
+        let generator = FilterSQLGenerator(dialect: dialect, databaseType: .mssql)
+        #expect(generator.stringLiteral("日本\\\n") == "N'日本\\\\\n\n'")
+        let equal = TableFilter(columnName: "name", filterOperator: .equal, value: "日本\\\r\n")
+        #expect(generator.generateWhereClause(from: [equal], logicMode: .and).contains("N'日本\\\\\r\n\r\n'"))
+        let contains = TableFilter(columnName: "name", filterOperator: .contains, value: "日本\\\n")
+        #expect(generator.generateWhereClause(from: [contains], logicMode: .and).contains("N'%日本\\\\\n\n%'"))
+    }
 }

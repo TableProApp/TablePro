@@ -53,7 +53,7 @@ struct SQLBuilderSingleRowLookupTests {
     func schemaIsQualified() {
         #expect(
             lookup([("code", "abc")], schema: "sales", type: .mssql)
-                .hasPrefix("SELECT * FROM [sales].[parent] WHERE [code] = 'abc'")
+                .hasPrefix("SELECT * FROM [sales].[parent] WHERE [code] = N'abc'")
         )
     }
 
@@ -167,6 +167,27 @@ struct SQLBuilderSingleRowLookupTests {
         #expect(SQLBuilder.buildDelete(
             table: "t", schema: nil, type: .postgresql, driver: driver(), primaryKeys: [("id", "5")], columns: []
         ) == "DELETE FROM \"t\" WHERE \"id\" = '5'")
+    }
+    @Test("SQL Server inserts and row edits keep exact text keys", arguments: ["\n", "\r\n", "\r"])
+    func sqlServerWrites(_ newline: String) {
+        let value = "日本\\" + newline
+        let body = newline == "\r" ? value : "日本\\\\" + newline + newline
+        let literal = "N'" + body + "'"
+        let connection = DatabaseConnection(name: "test", type: .mssql)
+        let sqlDriver = MSSQLDriver(connection: connection, password: nil)
+        #expect(sqlDriver.escapeStringLiteral(value) == body)
+        let delete = SQLBuilder.buildDelete(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver,
+            primaryKeys: [("k", value)], columns: []
+        )
+        #expect(delete == "DELETE FROM [dbo].[t] WHERE [k] = " + literal)
+        let update = SQLBuilder.buildUpdate(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver,
+            changes: [("v", value)], primaryKeys: [("k", value)], columns: []
+        )
+        #expect(update == "UPDATE [dbo].[t] SET [v] = " + literal + " WHERE [k] = " + literal)
+        #expect(SQLBuilder.buildInsert(table: "t", schema: nil, type: .mssql, driver: sqlDriver,
+            columns: ["k"], values: [value]) == "INSERT INTO [t] ([k]) VALUES (" + literal + ")")
     }
 }
 

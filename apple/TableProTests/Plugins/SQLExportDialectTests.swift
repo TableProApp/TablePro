@@ -15,6 +15,12 @@ import Testing
 /// sqlite3 while fixing #2630, and what each engine accepted is recorded beside it. CI reaches
 /// neither engine, so these tests are the record of that measurement.
 struct SQLExportDialectTests {
+    @Test("SQL Server export fallback keeps backslash line endings")
+    func sqlServerContinuation() throws {
+        let escape = escapeStringLiteralFromDialect(try #require(dialect(for: .mssql)), databaseType: .mssql)
+        #expect(escape("日本\\\r\n") == "日本\\\\\r\n\r\n")
+    }
+
 
     private func dialect(for type: DatabaseType) -> SQLDialectDescriptor? {
         try? resolveSQLDialect(for: type)
@@ -184,4 +190,5 @@ struct QueryExportOptionsTests {
         let columns = [column("structure", "Structure"), column("data", "Data")]
         #expect(QueryExportOptions.dataOnly(columns: columns, defaults: []) == [false, true])
     }
+
 }

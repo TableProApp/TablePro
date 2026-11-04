@@ -115,7 +115,7 @@ struct SQLQuotingRoundTripTests {
     @Test("A written literal decodes back to its value, and anything else decodes to nothing")
     func decodeRoundTrip() {
         for value in hostileStrings(count: 400, seed: 0xB3_33) {
-            for escapes in [SQLStringEscapes.standard, .backslash, .mysql, .googleSQL] {
+            for escapes in [SQLStringEscapes.standard, .backslash, .mysql, .googleSQL, .sqlServer] {
                 let literal = SQLQuoting.stringLiteral(value, escapes: escapes)
                 #expect(SQLQuoting.decodedStringLiteral(literal, escapes: escapes) == value, "\(literal.debugDescription)")
             }
@@ -138,5 +138,22 @@ struct SQLQuotingRoundTripTests {
         let source = text as NSString
         guard let span = SQLNonCodeSpan.span(at: 0, in: source, grammar: grammar) else { return false }
         return span.kind == .quoted && span.isTerminated && span.end == source.length
+    }
+    @Test("SQL Server keeps continuation bytes and only removes NUL")
+    func sqlServerLineEndings() {
+        for newline in ["\n", "\r\n", "\r"] {
+            for count in 1...4 {
+                let value = "日本'\u{301}" + String(repeating: "\\", count: count) + newline + "'; SELECT 1; --"
+                let literal = SQLQuoting.stringLiteral(value, escapes: .sqlServer)
+                #expect(SQLQuoting.decodedStringLiteral(literal, escapes: .sqlServer) == value)
+                #expect(!SQLStringEscapes.sqlServer.backslashEscapes)
+            }
+        }
+        let literal = SQLQuoting.stringLiteral("x\\\0\n", escapes: .sqlServer)
+        #expect(literal == "'x\\\\\n\n'")
+        #expect(SQLQuoting.decodedStringLiteral(literal, escapes: .sqlServer) == "x\\\n")
+        #expect(SQLQuoting.decodedStringLiteral("'a\\\nb'", escapes: .sqlServer) == "ab")
+        #expect(SQLQuoting.decodedStringLiteral("'a\\\r\nb'", escapes: .sqlServer) == "ab")
+        #expect(SQLQuoting.decodedStringLiteral("'a\\\rb'", escapes: .sqlServer) == "a\\\rb")
     }
 }

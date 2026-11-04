@@ -1,3 +1,4 @@
+import TableProSQLQuoting
 //
 //  TableEditStatementParserTests.swift
 //  TableProTests
@@ -434,5 +435,15 @@ struct TableEditDialectTests {
         #expect(TableEditDialect.mySQL.context(afterUsing: archive) == TableNameContext(database: "archive", schema: nil))
         #expect(TableEditDialect.duckDB.context(afterUsing: archive) == TableNameContext(database: nil, schema: nil))
         #expect(TableEditDialect.mySQL.context(afterUsing: nil) == TableNameContext(database: nil, schema: nil))
+    }
+    @Test("SQL Server rename tracking decodes the names the server receives", arguments: ["\n", "\r\n", "\r"])
+    func sqlServerRenameLineEnding(_ newline: String) throws {
+        let name = "old\\" + newline
+        let target = "new\\" + newline
+        let sourceLiteral = "N" + SQLQuoting.stringLiteral("[dbo].[" + name + "]", escapes: .sqlServer)
+        let targetLiteral = "N" + SQLQuoting.stringLiteral(target, escapes: .sqlServer)
+        #expect(try Self.parse("EXEC sp_rename " + sourceLiteral + ", " + targetLiteral, .mssql)
+            == .rename([SQLRenamePair(from: Self.name(Self.quoted("dbo"), Self.quoted(name)),
+                to: Self.name(Self.quoted(target)))], kind: .table))
     }
 }

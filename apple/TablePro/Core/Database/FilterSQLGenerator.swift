@@ -56,9 +56,9 @@ struct FilterSQLGenerator {
         self.readsEmptyStringAsNull = family == .oracle || databaseType == .kingbasees
         // Without the session's escapes the descriptor answers. Snowflake takes `ESCAPE '!'` yet reads `\'` as a
         // quote; BigQuery and Spanner read `\` without declaring it.
-        self.stringEscapes = stringEscapes ?? SQLStringEscapes(
+        self.stringEscapes = stringEscapes ?? (databaseType == .mssql ? .sqlServer : SQLStringEscapes(
             backslashEscapes: dialect.requiresBackslashEscaping || dialect.likeEscapeStyle == .implicit
-        )
+        ))
     }
 
     /// The one place a string literal is spelled, so the engine's prefix cannot be forgotten on

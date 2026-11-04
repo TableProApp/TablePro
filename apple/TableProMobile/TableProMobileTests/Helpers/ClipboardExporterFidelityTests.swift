@@ -221,4 +221,9 @@ struct ClipboardExporterFidelityTests {
         #expect(MySQLDriver.keptTextEscapes(for: .mysql, banner: nil) == .mysql)
         #expect(MySQLDriver.keptTextEscapes(for: .mysql, banner: "8.0.90-v1.2.725-nightly") == .backslash)
     }
+    @Test("SQL Server copy as INSERT keeps Unicode and backslash line endings without a driver")
+    func sqlServerLiteral() {
+        #expect(insert(["1", "日本\\\n", nil], .mssql)
+            == "INSERT INTO [t] ([id], [zip], [note]) VALUES (N'1', N'日本\\\\\n\n', NULL);")
+    }
 }

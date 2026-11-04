@@ -296,4 +296,27 @@ struct MSSQLParameterBatchTests {
         let bound = MSSQLParameterBatch.boundBatch(query: query, parameters: [.text("1")])
         #expect(bound?.text.hasPrefix("DECLARE @__tablepro_p1 NVARCHAR(MAX) = N'1'; ") == true)
     }
+
+    @Test("Row keys keep backslash line endings in both binding paths", arguments: ["\n", "\r\n", "\r"])
+    func rowKeyLineEndings(_ newline: String) throws {
+        let key = "admin\\" + newline
+        let body = newline == "\r" ? key : "admin\\\\" + newline + newline
+        for verb in ["DELETE FROM", "UPDATE"] {
+            let query = verb == "UPDATE" ? "UPDATE [t] SET [v] = 1 WHERE [k] = ?" : "DELETE FROM [t] WHERE [k] = ?"
+            let statement = MSSQLParameterBatch.spExecuteSql(query: query, parameters: [.text(key)])
+            #expect(statement.assignments == "@__tablepro_p1 = N'" + body + "'")
+            let bound = try #require(MSSQLParameterBatch.boundBatch(query: query, parameters: [.text(key)]))
+            #expect(bound.text.hasPrefix("DECLARE @__tablepro_p1 NVARCHAR(MAX) = N'" + body + "'; "))
+            #expect(bound.leadingLineFeeds == (newline == "\r" ? 0 : 2))
+            #expect(bound.batchLine(forReportedLine: 1 + bound.leadingLineFeeds) == 1)
+        }
+    }
+
+    @Test("Statement text keeps a table name's backslash and newline")
+    func statementTableNameLineEnding() {
+        let statement = MSSQLParameterBatch.spExecuteSql(
+            query: "DELETE FROM [accounts\\\r\n] WHERE [id] = ?", parameters: [.text("a")]
+        )
+        #expect(statement.executeSqlText.hasPrefix("EXEC sp_executesql N'DELETE FROM [accounts\\\\\r\n\r\n]"))
+    }
 }
