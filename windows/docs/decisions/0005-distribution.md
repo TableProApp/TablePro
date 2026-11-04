@@ -45,6 +45,7 @@ A release is one MSIX per architecture, built with Native AOT in the Release con
 - The AOT publish reported no trim or AOT warnings. MSIX tooling warned that `mspdbcmf.exe` was absent, so it did not generate a separate symbols package; the MSIX build and checks passed.
 - The run passed the unsigned path's version and signing check. The temporary runs were cancelled when verification moved to the Mac. The x64 package, bundle, install/start tests and Windows winget validation remain unverified. Artifact Signing has not run with production credentials.
 - PR run [41705662121](https://github.com/TableProApp/TablePro/actions/runs/41705662121) built the Native AOT app on both architectures, then exposed missing engine rows and failures during resizing and library navigation. A local probe with the shipped SDK projection 10.0.26100.57 confirmed that explicit registrations add the two missing list adapters; its baseline generated only the outer engine-group list. The Windows UI tests check their runtime behavior.
+- In the Native AOT build, `AppWindow.Presenter` logged as `AppWindowPresenter` with `Kind` `Overlapped`, and `TheWindowComesBackWhereItStood` came back Normal on x64 (run 41844628365). A build that also called `OverlappedPresenter.Create()` logged `OverlappedPresenter` and came back maximized (run 41837948701). With each window's own presenter, the UI tests passed on both runners (run 41841130888).
 
 ## Alternatives considered
 
