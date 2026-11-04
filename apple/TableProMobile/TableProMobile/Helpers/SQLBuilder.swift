@@ -58,7 +58,8 @@ nonisolated enum SQLBuilder {
     }
 
     // Every pair of a composite key is matched: one column alone can return another tenant's row. A foreign key's
-    // value finds its parent by the column's own rules, so `abc` finds `ABC`.
+    // value finds its parent by the column's own rules, so `abc` finds `ABC`. Where SQL Server falls back to the
+    // Unicode comparison, `Weßels` can also match `Wessels`, so a lookup that matches more than one row shows none.
     static func buildSingleRowLookup(
         table: String,
         schema: String?,
@@ -68,8 +69,14 @@ nonisolated enum SQLBuilder {
         driver: any DatabaseDriver
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
-        let predicate = key.isEmpty
+        var predicate = key.isEmpty
             ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver, reference: true)
+        let narrow = key.contains { pair in
+            MSSQLRowMatch.comparesNarrowText(typeName: FilterColumnKind.column(named: pair.column, in: columns)?.typeName)
+        }
+        if type == .mssql, narrow {
+            predicate += " AND (SELECT COUNT(*) FROM \(quotedTable) WHERE \(predicate)) = 1"
+        }
         let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
         return "SELECT * FROM \(quotedTable) WHERE \(predicate) \(pagination)"
     }

@@ -212,12 +212,13 @@ struct SQLBuilderSingleRowLookupTests {
     }
 
     // A foreign key's `abc` refers to a parent `ABC` under a case-insensitive collation, and `weßels` to `Weßels`
-    // but not to `Wessels`, so the lookup compares by the column's own rules.
+    // but not to `Wessels`, so the lookup compares by the column's own rules and shows nothing it cannot pin down.
     @Test("A SQL Server foreign key lookup matches a varchar parent by the column's rules")
     func sqlServerLookupUsesColumnRules() {
         let narrow = [ColumnInfo(name: "k", typeName: "varchar(20)")]
+        let match = MSSQLRowMatch.columnRules("[k]", equals: "N'abc'")
         #expect(lookup([("k", "abc")], columns: narrow, type: .mssql)
-            == "SELECT * FROM [parent] WHERE " + MSSQLRowMatch.columnRules("[k]", equals: "N'abc'")
+            == "SELECT * FROM [parent] WHERE \(match) AND (SELECT COUNT(*) FROM [parent] WHERE \(match)) = 1"
             + " ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY")
         #expect(lookup([("k", "abc")], columns: [ColumnInfo(name: "k", typeName: "nvarchar(20)")], type: .mssql)
             == "SELECT * FROM [parent] WHERE [k] = N'abc' ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY")
