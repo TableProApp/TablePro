@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProConnectionLibrary
 import TableProPluginKit
 
 struct ProjectFolderCandidateList: View {
@@ -105,7 +106,7 @@ struct ProjectFolderCandidateRow: View {
             guard !parsed.host.isEmpty else {
                 return parsed.database.isEmpty ? typeName : parsed.database
             }
-            return parsed.port.map { "\(parsed.host):\($0)" } ?? parsed.host
+            return parsed.port.map { HostListEndpoint(host: parsed.host, port: $0).entry } ?? parsed.host
         }
     }
 

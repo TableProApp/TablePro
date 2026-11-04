@@ -57,7 +57,7 @@ internal enum ExternalStatementGate {
         }
     }
 
-    /// The refusals a connection's own settings make, before anyone is prompted about anything.
+    // The refusals a connection's own settings make, before anyone is prompted about anything.
     @discardableResult
     internal static func classify(_ statement: Statement) throws -> QueryClassification {
         if let refusal = privateRequestRefusal(sql: statement.sql) {
@@ -96,15 +96,36 @@ internal enum ExternalStatementGate {
             try refuseWrite(externalAccess: statement.externalAccess)
         }
 
-        if classification.tier == .destructive, !statement.allowsDestructive {
-            let refusal = String(localized: "This statement drops or truncates data.")
+        if !statement.allowsDestructive, isDestructive(statement.sql, databaseType: statement.databaseType) {
             throw ExternalStatementGateError.denied(
-                statement.destructiveAlternative.map { "\(refusal) \($0)" } ?? refusal
+                statement.destructiveAlternative.map { "\(destructiveRefusal) \($0)" } ?? destructiveRefusal
             )
         }
 
         return classification
     }
+
+    // What `classify` refuses to a caller without leave to destroy, and all that confirm_destructive_operation runs.
+    internal static func isDestructive(_ sql: String, databaseType: DatabaseType) -> Bool {
+        QueryClassifier.isDangerousQuery(sql, databaseType: databaseType)
+    }
+
+    internal static func requireDestructive(_ sql: String, databaseType: DatabaseType) throws {
+        guard isDestructive(sql, databaseType: databaseType) else {
+            throw ExternalStatementGateError.invalidArgument(notDestructiveRefusal)
+        }
+    }
+
+    internal static let destructiveRefusal = String(
+        localized: "This statement is destructive, like DROP, TRUNCATE or a DELETE with no WHERE."
+    )
+
+    internal static let notDestructiveRefusal = String(
+        localized: """
+        This tool runs only destructive statements, like DROP, TRUNCATE or a DELETE with no WHERE. \
+        Use execute_query for everything else.
+        """
+    )
 
     // For a caller that writes by construction, such as adding rows, whose statements a classifier may not read as
     // writes on every engine.
@@ -202,15 +223,13 @@ internal enum ExternalStatementGate {
         }
     }
 
-    /// Whether a person has to see this statement before it runs, on this connection's settings.
     internal static func requiresUserConsent(
         classification: QueryClassification,
         sql: String,
         databaseType: DatabaseType,
         safeModeLevel: SafeModeLevel
     ) -> Bool {
-        if classification.tier == .destructive { return true }
-        if QueryClassifier.isDangerousQuery(sql, databaseType: databaseType) { return true }
+        if isDestructive(sql, databaseType: databaseType) { return true }
         guard safeModeLevel.requiresConfirmation else { return false }
         return classification.tier != .safe || safeModeLevel.appliesToAllQueries
     }
@@ -333,10 +352,8 @@ internal struct ApprovedOperation: Sendable {
 
     private static func context(for pending: PendingOperation) -> PluginStatementContext {
         let graded = pending.gradedSQL.map { [$0] } ?? pending.statements.map(\.sql)
-        let tiers = graded.map { QueryClassifier.classifyTier($0, databaseType: pending.databaseType) }
         let approvedAsDestructive = pending.kind.declaresDestructive
-            || tiers.contains(.destructive)
-            || graded.contains { QueryClassifier.isDangerousQuery($0, databaseType: pending.databaseType) }
+            || graded.contains { ExternalStatementGate.isDestructive($0, databaseType: pending.databaseType) }
         var context = PluginStatementContext()
         context.origin = .external
         context.hostSplit = true

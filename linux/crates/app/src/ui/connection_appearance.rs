@@ -129,17 +129,6 @@ pub(crate) fn icon_label(icon: ConnectionIcon) -> String {
     }
 }
 
-/// The connection's icon, which only decorates: the row and the title
-/// beside it already name the connection.
-pub(crate) fn icon_image(icon: Option<ConnectionIcon>) -> gtk::Image {
-    let image = gtk::Image::builder()
-        .valign(gtk::Align::Center)
-        .accessible_role(gtk::AccessibleRole::Presentation)
-        .build();
-    show_icon(&image, icon);
-    image
-}
-
 pub(crate) fn show_icon(image: &gtk::Image, icon: Option<ConnectionIcon>) {
     image.set_icon_name(icon.map(crate::ui::icons::connection_icon));
     image.set_visible(icon.is_some());

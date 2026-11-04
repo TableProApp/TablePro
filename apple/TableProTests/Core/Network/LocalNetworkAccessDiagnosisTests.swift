@@ -69,6 +69,19 @@ struct LocalNetworkAccessDiagnosisTests {
         #expect(hops(connection).isEmpty)
     }
 
+    @Test("A DuckDB Remote row asks about the server its fields name, and a Local File row about none")
+    func duckdbRemoteProbesItsServer() {
+        let remote = DatabaseConnection(
+            name: "Quack", host: "localhost", port: 9_494, type: .duckdb,
+            additionalFields: ["duckdbMode": "remote", "duckdbHost": "192.168.170.165", "duckdbPort": "9494"]
+        )
+        var local = remote
+        local.additionalFields["duckdbMode"] = "local"
+
+        #expect(hops(remote) == [LocalNetworkHop(role: .database, host: "192.168.170.165")])
+        #expect(hops(local).isEmpty)
+    }
+
     @Test("Behind SSH the server is asked about, never the database it forwards to")
     func sshProbesTheServer() {
         let connection = sshConnection(SSHConfiguration(enabled: true, host: "192.168.1.9", username: "deploy"))

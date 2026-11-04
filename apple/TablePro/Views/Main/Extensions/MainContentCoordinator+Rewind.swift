@@ -176,7 +176,7 @@ extension MainContentCoordinator {
     // Shaped by the record, not the live tab: the save's columns and keys matter, and the tab may have moved on.
     private func rewindStatementFactory(for record: RewindRecord) -> RowChangeStatementFactory {
         let operation = record.operations.first
-        return RowChangeStatementFactory(
+        var factory = RowChangeStatementFactory(
             tableName: record.target.table,
             schemaName: record.target.schema,
             columns: operation?.columns ?? [],
@@ -187,5 +187,7 @@ extension MainContentCoordinator {
             pluginDriver: changeManager.pluginDriver,
             identityColumns: record.identityColumns.map(Set.init)
         )
+        factory.database = record.target.database.isEmpty ? nil : record.target.database
+        return factory
     }
 }

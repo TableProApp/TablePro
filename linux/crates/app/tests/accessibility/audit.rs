@@ -130,6 +130,9 @@ fn judge(widget: &gtk4::Widget) -> Option<Missing> {
     if let Some(row) = widget.downcast_ref::<adw::PreferencesRow>() {
         return judge_row(row);
     }
+    if widget.accessible_role() == AccessibleRole::ListItem {
+        return (names_its_rows(widget) && !named(widget)).then_some(Missing::Label);
+    }
     let needs_name = match button_face(widget) {
         Some(face) => face == ButtonFace::Bare,
         None => is_field(widget),
@@ -152,6 +155,18 @@ fn judge_row(row: &adw::PreferencesRow) -> Option<Missing> {
         .find(|widget| widget.is::<gtk4::Text>())
         .is_some_and(|text| gtk4::test_accessible_has_relation(&text, AccessibleRelation::LabelledBy));
     (!labelled).then_some(Missing::EntryText)
+}
+
+// The picker's rows hold more than their name, so the picker names each row itself.
+fn names_its_rows(row: &gtk4::Widget) -> bool {
+    let mut owner = row.parent();
+    while let Some(widget) = owner {
+        if widget.type_().name() == "TableProWelcomeView" {
+            return true;
+        }
+        owner = widget.parent();
+    }
+    false
 }
 
 fn named(widget: &gtk4::Widget) -> bool {

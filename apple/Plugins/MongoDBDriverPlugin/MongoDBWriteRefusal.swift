@@ -26,6 +26,7 @@ nonisolated enum MongoDBWriteRefusal: Error, Equatable {
     case noDefaultValue(field: String)
     case identityChanged
     case missingIdentity
+    case unlocatedRow
     case identitySubtypeUnknown
     case ambiguousIdentity
 
@@ -89,6 +90,8 @@ nonisolated enum MongoDBWriteRefusal: Error, Equatable {
             return String(localized: "MongoDB does not let a document's _id change. Duplicate the row with the new _id, then delete this one.")
         case .missingIdentity:
             return String(localized: "This row has no _id, so TablePro cannot tell which document to change.")
+        case .unlocatedRow:
+            return String(localized: "TablePro does not have this row's stored _id, so it cannot tell which document it is.")
         case .identitySubtypeUnknown:
             return String(localized: "This row's _id is binary data whose subtype is not known, so TablePro cannot tell which document it names.")
         case .ambiguousIdentity:

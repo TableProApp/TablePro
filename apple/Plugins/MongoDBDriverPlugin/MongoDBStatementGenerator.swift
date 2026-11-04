@@ -23,6 +23,9 @@ nonisolated struct MongoDBStatementGenerator {
     // Every `_id` kind the finds of this collection held, or nil before any. An `_id` filter has to carry the row's own
     // type, and a majority kind would quote an ObjectId in a mostly-string collection and match nothing.
     var identityKinds: Set<BsonValueKind>?
+    // By `PluginRowChange.rowIndex`. Display text cannot say which value an `_id` came from: a string and an ObjectId
+    // with the same hex read the same.
+    var rowLocators: [Int: String] = [:]
     /// Every kind each field held in the documents read, which says whether a cell showing `{` or
     /// `[` holds a document or an array or a string that reads the same.
     var fieldKinds: MongoDBFieldKinds = .empty
@@ -94,7 +97,7 @@ nonisolated struct MongoDBStatementGenerator {
                     writes.append(PluginRowWrite(statement: statement, rowIndices: [change.rowIndex]))
                 case .delete:
                     guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                    deletions.append((rowIndex: change.rowIndex, identity: try identityJson(of: change)))
+                    deletions.append((rowIndex: change.rowIndex, identity: try identityFilter(of: change)))
                 }
             } catch let refusal as MongoDBWriteRefusal {
                 throw refusal.refusal(ofRow: change.rowIndex)
@@ -179,9 +182,10 @@ nonisolated struct MongoDBStatementGenerator {
         do {
             return try rows.enumerated().map { rowIndex, row in
                 guard idIndex < row.count else { throw MongoDBWriteRefusal.missingIdentity }
+                guard let locator = rowLocators[rowIndex] else { throw MongoDBWriteRefusal.unlocatedRow }
                 let absent = absentCells[rowIndex] ?? []
                 let idField = MongoDBCollectionDDL.idField
-                var entries = ["\(quotedKey(idField)): \(try documentValueJson(row[idIndex], field: idField, provenance: .restored))"]
+                var entries = ["\(quotedKey(idField)): \(try Self.identityJson(locator: locator))"]
                 for (index, value) in row.enumerated() where index != idIndex && index < columns.count {
                     guard !isLeftOut(value, isAbsent: absent.contains(index)) else { continue }
                     let field = columns[index]
@@ -217,7 +221,7 @@ nonisolated struct MongoDBStatementGenerator {
     /// A field the change names in `absentColumns` is removed with `$unset`; NULL is stored as null.
     private func updateStatement(for change: PluginRowChange) throws -> String? {
         guard !change.cellChanges.isEmpty else { return nil }
-        let identity = try identityJson(of: change)
+        let identity = try identityFilter(of: change)
         let removed = change.absentColumns ?? []
         let cellWrites = try change.cellChanges.map {
             try cellWrite(
@@ -226,7 +230,7 @@ nonisolated struct MongoDBStatementGenerator {
             )
         }
         let update = try updateDocument(for: cellWrites)
-        return "\(collectionAccessor).updateOne({\"_id\": \(identity)}, \(update))"
+        return "\(collectionAccessor).updateOne(\(identity), \(update), \(MongoDocumentWritePlan.replaceOptions))"
     }
 
     private func cellWrite(
@@ -326,29 +330,54 @@ nonisolated struct MongoDBStatementGenerator {
         let rowIndices = deletions.map(\.rowIndex)
         guard deletions.count > 1 else {
             return PluginRowWrite(
-                statement: "\(collectionAccessor).deleteOne({\"_id\": \(only.identity)})",
+                statement: "\(collectionAccessor).deleteOne(\(only.identity), \(MongoDocumentWritePlan.replaceOptions))",
                 rowIndices: rowIndices
             )
         }
         let inList = deletions.map(\.identity).joined(separator: ", ")
         return PluginRowWrite(
-            statement: "\(collectionAccessor).deleteMany({\"_id\": {\"$in\": [\(inList)]}})",
+            statement: "\(collectionAccessor).deleteMany({\"$or\": [\(inList)]}, \(MongoDocumentWritePlan.replaceOptions))",
             rowIndices: rowIndices
         )
     }
 
     // MARK: - Values
 
-    // The filter a write to a row with this `_id` text names, so a read finds the document a write would change.
-    func identityFilter(forIdText text: String) throws -> String {
-        "{\"_id\": \(try idValueJson(.text(text)))}"
+    private func identityFilter(of change: PluginRowChange) throws -> String {
+        guard let locator = rowLocators[change.rowIndex] else { throw MongoDBWriteRefusal.unlocatedRow }
+        return try Self.identityFilter(locator: locator)
     }
 
-    private func identityJson(of change: PluginRowChange) throws -> String {
-        guard let idIndex = idColumnIndex, let originalRow = change.originalRow, idIndex < originalRow.count else {
-            throw MongoDBWriteRefusal.missingIdentity
+    // Equality alone accepts a collating string or a different numeric type in place of the loaded row.
+    static func identityFilter(locator: String) throws -> String {
+        _ = try identityJson(locator: locator)
+        let identity = try MongoDocumentIdentity(locator: locator)
+        let value = try MongoDocumentText.Value(parsing: identity.locator)
+        let filter: String
+        do {
+            filter = try MongoDocumentGuard.identityFilter(for: value)
+        } catch is MongoDocumentGuard.Refusal {
+            throw MongoDBWriteRefusal.unlocatedRow
         }
-        return try idValueJson(originalRow[idIndex])
+        return try MongoExtendedJsonForm.shellValue(
+            MongoDocumentText.Value(parsing: filter), field: MongoDBCollectionDDL.idField
+        ).compactText
+    }
+
+    // Canonical Extended JSON, which libbson reads back as exactly the stored value.
+    static func identityJson(locator: String) throws -> String {
+        guard let identity = try? MongoDocumentIdentity(locator: locator),
+              let value = try? MongoDocumentText.Value(parsing: identity.locator),
+              !Self.matchesAsPattern(value) else {
+            throw MongoDBWriteRefusal.unlocatedRow
+        }
+        return try MongoExtendedJsonForm.shellValue(value, field: MongoDBCollectionDDL.idField).compactText
+    }
+
+    // No stored `_id` is an array or a regular expression, and a filter reads either as a match against many.
+    private static func matchesAsPattern(_ value: MongoDocumentText.Value) -> Bool {
+        let type = MongoExtendedJsonType.name(of: value)
+        return type == "array" || type == "regex"
     }
 
     /// A cell's value as the JSON the statement carries.
@@ -464,13 +493,9 @@ nonisolated struct MongoDBStatementGenerator {
         return try shellJson(parsed, field: MongoDBCollectionDDL.idField)
     }
 
-    /// An `_id` is matched by value and type together, so a string `_id` of `1001` written as a
-    /// number matches no document. The column's own kind decides when it is known; the text's
-    /// shape is only the fallback.
+    // The `_id` typed into a new document. The column's own kind decides when it is known, so text reading like a UUID
+    // in a collection of string keys stays a string; the text's shape is only the fallback.
     private func idValueJson(_ idValue: String) throws -> String {
-        if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(idValue) {
-            return binary
-        }
         let idKind = uniformIdentityKind
         if idKind == nil, let held = identityKinds, held.count > 1,
            let reading = try heldIdentityJson(idValue, held: held) {
@@ -485,6 +510,9 @@ nonisolated struct MongoDBStatementGenerator {
             if idValue == "true" || idValue == "false" { return idValue }
         default:
             break
+        }
+        if let binary = MongoDBUuidCodec.extendedJsonFromWrapper(idValue) {
+            return binary
         }
         if isObjectIdString(idValue) {
             return "{\"$oid\": \"\(idValue)\"}"
@@ -509,11 +537,11 @@ nonisolated struct MongoDBStatementGenerator {
     }
 
     private enum IdentityValue: Hashable {
-        case string, objectId, date, boolean, integer, double, decimal, document
+        case string, objectId, date, boolean, integer, double, decimal, document, binary
     }
 
     private static let identityReadingOrder: [BsonValueKind] = [
-        .string, .objectId, .date, .boolean, .int32, .int64, .decimal128, .double, .document
+        .string, .objectId, .date, .boolean, .int32, .int64, .decimal128, .double, .document, .uuid, .legacyUuid
     ]
 
     private func identityReading(_ text: String, as kind: BsonValueKind) throws -> (IdentityValue, String)? {
@@ -521,6 +549,8 @@ nonisolated struct MongoDBStatementGenerator {
         switch kind {
         case .string:
             return (.string, "\"\(escapeJsonString(text))\"")
+        case .uuid, .legacyUuid:
+            return MongoDBUuidCodec.extendedJsonFromWrapper(text).map { (.binary, $0) }
         case .objectId:
             return typedJson(text, kind: kind).map { (.objectId, $0) }
         case .date:

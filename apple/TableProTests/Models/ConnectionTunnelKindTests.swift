@@ -11,6 +11,8 @@ import TableProSSHConfig
 
 struct ConnectionTunnelKindTests {
     private func connection(
+        type: DatabaseType = .postgresql,
+        fields: [String: String]? = nil,
         ssh: Bool = false,
         cloudflare: Bool = false,
         cloudSQLProxy: Bool = false,
@@ -19,7 +21,7 @@ struct ConnectionTunnelKindTests {
     ) -> DatabaseConnection {
         DatabaseConnection(
             name: "T",
-            type: .postgresql,
+            type: type,
             sshTunnelMode: ssh ? .inline(SSHConfiguration(enabled: true, host: "ssh.example.com")) : .disabled,
             cloudflareTunnelMode: cloudflare
                 ? .inline(CloudflareConfiguration(accessHostname: "db.example.com"))
@@ -32,9 +34,25 @@ struct ConnectionTunnelKindTests {
                 : .disabled,
             tunnelCommandMode: tunnelCommand
                 ? .inline(TunnelCommandConfiguration(method: .kubectl, kubernetesResource: "service/pg"))
-                : .disabled
+                : .disabled,
+            additionalFields: fields
         )
     }
+
+    private func connection(type: DatabaseType, fields: [String: String]? = nil, only kind: ConnectionTunnelKind) -> DatabaseConnection {
+        connection(
+            type: type,
+            fields: fields,
+            ssh: kind == .ssh,
+            cloudflare: kind == .cloudflare,
+            cloudSQLProxy: kind == .cloudSQLProxy,
+            socksProxy: kind == .socksProxy,
+            tunnelCommand: kind == .tunnelCommand
+        )
+    }
+
+    private static let duckdbRemote = ["duckdbMode": "remote", "duckdbHost": "quack.internal", "duckdbPort": "9494"]
+    private static let duckdbLocal = ["duckdbMode": "local", "duckdbFilePath": "/tmp/a.duckdb", "duckdbHost": "quack.internal"]
 
     @Test("no tunnel has no active kind")
     func none() {
@@ -76,5 +94,41 @@ struct ConnectionTunnelKindTests {
                 #expect(connection.activeTunnelKind == nil)
             }
         }
+    }
+
+    @Test("DuckDB in Remote opens every port forward it stores, since the driver dials the forward")
+    func duckdbRemoteOpensItsForward() {
+        for kind in ConnectionTunnelKind.formToggleable {
+            #expect(connection(type: .duckdb, fields: Self.duckdbRemote, only: kind).activeTunnelKind == kind, "\(kind)")
+        }
+    }
+
+    @Test("DuckDB in Local File opens none of the port forwards it still stores")
+    func duckdbLocalOpensNoForward() {
+        for kind in ConnectionTunnelKind.formToggleable {
+            let local = connection(type: .duckdb, fields: Self.duckdbLocal, only: kind)
+            #expect(local.enabledTunnelKinds.isEmpty, "\(kind) would open a tunnel a file driver goes around")
+            #expect(local.activeTunnelKind == nil)
+        }
+    }
+
+    @Test("a file-based row's stored port forward is not opened")
+    func fileBasedRowOpensNoForward() {
+        let sqlite = connection(type: .sqlite, ssh: true)
+        #expect(sqlite.enabledTunnelKinds.isEmpty)
+    }
+
+    /// PGlite offers no SSH, yet its driver dials Host and Port, so a stored tunnel keeps carrying it rather than
+    /// turning into a direct dial that would send its traffic in the clear.
+    @Test("a network row opens every kind it stores, offered or not")
+    func networkRowKeepsItsForward() {
+        for kind in ConnectionTunnelKind.formToggleable {
+            #expect(connection(type: .pglite, only: kind).activeTunnelKind == kind, "\(kind)")
+        }
+    }
+
+    @Test("a type the registry does not know opens the tunnel it stores")
+    func unknownTypeKeepsItsForward() {
+        #expect(connection(type: DatabaseType(rawValue: "NoSuchEngine"), ssh: true).activeTunnelKind == .ssh)
     }
 }

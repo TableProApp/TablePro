@@ -25,12 +25,13 @@ nonisolated protocol DriverQueryBuilding: DatabaseDriver {
 
     func rowCount(_ request: TableReadRequest) async throws -> Int?
 
-    // Throws CellLookupError.rowNotFound when no row holds the key.
+    // Throws CellLookupError.rowNotFound when no row holds the key. `locator` is the row's `Row.locator`.
     func storedValue(
         table: String,
         schema: String?,
         column: String,
-        key: [(column: String, value: String)]
+        key: [(column: String, value: String)],
+        locator: String?
     ) async throws -> String?
 }
 

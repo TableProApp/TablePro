@@ -42,7 +42,8 @@ nonisolated enum RowWriteBatch: Sendable {
         guard !changes.isEmpty else { return nil }
         if let writer = driver as? any DriverRowWriting {
             let writes = try writer.updateWrites(
-                table: table, schema: schema, columns: columns, originalRow: locator.row, changes: changes
+                table: table, schema: schema, columns: columns, originalRow: locator.row,
+                documentLocator: locator.documentLocator, changes: changes
             )
             return .driver(writes, writer)
         }
@@ -64,7 +65,10 @@ nonisolated enum RowWriteBatch: Sendable {
         locator: RowLocator
     ) throws -> RowWriteBatch? {
         if let writer = driver as? any DriverRowWriting {
-            let writes = try writer.deleteWrites(table: table, schema: schema, columns: columns, originalRow: locator.row)
+            let writes = try writer.deleteWrites(
+                table: table, schema: schema, columns: columns, originalRow: locator.row,
+                documentLocator: locator.documentLocator
+            )
             return .driver(writes, writer)
         }
         guard let keys = locator.keyValues, !keys.isEmpty else { return nil }

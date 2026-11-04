@@ -18,6 +18,13 @@ nonisolated final class DuckDBDriver: DatabaseDriver, @unchecked Sendable {
     var serverVersion: String? { String(cString: duckdb_library_version()) }
     var holdsSuspensionBlockingResource: Bool { source != .inMemory }
 
+    // DuckDB ends statement text at a NUL, so a NUL in a value goes in as chr(0) between two literals.
+    func escapeStringLiteral(_ value: String) -> String {
+        value.split(separator: "\0", omittingEmptySubsequences: false)
+            .map { SQLQuoting.stringLiteralBody(String($0)) }
+            .joined(separator: "'||chr(0)||'")
+    }
+
     var currentSchema: String? {
         stateLock.lock()
         defer { stateLock.unlock() }

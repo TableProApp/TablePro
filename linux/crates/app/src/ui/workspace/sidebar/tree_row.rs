@@ -1,10 +1,11 @@
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{glib, pango};
 use libadwaita as adw;
+use tablepro_session::SessionKey;
 
 use super::sidebar_object::SidebarObject;
 use super::tree_menu::DISCONNECT_SESSION;
@@ -29,6 +30,10 @@ mod imp {
         /// The node the row shows, and its watches.
         pub(super) watched: RefCell<Option<(TreeNode, Vec<glib::SignalHandlerId>)>>,
         pub(super) bindings: RefCell<Vec<glib::Binding>>,
+        pub(super) expansion: RefCell<Option<(gtk::TreeListRow, glib::SignalHandlerId)>>,
+        pub(super) emptiness: RefCell<Option<(gtk::gio::ListStore, glib::SignalHandlerId)>>,
+        // The expander still says open or folded from an earlier row, which GTK leaves on it.
+        pub(super) stated: Cell<bool>,
     }
 
     // A widget's accessible role is fixed once it is made, so the parts a
@@ -50,6 +55,9 @@ mod imp {
                 item: glib::WeakRef::new(),
                 watched: RefCell::new(None),
                 bindings: RefCell::new(Vec::new()),
+                expansion: RefCell::new(None),
+                emptiness: RefCell::new(None),
+                stated: Cell::new(false),
             }
         }
     }
@@ -200,6 +208,58 @@ impl TreeRow {
                 node.disconnect(watch);
             }
         }
+        if let Some((row, watch)) = imp.expansion.take() {
+            row.disconnect(watch);
+        }
+        if let Some((store, watch)) = imp.emptiness.take() {
+            store.disconnect(watch);
+        }
+    }
+
+    // GTK updates the expanded state on the expander's arrow, not on the expander a screen reader reads.
+    pub(crate) fn follow_expansion(&self, expander: &gtk::TreeExpander, row: &gtk::TreeListRow) {
+        let imp = self.imp();
+        let group = row
+            .item()
+            .and_downcast::<TreeNode>()
+            .filter(|node| node.kind() == NodeKind::Group)
+            .and_then(|node| node.child_store());
+        expander.set_hide_expander(group.as_ref().is_some_and(|store| store.n_items() == 0));
+        if let Some(store) = group {
+            let hiding = expander.downgrade();
+            let watch = store.connect_items_changed(move |store, _, _, _| {
+                if let Some(expander) = hiding.upgrade() {
+                    expander.set_hide_expander(store.n_items() == 0);
+                }
+            });
+            if let Some((store, watch)) = imp.emptiness.replace(Some((store, watch))) {
+                store.disconnect(watch);
+            }
+        }
+        if !row.is_expandable() {
+            if imp.stated.replace(false) {
+                expander.update_state(&[gtk::accessible::State::Expanded(None)]);
+            }
+            return;
+        }
+        imp.stated.set(true);
+        let shown = expander.downgrade();
+        let watch = row.connect_expanded_notify(move |row| {
+            if let Some(expander) = shown.upgrade() {
+                expander.update_state(&[gtk::accessible::State::Expanded(Some(row.is_expanded()))]);
+            }
+        });
+        if let Some((row, watch)) = imp.expansion.replace(Some((row.clone(), watch))) {
+            row.disconnect(watch);
+        }
+    }
+
+    pub(crate) fn recount(&self) {
+        if let (Some(item), Some(node)) = (self.imp().item.upgrade(), self.shown().and_downcast::<TreeNode>())
+            && node.kind() == NodeKind::Group
+        {
+            describe(&item, &group_description(&node));
+        }
     }
 
     fn show_object(&self, item: &gtk::ListItem, object: &SidebarObject) {
@@ -239,7 +299,7 @@ impl TreeRow {
         set_choosable(item, !placeholder);
         imp.icon.set_visible(!placeholder);
         match node.kind() {
-            NodeKind::Group => self.show_plain(item, crate::ui::icons::FOLDER, &crate::i18n::gettext("Group")),
+            NodeKind::Group => self.show_plain(item, crate::ui::icons::FOLDER, &group_description(node)),
             NodeKind::Schema => {
                 self.show_plain(item, crate::ui::icons::DRIVE_HARDDISK, &crate::i18n::gettext("Schema"));
             }
@@ -332,6 +392,32 @@ impl TreeRow {
             kind.set_visible(false);
         }
     }
+}
+
+fn group_description(group: &TreeNode) -> String {
+    let count = connections_in(group);
+    // Translators: what a screen reader says of a group's row: how many connections it holds, its subgroups' too.
+    crate::i18n::ngettext_f(
+        "Group, {count} connection",
+        "Group, {count} connections",
+        count,
+        &[("count", &count.to_string())],
+    )
+}
+
+// Every saved connection in the group and its subgroups, as macOS counts them; another open database is not one.
+fn connections_in(group: &TreeNode) -> u32 {
+    let Some(store) = group.child_store() else {
+        return 0;
+    };
+    (0..store.n_items())
+        .filter_map(|at| store.item(at).and_downcast::<TreeNode>())
+        .map(|node| match (node.kind(), node.key()) {
+            (NodeKind::Group, _) => connections_in(&node),
+            (NodeKind::Connection, Some(SessionKey::Saved(_))) => 1,
+            _ => 0,
+        })
+        .sum()
 }
 
 /// The getter's binding cannot read an unset description, which a new

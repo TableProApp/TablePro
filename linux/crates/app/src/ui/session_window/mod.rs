@@ -67,7 +67,7 @@ pub(super) use self::picker_page::PickerPage;
 use self::resolve_file_identity::{FileResolveError, FileTarget, ResolvedFile, resolve_file_blocking};
 use self::session_page::{FailedConnect, OpenSession, PendingConnect, SessionPage, TakenFailure, source_key};
 use self::session_window_command::{AttemptError, ConnectFailure, Connected, SessionWindowCommand};
-pub(crate) use self::session_window_input::{MovedTab, SessionWindowInput};
+pub(crate) use self::session_window_input::{LibraryEdit, MovedTab, SessionWindowInput};
 use crate::application::{AppServices, WindowHost, WindowLaunch};
 use crate::runtime::{DeliverInput, InputSender};
 use crate::services::session_context::SessionContext;
@@ -520,6 +520,7 @@ impl SessionWindow {
             SessionWindowInput::SetConnectionColor(id, color) => self.on_set_connection_color(id, color),
             SessionWindowInput::SetConnectionGroup(id, group) => self.on_set_connection_group(id, group),
             SessionWindowInput::SetConnectionTag(id, tag, carried) => self.on_set_connection_tag(id, tag, carried),
+            SessionWindowInput::Library(edit) => self.on_library_edit(edit),
             SessionWindowInput::CreateTag { name, color, on } => self.on_create_tag(name, color, on),
             SessionWindowInput::UpdateTag(tag) => self.on_update_tag(tag),
             SessionWindowInput::DeleteTag(id) => self.on_delete_tag(id),
