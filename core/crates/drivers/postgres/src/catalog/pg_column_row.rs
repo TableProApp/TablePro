@@ -13,6 +13,9 @@ use crate::codec::TextArray;
 ///
 /// The argument is the compression projection, since
 /// `attcompression` arrived in PostgreSQL 14.
+///
+/// Under the catalog path `format_type` drops a built-in's schema, but a
+/// cast target runs under the session's path, where a lookalike can win.
 macro_rules! columns_sql {
     ($compression:literal) => {
         concat!(
@@ -36,7 +39,9 @@ base AS (
 )
 SELECT a.attname::text,
        pg_catalog.format_type(a.atttypid, a.atttypmod)::text,
-       pg_catalog.format_type(a.atttypid, NULL)::text,
+       CASE WHEN atn.nspname = 'pg_catalog'
+            THEN 'pg_catalog.' || pg_catalog.quote_ident(at.typname::text)
+            ELSE pg_catalog.format_type(a.atttypid, NULL)::text END,
        b.type_oid::int8,
        b.typmod::int4,
        bt.typtype::text,
@@ -62,6 +67,7 @@ SELECT a.attname::text,
 FROM pg_catalog.pg_attribute a
 JOIN base b ON b.attnum = a.attnum
 JOIN pg_catalog.pg_type at ON at.oid = a.atttypid
+JOIN pg_catalog.pg_namespace atn ON atn.oid = at.typnamespace
 JOIN pg_catalog.pg_type bt ON bt.oid = b.type_oid
 LEFT JOIN pg_catalog.pg_type et ON et.oid = bt.typelem AND bt.typcategory = 'A'
 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum

@@ -123,8 +123,9 @@ fn runs_text_as_sql(grammar: SqlGrammar, statements: &[Vec<StatementToken<'_>>])
     names_runner || statements.iter().any(|tokens| names_a_variable(grammar, tokens))
 }
 
-/// A T-SQL `@s` word, or MySQL's `@` before a name or a quoted name. A
-/// `@@` system variable holds no text the server runs later.
+/// A T-SQL `@s` word, or any MySQL `@` but the pair that opens a system
+/// variable, which holds no text the server runs later. MySQL names a
+/// user variable with a word, a number, a quoted name or a string.
 fn names_a_variable(grammar: SqlGrammar, tokens: &[StatementToken<'_>]) -> bool {
     tokens.iter().enumerate().any(|(at, token)| match (grammar, token) {
         (SqlGrammar::MsSql, StatementToken::Word(word)) => word.starts_with('@') && !word.starts_with("@@"),
@@ -134,11 +135,7 @@ fn names_a_variable(grammar: SqlGrammar, tokens: &[StatementToken<'_>]) -> bool 
                     .and_then(|index| tokens.get(index))
                     .is_some_and(|token| token.is_punct('@'))
             };
-            !system(at.checked_sub(1))
-                && !system(Some(at + 1))
-                && tokens
-                    .get(at + 1)
-                    .is_some_and(|next| next.name().is_some() || matches!(next, StatementToken::StringLiteral(_)))
+            !system(at.checked_sub(1)) && !system(Some(at + 1))
         }
         _ => false,
     })
@@ -618,6 +615,18 @@ mod tests {
             (
                 SqlGrammar::MySql,
                 "SELECT 'CREATE USER app IDENTIFIED BY ''Hunter2!''' INTO @s",
+            ),
+            (
+                SqlGrammar::MySql,
+                "SET @1 = 'CREATE USER app IDENTIFIED BY ''Hunter2!'''",
+            ),
+            (
+                SqlGrammar::MySql,
+                "SET @.s = 'CREATE USER app IDENTIFIED BY ''Hunter2!'''",
+            ),
+            (
+                SqlGrammar::MySql,
+                "SET @$s = 'CREATE USER app IDENTIFIED BY ''Hunter2!'''",
             ),
             (
                 SqlGrammar::MsSql,

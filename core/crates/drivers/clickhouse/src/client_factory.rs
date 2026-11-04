@@ -104,8 +104,8 @@ pub(crate) fn base_client(
             clickhouse::Client::with_http_client(builder.build(https))
         }
     };
-    // A typed fetch then reads RowBinary, which names no column types, so the login never parses a type name
-    // the server sent, however deep it nests, nor sizes a list by the column count the server claims.
+    // A typed fetch then reads RowBinary, which names no column types, so no type name the server sends is parsed,
+    // however deep it nests, nor a list sized by the column count the server claims.
     let mut client = client
         .with_url(service_url(scheme, target))
         .with_validation(false)
