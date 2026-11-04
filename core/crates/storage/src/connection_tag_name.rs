@@ -1,4 +1,5 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::name_rules::{self, NameFault};
 use crate::tag_name_error::TagNameError;
@@ -34,19 +35,16 @@ impl ConnectionTagName {
     pub(crate) fn key(&self) -> String {
         self.0.to_lowercase()
     }
-}
 
-// A blank name is refused: a tag nobody can see cannot be told apart.
-pub(crate) fn deserialize_stored<'de, D>(deserializer: D) -> Result<ConnectionTagName, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let stored = String::deserialize(deserializer)?;
-    let cut: String = name_rules::cleaned(&stored)
-        .chars()
-        .take(ConnectionTagName::MAX_CHARS)
-        .collect();
-    ConnectionTagName::new(&cut).map_err(serde::de::Error::custom)
+    pub(crate) fn from_stored(value: &str, id: Uuid) -> Result<Self, TagNameError> {
+        let cleaned = name_rules::cleaned(value);
+        // Cutting a recovered name's escapes would make distinct old
+        // tags look alike. Its full id fits the limit and stays stable.
+        if name_rules::shown(value).is_empty() && cleaned.chars().count() > Self::MAX_CHARS {
+            return Self::new(&id.simple().to_string());
+        }
+        Self::new(&cleaned.chars().take(Self::MAX_CHARS).collect::<String>())
+    }
 }
 
 impl TryFrom<String> for ConnectionTagName {
@@ -80,6 +78,7 @@ mod tests {
             Ok("prod".to_owned())
         );
         assert_eq!(ConnectionTagName::new("  "), Err(TagNameError::Empty));
+        assert_eq!(ConnectionTagName::new("\u{200b}"), Err(TagNameError::Empty));
         assert_eq!(
             ConnectionTagName::new(&"t".repeat(ConnectionTagName::MAX_CHARS + 1)),
             Err(TagNameError::TooLong {
@@ -110,24 +109,19 @@ mod tests {
         assert!(!name.same_name("prod"));
     }
 
-    #[derive(Debug, Deserialize)]
-    struct Stored {
-        #[serde(deserialize_with = "deserialize_stored")]
-        name: ConnectionTagName,
-    }
-
     #[test]
     fn a_stored_name_is_cleaned_and_a_blank_one_refused() {
+        let id = Uuid::new_v4();
         let long = "x".repeat(ConnectionTagName::MAX_CHARS + 5);
-        let read: Stored = serde_json::from_str(&format!(r#"{{"name":"{long}"}}"#)).expect("a long name");
-        assert_eq!(read.name.as_str(), "x".repeat(ConnectionTagName::MAX_CHARS));
+        let read = ConnectionTagName::from_stored(&long, id).expect("a long name");
+        assert_eq!(read.as_str(), "x".repeat(ConnectionTagName::MAX_CHARS));
 
-        let read: Stored = serde_json::from_str(r#"{"name":"a\tb"}"#).expect("a control character");
-        assert_eq!(read.name.as_str(), "a b");
+        let read = ConnectionTagName::from_stored("a\tb", id).expect("a control character");
+        assert_eq!(read.as_str(), "a b");
 
-        let read: Stored = serde_json::from_str(r#"{"name":"production\u200b"}"#).expect("a blank");
-        assert_eq!(read.name.as_str(), "production");
+        let read = ConnectionTagName::from_stored("production\u{200b}", id).expect("a blank");
+        assert_eq!(read.as_str(), "production");
 
-        assert!(serde_json::from_str::<Stored>(r#"{"name":" \n "}"#).is_err());
+        assert_eq!(ConnectionTagName::from_stored(" \n ", id), Err(TagNameError::Empty));
     }
 }

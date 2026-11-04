@@ -37,8 +37,11 @@ pub(crate) enum Access {
 /// or type of the same name and argument types in a later schema. The
 /// session's own path stays after it, so types and defaults print as the
 /// session prints them.
-const CATALOG_PATH: &str = "SELECT pg_catalog.set_config('search_path', \
-    pg_catalog.concat('pg_catalog, ', pg_catalog.current_setting('search_path'), ', pg_temp'), true)";
+pub(crate) const CATALOG_PATH: &str = "SELECT pg_catalog.set_config('tablepro.catalog_default_schema', \
+    COALESCE(pg_catalog.current_schema(), ''), true); \
+    SELECT pg_catalog.set_config('search_path', \
+    CASE WHEN pg_catalog.current_schema() IS NULL THEN 'pg_catalog, pg_temp' \
+    ELSE pg_catalog.concat('pg_catalog, ', pg_catalog.current_setting('search_path'), ', pg_temp') END, true)";
 
 /// The transaction a workspace call runs in, with its bounds set for
 /// that transaction only. SET LOCAL ends with the transaction, so the
@@ -51,6 +54,7 @@ const CATALOG_PATH: &str = "SELECT pg_catalog.set_config('search_path', \
 pub(crate) struct Preamble {
     sql: String,
     statement_timeout_ms: Option<u128>,
+    dependent_queries: bool,
 }
 
 impl Preamble {
@@ -68,6 +72,7 @@ impl Preamble {
         Self {
             sql,
             statement_timeout_ms,
+            dependent_queries: false,
         }
     }
 
@@ -76,6 +81,13 @@ impl Preamble {
     pub(crate) fn with_catalog_path(mut self) -> Self {
         self.sql.push_str("; ");
         self.sql.push_str(CATALOG_PATH);
+        self
+    }
+
+    // A relation must resolve on the user's path before metadata can
+    // use the protected path, so its work cannot be sent in one flight.
+    pub(crate) fn with_dependent_queries(mut self) -> Self {
+        self.dependent_queries = true;
         self
     }
 
@@ -130,6 +142,18 @@ pub(crate) fn statement_bound(settings: &WorkspaceSettings, deadline: Option<Ins
 pub(crate) async fn flight<T>(call: &PgCall, preamble: &Preamble, op: ReadOp<T>) -> Result<T, DriverError> {
     let client = call.client()?;
     let started = Instant::now();
+    if preamble.dependent_queries {
+        let result = match client.batch_execute(preamble.sql()).await {
+            Ok(()) => op(client).await,
+            Err(error) => Err(map_error(&error)),
+        };
+        let end = if result.is_ok() { "COMMIT" } else { "ROLLBACK" };
+        if let Err(error) = client.batch_execute(end).await {
+            call.taint();
+            return Err(map_error(&error));
+        }
+        return result.map_err(|error| preamble.explain(error, started));
+    }
     let (begun, result, committed) = futures_util::join!(
         client.batch_execute(preamble.sql()),
         op(client),
@@ -307,12 +331,7 @@ mod tests {
         );
         let catalog = data.clone().with_catalog_path();
 
-        assert_eq!(
-            catalog.sql(),
-            "START TRANSACTION READ ONLY; SET LOCAL statement_timeout = 1500; SET LOCAL lock_timeout = 10000; \
-             SELECT pg_catalog.set_config('search_path', pg_catalog.concat('pg_catalog, ', \
-             pg_catalog.current_setting('search_path'), ', pg_temp'), true)"
-        );
+        assert_eq!(catalog.sql(), format!("{}; {CATALOG_PATH}", data.sql()));
         assert!(!data.sql().contains("search_path"), "{}", data.sql());
     }
 

@@ -6,10 +6,10 @@ use super::{decode_error, text_rows};
 
 /// Schemas this session can use: no TOAST schemas, and no other
 /// session's temporary schema. The default is the session's first
-/// schema, which a catalog read's path puts after `pg_catalog`.
+/// schema, captured before the catalog read changes its search path.
 pub(super) const SCHEMAS_SQL: &str = "\
 SELECT n.nspname::text,
-       COALESCE(n.nspname = (pg_catalog.current_schemas(false))[2], false),
+       COALESCE(n.nspname = pg_catalog.current_setting('tablepro.catalog_default_schema'), false),
        n.nspname = 'information_schema' OR pg_catalog.starts_with(n.nspname, 'pg_')
 FROM pg_catalog.pg_namespace n
 WHERE NOT pg_catalog.starts_with(n.nspname, 'pg_toast')
@@ -36,7 +36,7 @@ FROM (
 JOIN pg_catalog.pg_namespace n ON n.oid = o.namespace
 WHERE NOT pg_catalog.pg_is_other_temp_schema(n.oid)
   AND CASE $1
-        WHEN 'default' THEN n.nspname = (pg_catalog.current_schemas(false))[2]
+        WHEN 'default' THEN n.nspname = pg_catalog.current_setting('tablepro.catalog_default_schema')
         WHEN 'schema' THEN n.nspname = $2
         ELSE n.nspname <> 'information_schema' AND NOT pg_catalog.starts_with(n.nspname, 'pg_')
       END

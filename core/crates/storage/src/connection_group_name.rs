@@ -76,6 +76,7 @@ mod tests {
     fn group_name_rejects_blank_and_control_characters() {
         assert_eq!(ConnectionGroupName::new(""), Err(GroupNameError::Empty));
         assert_eq!(ConnectionGroupName::new(" \t "), Err(GroupNameError::Empty));
+        assert_eq!(ConnectionGroupName::new("\u{200b}"), Err(GroupNameError::Empty));
         assert_eq!(
             ConnectionGroupName::new("Work\nHome"),
             Err(GroupNameError::ControlCharacter)
@@ -106,6 +107,10 @@ mod tests {
         );
         assert_eq!(ConnectionGroupName::from_stored(" \t "), None);
         assert_eq!(ConnectionGroupName::from_stored(""), None);
+        assert_eq!(
+            ConnectionGroupName::from_stored("\u{200b}").map(String::from),
+            Some(String::from("\\u{200b}"))
+        );
     }
 
     #[test]

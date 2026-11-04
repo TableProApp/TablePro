@@ -25,7 +25,14 @@ pub(crate) fn checked(value: &str) -> Result<String, NameFault> {
 
 // A file is never refused for what an earlier build let the user type.
 pub(crate) fn cleaned(value: &str) -> String {
-    shown(value)
+    let name = shown(value);
+    if !name.is_empty() {
+        return name;
+    }
+    // Older builds accepted names made only of invisible characters.
+    // Keep the library readable and give those names something to show.
+    let old: String = value.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    old.trim().chars().flat_map(char::escape_default).collect()
 }
 
 /// A name as the list shows it: characters that show as nothing dropped,
@@ -102,5 +109,12 @@ mod tests {
         assert_eq!(cleaned("abcdef"), "abcdef");
         assert_eq!(cleaned(" \u{7} "), "");
         assert_eq!(cleaned("pro\u{200b}d\u{a0}x"), "prod x");
+    }
+
+    #[test]
+    fn a_stored_invisible_name_is_visible_without_accepting_a_new_one() {
+        assert_eq!(cleaned(" \u{200b}\u{feff} "), "\\u{200b}\\u{feff}");
+        assert_eq!(checked("\u{200b}\u{feff}"), Err(NameFault::Empty));
+        assert_eq!(cleaned(" \t\n "), "");
     }
 }

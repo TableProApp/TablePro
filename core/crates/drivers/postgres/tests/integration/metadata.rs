@@ -1233,3 +1233,90 @@ async fn exact_lookalikes_ahead_of_pg_catalog_never_run() {
     .unwrap();
     assert_eq!(saved.rows_affected, [Some(1)]);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn catalog_defaults_keep_the_sessions_schema_with_an_explicit_or_empty_path() {
+    let fixture = start().await;
+    let initial = connect(&fixture, false).await;
+    setup(initial.as_ref(), &["CREATE TABLE public.accounts (id int PRIMARY KEY)"]).await;
+    initial.close().await.unwrap();
+
+    for (setting, expected_default) in [
+        ("pg_catalog, public", Some("pg_catalog")),
+        ("pg_catalog", Some("pg_catalog")),
+        ("''", None),
+        ("'   '", None),
+    ] {
+        let admin = connect(&fixture, false).await;
+        setup(
+            admin.as_ref(),
+            &[&format!("ALTER ROLE CURRENT_USER SET search_path = {setting}")],
+        )
+        .await;
+        admin.close().await.unwrap();
+
+        let connection = connect(&fixture, false).await;
+        let schemas = connection.list_schemas(within(CALL)).await.unwrap();
+        let defaults: Vec<&str> = schemas
+            .iter()
+            .filter(|schema| schema.is_default)
+            .map(|schema| schema.name.as_str())
+            .collect();
+        assert_eq!(defaults, expected_default.into_iter().collect::<Vec<_>>(), "{setting}");
+        let objects = connection
+            .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+            .await
+            .unwrap();
+        match expected_default {
+            Some(schema) => {
+                assert!(!objects.is_empty(), "{setting}");
+                assert!(objects.iter().all(|object| object.schema.as_deref() == Some(schema)));
+            }
+            None => assert!(objects.is_empty(), "{setting}"),
+        }
+        let columns = connection
+            .fetch_columns(&table("accounts"), within(CALL))
+            .await
+            .unwrap();
+        assert_eq!(columns.len(), 1, "{setting}");
+        assert_eq!(columns[0].name, "id", "{setting}");
+        connection.close().await.unwrap();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn an_unqualified_user_table_keeps_its_identity_when_it_shares_a_catalog_name() {
+    let fixture = start().await;
+    let initial = connect(&fixture, false).await;
+    setup(
+        initial.as_ref(),
+        &[
+            "CREATE TABLE public.pg_class (id int PRIMARY KEY, user_value text)",
+            "ALTER ROLE CURRENT_USER SET search_path = public, pg_catalog",
+        ],
+    )
+    .await;
+    initial.close().await.unwrap();
+
+    let connection = connect(&fixture, false).await;
+    let target = TableRef::new(None, "pg_class");
+    let columns = connection.fetch_columns(&target, within(CALL)).await.unwrap();
+    let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
+    assert_eq!(names, ["id", "user_value"]);
+    read_table_catalog(connection.as_ref(), &target).await;
+    let indexes = connection.fetch_indexes(&target, within(CALL)).await.unwrap();
+    assert!(indexes.iter().any(|index| index.name == "pg_class_pkey"));
+
+    for _ in 0..5 {
+        assert!(
+            connection
+                .fetch_columns(&TableRef::new(None, "absent_table"), within(CALL))
+                .await
+                .is_err()
+        );
+        let columns = connection.fetch_columns(&target, within(CALL)).await.unwrap();
+        assert_eq!(columns.len(), 2);
+    }
+}

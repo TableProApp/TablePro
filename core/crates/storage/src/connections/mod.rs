@@ -1140,6 +1140,46 @@ mod tests {
     }
 
     #[test]
+    fn older_invisible_group_and_tag_names_keep_the_library_and_its_links() {
+        let root = TempDir::new().expect("tempdir");
+        let group = Uuid::new_v4();
+        let tags = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+        let connection = SavedConnection {
+            group_id: Some(group),
+            tags: tags.to_vec(),
+            ..sample_connection()
+        };
+        let document = serde_json::json!({
+            "version": 3,
+            "connections": [connection],
+            "groups": [{"id": group, "name": "\u{200b}"}],
+            "tags": [
+                {"id": tags[0], "name": "\u{feff}", "color": "teal"},
+                {"id": tags[1], "name": "\u{200b}".repeat(32), "color": "red"},
+                {"id": tags[2], "name": format!("{}\u{feff}", "\u{200b}".repeat(31)), "color": "blue"},
+            ],
+        });
+        seed(&root, &serde_json::to_string(&document).expect("old file"));
+        let opened = store(&root);
+        let list = opened.list_blocking().expect("load the old library");
+        assert_eq!(list.connections.as_ref(), std::slice::from_ref(&connection));
+        assert_eq!(list.groups.len(), 1);
+        assert_eq!(list.groups[0].id, group);
+        assert_eq!(list.groups[0].name.as_str(), "\\u{200b}");
+        assert_eq!(list.tags.len(), 3);
+        assert_eq!(list.tags[0].name.as_str(), "\\u{feff}");
+        for tag in &list.tags[1..] {
+            assert_eq!(tag.name.as_str(), tag.id.simple().to_string());
+        }
+
+        opened.upsert_blocking(connection.clone()).expect("save the library");
+        let reread = store(&root).list_blocking().expect("read the saved library");
+        assert_eq!(reread.connections.as_ref(), &[connection]);
+        assert_eq!(reread.groups, list.groups);
+        assert_eq!(reread.tags, list.tags);
+    }
+
+    #[test]
     fn f003_truncated_file_is_unavailable_and_upsert_leaves_bytes_identical() {
         let root = TempDir::new().expect("tempdir");
         let path = seed(&root, r#"{"version": 1, "connections": [{"id":"#);
