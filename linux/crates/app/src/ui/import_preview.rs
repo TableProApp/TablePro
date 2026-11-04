@@ -147,20 +147,18 @@ fn ssh_hop(ssh: &SavedSshConfig) -> String {
 /// What the file's TLS mode skips that a new connection of the same
 /// driver checks.
 fn looser_tls(mode: TlsMode, new_connection: TlsMode) -> Option<String> {
-    let proves = |mode: TlsMode| match mode {
-        TlsMode::Disable => 0,
-        TlsMode::Require => 1,
-        TlsMode::VerifyFull => 2,
-    };
-    if proves(mode) >= proves(new_connection) {
-        return None;
+    if new_connection.encrypts() && !mode.encrypts() {
+        return Some(crate::i18n::gettext("Connects without TLS"));
     }
-    Some(match mode {
-        TlsMode::Disable => crate::i18n::gettext("Connects without TLS"),
-        TlsMode::Require | TlsMode::VerifyFull => {
-            crate::i18n::gettext("Connects over TLS without checking the certificate")
-        }
-    })
+    if new_connection.verifies_certificate() && !mode.verifies_certificate() {
+        return Some(crate::i18n::gettext(
+            "Connects over TLS without checking the certificate",
+        ));
+    }
+    if new_connection == TlsMode::Strict && mode != TlsMode::Strict {
+        return Some(crate::i18n::gettext("Connects without strict encryption"));
+    }
+    None
 }
 
 /// What the file allows beyond what a new connection starts with.
@@ -211,6 +209,25 @@ mod tests {
         assert_eq!(looser_tls(TlsMode::Require, TlsMode::Require), None);
         // A driver without TLS starts a new connection with none.
         assert_eq!(looser_tls(TlsMode::Disable, TlsMode::Disable), None);
+    }
+
+    #[test]
+    fn strict_checks_the_certificate_and_also_encrypts_the_prelogin_exchange() {
+        for default in [TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull, TlsMode::Strict] {
+            assert_eq!(looser_tls(TlsMode::Strict, default), None);
+        }
+        assert_eq!(
+            looser_tls(TlsMode::VerifyFull, TlsMode::Strict).as_deref(),
+            Some("Connects without strict encryption")
+        );
+        assert_eq!(
+            looser_tls(TlsMode::Require, TlsMode::Strict).as_deref(),
+            Some("Connects over TLS without checking the certificate")
+        );
+        assert_eq!(
+            looser_tls(TlsMode::Disable, TlsMode::Strict).as_deref(),
+            Some("Connects without TLS")
+        );
     }
 
     fn tunnel(port: Option<u16>, username: Option<&str>, jump_hosts: &[&str]) -> SavedSshConfig {
