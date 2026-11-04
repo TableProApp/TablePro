@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
@@ -116,8 +117,16 @@ public sealed partial class ShellTests
             Assert.InRange(bounds.Height, placed.Height - 2, placed.Height + 2);
             app.Screenshot("17-window-restored", screen: true);
             app.Window.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Maximized);
+            // UI Automation posts SC_MAXIMIZE, so closing must wait until the window processes it.
+            Assert.True(Retry.WhileFalse(
+                () => app.Window.Patterns.Window.Pattern.WindowVisualState.Value == WindowVisualState.Maximized,
+                AppSession.Wait,
+                throwOnTimeout: false).Success);
             app.Close();
         }
+
+        using var session = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "session.json")));
+        Assert.True(session.RootElement.GetProperty("window").GetProperty("maximized").GetBoolean());
 
         using var maximized = AppSession.Relaunch(folder, theme, maximize: false);
         var state = WindowVisualState.Normal;

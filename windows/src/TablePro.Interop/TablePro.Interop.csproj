@@ -27,6 +27,9 @@
     <CargoTargetDirectory>$(CARGO_TARGET_DIR)</CargoTargetDirectory>
     <CargoTargetDirectory Condition="'$(CargoTargetDirectory)' == ''">$(RepositoryRoot)target</CargoTargetDirectory>
     <CoreLibraryPath>$([MSBuild]::NormalizePath('$(CargoTargetDirectory)', '$(CargoTriple)', '$(CargoProfileDirectory)', '$(CoreLibraryName)'))</CoreLibraryPath>
+    <!-- The hybrid CRT, as Native AOT and the Windows App SDK link it: no VC++ redistributable on the machine (docs/decisions/0005-distribution.md). -->
+    <CoreRustFlags Condition="$(CargoTriple.EndsWith('-windows-msvc'))">-C target-feature=+crt-static -C link-arg=/NODEFAULTLIB:libucrt.lib -C link-arg=/DEFAULTLIB:ucrt.lib</CoreRustFlags>
+    <CoreBuildEnvironment Condition="'$(CoreRustFlags)' != ''">RUSTFLAGS=$(RUSTFLAGS) $(CoreRustFlags)</CoreBuildEnvironment>
   </PropertyGroup>
 
   <ItemGroup>
@@ -39,6 +42,7 @@
     <Error Condition="'$(CargoTriple)' == ''" Text="No Rust target is known for the runtime identifier '$(CoreRuntimeIdentifier)'." />
     <Exec Command="cargo build --locked -p tablepro-ffi --target $(CargoTriple) --profile $(CargoProfile)"
           WorkingDirectory="$(RepositoryRoot)"
+          EnvironmentVariables="$(CoreBuildEnvironment)"
           IgnoreStandardErrorWarningFormat="true" />
   </Target>
 

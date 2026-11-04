@@ -1,6 +1,6 @@
 # Releasing
 
-The macOS app, its registry plugins, the static libraries and the manual iOS flow. Linux: `linux/docs/releasing.md`. Commands run from the repository root; a path in prose is relative to `apple/`. An agent runs them when the maintainer says to release. The maintainer decides what ships and whether it is critical.
+The macOS app, its registry plugins, the static libraries and the manual iOS flow. Linux: `linux/docs/releasing.md`. Windows: `windows/RELEASING.md`. Commands run from the repository root; a path in prose is relative to `apple/`. An agent runs them when the maintainer says to release. The maintainer decides what ships and whether it is critical.
 
 ## Channels
 

@@ -85,7 +85,7 @@
                 <toolkit:SettingsExpander.HeaderIcon>
                     <ImageIcon Source="ms-appx:///Assets/AppIcon.png" />
                 </toolkit:SettingsExpander.HeaderIcon>
-                <TextBlock x:Name="VersionText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextSelectionEnabled="True" />
+                <TextBlock x:Name="VersionText" AutomationProperties.AutomationId="VersionText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextSelectionEnabled="True" />
                 <toolkit:SettingsExpander.Items>
                     <toolkit:SettingsCard x:Uid="DocumentationCard" IsClickEnabled="True" Click="OnDocumentation">
                         <toolkit:SettingsCard.ActionIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.ActionIcon>

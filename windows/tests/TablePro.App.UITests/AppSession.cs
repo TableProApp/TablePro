@@ -14,23 +14,16 @@ namespace TablePro.App.UITests;
 internal sealed class AppSession : IDisposable
 {
     public static readonly TimeSpan Wait = TimeSpan.FromSeconds(30);
+    private static readonly PackageTestState _packageState = new();
 
     private readonly UIA3Automation _automation = new();
     private readonly Application _application;
 
-    private AppSession(string dataFolder, string theme, bool maximize = true)
+    private AppSession(string dataFolder, string theme, Func<Application> launch, bool maximize = true)
     {
         DataFolder = dataFolder;
         Theme = theme;
-        var path = Environment.GetEnvironmentVariable("TABLEPRO_APP");
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
-        {
-            throw new InvalidOperationException("TABLEPRO_APP must name the built TablePro.exe.");
-        }
-
-        var start = new ProcessStartInfo(path) { UseShellExecute = false };
-        start.Environment["TABLEPRO_DATA_DIR"] = dataFolder;
-        _application = Application.Launch(start);
+        _application = launch();
         // A restored tab window can be the process's first visible ownerless window.
         Window = Retry.WhileNull(
                 () => TopLevelWindow("TablePro"),
@@ -53,14 +46,47 @@ internal sealed class AppSession : IDisposable
     public static string NewDataFolder(string theme)
     {
         var folder = Directory.CreateTempSubdirectory("tablepro-ui-").FullName;
-        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}" }""");
+        WriteSettings(folder, theme);
         return folder;
     }
 
-    public static AppSession Launch(string theme) => new(NewDataFolder(theme), theme);
+    public static AppSession Launch(string theme) => Relaunch(NewDataFolder(theme), theme);
 
     public static AppSession Relaunch(string dataFolder, string theme, bool maximize = true) =>
-        new(dataFolder, theme, maximize);
+        new(dataFolder, theme, () => LaunchBuild(dataFolder), maximize);
+
+    // The installed MSIX, started as the Start menu starts it, so it keeps its files in the package's LocalState.
+    public static AppSession LaunchPackage(string familyName, string theme)
+    {
+        if (string.IsNullOrWhiteSpace(familyName)
+            || familyName.AsSpan().IndexOfAny('/', '\\', ':') >= 0
+            || familyName is "." or "..")
+        {
+            throw new ArgumentException("Expected a package family name, not a path.", nameof(familyName));
+        }
+
+        var packages = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages");
+        var folder = Path.Combine(packages, familyName, "LocalState");
+        _packageState.Prepare(folder);
+        WriteSettings(folder, theme);
+        return new(folder, theme, () => Application.LaunchStoreApp(familyName + "!App"));
+    }
+
+    private static void WriteSettings(string folder, string theme) =>
+        File.WriteAllText(Path.Combine(folder, "settings.json"), $$"""{ "theme": "{{theme}}" }""");
+
+    private static Application LaunchBuild(string dataFolder)
+    {
+        var path = Environment.GetEnvironmentVariable("TABLEPRO_APP");
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            throw new InvalidOperationException("TABLEPRO_APP must name the built TablePro.exe.");
+        }
+
+        var start = new ProcessStartInfo(path) { UseShellExecute = false };
+        start.Environment["TABLEPRO_DATA_DIR"] = dataFolder;
+        return Application.Launch(start);
+    }
 
     public static string LibraryFile(string folder) =>
         Directory.EnumerateFiles(folder, "connections.json", SearchOption.AllDirectories).First();
