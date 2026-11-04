@@ -92,6 +92,18 @@ jobs:
           Clear-FirstLogon
           Start-WslWatch "$env:GITHUB_WORKSPACE/windows/tests/TablePro.App.UITests/TestResults/wsl-watch.log"
           Set-Display 1920 1080
+      # A native crash can end the app before its managed exception handler writes crash.log.
+      - name: Keep native crash dumps during UI tests
+        if: matrix.app
+        shell: pwsh
+        run: |
+          $folder = "$env:RUNNER_TEMP/crash-dumps"
+          New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\TablePro.exe'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -Value $folder -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpCount -Value 4 -PropertyType DWord -Force | Out-Null
       - name: UI tests
         if: matrix.app
         working-directory: windows
@@ -104,6 +116,27 @@ jobs:
         with:
           name: windows-screenshots-${{ matrix.name }}
           path: screenshots
+          if-no-files-found: ignore
+      - name: Collect crash diagnostics
+        if: failure() && matrix.app
+        shell: pwsh
+        run: |
+          $folder = "$env:RUNNER_TEMP/crash-dumps"
+          New-Item -ItemType Directory -Path $folder -Force | Out-Null
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000, 1001, 1026 } -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match 'TablePro' } |
+            Format-List TimeCreated, Id, Message | Out-File "$folder/events.txt"
+          if (Get-ChildItem $folder -Filter '*.dmp') {
+            Copy-Item "$env:RUNNER_TEMP/app/TablePro.exe" $folder
+            Get-ChildItem windows/src/TablePro.App/bin -Recurse -Filter TablePro.pdb |
+              Where-Object { $_.Directory.Name -eq 'native' } | Copy-Item -Destination $folder
+          }
+      - name: Keep crash diagnostics
+        if: failure() && matrix.app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-crashes-${{ matrix.name }}
+          path: ${{ runner.temp }}/crash-dumps
           if-no-files-found: ignore
 
       - name: Restore uniffi-bindgen-cs

@@ -97,7 +97,7 @@ public sealed partial class ConnectionFormWindow : Window
         EngineSource.Source = EngineCatalog.Sections(_workbench.Engines, query)
             .Select(section => new EngineGroup(
                 Strings.Get("EngineGroup_" + section.Category),
-                [.. section.Engines.Select(Choice)]))
+                section.Engines.Select(Choice).ToList()))
             .ToList();
     }
 
@@ -582,7 +582,7 @@ public sealed partial class ConnectionFormWindow : Window
         };
         if (suffixes.Count > 0)
         {
-            picker.FileTypeChoices.Add(_engine!.DisplayName, [.. suffixes.Select(suffix => "." + suffix)]);
+            picker.FileTypeChoices.Add(_engine!.DisplayName, suffixes.Select(suffix => "." + suffix).ToList());
         }
 
         var result = await picker.PickSaveFileAsync();

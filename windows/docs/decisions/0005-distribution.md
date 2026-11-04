@@ -28,6 +28,7 @@ A release is one MSIX per architecture, built with Native AOT in the Release con
 
 - CA1416 checks calls against 10.0.17763.0 in every project; the package check fails a TargetDeviceFamily above 17763, a framework dependency, or a binary that imports the VC++ redistributable. The install jobs target Windows Server 2022, build 20348, the oldest Windows a hosted runner has (`windows-2019` was retired), and Windows 11 Arm64. Nothing ran on build 17763 itself.
 - `windows.yml` runs the UI tests against the Native AOT publish, over the debug core the test step built (`CargoProfile=dev`). A trim or AOT warning fails the publish, and `TrimmerSingleWarn` is off so each names its own call site.
+- `WinRTProjections.cs` names the concrete engine and tag lists that cross constructor parameters typed as interfaces. CsWinRT 2.2 cannot infer those conversions. It also retains `GridLength` for the Toolkit splitter's unboxing path ([Toolkit issue 612](https://github.com/CommunityToolkit/Windows/issues/612)). Collections passed to WinRT use explicit list construction instead of collection expressions ([CsWinRT issue 1998](https://github.com/microsoft/CsWinRT/issues/1998)).
 - `TheInstalledPackageStartsAndKeepsItsFilesInLocalState` is the only test of the packaged code path, where the data folder is the package's LocalState. It runs in `release-windows.yml`, not on pull requests.
 - A Windows App SDK servicing fix reaches users only through our next release.
 - The package carries Windows App SDK components the app never loads, until the Toolkit depends on the WinUI package.
@@ -41,7 +42,8 @@ A release is one MSIX per architecture, built with Native AOT in the Release con
 - Run [41695784890](https://github.com/TableProApp/TablePro/actions/runs/41695784890), job `MSIX (Arm64)`, built the release core and Native AOT app and passed every package check. `TablePro.App_0.1.0.0_arm64.msix` was 79.9 MiB, with identity `TablePro`, version `0.1.0.0` and publisher `CN=TablePro Development`.
 - Its `Windows.Desktop` family declared MinVersion `10.0.17763.0` and MaxVersionTested `10.0.26100.0`. It had no framework package dependency, no `TablePro.dll` and no binary importing the VC++ redistributable.
 - The AOT publish reported no trim or AOT warnings. MSIX tooling warned that `mspdbcmf.exe` was absent, so it did not generate a separate symbols package; the MSIX build and checks passed.
-- The run passed the unsigned path's version and signing check. The x64 package, bundle, install/start tests and winget validation remain unverified while their jobs await runners or dependencies. Artifact Signing has not run with production credentials.
+- The run passed the unsigned path's version and signing check. The temporary runs were cancelled when verification moved to the Mac. The x64 package, bundle, install/start tests and Windows winget validation remain unverified. Artifact Signing has not run with production credentials.
+- PR run [41705662121](https://github.com/TableProApp/TablePro/actions/runs/41705662121) built the Native AOT app on both architectures, then exposed missing engine rows and failures during resizing and library navigation. A local probe with the shipped SDK projection 10.0.26100.57 confirmed that explicit registrations add the two missing list adapters; its baseline generated only the outer engine-group list. The Windows UI tests check their runtime behavior.
 
 ## Alternatives considered
 
