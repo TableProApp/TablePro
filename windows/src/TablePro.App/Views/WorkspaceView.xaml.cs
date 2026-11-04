@@ -270,6 +270,9 @@ public sealed partial class WorkspaceView : UserControl
 
     public async Task CloseTabsAsync()
     {
+        // A pending individual close must not create a replacement while disconnect is awaiting it.
+        _share = null;
+        _session = null;
         Tabs.CanTearOutTabs = false;
         _watching?.Cancel();
         _watching = null;
@@ -284,8 +287,6 @@ public sealed partial class WorkspaceView : UserControl
         Tabs.TabItems.Clear();
         Objects.Clear();
         ObjectList.ItemsSource = null;
-        _share = null;
-        _session = null;
         _everyObject = null;
         WorkspaceGrid.Visibility = Visibility.Collapsed;
         CommandsChanged?.Invoke(this, EventArgs.Empty);
