@@ -14,6 +14,7 @@ enum DataDictionaryHTMLRenderer {
             <html lang="en">
             <head>
             <meta charset="utf-8">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <meta name="color-scheme" content="light dark">
             <title>\(escape(document.title))</title>
@@ -134,14 +135,14 @@ enum DataDictionaryHTMLRenderer {
     static func escape(_ value: String) -> String {
         var escaped = ""
         escaped.reserveCapacity(value.count)
-        for character in value {
-            switch character {
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "&": escaped += "&amp;"
             case "<": escaped += "&lt;"
             case ">": escaped += "&gt;"
             case "\"": escaped += "&quot;"
             case "'": escaped += "&#39;"
-            default: escaped.append(character)
+            default: escaped.unicodeScalars.append(scalar)
             }
         }
         return escaped
