@@ -49,7 +49,7 @@ extension MainContentCoordinator {
     }
 
     func rewindLastSave() {
-        guard presentUpsellUnlessLicensed() else { return }
+        guard admitsSheetCommand(), presentUpsellUnlessLicensed() else { return }
         guard canRewindSelectedTab, let target = selectedRewindTarget else { return }
 
         Task { [weak self] in
@@ -61,6 +61,7 @@ extension MainContentCoordinator {
                 table: target.table,
                 limit: 1
             )
+            guard admitsSheetCommand() else { return }
             // Enabled from the last publish; the save can be pruned or unreadable by the time this reads it.
             guard let record = records.first else {
                 AlertHelper.showInfoSheet(
@@ -80,7 +81,7 @@ extension MainContentCoordinator {
     // The record's own target decides where it runs: a rewind planned against the window's scope
     // would write a same-named table in the wrong database.
     func rewindSave(historyId: UUID) {
-        guard presentUpsellUnlessLicensed(), canRestoreSave(historyId: historyId) else { return }
+        guard admitsSheetCommand(), presentUpsellUnlessLicensed(), canRestoreSave(historyId: historyId) else { return }
         Task { [weak self] in
             guard let self else { return }
             let manager = services.queryHistoryManager
@@ -88,6 +89,7 @@ extension MainContentCoordinator {
             guard let recordId = await manager.rewindSnapshotId(forHistoryId: historyId),
                   let record = await manager.rewindSnapshot(id: recordId)
             else {
+                guard admitsSheetCommand() else { return }
                 AlertHelper.showInfoSheet(
                     title: String(localized: "Nothing to Restore"),
                     message: String(localized: "The values this save replaced are no longer being kept."),
@@ -121,6 +123,7 @@ extension MainContentCoordinator {
     }
 
     private func presentRewind(for record: RewindRecord, scope: DatabaseScope) async {
+        guard admitsSheetCommand() else { return }
         if let refusal = record.blanketRefusal {
             AlertHelper.showInfoSheet(
                 title: String(localized: "This Save Cannot Be Restored"),
@@ -140,10 +143,12 @@ extension MainContentCoordinator {
                 factory: rewindStatementFactory(for: record),
                 browseBuilder: services.databaseManager.driver(for: connectionId)?.queryBuildingPluginDriver
             )
+            guard admitsSheetCommand() else { return }
             rewindPlan = plan
             activeSheet = .rewind
         } catch {
             Self.rewindLogger.error("Could not plan a rewind: \(error.publicLogShape, privacy: .public)")
+            guard admitsSheetCommand() else { return }
             AlertHelper.showErrorSheet(
                 title: String(localized: "Could Not Prepare the Restore"),
                 message: error.localizedDescription,

@@ -12,13 +12,7 @@ extension MainSplitViewController {
         openConnectionSwitcher()
     }
 
-    /// Presented by the window, not by the selected connection's actions like everything else in
-    /// this file. The switcher lists every connection the app has open and every one the user has
-    /// saved, and it reads none of that from a session, so nothing about it belongs to the
-    /// connection on screen. That connection going away is exactly when a user reaches for it, and
-    /// routing it through `commandActions` made it do nothing at that moment: `releaseSession`
-    /// nils the actions, so Switch Connection and Control-Command-C were dead over the very pane
-    /// telling the user to reconnect or pick another connection.
+    // The window owns switching because a disconnected workspace has no command actions.
     func openConnectionSwitcher() {
         view.window?.makeFirstResponder(nil)
         switcherPresenter.present(
@@ -47,8 +41,7 @@ extension MainSplitViewController {
         return coordinator.canMoveTabToConnection(tabId)
     }
 
-    /// The source is read now, not at pick time: the pick can arrive after the window has
-    /// switched to another connection.
+    // Capture the source now because the selected workspace can change before the pick.
     func presentMoveTabPicker(tabId: UUID) {
         guard let source = workspace(holding: tabId),
               let coordinator = source.sessionState?.coordinator,
@@ -91,20 +84,20 @@ extension MainSplitViewController {
         commandActions?.openDatabaseSwitcher()
     }
 
-    /// The full chooser for the inner scope, which the checked Schema submenu beside it cannot
-    /// replace: only the popover searches, favourites, drops and exports.
+    // The full chooser stays useful when the schema submenu cannot fit every entry.
     @objc func openSchemaSwitcher(_ sender: Any?) {
         commandActions?.openScopeSwitcher(.schema)
     }
 
     @objc func createSchema(_ sender: Any?) {
-        commandActions?.coordinator?.createSchema(database: nil)
+        guard let coordinator = commandActions?.coordinator, coordinator.admitsSheetCommand() else { return }
+        coordinator.createSchema(database: nil)
     }
 
-    /// Edits the schema the connection is browsing. The sidebar's own item edits the row that was
-    /// clicked; this one is the route for a sidebar shape that draws no schema row at all.
+    // The browsed schema, for a sidebar shape that draws no schema row to right-click.
     @objc func editCurrentSchema(_ sender: Any?) {
         guard let coordinator = commandActions?.coordinator,
+              coordinator.admitsSheetCommand(),
               let schema = coordinator.toolbarState.currentSchema
                 ?? DatabaseManager.shared.session(for: coordinator.connection.id)?.browseSchema
         else { return }
@@ -119,16 +112,14 @@ extension MainSplitViewController {
         )
     }
 
-    /// Reached through the workspace's coordinator rather than `commandActions`, which exists only
-    /// once the browse content has appeared. A window opened straight into Agent mode never shows
-    /// that content, so its Safe Mode list had no checkmark and no entry in it did anything.
+    // Agent mode may never mount browse command actions, so use the workspace coordinator.
     @objc func setSafeModeLevel(_ sender: Any?) {
         guard let raw = (sender as? NSMenuItem)?.representedObject as? String,
               let level = SafeModeLevel(rawValue: raw) else { return }
         workspaces.selected?.sessionState?.coordinator.setSafeModeLevel(level)
     }
 
-    /// What the Safe Mode list offers for the connection on screen, or nil with no session behind it.
+    // What the Safe Mode list offers for the connection on screen, or nil with no session behind it.
     var safeModeStatus: SafeModeStatus? {
         workspaces.selected?.sessionState?.coordinator.safeModeStatus
     }

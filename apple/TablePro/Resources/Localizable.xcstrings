@@ -7728,6 +7728,9 @@
         }
       }
     },
+    "%1$@: %2$@, %3$@." : {
+
+    },
     "%1$@: %2$lld rows" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -10554,6 +10557,9 @@
         }
       }
     },
+    "%lld additional errors are in Copy Details." : {
+
+    },
     "%lld bytes" : {
       "localizations" : {
         "fr" : {
@@ -11636,6 +11642,9 @@
         }
       }
     },
+    "%lld rows submitted in completed writes." : {
+
+    },
     "%lld seconds" : {
       "localizations" : {
         "fr" : {
@@ -11852,6 +11861,9 @@
           }
         }
       }
+    },
+    "%lld statements completed." : {
+
     },
     "%lld statements executed" : {
       "localizations" : {
@@ -13631,6 +13643,9 @@
     "1 row in %@ blocks the delete" : {
 
     },
+    "1 row submitted in a completed write." : {
+
+    },
     "1 saved query found" : {
 
     },
@@ -13655,6 +13670,9 @@
           }
         }
       }
+    },
+    "1 statement completed." : {
+
     },
     "1 statement stays out of this run and %@ keeps what it has for it." : {
       "extractionState" : "stale",
@@ -15774,6 +15792,9 @@
         }
       }
     },
+    "A failed write may have made additional changes." : {
+
+    },
     "A field named “%@” can only be changed on MongoDB 5.0 or later, which can address a dot or a leading $ in a name." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -17422,6 +17443,9 @@
 
     },
     "A transaction is open on this connection. Commit or roll it back in TablePro, then run the shortcut again." : {
+
+    },
+    "A transaction is still open on this connection. Commit or roll it back." : {
 
     },
     "A tunnel forwards one address, and the node Sentinel names is on the server's own network, so Sentinel mode cannot run through one. Connect to a data node directly, or turn the tunnel off." : {
@@ -36208,6 +36232,9 @@
         }
       }
     },
+    "Changes a rollback cannot undo stay either way." : {
+
+    },
     "Changes applied" : {
       "localizations" : {
         "fr" : {
@@ -36248,7 +36275,19 @@
         }
       }
     },
+    "changes are in the open transaction" : {
+
+    },
+    "changes committed" : {
+
+    },
     "Changes from iCloud could not be saved on this Mac. They download again on the next sync." : {
+
+    },
+    "changes kept" : {
+
+    },
+    "changes may stay" : {
 
     },
     "Changes Not Saved" : {
@@ -36302,6 +36341,9 @@
     "Changes the routine makes are committed when it finishes. Stop rolls them back." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Changes to %@ cannot roll back and stay either way." : {
+
     },
     "Changes Unavailable" : {
 
@@ -39034,6 +39076,9 @@
           }
         }
       }
+    },
+    "Choose whether to roll back or commit the import's open transaction." : {
+
     },
     "Choose which columns the grid shows" : {
       "localizations" : {
@@ -64879,6 +64924,12 @@
         }
       }
     },
+    "direct changes rolled back" : {
+
+    },
+    "Direct changes to %@ are in that transaction." : {
+
+    },
     "Direct partitions" : {
       "localizations" : {
         "fr" : {
@@ -69381,6 +69432,9 @@
           }
         }
       }
+    },
+    "Each file below reports what happened to its changes." : {
+
     },
     "Each row takes a value that exists in the referenced table." : {
 
@@ -91859,6 +91913,9 @@
           }
         }
       }
+    },
+    "Import did not finish." : {
+
     },
     "Import failed" : {
       "comment" : "Title of the alert when an import fails.",
@@ -119832,6 +119889,9 @@
         }
       }
     },
+    "No rows from this run have been imported. Earlier table preparation is listed below." : {
+
+    },
     "No Rows Match" : {
       "localizations" : {
         "fr" : {
@@ -123589,6 +123649,9 @@
         }
       }
     },
+    "Nothing has been imported yet." : {
+
+    },
     "Nothing here matches the search." : {
       "localizations" : {
         "fr" : {
@@ -123959,6 +124022,9 @@
           }
         }
       }
+    },
+    "Nothing was imported." : {
+
     },
     "Nothing was saved, and every change is still pending. Undo what cannot be written, or make it with a query, then save again." : {
       "localizations" : {
@@ -133151,6 +133217,9 @@
           }
         }
       }
+    },
+    "Pausing…" : {
+
     },
     "Paw Print" : {
       "extractionState" : "manual",
@@ -174736,6 +174805,9 @@
         }
       }
     },
+    "Stop and Commit" : {
+
+    },
     "Stop and keep what ran" : {
       "localizations" : {
         "fr" : {
@@ -174855,6 +174927,9 @@
           }
         }
       }
+    },
+    "Stop and Rollback" : {
+
     },
     "Stop Backup" : {
 
@@ -178753,6 +178828,12 @@
         }
       }
     },
+    "table cleared before row import" : {
+
+    },
+    "table clearing failed before row import" : {
+
+    },
     "Table collation differs: %@ on source, %@ on target." : {
       "localizations" : {
         "en" : {
@@ -178842,6 +178923,12 @@
       }
     },
     "Table Created with Errors" : {
+
+    },
+    "table creation completed before row import" : {
+
+    },
+    "table creation failed before row import" : {
 
     },
     "Table Data" : {
@@ -185205,6 +185292,9 @@
     "The change to this table's structure will be lost." : {
 
     },
+    "The changes are in an open transaction on this connection. Commit or roll it back yourself." : {
+
+    },
     "The changes were edited while the save was checking other tables. Save again to include them." : {
 
     },
@@ -187171,6 +187261,9 @@
         }
       }
     },
+    "The details below show what happened to the import." : {
+
+    },
     "The diagram could not be converted to a PNG image." : {
       "comment" : "Error message when the ER diagram could not be exported as PNG.",
       "extractionState" : "stale",
@@ -188251,6 +188344,21 @@
         }
       }
     },
+    "The import's transaction failed and can only be rolled back." : {
+
+    },
+    "The import's transaction was already committed." : {
+
+    },
+    "The import's transaction was already rolled back." : {
+
+    },
+    "the import's transaction was committed" : {
+
+    },
+    "the import's transaction was rolled back" : {
+
+    },
     "The increment cannot be zero." : {
 
     },
@@ -189319,6 +189427,12 @@
           }
         }
       }
+    },
+    "The open transaction failed. Roll it back on this connection." : {
+
+    },
+    "The open transaction failed. Roll it back yourself." : {
+
     },
     "The operation failed." : {
       "localizations" : {
@@ -193358,6 +193472,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "The statements already ran outside an import transaction. Their changes stay." : {
+
+    },
     "The statements may or may not be saved. Check the table before running them again." : {
       "localizations" : {
         "fr" : {
@@ -193613,6 +193730,9 @@
           }
         }
       }
+    },
+    "The table was emptied before importing rows." : {
+
     },
     "The table's primary key is not loaded, so the row cannot be written." : {
       "extractionState" : "manual",
@@ -194365,6 +194485,9 @@
           }
         }
       }
+    },
+    "the transaction failed and needs rollback" : {
+
     },
     "The transaction on this connection can no longer be committed. Roll it back." : {
       "localizations" : {
