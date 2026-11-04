@@ -169,7 +169,7 @@ struct MSSQLStatementGenerator {
             } else {
                 parameters.append(value)
                 conditions.append("\(compared) = ?")
-                if value.asBytes == nil, MSSQLRowMatch.comparesNarrowText(typeName: typeName(of: column)) {
+                if value.asBytes == nil, MSSQLRowMatch.comparesText(typeName: typeName(of: column)) {
                     parameters.append(value)
                     conditions.append(MSSQLRowMatch.exactText(Self.quote(column), equals: "?"))
                 }

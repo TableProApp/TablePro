@@ -101,12 +101,13 @@ struct Check {
             }
             print("PASS: \(newline.debugDescription) values, row targeting, nested names and LIKE")
         }
-        // Under a SQL collation a varchar key holds both spellings, which compare equal against nvarchar text.
-        for keyed in [true, false] {
+        // Under a SQL collation a varchar key holds both spellings, which compare equal against nvarchar text. A query
+        // that reads the key through a cast to nvarchar reports that type instead.
+        for (keyed, reported) in [(true, "varchar"), (false, "varchar"), (true, "nvarchar")] {
             _ = try await driver.execute(query: "CREATE TABLE #narrow (k varchar(20) COLLATE SQL_Latin1_General_CP1_CI_AS"
                 + (keyed ? " PRIMARY KEY" : "") + ", v int); INSERT #narrow VALUES (N'Wessels', 0), (N'Weßels', 0)")
             var context = PluginRowWriteContext()
-            context.columnTypeNames = ["k": "varchar", "v": "int"]
+            context.columnTypeNames = ["k": reported, "v": "int"]
             let row: [PluginCellValue] = [.text("Weßels"), .text("0")]
             let changes = [
                 PluginRowChange(rowIndex: 0, type: .update, cellChanges: [

@@ -191,7 +191,7 @@ struct SQLBuilderSingleRowLookupTests {
     }
 
     // Under a SQL collation a varchar key holds both `Wessels` and `Weßels`, which compare equal against N'…' text.
-    @Test("A SQL Server varchar key also matches its exact stored text")
+    @Test("A SQL Server text key also matches its exact stored text")
     func sqlServerNarrowKeyMatchesExactly() {
         let sqlDriver = MSSQLDriver(connection: DatabaseConnection(name: "test", type: .mssql), password: nil)
         let exact = "[k] = N'Weßels' AND CAST([k] AS NVARCHAR(MAX)) COLLATE Latin1_General_100_BIN2 = N'Weßels'"
@@ -207,7 +207,11 @@ struct SQLBuilderSingleRowLookupTests {
         let unicode = [ColumnInfo(name: "k", typeName: "nvarchar(20)")]
         #expect(SQLBuilder.buildDelete(
             table: "t", schema: "dbo", type: .mssql, driver: sqlDriver, primaryKeys: [("k", "Weßels")], columns: unicode
-        ) == "DELETE FROM [dbo].[t] WHERE [k] = N'Weßels'")
+        ) == "DELETE FROM [dbo].[t] WHERE " + exact)
+        let number = [ColumnInfo(name: "k", typeName: "int")]
+        #expect(SQLBuilder.buildDelete(
+            table: "t", schema: "dbo", type: .mssql, driver: sqlDriver, primaryKeys: [("k", "5")], columns: number
+        ) == "DELETE FROM [dbo].[t] WHERE [k] = 5")
     }
 
     // A foreign key's `abc` refers to a parent `ABC` under a case-insensitive collation.

@@ -94,7 +94,7 @@ nonisolated enum SQLBuilder {
                 return "\(column) = \(value)"
             case .text(let value):
                 let literal = stringLiteral(value, for: type, driver: driver)
-                guard exactText, type == .mssql, MSSQLRowMatch.comparesNarrowText(typeName: info?.typeName) else {
+                guard exactText, type == .mssql, MSSQLRowMatch.comparesText(typeName: info?.typeName) else {
                     return "\(column) = \(literal)"
                 }
                 return "\(column) = \(literal) AND \(MSSQLRowMatch.exactText(column, equals: literal))"
