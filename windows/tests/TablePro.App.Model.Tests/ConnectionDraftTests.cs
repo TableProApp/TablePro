@@ -14,6 +14,24 @@ public sealed class ConnectionDraftTests
         Path.Combine(Path.GetPathRoot(Path.GetTempPath())!, "data", name);
 
     [Fact]
+    public void EditingKeepsTheSshJumpRouteAndSavedKeyPassphrase()
+    {
+        var saved = new SavedConnection(
+            Guid.NewGuid(), "Server", "postgres", "db", 5432, "app", "user", TlsSettings.Disabled,
+            Ssh: new SshSettings("bastion", 22, "ops", ["jump1", "jump2"],
+                SshAuthMethod.PrivateKey, @"C:\id_ed25519", KeyHasPassphrase: true));
+        var draft = ConnectionDraft.From(saved, Postgres);
+        draft.Name = "Renamed";
+
+        var ssh = Assert.IsType<SshSettings>(draft.ToConnection().Ssh);
+
+        Assert.Equal(saved.Ssh!.JumpHosts, ssh.JumpHosts);
+        Assert.True(ssh.KeyHasPassphrase);
+        draft.SshKeyPath = @"C:\another_key";
+        Assert.False(draft.ToConnection().Ssh!.KeyHasPassphrase);
+    }
+
+    [Fact]
     public void ANewNetworkConnectionStartsAtLocalhostOnTheEnginesPort()
     {
         var draft = ConnectionDraft.New(Postgres);

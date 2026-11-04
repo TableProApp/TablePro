@@ -28,6 +28,7 @@ public extension SQLLexicalReadings {
         declared: SQLLexicalGrammar?,
         session: SQLSessionLexicalFacts?
     ) -> SQLStringEscapes {
+        if databaseTypeId == "SQL Server" { return .sqlServer }
         let readings = resolve(databaseTypeId: databaseTypeId, declared: declared, session: session)
         if let session, session.determined.contains(.backslashEscapesInSingleQuotes) {
             return readings.execution.stringEscapes

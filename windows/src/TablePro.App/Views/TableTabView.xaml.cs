@@ -92,6 +92,12 @@ public sealed partial class TableTabView : UserControl, ITabContent
         SetRunning(true);
         try
         {
+            if (_editor is { IsLost: true } lost)
+            {
+                _editor = null;
+                await lost.DisposeAsync().ConfigureAwait(true);
+            }
+
             _editor ??= await _session.OpenEditorAsync().ConfigureAwait(true);
             var page = _page.At(offset) with { Size = Math.Max(1, _workbench.Settings.RowLimit) };
             var sort = _sort.Direction == SortDirection.None

@@ -1,19 +1,17 @@
 use std::io;
-use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use mongodb::options::ServerAddress;
 use rustls_pki_types::ServerName;
-use tablepro_core::{DriverError, Transport};
-use tempfile::TempDir;
+use tablepro_core::{DriverError, Transport, TransportStream};
+use tablepro_net::{PrivateAddress, PrivateListener};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
-use tokio::net::{UnixListener, UnixStream};
 use tokio::task::{JoinHandle, JoinSet};
 use tokio_rustls::TlsConnector;
 
-use crate::client_tls::private_dir;
 use crate::errors::closed_unanswered;
 
 /// TLS the driver negotiates itself on a relayed stream, so it checks the
@@ -25,16 +23,16 @@ pub(crate) struct RelayTls {
     pub(crate) server_name: ServerName<'static>,
 }
 
-/// A private socket the client library dials, where each stream it opens
-/// is a stream from the connection's transport, wrapped in TLS here.
+/// A private listener the client library dials, where each stream it
+/// opens is a stream from the connection's transport, wrapped in TLS here.
 ///
-/// The library dials a Unix socket without TLS, and an SSH forward is a
-/// Unix socket. Relaying keeps every stream on the transport, so the
-/// forward, its keepalives and what it knows about a closed stream all
-/// apply, and TLS still reaches the server past the forward.
+/// The library does no TLS over a Unix socket, and an SSH route is either
+/// a Unix socket or reached only through `Transport::open`. Relaying keeps
+/// every stream on the transport, so the forward, its keepalives and what
+/// it knows about a closed stream all apply, and TLS still reaches the
+/// server past the forward.
 pub(crate) struct Relay {
-    path: PathBuf,
-    _dir: TempDir,
+    address: PrivateAddress,
     accepting: JoinHandle<()>,
     failure: FailureSlot,
 }
@@ -61,38 +59,48 @@ impl Relay {
         tls: Option<RelayTls>,
         handshake_timeout: Duration,
     ) -> io::Result<Self> {
-        let dir = private_dir()?;
-        let path = dir.path().join("relay.sock");
-        let listener = UnixListener::bind(&path)?;
+        let listener = PrivateListener::bind()?;
+        let address = listener.address().clone();
         let failure = FailureSlot::default();
         let slot = failure.clone();
         let accepting = tokio::spawn(async move {
             let mut streams = JoinSet::new();
+            // The accept is never raced: a loopback one dropped while it checks an owner loses that connection.
             loop {
-                tokio::select! {
-                    accepted = listener.accept() => match accepted {
-                        Ok((inbound, _)) => {
-                            streams.spawn(relay(inbound, transport.clone(), tls.clone(), handshake_timeout, slot.clone()));
-                        }
-                        Err(error) => {
-                            tracing::warn!(%error, "the relay stopped taking streams");
-                            break;
-                        }
-                    },
-                    Some(_) = streams.join_next(), if !streams.is_empty() => {}
+                match listener.accept().await {
+                    Ok(inbound) => {
+                        while streams.try_join_next().is_some() {}
+                        streams.spawn(relay(
+                            inbound,
+                            transport.clone(),
+                            tls.clone(),
+                            handshake_timeout,
+                            slot.clone(),
+                        ));
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "the relay stopped taking streams");
+                        break;
+                    }
                 }
             }
         });
         Ok(Self {
-            path,
-            _dir: dir,
+            address,
             accepting,
             failure,
         })
     }
 
-    pub(crate) fn path(&self) -> &Path {
-        &self.path
+    pub(crate) fn server_address(&self) -> ServerAddress {
+        match &self.address {
+            #[cfg(unix)]
+            PrivateAddress::Unix(path) => ServerAddress::Unix { path: path.clone() },
+            PrivateAddress::Tcp(address) => ServerAddress::Tcp {
+                host: address.ip().to_string(),
+                port: Some(address.port()),
+            },
+        }
     }
 
     pub(crate) fn failure(&self) -> &FailureSlot {
@@ -108,7 +116,7 @@ impl Drop for Relay {
 }
 
 async fn relay(
-    mut inbound: UnixStream,
+    mut inbound: Box<dyn TransportStream>,
     transport: Arc<dyn Transport>,
     tls: Option<RelayTls>,
     handshake_timeout: Duration,

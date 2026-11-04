@@ -99,19 +99,19 @@ public struct FilterSQLGenerator: Sendable {
             if exceedsLikePatternLimit(pattern, wildcards: 2) {
                 return SQLSubstringMatch.contains(operand, literal: stringLiteral(filter.value), fold: dialect.caseFoldFunction)
             }
-            return likeCondition(operand, "'%\(pattern)%'", negated: false, folding: folding)
+            return likeCondition(operand, "\(stringLiteralPrefix)'%\(pattern)%'", negated: false, folding: folding)
         case .startsWith:
             let pattern = likePatternBody(filter.value)
             if exceedsLikePatternLimit(pattern, wildcards: 1) {
                 return SQLSubstringMatch.startsWith(operand, literal: stringLiteral(filter.value), fold: dialect.caseFoldFunction)
             }
-            return likeCondition(operand, "'\(pattern)%'", negated: false, folding: folding)
+            return likeCondition(operand, "\(stringLiteralPrefix)'\(pattern)%'", negated: false, folding: folding)
         case .endsWith:
             let pattern = likePatternBody(filter.value)
             if exceedsLikePatternLimit(pattern, wildcards: 1) {
                 return SQLSubstringMatch.endsWith(operand, literal: stringLiteral(filter.value), fold: dialect.caseFoldFunction)
             }
-            return likeCondition(operand, "'%\(pattern)'", negated: false, folding: folding)
+            return likeCondition(operand, "\(stringLiteralPrefix)'%\(pattern)'", negated: false, folding: folding)
         }
     }
 
@@ -121,8 +121,10 @@ public struct FilterSQLGenerator: Sendable {
         SQLSubstringMatch.exceeds(patternBody, wildcards: wildcards, limit: dialect.likePatternByteLimit)
     }
 
+    private var stringLiteralPrefix: String { databaseType == .mssql ? "N" : "" }
+
     public func stringLiteral(_ value: String) -> String {
-        "'\(literalBody(value))'"
+        "\(stringLiteralPrefix)'\(literalBody(value))'"
     }
 
     // A number, a boolean or a bit has no case, and compared folded as text `5.50` would no longer equal `5.5`.
@@ -144,7 +146,7 @@ public struct FilterSQLGenerator: Sendable {
     private func comparisonCondition(
         _ column: String, _ operand: String, _ operatorText: String, _ literal: String, folding: PluginSQLCaseFolding
     ) -> String {
-        guard folding.foldsComparisonOperands, literal.unicodeScalars.first == "'" else {
+        guard folding.foldsComparisonOperands, literal.hasPrefix("'") || literal.hasPrefix("N'") else {
             return "\(column) \(operatorText) \(literal)"
         }
         return "\(folding.fold(operand)) \(operatorText) \(folding.fold(literal))"
@@ -199,7 +201,7 @@ public struct FilterSQLGenerator: Sendable {
     ) -> String {
         let keyword = negated ? "NOT IN" : "IN"
         let items = listItems(rawValue).map { escapeValue($0, kind: kind) }
-        let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.unicodeScalars.first == "'" }
+        let foldable = folding.foldsComparisonOperands && items.allSatisfy { $0.hasPrefix("'") || $0.hasPrefix("N'") }
         let rendered = foldable ? items.map { folding.fold($0) } : items
         let subject = foldable ? folding.fold(operand) : column
         return "\(subject) \(keyword) (\(rendered.joined(separator: ", ")))"
@@ -241,7 +243,7 @@ public struct FilterSQLGenerator: Sendable {
         if FilterColumnKind.isBareNumber(value, kind: kind) {
             return value
         }
-        return "'\(literalBody(value))'"
+        return "\(stringLiteralPrefix)'\(literalBody(value))'"
     }
 
     private func literalBody(_ value: String) -> String {

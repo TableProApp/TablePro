@@ -105,6 +105,9 @@ fn carries_credentials(
 /// MariaDB `EXECUTE IMMEDIATE`, PL/pgSQL `EXECUTE`. The text can reach
 /// them through a variable or a concatenation, so every string of such a
 /// script is read for the statements it holds.
+///
+/// A T-SQL or MySQL script that names an `@` variable counts too, since
+/// the `EXEC` or `PREPARE` that runs the variable can come in a later run.
 fn runs_text_as_sql(grammar: SqlGrammar, statements: &[Vec<StatementToken<'_>>]) -> bool {
     let runners: &[&str] = match grammar {
         SqlGrammar::MsSql => &["EXEC", "EXECUTE", "sp_executesql"],
@@ -112,10 +115,32 @@ fn runs_text_as_sql(grammar: SqlGrammar, statements: &[Vec<StatementToken<'_>>])
         SqlGrammar::PostgreSql => &["EXECUTE"],
         _ => return false,
     };
-    statements.iter().flatten().any(|token| {
+    let names_runner = statements.iter().flatten().any(|token| {
         token
             .name()
             .is_some_and(|name| runners.iter().any(|runner| runner.eq_ignore_ascii_case(name)))
+    });
+    names_runner || statements.iter().any(|tokens| names_a_variable(grammar, tokens))
+}
+
+/// A T-SQL `@s` word, or MySQL's `@` before a name or a quoted name. A
+/// `@@` system variable holds no text the server runs later.
+fn names_a_variable(grammar: SqlGrammar, tokens: &[StatementToken<'_>]) -> bool {
+    tokens.iter().enumerate().any(|(at, token)| match (grammar, token) {
+        (SqlGrammar::MsSql, StatementToken::Word(word)) => word.starts_with('@') && !word.starts_with("@@"),
+        (SqlGrammar::MySql, StatementToken::Punct('@')) => {
+            let system = |index: Option<usize>| {
+                index
+                    .and_then(|index| tokens.get(index))
+                    .is_some_and(|token| token.is_punct('@'))
+            };
+            !system(at.checked_sub(1))
+                && !system(Some(at + 1))
+                && tokens
+                    .get(at + 1)
+                    .is_some_and(|next| next.name().is_some() || matches!(next, StatementToken::StringLiteral(_)))
+        }
+        _ => false,
     })
 }
 
@@ -570,6 +595,54 @@ mod tests {
             (SqlGrammar::MySql, "PREPARE s FROM 'SELECT ''CREATE USER u'''"),
             (SqlGrammar::PostgreSql, "DO $$ BEGIN EXECUTE 'SELECT 1'; END $$"),
             (SqlGrammar::Sqlite, "SELECT 'CREATE USER u' AS execute"),
+        ] {
+            assert_eq!(classify(grammar, sql), HistoryRecording::Record, "{sql}");
+        }
+    }
+
+    #[test]
+    fn text_stored_in_a_variable_is_read_for_statements() {
+        for (grammar, sql) in [
+            (
+                SqlGrammar::MySql,
+                "SET @s = 'CREATE USER app IDENTIFIED BY ''Hunter2!'''",
+            ),
+            (
+                SqlGrammar::MySql,
+                "SELECT @s := 'CREATE USER app IDENTIFIED BY ''Hunter2!'''",
+            ),
+            (
+                SqlGrammar::MySql,
+                "SET @'s' = 'CREATE USER app IDENTIFIED BY ''Hunter2!'''",
+            ),
+            (
+                SqlGrammar::MySql,
+                "SELECT 'CREATE USER app IDENTIFIED BY ''Hunter2!''' INTO @s",
+            ),
+            (
+                SqlGrammar::MsSql,
+                "DECLARE @s nvarchar(max) = N'CREATE USER app WITH PASSWORD = ''Hunter2!'''",
+            ),
+            (
+                SqlGrammar::MsSql,
+                "SELECT @s = N'CREATE USER app WITH PASSWORD = ''Hunter2!'''",
+            ),
+            (
+                SqlGrammar::MsSql,
+                "SET @s += N'CREATE USER app WITH PASSWORD = ''Hunter2!'''",
+            ),
+        ] {
+            assert_eq!(classify(grammar, sql), WITHHELD, "{sql}");
+        }
+        for grammar in [SqlGrammar::MsSql, SqlGrammar::MySql] {
+            for sql in ["SET @n = 5", "SELECT @n = 1"] {
+                assert_eq!(classify(grammar, sql), HistoryRecording::Record, "{grammar:?}: {sql}");
+            }
+        }
+        for (grammar, sql) in [
+            (SqlGrammar::MySql, "SET @s = 'SELECT 1'"),
+            (SqlGrammar::MsSql, "DECLARE @s nvarchar(max) = N'SELECT 1'"),
+            (SqlGrammar::MySql, "SET @@session.sql_mode = 'CREATE USER u'"),
         ] {
             assert_eq!(classify(grammar, sql), HistoryRecording::Record, "{sql}");
         }

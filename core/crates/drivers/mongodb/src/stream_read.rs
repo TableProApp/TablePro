@@ -3,7 +3,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use bson::Document;
 use mongodb::{Client, ClientSession};
 use tablepro_core::sql_syntax::StatementAccess;
 use tablepro_core::sql_syntax::mongo::{ShellStatement, access_of, parse_statement, statement_ranges};
@@ -112,10 +111,7 @@ async fn census(
     loop {
         match cursor.advance(session).await {
             Ok(true) => {
-                let document: Document = cursor.deserialize_current().map_err(|error| DriverError::Decode {
-                    column: String::new(),
-                    detail: error.to_string(),
-                })?;
+                let document = crate::nested_document::current_document(&cursor)?;
                 for key in document.keys() {
                     if seen.insert(key.clone()) {
                         fields.push(key.clone());

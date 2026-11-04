@@ -246,6 +246,7 @@ async fn read_user_sql(
     sql: &str,
     sink: &mut dyn ResultSink,
 ) -> Result<StreamOutcome, DriverError> {
+    crate::result_stream::refuse_nul(sql)?;
     crate::read_guard::refuse_more_than_one(connection, sql).await?;
     // The count took the busy handler off.
     flag.install(connection, lock_timeout).await?;

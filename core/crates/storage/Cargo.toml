@@ -12,6 +12,7 @@ secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+unicode-normalization.workspace = true
 tokio = { workspace = true, features = ["fs"] }
 uuid.workspace = true
 sqlx = { workspace = true, features = ["migrate", "macros"] }

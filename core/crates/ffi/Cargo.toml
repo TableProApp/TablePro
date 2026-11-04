@@ -21,8 +21,8 @@ tablepro-driver-mysql.workspace = true
 tablepro-driver-postgres.workspace = true
 tablepro-driver-redis.workspace = true
 tablepro-driver-sqlite.workspace = true
-tablepro-session.workspace = true
-tablepro-ssh.workspace = true
+tablepro-session = { workspace = true, features = ["in-process-ssh"] }
+tablepro-ssh = { workspace = true, features = ["in-process"] }
 tablepro-storage.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
@@ -42,6 +42,7 @@ windows-sys.workspace = true
 
 [dev-dependencies]
 csbindgen.workspace = true
+russh.workspace = true
 tempfile.workspace = true
 
 [lints]

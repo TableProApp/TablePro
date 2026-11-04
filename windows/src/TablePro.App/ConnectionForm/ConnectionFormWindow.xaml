@@ -8,6 +8,15 @@
 
     <Grid x:Name="Root">
         <Grid.Resources>
+            <Style x:Key="FormSuccessTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+            </Style>
+            <Style x:Key="FormErrorTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+            </Style>
+            <Style x:Key="FormNeutralTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
             <CollectionViewSource x:Name="EngineSource" IsSourceGrouped="True" ItemsPath="Items" />
         </Grid.Resources>
         <Grid.RowDefinitions>
@@ -140,19 +149,19 @@
                 <StackPanel x:Name="Sections" Spacing="{StaticResource SettingsCardSpacing}">
                     <toolkit:SettingsExpander x:Uid="SshExpander" x:Name="SshExpander" AutomationProperties.AutomationId="SshExpander">
                         <toolkit:SettingsExpander.HeaderIcon><SymbolIcon Symbol="Permissions" /></toolkit:SettingsExpander.HeaderIcon>
-                        <ToggleSwitch x:Uid="SshSwitch" x:Name="SshSwitch" Toggled="OnSshToggled" />
+                        <ToggleSwitch x:Uid="SshSwitch" x:Name="SshSwitch" AutomationProperties.AutomationId="SshSwitch" Toggled="OnSshToggled" />
                         <toolkit:SettingsExpander.Items>
                             <toolkit:SettingsCard x:Uid="SshHostCard">
-                                <TextBox x:Name="SshHostBox" x:Uid="SshHostBox" MinWidth="240" />
+                                <TextBox x:Name="SshHostBox" AutomationProperties.AutomationId="SshHostBox" x:Uid="SshHostBox" MinWidth="240" />
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshPortCard">
-                                <TextBox x:Name="SshPortBox" x:Uid="SshPortBox" MinWidth="120" InputScope="Number" />
+                                <TextBox x:Name="SshPortBox" AutomationProperties.AutomationId="SshPortBox" x:Uid="SshPortBox" MinWidth="120" InputScope="Number" />
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshUserCard">
-                                <TextBox x:Name="SshUserBox" x:Uid="SshUserBox" MinWidth="240" />
+                                <TextBox x:Name="SshUserBox" AutomationProperties.AutomationId="SshUserBox" x:Uid="SshUserBox" MinWidth="240" />
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshAuthCard">
-                                <ComboBox x:Name="SshAuthBox" x:Uid="SshAuthBox" MinWidth="240" SelectionChanged="OnSshAuthChanged">
+                                <ComboBox x:Name="SshAuthBox" AutomationProperties.AutomationId="SshAuthBox" x:Uid="SshAuthBox" MinWidth="240" SelectionChanged="OnSshAuthChanged">
                                     <ComboBoxItem x:Uid="SshAuthAgent" Tag="Agent" />
                                     <ComboBoxItem x:Uid="SshAuthKey" Tag="PrivateKey" />
                                     <ComboBoxItem x:Uid="SshAuthPassword" Tag="Password" />
@@ -161,12 +170,12 @@
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshKeyCard" x:Name="SshKeyCard">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBox x:Name="SshKeyBox" x:Uid="SshKeyBox" MinWidth="240" />
+                                    <TextBox x:Name="SshKeyBox" AutomationProperties.AutomationId="SshKeyBox" x:Uid="SshKeyBox" MinWidth="240" />
                                     <Button x:Uid="BrowseButton" Click="OnBrowseKey" />
                                 </StackPanel>
                             </toolkit:SettingsCard>
                             <toolkit:SettingsCard x:Uid="SshPasswordCard" x:Name="SshPasswordCard">
-                                <PasswordBox x:Name="SshPasswordInput" x:Uid="SshPasswordInput" MinWidth="240" />
+                                <PasswordBox x:Name="SshPasswordInput" AutomationProperties.AutomationId="SshPasswordInput" x:Uid="SshPasswordInput" MinWidth="240" />
                             </toolkit:SettingsCard>
                         </toolkit:SettingsExpander.Items>
                     </toolkit:SettingsExpander>

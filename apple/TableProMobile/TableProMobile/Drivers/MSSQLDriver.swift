@@ -62,6 +62,10 @@ nonisolated final class MSSQLDriver: DatabaseDriver, @unchecked Sendable {
         self.currentSchema = options.schema
     }
 
+    func escapeStringLiteral(_ value: String) -> String {
+        MSSQLStringLiteral.escaped(value)
+    }
+
     // MARK: - Connection
 
     func connect() async throws {

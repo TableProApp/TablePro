@@ -63,27 +63,55 @@ public sealed class TableProCore : IDisposable
     public async Task<DatabaseSession> ConnectAsync(
         Guid connectionId,
         ConnectionSecrets? secrets = null,
+        ICredentialPrompter? prompter = null,
         CancellationToken cancellationToken = default)
     {
         var typed = Mapping.Secrets(secrets ?? ConnectionSecrets.None);
-        var session = await CoreCall.RunAsync(
-                token => _core.ConnectSaved(connectionId.ToString(), typed, token),
-                cancellationToken)
-            .ConfigureAwait(false);
-        return new DatabaseSession(session);
+        var adapter = prompter is null ? null : new CredentialPrompterAdapter(prompter);
+        using var registration = cancellationToken.Register(() => adapter?.Cancel());
+        try
+        {
+            var session = await CoreCall.RunAsync(
+                    token => _core.ConnectSaved(connectionId.ToString(), typed, adapter, token),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return new DatabaseSession(session, adapter);
+        }
+        catch
+        {
+            adapter?.Dispose();
+            throw;
+        }
     }
 
     // Logs in with what a form holds, then closes the connection again.
-    public Task TestConnectionAsync(
+    public async Task TestConnectionAsync(
         SavedConnection connection,
         ConnectionSecrets secrets,
+        ICredentialPrompter? prompter = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(secrets);
         var record = Mapping.Record(connection);
         var typed = Mapping.Secrets(secrets);
-        return CoreCall.RunAsync(token => _core.TestConnection(record, typed, token), cancellationToken);
+        using var adapter = prompter is null ? null : new CredentialPrompterAdapter(prompter);
+        using var registration = cancellationToken.Register(() => adapter?.Cancel());
+        await CoreCall.RunAsync(token => _core.TestConnection(record, typed, adapter, token), cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public Task ForgetChangedHostKeyAsync(SavedConnection connection, HostKeyFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(failure);
+        if (!failure.TrustAllowed)
+        {
+            throw new ArgumentException("This SSH key cannot be replaced.", nameof(failure));
+        }
+
+        return CoreCall.RunAsync(() => _core.ForgetChangedHostKey(
+            Mapping.Record(connection), failure.Host, failure.KnownHosts));
     }
 
     public void Dispose()

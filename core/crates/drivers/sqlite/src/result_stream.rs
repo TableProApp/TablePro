@@ -88,6 +88,7 @@ pub(crate) async fn run_script(
     sink: &mut dyn ResultSink,
     halt: impl Fn() -> bool,
 ) -> Result<StreamOutcome, DriverError> {
+    refuse_nul(sql)?;
     let mut outcome = StreamOutcome::default();
     for statement in split_statements(sql) {
         if halt() {
@@ -111,6 +112,18 @@ pub(crate) async fn run_script(
         }
     }
     Ok(outcome)
+}
+
+/// SQLite takes a NUL as the end of the text, and sqlx then prepares
+/// what follows it again and again without moving on, so such text is
+/// refused before sqlx sees it.
+pub(crate) fn refuse_nul(sql: &str) -> Result<(), DriverError> {
+    match sql.contains('\0') {
+        true => Err(DriverError::Protocol(
+            "the statement holds a NUL character, where SQLite stops reading".to_owned(),
+        )),
+        false => Ok(()),
+    }
 }
 
 /// Run a read the app built, every row of it.
