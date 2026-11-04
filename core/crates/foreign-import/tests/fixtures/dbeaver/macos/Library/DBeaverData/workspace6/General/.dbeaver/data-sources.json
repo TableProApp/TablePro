@@ -1,0 +1,682 @@
+{
+	"folders": {
+		"Production": {
+			"description": "Production Servers"
+		},
+		"Development": {
+			"description": "Development Servers"
+		},
+		"team/backend": {
+			"description": ""
+		}
+	},
+	"connections": {
+		"pg-1": {
+			"provider": "postgresql",
+			"driver": "postgres-jdbc",
+			"name": "PG with password",
+			"save-password": true,
+			"configuration": {
+				"host": "db.example.com",
+				"port": 5432,
+				"database": "mydb",
+				"user": "admin"
+			}
+		},
+		"pg-int-port": {
+			"provider": "postgresql",
+			"name": "PG int port",
+			"configuration": {
+				"host": "db.example.com",
+				"port": 5433,
+				"database": "mydb",
+				"user": "admin"
+			}
+		},
+		"pg-string-port": {
+			"provider": "postgresql",
+			"name": "PG string port",
+			"configuration": {
+				"host": "db.example.com",
+				"port": "5433",
+				"database": "mydb",
+				"user": "admin"
+			}
+		},
+		"conn-mysql": {
+			"provider": "mysql",
+			"name": "Conn mysql",
+			"configuration": {
+				"host": "db.example.com",
+				"database": "mydb"
+			}
+		},
+		"conn-postgresql": {
+			"provider": "postgresql",
+			"name": "Conn postgresql",
+			"configuration": {
+				"host": "db.example.com",
+				"database": "mydb"
+			}
+		},
+		"conn-sqlite": {
+			"provider": "sqlite",
+			"name": "Conn sqlite",
+			"configuration": {
+				"database": "/Users/me/app.sqlite"
+			}
+		},
+		"conn-sqlserver": {
+			"provider": "sqlserver",
+			"name": "Conn sqlserver",
+			"configuration": {
+				"host": "db.example.com",
+				"database": "mydb"
+			}
+		},
+		"conn-oracle": {
+			"provider": "oracle",
+			"name": "Conn oracle",
+			"configuration": {
+				"host": "db.example.com",
+				"database": "ORCL"
+			}
+		},
+		"conn-mongodb": {
+			"provider": "mongodb",
+			"name": "Conn mongodb",
+			"configuration": {
+				"host": "db.example.com",
+				"database": "mydb"
+			}
+		},
+		"conn-mongo": {
+			"provider": "mongo",
+			"name": "Conn mongo",
+			"configuration": {
+				"host": "db.example.com",
+				"database": "mydb"
+			}
+		},
+		"conn-redis": {
+			"provider": "redis",
+			"name": "Conn redis",
+			"configuration": {
+				"host": "db.example.com"
+			}
+		},
+		"conn-clickhouse": {
+			"provider": "clickhouse",
+			"name": "Conn clickhouse",
+			"configuration": {
+				"host": "db.example.com",
+				"database": "default"
+			}
+		},
+		"conn-mariadb": {
+			"provider": "mariadb",
+			"name": "Conn mariadb",
+			"configuration": {
+				"host": "db.example.com",
+				"database": "mydb"
+			}
+		},
+		"conn-tidb": {
+			"provider": "tidb",
+			"name": "Conn tidb",
+			"configuration": {
+				"host": "db.example.com",
+				"port": 4000,
+				"database": "mydb"
+			}
+		},
+		"conn-cassandra": {
+			"provider": "cassandra",
+			"name": "Conn cassandra",
+			"configuration": {
+				"host": "db.example.com",
+				"database": "keyspace1"
+			}
+		},
+		"conn-tidblake": {
+			"provider": "tidblake",
+			"name": "Lake",
+			"configuration": {
+				"host": "lake.example.com",
+				"port": 4000
+			}
+		},
+		"conn-exoticdb": {
+			"provider": "exoticdb",
+			"name": "Unknown DB",
+			"configuration": {
+				"host": "db.example.com",
+				"port": 7000
+			}
+		},
+		"no-name-and-host": {
+			"provider": "postgresql",
+			"configuration": {
+				"url": "jdbc:postgresql://localhost:5432/fromurl"
+			}
+		},
+		"ssh-key": {
+			"provider": "postgresql",
+			"name": "SSH key PG",
+			"configuration": {
+				"host": "db.internal",
+				"port": "5432",
+				"database": "mydb",
+				"user": "admin",
+				"handlers": {
+					"ssh_tunnel": {
+						"enabled": true,
+						"properties": {
+							"host": "bastion.example.com",
+							"port": 2222,
+							"username": "deploy",
+							"authType": "PUBLIC_KEY",
+							"keyPath": "~/.ssh/id_rsa"
+						}
+					}
+				}
+			}
+		},
+		"ssh-bare-key": {
+			"provider": "postgresql",
+			"name": "SSH bare key PG",
+			"configuration": {
+				"host": "db.internal",
+				"port": "5432",
+				"handlers": {
+					"ssh_tunnel": {
+						"properties": {
+							"host": "bastion.example.com",
+							"username": "deploy",
+							"authType": "PUBLIC_KEY",
+							"keyPath": "id_ed25519"
+						}
+					}
+				}
+			}
+		},
+		"ssh-agent": {
+			"provider": "postgresql",
+			"name": "SSH agent PG",
+			"configuration": {
+				"host": "db.internal",
+				"port": "5432",
+				"handlers": {
+					"ssh_tunnel": {
+						"enabled": true,
+						"properties": {
+							"host": "bastion.example.com",
+							"port": 22,
+							"username": "admin",
+							"authType": "AGENT",
+							"keyPath": "~/.ssh/unused"
+						}
+					}
+				}
+			}
+		},
+		"ssh-password": {
+			"provider": "postgresql",
+			"name": "SSH password PG",
+			"configuration": {
+				"host": "db.internal",
+				"port": "5432",
+				"handlers": {
+					"ssh_tunnel": {
+						"enabled": true,
+						"properties": {
+							"host": "bastion.example.com",
+							"port": 22,
+							"username": "admin",
+							"authType": "PASSWORD"
+						}
+					}
+				}
+			}
+		},
+		"ssh-string-port": {
+			"provider": "postgresql",
+			"name": "SSH string port",
+			"configuration": {
+				"host": "db.internal",
+				"handlers": {
+					"ssh_tunnel": {
+						"enabled": true,
+						"properties": {
+							"host": "bastion.com",
+							"port": "2222",
+							"username": "user",
+							"authType": "PASSWORD"
+						}
+					}
+				}
+			}
+		},
+		"ssh-disabled": {
+			"provider": "postgresql",
+			"name": "SSH disabled PG",
+			"configuration": {
+				"host": "db.internal",
+				"handlers": {
+					"ssh_tunnel": {
+						"enabled": false,
+						"properties": {
+							"host": "bastion.example.com",
+							"username": "admin"
+						}
+					}
+				}
+			}
+		},
+		"folder-prod": {
+			"provider": "postgresql",
+			"name": "Prod PG",
+			"folder": "Production",
+			"configuration": {
+				"host": "prod.example.com"
+			}
+		},
+		"folder-dev": {
+			"provider": "postgresql",
+			"name": "Dev PG",
+			"folder": "Development",
+			"configuration": {
+				"host": "dev.example.com"
+			}
+		},
+		"folder-none": {
+			"provider": "postgresql",
+			"name": "Local PG",
+			"configuration": {
+				"host": "localhost"
+			}
+		},
+		"folder-nested": {
+			"provider": "postgresql",
+			"name": "Team PG",
+			"folder": "team/backend",
+			"configuration": {
+				"host": "team.example.com"
+			}
+		},
+		"user-from-credentials": {
+			"provider": "postgresql",
+			"name": "User from credentials",
+			"configuration": {
+				"host": "db.example.com"
+			}
+		},
+		"user-from-config": {
+			"provider": "postgresql",
+			"name": "User from configuration",
+			"configuration": {
+				"host": "db.example.com",
+				"user": "configuser"
+			}
+		},
+		"user-credentials-win": {
+			"provider": "postgresql",
+			"name": "User in both",
+			"configuration": {
+				"host": "db.example.com",
+				"user": "configuser"
+			}
+		},
+		"user-empty-credentials": {
+			"provider": "postgresql",
+			"name": "User empty in credentials",
+			"configuration": {
+				"host": "db.example.com",
+				"user": "configuser"
+			}
+		},
+		"color-red": {
+			"provider": "postgresql",
+			"name": "Red",
+			"configuration": {
+				"host": "db.example.com",
+				"color": "255,0,0"
+			}
+		},
+		"color-orange": {
+			"provider": "postgresql",
+			"name": "Orange",
+			"configuration": {
+				"host": "db.example.com",
+				"color": "220,150,50"
+			}
+		},
+		"color-yellow": {
+			"provider": "postgresql",
+			"name": "Yellow",
+			"configuration": {
+				"host": "db.example.com",
+				"color": "230,220,50"
+			}
+		},
+		"color-green": {
+			"provider": "postgresql",
+			"name": "Green",
+			"configuration": {
+				"host": "db.example.com",
+				"color": "50,180,50"
+			}
+		},
+		"color-blue": {
+			"provider": "postgresql",
+			"name": "Blue",
+			"configuration": {
+				"host": "db.example.com",
+				"color": "50, 50, 220"
+			}
+		},
+		"color-purple": {
+			"provider": "postgresql",
+			"name": "Purple",
+			"configuration": {
+				"host": "db.example.com",
+				"color": "150,50,200"
+			}
+		},
+		"color-none": {
+			"provider": "postgresql",
+			"name": "No Color",
+			"configuration": {
+				"host": "db.example.com"
+			}
+		},
+		"color-unmatched": {
+			"provider": "postgresql",
+			"name": "Grey",
+			"configuration": {
+				"host": "db.example.com",
+				"color": "128,128,128"
+			}
+		},
+		"ssl-require": {
+			"provider": "postgresql",
+			"name": "SSL Require",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": "require"
+						}
+					}
+				}
+			}
+		},
+		"ssl-verify-ca": {
+			"provider": "postgresql",
+			"name": "SSL Verify CA",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": "verify-ca"
+						}
+					}
+				}
+			}
+		},
+		"ssl-verify-full": {
+			"provider": "postgresql",
+			"name": "SSL Verify Full",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": "verify-full"
+						}
+					}
+				}
+			}
+		},
+		"ssl-default": {
+			"provider": "postgresql",
+			"name": "SSL Default",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": ""
+						}
+					}
+				}
+			}
+		},
+		"ssl-certs": {
+			"provider": "postgresql",
+			"name": "SSL Certs",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": "verify-full",
+							"ssl.ca.cert": "/path/to/ca.pem",
+							"ssl.client.cert": "/path/to/cert.pem",
+							"ssl.client.key": "/path/to/key.pem"
+						}
+					}
+				}
+			}
+		},
+		"ssl-disabled": {
+			"provider": "postgresql",
+			"name": "SSL Disabled",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": false,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": "require"
+						}
+					}
+				}
+			}
+		},
+		"twin-b": {
+			"provider": "postgresql",
+			"name": "Twin",
+			"configuration": {
+				"host": "b.example.com"
+			}
+		},
+		"twin-a": {
+			"provider": "postgresql",
+			"name": "Twin",
+			"configuration": {
+				"host": "a.example.com"
+			}
+		},
+		"ssh-user-in-credentials": {
+			"provider": "postgresql",
+			"name": "SSH user from credentials",
+			"configuration": {
+				"host": "db.internal",
+				"port": "5432",
+				"handlers": {
+					"ssh_tunnel": {
+						"type": "TUNNEL",
+						"enabled": true,
+						"save-password": true,
+						"properties": {
+							"host": "bastion.example.com",
+							"port": 22,
+							"authType": "PASSWORD"
+						}
+					}
+				}
+			}
+		},
+		"mysql-ssl-required": {
+			"provider": "mysql",
+			"name": "MySQL SSL required",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"mysql_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"ssl.require": "true",
+							"ssl.verify.server": "false",
+							"ssl.public.key.retrieve": "false"
+						}
+					}
+				}
+			}
+		},
+		"mysql-ssl-verified": {
+			"provider": "mysql",
+			"name": "MySQL SSL verified",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"mysql_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"ssl.ca.cert": "/certs/mysql-ca.pem",
+							"ssl.require": "true",
+							"ssl.verify.server": "true",
+							"ssl.public.key.retrieve": "false"
+						}
+					}
+				}
+			}
+		},
+		"clickhouse-ssl": {
+			"provider": "clickhouse",
+			"name": "ClickHouse SSL",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"clickhouse-ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"ssl.mode": "NONE"
+						}
+					}
+				}
+			}
+		},
+		"mssql-ssl": {
+			"provider": "sqlserver",
+			"name": "SQL Server SSL",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"mssql_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "KEYSTORE",
+							"ssl.keystore": "/certs/store.jks"
+						}
+					}
+				}
+			}
+		},
+		"ssl-off": {
+			"provider": "postgresql",
+			"name": "SSL Off",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": "disable"
+						}
+					}
+				}
+			}
+		},
+		"ssl-unknown-mode": {
+			"provider": "postgresql",
+			"name": "SSL Unknown Mode",
+			"configuration": {
+				"host": "db.example.com",
+				"handlers": {
+					"postgre_ssl": {
+						"type": "CONFIG",
+						"enabled": true,
+						"save-password": false,
+						"properties": {
+							"ssl.method": "CERTIFICATES",
+							"sslMode": "sometimes"
+						}
+					}
+				}
+			}
+		},
+		"url-mode": {
+			"provider": "postgresql",
+			"name": "URL mode",
+			"configuration": {
+				"host": "old.example.com",
+				"port": "5432",
+				"database": "old",
+				"url": "jdbc:postgresql://new.example.com:6543/current",
+				"configurationType": "URL"
+			}
+		},
+		"manual-mode": {
+			"provider": "postgresql",
+			"name": "Manual mode",
+			"configuration": {
+				"host": "manual.example.com",
+				"port": "5433",
+				"database": "manual",
+				"url": "jdbc:postgresql://url.example.com:6543/fromurl",
+				"configurationType": "MANUAL"
+			}
+		}
+	}
+}

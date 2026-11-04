@@ -6,15 +6,9 @@
 import Foundation
 import TableProPluginKit
 
-/// What the user is told when an import fails.
-///
-/// The cause is the only thing carrying the line number and the failing statement, so a rollback
-/// that also fails on the way out is appended to it rather than thrown in its place. Reporting the
-/// rollback alone left the user reading "Transaction rollback failed" with nothing about what
-/// actually broke, and it turned a cancellation into an error (#2314).
 internal enum SQLImportFailure {
     internal static func error(cause: any Error, rollbackError: (any Error)?) -> any Error {
-        if cause is PluginImportCancellationError {
+        if cause is PluginImportCancellationError || cause is CancellationError {
             return cause
         }
         guard let rollbackError else {
@@ -45,8 +39,6 @@ internal struct RollbackAlsoFailedError: LocalizedError {
     internal let cause: any Error
     internal let rollbackError: any Error
 
-    /// The database's own message rarely ends in punctuation, so the two are put on separate lines
-    /// rather than run together into one unreadable sentence.
     internal var message: String {
         """
         \(cause.localizedDescription)

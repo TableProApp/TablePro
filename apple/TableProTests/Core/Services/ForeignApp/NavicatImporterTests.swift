@@ -251,6 +251,27 @@ struct NavicatImporterTests {
         #expect(result.credentials(at: 0)?.sshPassword == "This is a test")
     }
 
+    @Test("Decrypts a saved SSH key passphrase, whatever case the export spells it in")
+    func decryptsKeyPassphrase() throws {
+        let tunnel = ["SSH": "true", "SSH_Host": "bastion.example.com", "SSH_AuthenMethod": "PUBLICKEY"]
+        try writeNCX([
+            conn(name: "Mixed", extra: tunnel.merging([
+                "SSH_SavePassPhrase": "true", "SSH_PassPhrase": "B75D320B6211468D63EB3B67C9E85933"
+            ]) { _, new in new }),
+            conn(name: "Lower", extra: tunnel.merging([
+                "ssh_savepassphrase": "TRUE", "ssh_passphrase": "B75D320B6211468D63EB3B67C9E85933"
+            ]) { _, new in new }),
+            conn(name: "Not saved", extra: tunnel.merging([
+                "SSH_SavePassPhrase": "false", "SSH_PassPhrase": "B75D320B6211468D63EB3B67C9E85933"
+            ]) { _, new in new })
+        ])
+        let result = try importer.collect(.withPasswords)
+        #expect(result.credentials(at: 0)?.keyPassphrase == "This is a test")
+        #expect(result.credentials(at: 0)?.password == nil)
+        #expect(result.credentials(at: 1)?.keyPassphrase == "This is a test")
+        #expect(result.credentials(at: 2) == nil)
+    }
+
     @Test("Maps credentials to the right connection when some have no saved password")
     func mapsSparseCredentialsByIndex() throws {
         try writeNCX([

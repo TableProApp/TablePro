@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>ConnectionName</key>
+		<string>Moved DB</string>
+		<key>DatabaseHost</key>
+		<string>db.example.com</string>
+		<key>DatabaseName</key>
+		<string>mydb</string>
+		<key>DatabasePort</key>
+		<string>3306</string>
+		<key>DatabaseUser</key>
+		<string>admin</string>
+		<key>Driver</key>
+		<string>MySQL</string>
+		<key>Enviroment</key>
+		<string></string>
+		<key>GroupID</key>
+		<string>g1</string>
+		<key>ID</key>
+		<string>c2</string>
+		<key>isOverSSH</key>
+		<false/>
+	</dict>
+</array>
+</plist>

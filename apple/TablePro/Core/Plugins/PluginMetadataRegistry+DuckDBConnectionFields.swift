@@ -47,6 +47,7 @@ extension PluginMetadataRegistry {
             ConnectionField(
                 id: "duckdbToken",
                 label: String(localized: "Token"),
+                required: true,
                 fieldType: .secure,
                 section: .authentication,
                 hidesPassword: true,
@@ -60,6 +61,34 @@ extension PluginMetadataRegistry {
                 defaultValue: "remotedb",
                 section: .authentication,
                 visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+            ),
+            ConnectionField(
+                id: "duckdbSSLMode",
+                label: String(localized: "SSL Mode"),
+                defaultValue: "automatic",
+                fieldType: .dropdown(options: [
+                    ConnectionField.DropdownOption(value: "automatic", label: String(localized: "Automatic")),
+                    ConnectionField.DropdownOption(value: "disabled", label: String(localized: "Disabled")),
+                    ConnectionField.DropdownOption(value: "required", label: String(localized: "Required (skip verify)")),
+                    ConnectionField.DropdownOption(value: "verifyIdentity", label: String(localized: "Verify Identity")),
+                    ConnectionField.DropdownOption(value: "verifyFingerprint", label: String(localized: "Verify Fingerprint"))
+                ]),
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "duckdbMode", values: ["remote"])
+            ),
+            ConnectionField(
+                id: "duckdbCACertificateFilePath",
+                label: String(localized: "CA Certificate"),
+                placeholder: String(localized: "Optional"),
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "duckdbSSLMode", values: ["verifyIdentity"])
+            ),
+            ConnectionField(
+                id: "duckdbCertificateFingerprint",
+                label: String(localized: "Certificate Fingerprint"),
+                required: true,
+                section: .authentication,
+                visibleWhen: FieldVisibilityRule(fieldId: "duckdbSSLMode", values: ["verifyFingerprint"])
             ),
             /// Named for what it does to the file rather than to TablePro, to keep it apart from
             /// Safe Mode's own Read-Only level: that one is a policy this app applies to itself

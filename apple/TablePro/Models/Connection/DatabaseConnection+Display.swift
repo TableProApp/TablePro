@@ -32,6 +32,11 @@ extension DatabaseConnection {
         if let socketPath = localSocketFile {
             return (socketPath as NSString).abbreviatingWithTildeInPath
         }
+        // A DuckDB Remote row's built-in Host is a placeholder the driver never reads.
+        if activeServerEndpointFields != nil {
+            let server = serverEndpoint
+            return server.port == type.defaultPort ? server.host : "\(server.host):\(server.port)"
+        }
         if let hostList = hostListDescription {
             return hostList
         }
@@ -62,6 +67,7 @@ extension DatabaseConnection {
     }
 
     private var databaseDescriptor: String? {
+        guard activeServerEndpointFields == nil else { return nil }
         guard !host.isEmpty || hostListDescription != nil || localSocketPath != nil else { return nil }
         switch type.pathFieldRole {
         case .database, .serviceName:
@@ -85,6 +91,8 @@ extension DatabaseConnection {
         let ssh = resolvedSSHConfig
         guard ssh.enabled, !ssh.host.isEmpty else { return nil }
         guard !ssh.forwardsRemoteFile else { return nil }
+        // A stored tunnel the driver would go around is not opened, so the row must not name it.
+        guard enabledTunnelKinds.contains(.ssh) else { return nil }
         return String(format: String(localized: "via %@"), ssh.host)
     }
 

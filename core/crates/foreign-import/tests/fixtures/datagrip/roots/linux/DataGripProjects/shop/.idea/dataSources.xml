@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="project_source" uuid="dddddddd-0000-4000-8000-000000000004">
+      <driver-ref>mariadb</driver-ref>
+      <jdbc-url>jdbc:mariadb://project.example.com:3307/shop</jdbc-url>
+    </data-source>
+  </component>
+</application>

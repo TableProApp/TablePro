@@ -47,7 +47,8 @@ public enum ConnectionImportAnalyzer {
                 groupPath: Array(groupPath),
                 tagNames: connection.tagNames,
                 duplicate: duplicate,
-                warnings: warnings(for: settings, canonicalTypeId: canonicalTypeId, environment: environment),
+                warnings: warnings(for: settings, canonicalTypeId: canonicalTypeId, environment: environment)
+                    + (collected.connectionNotes[connection.ref] ?? []),
                 unsupportedTypeId: canonicalTypeId == nil ? connection.settings.type : nil,
                 savedQueryCount: savedQueryCount,
                 resolutions: resolutions(

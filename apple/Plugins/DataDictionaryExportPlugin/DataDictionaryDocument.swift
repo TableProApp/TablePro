@@ -248,9 +248,9 @@ enum DataDictionaryAnchors {
     static func slug(_ name: String) -> String {
         var result = ""
         var lastWasDash = false
-        for character in name.lowercased() {
-            if character.isLetter || character.isNumber || character == "_" {
-                result.append(character)
+        for scalar in name.lowercased().unicodeScalars {
+            if scalar.properties.isAlphabetic || scalar.properties.numericType != nil || scalar == "_" {
+                result.unicodeScalars.append(scalar)
                 lastWasDash = false
             } else if !lastWasDash, !result.isEmpty {
                 result.append("-")

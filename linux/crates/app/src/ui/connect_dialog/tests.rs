@@ -917,6 +917,57 @@ fn a_ca_file_is_offered_and_sent_only_with_verify_full() {
 }
 
 #[gtk4::test]
+fn sql_server_offers_strict_and_reads_a_ca_file_with_it() {
+    let harness = dialog();
+    select(&harness.dialog, "mssql");
+    fill_network(&harness.dialog);
+    let section = harness.dialog.imp().tls_section.get();
+    let strict = section
+        .imp()
+        .modes
+        .borrow()
+        .iter()
+        .position(|mode| *mode == TlsMode::Strict)
+        .expect("SQL Server offers strict") as u32;
+    assert_eq!(section.imp().encryption_modes.string(strict).as_deref(), Some("Strict"));
+    let ca = std::path::PathBuf::from("/etc/tls/ca.pem");
+    section.set_file_path(FormField::CaFile, Some(ca.clone()));
+
+    section.imp().encryption_row.set_selected(strict);
+
+    assert!(section.imp().ca_row.is_visible(), "Strict hid the CA row");
+    let valid = harness.dialog.form().validate(caps_of("mssql")).expect("valid");
+    let RequestTarget::Network { tls, .. } = valid.target else {
+        panic!("expected a network target");
+    };
+    assert_eq!(tls.mode, TlsMode::Strict);
+    assert_eq!(tls.ca_file, Some(ca));
+}
+
+#[gtk4::test]
+fn the_encryption_remedy_focuses_the_mode_even_with_tls_off() {
+    let harness = dialog();
+    let _window = present(&harness.dialog);
+    select(&harness.dialog, "mssql");
+    let section = harness.dialog.imp().tls_section.get();
+    let disable = section
+        .imp()
+        .modes
+        .borrow()
+        .iter()
+        .position(|mode| *mode == TlsMode::Disable)
+        .expect("SQL Server can turn TLS off") as u32;
+    section.imp().encryption_row.set_selected(disable);
+    let row = section.imp().encryption_row.get();
+    wait_until(WAIT, || row.is_mapped()).expect("the dialog never showed the encryption row");
+
+    harness.dialog.reveal_field(remedy_field(TlsRemedy::ChangeEncryption));
+
+    wait_until(WAIT, || row.is_focus()).expect("the encryption row never took the focus");
+    assert!(!section.imp().certificates_row.is_expanded());
+}
+
+#[gtk4::test]
 fn agent_is_default_with_ssh_auth_sock() {
     let with_agent = open(Options {
         environment: SshEnvironment {

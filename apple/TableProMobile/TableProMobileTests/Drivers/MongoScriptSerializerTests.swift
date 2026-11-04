@@ -52,4 +52,36 @@ struct MongoScriptSerializerTests {
                 == ["kind": "document", "json": document, "text": document]
         )
     }
+    @Test("Ordered export documents retain number-like and prototype field names")
+    func orderedExportDocuments() throws {
+        let value = try evaluate(#"__ejson(new Map([["z", null], ["10", "a"], ["2", "b"], ["__proto__", new Map([["10", "x"], ["2", "y"]])]]))"#)
+        #expect(value == #"{"z":null,"10":"a","2":"b","__proto__":{"10":"x","2":"y"}}"#)
+    }
+
+    @Test("Strict EJSON preserves integral doubles and BSON symbols", arguments: [
+        #"{"$numberDouble":"1.0"}"#,
+        #"{"$numberDouble":"-0.0"}"#,
+        #"{"$numberInt":"42"}"#,
+        #"{"$numberLong":"9007199254740993"}"#,
+        #"{"$symbol":"symbol"}"#
+    ])
+    func strictEJSONTypes(canonical: String) throws {
+        let quoted = String(decoding: try JSONEncoder().encode(canonical), as: UTF8.self)
+        let sent = try #require(try evaluate("__ejson(EJSON.parse(\(quoted), {relaxed:false}))"))
+        let original = try #require(try JSONSerialization.jsonObject(with: Data(canonical.utf8)) as? NSDictionary)
+        let actual = try #require(try JSONSerialization.jsonObject(with: Data(sent.utf8)) as? NSDictionary)
+        if canonical.contains("$numberDouble") {
+            #expect(actual["$numberDouble"] != nil)
+            #expect(Double(actual["$numberDouble"] as? String ?? "") == Double(original["$numberDouble"] as? String ?? ""))
+        } else {
+            #expect(actual == original)
+        }
+    }
+
+    @Test("Code scopes retain their stored field order")
+    func orderedCodeScope() throws {
+        #expect(try evaluate(#"__ejson(Code("return x", new Map([["10", NumberLong("5")], ["2", null]])))"#)
+            == #"{"$code":"return x","$scope":{"10":{"$numberLong":"5"},"2":null}}"#)
+    }
+
 }

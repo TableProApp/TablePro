@@ -66,15 +66,21 @@ pub(super) fn session_section(key: &SessionKey, state: InWindow, opens_databases
 
 #[cfg(test)]
 mod tests {
+    use tablepro_storage::{ConnectionList, ConnectionTag, SavedConnection};
     use uuid::Uuid;
 
     use super::*;
+    use crate::services::library_outline::{LibraryOutline, LibrarySection};
     use crate::test_support::assert_access_keys;
 
     #[test]
     fn every_state_keeps_the_access_keys_of_the_connections_menu_apart() {
         let id = Uuid::new_v4();
         let key = SessionKey::Saved(id);
+        let outline = LibraryOutline::new(&ConnectionList::new(
+            Vec::<SavedConnection>::new(),
+            Vec::<ConnectionTag>::new(),
+        ));
         let stored = [
             InWindow::Open,
             InWindow::Connecting,
@@ -88,7 +94,8 @@ mod tests {
             assert_access_keys(&crate::ui::picker::connection_menu_with(
                 &session_section(&key, state, true),
                 id,
-                &[],
+                LibrarySection::Tree,
+                &outline,
                 &[],
             ));
         }

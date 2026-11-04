@@ -39,22 +39,22 @@ impl PostgresFixture {
     pub const NETWORK_ROLE: &'static str = "postgres";
 
     pub async fn start(hba: HbaMode) -> Result<Self, FixtureError> {
-        Self::launch(hba, PostgresVersion::selected()?, None, PkiAlgorithm::default(), None).await
+        Self::launch(TestPki::generate()?, hba, PostgresVersion::selected()?, None, None).await
     }
 
     pub async fn start_in(hba: HbaMode, network: &TestNetwork) -> Result<Self, FixtureError> {
         Self::launch(
+            TestPki::generate()?,
             hba,
             PostgresVersion::selected()?,
             Some(network),
-            PkiAlgorithm::default(),
             None,
         )
         .await
     }
 
     pub async fn start_version(version: PostgresVersion, hba: HbaMode) -> Result<Self, FixtureError> {
-        Self::launch(hba, version, None, PkiAlgorithm::default(), None).await
+        Self::launch(TestPki::generate()?, hba, version, None, None).await
     }
 
     /// A server on a host port picked here rather than by Docker, which
@@ -64,10 +64,10 @@ impl PostgresFixture {
     pub async fn start_restartable(hba: HbaMode) -> Result<Self, FixtureError> {
         let port = TcpListener::bind(("0.0.0.0", 0))?.local_addr()?.port();
         Self::launch(
+            TestPki::generate()?,
             hba,
             PostgresVersion::selected()?,
             None,
-            PkiAlgorithm::default(),
             Some(port),
         )
         .await
@@ -77,17 +77,36 @@ impl PostgresFixture {
     /// binding cases: the server hashes its certificate by the
     /// algorithm that signed it.
     pub async fn start_with_pki(hba: HbaMode, algorithm: PkiAlgorithm) -> Result<Self, FixtureError> {
-        Self::launch(hba, PostgresVersion::selected()?, None, algorithm, None).await
+        Self::launch(
+            TestPki::generate_with(algorithm)?,
+            hba,
+            PostgresVersion::selected()?,
+            None,
+            None,
+        )
+        .await
+    }
+
+    /// A server whose certificate is self-signed, which a client accepts
+    /// only by trusting that certificate itself.
+    pub async fn start_self_signed(hba: HbaMode) -> Result<Self, FixtureError> {
+        Self::launch(
+            TestPki::generate_self_signed()?,
+            hba,
+            PostgresVersion::selected()?,
+            None,
+            None,
+        )
+        .await
     }
 
     async fn launch(
+        pki: TestPki,
         hba: HbaMode,
         version: PostgresVersion,
         network: Option<&TestNetwork>,
-        algorithm: PkiAlgorithm,
         host_port: Option<u16>,
     ) -> Result<Self, FixtureError> {
-        let pki = TestPki::generate_with(algorithm)?;
         let password = FixtureCredentials::generate_password();
         let image = version.image();
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));

@@ -109,13 +109,9 @@ nonisolated struct BsonDocumentFlattener {
         return absent
     }
 
-    /// A document or an array, and not the `$code` or DBRef shapes that render as their own text.
+    // Code scopes and references can contain typed values too, so their stored text takes the same path.
     private static func isNestedValue(_ value: Any) -> Bool {
-        if value is [Any] { return true }
-        guard let dict = value as? [String: Any] else { return false }
-        let isCode = dict["$code"] is String
-        let isReference = dict["$ref"] is String && dict["$id"] != nil
-        return !isCode && !isReference
+        value is [Any] || value is [String: Any]
     }
 
     private static func storedMembers(of text: String) -> [String: MongoDocumentText.Value] {
@@ -124,7 +120,7 @@ nonisolated struct BsonDocumentFlattener {
     }
 
     static func nestedDisplayText(_ canonical: MongoDocumentText.Value) -> String {
-        JSONTruncation.truncate(MongoExtendedJsonForm.display(canonical).compactText, maxLength: maxNestedJsonLength)
+        MongoExtendedJsonForm.display(canonical).compactText
     }
 
     /// Infer the dominant value kind for each column by majority-vote over document values.
@@ -242,7 +238,7 @@ nonisolated struct BsonDocumentFlattener {
         guard let json = NumberText.json(from: sanitized, preservesFloatingPointForm: true) else {
             return String(describing: value)
         }
-        return JSONTruncation.truncate(json, maxLength: maxNestedJsonLength)
+        return json
     }
 
     static let maxNestedJsonLength = 10_000

@@ -34,11 +34,27 @@ struct RewindPlanner {
     /// rows out. Everything that needs the plugin registry stays on the main actor, and nothing
     /// main-actor-isolated has to cross into the driver lease.
     func readQueries() -> [String] {
-        readQueries(for: record.reversibleOperations.filter(keyIsComparable))
+        let comparable = record.reversibleOperations.filter(keyIsComparable)
+        guard let located = locatorQuery() else { return readQueries(for: comparable) }
+        return [located] + readQueries(for: comparable.filter { $0.rowLocator == nil })
+    }
+
+    // The rows recorded with a locator, read by it, so a row whose key reads the same text is never read in its place.
+    private func locatorQuery() -> String? {
+        let locators = record.reversibleOperations.filter(keyIsComparable).compactMap(\.rowLocator)
+        guard !locators.isEmpty else { return nil }
+        return factory.pluginDriver?.buildLocatorQuery(
+            table: record.target.table,
+            schema: record.target.schema,
+            locators: locators,
+            columns: record.operations.first?.columns ?? []
+        )
     }
 
     func plan(currentRows: [RewindCurrentRow]) throws -> RewindPlan {
         let current = indexByKey(currentRows)
+        let byLocator = indexByLocator(currentRows)
+        let matchesByLocator = locatorQuery() != nil || !byLocator.isEmpty
 
         var rows: [RewindRowPlan] = []
         var restorable: [RowWriteOperation] = []
@@ -61,8 +77,12 @@ struct RewindPlanner {
                 )
                 continue
             }
-            let key = primaryKey(of: operation)
-            let currentRow = key.flatMap { current[$0] }
+            let currentRow: RewindCurrentRow?
+            if let locator = operation.rowLocator, matchesByLocator {
+                currentRow = byLocator[Array(locator.utf8)]
+            } else {
+                currentRow = primaryKey(of: operation).flatMap { current[$0] }
+            }
             let outcome = classify(operation, current: currentRow)
             rows.append(
                 RewindRowPlan(id: UUID(), operation: operation, outcome: outcome, currentImage: currentRow?.values)
@@ -150,6 +170,16 @@ struct RewindPlanner {
         return byKey
     }
 
+    // Keyed by bytes: String equality treats two Unicode spellings as one, and the server does not.
+    private func indexByLocator(_ rows: [RewindCurrentRow]) -> [[UInt8]: RewindCurrentRow] {
+        var byLocator: [[UInt8]: RewindCurrentRow] = [:]
+        for row in rows {
+            guard let locator = row.locator else { continue }
+            byLocator[Array(locator.utf8)] = row
+        }
+        return byLocator
+    }
+
     /// One query for a single-column key, one per row for a composite one.
     ///
     /// `OR` over equality conditions is the only shape every engine's filter builder can express,
@@ -223,6 +253,8 @@ struct RewindPlanner {
     }
 
     private func inverseStatements(for operation: RowWriteOperation) throws -> RestoreStatements {
+        var factory = factory
+        factory.rowLocators = operation.rowLocator.map { [.existing(0): $0] } ?? [:]
         switch operation.kind {
         case .update:
             guard let preImage = operation.preImage, let postImage = operation.postImage else {
@@ -310,6 +342,7 @@ struct RewindCurrentRow: Sendable, Equatable {
     /// The recorded columns the row has no field for, which only an engine that tells a missing
     /// field from NULL reports.
     var absentColumns: Set<Int> = []
+    var locator: String?
 
     /// A read's rows in the recorded column order.
     ///
@@ -322,9 +355,12 @@ struct RewindCurrentRow: Sendable, Equatable {
         alignedTo columns: [String],
         matchingByName: Bool
     ) -> [RewindCurrentRow] {
+        let locators = result.rowLocators?.count == result.rows.count ? result.rowLocators : nil
         guard matchingByName, result.columns != columns else {
             return result.rows.enumerated().map { index, values in
-                RewindCurrentRow(values: values, absentColumns: result.absentCells[index] ?? [])
+                RewindCurrentRow(
+                    values: values, absentColumns: result.absentCells[index] ?? [], locator: locators?[index] ?? nil
+                )
             }
         }
         let sourceIndices = columns.map { result.columns.firstIndex(of: $0) }
@@ -339,7 +375,7 @@ struct RewindCurrentRow: Sendable, Equatable {
                 if absentInResult.contains(source) { absent.insert(column) }
                 return values[source]
             }
-            return RewindCurrentRow(values: aligned, absentColumns: absent)
+            return RewindCurrentRow(values: aligned, absentColumns: absent, locator: locators?[index] ?? nil)
         }
     }
 }

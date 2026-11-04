@@ -159,7 +159,7 @@ public sealed partial class ShellTests
         using var app = AppSession.Launch(theme);
         app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
         app.FindByName("Track", app.Find("ObjectTree"));
-        app.TypeInto(app.Find("SqlEditor"), "BEGIN; UPDATE Track SET Name = 'Pending' WHERE TrackId = 1;");
+        app.TypeInto("Query 1", "BEGIN; UPDATE Track SET Name = 'Pending' WHERE TrackId = 1;");
         app.Chord(() => app.TryFind("CommitButton") is { IsOffscreen: false }, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
         app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Move tab to new window") is not null);
         app.FindMenuItem("Move tab to new window").Patterns.Invoke.Pattern.Invoke();
@@ -181,7 +181,7 @@ public sealed partial class ShellTests
         app.Find("PrimaryButton", torn).AsButton().Invoke();
         app.WaitForClose(SampleWindow);
         app.Chord(() => app.TryFind("SqlEditor") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
-        app.TypeInto(app.Find("SqlEditor"), "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
+        app.TypeInto("Query 1", "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
         app.Chord(() => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
         Assert.Equal("0", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "0"));

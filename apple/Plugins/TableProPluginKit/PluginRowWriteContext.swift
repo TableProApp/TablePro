@@ -31,5 +31,13 @@ public struct PluginRowWriteContext: Sendable, Equatable {
     /// mask rather than the session's format, reads it here. A column missing from it has no type the host knows.
     public var columnTypeNames: [String: String] = [:]
 
+    // By `PluginRowChange.rowIndex`: the `PluginQueryResult.rowLocators` entry the row was read with. A row the driver
+    // gave no locator is missing.
+    public var rowLocators: [Int: String] = [:]
+
+    // The database the writes run in. A driver that keeps what it learned per database reads it here, since the
+    // session can have moved to another one since the rows were read.
+    public var database: String?
+
     public init() {}
 }

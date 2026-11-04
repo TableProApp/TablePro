@@ -24,7 +24,7 @@ Errors are typed enums, built with `thiserror` wherever they cross a crate bound
 | `Transport(TransportError)` | The route failed: name resolution, refused, unreachable, a connect or SSH timeout, or an `SshFailure`. |
 | `Auth { diagnostics }` | The server refused the credentials, with its own explanation when it gave one. |
 | `LoginRefused(ServerDiagnostics)` | The server turned the login away for a reason other than the password, such as PostgreSQL's pg_hba.conf rules. The app offers no new password for it. |
-| `IntegratedAuth(String)` | A Kerberos login failed before the server saw it. |
+| `IntegratedAuth(String)` | An integrated login failed before the server saw it: GSSAPI on Linux and macOS, SSPI on Windows. |
 | `Tls { failure, detail }` | The handshake failed; `TlsFailure` says why. |
 | `Server(ServerDiagnostics)` | The server refused the statement. |
 | `ReadOnly(ReadOnlyRefusal)` | A write on a read-only connection: `ClientGuard` (the driver refused before sending) or `ServerRejected` (the server refused). |
@@ -113,7 +113,9 @@ Drivers classify a handshake failure with `tablepro_net::tls::classify`, which w
 | `NameMismatch` | The certificate is for another name. | **Set TLS Server Name**, which opens the connect dialog at the server name row, where the route shows that row; MySQL over a direct route checks the host it dials and offers only **Edit Connection…**. |
 | `Expired`, `NotYetValid`, `Revoked` | The certificate itself is bad. | Nothing: the server's certificate has to be replaced. |
 | `ServerRefusedTls` | The server does not speak TLS on this port. | The message; turn TLS off or use the TLS port. |
-| `ServerRequiresTls` | TLS was off and the server insists on it. | The message; turn TLS on. |
+| `ServerRequiresTls` | TLS was off and the server insists on it. | **Change Encryption**, which opens the connect dialog at the Encryption row. |
+| `ServerRefusedStrict` | SQL Server closed a strict (TDS 8.0) login before answering: it does not speak TDS 8.0 (before 2022 on Windows, before 2025 on Linux) or has no certificate for it. | **Change Encryption**; Verify full suits an older server. |
+| `ServerRequiresStrict` | SQL Server closed a TDS 7.4 login before answering, as a server that requires strict encryption does. | **Change Encryption**, to Strict. |
 | `HandshakeRejected` | The server ended the handshake, for example over the client certificate. | The server's reason. |
 | `CaFileInvalid`, `ClientIdentityInvalid` | A file the user chose cannot be used. | The message names the file. |
 | `Other` | Anything else. | The rustls message. |

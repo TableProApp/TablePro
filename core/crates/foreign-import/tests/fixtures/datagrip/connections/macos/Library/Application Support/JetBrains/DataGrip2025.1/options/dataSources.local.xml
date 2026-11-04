@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="dataSourceStorageLocal">
+    <data-source uuid="7">
+      <user-name>appuser</user-name>
+      <ssh-properties>
+        <enabled>true</enabled>
+        <ssh-config-id>SSH1</ssh-config-id>
+      </ssh-properties>
+    </data-source>
+    <data-source uuid="8">
+      <ssh-properties>
+        <enabled>true</enabled>
+        <ssh-config-id>SSH3</ssh-config-id>
+      </ssh-properties>
+    </data-source>
+    <data-source uuid="9">
+      <ssh-properties>
+        <enabled>false</enabled>
+      </ssh-properties>
+    </data-source>
+    <data-source uuid="10">
+      <ssh-properties>
+        <enabled>true</enabled>
+        <ssh-config-id>SSH2</ssh-config-id>
+      </ssh-properties>
+    </data-source>
+    <data-source uuid="11">
+      <user-name>postgres</user-name>
+    </data-source>
+    <data-source uuid="12">
+      <ssl-config use-ide-store="true">
+        <ca-cert>$USER_HOME$/certs/ca.pem</ca-cert>
+        <client-cert>$USER_HOME$/certs/client.crt</client-cert>
+        <client-key>$USER_HOME$/certs/client.key</client-key>
+        <enabled>true</enabled>
+        <mode>VERIFY_FULL</mode>
+      </ssl-config>
+    </data-source>
+  </component>
+</project>

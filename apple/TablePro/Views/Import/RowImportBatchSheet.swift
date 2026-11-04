@@ -9,9 +9,6 @@ import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
 
-/// Several files, or a folder of them, imported as rows into a table each in one run. Every file starts on the table
-/// its name matches or a new table named after it, Edit… opens the one-file sheet on it, and the options of each
-/// format are set once for every file in that format.
 struct RowImportBatchSheet: View {
     private struct EditRequest: Identifiable {
         let id: RowImportBatch.File.ID
@@ -26,14 +23,12 @@ struct RowImportBatchSheet: View {
     @State private var editing: EditRequest?
     @State private var isDropTargeted = false
 
-    /// The plugins' options are shared and persistent, and this sheet edits them in place, so Cancel puts them back.
     @State private var settingsSnapshot: PluginSettingsSnapshot?
     @State private var importSucceeded = false
     @State private var importService: ImportService?
     @State private var showProgressDialog = false
     @State private var importTask: Task<Void, Never>?
 
-    /// The sheet's own window for its alerts, never `NSApp.keyWindow`, which is the progress sheet while it closes.
     @State private var hostWindow: NSWindow?
 
     init(
@@ -115,7 +110,7 @@ struct RowImportBatchSheet: View {
         }
         .sheet(isPresented: $showProgressDialog) {
             if let service = importService {
-                ImportProgressView(service: service) { service.cancelImport() }
+                ImportProgressView(service: service)
             }
         }
     }
@@ -197,8 +192,6 @@ struct RowImportBatchSheet: View {
         return String(format: String(localized: "New table %@"), name)
     }
 
-    /// The table a file already points at stays listed when the table list could not be read, or the menu would
-    /// draw blank.
     private func tableChoices(for file: RowImportBatch.File) -> [String] {
         var names = batch.availableTables.map(\.name)
         if let current = file.target.existingTable, !names.contains(current) {
@@ -264,7 +257,6 @@ struct RowImportBatchSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// A dropped file or folder joins the run, read the same way as a folder chosen in the panel.
     private func accept(_ providers: [NSItemProvider]) -> Bool {
         let lookup = ImportFormatLookup.live
         let options = lookup.offeredFormats(connection.type)
@@ -429,7 +421,8 @@ struct RowImportBatchSheet: View {
                         description: String(
                             format: String(localized: "Import %@"),
                             ImportService.batchName(fileCount: plan.items.count)
-                        )
+                        ),
+                        importRun: service.run
                     ) { table, sql in
                         batch.planner.recordCreated(table, createTableSQL: sql)
                     }
@@ -452,28 +445,29 @@ struct RowImportBatchSheet: View {
                 present(report, scope: scope)
             } catch ExecutionGateError.cancelledByUser {
                 showProgressDialog = false
+            } catch is PluginImportCancellationError {
+                showProgressDialog = false
+                TransferResultAlert.presentImportCancelled(result: service.stopResult, window: hostWindow) {}
             } catch is CancellationError {
                 showProgressDialog = false
+                TransferResultAlert.presentImportCancelled(result: service.stopResult, window: hostWindow) {}
             } catch {
                 showProgressDialog = false
-                TransferResultAlert.presentImportFailure(error: error, window: hostWindow) {}
+                TransferResultAlert.presentImportFailure(error: error, result: service.stopResult, window: hostWindow) {}
             }
         }
     }
 
-    /// A run that finished closes the sheet. One that stopped stays open, so a changed setting can run it again.
     private func present(_ report: RowImportBatchReport, scope: DatabaseScope) {
         let completed = report.ending == .completed
         if completed {
             importSucceeded = true
         }
         TransferResultAlert.presentBatchImportResult(report, window: hostWindow) {
-            if report.rowsKept {
-                for table in Set(report.files.map(\.targetTable)) {
-                    AppCommands.shared.objectChanged.send(
-                        DatabaseObjectChange(connectionId: connection.id, scope: scope, name: table, kind: .rows)
-                    )
-                }
+            for table in Set(report.files.map(\.targetTable)) {
+                AppCommands.shared.objectChanged.send(
+                    DatabaseObjectChange(connectionId: connection.id, scope: scope, name: table, kind: .rows)
+                )
             }
             if completed {
                 isPresented = false
@@ -482,8 +476,6 @@ struct RowImportBatchSheet: View {
     }
 }
 
-/// The options a format's own view edits, followed for every format of a run: the signature decides the reads, and
-/// the error handling and transaction options decide whether the files can run together.
 private struct RowImportOptionsObserver<Plugin: ImportFormatPlugin & ObservableObject>: View {
     @ObservedObject var plugin: Plugin
     let onChange: (String, RowImportRunner.Configuration?) -> Void

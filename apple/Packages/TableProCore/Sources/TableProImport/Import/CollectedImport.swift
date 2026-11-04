@@ -36,6 +36,7 @@ public struct CollectedImport: Sendable {
     public let unsuggestedQueries: Set<BundleRef>
     public let oversizedQueries: [OversizedSavedQuery]
     public let credentialsAborted: Bool
+    public let connectionNotes: [BundleRef: [String]]
 
     public init(
         bundle: ConnectionBundle,
@@ -43,7 +44,8 @@ public struct CollectedImport: Sendable {
         unsuggestedConnections: Set<BundleRef> = [],
         unsuggestedQueries: Set<BundleRef> = [],
         oversizedQueries: [OversizedSavedQuery] = [],
-        credentialsAborted: Bool = false
+        credentialsAborted: Bool = false,
+        connectionNotes: [BundleRef: [String]] = [:]
     ) {
         self.bundle = bundle
         self.source = source
@@ -51,5 +53,6 @@ public struct CollectedImport: Sendable {
         self.unsuggestedQueries = unsuggestedQueries
         self.oversizedQueries = oversizedQueries
         self.credentialsAborted = credentialsAborted
+        self.connectionNotes = connectionNotes
     }
 }

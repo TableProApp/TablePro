@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="my" uuid="1" group-name="Production">
+      <driver-ref>mysql.8</driver-ref>
+      <jdbc-url>jdbc:mysql://db.example.com:3307/shop</jdbc-url>
+      <user-name>root</user-name>
+    </data-source>
+    <data-source source="LOCAL" name="pg" uuid="2">
+      <driver-ref>postgresql</driver-ref>
+      <jdbc-url>jdbc:postgresql://localhost/app</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="ms" uuid="3">
+      <driver-ref>sqlserver.ms</driver-ref>
+      <jdbc-url>jdbc:sqlserver://h:1433;databaseName=c</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="or" uuid="4">
+      <driver-ref>oracle</driver-ref>
+      <jdbc-url>jdbc:oracle:thin:@h:1521:ORCL</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="lt" uuid="5">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <jdbc-url>jdbc:sqlite:/Users/me/app.db</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="rs" uuid="6">
+      <driver-ref>redshift</driver-ref>
+      <jdbc-url>jdbc:redshift://cluster.example.com/dev</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="ssh_key" uuid="7">
+      <driver-ref>mysql.8</driver-ref>
+      <jdbc-url>jdbc:mysql://h:3306/a</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="ssh_password" uuid="8">
+      <driver-ref>mysql.8</driver-ref>
+      <jdbc-url>jdbc:mysql://h:3306/a</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="ssh_off" uuid="9">
+      <driver-ref>mysql.8</driver-ref>
+      <jdbc-url>jdbc:mysql://h:3306/a</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="ssh_kdbx" uuid="10">
+      <driver-ref>mysql.8</driver-ref>
+      <jdbc-url>jdbc:mysql://h:3306/a</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="user_local" uuid="11">
+      <driver-ref>postgresql</driver-ref>
+      <jdbc-url>jdbc:postgresql://h:5432/db</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="tls" uuid="12">
+      <driver-ref>postgresql</driver-ref>
+      <jdbc-url>jdbc:postgresql://h:5432/a</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="A" uuid="dup">
+      <driver-ref>mysql.8</driver-ref>
+      <jdbc-url>jdbc:mysql://h:3306/a</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="A copy" uuid="dup">
+      <driver-ref>mysql.8</driver-ref>
+      <jdbc-url>jdbc:mysql://h:3306/a</jdbc-url>
+    </data-source>
+  </component>
+</application>

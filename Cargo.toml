@@ -4,6 +4,7 @@ members = [
     "core/crates/ai",
     "core/crates/core",
     "core/crates/ffi",
+    "core/crates/foreign-import",
     "core/crates/mcp",
     "core/crates/net",
     "core/crates/session",
@@ -42,6 +43,7 @@ tablepro-driver-mysql = { path = "core/crates/drivers/mysql" }
 tablepro-driver-postgres = { path = "core/crates/drivers/postgres" }
 tablepro-driver-redis = { path = "core/crates/drivers/redis" }
 tablepro-driver-sqlite = { path = "core/crates/drivers/sqlite" }
+tablepro-foreign-import = { path = "core/crates/foreign-import" }
 tablepro-mcp = { path = "core/crates/mcp" }
 tablepro-net = { path = "core/crates/net" }
 tablepro-linux-platform = { path = "linux/crates/platform" }
@@ -72,7 +74,7 @@ sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio",
 # feature is needed.
 scylla = { version = "1.9", default-features = false, features = ["rustls-023"] }
 # The driver reads and writes DECIMAL through tiberius's own Numeric.
-tiberius = { version = "0.13", default-features = false, features = ["tds73", "rustls", "chrono"] }
+tiberius = { version = "0.13", default-features = false, features = ["tds80", "rustls", "chrono"] }
 # The driver hands redis-rs a stream it opened and wrapped in TLS itself, so
 # none of the crate's TLS features is on: rustls stays on aws-lc-rs.
 redis = { version = "1.7", default-features = false, features = ["aio", "tokio-comp"] }
@@ -150,6 +152,19 @@ url = "2"
 percent-encoding = "2"
 # The Windows Credential Manager, where the core keeps secrets on Windows.
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
+# What other apps' saved connections are kept in: binary and XML property
+# lists, XML, and the fixed-key ciphers those apps use for passwords.
+plist = { version = "1.7", default-features = false }
+roxmltree = "0.20"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+blowfish = "0.9"
+salsa20 = "0.10"
+chacha20 = "0.9"
+sha1 = "0.11"
+sha2 = "0.11"
+hex = "0.4"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 zeroize = "1.9"
 # The volume and index that name a file on Windows, which std reads only on nightly.
 winapi-util = "0.1"

@@ -193,7 +193,7 @@ struct ExternalStatementGateTests {
             databaseType: .mssql,
             allowsDestructive: false,
             allowsMultiStatement: takesScripts
-        )) == .denied(String(localized: "This statement drops or truncates data.")))
+        )) == .denied(ExternalStatementGate.destructiveRefusal))
     }
 
     /// The connection setting a user reaches for when they want a script to look but not touch.
@@ -303,7 +303,7 @@ struct ExternalStatementGateTests {
         let refused = refusal(
             statement("SHOW TABLES ->> DROP TABLE orders", databaseType: .snowflake, allowsDestructive: false)
         )
-        #expect(refused == .denied(String(localized: "This statement drops or truncates data.")))
+        #expect(refused == .denied(ExternalStatementGate.destructiveRefusal))
     }
 
     @Test("A backup SQL Server runs after a read without a terminator is refused as a filesystem statement")
@@ -328,10 +328,23 @@ struct ExternalStatementGateTests {
         #expect(refusal(statement(sql, databaseType: .mssql, allowsDestructive: false, allowsMultiStatement: true)) != nil)
     }
 
-    @Test("A destructive statement is refused when the caller may not run one")
-    func destructiveRefusedWithoutPermission() {
-        let refused = refusal(statement("DROP TABLE users", allowsDestructive: false))
-        #expect(refused == .denied(String(localized: "This statement drops or truncates data.")))
+    @Test("A destructive statement is refused when the caller may not run one", arguments: [
+        "DROP TABLE users", "TRUNCATE users", "DELETE FROM users", "EXPLAIN ANALYZE DELETE FROM users",
+    ])
+    func destructiveRefusedWithoutPermission(sql: String) {
+        let refused = refusal(statement(sql, allowsDestructive: false))
+        #expect(refused == .denied(ExternalStatementGate.destructiveRefusal))
+    }
+
+    @Test("A write that filters its rows is not destructive", arguments: [
+        "DELETE FROM users WHERE id = 1", "UPDATE users SET name = 'x' WHERE id = 1", "UPDATE users SET name = 'x'",
+        "INSERT INTO users (name) VALUES ('x')",
+    ])
+    func filteredWriteIsNotDestructive(sql: String) {
+        #expect(refusal(statement(sql, allowsDestructive: false)) == nil)
+        #expect(throws: ExternalStatementGateError.invalidArgument(ExternalStatementGate.notDestructiveRefusal)) {
+            try ExternalStatementGate.requireDestructive(sql, databaseType: .postgresql)
+        }
     }
 
     /// MCP points at its confirmation tool, AppleScript confirms interactively and never gets here.
@@ -342,7 +355,7 @@ struct ExternalStatementGateTests {
             statement("DROP TABLE users", allowsDestructive: false, destructiveAlternative: "Do it in the app.")
         )
         #expect(refused == .denied(
-            String(localized: "This statement drops or truncates data.") + " Do it in the app."
+            ExternalStatementGate.destructiveRefusal + " Do it in the app."
         ))
     }
 
@@ -350,6 +363,8 @@ struct ExternalStatementGateTests {
     func destructiveAllowed() throws {
         let classification = try ExternalStatementGate.classify(statement("DROP TABLE users"))
         #expect(classification.tier == .destructive)
+        #expect(refusal(statement("DELETE FROM users")) == nil)
+        try ExternalStatementGate.requireDestructive("DELETE FROM users", databaseType: .postgresql)
     }
 
     // MARK: - Consent
@@ -400,12 +415,12 @@ struct ExternalStatementGateTests {
         ) == nil)
     }
 
-    /// Whatever the level says. A script that drops a table gets a person in front of it.
-    @Test("A destructive statement always asks, even on Silent")
-    func destructiveAlwaysAsks() {
-        let drop = QueryClassifier.classify("DROP TABLE users", databaseType: .postgresql)
+    // Whatever the level says. A script that drops a table gets a person in front of it.
+    @Test("A destructive statement always asks, even on Silent", arguments: ["DROP TABLE users", "DELETE FROM users"])
+    func destructiveAlwaysAsks(sql: String) {
+        let classification = QueryClassifier.classify(sql, databaseType: .postgresql)
         #expect(ExternalStatementGate.requiresUserConsent(
-            classification: drop, sql: "DROP TABLE users", databaseType: .postgresql, safeModeLevel: .silent
+            classification: classification, sql: sql, databaseType: .postgresql, safeModeLevel: .silent
         ))
     }
 }
@@ -440,7 +455,7 @@ struct ExternalStatementGateExecutableCommentTests {
     ])
     func hiddenDropIsRefused(sql: String) {
         #expect(refusal(sql, access: .readWrite, allowsDestructive: false)
-            == .denied(String(localized: "This statement drops or truncates data.")))
+            == .denied(ExternalStatementGate.destructiveRefusal))
     }
 
     @Test("A write behind a lowercase /*m! is refused on a read-only connection")

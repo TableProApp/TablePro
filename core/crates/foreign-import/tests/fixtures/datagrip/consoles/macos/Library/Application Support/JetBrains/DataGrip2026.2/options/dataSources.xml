@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="dg_sample_shop" uuid="11111111-1111-4111-8111-111111111111">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <jdbc-url>jdbc:sqlite:/tmp/dg_sample_shop.sqlite</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="dg_sample_mongo" uuid="33333333-3333-4333-8333-333333333333">
+      <driver-ref>mongo</driver-ref>
+      <jdbc-url>mongodb://localhost:27017/dg_sample</jdbc-url>
+    </data-source>
+    <data-source source="LOCAL" name="dg_sample_unmapped" uuid="44444444-4444-4444-8444-444444444444"/>
+  </component>
+</application>

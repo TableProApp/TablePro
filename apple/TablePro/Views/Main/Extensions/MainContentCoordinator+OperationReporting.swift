@@ -43,6 +43,14 @@ extension MainContentCoordinator {
         )
     }
 
+    internal func reportFetchedQuery(claim: TabExecutionClaim, trigger: TableLoadTrigger, result: QueryFetchResult) {
+        reportQueryOperation(
+            claim: claim,
+            trigger: trigger,
+            outcome: .succeeded(OperationSummary(rowsReturned: result.rows.count, rowsAffected: result.rowsAffected))
+        )
+    }
+
     /// A restore load is the app reopening the session, not the user asking for anything, so it
     /// never notifies however long it takes. `TableLoadTrigger` already draws that line for the
     /// diagnostics tracer and it is the same line here.

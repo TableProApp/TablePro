@@ -3,9 +3,10 @@ use libadwaita as adw;
 use tablepro_core::SafeModeLevel;
 use tablepro_core::credentials::SecretKind;
 use tablepro_session::SessionKey;
-use tablepro_storage::{ConnectionColor, ConnectionTag, ConnectionTagName, SavedConnection};
+use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, ConnectionTagName, SavedConnection};
 use uuid::Uuid;
 
+use crate::services::library_outline::LibraryMove;
 use crate::services::saved_connection_editor::GroupChoice;
 
 use super::connect_failure_details::Remedy;
@@ -151,6 +152,7 @@ pub(crate) enum SessionWindowInput {
     SetConnectionGroup(Uuid, GroupChoice),
     /// A tag ticked on or off in a connection row's menu.
     SetConnectionTag(Uuid, Uuid, bool),
+    Library(LibraryEdit),
     /// A new tag, put on the connection `on` when there is one.
     CreateTag {
         name: ConnectionTagName,
@@ -170,6 +172,7 @@ pub(crate) enum SessionWindowInput {
     },
     /// What importing that file would do, for the user to agree to.
     ImportPreviewed(Box<tablepro_storage::ImportPreview>),
+    ImportFromApp,
     ShowToast(String),
 }
 
@@ -188,4 +191,20 @@ pub(crate) enum MovedTab {
     /// A tab of the session under `key` changed the catalog of
     /// `database`, which another session of its connection may hold.
     Refresh { key: SessionKey, database: String },
+}
+
+// A change to the library's groups, order or favourites.
+#[derive(Debug)]
+pub(crate) enum LibraryEdit {
+    // `with` is a connection filed in the new group in the same write.
+    CreateGroup {
+        parent: Option<Uuid>,
+        name: ConnectionGroupName,
+        with: Option<Uuid>,
+    },
+    RenameGroup(Uuid, ConnectionGroupName),
+    // The picker action asked before sending it.
+    DeleteGroup(Uuid),
+    Change(LibraryMove),
+    SetFavourite(Uuid, bool),
 }

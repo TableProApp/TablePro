@@ -35,6 +35,11 @@ extension DatabaseManager {
         let forwardEndpoint = connection.tunnelForwardEndpoint
         effectiveFields[DatabaseConnection.preTunnelHostKey] = forwardEndpoint.host
         effectiveFields[DatabaseConnection.preTunnelPortKey] = String(forwardEndpoint.port)
+        // A driver that dials its server from its own fields never reads the built-in host rewritten below.
+        if let serverFields = connection.activeServerEndpointFields {
+            effectiveFields[serverFields.hostFieldId] = "127.0.0.1"
+            effectiveFields[serverFields.portFieldId] = String(localPort)
+        }
         // An SSH forward to the server's own socket is encrypted the whole way, as the proxy's hop is.
         effectiveFields[DatabaseConnection.tunnelSecuresTransportKey] = listenerSecuresTransport ? "true" : nil
         // One forwarded port replaces the host list. An SRV host is a name the driver resolves, not a server to dial.

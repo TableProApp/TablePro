@@ -63,6 +63,9 @@ struct RowWriteOperation: Codable, Sendable, Equatable {
     var preImageAbsentColumns: Set<Int>?
     /// The same for the row as the write left it.
     var postImageAbsentColumns: Set<Int>?
+    // What the driver found the row by when it was read, for an update or a delete. A rewind writes to that row and
+    // no other. Nil in a record saved before it was kept, and on an engine that keeps none.
+    var rowLocator: String?
 
     var isReversible: Bool { refusal == nil }
 
