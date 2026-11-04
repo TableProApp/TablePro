@@ -1263,6 +1263,96 @@
   <data name="StatusPageOf" xml:space="preserve">
     <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
   </data>
+  <data name="SshTrustTitle" xml:space="preserve">
+    <value>Trust this SSH server?</value>
+  </data>
+  <data name="SshTrustButton" xml:space="preserve">
+    <value>Trust and connect</value>
+  </data>
+  <data name="SshTrustMessage" xml:space="preserve">
+    <value>The identity of {0} is not known. Verify this fingerprint with your administrator before trusting it.
+
+Algorithm: {1}
+Fingerprint: {2}</value>
+  </data>
+  <data name="SshPassphraseMessage" xml:space="preserve">
+    <value>Enter the passphrase for {0} to connect to {1}.</value>
+  </data>
+  <data name="Error_ssh_host_key_unknown" xml:space="preserve">
+    <value>The SSH server is not trusted. Connect again and verify its fingerprint before trusting it.</value>
+  </data>
+  <data name="Error_ssh_host_key_changed" xml:space="preserve">
+    <value>The SSH server identity has changed. Verify the new fingerprint with your administrator before replacing the saved key.</value>
+  </data>
+  <data name="Error_ssh_host_key_revoked" xml:space="preserve">
+    <value>The SSH server key has been revoked. Contact your administrator.</value>
+  </data>
+  <data name="Error_ssh_no_common_algorithm" xml:space="preserve">
+    <value>The SSH server and TablePro do not support a common secure algorithm. Update the server configuration.</value>
+  </data>
+  <data name="Error_ssh_channel_open_failed" xml:space="preserve">
+    <value>The SSH server could not reach the database. Check the database host and port and the server’s forwarding permissions.</value>
+  </data>
+  <data name="Error_ssh_protocol" xml:space="preserve">
+    <value>The SSH connection failed. Check the server and try again.</value>
+  </data>
+  <data name="Error_ssh_config_rejected" xml:space="preserve">
+    <value>This SSH configuration is not supported. Check the SSH settings.</value>
+  </data>
+  <data name="Error_ssh_authentication_rejected" xml:space="preserve">
+    <value>The SSH server rejected the login. Check the SSH user and authentication settings.</value>
+  </data>
+  <data name="Error_ssh_agent_unavailable" xml:space="preserve">
+    <value>The SSH agent is not available. Start the OpenSSH Authentication Agent service or choose a private key.</value>
+  </data>
+  <data name="Error_ssh_identity_file_unreadable" xml:space="preserve">
+    <value>The SSH private key could not be read. Check the file and its permissions.</value>
+  </data>
+  <data name="Error_ssh_identity_file_invalid" xml:space="preserve">
+    <value>The SSH private key is invalid or uses an unsupported format.</value>
+  </data>
+  <data name="Error_ssh_interaction_cancelled" xml:space="preserve">
+    <value>The SSH login was cancelled.</value>
+  </data>
+  <data name="Error_ssh_known_hosts_unwritable" xml:space="preserve">
+    <value>The trusted SSH server key could not be saved. Check permissions on your SSH known_hosts file.</value>
+  </data>
+  <data name="Error_ssh_too_many_authentication_failures" xml:space="preserve">
+    <value>The SSH server refused further login attempts. Choose the specific private key for this server and try again.</value>
+  </data>
+  <data name="Error_ssh_master_exited" xml:space="preserve">
+    <value>The SSH connection closed. Check the server and connect again.</value>
+  </data>
+  <data name="SshChangedKeyTitle" xml:space="preserve">
+    <value>SSH server identity changed</value>
+  </data>
+  <data name="SshForgetKeyButton" xml:space="preserve">
+    <value>Forget saved key</value>
+  </data>
+  <data name="SshChangedKeyMessage" xml:space="preserve">
+    <value>The saved key for {0} differs from the server’s key. This could mean someone is intercepting the connection. Contact your administrator to verify this fingerprint before forgetting the saved key. You will be asked to trust the server again.
+
+Algorithm: {1}
+New fingerprint: {2}</value>
+  </data>
+  <data name="Error_ssh_host_key_not_this_connection" xml:space="preserve">
+    <value>This SSH key does not belong to the connection. Check the SSH settings and try again.</value>
+  </data>
+  <data name="Error_ssh_config_unreadable" xml:space="preserve">
+    <value>The SSH configuration file could not be read. Check its permissions.</value>
+  </data>
+  <data name="Error_ssh_invalid_destination" xml:space="preserve">
+    <value>The SSH host or user is invalid. Check the SSH settings.</value>
+  </data>
+  <data name="Error_ssh_forward_rejected" xml:space="preserve">
+    <value>The SSH server refused forwarding to the database. Check the server’s forwarding permissions.</value>
+  </data>
+  <data name="Error_ssh_internal" xml:space="preserve">
+    <value>The SSH connection could not be completed. Try connecting again.</value>
+  </data>
+  <data name="Error_config_server_name_override_unsupported" xml:space="preserve">
+    <value>This driver cannot verify the database server name through this connection route. Use a direct connection for full TLS verification.</value>
+  </data>
   <data name="AuthBox.Header" xml:space="preserve">
     <value>Authentication</value>
   </data>

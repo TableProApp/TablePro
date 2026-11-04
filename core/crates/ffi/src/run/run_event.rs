@@ -1,6 +1,6 @@
 use tablepro_core::{DriverError, RunEnd, RunSummary, ServerNotice, TransactionState, Truncation};
 
-use crate::error::{CoreError, ErrorInfo};
+use crate::error::{BoxedErrorInfo, CoreError};
 use crate::results::ResultColumnInfo;
 
 /// One thing that happened in a run, in the order it happened. Rows that
@@ -85,7 +85,7 @@ pub enum TruncationTag {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum RunOutcome {
     Completed { elapsed_ms: u64 },
-    Failed { info: ErrorInfo },
+    Failed { info: BoxedErrorInfo },
     Cancelled,
     TimedOut { server_cancelled: bool },
 }

@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use secrecy::ExposeSecret;
@@ -6,12 +7,14 @@ use sqlx::mysql::{MySqlConnectOptions, MySqlConnection, MySqlSslMode};
 use sqlx::{AssertSqlSafe, ConnectOptions as _, Executor as _, Row as _};
 use tablepro_core::{
     ConfigError, Credentials, DriverError, LivenessPolicy, NetworkEndpoint, NetworkTarget, TimeoutPhase, TlsMode,
-    Transport, TransportRoute,
+    Transport, TransportError, TransportRoute,
 };
+use tablepro_net::PrivateAddress;
 use tokio_util::sync::CancellationToken;
 
 use crate::errors::{map_connect_error, map_error};
 use crate::flavour::MySqlFlavour;
+use crate::relay::Relay;
 use crate::session_statements::{EDITOR_SQL_MODE_STATEMENT, SessionLimits, for_session};
 use crate::workspace_session::{WORKSPACE_SQL_MODE_STATEMENT, WORKSPACE_TIME_ZONE};
 
@@ -42,14 +45,16 @@ pub(crate) struct MySqlPhysical {
 /// Everything needed to log in to one server, again and again.
 ///
 /// sqlx dials the route itself rather than taking a stream, so the
-/// transport is asked only for where it leads: a TCP endpoint, or the
-/// Unix socket an SSH forward listens on.
+/// transport is asked only for where it leads: a TCP endpoint, the Unix
+/// socket an SSH forward listens on, or the relay's own listener.
 pub(crate) struct MysqlEndpoint {
     transport: Arc<dyn Transport>,
     options: MySqlConnectOptions,
     tls_server_name: String,
     verifies_name: bool,
     liveness: LivenessPolicy,
+    // Started by the first login over an in-process route; it stops when the endpoint drops.
+    relay: OnceLock<Relay>,
 }
 
 impl MysqlEndpoint {
@@ -99,6 +104,7 @@ impl MysqlEndpoint {
             tls_server_name: target.tls_server_name().to_owned(),
             verifies_name: target.tls.mode == TlsMode::VerifyFull,
             liveness,
+            relay: OnceLock::new(),
         })
     }
 
@@ -119,20 +125,50 @@ impl MysqlEndpoint {
     /// rather than checked against the wrong one.
     fn options_for(&self, kind: SessionKind) -> Result<MySqlConnectOptions, DriverError> {
         let options = match self.transport.route() {
-            TransportRoute::Tcp(endpoint) => {
-                if self.verifies_name && endpoint.host() != self.tls_server_name {
-                    return Err(DriverError::Config(ConfigError::ServerNameOverrideUnsupported {
-                        route: self.transport.kind().class(),
-                    }));
-                }
-                self.options.clone().host(endpoint.host()).port(endpoint.port())
-            }
-            TransportRoute::UnixSocket(path) => self.options.clone().socket(path).host(&self.tls_server_name),
+            TransportRoute::Tcp(endpoint) => self.tcp_options(endpoint.host(), endpoint.port())?,
+            TransportRoute::UnixSocket(path) => self.socket_options(&path),
+            TransportRoute::InProcess => match self.relay()?.address() {
+                #[cfg(unix)]
+                PrivateAddress::Unix(path) => self.socket_options(path),
+                PrivateAddress::Tcp(address) => self.tcp_options(&address.ip().to_string(), address.port())?,
+            },
         };
         Ok(match kind {
             SessionKind::Workspace => options.timezone(Some(WORKSPACE_TIME_ZONE.to_owned())),
             SessionKind::Editor | SessionKind::Control => options,
         })
+    }
+
+    fn tcp_options(&self, host: &str, port: u16) -> Result<MySqlConnectOptions, DriverError> {
+        if self.verifies_name && host != self.tls_server_name {
+            return Err(DriverError::Config(ConfigError::ServerNameOverrideUnsupported {
+                route: self.transport.kind().class(),
+            }));
+        }
+        Ok(self.options.clone().host(host).port(port))
+    }
+
+    fn socket_options(&self, path: &Path) -> MySqlConnectOptions {
+        self.options.clone().socket(path).host(&self.tls_server_name)
+    }
+
+    fn relay(&self) -> Result<&Relay, DriverError> {
+        if let Some(relay) = self.relay.get() {
+            return Ok(relay);
+        }
+        let started = Relay::start(self.transport.clone()).map_err(|error| {
+            DriverError::Transport(TransportError::Unreachable {
+                endpoint: self.service().clone(),
+                detail: format!("the local relay could not listen: {error}"),
+            })
+        })?;
+        // A login racing this one may have set its own first; then this one stops as it drops.
+        Ok(self.relay.get_or_init(|| started))
+    }
+
+    // What the relay met opening a stream, which a closed or silent login cannot say.
+    fn relayed_failure(&self) -> Option<DriverError> {
+        self.relay.get()?.take_failure().map(DriverError::Transport)
     }
 
     /// Log in and set the session up, within the connect and login
@@ -150,16 +186,20 @@ impl MysqlEndpoint {
             () = cancel.cancelled() => Err(DriverError::Cancelled),
             opened = opening => match opened {
                 Ok(opened) => opened,
-                Err(_) => Err(DriverError::Timeout {
+                Err(_) => Err(self.relayed_failure().unwrap_or(DriverError::Timeout {
                     phase: TimeoutPhase::Login,
                     server_cancelled: false,
-                }),
+                })),
             },
         }
     }
 
     async fn open(&self, kind: SessionKind, limits: &SessionLimits) -> Result<MySqlPhysical, DriverError> {
         let options = self.options_for(kind)?;
+        // What an earlier login's stream met is not this one's.
+        if let Some(relay) = self.relay.get() {
+            relay.take_failure();
+        }
         let mut connection = match options.connect().await {
             Ok(connection) => connection,
             Err(error) => return Err(self.explain(map_connect_error(&error, self.service())).await),
@@ -194,6 +234,9 @@ impl MysqlEndpoint {
     pub(crate) async fn explain(&self, error: DriverError) -> DriverError {
         if !matches!(error, DriverError::ConnectionLost { .. }) {
             return error;
+        }
+        if let Some(relayed) = self.relayed_failure() {
+            return relayed;
         }
         match self.transport.explain_closed_stream().await {
             Some(transport) => DriverError::Transport(transport),
@@ -278,7 +321,7 @@ async fn identify(connection: &mut MySqlConnection, endpoint: &NetworkEndpoint) 
 mod tests {
     use async_trait::async_trait;
     use secrecy::SecretString;
-    use tablepro_core::{TlsConfig, TransportClass, TransportError, TransportKind, TransportStream};
+    use tablepro_core::{TlsConfig, TransportClass, TransportKind, TransportStream};
 
     use super::*;
 
@@ -327,6 +370,16 @@ mod tests {
     }
 
     fn mysql_endpoint(route: Route, server_name: Option<&str>) -> MysqlEndpoint {
+        mysql_endpoint_with(
+            route,
+            TlsConfig {
+                server_name: server_name.map(str::to_owned),
+                ..TlsConfig::verify_full()
+            },
+        )
+    }
+
+    fn mysql_endpoint_with(route: Route, tls: TlsConfig) -> MysqlEndpoint {
         let target = NetworkTarget {
             transport: Arc::new(route),
             credentials: Credentials::Password {
@@ -334,13 +387,20 @@ mod tests {
                 password: SecretString::from("secret"),
             },
             database: Some("app".to_owned()),
-            tls: TlsConfig {
-                server_name: server_name.map(str::to_owned),
-                ..TlsConfig::verify_full()
-            },
+            tls,
             options: Default::default(),
         };
         MysqlEndpoint::new(&target, LivenessPolicy::DESKTOP).unwrap()
+    }
+
+    fn in_process() -> Route {
+        Route {
+            service: endpoint("db.prod"),
+            kind: TransportKind::SshForward {
+                destination: "bastion".to_owned(),
+            },
+            route: TransportRoute::InProcess,
+        }
     }
 
     #[test]
@@ -409,6 +469,69 @@ mod tests {
         assert_eq!(
             options.get_socket().map(|path| path.as_path()),
             Some(std::path::Path::new("/run/user/1000/forward.sock"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_in_process_route_dials_the_relay_socket_with_the_name_tls_verifies() {
+        let relayed = mysql_endpoint(in_process(), Some("db.internal"));
+
+        let first = relayed.options_for(SessionKind::Workspace).unwrap();
+        let again = relayed.options_for(SessionKind::Editor).unwrap();
+
+        assert_eq!(first.get_host(), "db.internal");
+        let socket = first.get_socket().expect("a socket path");
+        assert!(socket.exists(), "nothing listens at {}", socket.display());
+        assert_eq!(again.get_socket(), Some(socket), "one relay serves every login");
+    }
+
+    // sqlx would check the certificate against 127.0.0.1, so only a login that checks no name dials the port.
+    #[cfg(not(unix))]
+    #[tokio::test]
+    async fn an_in_process_route_dials_the_relay_port_unless_a_name_is_checked() {
+        let verified = mysql_endpoint(in_process(), None);
+        let required = mysql_endpoint_with(
+            in_process(),
+            TlsConfig {
+                mode: TlsMode::Require,
+                ..TlsConfig::disabled()
+            },
+        );
+
+        let options = required.options_for(SessionKind::Control).unwrap();
+
+        assert!(matches!(
+            verified.options_for(SessionKind::Workspace),
+            Err(DriverError::Config(ConfigError::ServerNameOverrideUnsupported {
+                route: TransportClass::SshForward
+            }))
+        ));
+        let Some(PrivateAddress::Tcp(relay)) = required.relay.get().map(Relay::address) else {
+            panic!("no relay listens on a port");
+        };
+        assert_eq!(options.get_host(), "127.0.0.1");
+        assert_eq!(options.get_port(), relay.port());
+        assert_eq!(options.get_socket(), None);
+    }
+
+    #[tokio::test]
+    async fn a_relayed_login_reports_why_the_transport_could_not_open() {
+        let relayed = mysql_endpoint_with(in_process(), TlsConfig::disabled());
+
+        let opened = tokio::time::timeout(
+            Duration::from_secs(10),
+            relayed.open(SessionKind::Control, &no_limits()),
+        )
+        .await
+        .expect("the login ended");
+
+        let Err(error) = opened else {
+            panic!("a login with no server succeeded");
+        };
+        assert!(
+            matches!(error, DriverError::Transport(TransportError::Refused { .. })),
+            "{error:?}"
         );
     }
 }

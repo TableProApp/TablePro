@@ -104,7 +104,7 @@ public sealed partial class ShellTests
                 VirtualKeyShort.KEY_T);
             app.TypeInto("Query 2", "SELECT Name FROM Artist");
             app.Chord(
-                () => app.Find("QueryStatus").Name.StartsWith("Rows: 275", StringComparison.Ordinal),
+                () => app.Find("QueryStatus").Properties.Name.ValueOrDefault?.StartsWith("Rows: 275", StringComparison.Ordinal) == true,
                 VirtualKeyShort.CONTROL,
                 VirtualKeyShort.ENTER);
             var query = AppSession.WaitForText(app.Find("QueryStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal));

@@ -9,7 +9,7 @@ The default port is 9042. With TLS on, use the port the server encrypts: 9042 wh
 scylla dials a TCP address itself and takes no stream, while an SSH forward is a Unix socket. So each scylla session dials a loopback relay of its own ([ADR 0023](../decisions/0023-loopback-relay-for-cql.md)):
 
 - The relay listens on `127.0.0.1` on a port the kernel picks, for as long as the session lives.
-- It serves a connection only after `/proc/net/tcp` shows the connecting socket belongs to this user, and carries it over a stream from `Transport::open`. Every byte to the server goes through the transport, direct, SSH or the tests' `FaultTransport`.
+- It serves a connection only after `/proc/net/tcp` shows the connecting socket belongs to this user, or on Windows after `GetExtendedTcpTable` names this process as its owner, and carries it over a stream from `Transport::open`. Every byte to the server goes through the transport, direct, SSH or the tests' `FaultTransport`.
 - A stream the transport fails to open closes the connection, and the connect reports the transport's own error.
 
 The session stays on the node behind the transport, as cqlsh does with its host:

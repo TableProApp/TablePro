@@ -1,6 +1,6 @@
 # 0013: SSH through the system OpenSSH client
 
-- **Status**: Accepted; the forced options amended by 0019, the TCP port amended by 0023
+- **Status**: Accepted; the forced options amended by 0019, the TCP port amended by 0023, the russh consequence amended by core 0008
 - **Date**: 2026-09-15
 
 ## Context

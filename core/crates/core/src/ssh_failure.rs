@@ -26,6 +26,19 @@ pub enum SshFailure {
     #[error("the ssh_config file {} could not be read: {kind}", .path.display())]
     ConfigUnreadable { path: PathBuf, kind: ErrorKind },
 
+    #[error("the SSH key file {} could not be read: {kind}", .path.display())]
+    IdentityFileUnreadable { path: PathBuf, kind: ErrorKind },
+
+    // A security key, or a format the in-process transport cannot read.
+    #[error("the SSH key file {} is not a usable private key", .path.display())]
+    IdentityFileInvalid { path: PathBuf },
+
+    #[error("no SSH agent answered at {location}")]
+    AgentUnavailable { location: String },
+
+    #[error("the known_hosts file {} could not be written: {kind}", .path.display())]
+    KnownHostsUnwritable { path: PathBuf, kind: ErrorKind },
+
     #[error("the SSH control socket path {} is too long", .path.display())]
     ControlPathTooLong { path: PathBuf },
 
@@ -115,6 +128,10 @@ impl SshFailure {
             Self::InvalidDestination { .. } => "ssh.invalid_destination",
             Self::ConfigRejected { .. } => "ssh.config_rejected",
             Self::ConfigUnreadable { .. } => "ssh.config_unreadable",
+            Self::IdentityFileUnreadable { .. } => "ssh.identity_file_unreadable",
+            Self::IdentityFileInvalid { .. } => "ssh.identity_file_invalid",
+            Self::AgentUnavailable { .. } => "ssh.agent_unavailable",
+            Self::KnownHostsUnwritable { .. } => "ssh.known_hosts_unwritable",
             Self::ControlPathTooLong { .. } => "ssh.control_path_too_long",
             Self::RuntimeDirUnsafe { .. } => "ssh.runtime_dir_unsafe",
             Self::HostKeyUnknown { .. } => "ssh.host_key_unknown",
@@ -148,6 +165,10 @@ impl SshFailure {
             | Self::InvalidDestination { .. }
             | Self::ConfigRejected { .. }
             | Self::ConfigUnreadable { .. }
+            | Self::IdentityFileUnreadable { .. }
+            | Self::IdentityFileInvalid { .. }
+            | Self::AgentUnavailable { .. }
+            | Self::KnownHostsUnwritable { .. }
             | Self::ControlPathTooLong { .. }
             | Self::RuntimeDirUnsafe { .. }
             | Self::NoCommonAlgorithm { .. } => ErrorCategory::Configuration,
@@ -320,6 +341,23 @@ mod tests {
 
         assert_eq!(launch.category(), ErrorCategory::Configuration);
         assert_eq!(unreadable.category(), ErrorCategory::Configuration);
+        let key_file = PathBuf::from("C:\\Users\\deploy\\.ssh\\id_ed25519");
+        for failure in [
+            SshFailure::IdentityFileUnreadable {
+                path: key_file.clone(),
+                kind: ErrorKind::PermissionDenied,
+            },
+            SshFailure::IdentityFileInvalid { path: key_file },
+            SshFailure::AgentUnavailable {
+                location: "\\\\.\\pipe\\openssh-ssh-agent".to_owned(),
+            },
+            SshFailure::KnownHostsUnwritable {
+                path: PathBuf::from("C:\\Users\\deploy\\.ssh\\known_hosts"),
+                kind: ErrorKind::PermissionDenied,
+            },
+        ] {
+            assert_eq!(failure.category(), ErrorCategory::Configuration, "{failure:?}");
+        }
         assert_eq!(protocol.category(), ErrorCategory::Internal);
         assert_eq!(SshFailure::Internal.category(), ErrorCategory::Internal);
     }
