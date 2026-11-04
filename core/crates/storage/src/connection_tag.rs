@@ -96,6 +96,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_types,
+        reason = "old library fixtures need names the current types reject; JSON key order does not matter"
+    )]
     fn a_stored_tag_with_a_truly_blank_name_is_still_refused() {
         let json = serde_json::json!({
             "id": Uuid::new_v4(),
@@ -106,6 +110,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_types,
+        reason = "old library fixtures need names the current types reject; JSON key order does not matter"
+    )]
     fn long_invisible_tag_names_recover_by_id_and_round_trip() {
         let first = Uuid::new_v4();
         let second = Uuid::new_v4();
@@ -130,6 +138,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_types,
+        reason = "old library fixtures need names the current types reject; JSON key order does not matter"
+    )]
     fn a_recovered_tag_id_does_not_take_a_visible_name_or_exceed_the_limit() {
         #[derive(Deserialize)]
         struct List {

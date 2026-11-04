@@ -1148,6 +1148,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_types,
+        reason = "old library fixtures need names the current types reject; JSON key order does not matter"
+    )]
     fn older_invisible_group_and_tag_names_keep_the_library_and_its_links() {
         let root = TempDir::new().expect("tempdir");
         let group = Uuid::new_v4();
@@ -1188,6 +1192,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_types,
+        reason = "old library fixtures need names the current types reject; JSON key order does not matter"
+    )]
     fn recovered_names_do_not_take_visible_names_in_either_file_order() {
         let tag_ids = [Uuid::new_v4(), Uuid::new_v4()];
         let group_ids = [Uuid::new_v4(), Uuid::new_v4()];
@@ -1271,6 +1279,10 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_types,
+        reason = "old library fixtures need names the current types reject; JSON key order does not matter"
+    )]
     fn older_group_name_upgrade_keeps_literal_escapes_separate_from_invisible_names() {
         let connections = [sample_connection(), sample_connection()];
         let mut expected_groups = None;

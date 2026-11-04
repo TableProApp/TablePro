@@ -1126,20 +1126,32 @@ fn exact_lookalikes() -> Vec<String> {
 
 /// Every catalog read of one table.
 async fn read_table_catalog(connection: &dyn Connection, target: &TableRef) {
-    connection.fetch_columns(target, within(CALL)).await.unwrap();
-    connection.fetch_indexes(target, within(CALL)).await.unwrap();
-    connection.fetch_foreign_keys(target, within(CALL)).await.unwrap();
+    connection.fetch_columns(target, within(CALL)).await.expect("columns");
+    connection.fetch_indexes(target, within(CALL)).await.expect("indexes");
+    connection
+        .fetch_foreign_keys(target, within(CALL))
+        .await
+        .expect("foreign keys");
     connection
         .fetch_outbound_foreign_keys(target, within(CALL))
         .await
-        .unwrap();
+        .expect("outbound foreign keys");
     connection
         .fetch_inbound_foreign_keys(target, within(CALL))
         .await
-        .unwrap();
-    connection.fetch_table_definition(target, within(CALL)).await.unwrap();
-    connection.row_identity(target, within(CALL)).await.unwrap();
-    connection.table_estimate(target, within(CALL)).await.unwrap();
+        .expect("inbound foreign keys");
+    connection
+        .fetch_table_definition(target, within(CALL))
+        .await
+        .expect("table definition");
+    connection
+        .row_identity(target, within(CALL))
+        .await
+        .expect("row identity");
+    connection
+        .table_estimate(target, within(CALL))
+        .await
+        .expect("row estimate");
 }
 
 /// The login's own search_path puts exact copies of built-ins ahead of
