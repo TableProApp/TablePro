@@ -1299,7 +1299,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         rowCap: Int? = nil
     ) throws -> MariaDBPluginQueryResult {
         guard flavor.preparesOnServer else {
-            return try executeQuerySync(DatabendLiteral.inline(query, parameters: parameters), rowCap: rowCap)
+            let inlined = flavor.isDatabend
+                ? try DatabendLiteral.inline(query, parameters: parameters, serverVersion: serverVersion())
+                : try StarRocksLiteral.inline(query, parameters: parameters)
+            return try executeQuerySync(inlined, rowCap: rowCap)
         }
         return try runStatement(query) {
             try self.runCancellableStatement { mysql, generation in

@@ -14,7 +14,13 @@ struct DatabendCatalogTests {
         #expect(DatabendCatalog.quoteIdentifier("b\\s") == "`b\\s`")
         #expect(DatabendCatalog.quoteIdentifier("t`u") == "\"t`u\"")
         #expect(DatabendCatalog.quoteIdentifier("t`u\"v") == "\"t`u\"\"v\"")
-        #expect(DatabendCatalog.quoteIdentifier("t`u\\") == "\"t`u\\\\\"")
+    }
+
+    // Measured on 1.2.880 and 1.2.958: "bs`\b" creates bs`\b and "bs`\\c" creates bs`\\c.
+    @Test("A double-quoted name keeps its backslashes as written")
+    func doubleQuotedNameKeepsBackslashes() {
+        #expect(DatabendCatalog.quoteIdentifier("t`\\b") == "\"t`\\b\"")
+        #expect(DatabendCatalog.quoteIdentifier("t`\\\\c") == "\"t`\\\\c\"")
     }
 
     @Test("A backtick a combining mark follows still switches to double quotes")
