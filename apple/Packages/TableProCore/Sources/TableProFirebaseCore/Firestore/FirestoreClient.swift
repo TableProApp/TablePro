@@ -168,7 +168,7 @@ public final class FirestoreClient: @unchecked Sendable {
     // MARK: - URLs
 
     func documentName(_ path: String) -> String {
-        let segments = path.split(separator: "/", omittingEmptySubsequences: true).map { Self.encodedPathSegment(String($0)) }
+        let segments = FirebaseScalars.split(path, separator: "/").map(Self.encodedPathSegment)
         let root = "projects/\(Self.encodedSegment(projectId))/databases/\(Self.encodedSegment(currentDatabase))/documents"
         return segments.isEmpty ? root : root + "/" + segments.joined(separator: "/")
     }

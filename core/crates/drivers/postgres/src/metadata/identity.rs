@@ -38,7 +38,7 @@ SELECT c.relkind::text,
               WHERE k.ord <= best.indnkeyatts
               ORDER BY k.ord)
 FROM pg_catalog.pg_class c
-WHERE c.oid = $1::text::regclass::oid";
+WHERE c.oid = $1::text::oid";
 
 pub(crate) async fn row_identity(client: &Client, relation: &str) -> Result<RowIdentity, DriverError> {
     let field = decode_error("pg_class");

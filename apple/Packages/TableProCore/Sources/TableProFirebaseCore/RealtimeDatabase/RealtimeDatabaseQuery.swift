@@ -259,8 +259,8 @@ public enum RealtimeDatabaseOrdering {
         case .value: return child
         case .child(let path):
             var current: FirebaseJSON? = child
-            for segment in path.split(separator: "/") {
-                current = current?[String(segment)]
+            for segment in FirebaseScalars.split(path, separator: "/") {
+                current = current?[segment]
             }
             return current
         }

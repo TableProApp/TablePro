@@ -21,7 +21,7 @@ FROM pg_catalog.pg_index i
 JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
 CROSS JOIN LATERAL pg_catalog.unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord)
 LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum AND k.attnum > 0
-WHERE i.indrelid = $1::text::regclass::oid AND k.ord <= i.indnkeyatts
+WHERE i.indrelid = $1::text::oid AND k.ord <= i.indnkeyatts
 ORDER BY ic.relname, k.ord";
 
 pub(crate) async fn fetch_indexes(client: &Client, relation: &str) -> Result<Vec<IndexInfo>, DriverError> {
@@ -68,7 +68,7 @@ SELECT ic.relname::text,
 FROM pg_catalog.pg_index i
 JOIN pg_catalog.pg_class ic ON ic.oid = i.indexrelid
 LEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid = ic.reltablespace
-WHERE i.indrelid = $1::text::regclass::oid
+WHERE i.indrelid = $1::text::oid
   AND NOT EXISTS (
       SELECT 1 FROM pg_catalog.pg_constraint c
       WHERE c.conindid = i.indexrelid AND c.conrelid = i.indrelid AND c.contype IN ('p', 'u', 'x'))

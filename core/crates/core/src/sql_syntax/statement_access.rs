@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::sql_syntax::SqlGrammar;
 use crate::sql_syntax::script::{ScriptPlan, ScriptToken, ScriptTokenKind};
-use crate::sql_syntax::state_changing_functions::changes_state;
+use crate::sql_syntax::state_changing_functions::{changes_state, duckdb_call};
 use crate::unicode_blank::is_blank;
 
 /// What running a piece of SQL can do, from its own words. Ordered, so
@@ -386,23 +386,78 @@ fn writes(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
                     // `NEXT VALUE FOR` takes a number from a sequence.
                     || (is(token.text, &["VALUE"]) && follows(index, &["NEXT"]))
                     || calls_mutator(part, index, grammar)
-                    || names_pragma_optimize(token, grammar))
+                    || names_pragma_optimize(part, index, grammar))
         }
-        Kind::Quoted => calls_mutator(part, index, grammar) || names_pragma_optimize(token, grammar),
-        Kind::Literal => names_pragma_optimize(token, grammar),
+        Kind::Quoted => calls_mutator(part, index, grammar) || names_pragma_optimize(part, index, grammar),
+        Kind::Literal => names_pragma_optimize(part, index, grammar),
         _ => false,
     })
 }
 
 /// SQLite runs ANALYZE wherever `pragma_optimize` names a table, called
 /// or not, and takes a quoted name or a string for a table name there.
-fn names_pragma_optimize(token: &Code<'_>, grammar: SqlGrammar) -> bool {
-    let text = token.text;
-    let name = match token.kind {
+/// Where an expression stands it is a value, a column or an alias.
+fn names_pragma_optimize(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
+    let text = part[index].text;
+    let name = match part[index].kind {
         Kind::Literal => text.get(1..text.len().saturating_sub(1)).unwrap_or_default(),
         _ => text,
     };
-    grammar == SqlGrammar::Sqlite && name.eq_ignore_ascii_case("pragma_optimize")
+    grammar == SqlGrammar::Sqlite && name.eq_ignore_ascii_case("pragma_optimize") && !in_expression(part, index)
+}
+
+/// Words after which SQLite reads an expression or an alias, never a
+/// table. FROM, JOIN, IN and a schema's `.` lead to a table instead.
+const EXPRESSION_LEADS: [&str; 26] = [
+    "SELECT",
+    "DISTINCT",
+    "ALL",
+    "WHERE",
+    "AND",
+    "OR",
+    "NOT",
+    "ON",
+    "HAVING",
+    "CASE",
+    "WHEN",
+    "THEN",
+    "ELSE",
+    "LIKE",
+    "GLOB",
+    "REGEXP",
+    "MATCH",
+    "IS",
+    "BETWEEN",
+    "ESCAPE",
+    "BY",
+    "AS",
+    "RETURNING",
+    "SET",
+    "LIMIT",
+    "OFFSET",
+];
+
+/// Whether `part[index]` stands where an expression does: after an
+/// operator, a word in `EXPRESSION_LEADS`, or the `(` of a call or of a
+/// list. A `,` or a `(` that may belong to a FROM list counts as a table.
+fn in_expression(part: &[Code<'_>], index: usize) -> bool {
+    let Some(before) = index.checked_sub(1).and_then(|at| part.get(at)) else {
+        return false;
+    };
+    match before.kind {
+        Kind::Equals => true,
+        Kind::Other => before.text != ".",
+        Kind::Word => is(before.text, &EXPRESSION_LEADS),
+        Kind::Open => index
+            .checked_sub(2)
+            .and_then(|at| part.get(at))
+            .is_some_and(|opener| match opener.kind {
+                Kind::Word => !opener.is_word(&["FROM", "JOIN"]),
+                Kind::Comma | Kind::Open => false,
+                _ => true,
+            }),
+        _ => false,
+    }
 }
 
 /// A call of a built-in that changes state, its name quoted or not.
@@ -412,16 +467,14 @@ fn names_pragma_optimize(token: &Code<'_>, grammar: SqlGrammar) -> bool {
 fn calls_mutator(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
     let arguments = match decodes_unicode_names(grammar) && spelled_in_escapes(part, index) {
         true => after_uescape(part, index + 1),
-        false if changes_state(part[index].text) || runs_query_text(&part[index], grammar) => index + 1,
+        false if changes_state(part[index].text) || runs_duckdb_call(&part[index], grammar) => index + 1,
         false => return false,
     };
     part.get(arguments).is_some_and(|next| next.kind == Kind::Open)
 }
 
-/// DuckDB's `query('…')` runs the SELECT in its text, which can take a
-/// value from a sequence. Elsewhere `query` is any function's name.
-fn runs_query_text(token: &Code<'_>, grammar: SqlGrammar) -> bool {
-    grammar == SqlGrammar::DuckDb && is(token.text, &["QUERY"])
+fn runs_duckdb_call(token: &Code<'_>, grammar: SqlGrammar) -> bool {
+    grammar == SqlGrammar::DuckDb && duckdb_call(token.text)
 }
 
 /// The grammars whose scanner is PostgreSQL's, which reads `U&"…"`.
@@ -1506,6 +1559,21 @@ mod tests {
             "SELECT pg_import_system_collations('public'::regnamespace)",
             "SELECT heap_force_kill('orders'::regclass, ARRAY['(0,1)']::tid[])",
             "SELECT pg_file_write('postgresql.auto.conf', 'x', true)",
+            "SELECT pg_background_launch('SELECT 1')",
+            "SELECT * FROM pg_background_run_query_v2('SELECT 1') AS r(n int)",
+            "SELECT pg_background_cancel_all()",
+            "SELECT pg_background_grant_privileges('app')",
+            "SELECT cron.schedule('0 3 * * *', 'VACUUM orders')",
+            "SELECT cron.unschedule('nightly')",
+            "SELECT drop_chunks('conditions', INTERVAL '3 months')",
+            "SELECT compress_chunk(c) FROM show_chunks('conditions') c",
+            "SELECT create_hypertable('conditions', by_range('time'))",
+            "SELECT add_retention_policy('conditions', INTERVAL '1 year')",
+            "SELECT alter_job(1000, schedule_interval => INTERVAL '1 day')",
+            "SELECT timescaledb_experimental.remove_all_policies('conditions')",
+            "SELECT timescaledb_pre_restore()",
+            "SELECT dblink_close('app', 'c')",
+            "SELECT dblink_cancel_query('app')",
         ] {
             assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Write, "{sql}");
         }
@@ -1517,17 +1585,40 @@ mod tests {
         ] {
             assert_eq!(access(sql, SqlGrammar::MySql), StatementAccess::Write, "{sql}");
         }
-        assert_eq!(
-            access("SELECT * FROM query('SELECT nextval(''s'')')", SqlGrammar::DuckDb),
-            StatementAccess::Write
-        );
+        for sql in [
+            "SELECT * FROM query('SELECT nextval(''s'')')",
+            "SELECT * FROM postgres_execute('pg', 'SELECT 1')",
+            "SELECT * FROM postgres_query('pg', 'SELECT nextval(''s'')')",
+            "SELECT * FROM mysql_query('my', 'SELECT 1')",
+            "CALL mysql_execute('my', 'UPDATE orders SET total = 0 WHERE id = 1')",
+            "SELECT * FROM sqlite_query('lite', 'SELECT 1')",
+            "SELECT * FROM json_execute_serialized_sql(json_serialize_sql('SELECT nextval(''s'')'))",
+            "SELECT * FROM dbgen(sf = 0.01)",
+            "SELECT * FROM DSDGEN(sf = 0.01)",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::DuckDb), StatementAccess::Write, "{sql}");
+        }
         for sql in [
             "SELECT dblink_build_sql_insert('t', '1', 1, '{1}', '{2}')",
             "SELECT dblink FROM links",
             "SELECT file, url, query(1) FROM downloads",
+            "SELECT * FROM postgres_execute('pg', 'SELECT 1')",
+            "SELECT * FROM pg_background_result(123) AS r(n int)",
+            "SELECT pg_background_detach(123)",
+            "SELECT show_chunks('conditions')",
+            "SELECT * FROM cron.job",
+            "SELECT dblink_connect('app', 'dbname=shop')",
+            "SELECT schedule FROM jobs",
         ] {
             assert_eq!(access(sql, SqlGrammar::PostgreSql), StatementAccess::Read, "{sql}");
         }
+        assert_eq!(
+            access(
+                "SELECT * FROM postgres_scan('pg', 'public', 'orders')",
+                SqlGrammar::DuckDb
+            ),
+            StatementAccess::Read
+        );
     }
 
     #[test]
@@ -1669,5 +1760,31 @@ mod tests {
             access("SELECT * FROM pragma_table_info('orders')", SqlGrammar::Sqlite),
             StatementAccess::Read
         );
+    }
+
+    #[test]
+    fn a_pragma_name_as_a_value_column_or_alias_reads_on_sqlite() {
+        for sql in [
+            "SELECT 'pragma_optimize'",
+            "SELECT name FROM sqlite_schema WHERE name = 'pragma_optimize'",
+            "SELECT name FROM sqlite_schema WHERE name IN ('pragma_optimize', 'x')",
+            "SELECT name FROM sqlite_schema WHERE name LIKE 'pragma_optimize'",
+            "SELECT pragma_optimize FROM settings",
+            "SELECT 1 AS pragma_optimize",
+            "SELECT lower('pragma_optimize')",
+            "SELECT 'a' || 'pragma_optimize'",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Read, "{sql}");
+        }
+        for sql in [
+            "SELECT * FROM (pragma_optimize)",
+            "SELECT * FROM orders JOIN 'pragma_optimize'",
+            "SELECT * FROM orders AS o, pragma_optimize",
+            "SELECT 1 WHERE 1 IN pragma_optimize",
+            "SELECT * FROM main.'pragma_optimize'",
+            "SELECT * FROM orders WHERE id IN (SELECT arg FROM pragma_optimize)",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Write, "{sql}");
+        }
     }
 }

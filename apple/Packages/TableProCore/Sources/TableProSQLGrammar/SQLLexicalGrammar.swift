@@ -149,6 +149,10 @@ public struct SQLLexicalGrammar: OptionSet, Hashable, Sendable {
     /// PostgreSQL's `quotecontinue` reads it, so `E'x'` + line break + `'\'; ...'` is one literal. Curated only.
     public static let escapeStringContinuations = SQLLexicalGrammar(rawValue: 1 << 39)
 
+    /// A gate also reads the text the way Databend's own tokenizer does, as ``DatabendStatementReadings`` writes it out,
+    /// since no other fact here says that a hint's body is tokens or that a stage name keeps a quote. Curated only.
+    public static let databendTokens = SQLLexicalGrammar(rawValue: 1 << 40)
+
     /// Standard SQL: quotes close only on a doubled quote, `--` and flat `/* */` are the only comments.
     public static let ansi: SQLLexicalGrammar = []
 

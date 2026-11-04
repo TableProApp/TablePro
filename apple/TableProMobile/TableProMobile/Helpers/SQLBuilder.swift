@@ -57,7 +57,8 @@ nonisolated enum SQLBuilder {
         return "SELECT * FROM \(quoted) \(pagination)"
     }
 
-    // Every pair of a composite key is matched: one column alone can return another tenant's row.
+    // Every pair of a composite key is matched: one column alone can return another tenant's row. A foreign key's
+    // value finds its parent by the column's collation, so `abc` finds `ABC`, and is never held to the exact text.
     static func buildSingleRowLookup(
         table: String,
         schema: String?,
@@ -67,7 +68,8 @@ nonisolated enum SQLBuilder {
         driver: any DatabaseDriver
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
-        let predicate = key.isEmpty ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver)
+        let predicate = key.isEmpty
+            ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver, exactText: false)
         let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
         return "SELECT * FROM \(quotedTable) WHERE \(predicate) \(pagination)"
     }
@@ -81,7 +83,8 @@ nonisolated enum SQLBuilder {
         columns: [ColumnInfo],
         type: DatabaseType,
         driver: any DatabaseDriver,
-        uniqueIn quotedTable: String? = nil
+        uniqueIn quotedTable: String? = nil,
+        exactText: Bool = true
     ) -> String {
         let predicate = key.map { pair in
             let column = quoteIdentifier(pair.column, for: type)
@@ -90,7 +93,11 @@ nonisolated enum SQLBuilder {
             case .number(let value):
                 return "\(column) = \(value)"
             case .text(let value):
-                return "\(column) = \(stringLiteral(value, for: type, driver: driver))"
+                let literal = stringLiteral(value, for: type, driver: driver)
+                guard exactText, type == .mssql, MSSQLRowMatch.comparesText(typeName: info?.typeName) else {
+                    return "\(column) = \(literal)"
+                }
+                return "\(column) = \(literal) AND \(MSSQLRowMatch.exactText(column, equals: literal))"
             case .numberOrText(let value):
                 // CAST is the text the grid read, so a REAL another spelling of the same number parses to stays out.
                 return "\(column) IN (\(value), '\(value)') AND CAST(\(column) AS TEXT) = '\(value)'"

@@ -187,10 +187,12 @@ public struct SQLLexicalProfile: Sendable, Hashable {
     ]
 
     /// Databend, from its tokenizer: a backslash escapes in `'` and `"`, backticks quote identifiers, `$$` bodies
-    /// are literals, and a form feed ends `--` as a line feed does. Not measured.
+    /// are literals, and a form feed ends `--` as a line feed does. A hint's body, a stage name and a comment of an
+    /// older release follow rules no fact here holds, so a gate also reads the server's own tokens, measured on 1.2.880
+    /// and 1.2.958 by `scripts/probes/check-databend-lexing.sh`.
     static let databend: SQLLexicalGrammar = [
         .backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes, .backtickQuotes, .untaggedDollarQuotes,
-        .formFeedEndsLineComments,
+        .formFeedEndsLineComments, .databendTokens,
     ]
 
     /// CQL for Cassandra and ScyllaDB, from the reference: `$$` bodies are literals, `//` is a comment, and a

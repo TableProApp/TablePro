@@ -13,6 +13,14 @@ use crate::result_reader::drain;
 /// How long the server keeps an editor session's state between runs.
 const SESSION_TIMEOUT: Duration = Duration::from_secs(3600);
 
+// The level goes out as text, which every JSON output setting writes as a string; a login at a readonly level of
+// its own cannot change those settings for this query.
+const IDENTITY_SQL: &str = "SELECT version(), currentDatabase(), toString(toUInt8(getSetting('readonly')))";
+
+/// The login's answer is two short strings and a byte. A longer body is
+/// not a ClickHouse server's, and is never held in memory whole.
+const IDENTITY_LIMIT: usize = 64 << 10;
+
 /// Everything needed to reach one server: the workspace's client, the
 /// sessionless control client that KILLs and resolves, and the
 /// transport behind both.
@@ -125,14 +133,8 @@ impl ClickHouseEndpoint {
     /// refused password or a failed handshake shows up.
     pub(crate) async fn identify(&mut self) -> Result<(ServerInfo, String), DriverError> {
         let bound = self.liveness.connect_timeout + self.liveness.login_timeout;
-        let asking = self
-            .control
-            .query_raw(
-                "SELECT version() AS version, currentDatabase() AS database, \
-                 toUInt8(getSetting('readonly')) AS readonly",
-            )
-            .fetch_one::<Identity>();
-        let identity = match tokio::time::timeout(bound, asking).await {
+        let asking = read_identity(&self.control);
+        let body = match tokio::time::timeout(bound, asking).await {
             Err(_) => {
                 return Err(DriverError::Timeout {
                     phase: TimeoutPhase::Login,
@@ -145,14 +147,12 @@ impl ClickHouseEndpoint {
                 };
                 return Err(self.explain(map_error_in(&error, context)).await);
             }
-            Ok(Ok(identity)) => identity,
+            Ok(Ok(body)) => body,
         };
-        self.hold(identity.readonly);
-        let (major, minor, patch) = version_numbers(&identity.version);
-        Ok((
-            ServerInfo::new("ClickHouse", identity.version, major, minor, patch),
-            identity.database,
-        ))
+        let (version, database, readonly) = identity_of(body)?;
+        self.hold(readonly);
+        let (major, minor, patch) = version_numbers(&version);
+        Ok((ServerInfo::new("ClickHouse", version, major, minor, patch), database))
     }
 
     /// A stream that closed may be the transport's doing, such as an SSH
@@ -181,12 +181,37 @@ impl ClickHouseEndpoint {
     }
 }
 
-// Read as RowBinary, which carries no names, so the fields keep the order the login query selects them in.
-#[derive(Debug, serde::Deserialize, clickhouse::Row)]
-struct Identity {
-    version: String,
-    database: String,
-    readonly: u8,
+/// The login answer's body, or None once it runs past `IDENTITY_LIMIT`.
+/// A RowBinary read would buffer a string of whatever length the server
+/// declares before it could refuse it.
+async fn read_identity(control: &clickhouse::Client) -> Result<Option<Vec<u8>>, clickhouse::error::Error> {
+    let mut cursor = control.query_raw(IDENTITY_SQL).fetch_bytes("JSONCompactEachRow")?;
+    let mut body = Vec::new();
+    while let Some(chunk) = cursor.next().await? {
+        if body.len() + chunk.len() > IDENTITY_LIMIT {
+            return Ok(None);
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(Some(body))
+}
+
+/// The version, the current database and the login's `readonly` level.
+fn identity_of(body: Option<Vec<u8>>) -> Result<(String, String, u8), DriverError> {
+    let body = body.ok_or_else(|| {
+        DriverError::Protocol(format!(
+            "the server's answer to the login ran past {} KiB",
+            IDENTITY_LIMIT >> 10
+        ))
+    })?;
+    let unreadable =
+        |detail: String| DriverError::Protocol(format!("the server's answer to the login could not be read: {detail}"));
+    let (version, database, readonly): (String, String, String) =
+        serde_json::from_slice(&body).map_err(|error| unreadable(error.to_string()))?;
+    let readonly = readonly
+        .parse()
+        .map_err(|_| unreadable(format!("readonly level {readonly:?}")))?;
+    Ok((version, database, readonly))
 }
 
 /// `24.8.4.13` is major 24, minor 8.
@@ -228,7 +253,7 @@ mod tests {
 
     /// The login against a loopback server whose every answer is `body`,
     /// run where a runtime worker would run it, on a 2 MiB stack.
-    fn identify_against(body: Vec<u8>) -> Result<(), DriverError> {
+    fn identify_against(body: Vec<u8>) -> Result<(ServerInfo, String, u8), DriverError> {
         let worker = std::thread::Builder::new().stack_size(2 << 20);
         let handle = worker
             .spawn(move || {
@@ -255,7 +280,10 @@ mod tests {
                     let mut endpoint =
                         ClickHouseEndpoint::new(&target, liveness, &ConnectEnvironment::new("test"), false)
                             .expect("an endpoint");
-                    let identity = endpoint.identify().await.map(|_| ());
+                    let identity = endpoint
+                        .identify()
+                        .await
+                        .map(|(info, database)| (info, database, endpoint.login_readonly));
                     answering.abort();
                     identity
                 })
@@ -294,6 +322,29 @@ mod tests {
         let outcome = identify_against(header("version", &nested));
 
         assert!(outcome.is_err(), "{outcome:?}");
+    }
+
+    #[test]
+    fn a_login_answer_reads_as_the_version_the_database_and_the_readonly_level() {
+        let (info, database, readonly) =
+            identify_against(b"[\"24.8.4.13\",\"tablepro\",\"2\"]\n".to_vec()).expect("a login");
+
+        assert_eq!((info.major, info.minor, info.patch), (24, 8, 4));
+        assert_eq!(database, "tablepro");
+        assert_eq!(readonly, 2);
+    }
+
+    #[test]
+    fn a_login_answer_past_64_kib_fails_the_login() {
+        let body = format!("[\"{}\",\"default\",0]\n", "9".repeat(1 << 20));
+
+        let outcome = identify_against(body.into_bytes());
+
+        assert!(
+            matches!(&outcome, Err(DriverError::Protocol(message)) if message.contains("64 KiB")),
+            "{:?}",
+            outcome.map(|(info, _, _)| info.version.len())
+        );
     }
 
     #[test]

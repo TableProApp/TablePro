@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProFirebaseCore
 import TableProSQLGrammar
 import Testing
 
@@ -1168,6 +1169,35 @@ struct QueryClassifierNonSqlTests {
         #expect(QueryClassifier.classifyTier("PATCH / {\"users\": null}", databaseType: .firebaseRealtimeDatabase) == .destructive)
         #expect(QueryClassifier.classifyTier("PATCH users/a {\"n\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
         #expect(QueryClassifier.classifyTier("PATCH users/a {\"n\": null}", databaseType: .firestore) == .write)
+    }
+
+    @Test("A Firebase write whose body holds only metadata empties the node, so it ranks with DELETE")
+    func firebaseMetadataOnlyWritesDelete() {
+        for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
+            #expect(QueryClassifier.classifyTier("PUT users {\".priority\": 1}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users {\".value\": null, \".priority\": 1}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users {\"a\": {\".priority\": 1}}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users {\".value\": {\".priority\": 1}}", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT users {\".value\": 5, \".priority\": 1}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("PUT users {\".sv\": \"timestamp\"}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("PUT users {\"a\": 1, \".priority\": 1}", databaseType: type) == .write)
+        }
+        #expect(QueryClassifier.classifyTier("PATCH / {\"users\": {\".priority\": 1}}", databaseType: .firebaseRealtimeDatabase) == .destructive)
+        #expect(QueryClassifier.classifyTier("PATCH users {\".priority\": 1}", databaseType: .firebaseRealtimeDatabase) == .write)
+    }
+
+    @Test("A Firebase path that starts with a mark is tiered as the driver reads it", arguments: [
+        "\u{FE0F}", "\u{E0100}", "\u{0301}", "\u{0903}", "\u{1F3FB}", "\u{FE0F}general", "users\u{0600}"
+    ])
+    func firebasePathStartingWithMark(name: String) {
+        for type in [DatabaseType.firestore, .firebaseRealtimeDatabase] {
+            #expect(QueryClassifier.classifyTier("PUT \(name) null", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier(FirebaseRequest(method: .put, path: name, body: "null").text, databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("PUT \(name) {\"a\": 1}", databaseType: type) == .write)
+            #expect(QueryClassifier.classifyTier("DELETE \(name)", databaseType: type) == .destructive)
+            #expect(QueryClassifier.classifyTier("GET \(name)", databaseType: type) == .safe)
+        }
+        #expect(QueryClassifier.classifyTier("PATCH \(name) {\"x\": null}", databaseType: .firebaseRealtimeDatabase) == .destructive)
     }
 
     @Test("A console body declaring a mutation is classified the same as a bare one")

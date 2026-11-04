@@ -74,13 +74,22 @@ public struct SQLLexicalReadings: Sendable, Hashable {
     }
 
     /// Every text a gate reads for `text`: under each reading in ``distinct(for:)``, each text a server may run from
-    /// it, as ``SQLExecutableCommentReadings`` gives them. Lazy, so a gate that has its answer stops early. Nil when the
-    /// text sets more versions than a gate reads, which the gate answers as its worst case.
+    /// it, as ``SQLExecutableCommentReadings`` gives them, and under the first reading of Databend's grammar each text
+    /// ``DatabendStatementReadings`` writes out. Lazy, so a gate that has its answer stops early. Nil when the text sets
+    /// more versions than a gate reads, which the gate answers as its worst case.
     public func lexings(of text: String) -> AnySequence<SQLLexing>? {
-        var readings: [(grammar: SQLLexicalGrammar, texts: SQLExecutableCommentReadings.Texts)] = []
+        var readings: [(grammar: SQLLexicalGrammar, texts: AnySequence<String>)] = []
+        var readsDatabendTokens = false
         for grammar in distinct(for: text) {
             guard let texts = SQLExecutableCommentReadings.texts(of: text, grammar: grammar) else { return nil }
-            readings.append((grammar, texts))
+            // The tokens do not depend on the grammar, and the first reading cuts the statements as the app does.
+            guard grammar.contains(.databendTokens), !readsDatabendTokens else {
+                readings.append((grammar, AnySequence(texts)))
+                continue
+            }
+            readsDatabendTokens = true
+            let databend = AnySequence { DatabendStatementReadings.texts(of: text, grammar: grammar).makeIterator() }
+            readings.append((grammar, AnySequence([AnySequence(texts), databend].joined())))
         }
         return AnySequence(readings.lazy.flatMap { reading in
             reading.texts.lazy.map { SQLLexing(grammar: reading.grammar, text: $0) }
@@ -129,7 +138,7 @@ enum SQLLexicalRelevance {
         var facts: SQLLexicalGrammar = [
             .plsqlBlocks, .delimiterDirective, .unterminatedStatements, .terminatedMergeStatements,
             .sqlScriptBlocks, .cqlBatches, .atomicRoutineBodies, .triggerBodies, .statementsAsValues,
-            .pipeOperatorChains,
+            .pipeOperatorChains, .databendTokens,
         ]
         var blockCommentOpeners = 0
         var index = 0

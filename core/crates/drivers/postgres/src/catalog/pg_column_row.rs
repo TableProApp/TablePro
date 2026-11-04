@@ -13,6 +13,9 @@ use crate::codec::TextArray;
 ///
 /// The argument is the compression projection, since
 /// `attcompression` arrived in PostgreSQL 14.
+///
+/// Under the catalog path `format_type` drops a built-in's schema, but a
+/// cast target runs under the session's path, where a lookalike can win.
 macro_rules! columns_sql {
     ($compression:literal) => {
         concat!(
@@ -20,7 +23,7 @@ macro_rules! columns_sql {
 WITH RECURSIVE resolved AS (
     SELECT a.attnum, a.atttypid AS type_oid, a.atttypmod AS typmod, 0 AS depth
     FROM pg_catalog.pg_attribute a
-    WHERE a.attrelid = $1::text::regclass::oid AND a.attnum > 0 AND NOT a.attisdropped
+    WHERE a.attrelid = $1::text::oid AND a.attnum > 0 AND NOT a.attisdropped
   UNION ALL
     SELECT r.attnum, t.typbasetype,
            CASE WHEN r.typmod = -1 THEN t.typtypmod ELSE r.typmod END,
@@ -36,7 +39,9 @@ base AS (
 )
 SELECT a.attname::text,
        pg_catalog.format_type(a.atttypid, a.atttypmod)::text,
-       pg_catalog.format_type(a.atttypid, NULL)::text,
+       CASE WHEN atn.nspname = 'pg_catalog'
+            THEN 'pg_catalog.' || pg_catalog.quote_ident(at.typname::text)
+            ELSE pg_catalog.format_type(a.atttypid, NULL)::text END,
        b.type_oid::int8,
        b.typmod::int4,
        bt.typtype::text,
@@ -62,13 +67,14 @@ SELECT a.attname::text,
 FROM pg_catalog.pg_attribute a
 JOIN base b ON b.attnum = a.attnum
 JOIN pg_catalog.pg_type at ON at.oid = a.atttypid
+JOIN pg_catalog.pg_namespace atn ON atn.oid = at.typnamespace
 JOIN pg_catalog.pg_type bt ON bt.oid = b.type_oid
 LEFT JOIN pg_catalog.pg_type et ON et.oid = bt.typelem AND bt.typcategory = 'A'
 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
 LEFT JOIN pg_catalog.pg_constraint pk ON pk.conrelid = a.attrelid AND pk.contype = 'p'
 LEFT JOIN pg_catalog.pg_collation co ON co.oid = a.attcollation
 LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid = co.collnamespace
-WHERE a.attrelid = $1::text::regclass::oid AND a.attnum > 0 AND NOT a.attisdropped
+WHERE a.attrelid = $1::text::oid AND a.attnum > 0 AND NOT a.attisdropped
 ORDER BY a.attnum"
         )
     };
