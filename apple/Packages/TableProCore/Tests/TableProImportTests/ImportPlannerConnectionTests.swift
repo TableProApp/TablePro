@@ -71,6 +71,21 @@ struct ImportPlannerConnectionTests {
         #expect(result.connections.map(\.settings.name) == ["Orders (Imported)", "Orders (Imported 2)"])
     }
 
+    @Test("Two thousand copies of one name are numbered Imported, Imported 2, up to Imported 2000")
+    func copiesOfOneNameAreNumberedInOrder() throws {
+        let count = 2_000
+        let library = ImportLibrarySnapshot(connections: [Fixtures.existing(Fixtures.settings(), name: "Orders")])
+        let connections = (0..<count).map { BundleConnection(ref: BundleRef("c\($0)"), settings: Fixtures.settings(name: "Orders")) }
+        let preview = Fixtures.makePreview(try Fixtures.makeBundle(connections: connections), library: library)
+
+        var selection = ImportSelection.defaults(for: preview)
+        for index in 0..<count { selection.setSelected(true, connection: BundleRef("c\(index)"), in: preview) }
+        let result = ImportPlanner.plan(preview, selection: selection)
+
+        let expected = ["Orders (Imported)"] + (2...count).map { "Orders (Imported \($0))" }
+        #expect(result.connections.map(\.settings.name) == expected)
+    }
+
     @Test("Add keeps the file name, Replace reuses the existing id, Keep Existing writes nothing")
     func resolutionsDecideIdsAndWrites() throws {
         let replacedId = UUID()
@@ -257,7 +272,7 @@ struct ImportPlannerConnectionTests {
         #expect(kept.settings.tunnelCommand?.command == "/usr/bin/forward --listen {port}")
     }
 
-    @Test("An imported profile asks for its password unless it reads pgpass")
+    @Test("An imported profile asks for its password, whatever mode the file names")
     func profilePasswordModes() throws {
         let bundle = try Fixtures.makeBundle(
             connections: [
@@ -275,7 +290,7 @@ struct ImportPlannerConnectionTests {
         let result = plan(preview)
 
         #expect(result.credentialProfiles.map(\.ref) == ["p1", "p2"])
-        #expect(result.credentialProfiles.map(\.passwordMode) == [.pgpass, .prompt])
+        #expect(result.credentialProfiles.map(\.passwordMode) == [.prompt, .prompt])
         #expect(result.credentialProfiles[0].secureFieldIds == ["token"])
     }
 

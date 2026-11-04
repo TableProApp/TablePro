@@ -125,9 +125,9 @@ struct PostgreSQLTableRebuild {
         return identityColumns.map { column in
             let columnLiteral = PostgreSQLObjectQueries.quoteLiteral(column)
             return """
-            SELECT setval(
-              pg_get_serial_sequence(\(relationLiteral), \(columnLiteral)),
-              GREATEST(COALESCE((SELECT MAX(\(quote(column))) FROM \(qualified)), 0), 1),
+            SELECT pg_catalog.setval(
+              pg_catalog.pg_get_serial_sequence(\(relationLiteral), \(columnLiteral)),
+              GREATEST(COALESCE((SELECT pg_catalog.max(\(quote(column))) FROM \(qualified)), 0), 1),
               true
             )
             """

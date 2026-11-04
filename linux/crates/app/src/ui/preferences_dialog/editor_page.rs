@@ -9,9 +9,9 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use tablepro_linux_platform::AppSettings;
+use tablepro_linux_platform::settings::keys;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
-use tablepro_storage::settings::keys;
 
 use crate::i18n::gettext;
 use crate::ui::file_reveal::FileRevealer;
@@ -203,7 +203,7 @@ impl EditorPage {
 
 #[cfg(test)]
 mod tests {
-    use tablepro_storage::EditorFont;
+    use tablepro_linux_platform::EditorFont;
 
     use super::*;
     use crate::test_support::{MemorySettings, SignalLog, descendants, test_runtime, wait_until};

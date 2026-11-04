@@ -181,7 +181,7 @@ struct AccountSettingsModelTests {
         #expect(model.actionFailure == nil)
         #expect(model.content.identity == .account(name: "Ada", email: "ada@m16.example", isSignedIn: false))
         #expect(model.content.verification?.isOfflineFile == true)
-        #expect(model.content.plans.first?.title == "Starter")
+        #expect(model.content.plans.first?.title == "Pro")
         #expect(model.content.plans.first?.status == .lifetime)
     }
 

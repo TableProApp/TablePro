@@ -52,7 +52,7 @@ struct CoordinatorTableListingTests {
         let (coordinator, tabManager, _) = makeCoordinator()
         defer { coordinator.teardown() }
         var refreshed: [UUID] = []
-        let subscription = AppEvents.shared.tableListingRefreshRequested.sink { refreshed.append($0) }
+        let subscription = AppEvents.shared.tabRefreshRequested.sink { refreshed.append($0) }
         defer { subscription.cancel() }
 
         coordinator.openTableListing()
@@ -72,7 +72,7 @@ struct CoordinatorTableListingTests {
         coordinator.openTableListing()
         let id = try #require(tabManager.selectedTabId)
         var refreshed: [UUID] = []
-        let subscription = AppEvents.shared.tableListingRefreshRequested.sink { refreshed.append($0) }
+        let subscription = AppEvents.shared.tabRefreshRequested.sink { refreshed.append($0) }
         defer { subscription.cancel() }
 
         coordinator.handleRefresh(hasPendingTableOps: false, onDiscard: {})

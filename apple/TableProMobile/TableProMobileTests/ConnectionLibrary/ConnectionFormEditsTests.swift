@@ -654,4 +654,51 @@ struct ConnectionFormEditsTests {
         #expect(saved.safeModeLevel == .readOnly)
         #expect(saved.isReadOnly)
     }
+
+    private func cloudflareD1Connection() -> DatabaseConnection {
+        DatabaseConnection(
+            name: "Edge",
+            type: .cloudflareD1,
+            host: "",
+            port: 0,
+            database: "shop",
+            additionalFields: ["cfAccountId": "b5ad7a2e0123", "connectTimeout": "15000"]
+        )
+    }
+
+    @Test("A D1 edit that leaves the Account ID alone keeps one that synced in while the form was open")
+    func cloudflareD1EditKeepsSyncedAccountId() {
+        let snapshot = cloudflareD1Connection()
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+        var current = snapshot
+        current.additionalFields["cfAccountId"] = "c0ffee000000"
+
+        viewModel.name = "Edge Store"
+        let saved = viewModel.applyingEdits(to: current)
+
+        #expect(saved.name == "Edge Store")
+        #expect(saved.additionalFields == current.additionalFields)
+    }
+
+    @Test("A changed D1 Account ID is written trimmed, and the Mac's other fields stay")
+    func cloudflareD1AccountIdEdit() {
+        let snapshot = cloudflareD1Connection()
+        let viewModel = ConnectionFormViewModel(editing: snapshot)
+
+        viewModel.cloudflareAccountId = "c0ffee000000 \n"
+        let saved = viewModel.applyingEdits(to: snapshot)
+
+        #expect(viewModel.edits.cloudflareD1 == ConnectionFormEdits.CloudflareD1Options(accountId: "c0ffee000000"))
+        #expect(saved.additionalFields["cfAccountId"] == "c0ffee000000")
+        #expect(saved.additionalFields["connectTimeout"] == "15000")
+    }
+
+    @Test("Another engine's form carries no D1 options and writes no Account ID")
+    func otherEnginesWriteNoAccountId() {
+        let viewModel = ConnectionFormViewModel(editing: storedConnection())
+        viewModel.cloudflareAccountId = "b5ad7a2e0123"
+
+        #expect(viewModel.edits.cloudflareD1 == nil)
+        #expect(viewModel.buildConnection().additionalFields["cfAccountId"] == nil)
+    }
 }

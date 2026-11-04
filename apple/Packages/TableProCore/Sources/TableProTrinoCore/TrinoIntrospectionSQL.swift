@@ -1,13 +1,13 @@
 import Foundation
+import TableProSQLQuoting
 
 public enum TrinoIntrospectionSQL {
-    // `.literal` matches code units; the default skips a quote that a combining mark follows.
     public static func quoteIdentifier(_ name: String) -> String {
-        "\"" + name.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
+        SQLQuoting.identifier(name)
     }
 
     public static func quoteLiteral(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''", options: .literal) + "'"
+        SQLQuoting.stringLiteral(value)
     }
 
     // `IN ()` does not parse.
@@ -138,6 +138,12 @@ public enum TrinoIntrospectionSQL {
 
     public static func approximateRowCount(catalog: String?, schema: String?, table: String) -> String {
         "SHOW STATS FOR \(qualifiedName(catalog: catalog, schema: schema, table: table))"
+    }
+
+    // `row_count` is a double: NaN, an infinity or a value outside `Int` is no count.
+    public static func rowCount(fromStatsValue text: String) -> Int? {
+        guard let value = Double(text) else { return nil }
+        return Int(exactly: value.rounded(.towardZero))
     }
 
     public static func showCreateTable(catalog: String?, schema: String?, table: String) -> String {

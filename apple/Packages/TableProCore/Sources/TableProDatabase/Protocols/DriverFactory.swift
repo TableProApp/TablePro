@@ -21,6 +21,9 @@ public protocol DriverFactory: Sendable {
     func opensCatalogConnections(for connection: DatabaseConnection) -> Bool
     // Runs once on a catalog connection after it connects, never on the user's session.
     func prepareCatalogDriver(_ driver: any DatabaseDriver, for connection: DatabaseConnection) async throws
+    // Whether the connection's SSH tunnel is dialed. A record can carry a tunnel its engine has no use for, such as
+    // one kept from the type it had before, and dialing it would fail the connect before the driver is made.
+    func dialsSSHTunnel(for connection: DatabaseConnection) -> Bool
 }
 
 public extension DriverFactory {
@@ -33,4 +36,8 @@ public extension DriverFactory {
     }
 
     func prepareCatalogDriver(_ driver: any DatabaseDriver, for connection: DatabaseConnection) async throws {}
+
+    func dialsSSHTunnel(for connection: DatabaseConnection) -> Bool {
+        connection.sshEnabled
+    }
 }

@@ -158,11 +158,12 @@ internal struct CompareApplySheetView: View {
             if session.unacknowledgedHazardCount > 0 {
                 Label {
                     Text(heldBackText)
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: "hand.raised.fill")
+                        .foregroundStyle(CompareStatusStyle.warning)
                 }
-                .foregroundStyle(CompareStatusStyle.warning)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -252,11 +253,12 @@ internal struct CompareApplySheetView: View {
                         ),
                         commitFailure
                     ))
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: "exclamationmark.octagon.fill")
+                        .foregroundStyle(CompareStatusStyle.error)
                 }
-                .foregroundStyle(CompareStatusStyle.error)
             }
 
             if result.cancelled {
@@ -289,7 +291,7 @@ internal struct CompareApplySheetView: View {
             if let error = outcome.error {
                 RevealedTextView(error)
                     .font(.caption)
-                    .foregroundStyle(CompareStatusStyle.error)
+                    .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -373,9 +375,7 @@ internal struct CompareApplySheetView: View {
         .padding(.vertical, 2)
     }
 
-    /// Only a statement the classifier refuses by default has an allowance to grant. A hazard that
-    /// runs anyway gets a label rather than a checkbox, because a checkbox that cannot stop it would
-    /// say the opposite of what it does.
+    // A hazard that runs anyway gets a label, not a checkbox: a checkbox that cannot stop it would say the opposite.
     @ViewBuilder
     private func hazardHeadline(_ statement: SyncStatement) -> some View {
         if statement.isRefusedByDefault {
@@ -393,8 +393,8 @@ internal struct CompareApplySheetView: View {
                     .lineLimit(1)
             } icon: {
                 Image(systemName: "play.circle.fill")
+                    .foregroundStyle(CompareStatusStyle.warning)
             }
-            .foregroundStyle(CompareStatusStyle.warning)
         }
     }
 
@@ -405,12 +405,13 @@ internal struct CompareApplySheetView: View {
             if session.unacknowledgedHazardCount > 0 {
                 Label {
                     Text("Allow every held-back statement on the Warnings tab, or exclude the objects that produced them, before applying.")
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 } icon: {
                     Image(systemName: "hand.raised.fill")
+                        .foregroundStyle(CompareStatusStyle.warning)
                 }
                 .font(.callout)
-                .foregroundStyle(CompareStatusStyle.warning)
             }
             Spacer(minLength: 0)
             Button("Cancel") {
@@ -450,11 +451,12 @@ internal struct CompareApplySheetView: View {
     private func noticeLabel(_ text: String, systemImage: String) -> some View {
         Label {
             Text(text)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: systemImage)
+                .foregroundStyle(CompareStatusStyle.warning)
         }
         .font(.callout)
-        .foregroundStyle(CompareStatusStyle.warning)
     }
 }

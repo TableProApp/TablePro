@@ -31,8 +31,24 @@ extension MSSQLPluginDriver {
         MSSQLTableDefinitionSQL.qualifiedTable(table, schema: currentSchemaName)
     }
 
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        switch operation {
+        case .addColumn(let column):
+            return MSSQLTableDefinitionSQL.refusal(for: column)
+        case .modifyColumn(let old, let new):
+            let writesType = old.dataType != new.dataType || old.isNullable != new.isNullable
+            return MSSQLTableDefinitionSQL.refusal(
+                for: new,
+                writesType: writesType,
+                writesDefault: writesType || old.defaultValue != new.defaultValue
+            )
+        default:
+            return nil
+        }
+    }
+
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
-        let columnSQL = MSSQLTableDefinitionSQL.columnDefinition(column, inlinePrimaryKey: nil)
+        guard let columnSQL = MSSQLTableDefinitionSQL.columnDefinition(column, inlinePrimaryKey: nil) else { return nil }
         let addColumn = "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(columnSQL)"
         guard let comment = column.comment, !comment.isEmpty else { return addColumn }
         let description = MSSQLTableDefinitionSQL.columnDescriptionStatement(
@@ -72,6 +88,7 @@ extension MSSQLPluginDriver {
         }
 
         if needsTypeChange {
+            guard MSSQLDefinitionText.isColumnType(newColumn.dataType) else { return nil }
             let nullable = newColumn.isNullable ? "NULL" : "NOT NULL"
             stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) \(newColumn.dataType) \(nullable)")
         }
@@ -80,7 +97,8 @@ extension MSSQLPluginDriver {
         // so re-adding only on a default change left a column the user never touched with no
         // default at all, and every later INSERT that omitted it failed.
         if defaultChanged || needsTypeChange, let defaultValue = newColumn.defaultValue {
-            stmts.append("ALTER TABLE \(qt) ADD DEFAULT \(defaultValue) FOR \(colName)")
+            guard let expression = MSSQLDefinitionText.expression(defaultValue) else { return nil }
+            stmts.append("ALTER TABLE \(qt) ADD DEFAULT \(expression) FOR \(colName)")
         }
 
         return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
@@ -99,7 +117,9 @@ extension MSSQLPluginDriver {
     }
 
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
-        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(MSSQLTableDefinitionSQL.foreignKeyDefinition(fk, defaultSchema: currentSchemaName))"
+        MSSQLTableDefinitionSQL.foreignKeyDefinition(fk, defaultSchema: currentSchemaName).map {
+            "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \($0)"
+        }
     }
 
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
@@ -108,9 +128,12 @@ extension MSSQLPluginDriver {
 
     func generateAddCheckConstraintSQL(table: String, constraint: PluginCheckConstraintDefinition) -> String? {
         let expression = constraint.expression.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !expression.isEmpty, !constraint.name.isEmpty else { return nil }
+        let check = "(" + expression + ")"
+        guard !expression.isEmpty, !constraint.name.isEmpty, MSSQLDefinitionText.isParenthesizedExpression(check) else {
+            return nil
+        }
         return "ALTER TABLE \(mssqlQualifiedTable(table)) ADD CONSTRAINT "
-            + "\(quoteIdentifier(constraint.name)) CHECK (\(expression))"
+            + "\(quoteIdentifier(constraint.name)) CHECK \(check)"
     }
 
     func generateDropCheckConstraintSQL(table: String, constraintName: String) -> String? {

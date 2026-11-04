@@ -17,11 +17,12 @@ extension PostgreSQLPluginDriver: PluginRoutineDebugging {
 
     func debugTargets(schema: String?) async throws -> [PluginDebugTarget] {
         guard canDebugRoutines else { return [] }
+        let resolvedSchema = schema ?? currentSchema ?? "public"
         let query = PostgreSQLRoutineDebugProtocol.targetListQuery(
-            schema: schema ?? currentSchema ?? "public",
+            schema: resolvedSchema,
             hasProcedureKind: catalogCapabilities.hasProcedureKind
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return result.rows.compactMap { PostgreSQLRoutineDebugProtocol.target(fromListRow: $0.map(\.asText)) }
     }
 
@@ -55,10 +56,11 @@ extension PostgreSQLPluginDriver: PluginRoutineDebugging {
         try await target.prepareForDebugging(isTarget: true)
         let targetProcess = try? await target.execute(query: "SELECT pg_catalog.pg_backend_pid()")
             .rows.first?.first?.asText.flatMap { Int($0) }
-        let call = try PostgreSQLRoutineDebugProtocol.call(for: routine, arguments: request.arguments)
         guard let oid = UInt32(routine.identity) else {
             throw PostgreSQLRoutineDebugError.routineNotFound(routine.displayName)
         }
+        let callable = try await target.withDefaultsSpelledForThisSession(routine, oid: oid)
+        let call = try PostgreSQLRoutineDebugProtocol.call(for: callable, arguments: request.arguments)
         do {
             _ = try await target.execute(
                 query: PostgreSQLRoutineDebugProtocol.oidDebugStatement(extensionSchema: extensionSchema, oid: oid)
@@ -108,12 +110,23 @@ extension PostgreSQLPluginDriver: PluginRoutineDebugging {
         }
     }
 
+    private func withDefaultsSpelledForThisSession(
+        _ routine: PostgreSQLDebugRoutine,
+        oid: UInt32
+    ) async throws -> PostgreSQLDebugRoutine {
+        guard let statement = PostgreSQLRoutineDebugProtocol.targetDefaultsStatement(
+            oid: oid, argumentCount: routine.defaultExpressions.count
+        ) else { return routine }
+        let spelled = try await execute(query: statement).rows.first?.first?.asText
+        return routine.withDefaultExpressions(PostgreSQLTextArray.elements(spelled))
+    }
+
     private func debugRoutine(identity: String, name: String) async throws -> PostgreSQLDebugRoutine {
         guard let oid = PostgreSQLRoutineDebugProtocol.oid(inIdentity: identity) else {
             throw PostgreSQLRoutineDebugError.routineNotFound(name)
         }
         let query = PostgreSQLRoutineDebugProtocol.routineQuery(oid: oid, capabilities: catalogCapabilities)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         guard let row = result.rows.first else { throw PostgreSQLRoutineDebugError.routineNotFound(name) }
         let routine = PostgreSQLDebugRoutine(row: row.map(\.asText), identity: String(oid))
         guard routine.exists else { throw PostgreSQLRoutineDebugError.routineNotFound(name) }

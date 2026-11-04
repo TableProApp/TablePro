@@ -134,6 +134,13 @@ struct LoadableExtensionLoaderTests {
         #expect(quarantined.hasSuffix(" " + quoted))
     }
 
+    @Test("A quote a combining mark follows is still escaped in a suggested command")
+    func recoveryCommandsQuoteAQuoteBeforeACombiningMark() {
+        let hostile = LoadableExtension(path: "/tmp/a'\u{301}$(touch pwned).dylib")
+        let suggestion = LoadableExtensionError.damagedSignature(hostile).recoverySuggestion ?? ""
+        #expect(suggestion.hasSuffix(" '/tmp/a'\\''\u{301}$(touch pwned).dylib'"))
+    }
+
     @Test("A missing file fails before SQLite is asked, and loading is still closed")
     func missingFileClosesLoading() throws {
         let handle = FakeHandle()

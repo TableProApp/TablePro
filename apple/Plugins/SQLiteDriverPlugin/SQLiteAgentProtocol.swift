@@ -74,9 +74,16 @@ struct SQLiteAgentFailure: Equatable, Sendable {
     let message: String
 }
 
+// Both run on the session's handle under the agent's authorizer, and neither may attach a database.
+enum SQLiteAgentStatementScope: UInt8, Equatable, Sendable {
+    case noServerCode = 1
+    case readOnly = 2
+}
+
 enum SQLiteAgentRequest: Equatable, Sendable {
     case hello(protocolVersion: UInt32, path: String, busyTimeoutMilliseconds: UInt32)
     case execute(sql: String, parameters: [SQLiteAgentValue], rowCap: UInt32)
+    case executeScoped(sql: String, parameters: [SQLiteAgentValue], rowCap: UInt32, scope: SQLiteAgentStatementScope)
     case cancel
     case heartbeat
     case setBusyTimeout(milliseconds: UInt32)
@@ -99,6 +106,7 @@ enum SQLiteAgentProtocolError: Error, Equatable {
     case trailingBytes
     case unknownOpcode(UInt8)
     case unknownValueTag(UInt8)
+    case unknownScope(UInt8)
     case rowShapeMismatch
 }
 
@@ -108,6 +116,7 @@ enum SQLiteAgentOpcode {
     static let cancel: UInt8 = 0x03
     static let heartbeat: UInt8 = 0x04
     static let setBusyTimeout: UInt8 = 0x05
+    static let executeScoped: UInt8 = 0x06
     static let ready: UInt8 = 0x81
     static let failure: UInt8 = 0x82
     static let header: UInt8 = 0x83
@@ -128,10 +137,11 @@ enum SQLiteAgentFrameEncoder {
             payload.appendUInt32(busyTimeout)
         case .execute(let sql, let parameters, let rowCap):
             opcode = SQLiteAgentOpcode.execute
-            payload.appendString(sql)
-            payload.appendUInt32(UInt32(parameters.count))
-            parameters.forEach { payload.appendValue($0) }
-            payload.appendUInt32(rowCap)
+            payload.appendStatement(sql: sql, parameters: parameters, rowCap: rowCap)
+        case .executeScoped(let sql, let parameters, let rowCap, let scope):
+            opcode = SQLiteAgentOpcode.executeScoped
+            payload.appendStatement(sql: sql, parameters: parameters, rowCap: rowCap)
+            payload.appendUInt8(scope.rawValue)
         case .cancel:
             opcode = SQLiteAgentOpcode.cancel
         case .heartbeat:
@@ -315,15 +325,15 @@ struct SQLiteAgentFrameReader {
                 busyTimeoutMilliseconds: try cursor.readUInt32()
             )
         case SQLiteAgentOpcode.execute:
-            let sql = try cursor.readString()
-            let count = Int(try cursor.readUInt32())
-            guard count <= cursor.remaining else { throw SQLiteAgentProtocolError.truncatedPayload }
-            var parameters: [SQLiteAgentValue] = []
-            parameters.reserveCapacity(count)
-            for _ in 0..<count {
-                parameters.append(try cursor.readValue())
+            let (sql, parameters, rowCap) = try cursor.readStatement()
+            return .execute(sql: sql, parameters: parameters, rowCap: rowCap)
+        case SQLiteAgentOpcode.executeScoped:
+            let (sql, parameters, rowCap) = try cursor.readStatement()
+            let rawScope = try cursor.readUInt8()
+            guard let scope = SQLiteAgentStatementScope(rawValue: rawScope) else {
+                throw SQLiteAgentProtocolError.unknownScope(rawScope)
             }
-            return .execute(sql: sql, parameters: parameters, rowCap: try cursor.readUInt32())
+            return .executeScoped(sql: sql, parameters: parameters, rowCap: rowCap, scope: scope)
         case SQLiteAgentOpcode.cancel:
             return .cancel
         case SQLiteAgentOpcode.heartbeat:
@@ -358,6 +368,13 @@ private struct SQLiteAgentPayloadWriter {
 
     mutating func appendString(_ string: String) {
         appendBytes(Array(string.utf8))
+    }
+
+    mutating func appendStatement(sql: String, parameters: [SQLiteAgentValue], rowCap: UInt32) {
+        appendString(sql)
+        appendUInt32(UInt32(parameters.count))
+        parameters.forEach { appendValue($0) }
+        appendUInt32(rowCap)
     }
 
     mutating func appendValue(_ value: SQLiteAgentValue) {
@@ -414,6 +431,18 @@ private struct SQLiteAgentPayloadCursor {
 
     mutating func readString() throws -> String {
         String(decoding: try readBytes(), as: UTF8.self) // swiftlint:disable:this optional_data_string_conversion
+    }
+
+    mutating func readStatement() throws -> (sql: String, parameters: [SQLiteAgentValue], rowCap: UInt32) {
+        let sql = try readString()
+        let count = Int(try readUInt32())
+        guard count <= remaining else { throw SQLiteAgentProtocolError.truncatedPayload }
+        var parameters: [SQLiteAgentValue] = []
+        parameters.reserveCapacity(count)
+        for _ in 0..<count {
+            parameters.append(try readValue())
+        }
+        return (sql, parameters, try readUInt32())
     }
 
     mutating func readValue() throws -> SQLiteAgentValue {

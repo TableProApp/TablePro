@@ -165,6 +165,7 @@ extension MainContentCoordinator {
             tab.tableContext.isEditable = origin?.isEditable ?? false
             tab.tableContext.isView = origin?.isView ?? false
             tab.tableContext.objectType = origin?.objectType
+            tab.tableContext.viewRowEditing = origin?.viewRowEditing
             tab.schemaVersion += 1
         }
         let tab = tabManager.tabs[tabIdx]

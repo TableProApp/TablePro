@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import TableProSSHTransport
 import Testing
 
 @testable import TableProSSHConfig
@@ -100,7 +101,7 @@ struct SSHConfigParserGrammarTests {
     // MARK: - Pattern lists
 
     /// `ssh -G a` gave port 22: a `Host` line is a whitespace-separated list, so the comma is an
-    /// ordinary character and `Host a,b` matches a host literally called `a,b`.
+    /// ordinary character and `Host a,b` matches only the literal `a,b`, a host ssh refuses to dial.
     @Test("A Host line separates patterns on whitespace, not commas")
     func hostPatternListUsesWhitespace() {
         let content = """
@@ -109,7 +110,8 @@ struct SSHConfigParserGrammarTests {
         """
         #expect(resolve(content, host: "a").port == 22)
         #expect(resolve(content, host: "b").port == 22)
-        #expect(resolve(content, host: "a,b").port == 2_401)
+        #expect(resolve(content, host: "a,b").expansionFailure == .invalidDestination(.host("a,b")))
+        #expect(SSHHostPatternMatcher.matches(host: "a,b", patterns: SSHHostPatternMatcher.parseHostPatternList("a,b")))
     }
 
     @Test("A Host line with several patterns matches each of them")

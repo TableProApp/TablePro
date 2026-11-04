@@ -9,6 +9,141 @@ Unreleased changes are files in `changelog.d/`.
 
 <!-- towncrier release notes start -->
 
+## [0.84.0](https://github.com/TableProApp/TablePro/releases/tag/v0.84.0) - 2026-11-03
+
+Find and Replace work in every data grid, with Match Case, Whole Words, regular expressions and a column scope.
+Click a sorted header to reverse it or Option-click to add a sort key. Frozen columns sort, resize and reorder from their own headers.
+A cell value with a line break or over 256 characters opens in an editor anchored to the cell.
+The sidebar, Open Quickly, autocomplete and AI chat no longer stall on databases with tens of thousands of tables.
+Procedures and Functions load on MySQL 5.x and MariaDB servers with many routines, and MariaDB packages open.
+Save Changes has its own toolbar section, and panes switch views with native tabs.
+
+### Changed
+
+- The AI chat Tables menu lists the first 100 tables; type @ in the message to find any other. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- MCP list_indexes reads a whole schema's indexes in one query where the database supports it. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Find works in every data grid, with Match Case, Whole Words, Regular Expression, a column scope and Replace. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- A cell value with a line break or over 256 characters opens in an editor anchored to the cell. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Clicking a sorted column header reverses the sort; Option-click adds a sort key and Don't Sort is in the header menu. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Right-clicking a cell outside the selection acts on that cell and leaves the selection where it was. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Frozen columns sort, resize and reorder from their own headers at any scroll position. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- A theme that leaves out the data grid header or selected text colors uses the macOS colors instead of its grid colors. ([#3837](https://github.com/TableProApp/TablePro/pull/3837))
+- Connecting with a downloaded driver such as Oracle no longer freezes the window while the driver loads. ([#3842](https://github.com/TableProApp/TablePro/pull/3842))
+- Filtering the sidebar on a database with many schemas or tables responds faster. ([#3842](https://github.com/TableProApp/TablePro/pull/3842))
+- Opening a connection on saved tabs and filtering a large sidebar pause the window less. ([#3846](https://github.com/TableProApp/TablePro/pull/3846))
+- Save Changes sits in its own toolbar section, and panes switch views with native tabs across the app. ([#3851](https://github.com/TableProApp/TablePro/pull/3851))
+- Typing in the sidebar filter no longer redraws the editor and results on every keystroke. ([#3876](https://github.com/TableProApp/TablePro/pull/3876))
+- Open Quickly no longer redraws the whole sidebar when it finishes listing the tables of every schema. ([#3888](https://github.com/TableProApp/TablePro/pull/3888))
+- Open Quickly opens faster after the first time in a window. ([#3888](https://github.com/TableProApp/TablePro/pull/3888))
+- Open Quickly opens faster the first time after launch. ([#3889](https://github.com/TableProApp/TablePro/pull/3889))
+- The sidebar search responds faster on a database with many schemas. ([#3889](https://github.com/TableProApp/TablePro/pull/3889))
+
+### Fixed
+
+- Test Connection and Retry on iPhone and iPad hanging when their screen closed before the SSH server asked. ([#3813](https://github.com/TableProApp/TablePro/pull/3813))
+- Autocomplete offered nothing after a database name and a dot on MySQL, MariaDB and other engines without schemas. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- The sidebar, Open Quickly and autocomplete stalled on databases with tens of thousands of tables. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Sending an AI chat message froze the app on a database with thousands of tables. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Oracle and other one-row-per-schema sidebars could not select a schema row, so the keyboard could not open one. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Autocomplete could leave the best matching table name out on databases with more than 400 tables. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Searching the sidebar on Oracle waited seconds for other schemas' tables, longer over a slow network. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Autocomplete offered nothing after a schema name and a dot typed in another case. ([#3830](https://github.com/TableProApp/TablePro/pull/3830))
+- Opening a connection or a query tab paused while every editor built a find bar nobody had opened yet. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- The sidebar's List layout said No Results while the other schemas' tables were still loading. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- Open Quickly said No results for a table in another schema while the sidebar was still loading the tables. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- On Oracle with many schemas, the first sidebar search and Open Quickly waited up to two seconds for the table list. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- A sidebar search read a table list that had failed to load again on every keystroke. ([#3831](https://github.com/TableProApp/TablePro/pull/3831))
+- VoiceOver numbered rows from 1 on every page and did not name the column of the cell being edited. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Find Next selected the matching row but left the cell cursor in the previous column. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- An edit, delete or paste under a value filter could land on a different row. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Copy Rows, Copy with Headers and Copy as JSON did nothing in a data file window. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- After rows reloaded, the grid could show no selection while Delete and the inspector still acted on the old rows. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Switching tabs or Structure sub-tabs with a cell open could save the edit into the other tab. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- A temporary table or the Structure tab could change a table's saved column widths and order. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- Display As on a query result went back to the default format after Load More or a switch to another view. ([#3833](https://github.com/TableProApp/TablePro/pull/3833))
+- The first search in a large Oracle or PostgreSQL sidebar waited for every schema's tables to load after the keystroke. ([#3834](https://github.com/TableProApp/TablePro/pull/3834))
+- Opening a connection on a saved query tab froze the window while the tab's editor was built. ([#3834](https://github.com/TableProApp/TablePro/pull/3834))
+- On MySQL 5.7 and earlier and MariaDB, a database listed the routines and events of one named in other letter case. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- MariaDB packages showed under Functions and could not be opened. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- Procedures and Functions failed to load on MySQL 5.x and MariaDB servers holding many routines. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- Routine signatures longer than 1,024 bytes were cut off in the sidebar on MySQL. ([#3840](https://github.com/TableProApp/TablePro/pull/3840))
+- Open Quickly and Jump to Column kept their results in memory after they closed. ([#3842](https://github.com/TableProApp/TablePro/pull/3842))
+- Autocomplete after a schema name and a dot could list a same-named table's columns, or time out on Oracle. ([#3874](https://github.com/TableProApp/TablePro/pull/3874))
+
+
+## [0.83.1](https://github.com/TableProApp/TablePro/releases/tag/v0.83.1) - 2026-11-01 [CRITICAL]
+
+### Changed
+
+- With CanonicalizeHostname, a DNS alias is followed only where CanonicalizePermittedCNAMEs allows it.
+
+### Removed
+
+- DuckDB Restore no longer accepts a folder of Parquet files, only a .duckdb file.
+
+### Fixed
+
+- A table tab could reload under an open cell and drop what you were typing after a save in another window. ([#3848](https://github.com/TableProApp/TablePro/pull/3848))
+- Edits made to rows while a query or refresh was still loading new ones were discarded when it finished. ([#3848](https://github.com/TableProApp/TablePro/pull/3848))
+- Table tabs ran their query again when you switched back to them or returned to TablePro from another app. ([#3848](https://github.com/TableProApp/TablePro/pull/3848))
+- A table tab waiting for its connection could run the statement under the cursor in a query tab instead. ([#3848](https://github.com/TableProApp/TablePro/pull/3848))
+- On iOS, a search or filter with a backslash on MySQL or ClickHouse, or with `[` on SQL Server, matched the wrong rows. ([#3906](https://github.com/TableProApp/TablePro/pull/3906))
+- A DELETE with no WHERE running unconfirmed behind EXPLAIN ANALYZE, an unusual CTE, or a WHERE glued to a name. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- CREATE OR REPLACE TABLE, SCHEMA or DATABASE replacing data without the confirmation DROP gets. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- HTTP drivers such as Typesense following a server's redirect to another address with the connection's key. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- Spanner, BigQuery and Teradata saving a grid change they could not key to the default schema's table. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- Teradata showing each result one statement late after a statement hit the 20-second receive timeout. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- DuckDB's Open the File Read-Only being ignored for a database not named .duckdb or .ddb. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- T-SQL BULK INSERT and OPENROWSET, and MongoDB $_internalJs operators, passing the external file and code refusals. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- Bigtable saving a grid change to another row when the key starts with a combining mark. ([#3907](https://github.com/TableProApp/TablePro/pull/3907))
+- DuckDB Back Up to a .duckdb file, and DuckDB Restore, failed with "Cannot prepare multiple statements at once".
+- Pull in a linked folder failing when the repository is a partial clone.
+
+### Security
+
+- A backslash in a Snowflake filter value could end its string literal and run the rest as SQL. ([#3906](https://github.com/TableProApp/TablePro/pull/3906))
+- A Firebase Database URL with an encoded slash sending your Google access token to another host.
+- A PostgreSQL or SQL Server database name could send Back Up or Restore, with its password, to another server.
+- A PostgreSQL type named geometry or geography that PostGIS did not create could run its owner's code as you.
+- A SQL export carrying a statement of its own in a cell value, a type name or a table comment when restored.
+- A Typesense path with dot segments, or a Firebase or Bigtable request behind a comment, passing the read-only check.
+- A credential profile in a shared connection file reading ~/.pgpass and sending the password to a host the file named.
+- A name with a quote before an accent mark could run its own SQL when you browsed, searched or exported the table.
+- A remote SQLite file path with a quote and a combining accent could run commands on the SSH server.
+- A write after a CTE list, a Snowflake ->> chain, or inside a SurrealDB or CockroachDB SELECT passing as a read.
+- ANALYZE TABLE, EXPLAIN PRAGMA and SQLite pragma_optimize passing as reads for read-only external clients.
+- An imported SSH host or user could run commands through a Match exec line in ~/.ssh/config.
+- An imported SSH host with a line break could make TablePro trust a host key for another server.
+- Browsing a PostgreSQL schema could run a function or operator its owner planted there, with your privileges.
+- CanonicalizeFallbackLocal no was ignored, and an SSH tunnel dialed the short host name anyway.
+- CanonicalizeHostname followed any DNS alias, so DNS chose the host key an SSH tunnel was checked against.
+- Cassandra and ScyllaDB connections through a tunnel signing in to other cluster nodes outside the tunnel.
+- Dameng connections set to Required or a Verify mode connecting without TLS.
+- EXPLAIN or DESCRIBE with a parenthesised query or a quoted option passing as a read for read-only MCP clients.
+- File and URL reads through DuckDB, ClickHouse, quoted function names or VACUUM INTO passing the external check.
+- Git status for a linked folder running filter and fetch commands set up in that folder's own Git configuration.
+- Import Commands showing the first 300 characters of Startup SQL while keeping all of it.
+- MCP clients and the assistant running statements past Read Only on Dameng behind a comment the driver read differently.
+- MCP clients running DROP or server API calls unasked through grid requests on BigQuery, Elasticsearch and Typesense.
+- MCP clients running DROP unasked on Trino and Presto behind a statement the driver split differently from the gate.
+- MCP clients running statements or changing consistency past Read Only on Cassandra and ScyllaDB with a forged comment.
+- MCP clients with read access running writes through browse_table or get_table_statistics with a crafted table name.
+- MCP clients, the AI assistant and AppleScript running a second statement the Read Only and destructive checks missed.
+- Open Project Folder filling a project's ${VAR} references from TablePro's own environment.
+- Opening a crafted table on iPhone or iPad running a second statement on PostgreSQL, Redshift or SQL Server.
+- Oracle Explain reading a PLAN_TABLE or V$ views planted in the tab's schema instead of Oracle's own.
+- Restoring a DuckDB folder of Parquet files ran its schema.sql with file access, so the folder could write any file.
+- Restoring a MySQL or MariaDB dump could run shell commands written in the .sql file.
+- Restoring a SQLite dump could run shell commands written in the .sql file.
+- SQL Server EXEC of a string, sp_executesql, OPENQUERY and OPENROWSET passing as reads or without the code check.
+- SQL Server Verify CA and Verify Identity on iPhone and iPad connecting without checking the certificate.
+- Secrets in a pasted MongoDB connection string saved outside the Keychain and carried by exports, links and sync.
+- Shared connections reusing your Entra ID token, Snowflake CLI profile, MongoDB AWS credentials or Run Ledger Plugins.
+- Teradata with SSL through a tunnel sending the password to port 443 on this Mac.
+- Trino and Presto sending the password or token to another host the server named in its reply.
+- iPhone and iPad Safe Mode letting DESC ANALYZE of a write, OPENQUERY and state-changing calls run as reads.
+
+
 ## [0.83.0](https://github.com/TableProApp/TablePro/releases/tag/v0.83.0) - 2026-10-26
 
 Search Database finds a value in every table, Compare Results matches two results row by row, and Generate Rows fills a table with test data.

@@ -887,7 +887,7 @@ mod tests {
             row_key: edited.clone(),
             col: 1,
             original: Value::Int(1),
-            value: Value::Int(2),
+            value: CellInput::Value(Value::Int(2)),
         });
         let changes = tracker.change_set(&columns).unwrap();
         let plan = plan_save(

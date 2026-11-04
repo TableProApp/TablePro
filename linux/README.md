@@ -1,6 +1,6 @@
 # TablePro Linux
 
-Native Linux database client, the Linux sibling of the macOS TablePro app. The two share no code.
+Native Linux database client, the Linux sibling of the macOS TablePro app. It builds on the shared Rust core in [`../core`](../core/ARCHITECTURE.md), which the macOS app does not use yet.
 
 ## Status
 
@@ -20,7 +20,7 @@ TablePro supports the server releases their vendors still support. CI runs each 
 | Apache Cassandra | 4.0 and 5.0 | 3.11 and older, past end of life. 6.0 until it is released |
 | ScyllaDB | 2025.1 and 2026.1 | Feature releases between long-term ones, such as 2026.3. Enterprise 2024.1 and older, past end of life |
 | SQLite | the system library, 3.37.0 or newer | older libraries, which the driver refuses when it opens a file |
-| DuckDB | 1.5.6, compiled into the app ([ADR 0025](docs/decisions/0025-bundled-duckdb.md)) | files a newer DuckDB wrote in a storage format 1.5.6 cannot read |
+| DuckDB | 2.0.0, compiled into the app ([ADR 0031](docs/decisions/0031-duckdb-2.md)) | files a newer DuckDB wrote in a storage format 2.0.0 cannot read |
 | Redis | 7.4 and 8.10 | 7.2 and older, past end of life. Cluster and Sentinel deployments. Valkey answers the same commands and is not tested |
 | MongoDB | 7.0 and 8.0 | 6.0 and older, past end of life (6.0 on 2025-07-31). Minor releases between major ones, such as 8.2, are not tested. A sharded cluster is reached through `mongos` and is not tested |
 
@@ -76,7 +76,7 @@ TablePro makes no network requests of its own: no telemetry, no update check and
 |---|---|
 | A port of the macOS app | The macOS app is AppKit and SwiftUI, which Linux does not have, and Swift's GTK bindings are immature. The Linux app shares no source with macOS. |
 | A plugin host | Drivers are statically linked at compile time. Adding a database engine = adding one crate + one register call. See [decisions/0001-no-plugin-system.md](docs/decisions/0001-no-plugin-system.md). |
-| Cross-platform | Linux only. macOS and iOS have separate apps in this monorepo. |
+| Cross-platform | Linux only. The shared core builds for Windows and macOS, whose apps have UIs of their own. |
 | Electron / WebView | Native GTK4 widgets throughout. No HTML rendering of any kind. |
 
 ## Quickstart
@@ -230,8 +230,8 @@ its .deb built offline as Launchpad builds it (checked by lintian), and
 the RPMs (checked by rpmlint) under `_packages`, then installs each
 package in a fresh container and starts it. `deb` or `rpm` in place of
 `all` builds one, and Ubuntu series names after the output directory
-replace the default `resolute`. `meson dist` archives `HEAD`, so commit
-first.
+replace the default `resolute`. The source tarball archives `HEAD`, so
+commit first.
 
 After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
 rewrites `debian/copyright` and the spec's `License` tag along with

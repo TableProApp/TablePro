@@ -8,6 +8,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// Service for building SQL queries for table operations
 struct TableQueryBuilder {
@@ -18,6 +19,7 @@ struct TableQueryBuilder {
     private let dialect: SQLDialectDescriptor?
     private let pagination: PaginationCapability
     private let dialectQuote: (String) -> String
+    private var sessionDriver: (any DatabaseDriver)?
 
     // MARK: - Initialization
 
@@ -26,16 +28,15 @@ struct TableQueryBuilder {
         pluginDriver: (any PluginDatabaseDriver)? = nil,
         dialect: SQLDialectDescriptor? = nil,
         pagination: PaginationCapability,
-        dialectQuote: ((String) -> String)? = nil
+        dialectQuote: @escaping (String) -> String,
+        sessionDriver: (any DatabaseDriver)? = nil
     ) {
         self.databaseType = databaseType
         self.pluginDriver = pluginDriver
         self.dialect = dialect
         self.pagination = pagination
-        self.dialectQuote = dialectQuote ?? { name in
-            let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
-            return "\"\(escaped)\""
-        }
+        self.dialectQuote = dialectQuote
+        self.sessionDriver = sessionDriver
     }
 
     mutating func setPluginDriver(_ driver: (any PluginDatabaseDriver)?) {
@@ -44,6 +45,19 @@ struct TableQueryBuilder {
 
     func usesPluginDriver(_ driver: (any PluginDatabaseDriver)?) -> Bool {
         pluginDriver === driver
+    }
+
+    mutating func setSessionDriver(_ driver: (any DatabaseDriver)?) {
+        sessionDriver = driver
+    }
+
+    func usesSessionDriver(_ driver: (any DatabaseDriver)?) -> Bool {
+        sessionDriver === driver
+    }
+
+    // Read when the query is built: a `SET sql_mode` can turn MySQL's backslash escape off mid-session.
+    private var stringEscapes: SQLStringEscapes {
+        SQLLexicalResolver.stringEscapes(for: databaseType, session: sessionDriver?.sessionLexicalState)
     }
 
     // MARK: - Identifier Quoting
@@ -135,7 +149,8 @@ struct TableQueryBuilder {
 
         let filterGen = FilterSQLGenerator(
             dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
-            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType,
+            stringEscapes: stringEscapes
         )
         let whereClause = filterGen.generateWhereClause(from: filters.filter { $0.isEnabled }, logicMode: logicMode)
         if !whereClause.isEmpty {
@@ -199,7 +214,8 @@ struct TableQueryBuilder {
         let activeFilters = filters.filter { $0.isEnabled }
         let filterGen = FilterSQLGenerator(
             dialect: dialect, columns: columns, columnTypes: columnTypes, quoteIdentifier: dialectQuote,
-            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType
+            stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType,
+            stringEscapes: stringEscapes
         )
         let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
 

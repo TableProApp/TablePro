@@ -1,8 +1,10 @@
+import CryptoKit
 import Foundation
 @testable import TablePro
 import TableProPluginKit
 import TableProTestSupport
 import Testing
+import UserNotifications
 
 private final class ManifestStubProtocol: URLProtocol, @unchecked Sendable {
     private static let lock = NSLock()
@@ -80,10 +82,13 @@ private actor FixtureRegistryInstaller: RegistryPluginInstalling {
     private(set) var stagedIds: [String] = []
     private let installGate: AsyncGate?
     private let stageGate: AsyncGate?
+    private let archiveBuild: Int?
 
-    init(installGate: AsyncGate? = nil, stageGate: AsyncGate? = nil) {
+    // archiveBuild is what the downloaded bundle's Info.plist says when it is not the manifest's build.
+    init(installGate: AsyncGate? = nil, stageGate: AsyncGate? = nil, archiveBuild: Int? = nil) {
         self.installGate = installGate
         self.stageGate = stageGate
+        self.archiveBuild = archiveBuild
     }
 
     func install(
@@ -127,15 +132,22 @@ private actor FixtureRegistryInstaller: RegistryPluginInstalling {
         let url = userPluginsDir.deletingLastPathComponent()
             .appendingPathComponent("Download-\(UUID().uuidString)", isDirectory: true)
             .appendingPathComponent(bundleName, isDirectory: true)
-        return try writeBundle(at: url, bundleId: registryPlugin.id, build: release.build)
+        return try writeBundle(at: url, bundleId: registryPlugin.id, build: archiveBuild ?? release.build)
     }
 }
 
 @Suite("Plugin registry update pass", .serialized)
 @MainActor
 struct PluginRegistryUpdatePassTests {
+    private let registryDefaults: EphemeralDefaults
+
+    init() throws {
+        registryDefaults = try EphemeralDefaults()
+    }
+
     private struct Fixture {
         let manager: PluginManager
+        let tracker: PluginInstallTracker
         let pluginsDir: URL
         let root: URL
     }
@@ -148,13 +160,15 @@ struct PluginRegistryUpdatePassTests {
             .appendingPathComponent("PluginRegistryUpdatePassTests-\(UUID().uuidString)", isDirectory: true)
         let pluginsDir = root.appendingPathComponent("Plugins", isDirectory: true)
         try FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
+        let tracker = PluginInstallTracker(clock: ManualClock())
         let manager = PluginManager(
             builtInPluginsURL: nil,
             userPluginsDir: pluginsDir,
             registryInstaller: installer,
+            installTracker: tracker,
             isUpdatingEnabled: isUpdatingEnabled
         )
-        return Fixture(manager: manager, pluginsDir: pluginsDir, root: root)
+        return Fixture(manager: manager, tracker: tracker, pluginsDir: pluginsDir, root: root)
     }
 
     private func stageUpdate(
@@ -261,9 +275,11 @@ struct PluginRegistryUpdatePassTests {
         )
     }
 
+    // signedBy nil serves the manifest with no signature beside it.
     private func makeRegistryClient(
         servingBuild build: Int,
-        pluginIds: [String] = ["com.example.driver"]
+        pluginIds: [String] = ["com.example.driver"],
+        signedBy key: Curve25519.Signing.PrivateKey? = SignedRegistryManifest.key
     ) throws -> (client: RegistryClient, manifestURL: URL) {
         let manifestURL = try #require(URL(string: "https://registry.invalid/\(UUID().uuidString)/plugins/v3.json"))
         let plugins = pluginIds.map { id in
@@ -275,12 +291,23 @@ struct PluginRegistryUpdatePassTests {
             }]}
             """
         }
-        ManifestStubProtocol.serve(Data("""
-        {"schemaVersion": 3, "retainFromPluginKit": 39, "plugins": [\(plugins.joined(separator: ","))]}
-        """.utf8), at: manifestURL)
+        let body = Data("""
+        {"schemaVersion": 3, "serial": 1, "retainFromPluginKit": 39, "plugins": [\(plugins.joined(separator: ","))]}
+        """.utf8)
+        ManifestStubProtocol.serve(body, at: manifestURL)
+        if let key {
+            ManifestStubProtocol.serve(
+                try SignedRegistryManifest.signature(of: body, by: key),
+                at: SignedRegistryManifest.signatureURL(for: manifestURL)
+            )
+        }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [ManifestStubProtocol.self]
-        let client = RegistryClient(manifestURL: manifestURL, session: URLSession(configuration: configuration))
+        let client = SignedRegistryManifest.client(
+            manifestURL: manifestURL,
+            session: URLSession(configuration: configuration),
+            defaults: registryDefaults.defaults
+        )
         return (client, manifestURL)
     }
 
@@ -410,6 +437,11 @@ struct PluginRegistryUpdatePassTests {
         #expect(!manager.isRegistryUpdateTarget(loadedTarget))
         manager.stagedPluginIds = []
 
+        manager.cancelledRegistryUpdateIds = [entry.id, "com.example.outdated"]
+        #expect(!manager.isRegistryUpdateTarget(loadedTarget))
+        #expect(!manager.isRegistryUpdateTarget(rejectedTarget))
+        manager.cancelledRegistryUpdateIds = []
+
         manager.plugins = [makeEntry(id: entry.id, in: fixture.pluginsDir, build: 30)]
         #expect(!manager.isRegistryUpdateTarget(loadedTarget))
 
@@ -434,6 +466,51 @@ struct PluginRegistryUpdatePassTests {
         let result = await fixture.manager.runRegistryUpdatePass(registryClient: registry.client, appBuild: 20)
 
         #expect(result == .finished)
+        #expect(registry.requestCount == 0)
+    }
+
+    @Test("Try Again repairs a rejected plugin as soon as the registry answers")
+    func tryAgainRepairsARejectedPlugin() async throws {
+        let installer = FixtureRegistryInstaller()
+        let fixture = try makeFixture(installer: installer, isUpdatingEnabled: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        let (client, manifestURL) = try makeRegistryClient(servingBuild: 20)
+
+        let reached = await fixture.manager.retryRejectedPluginRepairs(registryClient: client)
+
+        #expect(reached)
+        #expect(ManifestStubProtocol.requestCount(for: manifestURL) == 1)
+        let installedIds = await installer.installedIds
+        #expect(installedIds == ["com.example.driver"])
+    }
+
+    @Test("Try Again with the registry still refused reports it and installs nothing")
+    func tryAgainReportsAnUnreachableRegistry() async throws {
+        let installer = FixtureRegistryInstaller()
+        let fixture = try makeFixture(installer: installer, isUpdatingEnabled: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        let (client, _) = try makeRegistryClient(servingBuild: 20, signedBy: nil)
+
+        let reached = await fixture.manager.retryRejectedPluginRepairs(registryClient: client)
+
+        #expect(!reached)
+        let installedIds = await installer.installedIds
+        #expect(installedIds.isEmpty)
+        #expect(fixture.manager.rejectedPlugins.count == 1)
+    }
+
+    @Test("Try Again does nothing where updating is off")
+    func tryAgainNeedsUpdating() async throws {
+        let fixture = try makeFixture(isUpdatingEnabled: false)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        fixture.manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        let registry = try OfflineRegistry()
+
+        let reached = await fixture.manager.retryRejectedPluginRepairs(registryClient: registry.client)
+
+        #expect(!reached)
         #expect(registry.requestCount == 0)
     }
 
@@ -589,6 +666,95 @@ struct PluginRegistryUpdatePassTests {
         #expect(installedIds.isEmpty)
     }
 
+    @Test("The pass keeps the installed Oracle driver when the manifest claims a newer build than the archive holds")
+    func passKeepsInstalledPluginWhenTheArchiveIsOlder() async throws {
+        let installer = FixtureRegistryInstaller(archiveBuild: 820_099)
+        let fixture = try makeFixture(installer: installer)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.TablePro.OracleDriver", in: fixture.pluginsDir, build: 840_099)
+        try writeBundle(at: entry.url, bundleId: entry.id, build: 840_099)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        let (client, _) = try makeRegistryClient(servingBuild: 99_999_999, pluginIds: [entry.id])
+
+        let result = await manager.runRegistryUpdatePass(registryClient: client, appBuild: 840_199)
+        PluginManager.applyStagedUpdates(in: fixture.pluginsDir)
+
+        #expect(result == .retry)
+        #expect(manager.stagedPluginIds.isEmpty)
+        let stagedDir = PluginInstaller.stagedUpdateDirectory(for: entry.id, in: fixture.pluginsDir)
+        #expect(!FileManager.default.fileExists(atPath: stagedDir.path))
+        #expect(PluginManager.bundleBuild(at: entry.url) == 840_099)
+        #expect(PluginManager.readRegistryMetadata(for: entry.url)?.pluginId == entry.id)
+    }
+
+    @Test("A loaded plugin's failed update stays on its tracker entry and posts one notification")
+    func loadedPluginUpdateFailureReachesTrackerAndNotifier() async throws {
+        let installer = FixtureRegistryInstaller(archiveBuild: 15)
+        let fixture = try makeFixture(installer: installer)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let presenter = RecordingNotificationPresenter()
+        let notifier = PluginNotificationService(
+            presenter: presenter,
+            authorization: NotificationAuthorization(presenter: presenter),
+            categories: NotificationCategoryRegistry(presenter: presenter),
+            tracker: fixture.tracker,
+            settings: { NotificationSettings(isEnabled: true) }
+        )
+        notifier.observeInstalls()
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.example.driver", in: fixture.pluginsDir, build: 16)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        let (client, _) = try makeRegistryClient(servingBuild: 20)
+
+        let result = await manager.runRegistryUpdatePass(registryClient: client, appBuild: 20)
+
+        #expect(result == .retry)
+        let failed = try #require(fixture.tracker.entries[entry.id])
+        #expect(failed.trigger == .update)
+        guard case .failed = failed.phase else {
+            Issue.record("Expected a failure on the plugin's entry, got \(failed.phase)")
+            return
+        }
+        guard case .registry(let retry)? = failed.retry else {
+            Issue.record("Expected a registry retry target")
+            return
+        }
+        #expect(retry.id == entry.id)
+        try await waitUntil { presenter.posted.count == 1 }
+        #expect(presenter.posted.first?.identifier.hasSuffix(entry.id) == true)
+        withExtendedLifetime(notifier) {}
+    }
+
+    @Test("A manifest with no signature, or one signed by another key, never reaches the installer", arguments: [
+        nil, Curve25519.Signing.PrivateKey()
+    ])
+    func unsignedManifestNeverInstalls(signedBy key: Curve25519.Signing.PrivateKey?) async throws {
+        let installer = FixtureRegistryInstaller(archiveBuild: 820_099)
+        let fixture = try makeFixture(installer: installer)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.TablePro.OracleDriver", in: fixture.pluginsDir, build: 840_099)
+        try writeBundle(at: entry.url, bundleId: entry.id, build: 840_099)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        manager.rejectedPlugins = [makeRejected(bundleId: "com.example.driver")]
+        let (client, _) = try makeRegistryClient(
+            servingBuild: 99_999_999, pluginIds: [entry.id, "com.example.driver"], signedBy: key
+        )
+
+        let result = await manager.runRegistryUpdatePass(registryClient: client, appBuild: 840_199)
+
+        #expect(result == .retry)
+        #expect(client.manifest == nil)
+        let stagedIds = await installer.stagedIds
+        let installedIds = await installer.installedIds
+        #expect(stagedIds.isEmpty)
+        #expect(installedIds.isEmpty)
+    }
+
     @Test("The pass installs a rejected plugin at once, and a build that fails to load keeps it rejected")
     func passInstallsRejectedPluginNow() async throws {
         let installer = FixtureRegistryInstaller()
@@ -646,7 +812,7 @@ struct PluginRegistryUpdatePassTests {
         #expect(manager.stagedPluginIds == [loaded.id])
     }
 
-    @Test("A file staged over a loaded registry plugin drops its sidecar, so the pass leaves it alone")
+    @Test("A file at or above the app's build staged over a loaded registry plugin drops its sidecar")
     func fileStagedOverRegistryPluginDropsSidecar() throws {
         let fixture = try makeFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -660,12 +826,149 @@ struct PluginRegistryUpdatePassTests {
             build: 11
         )
 
-        _ = try manager.stageForNextLaunch(bundleAt: file, replacing: entry)
+        _ = try manager.stageForNextLaunch(bundleAt: file, replacing: entry, appBuild: 11)
 
         #expect(manager.stagedPluginIds == [entry.id])
         #expect(PluginManager.readRegistryMetadata(for: entry.url) == nil)
         manager.stagedPluginIds = []
-        #expect(manager.registryUpdateTargets(appBuild: 20).isEmpty)
+        #expect(manager.registryUpdateTargets(appBuild: 11).isEmpty)
+    }
+
+    @Test("A newer file below the app's build is staged and stays under the update pass")
+    func newerFileBelowAppBuildKeepsSidecar() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.example.driver", in: fixture.pluginsDir, build: 10)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        let file = try writeBundle(
+            at: fixture.root.appendingPathComponent("Downloads/Driver.tableplugin", isDirectory: true),
+            bundleId: entry.id,
+            build: 11
+        )
+
+        _ = try manager.stageForNextLaunch(bundleAt: file, replacing: entry, appBuild: 20)
+
+        #expect(manager.stagedPluginIds == [entry.id])
+        #expect(PluginManager.readRegistryMetadata(for: entry.url)?.pluginId == entry.id)
+    }
+
+    @Test("A file between the loaded build and the staged update is refused, and the staged update stays")
+    func fileBelowTheStagedUpdateIsRefused() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.TablePro.SnowflakeDriver", in: fixture.pluginsDir, build: 840_099)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        let update = try writeBundle(
+            at: fixture.root.appendingPathComponent("Download-\(UUID().uuidString)/Driver.tableplugin", isDirectory: true),
+            bundleId: entry.id,
+            build: 860_099
+        )
+        let stagedURL = try PluginInstaller.stage(
+            bundleAt: update,
+            pluginId: entry.id,
+            bundleName: entry.url.lastPathComponent,
+            userPluginsDir: fixture.pluginsDir
+        )
+        manager.stagedPluginIds = [entry.id]
+        let file = try writeBundle(
+            at: fixture.root.appendingPathComponent("Downloads/Driver.tableplugin", isDirectory: true),
+            bundleId: entry.id,
+            build: 850_001
+        )
+
+        #expect(throws: PluginError.self) {
+            _ = try manager.stageForNextLaunch(bundleAt: file, replacing: entry, appBuild: 860_099)
+        }
+
+        #expect(PluginManager.bundleBuild(at: stagedURL) == 860_099)
+        #expect(manager.stagedPluginIds == [entry.id])
+        #expect(PluginManager.readRegistryMetadata(for: entry.url)?.pluginId == entry.id)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    @Test("A file holding an older build than the loaded plugin is refused, and nothing is staged")
+    func olderFileOverLoadedPluginIsRefused() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.TablePro.SnowflakeDriver", in: fixture.pluginsDir, build: 850_099)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        let file = try writeBundle(
+            at: fixture.root.appendingPathComponent("Downloads/Driver.tableplugin", isDirectory: true),
+            bundleId: entry.id,
+            build: 840_099
+        )
+
+        let error = #expect(throws: PluginError.self) {
+            _ = try manager.stageForNextLaunch(bundleAt: file, replacing: entry)
+        }
+
+        guard case .installFailed(let reason) = error else {
+            Issue.record("Expected installFailed, got \(String(describing: error))")
+            return
+        }
+        #expect(reason.contains("840099") && reason.contains("850099"))
+        #expect(manager.stagedPluginIds.isEmpty)
+        let stagedDir = PluginInstaller.stagedUpdateDirectory(for: entry.id, in: fixture.pluginsDir)
+        #expect(!FileManager.default.fileExists(atPath: stagedDir.path))
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        #expect(PluginManager.readRegistryMetadata(for: entry.url)?.pluginId == entry.id)
+    }
+
+    @Test("A file holding the loaded plugin's own build is staged and keeps it under the update pass")
+    func sameBuildFileKeepsSidecar() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let entry = makeEntry(id: "com.example.driver", in: fixture.pluginsDir, build: 10)
+        manager.saveRegistryMetadata(pluginId: entry.id, pluginURL: entry.url)
+        manager.plugins = [entry]
+        let file = try writeBundle(
+            at: fixture.root.appendingPathComponent("Downloads/Driver.tableplugin", isDirectory: true),
+            bundleId: entry.id,
+            build: 10
+        )
+
+        _ = try manager.stageForNextLaunch(bundleAt: file, replacing: entry, appBuild: 11)
+
+        #expect(manager.stagedPluginIds == [entry.id])
+        #expect(PluginManager.readRegistryMetadata(for: entry.url)?.pluginId == entry.id)
+    }
+
+    @Test("A file is refused only when its build is below the installed one", arguments: [
+        (9, 10, true), (10, 10, false), (11, 10, false), (1, nil, false)
+    ])
+    func olderFileRule(fileBuild: Int, installedBuild: Int?, refused: Bool) {
+        let threw = (try? PluginManager.refuseOlderFile(build: fileBuild, installedBuild: installedBuild)) == nil
+        #expect(threw == refused)
+    }
+
+    @Test("A rejected plugin's installed build is read from its bundle, by bundle id or registry id")
+    func rejectedBuildIsReadFromTheBundle() throws {
+        let fixture = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let manager = fixture.manager
+        let url = fixture.pluginsDir.appendingPathComponent("Driver.tableplugin", isDirectory: true)
+        let outdatedKit = PluginManager.minimumCompatiblePluginKitVersion - 1
+        try writeBundle(at: url, bundleId: "com.example.driver", build: 30, kit: outdatedKit)
+        manager.rejectedPlugins = [RejectedPlugin(
+            url: url,
+            bundleId: "com.example.driver",
+            registryId: "com.example.registry-driver",
+            name: "Driver",
+            reason: "Built for an older PluginKit",
+            isOutdated: true,
+            providedDatabaseTypeIds: []
+        )]
+
+        #expect(manager.rejectedBuild(of: "com.example.driver") == 30)
+        #expect(manager.rejectedBuild(of: "com.example.registry-driver") == 30)
+        #expect(manager.rejectedBuild(of: "com.example.other") == nil)
     }
 
     @Test("Connecting repairs only the outdated plugins that provide its database type")

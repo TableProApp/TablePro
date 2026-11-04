@@ -15,6 +15,14 @@ use super::secret_change::SecretChange;
 use super::secret_changes::SecretChanges;
 use super::secret_labels::secret_label;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupChoice {
+    None,
+    Existing(Uuid),
+    /// The top-level group of that name, made when the list has none.
+    Named(ConnectionGroupName),
+}
+
 /// Changes a saved connection together with its keyring secrets: an
 /// edit from the connect dialog, a copy, a move to another group.
 ///
@@ -79,7 +87,8 @@ impl SavedConnectionEditor {
                 *entry = SavedConnection {
                     last_opened_at: entry.last_opened_at,
                     color: entry.color,
-                    group: entry.group.take(),
+                    group_id: entry.group_id,
+                    order: entry.order,
                     ..connection
                 };
             })
@@ -180,27 +189,57 @@ impl SavedConnectionEditor {
         let entry = copy.clone();
         let written = self
             .tasks
-            .spawn_blocking_task(move || store.upsert_blocking(entry))
+            .spawn_blocking_task(move || {
+                let id = entry.id;
+                store.upsert_blocking(entry)?;
+                // The store gives the copy its place in the group.
+                let stored = store
+                    .load_blocking()
+                    .ok()
+                    .and_then(|list| list.iter().find(|saved| saved.id == id).cloned());
+                Ok::<_, StorageError>(stored)
+            })
             .await
             .map_err(SavedConnectionError::from)
             .and_then(|written| written.map_err(SavedConnectionError::from));
-        if let Err(error) = written {
-            self.forget_secrets(copy.id).await;
-            return Err(error);
+        match written {
+            Ok(stored) => Ok(stored.unwrap_or(copy)),
+            Err(error) => {
+                self.forget_secrets(copy.id).await;
+                Err(error)
+            }
         }
-        Ok(copy)
     }
 
-    /// File the connection `id` under `group`, or under none.
-    pub async fn move_to_group(
-        &self,
-        id: Uuid,
-        group: Option<ConnectionGroupName>,
-    ) -> Result<(), SavedConnectionError> {
-        self.write(id, move |entry| entry.group = group)
-            .await?
-            .map(drop)
-            .ok_or(SavedConnectionError::NotFound(id))
+    /// A pick of the group it is already in writes nothing.
+    pub async fn move_to_group(&self, id: Uuid, choice: GroupChoice) -> Result<(), SavedConnectionError> {
+        let store = self.store.clone();
+        let moved = self
+            .tasks
+            .spawn_blocking_task(move || {
+                let current = store
+                    .load_blocking()?
+                    .iter()
+                    .find(|saved| saved.id == id)
+                    .map(|saved| saved.group_id);
+                match (choice, current) {
+                    (_, None) => Err(StorageError::ConnectionNotFound { id }),
+                    (GroupChoice::None, Some(None)) => Ok(()),
+                    (GroupChoice::Existing(group), Some(Some(current))) if group == current => Ok(()),
+                    (GroupChoice::None, Some(_)) => store.move_connections_blocking(&[id], None, None),
+                    (GroupChoice::Existing(group), Some(_)) => {
+                        store.move_connections_blocking(&[id], Some(group), None)
+                    }
+                    (GroupChoice::Named(name), Some(_)) => store
+                        .move_connections_to_group_named_blocking(&[id], None, name)
+                        .map(drop),
+                }
+            })
+            .await?;
+        match moved {
+            Err(StorageError::ConnectionNotFound { .. }) => Err(SavedConnectionError::NotFound(id)),
+            moved => Ok(moved?),
+        }
     }
 
     /// Put `color` on the connection `id`, or take its colour off.
@@ -365,11 +404,13 @@ mod tests {
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
+            query_timeout_secs: None,
             auth_mode: AuthMode::Password,
             ssh: None,
             last_opened_at: Some(chrono::Utc::now()),
             color: Some(ConnectionColor::Red),
-            group: Some(ConnectionGroupName::new("Work").expect("a name")),
+            group_id: Some(crate::test_support::group_id("Work")),
+            order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
@@ -382,7 +423,7 @@ mod tests {
         let store = ConnectionStore::new(&StoragePaths::under(root.path(), "tablepro-test", "app.tablepro.Test"));
         let vault = Arc::new(FakeSecretVault::new());
         let saved = connection();
-        store.upsert_blocking(saved.clone()).expect("the entry");
+        crate::test_support::save_filed(&store, saved.clone());
         vault
             .store(
                 saved.id,
@@ -517,7 +558,9 @@ mod tests {
         assert_ne!(copy.id, fixture.saved.id);
         assert_eq!(copy.name, "Prod (Copy)");
         assert_eq!(copy.last_opened_at, None, "the copy claimed the original's recency");
-        assert_eq!(copy.group, fixture.saved.group);
+        assert_eq!(copy.group_id, fixture.saved.group_id);
+        let list = fixture.store.list_blocking().expect("the list");
+        assert!(!list.is_favorite(copy.id), "the copy became a favourite");
         assert_eq!(copy.color, fixture.saved.color);
         assert_eq!(copy.host, fixture.saved.host);
         assert_eq!(
@@ -628,7 +671,8 @@ mod tests {
             host: "db2.example.com".to_owned(),
             last_opened_at: None,
             color: None,
-            group: None,
+            group_id: None,
+            order: 0,
             ..fixture.saved.clone()
         };
 
@@ -641,7 +685,7 @@ mod tests {
         assert_eq!(saved.host, "db2.example.com");
         assert_eq!(saved.last_opened_at, fixture.saved.last_opened_at);
         assert_eq!(saved.color, fixture.saved.color);
-        assert_eq!(saved.group, fixture.saved.group);
+        assert_eq!(saved.group_id, fixture.saved.group_id);
     }
 
     #[tokio::test]
@@ -896,7 +940,7 @@ mod tests {
 
         fixture
             .editor
-            .move_to_group(fixture.saved.id, Some(archive.clone()))
+            .move_to_group(fixture.saved.id, GroupChoice::Named(archive))
             .await
             .expect("the move");
 
@@ -904,12 +948,65 @@ mod tests {
         let ConnectionListState::Ready(list) = receiver.borrow_and_update().state.clone() else {
             panic!("expected a ready list");
         };
-        assert_eq!(list.connections[0].group, Some(archive));
+        let group = list.connections[0].group_id.expect("a group");
+        assert_eq!(list.group_tree().label(group).as_deref(), Some("Archive"));
+        assert_eq!(
+            list.group_tree().depth(Some(group)),
+            1,
+            "a new group was not made at the top"
+        );
         fixture
             .editor
-            .move_to_group(fixture.saved.id, None)
+            .move_to_group(fixture.saved.id, GroupChoice::None)
             .await
             .expect("out of the group");
-        assert_eq!(stored(&fixture.store)[0].group, None);
+        assert_eq!(stored(&fixture.store)[0].group_id, None);
+    }
+
+    #[tokio::test]
+    async fn a_named_group_the_list_has_takes_the_connection_and_a_repeat_writes_nothing() {
+        let fixture = fixture().await;
+        let work = fixture.saved.group_id.expect("the fixture's group");
+        fixture
+            .editor
+            .move_to_group(fixture.saved.id, GroupChoice::None)
+            .await
+            .expect("out of the group");
+
+        fixture
+            .editor
+            .move_to_group(
+                fixture.saved.id,
+                GroupChoice::Named(ConnectionGroupName::new("work").expect("a name")),
+            )
+            .await
+            .expect("back in");
+        let revision = fixture.store.snapshot().revision;
+        fixture
+            .editor
+            .move_to_group(fixture.saved.id, GroupChoice::Existing(work))
+            .await
+            .expect("the same group");
+
+        assert_eq!(stored(&fixture.store)[0].group_id, Some(work));
+        assert_eq!(fixture.store.list_blocking().expect("the list").groups.len(), 1);
+        assert_eq!(
+            fixture.store.snapshot().revision,
+            revision,
+            "a pick of its own group was written"
+        );
+        let gone = fixture
+            .editor
+            .move_to_group(fixture.saved.id, GroupChoice::Existing(Uuid::new_v4()))
+            .await;
+        assert!(
+            matches!(
+                gone,
+                Err(SavedConnectionError::Storage(StorageError::GroupNotFound { .. }))
+            ),
+            "{gone:?}"
+        );
+        let missing = fixture.editor.move_to_group(Uuid::new_v4(), GroupChoice::None).await;
+        assert!(matches!(missing, Err(SavedConnectionError::NotFound(_))), "{missing:?}");
     }
 }

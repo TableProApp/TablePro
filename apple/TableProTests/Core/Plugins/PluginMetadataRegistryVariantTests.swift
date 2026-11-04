@@ -140,7 +140,8 @@ struct PluginMetadataRegistryVariantTests {
         let builder = TableQueryBuilder(
             databaseType: .presto,
             dialect: PluginManager.shared.sqlDialect(for: .presto),
-            pagination: PluginManager.shared.paginationCapability(for: .presto)
+            pagination: PluginManager.shared.paginationCapability(for: .presto),
+            dialectQuote: SQLEscaping.quoteIdentifier
         )
         let query = builder.buildBaseQuery(tableName: "nation", schemaName: "tiny", limit: 1_000, offset: 1_000)
         #expect(query.hasSuffix("LIMIT 1000"))

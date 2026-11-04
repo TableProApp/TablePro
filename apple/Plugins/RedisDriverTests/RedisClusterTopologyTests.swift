@@ -189,4 +189,62 @@ struct RedisClusterTopologyMigrationTests {
         let moved = topology.movingSlot(100, to: RedisNodeAddress(host: "10.9.9.9", port: 1))
         #expect(moved == topology)
     }
+
+    @Test("A MOVED naming a slot outside 0...16383 changes nothing", arguments: [Int.max, Int.min, -1, 16_384])
+    func ignoresSlotOutsideTheRange(slot: Int) throws {
+        let topology = try #require(RedisClusterTopologyParser.parseShards(shardsReply(), fallbackHost: "seed"))
+        let target = RedisNodeAddress(host: "127.0.0.1", port: 7_102)
+        let other = RedisNodeAddress(host: "127.0.0.1", port: 7_101)
+        let moved = topology.movingSlot(slot, to: target).movingSlot(slot, to: other)
+        #expect(moved == topology)
+        #expect(moved.coversAllSlots)
+    }
+}
+
+struct RedisClusterSlotBoundsTests {
+    private static func slotsNode(port: Int64) -> RedisReply {
+        .array([.string("127.0.0.1"), .integer(port), .string("n\(port)")])
+    }
+
+    private static func shard(slots: [Int64], port: Int64) -> RedisReply {
+        .array([
+            .string("slots"), .array(slots.map(RedisReply.integer)),
+            .string("nodes"), .array([
+                .array([
+                    .string("id"), .string("n\(port)"), .string("port"), .integer(port),
+                    .string("endpoint"), .string("127.0.0.1"), .string("role"), .string("master"),
+                ]),
+            ]),
+        ])
+    }
+
+    @Test("CLUSTER SLOTS drops a range outside 0...16383 instead of crashing on its size")
+    func slotsDropOutOfRange() throws {
+        let reply = RedisReply.array([
+            .array([.integer(.min), .integer(.max), Self.slotsNode(port: 7_101)]),
+            .array([.integer(16_000), .integer(20_000), Self.slotsNode(port: 7_102)]),
+            .array([.integer(-5), .integer(10), Self.slotsNode(port: 7_103)]),
+            .array([.integer(0), .integer(16_383), Self.slotsNode(port: 7_104)]),
+        ])
+        let topology = try #require(RedisClusterTopologyParser.parseSlots(reply, fallbackHost: "seed"))
+        #expect(topology.masters.map(\.address.port) == [7_104])
+        #expect(topology.coversAllSlots)
+    }
+
+    @Test("CLUSTER SLOTS with only a range outside 0...16383 is no topology")
+    func slotsWithNoValidRange() {
+        let reply = RedisReply.array([.array([.integer(.min), .integer(.max), Self.slotsNode(port: 7_101)])])
+        #expect(RedisClusterTopologyParser.parseSlots(reply, fallbackHost: "seed") == nil)
+    }
+
+    @Test("CLUSTER SHARDS keeps a shard's valid ranges and drops the rest")
+    func shardsDropOutOfRange() throws {
+        let reply = RedisReply.array([
+            Self.shard(slots: [0, 16_383, 16_384, 20_000, .min, .max, 9, 3], port: 7_101),
+            Self.shard(slots: [.min, .max], port: 7_102),
+        ])
+        let topology = try #require(RedisClusterTopologyParser.parseShards(reply, fallbackHost: "seed"))
+        #expect(topology.shards.map(\.slots) == [[0 ... 16_383]])
+        #expect(topology.coversAllSlots)
+    }
 }

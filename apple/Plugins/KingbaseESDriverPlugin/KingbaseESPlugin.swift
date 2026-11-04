@@ -11,6 +11,7 @@ final class KingbaseESPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "KingbaseES"
     static let iconName = "cylinder"
     static let defaultPort = 54_321
+    static let sslModesThroughTunnel: [SSLMode] = SSLMode.allCases
     static let isDownloadable = true
     static let urlSchemes = ["kingbase", "kingbase8"]
     static let brandColorHex = "#C9141E"

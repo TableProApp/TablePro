@@ -62,7 +62,8 @@ enum DotenvParser {
 
     static func parse(
         _ contents: String,
-        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+        processEnvironment: [String: String],
+        budget: ProjectScanExpansionBudget = ProjectScanExpansionBudget()
     ) -> DotenvDocument {
         var document = DotenvDocument()
         let characters = Array(normalize(contents))
@@ -75,7 +76,12 @@ enum DotenvParser {
             guard let assignment = readAssignment(characters, &index) else {
                 continue
             }
-            document.upsert(resolve(assignment, document: document, processEnvironment: processEnvironment))
+            document.upsert(resolve(
+                assignment,
+                document: document,
+                processEnvironment: processEnvironment,
+                budget: budget
+            ))
         }
         return document
     }
@@ -86,8 +92,8 @@ enum DotenvParser {
             text.removeFirst()
         }
         return text
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\r\n", with: "\n", options: .literal)
+            .replacingOccurrences(of: "\r", with: "\n", options: .literal)
     }
 
     static func skipBlankLinesAndComments(_ characters: [Character], _ index: inout Int) {

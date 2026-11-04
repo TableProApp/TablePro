@@ -11,6 +11,7 @@ public enum SqlLexer {
     public static let tab = UInt16(UnicodeScalar("\t").value)
     public static let newline = UInt16(UnicodeScalar("\n").value)
     public static let carriageReturn = UInt16(UnicodeScalar("\r").value)
+    public static let formFeed: UInt16 = 0x0C
     public static let singleQuote = UInt16(UnicodeScalar("'").value)
     public static let doubleQuote = UInt16(UnicodeScalar("\"").value)
     public static let backtick = UInt16(UnicodeScalar("`").value)
@@ -27,12 +28,15 @@ public enum SqlLexer {
     public static let capitalQ = UInt16(UnicodeScalar("Q").value)
     public static let smallN = UInt16(UnicodeScalar("n").value)
     public static let capitalN = UInt16(UnicodeScalar("N").value)
+    public static let openAngleQuote: UInt16 = 0x27E8
+    public static let closeAngleQuote: UInt16 = 0x27E9
     private static let openBracket = UInt16(UnicodeScalar("[").value)
     private static let closeBracket = UInt16(UnicodeScalar("]").value)
     private static let openBrace = UInt16(UnicodeScalar("{").value)
     private static let closeBrace = UInt16(UnicodeScalar("}").value)
     private static let lessThan = UInt16(UnicodeScalar("<").value)
     private static let greaterThan = UInt16(UnicodeScalar(">").value)
+    private static let delete = UInt16(UnicodeScalar("\u{7F}").value)
 
     /// How far a scan ran, and how many lines it crossed. A caller that does not track lines ignores `newlines`.
     /// `isClosed` is false when the text ended before the closing delimiter.
@@ -160,9 +164,15 @@ public enum SqlLexer {
     /// `offset`.
     ///
     /// The body ends at the closing delimiter followed by a quote, so `q'[it's]'` is one literal although a plain scan
-    /// would end it at `it'`. Bracket-like delimiters close with their partner. Returns nil when `offset` does not
-    /// start one; a caller must only ask at the start of a word, because `xq'` is an identifier followed by a string.
-    public static func skipAlternativeQuotedString(_ text: NSString, at offset: Int, length: Int) -> Span? {
+    /// would end it at `it'`. Bracket-like delimiters close with their partner. The delimiter is one character, which
+    /// is two units outside the Basic Multilingual Plane, so `bodyStart` and `bodyEnd` say where the text between the
+    /// delimiters lies. Returns nil when `offset` does not start one; a caller must only ask at the start of a word,
+    /// because `xq'` is an identifier followed by a string.
+    public static func skipAlternativeQuotedString(
+        _ text: NSString,
+        at offset: Int,
+        length: Int
+    ) -> (bodyStart: Int, bodyEnd: Int, span: Span)? {
         var cursor = offset
         let first = text.character(at: cursor)
         if first == smallN || first == capitalN {
@@ -174,19 +184,28 @@ public enum SqlLexer {
         let opener = text.character(at: cursor + 2)
         guard !isWhitespace(opener) else { return nil }
         let closer = alternativeQuoteCloser(for: opener)
-        cursor += 3
+        // A delimiter outside the BMP is a surrogate pair: the literal closes at both units followed by the quote.
+        var closerTrail: UInt16?
+        if UTF16.isLeadSurrogate(opener), cursor + 3 < length, UTF16.isTrailSurrogate(text.character(at: cursor + 3)) {
+            closerTrail = text.character(at: cursor + 3)
+        }
+        let closerLength = closerTrail == nil ? 1 : 2
+        cursor += 2 + closerLength
+        let bodyStart = cursor
         var newlines = 0
         while cursor < length {
             let character = text.character(at: cursor)
             if character == newline {
                 newlines += 1
             }
-            if character == closer, cursor + 1 < length, text.character(at: cursor + 1) == singleQuote {
-                return Span(next: cursor + 2, newlines: newlines)
+            let quote = cursor + closerLength
+            if character == closer, quote < length, text.character(at: quote) == singleQuote,
+               closerTrail == nil || text.character(at: cursor + 1) == closerTrail {
+                return (bodyStart, cursor, Span(next: quote + 1, newlines: newlines))
             }
             cursor += 1
         }
-        return Span(next: length, newlines: newlines, isClosed: false)
+        return (bodyStart, length, Span(next: length, newlines: newlines, isClosed: false))
     }
 
     private static func alternativeQuoteCloser(for opener: UInt16) -> UInt16 {
@@ -224,11 +243,13 @@ public enum SqlLexer {
     }
 
     /// Whether `--` at `offset` starts a comment. MySQL and MariaDB read `--` as a comment only when a space or a
-    /// control character follows it, measured on 8.4 and 11.8 as `SELECT 1--1` returning 2.
+    /// control character follows it, measured on 8.4 and 11.8 as `SELECT 1--1` returning 2. Both ask `my_iscntrl`,
+    /// which answers yes for U+007F as it does for everything below the space.
     public static func startsDashComment(_ text: NSString, at offset: Int, length: Int, needsWhitespace: Bool) -> Bool {
         guard startsLineComment(text, at: offset, length: length) else { return false }
         guard needsWhitespace, offset + 2 < length else { return true }
-        return text.character(at: offset + 2) <= space
+        let next = text.character(at: offset + 2)
+        return next <= space || next == delete
     }
 
     /// Whether `//` starts at `offset`.
@@ -241,12 +262,14 @@ public enum SqlLexer {
         _ text: NSString,
         from offset: Int,
         length: Int,
-        carriageReturnEnds: Bool
+        carriageReturnEnds: Bool,
+        formFeedEnds: Bool
     ) -> Int {
         var cursor = min(offset, length)
         while cursor < length {
             let character = text.character(at: cursor)
-            if character == newline || (carriageReturnEnds && character == carriageReturn) {
+            if character == newline || (carriageReturnEnds && character == carriageReturn)
+                || (formFeedEnds && character == formFeed) {
                 return cursor
             }
             cursor += 1
@@ -297,6 +320,33 @@ public enum SqlLexer {
         return Span(next: length, newlines: newlines, isClosed: false)
     }
 
+    /// Runs past a SurrealQL `⟨...⟩` identifier, which the first `⟩` a backslash does not escape ends. A doubled `⟩`
+    /// escapes nothing.
+    public static func skipAngleQuotedIdentifier(
+        _ text: NSString,
+        from offset: Int,
+        length: Int,
+        backslashEscapes: Bool
+    ) -> Span {
+        var cursor = offset + 1
+        var newlines = 0
+        while cursor < length {
+            let character = text.character(at: cursor)
+            if character == newline {
+                newlines += 1
+            }
+            if backslashEscapes, character == backslash, cursor + 1 < length {
+                cursor += 2
+                continue
+            }
+            if character == closeAngleQuote {
+                return Span(next: cursor + 1, newlines: newlines)
+            }
+            cursor += 1
+        }
+        return Span(next: length, newlines: newlines, isClosed: false)
+    }
+
     /// Whether three of `quote` start at `offset`, which opens a GoogleSQL triple-quoted literal.
     public static func startsTripleQuote(_ text: NSString, at offset: Int, length: Int) -> Bool {
         let quote = text.character(at: offset)
@@ -338,9 +388,14 @@ public enum SqlLexer {
     /// SQLite's tokenizer takes everything from the `(` to the first `)` or whitespace as part of the name, quotes
     /// and semicolons included, so `$a('); DROP TABLE t; --'` is the parameter `$a(')` followed by a `DROP` the server
     /// runs, measured on 3.54 for all four prefixes. A name that meets whitespace first is an illegal token, which ends
-    /// where the whitespace starts. `::` continues a name, as in `$a::b(...)`.
+    /// where the whitespace starts. Whitespace is what `sqlite3Isspace` answers for: any other control character but
+    /// U+0000, where SQLite stops reading, is one more character of the name, so `$a(\u{01}')` is a whole parameter.
+    /// `::` continues a name, as in `$a::b(...)`. A `$` inside a word starts no parameter: `a$b(` is the name `a$b`
+    /// and a `(`.
     public static func skipParenthesizedParameterName(_ text: NSString, at offset: Int, length: Int) -> Span? {
-        guard parameterPrefixes.contains(text.character(at: offset)) else { return nil }
+        guard parameterPrefixes.contains(text.character(at: offset)), !continuesSQLiteWord(text, at: offset) else {
+            return nil
+        }
         var cursor = offset + 1
         while cursor < length {
             let character = text.character(at: cursor)
@@ -358,7 +413,7 @@ public enum SqlLexer {
             if character == closeParen {
                 return Span(next: cursor + 1, newlines: 0)
             }
-            if character <= space {
+            if character == 0 || isSQLiteSpace(character) {
                 return Span(next: cursor, newlines: 0, isClosed: false)
             }
             cursor += 1
@@ -366,6 +421,26 @@ public enum SqlLexer {
         return Span(next: length, newlines: 0, isClosed: false)
     }
 
+    /// Whether the prefix at `offset` is a `$` inside a word SQLite is already reading. `$` is one of its identifier
+    /// characters; `@`, `:` and `#` are not, and always start a token.
+    ///
+    /// A byte order mark is white space where a token could start and an identifier character inside a word, and `?1`
+    /// ends at its last digit, so a `$` after either one starts a token. Measured on 3.46.
+    private static func continuesSQLiteWord(_ text: NSString, at offset: Int) -> Bool {
+        guard text.character(at: offset) == SqlDollarQuote.dollar else { return false }
+        var cursor = offset
+        while cursor > 0, text.character(at: cursor - 1) == byteOrderMark {
+            cursor -= 1
+        }
+        guard cursor > 0, isSQLiteIdentifierCharacter(text.character(at: cursor - 1)) else { return false }
+        while cursor > 0, isDigit(text.character(at: cursor - 1)) {
+            cursor -= 1
+        }
+        return cursor == 0 || text.character(at: cursor - 1) != questionMark
+    }
+
+    private static let byteOrderMark: UInt16 = 0xFEFF
+    private static let questionMark = UInt16(UnicodeScalar("?").value)
     private static let capitalM = UInt16(UnicodeScalar("M").value)
     private static let digitZero = UInt16(UnicodeScalar("0").value)
     private static let digitNine = UInt16(UnicodeScalar("9").value)
@@ -384,5 +459,10 @@ public enum SqlLexer {
     /// SQLite's `IdChar`: ASCII letters, digits, `_`, `$`, and every unit from 0x80 up.
     private static func isSQLiteIdentifierCharacter(_ character: UInt16) -> Bool {
         SqlDollarQuote.isIdentifierPart(character) || character == SqlDollarQuote.dollar || character >= 0x80
+    }
+
+    /// SQLite's `sqlite3Isspace`: a space and U+0009 to U+000D, and no other control character.
+    private static func isSQLiteSpace(_ character: UInt16) -> Bool {
+        character == space || (character >= tab && character <= carriageReturn)
     }
 }

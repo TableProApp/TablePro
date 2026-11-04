@@ -258,7 +258,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH"
+                    binaryLengthFunction: "OCTET_LENGTH",
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -329,7 +330,8 @@ extension PluginMetadataRegistry {
                     supportsDatabaseTriggerBrowse: true,
                     defaultSSLMode: .preferred,
                     browsingRequiresSelectedDatabase: true,
-                    binaryLengthFunction: "OCTET_LENGTH"
+                    binaryLengthFunction: "OCTET_LENGTH",
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -406,7 +408,8 @@ extension PluginMetadataRegistry {
                     supportsRoutines: true,
                     supportsDatabaseTriggerBrowse: true,
                     supportsUserDefinedTypeBrowse: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -544,7 +547,8 @@ extension PluginMetadataRegistry {
                     supportsCheckConstraints: true,
                     supportsCheckConstraintEditing: false,
                     supportsGeneratedColumns: true,
-                    defaultSSLMode: .preferred
+                    defaultSSLMode: .preferred,
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -614,7 +618,8 @@ extension PluginMetadataRegistry {
                     supportsGeneratedColumns: true,
                     supportsUserDefinedTypeBrowse: true,
                     defaultSSLMode: .disabled,
-                    supportsConnectionPooling: false
+                    supportsConnectionPooling: false,
+                    readOnlyEnforcement: .sessionDefault
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -683,7 +688,8 @@ extension PluginMetadataRegistry {
                     localFilePathField: .database,
                     newDatabaseFileExtensions: Self.sqliteFileExtensions,
                     supportsRemoteDatabaseFile: true,
-                    supportsRemoteDatabaseSession: true
+                    supportsRemoteDatabaseSession: true,
+                    readOnlyEnforcement: .engineEnforced
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -717,6 +723,7 @@ extension PluginMetadataRegistry {
         return defaults + mysqlVariantDefaults(
             dialect: mysqlDialect, mysqlColumnTypes: mysqlColumnTypes, idleReleaseField: mysqlIdleReleaseField
         ) + defaults.filter { $0.typeId == "PostgreSQL" }.flatMap { kingbaseESDefaults(postgreSQL: $0.snapshot) }
+            + starRocksDefaults(dialect: mysqlDialect, idleReleaseField: mysqlIdleReleaseField)
     }
 }
 
@@ -755,7 +762,8 @@ private extension SQLDialectDescriptor {
             textCastTypeName: textCastTypeName,
             functionNamesAreCaseInsensitive: vocabulary.functionNamesAreCaseInsensitive,
             lexicalFeatures: lexicalFeatures,
-            typeNamesAreCaseInsensitive: typeNamesAreCaseInsensitive
+            typeNamesAreCaseInsensitive: typeNamesAreCaseInsensitive,
+            likePatternByteLimit: likePatternByteLimit
         )
     }
 }

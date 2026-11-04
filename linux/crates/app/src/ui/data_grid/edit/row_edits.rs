@@ -25,7 +25,9 @@ impl EditController {
         };
         grid.commit_editors();
         let tracked = self.tracked();
-        let next = tracked.with_value(row, column, |value, default| toggled(value, default, storage));
+        let next = tracked.with_value(row, column, |value, computed| {
+            toggled(value, computed.is_some(), storage)
+        });
         let start = edit_start(&tracked, row, column);
         self.commit_input(grid, &grid_column, &start, CellInput::Value(next));
     }
@@ -49,7 +51,7 @@ impl EditController {
         let Some(catalog) = grid_column.catalog.as_ref() else {
             return;
         };
-        let presets = cell_presets(&grid_column, &row.id());
+        let presets = cell_presets(&grid_column, &row.id(), grid.sql_dialect().as_deref());
         let input = match preset {
             CellPreset::Empty => {
                 parse_edit_text("", catalog, edit_context(&row.id())).map_err(|error| edit_parse_message(&error))

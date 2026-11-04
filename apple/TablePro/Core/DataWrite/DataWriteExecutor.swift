@@ -98,16 +98,13 @@ struct DataWritePartialCommitError: LocalizedError {
 enum DataWriteExecutor {
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "DataWriteExecutor")
 
-    /// Runs every step of the plan against one driver, and returns what each one actually did.
-    ///
-    /// The prologue runs before the transaction opens and the epilogue after it closes, on both
-    /// the commit and the rollback path. The rollback and the epilogue are part of the same lease
-    /// as the statements: resolving a driver again afterwards can reach a handle that has already
-    /// been released, or one sitting on another database.
+    // The rollback and the epilogue share the statements' lease: resolving a driver again can reach a released
+    // handle or another database. `context` is what an external caller's approval covered.
     nonisolated static func run(
         _ plan: DataWritePlan,
         mode: PluginTransactionAccessMode = .readWrite,
-        on driver: DatabaseDriver
+        on driver: DatabaseDriver,
+        context: PluginStatementContext? = nil
     ) async throws -> DataWriteRun {
         let steps = plan.steps.filter { !$0.statement.sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !steps.isEmpty || !plan.prologue.isEmpty else { return DataWriteRun(results: [], sideStatements: []) }
@@ -135,7 +132,7 @@ enum DataWriteExecutor {
                     sideStatements.append(statement)
                 } catch {
                     logger.warning(
-                        "Epilogue statement failed '\(statement, privacy: .public)': \(error.publicLogShape, privacy: .public)"
+                        "Epilogue statement failed '\(statement, privacy: .private)': \(error.publicLogShape, privacy: .public)"
                     )
                 }
             }
@@ -148,7 +145,7 @@ enum DataWriteExecutor {
                 sideStatements.append(statement)
             } catch {
                 logger.warning(
-                    "Prologue statement failed '\(statement, privacy: .public)': \(error.publicLogShape, privacy: .public)"
+                    "Prologue statement failed '\(statement, privacy: .private)': \(error.publicLogShape, privacy: .public)"
                 )
                 guard !plan.prologueIsRequired else {
                     await drainEpilogue()
@@ -183,12 +180,21 @@ enum DataWriteExecutor {
                     }
                 }
                 let result: QueryResult
-                if statement.parameters.isEmpty {
+                switch (statement.parameters.isEmpty, context) {
+                case (true, nil):
                     result = try await driver.execute(query: statement.sql)
-                } else {
+                case (true, let context?):
+                    result = try await driver.execute(query: statement.sql, context: context)
+                case (false, nil):
                     result = try await driver.executeParameterized(
                         query: statement.sql,
                         parameters: statement.parameters
+                    )
+                case (false, let context?):
+                    result = try await driver.executeParameterized(
+                        query: statement.sql,
+                        parameters: statement.parameters,
+                        context: context
                     )
                 }
 
@@ -289,13 +295,16 @@ enum DataWriteExecutor {
         logger.error(
             "Lookup on '\(table, privacy: .private(mask: .hash))' found \(rows.count, privacy: .public) rows, expected \(lookup.rowCount, privacy: .public)"
         )
-        throw DataWriteError.changeRefused(
-            table: table,
-            kind: step.rowKind,
-            reason: rows.count < lookup.rowCount
-                ? String(localized: "No row holds the values it was loaded with. Another client may have changed or deleted it.")
-                : String(localized: "Other rows hold exactly the same values, so the change cannot reach this row alone.")
-        )
+        let reason: String
+        if lookup.rowCount == 0 {
+            // A lookup that expects no row is an insert checking its key is free.
+            reason = String(localized: "A row with this key already exists, so the insert would not add one.")
+        } else if rows.count < lookup.rowCount {
+            reason = String(localized: "No row holds the values it was loaded with. Another client may have changed or deleted it.")
+        } else {
+            reason = String(localized: "Other rows hold exactly the same values, so the change cannot reach this row alone.")
+        }
+        throw DataWriteError.changeRefused(table: table, kind: step.rowKind, reason: reason)
     }
 
     // The row may have moved between the lookup and the write, or another row may now hold its old values, so a save

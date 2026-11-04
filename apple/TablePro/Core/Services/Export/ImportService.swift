@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLGrammar
 
 // MARK: - Import State
 
@@ -23,6 +24,9 @@ struct ImportState {
     var fileCount: Int = 0
     var fileIndex: Int = 0
     var fileName: String = ""
+    // A row import counts rows through the statement counter.
+    var countsRows = false
+    var totalIsEstimate = true
 }
 
 // MARK: - Import Service
@@ -36,19 +40,32 @@ final class ImportService: ObservableObject {
     private let connection: DatabaseConnection
     private let historyRecorder: QueryHistoryRecording
     private let gate: ExecutionGate
+    private let runningWork: RunningWorkRegistry
     @Published private var currentProgress: PluginImportProgress?
-    /// A Stop pressed before a file's progress exists, while a table is created or between two files, which
-    /// cancelling the progress alone would drop. A service runs one import, so it is never reset.
+    // A Stop before a file's progress exists, while a table is created or between two files. Never reset.
     private var isStopRequested = false
 
     init(
         connection: DatabaseConnection,
         historyRecorder: QueryHistoryRecording = QueryHistoryManager.shared,
-        gate: ExecutionGate = ExecutionGateProvider.shared
+        gate: ExecutionGate = ExecutionGateProvider.shared,
+        runningWork: RunningWorkRegistry = .shared
     ) {
         self.connection = connection
         self.historyRecorder = historyRecorder
         self.gate = gate
+        self.runningWork = runningWork
+    }
+
+    private func beginRunningWork(named subject: String) -> UUID {
+        runningWork.begin(
+            .dataImport,
+            subject: subject,
+            connectionName: connection.name,
+            connectionIds: [connection.id]
+        ) { [weak self] in
+            self?.cancelImport()
+        }
     }
 
     // MARK: - Cancellation
@@ -60,9 +77,7 @@ final class ImportService: ObservableObject {
 
     // MARK: - Public API
 
-    /// `sourceName` names the history row when the file is a copy the app wrote under a generated
-    /// name, so history shows the file the user imported. `authorization` is a grant the caller
-    /// already got from the gate in this run, so one import asks once.
+    // `sourceName` names history for a copy the app wrote; `authorization` is a grant this run already has.
     func importFile(
         from url: URL,
         sourceName: String? = nil,
@@ -83,31 +98,36 @@ final class ImportService: ObservableObject {
         }
 
         let route = DatabaseManager.shared.executionRoute(for: scope)
+        let historyName = sourceName ?? url.lastPathComponent
 
         state = ImportState(isImporting: true)
+        state.fileName = historyName
+        state.countsRows = targetTable != nil
+        state.totalIsEstimate = knownStatementCount == nil
+        let workId = beginRunningWork(named: historyName)
         defer {
             state.isImporting = false
             currentProgress = nil
+            runningWork.end(workId)
         }
 
+        let sqlSource = type(of: plugin).requiresTargetTable ? nil : SqlFileImportSource(
+            url: url,
+            encoding: encoding,
+            family: TransactionEngineFamily.of(connection.type),
+            decompressedURL: decompressedURL,
+            ownsDecompressedFile: ownsDecompressedFile
+        )
         let source: any PluginImportSource
-        if type(of: plugin).requiresTargetTable {
-            source = PlainFileImportSource(url: decompressedURL ?? url)
+        if let sqlSource {
+            source = sqlSource
         } else {
-            source = SqlFileImportSource(
-                url: url,
-                encoding: encoding,
-                grammar: SQLLexicalResolver.executionGrammar(for: connection.type, connectionId: connection.id),
-                family: TransactionEngineFamily.of(connection.type),
-                decompressedURL: decompressedURL,
-                ownsDecompressedFile: ownsDecompressedFile
-            )
+            source = PlainFileImportSource(url: decompressedURL ?? url)
         }
         defer { source.cleanup() }
         guard !isStopRequested else { throw PluginImportCancellationError() }
 
-        let historyName = sourceName ?? url.lastPathComponent
-        /// After the source exists, so a refusal still removes the decompressed copy it was handed.
+        // After the source exists, so a refusal still removes the decompressed copy it was handed.
         try await authorizeRun(named: historyName, given: authorization)
         let initialTotal = Int64(knownStatementCount ?? 0)
         let nsProgress = Progress(totalUnitCount: initialTotal)
@@ -135,7 +155,8 @@ final class ImportService: ObservableObject {
                 workload: .bulk,
                 cancellation: .protectedWrite
             ) { driver in
-                try await self.runImport(
+                sqlSource?.readsGrammar(from: Self.sessionGrammar(of: driver))
+                return try await self.runImport(
                     plugin: plugin,
                     driver: driver,
                     source: source,
@@ -248,9 +269,12 @@ final class ImportService: ObservableObject {
         let route = DatabaseManager.shared.executionRoute(for: scope)
         state = ImportState(isImporting: true)
         state.fileCount = files.count
+        state.countsRows = true
+        let workId = beginRunningWork(named: Self.batchName(fileCount: files.count))
         defer {
             state.isImporting = false
             currentProgress = nil
+            runningWork.end(workId)
         }
         guard !isStopRequested else {
             return RowImportBatchReport(
@@ -492,6 +516,12 @@ final class ImportService: ObservableObject {
             )
         )
         if let denial = decision.denialError { throw denial }
+    }
+
+    // Read before each statement from the leased session, whose sql_mode the file's own statements change.
+    nonisolated private static func sessionGrammar(of driver: DatabaseDriver) -> @Sendable () -> SQLLexicalGrammar {
+        let databaseType = driver.connection.type
+        return { SQLLexicalResolver.readings(for: databaseType, session: driver.sessionLexicalState).execution }
     }
 
     /// The sink is built here rather than before the lease so it cannot outlive the driver it

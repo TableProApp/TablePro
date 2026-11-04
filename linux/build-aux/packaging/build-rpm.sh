@@ -26,7 +26,7 @@ dnf install -y --setopt=install_weak_deps=False rpm-build rpmlint glibc-langpack
 # Outside SPECS, where rpmbuild --rebuild removes the spec it unpacks, so
 # rpmlint still has this one to read.
 spec="$top/tablepro.spec"
-tar -xOf "$1" "$name/build-aux/rpm/tablepro.spec" > "$spec"
+tar -xOf "$1" "$name/linux/build-aux/rpm/tablepro.spec" > "$spec"
 rpmbuild --define "_topdir $top" -bs "$spec"
 srpm="$(find "$top/SRPMS" -name '*.src.rpm')"
 

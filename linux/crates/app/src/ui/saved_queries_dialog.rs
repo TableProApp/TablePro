@@ -329,21 +329,7 @@ impl SavedQueriesDialog {
         let sender_for_activate = sender.clone();
         row.connect_activated(move |_| sender_for_activate.deliver(SavedQueriesDialogInput::Activate(id)));
 
-        let menu = gio::Menu::new();
-        let open_section = gio::Menu::new();
-        open_section.append(Some(&crate::i18n::gettext("Open in New Tab")), Some("saved.open"));
-        open_section.append(
-            Some(&crate::i18n::gettext("Replace Current Tab")),
-            Some("saved.replace"),
-        );
-        open_section.append(Some(&crate::i18n::gettext("Copy SQL")), Some("saved.copy"));
-        menu.append_section(None, &open_section);
-        let edit_section = gio::Menu::new();
-        edit_section.append(Some(&crate::i18n::gettext("Rename…")), Some("saved.rename"));
-        menu.append_section(None, &edit_section);
-        let danger_section = gio::Menu::new();
-        danger_section.append(Some(&crate::i18n::gettext("Delete")), Some("saved.delete"));
-        menu.append_section(None, &danger_section);
+        let menu = row_menu();
 
         let actions = gio::SimpleActionGroup::new();
         let entry = |name: &str, message: fn(i64) -> SavedQueriesDialogInput, sender: ComponentSender<Self>| {
@@ -480,6 +466,25 @@ fn matches(saved: &SavedQuery, needle: &str) -> bool {
         || saved.connection_name.to_lowercase().contains(needle)
 }
 
+fn row_menu() -> gio::Menu {
+    let menu = gio::Menu::new();
+    let open_section = gio::Menu::new();
+    open_section.append(Some(&crate::i18n::gettext("_Open in New Tab")), Some("saved.open"));
+    open_section.append(
+        Some(&crate::i18n::gettext("_Replace Current Tab")),
+        Some("saved.replace"),
+    );
+    open_section.append(Some(&crate::i18n::gettext("_Copy SQL")), Some("saved.copy"));
+    menu.append_section(None, &open_section);
+    let edit_section = gio::Menu::new();
+    edit_section.append(Some(&crate::i18n::gettext("Re_name…")), Some("saved.rename"));
+    menu.append_section(None, &edit_section);
+    let danger_section = gio::Menu::new();
+    danger_section.append(Some(&crate::i18n::gettext("_Delete")), Some("saved.delete"));
+    menu.append_section(None, &danger_section);
+    menu
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -570,6 +575,11 @@ mod tests {
         assert!(matches(&query, "orders"));
         assert!(matches(&query, "staging"));
         assert!(!matches(&query, "invoices"));
+    }
+
+    #[test]
+    fn every_row_menu_item_has_an_access_key_of_its_own() {
+        crate::test_support::assert_access_keys(&row_menu());
     }
 
     #[test]

@@ -82,6 +82,42 @@ extension DatabaseConnection {
         firstHostListEntry.map { HostListEndpoint.usesHTTPS($0.text) } ?? false
     }
 
+    // The driver's TLS runs through a loopback port the tunnel forwards, so the certificate names the server behind it.
+    var dialsTunnelTCPForward: Bool {
+        switch activeTunnelKind {
+        case .ssh: return sshForwardUnixSocketPath == nil
+        case .cloudflare, .socksProxy, .tunnelCommand: return true
+        case .cloudSQLProxy, .remoteFile, .remoteDatabaseSession, nil: return false
+        }
+    }
+
+    // A server on a Unix socket refuses every TLS request, and the Cloud SQL Auth Proxy listens in plaintext and does
+    // its own mTLS, so both forwards run without TLS. A TCP forward keeps the mode and the CA, and an https:// node
+    // left on Disabled verifies as its direct dial does.
+    func sslConfigurationThroughTunnel(listenerSecuresTransport: Bool) -> SSLConfiguration {
+        var ssl = sslConfig
+        if listenerSecuresTransport {
+            ssl.mode = .disabled
+            ssl.caCertificatePath = ""
+            ssl.clientCertificatePath = ""
+            ssl.clientKeyPath = ""
+        } else if !ssl.isEnabled, tunnelForwardUsesHTTPS {
+            ssl.mode = .verifyIdentity
+        }
+        return ssl
+    }
+
+    var tunneledServerName: String? {
+        DriverConnectionConfig(
+            host: host,
+            port: port,
+            username: username,
+            password: "",
+            database: database,
+            additionalFields: additionalFields
+        ).tunneledServerName
+    }
+
     var hostListEndpoints: [HostListEndpoint] {
         hostListEntries.map(\.endpoint)
     }

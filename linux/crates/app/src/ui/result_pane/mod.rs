@@ -10,8 +10,8 @@ use std::rc::Rc;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::runtime::Tasks;
-use tablepro_storage::AppSettings;
 
 pub(crate) use self::result_limit_banner::ResultLimitBanner;
 pub(crate) use self::result_set_view::ResultSetView;

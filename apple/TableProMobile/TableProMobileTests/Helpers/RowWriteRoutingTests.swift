@@ -28,7 +28,7 @@ struct RowWriteRoutingTests {
     }
 
     private func session(_ plugin: StubPluginDriver, identity: RowIdentity = .everyColumn) -> ConnectionSession {
-        let driver = PluginBackedDriver(plugin: plugin, dialedHosts: [], rowIdentity: identity, readsOnly: { _ in true })
+        let driver = PluginRowWritingDriver(plugin: plugin, dialedHosts: [], rowIdentity: identity, readsOnly: { _ in true })
         return ConnectionSession(connectionId: UUID(), driver: driver, activeDatabase: "default")
     }
 
@@ -145,7 +145,7 @@ struct RowWriteRoutingTests {
     func changeIsPinnedToTheRowItFound() async throws {
         let plugin = StubPluginDriver()
         plugin.rowCounts = [1]
-        let driver = PluginBackedDriver(plugin: plugin, dialedHosts: [], rowIdentity: .everyColumn, readsOnly: { _ in true })
+        let driver = PluginRowWritingDriver(plugin: plugin, dialedHosts: [], rowIdentity: .everyColumn, readsOnly: { _ in true })
         let writes = try driver.updateWrites(
             table: "events", schema: nil, columns: ["id", "name"], originalRow: ["1", "signup"],
             changes: [(column: "name", value: "purchase")]
@@ -354,7 +354,7 @@ struct RowWriteRoutingTests {
     @Test("An insert on an engine that writes its own rows goes to its writer, leaving out what the row leaves out")
     func insertGoesToTheWriter() throws {
         let plugin = StubPluginDriver()
-        let driver = PluginBackedDriver(plugin: plugin, dialedHosts: [], rowIdentity: .everyColumn, readsOnly: { _ in true })
+        let driver = PluginRowWritingDriver(plugin: plugin, dialedHosts: [], rowIdentity: .everyColumn, readsOnly: { _ in true })
 
         let batch = try #require(try RowInsertPlanner.batch(
             table: "events",
@@ -370,6 +370,42 @@ struct RowWriteRoutingTests {
             return
         }
         #expect(writes.map(\.statement) == ["WRITE insert events"])
-        #expect(plugin.generatedInserts[0] == [.text(PluginBackedDriver.defaultSentinel), "x"])
+        #expect(plugin.generatedInserts[0] == [.text(PluginRowWritingDriver.defaultSentinel), "x"])
+    }
+
+    // D1's plugin generates no row writes; behind a row writer every edit failed with "cannot write this change".
+    @Test("A D1 edit, delete and insert become SQLite statements keyed on the primary key")
+    func cloudflareD1WritesAreSQL() throws {
+        let driver = CloudflareD1BackedDriver(d1: CloudflareD1PluginDriver(config: DriverConnectionConfig(
+            host: "", port: 0, username: "", password: "token", database: "app"
+        )))
+        let details = [
+            ColumnInfo(name: "id", typeName: "INTEGER", isPrimaryKey: true, isNullable: false, ordinalPosition: 0),
+            ColumnInfo(name: "name", typeName: "TEXT", ordinalPosition: 1)
+        ]
+        let locator = RowLocator(row: ["1", "signup"], keyValues: [(column: "id", value: "1")])
+
+        let update = try RowWriteBatch.update(
+            table: "events", schema: nil, type: .cloudflareD1, driver: driver, columns: ["id", "name"],
+            columnDetails: details, locator: locator, changes: [(column: "name", value: "it's")]
+        )
+        let delete = try RowWriteBatch.delete(
+            table: "events", schema: nil, type: .cloudflareD1, driver: driver, columns: ["id", "name"],
+            columnDetails: details, locator: locator
+        )
+        let insert = try RowInsertPlanner.batch(
+            table: "events", schema: nil, type: .cloudflareD1, driver: driver, columns: details,
+            rows: [PayloadRow(values: ["name": .text("x")])]
+        )
+
+        for batch in [update, delete, insert] {
+            guard case .sql = batch else {
+                Issue.record("a D1 write should be SQL, not the driver's own writes")
+                return
+            }
+        }
+        #expect(update?.statements == [#"UPDATE "events" SET "name" = 'it''s' WHERE "id" = 1"#])
+        #expect(delete?.statements == [#"DELETE FROM "events" WHERE "id" = 1"#])
+        #expect(insert?.statements == [#"INSERT INTO "events" ("name") VALUES ('x')"#])
     }
 }

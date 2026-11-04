@@ -43,8 +43,9 @@ public enum SqlBlockStructure {
 
     /// The keywords that follow `END` when it closes a construct nothing here opened.
     ///
-    /// `END CASE` is absent on purpose: `CASE` opens a block, so its `END` has to close one, and ``endingFollowedBy(_:)``
-    /// gives it its own answer so the `CASE` after it is not read as a second opener.
+    /// `END CASE` is absent on purpose: `CASE` opens a block, so its `END` has to close one, and
+    /// ``endingFollowedBy(_:closesCaseExpression:)`` gives it its own answer so the `CASE` after it is not read as a
+    /// second opener.
     private static let controlFlowFollowers: Set<String> = ["IF", "LOOP", "WHILE", "FOR", "REPEAT"]
 
     /// The keywords a statement has to open with before a `BEGIN` inside it is read as a routine body.
@@ -56,20 +57,53 @@ public enum SqlBlockStructure {
     /// so a swallowed `DROP` would be tiered a plain write and skip the destructive confirmation. Folding cannot
     /// execute anything, so it takes every block. Oracle, whose anonymous blocks are the everyday form, has its own
     /// grammar in ``PLSQLUnitTracker`` and a classifier that reads the whole block.
-    private static let routineDefinitionOpeners: Set<String> = ["CREATE", "ALTER", "REPLACE", "DECLARE"]
+    private static let routineDefinitionOpeners: Set<String> = ["CREATE", "ALTER", "REPLACE"]
 
-    /// Whether a statement opening with `keyword` can carry a `BEGIN ... END` body.
+    /// What such a statement has to define, for the same reason. `BEGIN` is not reserved on PostgreSQL, MySQL or
+    /// SQLite, so `CREATE TABLE begin (a int)` is a table, and a block its name opened would swallow every statement
+    /// after it.
+    private static let routineKinds: Set<String> = [
+        "PROCEDURE", "PROC", "FUNCTION", "TRIGGER", "EVENT", "PACKAGE", "TYPE", "CLASS", "LIBRARY", "TASK", "ALERT",
+    ]
+
+    /// The words between the opener and the kind. Any other word there is the kind of something that holds no body.
+    private static let routineKindFillers: Set<String> = [
+        "OR", "REPLACE", "ALTER", "EDITIONABLE", "NONEDITIONABLE", "AGGREGATE", "TEMP", "TEMPORARY", "GLOBAL", "PUBLIC",
+        "SECURE", "CURRENT_USER", "CONSTRAINT",
+    ]
+
+    /// The words between the kind and the name of what is defined.
+    private static let routineNameFillers: Set<String> = ["IF", "NOT", "EXISTS", "BODY"]
+
     public static func opensRoutineDefinition(_ keyword: String) -> Bool {
         routineDefinitionOpeners.contains(keyword)
     }
 
-    public static func opensBlockBody(_ keyword: String, grammar: SQLLexicalGrammar) -> Bool {
-        if grammar.contains(.sqlScriptBlocks), keyword == sqlScriptAnonymousBlockOpener {
-            return true
-        }
-        return opensRoutineDefinition(keyword)
+    // Where the only body is a routine's or a trigger's there is no declaration block, and PostgreSQL's `DECLARE`
+    // names a cursor.
+    public static func opensDeclarations(_ keyword: String, grammar: SQLLexicalGrammar) -> Bool {
+        keyword == declarationOpener && !grammar.hasSingleBodyForm
     }
 
+    public static func opensAnonymousBlock(_ keyword: String, grammar: SQLLexicalGrammar) -> Bool {
+        grammar.contains(.sqlScriptBlocks) && keyword == sqlScriptAnonymousBlockOpener
+    }
+
+    public static func isRoutineKind(_ keyword: String, grammar: SQLLexicalGrammar) -> Bool {
+        if grammar.contains(.atomicRoutineBodies) { return keyword == "FUNCTION" || keyword == "PROCEDURE" }
+        if grammar.contains(.triggerBodies) { return keyword == "TRIGGER" }
+        return routineKinds.contains(keyword)
+    }
+
+    public static func precedesRoutineKind(_ keyword: String) -> Bool {
+        routineKindFillers.contains(keyword)
+    }
+
+    public static func precedesRoutineName(_ keyword: String) -> Bool {
+        routineNameFillers.contains(keyword)
+    }
+
+    private static let declarationOpener = "DECLARE"
     private static let sqlScriptAnonymousBlockOpener = "DO"
 
     public static func beginStartsTransaction(followedBy keyword: String?) -> Bool {
@@ -77,8 +111,16 @@ public enum SqlBlockStructure {
         return transactionFollowers.contains(keyword)
     }
 
-    public static func endingFollowedBy(_ keyword: String) -> EndFollower {
+    /// What an `END` followed by `keyword` closes.
+    ///
+    /// - Parameter closesCaseExpression: whether a `CASE` is open that has held no `;`. Only the statement form can
+    ///   hold one, and every `IF`, `LOOP`, `WHILE`, `FOR` and `REPEAT` holds one before its own `END`, so this `END` is
+    ///   the expression's whatever follows it: `loop` names the column in `CASE ... END loop`, and
+    ///   `CASE ... END FOR UPDATE` carries on with the query. Read as `END LOOP`, the `CASE` would never close and
+    ///   would swallow every statement after its own, which is the danger recorded on `routineDefinitionOpeners`.
+    public static func endingFollowedBy(_ keyword: String, closesCaseExpression: Bool) -> EndFollower {
         if keyword == "CASE" { return .closesCaseStatement }
+        guard !closesCaseExpression else { return .closesBlock }
         return controlFlowFollowers.contains(keyword) ? .closesControlFlow : .closesBlock
     }
 
@@ -94,6 +136,9 @@ public enum SqlBlockStructure {
     ///
     /// Oracle continues an identifier with `$` and `#`, so `V$SESSION` is one word, and starts a conditional
     /// compilation directive with `$`, so `$END` is one word that ``PLSQLUnitTracker`` can tell apart from `END`.
+    ///
+    /// A word glued to a name unit before or after it is a piece of a longer name, as `upper$case`, `écase` and
+    /// `@case` are, so the whole name comes back and never reads as a keyword.
     public static func readKeyword(
         _ text: NSString,
         at offset: Int,
@@ -103,13 +148,48 @@ public enum SqlBlockStructure {
         guard offset < length, startsWord(text, at: offset, length: length, grammar: grammar) else {
             return ("", offset + 1)
         }
+        var start = offset
+        if offset > 0, gluesNameAfter(text.character(at: offset - 1), grammar: grammar) {
+            start = offset - 1
+        }
         var cursor = offset + 1
-        while cursor < length, continuesWord(text.character(at: cursor), grammar: grammar) {
+        while cursor < length {
+            let unit = text.character(at: cursor)
+            guard continuesWord(unit, grammar: grammar) || continuesName(unit, grammar: grammar) else { break }
             cursor += 1
         }
-        let word = text.substring(with: NSRange(location: offset, length: cursor - offset))
-        return (word.uppercased(), cursor)
+        let word = text.substring(with: NSRange(location: start, length: cursor - start))
+        // Only an ASCII spelling can be a keyword: uppercased, `caſe` would read as `CASE`.
+        return (word.utf16.allSatisfy { $0 < 0x80 } ? word.uppercased() : word, cursor)
     }
+
+    // `$` and a non-ASCII letter continue a name on every engine that takes them in one; `#` and `@` only where the
+    // grammar says so.
+    private static func continuesName(_ unit: UInt16, grammar: SQLLexicalGrammar) -> Bool {
+        if unit == SqlDollarQuote.dollar { return true }
+        if unit >= 0x80 { return isNonASCIINameUnit(unit) }
+        if unit == SqlLexer.hash {
+            return !grammar.isDisjoint(with: [.dollarAndHashInIdentifiers, .hashAndAtInIdentifiers])
+        }
+        return unit == at && grammar.contains(.hashAndAtInIdentifiers)
+    }
+
+    // A name or a variable continues across these, so a word right after one is not a keyword. `@` starts a variable
+    // on MySQL and T-SQL. `:` is absent: MySQL writes `label:BEGIN`.
+    private static func gluesNameAfter(_ unit: UInt16, grammar: SQLLexicalGrammar) -> Bool {
+        unit == at || continuesName(unit, grammar: grammar)
+    }
+
+    // SurrealQL's `⟨` and `⟩` quote a name rather than continue one, and a unit the scanner skips as blank, such as a
+    // byte order mark, separates words.
+    private static func isNonASCIINameUnit(_ unit: UInt16) -> Bool {
+        guard unit != SqlLexer.openAngleQuote, unit != SqlLexer.closeAngleQuote, SQLNonCodeSpan.isWordUnit(unit) else {
+            return false
+        }
+        return UnicodeScalar(unit).map { !StatementBlank.isBlank($0) } ?? true
+    }
+
+    private static let at = UInt16(UnicodeScalar("@").value)
 
     public static func startsWord(_ text: NSString, at offset: Int, length: Int, grammar: SQLLexicalGrammar) -> Bool {
         let character = text.character(at: offset)
@@ -183,6 +263,7 @@ public enum SqlBlockStructure {
         return beginStartsTransaction(followedBy: readKeyword(text, at: cursor, length: length).text)
     }
 
+    /// Goes by the word after the `END` alone: only folding asks, and it keeps no record of which `CASE` is open.
     private static func endEffect(
         after offset: Int,
         in text: NSString,
@@ -192,7 +273,7 @@ public enum SqlBlockStructure {
         let cursor = skipTrivia(from: offset, in: text, length: length, grammar: grammar)
         guard cursor < length else { return .closesBlock(resumeAt: offset) }
         let follower = readKeyword(text, at: cursor, length: length)
-        switch endingFollowedBy(follower.text) {
+        switch endingFollowedBy(follower.text, closesCaseExpression: false) {
         case .closesControlFlow:
             return .none
         case .closesCaseStatement:

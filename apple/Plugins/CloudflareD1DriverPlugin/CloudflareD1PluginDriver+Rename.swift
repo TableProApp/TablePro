@@ -6,7 +6,7 @@
 import Foundation
 import TableProPluginKit
 
-extension CloudflareD1PluginDriver {
+nonisolated extension CloudflareD1PluginDriver {
     /// SQLite's rules, and SQLite's one rename: `ALTER TABLE` refuses a view. A D1 database is an
     /// API object whose edit endpoint accepts only read replication, so its name cannot change.
     func renameTable(name: String, schema: String?, to newName: String, objectType: String) async throws {

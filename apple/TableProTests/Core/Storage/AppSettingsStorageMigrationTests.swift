@@ -2,7 +2,7 @@
 //  AppSettingsStorageMigrationTests.swift
 //  TableProTests
 //
-//  Tests the one-time startup-behavior migration to "Reopen Last Session".
+//  Tests the startup-behavior migration and the retired inspector field heights.
 //
 
 import Foundation
@@ -67,39 +67,38 @@ struct AppSettingsStorageMigrationTests {
         #expect(storage.loadGeneral().startupBehavior == .showWelcome)
     }
 
-    private let legacyJsonHeightKey = "rightSidebar.jsonFieldHeight"
+    private let retiredFieldHeightKeys = [
+        "rightSidebar.jsonFieldHeight",
+        "com.TablePro.rightSidebar.jsonFieldHeight",
+        "com.TablePro.rightSidebar.textFieldHeight",
+        "com.TablePro.rightSidebar.geometryFieldHeight",
+        "com.TablePro.settings.didMigrateJsonFieldHeightKey",
+    ]
 
-    @Test("A saved legacy JSON field height moves to the namespaced key")
-    func migratesLegacyJsonFieldHeight() {
+    @Test("The per-kind field heights an older build saved are removed")
+    func removesRetiredFieldHeights() {
         let (storage, defaults, suite) = makeStorage()
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        defaults.set(320.0, forKey: legacyJsonHeightKey)
-        storage.migrateJsonFieldHeightKeyIfNeeded()
+        for key in retiredFieldHeightKeys {
+            defaults.set(320.0, forKey: key)
+        }
+        storage.removeRetiredFieldHeightKeys()
 
-        #expect(defaults.double(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name) == 320.0)
-        #expect(defaults.object(forKey: legacyJsonHeightKey) == nil)
+        for key in retiredFieldHeightKeys {
+            #expect(defaults.object(forKey: key) == nil, "\(key) survived")
+        }
     }
 
-    @Test("A fresh install writes no JSON field height key")
-    func skipsJsonFieldHeightOnFreshInstall() {
+    @Test("Removing the per-kind heights leaves the per-column ones")
+    func keepsPerColumnFieldHeights() {
         let (storage, defaults, suite) = makeStorage()
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        storage.migrateJsonFieldHeightKeyIfNeeded()
+        let saved = Data("[]".utf8)
+        defaults.set(saved, forKey: PreferenceKeys.rowInspectorFieldHeights.name)
+        storage.removeRetiredFieldHeightKeys()
 
-        #expect(defaults.object(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name) == nil)
-    }
-
-    @Test("An existing namespaced JSON field height is not overwritten")
-    func leavesNamespacedJsonFieldHeight() {
-        let (storage, defaults, suite) = makeStorage()
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        defaults.set(200.0, forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name)
-        defaults.set(320.0, forKey: legacyJsonHeightKey)
-        storage.migrateJsonFieldHeightKeyIfNeeded()
-
-        #expect(defaults.double(forKey: PreferenceKeys.rowInspectorJsonFieldHeight.name) == 200.0)
+        #expect(defaults.data(forKey: PreferenceKeys.rowInspectorFieldHeights.name) == saved)
     }
 }

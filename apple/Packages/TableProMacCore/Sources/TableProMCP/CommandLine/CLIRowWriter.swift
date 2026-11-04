@@ -1,4 +1,5 @@
 import Foundation
+import TableProCoreTypes
 
 public struct CLIResultSet: Sendable, Equatable {
     public let columns: [String]
@@ -78,9 +79,10 @@ public enum CLIRowWriter {
     // NULL is an empty field and an empty string is "", so the two stay apart.
     static func csvField(_ value: JsonValue) -> String {
         guard let text = text(of: value) else { return "" }
-        let needsQuotes = text.isEmpty || text.contains(where: { $0 == "," || $0 == "\"" || $0.isNewline })
+        let needsQuotes = text.isEmpty
+            || text.unicodeScalars.contains { $0 == "," || $0 == "\"" || CharacterSet.newlines.contains($0) }
         guard needsQuotes else { return text }
-        return "\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        return "\"" + text.replacingOccurrences(of: "\"", with: "\"\"", options: .literal) + "\""
     }
 
     static func tsvField(_ value: JsonValue) -> String {
@@ -128,17 +130,10 @@ public enum CLIRowWriter {
 
     // `SELECT 1 AS a, 2 AS a` would otherwise give an object whose second key replaces the first.
     static func uniqueKeys(_ columns: [String]) -> [String] {
-        var taken = Set<String>()
-        return columns.map { column in
-            var candidate = column
-            var suffix = 2
-            while taken.contains(candidate) {
-                candidate = "\(column)_\(suffix)"
-                suffix += 1
-            }
-            taken.insert(candidate)
-            return candidate
-        }
+        var keys = UniqueNameAllocator(candidate: { column, ordinal in
+            ordinal == 1 ? column : "\(column)_\(ordinal)"
+        })
+        return columns.map { keys.allocate($0) }
     }
 
     private static func jsonLiteral(_ value: JsonValue) -> String {

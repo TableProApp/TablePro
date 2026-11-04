@@ -341,11 +341,9 @@ struct QuickSwitcherPanelContent: View {
 
         if item.isOpenInTab, !isSelected {
             Text(String(localized: "Open"))
-                .font(.caption2.weight(.medium))
+                .font(.caption2)
                 .foregroundStyle(secondaryColor)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(Capsule().fill(Color(nsColor: .quaternaryFill)))
+                .lineLimit(1)
         }
 
         if showsSubtitle(for: item, isSelected: isSelected) {

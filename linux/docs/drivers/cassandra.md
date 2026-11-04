@@ -1,6 +1,6 @@
 # Cassandra and ScyllaDB
 
-Driver id `cassandra`, crate `crates/drivers/cassandra`, shown as "Cassandra / ScyllaDB". It speaks the CQL native protocol through the `scylla` crate 1.9 with its default features off and `rustls-023` on, with the driver's own rustls config. The integration suite runs against Apache Cassandra 5.0 and ScyllaDB 2026.1, and CI runs it again on Cassandra 4.0 and ScyllaDB 2025.1 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `cassandra`, crate `core/crates/drivers/cassandra`, shown as "Cassandra / ScyllaDB". It speaks the CQL native protocol through the `scylla` crate 1.9 with its default features off and `rustls-023` on, with the driver's own rustls config. The integration suite runs against Apache Cassandra 5.0 and ScyllaDB 2026.1, and CI runs it again on Cassandra 4.0 and ScyllaDB 2025.1 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 The default port is 9042. With TLS on, use the port the server encrypts: 9042 when it takes TLS only, 9142 when it keeps a separate TLS port.
 
@@ -24,7 +24,7 @@ The session names itself to the server as TablePro with the app's version. The u
 
 ## TLS
 
-- `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../ARCHITECTURE.md#trust)) and checks the certificate against `NetworkTarget::tls_server_name()`. scylla hands rustls the relay's address, so the driver's verifier checks the configured name instead (`tablepro_net::tls::FixedNameVerifier`). `Require` encrypts without checking the certificate.
+- `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)) and checks the certificate against `NetworkTarget::tls_server_name()`. scylla hands rustls the relay's address, so the driver's verifier checks the configured name instead (`tablepro_net::tls::FixedNameVerifier`). `Require` encrypts without checking the certificate.
 - A client certificate is sent when one is set. Both servers ask every client for one or none (`require_client_auth`), and still log the role in by its password.
 
 ## Read-only

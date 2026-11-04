@@ -3,6 +3,7 @@ import TableProAutocomplete
 import TableProDatabase
 import TableProModels
 import TableProSQLGrammar
+import TableProSQLQuoting
 
 nonisolated struct QueryCompletionScope: Equatable, Sendable {
     let connectionId: UUID
@@ -386,14 +387,25 @@ final class QueryCompletionController {
                     caret: token.location + insertion.cursorOffset
                 )
             }
-            let closeText = text.substring(with: NSRange(location: close, length: 1))
-            let name = item.label.replacingOccurrences(of: closeText, with: closeText + closeText)
+            let name = quotedBody(item.label, closer: text.character(at: close), databaseType: answer.databaseType)
             let inner = NSRange(location: quoted.open + 1, length: close - quoted.open - 1)
             return QueryCompletionEdit(range: inner, text: name, caret: inner.location + (name as NSString).length + 1)
         }
         // An opening quote with no close of its own is overwritten by the quoted name, so it is never left doubled.
         let typed = NSRange(location: quoted.open, length: NSMaxRange(answer.range) - quoted.open)
         return QueryCompletionEdit(range: typed, text: insertion.text, caret: typed.location + insertion.cursorOffset)
+    }
+
+    // The name as it reads between the quotes the user typed, escaped the way the engine reads that quote.
+    private static func quotedBody(_ name: String, closer: unichar, databaseType: DatabaseType) -> String {
+        let quote: SQLIdentifierQuote = switch closer {
+        case UInt16(UnicodeScalar("`").value): .backtick
+        case UInt16(UnicodeScalar("]").value): .bracket
+        default: .doubleQuote
+        }
+        let grammar = SQLLexicalReadings.resolve(databaseTypeId: databaseType.rawValue, declared: nil, session: nil).execution
+        let quoted = SQLQuoting.identifier(name, quote: quote, backslashEscapes: grammar.backslashEscapes(in: quote))
+        return String(String.UnicodeScalarView(quoted.unicodeScalars.dropFirst().dropLast()))
     }
 
     private static func keywordEdit(

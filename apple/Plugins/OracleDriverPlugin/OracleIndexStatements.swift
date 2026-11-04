@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 /// The indexes an Oracle dump has to recreate, and the `CREATE INDEX` that recreates them.
 ///
@@ -12,20 +13,14 @@ import Foundation
 /// them would have left an Oracle dump with no uniqueness anywhere, so a restore would accept
 /// duplicate rows the source rejected.
 internal enum OracleIndexStatements {
-    /// `INDEX_TYPE` is restricted to `NORMAL` and `BITMAP`. A function-based index keeps its key in
-    /// `ALL_IND_EXPRESSIONS.COLUMN_EXPRESSION`, whose datatype is `LONG`, the datatype this driver
-    /// already avoids reading because OracleNIO cannot decode it. Such an index would come back
-    /// carrying its `SYS_NC` shadow column instead of its expression, so it is left out of the dump
-    /// rather than written wrong.
+    // NORMAL and BITMAP only: a function-based index keeps its key in a LONG column OracleNIO cannot decode.
     internal static func query(schema: String, table: String) -> String {
-        let owner = schema.replacingOccurrences(of: "'", with: "''")
-        let tableName = table.replacingOccurrences(of: "'", with: "''")
-        return """
+        """
             SELECT i.INDEX_NAME, i.UNIQUENESS, i.INDEX_TYPE, ic.COLUMN_NAME, ic.DESCEND
             FROM SYS.ALL_INDEXES i
             JOIN SYS.ALL_IND_COLUMNS ic ON i.INDEX_NAME = ic.INDEX_NAME AND i.OWNER = ic.INDEX_OWNER
-            WHERE i.TABLE_NAME = '\(tableName)'
-              AND i.OWNER = '\(owner)'
+            WHERE i.TABLE_NAME = \(SQLQuoting.stringLiteral(table))
+              AND i.OWNER = \(SQLQuoting.stringLiteral(schema))
               AND i.INDEX_TYPE IN ('NORMAL', 'BITMAP')
             ORDER BY i.INDEX_NAME, ic.COLUMN_POSITION
             """

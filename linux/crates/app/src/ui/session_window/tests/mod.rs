@@ -1,5 +1,6 @@
 mod notification;
 mod open_file;
+mod other_databases;
 mod sessions;
 
 use std::rc::Rc;
@@ -247,7 +248,7 @@ fn init_gtk() {
 fn remember_window_size(settings: &MemorySettings, (width, height): (i32, i32)) {
     settings
         .get()
-        .set_window_geometry(tablepro_storage::WindowGeometry {
+        .set_window_geometry(tablepro_linux_platform::WindowGeometry {
             width,
             height,
             maximized: false,
@@ -341,11 +342,13 @@ pub(crate) fn saved_connection(database: &std::path::Path) -> SavedConnection {
         safe_mode: tablepro_core::SafeModeLevel::Off,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
+        query_timeout_secs: None,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
         color: None,
-        group: None,
+        group_id: None,
+        order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
@@ -366,11 +369,13 @@ fn network_connection() -> SavedConnection {
         safe_mode: tablepro_core::SafeModeLevel::Off,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
+        query_timeout_secs: None,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
         color: None,
-        group: None,
+        group_id: None,
+        order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),

@@ -210,6 +210,7 @@ struct ConnectionStorageImportTests {
         #expect(replaced.passwordSource == .command(shell: "pass show db"))
         #expect(replaced.externalAccess == .blocked)
         #expect(replaced.sortOrder == storedOrder)
+        #expect(replaced.origin == .imported)
     }
 
     @Test("A replace keeps the SSH route this Mac dialed, which a file never carries")
@@ -229,6 +230,36 @@ struct ConnectionStorageImportTests {
 
         storage.invalidateCache()
         #expect(storage.loadConnection(id: stored.id)?.sshRoute == stored.sshRoute)
+    }
+
+    @Test("A replace keeps the row's own sign-in, scripts and unknown fields, which a saved import never carries")
+    func replaceKeepsTheStoredSignIn() throws {
+        let storage = try makeStorage()
+        let stored = DatabaseConnection(
+            name: "Reports",
+            type: .postgresql,
+            additionalFields: [
+                "awsAuth": "profile",
+                "awsProfileName": "prod",
+                "awsRegion": "us-east-1",
+                "preConnectScript": "op signin",
+                "zzzFutureSetting": "kept"
+            ]
+        )
+        #expect(storage.addConnection(stored))
+
+        let incoming = DatabaseConnection(
+            id: stored.id,
+            name: "Reports, from the file",
+            type: .postgresql,
+            additionalFields: ["awsRegion": "us-east-1"]
+        )
+        _ = storage.applyImport(adding: [], replacing: [incoming])
+
+        storage.invalidateCache()
+        let replaced = try #require(storage.loadConnection(id: stored.id))
+        #expect(replaced.name == "Reports, from the file")
+        #expect(replaced.additionalFields == stored.additionalFields)
     }
 
     @Test("A replace that changes group goes to the end of the new group")

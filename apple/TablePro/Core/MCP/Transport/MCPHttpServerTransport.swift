@@ -12,6 +12,17 @@ public enum MCPHttpServerState: Sendable, Equatable {
 }
 
 public actor MCPHttpServerTransport {
+    // Each listener has its own connection cap, so connections held open over TCP never refuse the socket.
+    private enum Listener {
+        case tcp
+        case unixSocket
+    }
+
+    private struct OpenConnection {
+        let context: HttpConnectionContext
+        let listener: Listener
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCP.HttpServer")
     private static let readyTimeout: Duration = .seconds(15)
     private static let exchangeBufferSize = 1_024
@@ -20,9 +31,11 @@ public actor MCPHttpServerTransport {
     private let authenticator: any MCPAuthenticator
     private let pairingService: MCPPairingService
     private let clock: any MCPClock
+    private let allowedSocketPeerUid: uid_t
 
     private var listener: NWListener?
-    private var connections: [UUID: HttpConnectionContext] = [:]
+    private var socketListener: MCPUnixSocketListener?
+    private var connections: [UUID: OpenConnection] = [:]
     private var readyContinuation: CheckedContinuation<Void, Error>?
     private var readyTimeoutTask: Task<Void, Never>?
     private var currentState: MCPHttpServerState = .idle
@@ -38,12 +51,14 @@ public actor MCPHttpServerTransport {
         configuration: MCPHttpServerConfiguration,
         authenticator: any MCPAuthenticator,
         pairingService: MCPPairingService,
-        clock: any MCPClock = MCPSystemClock()
+        clock: any MCPClock = MCPSystemClock(),
+        allowedSocketPeerUid: uid_t = getuid()
     ) {
         self.configuration = configuration
         self.authenticator = authenticator
         self.pairingService = pairingService
         self.clock = clock
+        self.allowedSocketPeerUid = allowedSocketPeerUid
 
         let (exchanges, exchangesContinuation) = AsyncStream<MCPInboundExchange>.makeStream(
             bufferingPolicy: .bufferingOldest(Self.exchangeBufferSize)
@@ -113,6 +128,28 @@ public actor MCPHttpServerTransport {
             listener = nil
             throw MCPHttpServerError.bindFailed(reason: error.localizedDescription)
         }
+
+        do {
+            try startSocketListener()
+        } catch {
+            Self.logger.error("MCP Unix socket listener failed: \(error.publicLogShape, privacy: .public)")
+            emitState(.failed(reason: error.localizedDescription))
+            throw MCPHttpServerError.bindFailed(reason: error.localizedDescription)
+        }
+    }
+
+    private func startSocketListener() throws {
+        guard let path = configuration.socketPath else { return }
+        let socketListener = MCPUnixSocketListener(path: path, allowedPeerUid: allowedSocketPeerUid) { [weak self] connection in
+            guard let self else {
+                connection.cancel()
+                return
+            }
+            Task { await self.handleNewStream(connection, from: .unixSocket) }
+        }
+        try socketListener.start()
+        self.socketListener = socketListener
+        Self.logger.info("MCP server listening on its Unix socket")
     }
 
     public func stop() async {
@@ -120,8 +157,11 @@ public actor MCPHttpServerTransport {
 
         resumeReady(with: .failure(MCPHttpServerError.bindFailed(reason: "stop() called before listener ready")))
 
-        for (_, context) in connections {
-            await context.close()
+        socketListener?.stop()
+        socketListener = nil
+
+        for connection in connections.values {
+            await connection.context.close()
         }
         connections.removeAll()
 
@@ -195,20 +235,25 @@ public actor MCPHttpServerTransport {
     }
 
     private func handleNewConnection(_ connection: NWConnection) async {
+        await handleNewStream(MCPNetworkByteStream(connection: connection), from: .tcp)
+    }
+
+    private func handleNewStream(_ stream: any MCPByteStream, from listener: Listener) async {
         let connectionId = UUID()
         let context = HttpConnectionContext(
             id: connectionId,
-            connection: connection,
+            stream: stream,
             limits: configuration.limits
         )
 
-        guard connections.count < configuration.limits.maxConcurrentConnections else {
+        let openOnListener = connections.values.filter { $0.listener == listener }.count
+        guard openOnListener < configuration.limits.maxConcurrentConnections else {
             Self.logger.warning("Refusing connection \(connectionId, privacy: .public): connection limit reached")
             await context.rejectOverCapacity()
             return
         }
 
-        connections[connectionId] = context
+        connections[connectionId] = OpenConnection(context: context, listener: listener)
         let router = makeRouter()
         await context.start { [weak self] request in
             guard let self else { return }
@@ -223,7 +268,7 @@ public actor MCPHttpServerTransport {
         request: HttpParsedRequest,
         router: MCPHttpRequestRouter
     ) async {
-        guard let context = connections[connectionId] else { return }
+        guard let context = connections[connectionId]?.context else { return }
         await router.dispatch(request: request, context: context)
     }
 

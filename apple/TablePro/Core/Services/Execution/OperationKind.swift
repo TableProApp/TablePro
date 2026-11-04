@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 
 internal enum OperationKind: Sendable, Equatable {
     case readQuery

@@ -1,12 +1,13 @@
 import Foundation
 import os
+import TableProLogRedaction
 import TableProModels
 
 extension ConnectionFormViewModel {
     private static let certificateLogger = Logger(subsystem: "com.TablePro", category: "ConnectionFormViewModel")
 
     var usesCertificateSection: Bool {
-        !isFileBased && type != .oracle && type != .mssql
+        hasNetworkTransport && type != .oracle && type != .mssql
     }
 
     var showsCertificateRows: Bool {
@@ -94,7 +95,7 @@ extension ConnectionFormViewModel {
                 pendingCertificates[role] = nil
             } catch {
                 Self.certificateLogger.error(
-                    "Failed to store the \(role.rawValue, privacy: .public) certificate: \(error.localizedDescription, privacy: .public)"
+                    "Failed to store the \(role.rawValue, privacy: .public) certificate: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)"
                 )
                 storedEvery = false
             }

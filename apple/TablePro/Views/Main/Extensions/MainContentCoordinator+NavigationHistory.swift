@@ -122,7 +122,7 @@ extension MainContentCoordinator {
             return
         }
         navigationHistories[tabId] = history
-        navigationHistoryLogger.debug("navigated to \(entry.tableName, privacy: .public)")
+        navigationHistoryLogger.debug("navigated to \(entry.tableName, privacy: .private(mask: .hash))")
     }
 
     // Follows `reuseActiveTab`'s sequence, but loads the recorded filters, sort and page instead of the table's saved defaults.

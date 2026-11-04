@@ -350,6 +350,11 @@ private struct AccountOfflineSection: View {
 
                     refreshButton
                 }
+
+                // The last check still holds, so no notice above names a Refresh that just failed.
+                if LicensePresentation.checkFailureMessage(model.access.state.refresh) != nil {
+                    LicenseCheckFailureLine()
+                }
             } else if content.canRefresh {
                 HStack {
                     Text("Not verified yet")
@@ -507,10 +512,10 @@ private struct AccountNoticeRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(title)
+                Text(notice.title)
                     .font(.headline)
 
-                Text(message)
+                Text(notice.message)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
@@ -523,58 +528,6 @@ private struct AccountNoticeRow: View {
         .padding(.vertical, 2)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("account-notice-\(notice.id)")
-    }
-
-    private var title: String {
-        switch notice {
-        case .deviceLimit:
-            return String(localized: "Device limit reached")
-        case .paymentProblem:
-            return String(localized: "Payment problem")
-        case .canceling:
-            return String(localized: "Your plan is canceling")
-        case .expiringSoon(_, true):
-            return String(localized: "Your offline file expires soon")
-        case .expiringSoon:
-            return String(localized: "Verify your plan soon")
-        case .expired(_, true):
-            return String(localized: "Your offline file has expired")
-        case .expired, .verificationFailed:
-            return String(localized: "Your plan could not be verified")
-        }
-    }
-
-    private var message: String {
-        switch notice {
-        case .deviceLimit:
-            return String(localized: "Your plan is in use on 3 other devices. Remove one to use it on this Mac. Until then, TablePro works on the Free plan here.")
-        case .paymentProblem(let plan):
-            if plan.billing == nil {
-                return String(format: String(localized: "The last payment for %@ (%@) failed. The team's owner can update the payment method."), plan.title, plan.owner)
-            }
-            return String(format: String(localized: "The last payment for %@ failed. Update your payment method to keep your plan."), plan.title)
-        case .canceling(let plan, let endsAt):
-            guard let endsAt else {
-                return String(format: String(localized: "%@ does not renew."), plan.title)
-            }
-            return String(
-                format: String(localized: "%@ ends on %@ and does not renew."),
-                plan.title,
-                endsAt.formatted(date: .abbreviated, time: .omitted)
-            )
-        case .expiringSoon(let expiresAt, let isOfflineFile):
-            let date = expiresAt.formatted(date: .abbreviated, time: .shortened)
-            return isOfflineFile
-                ? String(format: String(localized: "It expires on %@. Create a new one in your account and import it."), date)
-                : String(format: String(localized: "TablePro has not reached the server for a while. Connect to the internet before %@ to keep your paid features."), date)
-        case .expired(let at, let isOfflineFile):
-            let date = at.formatted(date: .abbreviated, time: .omitted)
-            return isOfflineFile
-                ? String(format: String(localized: "It expired on %@. Create a new one in your account and import it."), date)
-                : String(format: String(localized: "The last check expired on %@. Connect to the internet and refresh."), date)
-        case .verificationFailed(let message):
-            return message ?? String(localized: "Connect to the internet to verify your license.")
-        }
     }
 
     @ViewBuilder

@@ -42,6 +42,7 @@ final class ConnectionFormCoordinator: ObservableObject {
     @Published var customization: CustomizationPaneViewModel
     @Published var advanced: AdvancedPaneViewModel
     @Published var aiRules: AIRulesPaneViewModel
+    @Published var maskingRules: MaskingRulesPaneViewModel
 
     @Published var selectedTab: ConnectionFormTab = .general
     @Published var hasLoadedData: Bool = false
@@ -53,8 +54,6 @@ final class ConnectionFormCoordinator: ObservableObject {
     var testSucceeded: Bool { testResult?.succeeded == true }
     @Published var testTask: Task<Void, Never>?
 
-    @Published var isInstallingPlugin: Bool = false
-    @Published var pluginInstallError: String?
     @Published var pluginInstallConnection: DatabaseConnection?
     @Published var pluginDiagnostic: PluginDiagnosticItem?
 
@@ -129,6 +128,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         self.customization = CustomizationPaneViewModel()
         self.advanced = AdvancedPaneViewModel()
         self.aiRules = AIRulesPaneViewModel()
+        self.maskingRules = MaskingRulesPaneViewModel()
 
         let ref = WeakCoordinatorRef(self)
         network.coordinator = ref
@@ -143,6 +143,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         customization.coordinator = ref
         advanced.coordinator = ref
         aiRules.coordinator = ref
+        maskingRules.coordinator = ref
 
         childChangeForwarding = forwardChildChanges()
     }
@@ -167,6 +168,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             Self.changes(of: $customization),
             Self.changes(of: $advanced),
             Self.changes(of: $aiRules),
+            Self.changes(of: $maskingRules),
         ])
         .sink { [weak self] in self?.objectWillChange.send() }
     }
@@ -217,7 +219,7 @@ final class ConnectionFormCoordinator: ObservableObject {
            let existing = storage.loadConnections().first(where: { $0.id == id })
         {
             Self.logger.debug(
-                "[trace] load found existing id=\(existing.id.uuidString, privacy: .public) name='\(existing.name, privacy: .public)' promptForPassword=\(existing.promptForPassword)"
+                "[trace] load found existing id=\(existing.id.uuidString, privacy: .public) name='\(existing.name, privacy: .private(mask: .hash))' promptForPassword=\(existing.promptForPassword)"
             )
             originalConnection = existing
             network.load(from: existing)
@@ -231,6 +233,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             customization.load(from: existing)
             advanced.load(from: existing)
             aiRules.load(from: existing)
+            maskingRules.load(from: existing)
             normalizeTransport()
         }
         hasLoadedData = true
@@ -264,16 +267,11 @@ final class ConnectionFormCoordinator: ObservableObject {
             auth.resetForType(newType)
             advanced.resetForType(newType)
         }
-        /// Not `normalizeTransport()`: which transports exist and what they mean both change with
-        /// the type, and keeping the selection would turn a MySQL port forward into SQLite's
-        /// read-only file copy without saying so. The fields each transport holds are kept, so
-        /// re-picking costs nothing.
+        // Not normalizeTransport(): a kept MySQL port forward would silently become SQLite's read-only file copy.
         transport = nil
         if !visibleTabs.contains(selectedTab) {
             selectedTab = .general
         }
-        isInstallingPlugin = false
-        pluginInstallError = nil
     }
 
     func didChangePort() {
@@ -371,7 +369,8 @@ final class ConnectionFormCoordinator: ObservableObject {
                 ? nil : advanced.startupCommands,
             localOnly: advanced.localOnly,
             additionalFields: fields,
-            ownedAdditionalFieldIDs: ownedAdditionalFieldIDs()
+            ownedAdditionalFieldIDs: ownedAdditionalFieldIDs(),
+            maskingRules: maskingRules.savedRules
         )
     }
 
@@ -440,6 +439,11 @@ final class ConnectionFormCoordinator: ObservableObject {
                 storage.deletePluginSecureField(fieldId: field.id, for: finalId)
             }
             edits.additionalFields.removeValue(forKey: field.id)
+        }
+        // An installed plugin older than the field still must not leave the token in the record.
+        let sessionTokenId = ConnectionSecretOptions.mongoSessionTokenFieldId
+        if let token = edits.additionalFields.removeValue(forKey: sessionTokenId), !token.isEmpty {
+            storage.savePluginSecureField(token, fieldId: sessionTokenId, for: finalId)
         }
 
         var connectionToSave = edits.applied(to: baseConnection(id: finalId))
@@ -513,7 +517,7 @@ final class ConnectionFormCoordinator: ObservableObject {
                 return
             }
             clearedSecrets.forEach { $0() }
-            approveEditedExtensions(for: connectionToSave.id)
+            approveSavedDefinition(connectionToSave)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
@@ -539,12 +543,20 @@ final class ConnectionFormCoordinator: ObservableObject {
                 return
             }
             clearedSecrets.forEach { $0() }
-            approveEditedExtensions(for: connectionToSave.id)
+            approveSavedDefinition(connectionToSave)
             if !connectionToSave.localOnly {
                 services.syncTracker.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             dismissAction?()
             services.appEvents.connectionUpdated.send(connectionToSave.id)
+        }
+    }
+
+    // A save here is the person's word that the environment references and this Mac's sign-in go where the form shows.
+    private func approveSavedDefinition(_ connection: DatabaseConnection) {
+        approveEditedExtensions(for: connection.id)
+        for store in ConnectionApprovalStore.all {
+            store.approve(connection)
         }
     }
 
@@ -569,7 +581,7 @@ final class ConnectionFormCoordinator: ObservableObject {
 
     func handleConnectError(_ error: Error, connection: DatabaseConnection) {
         if error is CancellationError {
-            Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .public)")
+            Self.logger.info("Connection attempt cancelled for \(connection.name, privacy: .private(mask: .hash))")
             return
         }
 
@@ -693,6 +705,7 @@ final class ConnectionFormCoordinator: ObservableObject {
                     return
                 }
 
+                // No sign-in consent: the person is looking at the settings Test signs in with.
                 let result = try await services.databaseManager.testConnection(
                     testConn,
                     sshPassword: sshPasswordForTest,
@@ -749,8 +762,8 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
     }
 
-    /// Testing tears down first so the sheet never covers a running test, and the result is left
-    /// alone rather than marked failed: the credential was the problem, not the settings.
+    // The test tears down first so the sign-in sheet never covers a running one; a finished
+    // sign-in tests again, so the Test button reports the result in place.
     private func offerSignIn(
         _ provider: ConnectionSignInProvider,
         for error: Error,
@@ -762,11 +775,7 @@ final class ConnectionFormCoordinator: ObservableObject {
         isTesting = false
         testTask = nil
         guard await ConnectionSignInPrompt.offer(provider, for: error, fields: fields, window: window) else { return }
-        AlertHelper.showInfoSheet(
-            title: String(localized: "Signed In"),
-            message: provider.signedInMessage,
-            window: window
-        )
+        test()
     }
 
     private struct TunnelFormStates {
@@ -854,35 +863,6 @@ final class ConnectionFormCoordinator: ObservableObject {
         services.connectionStorage.deleteAllPluginSecureFields(for: testId, fieldIds: secureFieldIds)
         LoadableExtensionApprovalStore.shared.revoke(for: [testId])
         temporaryTestIds.remove(testId)
-    }
-
-    // MARK: - Plugin install
-
-    func installPlugin(for databaseType: DatabaseType) {
-        isInstallingPlugin = true
-        Task { [weak self, services] in
-            do {
-                try await services.pluginManager.installMissingPlugin(for: databaseType) { _ in }
-                await MainActor.run {
-                    guard let self else { return }
-                    if self.network.type == databaseType {
-                        for field in services.pluginManager.additionalConnectionFields(for: databaseType) {
-                            if self.targetValues(for: field.section)[field.id] == nil,
-                               let defaultValue = field.defaultValue
-                            {
-                                self.setFieldValue(defaultValue, fieldId: field.id, section: field.section)
-                            }
-                        }
-                    }
-                    self.isInstallingPlugin = false
-                }
-            } catch {
-                await MainActor.run {
-                    self?.pluginInstallError = error.localizedDescription
-                    self?.isInstallingPlugin = false
-                }
-            }
-        }
     }
 
     /// Every additional field value the form currently holds, across all three panes.
@@ -995,13 +975,30 @@ final class ConnectionFormCoordinator: ObservableObject {
             writeFieldByRegistry("mongoUseSrv", value: "true")
         }
         for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
-            switch key {
-            case "authMechanism":
+            switch key.lowercased() {
+            case "authmechanism":
                 writeFieldByRegistry("mongoAuthMechanism", value: value)
-            case "replicaSet":
+            case "replicaset":
                 writeFieldByRegistry("mongoReplicaSet", value: value)
-            case "uuidRepresentation":
+            case "uuidrepresentation":
                 writeFieldByRegistry("mongoUuidRepresentation", value: value)
+            // Secrets go to the Keychain through the SSL pane and a secure field, never into a plain option.
+            case "tlscertificatekeyfile", "sslclientcertificatekeyfile":
+                ssl.clientCertPath = value
+                ssl.clientKeyPath = value
+            case "tlscertificatekeyfilepassword", "sslclientcertificatekeypassword":
+                ssl.clientKeyPassphrase = value
+            case "authmechanismproperties":
+                let split = ConnectionSecretOptions.splitSessionToken(from: value)
+                if let remaining = split.remaining {
+                    writeFieldByRegistry("mongoParam_\(key)", value: remaining)
+                }
+                if let token = split.sessionToken {
+                    writeFieldByRegistry(ConnectionSecretOptions.mongoSessionTokenFieldId, value: token)
+                }
+            case "proxypassword":
+                // libmongoc has no proxy options, so the password would only sit in the record.
+                continue
             default:
                 writeFieldByRegistry("mongoParam_\(key)", value: value)
             }

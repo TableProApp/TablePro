@@ -20,6 +20,9 @@ const PRIORITY: i32 = 100;
 pub struct SqlCompletionProvider {
     pub deps: OnceCell<ProviderDeps>,
     pub home: std::cell::RefCell<super::catalog_read::CatalogHome>,
+    /// The session the window holds for the tab's database, whose catalog
+    /// is that database's own.
+    pub catalog_session: std::cell::RefCell<Option<std::sync::Arc<tablepro_session::Session>>>,
 }
 
 #[glib::object_subclass]

@@ -2,22 +2,25 @@ import Foundation
 
 enum AppModule: String, CaseIterable, Sendable {
     case routineDebugger
+    case liveMessages
 
     var title: String {
         switch self {
         case .routineDebugger: String(localized: "Routine Debugger")
+        case .liveMessages: String(localized: "Live Messages")
         }
     }
 
     var summary: String {
         switch self {
         case .routineDebugger: String(localized: "Step through PL/pgSQL and PL/SQL routines with breakpoints.")
+        case .liveMessages: String(localized: "Watch PostgreSQL notifications, Redis channels and Kafka topics as messages arrive.")
         }
     }
 
     var defaultEnabled: Bool {
         switch self {
-        case .routineDebugger: false
+        case .routineDebugger, .liveMessages: false
         }
     }
 

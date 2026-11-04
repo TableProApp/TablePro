@@ -34,6 +34,10 @@ public struct CQLBatchTracker: SQLStatementBoundaryTracking {
         true
     }
 
+    public var holdsOpenBlock: Bool {
+        phase == .insideBatch || phase == .afterCloser
+    }
+
     public mutating func observeWord(_ word: String) {
         switch phase {
         case .start:

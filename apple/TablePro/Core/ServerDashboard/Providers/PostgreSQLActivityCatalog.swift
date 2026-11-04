@@ -63,45 +63,56 @@ enum PostgreSQLActivityCatalog: Equatable, Sendable {
         values.map { "'\($0)'" }.joined(separator: ", ")
     }
 
+    // The dashboard reads on the user's session, whose path may name another schema before pg_catalog, so every
+    // function, relation, type and operator here names pg_catalog. A CASE with an operand or an IN list would look its
+    // equality operator up on that path.
+    private static func isAny(_ column: String, of values: [String]) -> String {
+        "\(column) OPERATOR(pg_catalog.=) ANY (ARRAY[\(literalList(values))]::pg_catalog.text[])"
+    }
+
+    private static let duration =
+        "EXTRACT(EPOCH FROM (pg_catalog.now() OPERATOR(pg_catalog.-) query_start))::pg_catalog.int4 AS duration_secs"
+
     var sessionsQuery: String {
         switch self {
         case .current:
             return """
                 SELECT pid, usename, datname, state,
-                       EXTRACT(EPOCH FROM (now() - query_start))::int AS duration_secs,
-                       left(query, 1000) AS query
-                FROM pg_stat_activity
-                WHERE pid <> pg_backend_pid()
-                  AND backend_type = 'client backend'
+                       \(Self.duration),
+                       pg_catalog.left(query, 1000) AS query
+                FROM pg_catalog.pg_stat_activity
+                WHERE pid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()
+                  AND backend_type OPERATOR(pg_catalog.=) 'client backend'
                 ORDER BY query_start NULLS LAST
                 """
         case .withoutBackendType:
             return """
                 SELECT pid, usename, datname, state,
-                       EXTRACT(EPOCH FROM (now() - query_start))::int AS duration_secs,
-                       left(query, 1000) AS query
-                FROM pg_stat_activity
-                WHERE pid <> pg_backend_pid()
+                       \(Self.duration),
+                       pg_catalog.left(query, 1000) AS query
+                FROM pg_catalog.pg_stat_activity
+                WHERE pid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()
                 ORDER BY query_start NULLS LAST
                 """
         case .procpid:
             return """
                 SELECT procpid AS pid, usename, datname,
-                       CASE current_query
-                           WHEN '<IDLE>' THEN 'idle'
-                           WHEN '<IDLE> in transaction' THEN 'idle in transaction'
-                           WHEN '<IDLE> in transaction (aborted)' THEN 'idle in transaction (aborted)'
-                           WHEN '<command string not enabled>' THEN 'disabled'
-                           WHEN '<insufficient privilege>' THEN NULL
-                           WHEN '<command string not found>' THEN NULL
+                       CASE
+                           WHEN current_query OPERATOR(pg_catalog.=) '<IDLE>' THEN 'idle'
+                           WHEN current_query OPERATOR(pg_catalog.=) '<IDLE> in transaction' THEN 'idle in transaction'
+                           WHEN current_query OPERATOR(pg_catalog.=) '<IDLE> in transaction (aborted)'
+                               THEN 'idle in transaction (aborted)'
+                           WHEN current_query OPERATOR(pg_catalog.=) '<command string not enabled>' THEN 'disabled'
+                           WHEN current_query OPERATOR(pg_catalog.=) '<insufficient privilege>' THEN NULL
+                           WHEN current_query OPERATOR(pg_catalog.=) '<command string not found>' THEN NULL
                            ELSE 'active'
                        END AS state,
-                       EXTRACT(EPOCH FROM (now() - query_start))::int AS duration_secs,
-                       CASE WHEN current_query IN (\(Self.literalList(Self.idleSentinels))) THEN ''
-                            ELSE left(current_query, 1000)
+                       \(Self.duration),
+                       CASE WHEN \(Self.isAny("current_query", of: Self.idleSentinels)) THEN ''
+                            ELSE pg_catalog.left(current_query, 1000)
                        END AS query
-                FROM pg_stat_activity
-                WHERE procpid <> pg_backend_pid()
+                FROM pg_catalog.pg_stat_activity
+                WHERE procpid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()
                 ORDER BY query_start NULLS LAST
                 """
         }
@@ -110,9 +121,10 @@ enum PostgreSQLActivityCatalog: Equatable, Sendable {
     var connectionCountQuery: String {
         switch self {
         case .current:
-            return "SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend'"
+            return "SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity "
+                + "WHERE backend_type OPERATOR(pg_catalog.=) 'client backend'"
         case .withoutBackendType, .procpid:
-            return "SELECT count(*) FROM pg_stat_activity"
+            return "SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity"
         }
     }
 
@@ -120,14 +132,14 @@ enum PostgreSQLActivityCatalog: Equatable, Sendable {
         switch self {
         case .current, .withoutBackendType:
             return """
-                SELECT count(*) FROM pg_stat_activity
-                WHERE state = 'active' AND pid <> pg_backend_pid()
+                SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity
+                WHERE state OPERATOR(pg_catalog.=) 'active' AND pid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()
                 """
         case .procpid:
             return """
-                SELECT count(*) FROM pg_stat_activity
-                WHERE current_query NOT IN (\(Self.literalList(Self.hiddenSentinels)))
-                  AND procpid <> pg_backend_pid()
+                SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity
+                WHERE NOT \(Self.isAny("current_query", of: Self.hiddenSentinels))
+                  AND procpid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()
                 """
         }
     }
@@ -137,23 +149,23 @@ enum PostgreSQLActivityCatalog: Equatable, Sendable {
         case .current, .withoutBackendType:
             return """
                 SELECT pid, usename, datname,
-                       EXTRACT(EPOCH FROM (now() - query_start))::int AS duration_secs,
-                       left(query, 1000) AS query
-                FROM pg_stat_activity
-                WHERE state = 'active'
-                  AND now() - query_start > interval '1 second'
-                  AND pid <> pg_backend_pid()
+                       \(Self.duration),
+                       pg_catalog.left(query, 1000) AS query
+                FROM pg_catalog.pg_stat_activity
+                WHERE state OPERATOR(pg_catalog.=) 'active'
+                  AND (pg_catalog.now() OPERATOR(pg_catalog.-) query_start) OPERATOR(pg_catalog.>) INTERVAL '1 second'
+                  AND pid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()
                 ORDER BY query_start
                 """
         case .procpid:
             return """
                 SELECT procpid AS pid, usename, datname,
-                       EXTRACT(EPOCH FROM (now() - query_start))::int AS duration_secs,
-                       left(current_query, 1000) AS query
-                FROM pg_stat_activity
-                WHERE current_query NOT IN (\(Self.literalList(Self.hiddenSentinels)))
-                  AND now() - query_start > interval '1 second'
-                  AND procpid <> pg_backend_pid()
+                       \(Self.duration),
+                       pg_catalog.left(current_query, 1000) AS query
+                FROM pg_catalog.pg_stat_activity
+                WHERE NOT \(Self.isAny("current_query", of: Self.hiddenSentinels))
+                  AND (pg_catalog.now() OPERATOR(pg_catalog.-) query_start) OPERATOR(pg_catalog.>) INTERVAL '1 second'
+                  AND procpid OPERATOR(pg_catalog.<>) pg_catalog.pg_backend_pid()
                 ORDER BY query_start
                 """
         }

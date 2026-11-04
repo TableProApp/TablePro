@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 /// Where a scan reads from, and which end of the merged run is the page.
 struct KafkaScanWindow: Sendable {
@@ -103,11 +104,7 @@ enum KafkaBrowseEngine {
         return Set(requested).sorted()
     }
 
-    /// Resolves a start mode into one concrete window.
-    ///
-    /// `.resolved` and `.tail` short-circuit, and that is the point: the browse path bakes the
-    /// resolved window into the query string it hands back, so re-running it for page two reads
-    /// the same window rather than re-deriving "newest" against a tail that has since moved.
+    // `.resolved` and `.tail` come from the window baked into page one's query, so page two reads that window, not a moved tail.
     static func resolveWindow(
         _ query: KafkaConsumeQuery,
         partitions: [Int32],
@@ -140,7 +137,7 @@ enum KafkaBrowseEngine {
                 // an unknown floor, and anchoring it at zero would send the page to the start of
                 // a log whose first surviving message may be far past it.
                 guard let floor = earliest[partition] else { continue }
-                starts[partition] = max(floor, end - step)
+                starts[partition] = KafkaOffsetMath.stepBack(from: end, by: step, floor: floor)
             }
             return KafkaScanWindow(start: starts, tail: kept, readsBackward: true)
 
@@ -204,7 +201,7 @@ enum KafkaBrowseEngine {
             var starts: [Int32: Int64] = [:]
             var ends: [Int32: Int64] = [:]
             for bound in bounds {
-                starts[bound.partition] = max(bound.earliest, bound.latest - step)
+                starts[bound.partition] = KafkaOffsetMath.stepBack(from: bound.latest, by: step, floor: bound.earliest)
                 ends[bound.partition] = bound.latest
             }
             return KafkaScanWindow(start: starts, tail: ends, readsBackward: true)

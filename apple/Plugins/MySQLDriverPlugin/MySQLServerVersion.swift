@@ -46,7 +46,7 @@ nonisolated internal enum MySQLServerVersion {
             return isAtLeast((5, 7, 8), banner: banner)
         case .mariadb:
             return isAtLeast((10, 1, 1), banner: banner)
-        case .tidb, .oceanbase, .databend:
+        case .tidb, .oceanbase, .databend, .starrocks:
             return true
         }
     }
@@ -61,7 +61,7 @@ nonisolated internal enum MySQLServerVersion {
             return isAtLeast((10, 2, 0), banner: banner)
         case .tidb, .oceanbase:
             return true
-        case .databend:
+        case .databend, .starrocks:
             return false
         }
     }
@@ -99,6 +99,16 @@ nonisolated internal enum MySQLServerVersion {
     /// bare form, so a `SHOW` answer is never read this way whatever the server version.
     static func quotesColumnDefault(banner: String?, flavor: MySQLServerFlavor) -> Bool {
         flavor.isMariaDB && isAtLeast((10, 2, 7), banner: banner)
+    }
+
+    // A binary default arrives as its bytes from MySQL 5.7.44, MariaDB and OceanBase, and as `0x` hex from MySQL 8.0.11 to 8.4.13.
+    static func reportsBinaryDefaultAsHex(banner: String?, flavor: MySQLServerFlavor) -> Bool {
+        switch flavor {
+        case .mysql, .tidb, .starrocks:
+            return !isKnownBelow((8, 0, 0), banner: banner)
+        case .mariadb, .oceanbase, .databend:
+            return false
+        }
     }
 
     /// Whether a MariaDB default can be an expression other than `CURRENT_TIMESTAMP`, which MariaDB
@@ -190,7 +200,7 @@ nonisolated internal enum MySQLServerVersion {
         switch flavor {
         case .mysql, .mariadb:
             return isKnownBelow(target, banner: banner)
-        case .tidb, .oceanbase, .databend:
+        case .tidb, .oceanbase, .databend, .starrocks:
             return false
         }
     }

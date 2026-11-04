@@ -15,6 +15,8 @@ A query tab keeps its database, and its own editor session goes there. `EditorSe
 
 What the window shows of another database is a sibling session, `Session::open_in_database`: the same server and login, opened as a reconnect is. It joins the window with a workspace and a sidebar row of its own, from Open Database… on a connection's row, or when a tab moves to that database. Completion in a moved tab reads the sibling's catalog.
 
+The connection's open session owns its siblings, open or still opening. They take its Safe Mode level, and a level that needs a reconnect opens them again beside it. Its disconnect and its window's close take them through the same teardown, and a sibling still opening holds its claim there, so none outlives the connection or keeps its key.
+
 ## Rationale
 
 - **A tab keeps what it built.** A `USE` keeps the tab's temporary tables and settings. The database menu waits while the tab holds a transaction, so a move never rolls one back.
@@ -25,7 +27,8 @@ What the window shows of another database is a sibling session, `Session::open_i
 ## Consequences
 
 - A sibling opens with the stored secret and never prompts; one that cannot open says so in a toast and the tab still runs in its database.
-- The registry keys a sibling by its connection and database, so a database opens once per window. It goes when its connection disconnects.
+- The registry keys a sibling by its connection and database, so a database opens once per window.
+- Deleting a connection deletes its siblings' saved tabs and drafts, found by the connection's part of their names.
 - A tab names its database in its title when it is not the connection's.
 - The workspace record keeps a tab's database, and a restore reopens a connection's open databases beside it once it has joined.
 

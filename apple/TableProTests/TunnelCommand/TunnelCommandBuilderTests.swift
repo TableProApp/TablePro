@@ -177,10 +177,113 @@ struct TunnelCommandBuilderTests {
     func previewQuotesSpaces() throws {
         var config = TunnelCommandConfiguration()
         config.method = .custom
-        config.command = "forward --opt 'a b' {port}"
+        config.command = "forward --opt 'a b' '{port}'"
         let preview = try #require(TunnelCommandBuilder.previewCommand(
             for: config, remoteHost: "h", remotePort: 1
         ))
-        #expect(preview == "forward --opt 'a b' {port}")
+        #expect(preview == "forward --opt 'a b' '{port}'")
+    }
+
+    // The import confirmation shows this text: a bare right-to-left override would reorder what the
+    // reader sees, and a bare `;` would read as two commands.
+    @Test("the preview escapes an invisible character and quotes shell punctuation")
+    func previewEscapesWhatWouldMislead() throws {
+        let config = TunnelCommandConfiguration(method: .custom, command: "forward {port} \u{202E}lqs.exe a;id")
+        let preview = try #require(TunnelCommandBuilder.previewCommand(
+            for: config, remoteHost: "h", remotePort: 1
+        ))
+        #expect(preview == #"forward '{port}' $'\xE2\x80\xAElqs.exe' 'a;id'"#)
+    }
+
+    @Test("the preview still shows a host the launch would refuse, so the import can ask about it")
+    func previewShowsAnUnsafeHost() throws {
+        let config = TunnelCommandConfiguration(
+            method: .custom,
+            command: #"sh -c "ssh -N -L {port}:{host}:{remotePort} bastion""#
+        )
+        let preview = try #require(TunnelCommandBuilder.previewCommand(
+            for: config, remoteHost: "a;id", remotePort: 5_432
+        ))
+        #expect(preview == "sh -c 'ssh -N -L {port}:a;id:5432 bastion'")
+    }
+
+    @Test("a host that is not a DNS name or IP address never fills {host}", arguments: [
+        "a;id", "$(id)", "-oProxyCommand=x", "a b", "db\u{1FEF}id\u{1FEF}", "", "db.example.com\n", "a,b",
+    ])
+    func unsafeHostIsRefused(host: String) {
+        let config = TunnelCommandConfiguration(
+            method: .custom,
+            command: #"sh -c "ssh -N -L {port}:{host}:{remotePort} bastion""#
+        )
+        #expect(throws: TunnelCommandRefusal.hostNotAllowed(host)) {
+            _ = try TunnelCommandBuilder.invocation(for: config, localPort: 55_000, remoteHost: host, remotePort: 5_432)
+        }
+    }
+
+    @Test("a DNS name or IP literal fills {host}", arguments: [
+        "db.example.com", "10.0.0.5", "::1", "[::1]", "fe80::1%en0", "db_1.internal",
+    ])
+    func hostnameOrAddressFillsHost(host: String) throws {
+        let config = TunnelCommandConfiguration(method: .custom, command: "ssh -N -L {port}:{host}:{remotePort} bastion")
+        let invocation = try TunnelCommandBuilder.invocation(
+            for: config, localPort: 55_000, remoteHost: host, remotePort: 5_432
+        )
+        #expect(invocation.arguments == ["-N", "-L", "55000:\(host):5432", "bastion"])
+    }
+
+    // `.literal` substitution matches by code unit, so a mark after the brace does not hide the placeholder.
+    @Test("a placeholder a combining mark follows is still checked")
+    func placeholderBeforeACombiningMarkIsChecked() {
+        let config = TunnelCommandConfiguration(method: .custom, command: "forward {port} x{host}\u{301}")
+        #expect(throws: TunnelCommandRefusal.hostNotAllowed("a;id")) {
+            _ = try TunnelCommandBuilder.invocation(for: config, localPort: 1, remoteHost: "a;id", remotePort: 2)
+        }
+    }
+
+    @Test("a command without {host} runs whatever the host is")
+    func hostIsIgnoredWithoutThePlaceholder() throws {
+        let config = TunnelCommandConfiguration(method: .custom, command: "forward --listen {port}")
+        let invocation = try TunnelCommandBuilder.invocation(
+            for: config, localPort: 55_000, remoteHost: "a;id", remotePort: 5_432
+        )
+        #expect(invocation.arguments == ["--listen", "55000"])
+    }
+
+    @Test("a kubectl field that starts with a dash is refused at launch, not only in the form")
+    func kubectlDashValueIsRefusedAtLaunch() {
+        var resource = kubectlConfig()
+        resource.kubernetesResource = "--kubeconfig=/tmp/evil"
+        var namespace = kubectlConfig()
+        namespace.kubernetesNamespace = "-n"
+        var context = kubectlConfig()
+        context.kubernetesContext = "--as=admin"
+
+        for (config, label) in [
+            (resource, String(localized: "Resource")),
+            (namespace, String(localized: "Namespace")),
+            (context, String(localized: "Context")),
+        ] {
+            #expect(throws: TunnelCommandRefusal.flagLikeValue(label)) {
+                _ = try TunnelCommandBuilder.invocation(for: config, localPort: 1, remoteHost: "h", remotePort: 2)
+            }
+        }
+    }
+
+    @Test("an SSM target that starts with a dash is refused at launch")
+    func awsDashTargetIsRefusedAtLaunch() {
+        var config = awsConfig()
+        config.awsTarget = "--profile=other"
+        #expect(throws: TunnelCommandRefusal.flagLikeValue(String(localized: "Target"))) {
+            _ = try TunnelCommandBuilder.invocation(for: config, localPort: 1, remoteHost: "h", remotePort: 2)
+        }
+    }
+
+    @Test("an SSM host that would add a key to --parameters is refused")
+    func awsHostCannotAddParameters() {
+        #expect(throws: TunnelCommandRefusal.hostNotAllowed("db,localPortNumber=22")) {
+            _ = try TunnelCommandBuilder.invocation(
+                for: awsConfig(), localPort: 1, remoteHost: "db,localPortNumber=22", remotePort: 2
+            )
+        }
     }
 }

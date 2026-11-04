@@ -70,6 +70,23 @@ struct ConnectionBundleExporterTests {
         #expect(imported.iconName == "server.rack")
     }
 
+    @Test("A file keeps the AWS sign-in choice and region, and a saved import keeps only the region")
+    func fileKeepsTheAWSSignInChoice() async throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        var connection = makeConnection(name: "Analytics")
+        connection.additionalFields = ["awsAuth": "profile", "awsRegion": "eu-west-1", "preConnectScript": "echo hi"]
+
+        let data = try await library.exporter.fileData(for: [connection], options: .connectionsOnly, passphrase: nil)
+
+        let shared = try #require(
+            try ConnectionBundleCodec.decode(data, keepingLocalCredentials: true).connections.first
+        ).settings
+        #expect(shared.additionalFields == ["awsAuth": "profile", "awsRegion": "eu-west-1"])
+        let saved = try #require(try ConnectionBundleCodec.decode(data).connections.first).settings
+        #expect(saved.additionalFields == ["awsRegion": "eu-west-1"])
+    }
+
     @Test("An encrypted file decrypts with the right passphrase and carries the password")
     func encryptedRoundTrip() async throws {
         let library = try ImportLibraryFixture()
@@ -178,6 +195,21 @@ struct ConnectionBundleExporterTests {
         }
         let plain = try await exporter.fileData(for: [connection], options: .connectionsOnly, passphrase: nil)
         #expect(try ConnectionBundleCodec.decode(plain).connections.count == 1)
+    }
+
+    @Test("A connection published to the Team Catalog carries its masking rules")
+    func connectionsOnlyBundleCarriesMaskingRules() throws {
+        let library = try ImportLibraryFixture()
+        defer { library.cleanUp() }
+        var exported = makeConnection(name: "Orders")
+        exported.maskingRules = [MaskingRule(pattern: "*.email", style: .email)]
+
+        let bundle = try library.exporter.connectionsOnlyBundle(for: [exported])
+
+        let fields = try #require(bundle.connections.first?.settings.additionalFields)
+        var published = DatabaseConnection(name: "Published")
+        published.additionalFields = fields
+        #expect(published.maskingRules == exported.maskingRules)
     }
 
     @Test("The Team Catalog bundle never carries saved queries or credentials")

@@ -1,6 +1,6 @@
 # Redis
 
-Driver id `redis`, crate `crates/drivers/redis`. It speaks RESP2 through redis-rs 1.7 with its default features off, `aio` and `tokio-comp` only, over a stream the driver opens with `Transport::open` and wraps in TLS itself. The integration suite runs against Redis 8.10, and CI runs it again on 7.4 ([supported servers](../../README.md#supported-servers)). Valkey answers the same commands; the driver names it from `INFO server`, and no suite runs on it. Redis has no SQL: how a key-value engine meets the contract is in [adding-drivers.md, Engines without SQL](../adding-drivers.md#engines-without-sql).
+Driver id `redis`, crate `core/crates/drivers/redis`. It speaks RESP2 through redis-rs 1.7 with its default features off, `aio` and `tokio-comp` only, over a stream the driver opens with `Transport::open` and wraps in TLS itself. The integration suite runs against Redis 8.10, and CI runs it again on 7.4 ([supported servers](../../README.md#supported-servers)). Valkey answers the same commands; the driver names it from `INFO server`, and no suite runs on it. Redis has no SQL: how a key-value engine meets the contract is in [adding-drivers.md, Engines without SQL](../adding-drivers.md#engines-without-sql).
 
 The default port is 6379. Cluster and Sentinel deployments are not supported: the driver talks to one server.
 

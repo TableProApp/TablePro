@@ -113,6 +113,8 @@ pub struct WorkspaceShell {
     pub(super) sender: OnceCell<InputSender<SessionWindowInput>>,
     /// The tab page whose menu is open: the view names it only then.
     pub(super) menu_target: RefCell<Option<adw::TabPage>>,
+    /// The tab menu's actions, which dim for the page the menu opens on.
+    pub(super) tab_actions: OnceCell<gio::SimpleActionGroup>,
     /// The tabs closed last, the newest at the back.
     pub(super) closed_tabs: RefCell<VecDeque<ClosedTab>>,
     /// The tabs the window showed, the latest first.

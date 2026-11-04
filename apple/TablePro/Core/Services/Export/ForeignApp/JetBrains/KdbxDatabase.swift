@@ -4,9 +4,9 @@
 //
 
 import CommonCrypto
-import Compression
 import Foundation
 import os
+import TableProGzip
 
 enum KdbxError: Error {
     case malformedHeader
@@ -259,71 +259,8 @@ enum KdbxDatabase {
     // MARK: - GZIP
 
     private static func gunzip(_ data: [UInt8]) -> [UInt8]? {
-        guard data.count > 18, data[0] == 0x1f, data[1] == 0x8b, data[2] == 0x08 else { return nil }
-        let flags = data[3]
-        var offset = 10
-        if flags & 0x04 != 0 {
-            guard offset + 2 <= data.count else { return nil }
-            let extraLength = Int(readUInt16LE(data, offset))
-            offset += 2 + extraLength
-        }
-        if flags & 0x08 != 0 {
-            while offset < data.count, data[offset] != 0 { offset += 1 }
-            offset += 1
-        }
-        if flags & 0x10 != 0 {
-            while offset < data.count, data[offset] != 0 { offset += 1 }
-            offset += 1
-        }
-        if flags & 0x02 != 0 {
-            offset += 2
-        }
-        guard offset < data.count - 8 else { return nil }
-        return inflateRawDeflate(Array(data[offset..<(data.count - 8)]))
-    }
-
-    private static func inflateRawDeflate(_ input: [UInt8]) -> [UInt8]? {
-        let bufferSize = 65_536
-        let destination = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
-        defer { destination.deallocate() }
-
-        var stream = compression_stream(
-            dst_ptr: destination,
-            dst_size: bufferSize,
-            src_ptr: UnsafePointer(destination),
-            src_size: 0,
-            state: nil
-        )
-        guard compression_stream_init(&stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK else {
-            return nil
-        }
-        defer { compression_stream_destroy(&stream) }
-
-        return input.withUnsafeBufferPointer { source -> [UInt8]? in
-            guard let base = source.baseAddress else { return nil }
-            stream.src_ptr = base
-            stream.src_size = source.count
-            stream.dst_ptr = destination
-            stream.dst_size = bufferSize
-
-            var output: [UInt8] = []
-            while true {
-                let status = compression_stream_process(&stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
-                switch status {
-                case COMPRESSION_STATUS_OK:
-                    if stream.dst_size == 0 {
-                        output.append(contentsOf: UnsafeBufferPointer(start: destination, count: bufferSize))
-                        stream.dst_ptr = destination
-                        stream.dst_size = bufferSize
-                    }
-                case COMPRESSION_STATUS_END:
-                    output.append(contentsOf: UnsafeBufferPointer(start: destination, count: bufferSize - stream.dst_size))
-                    return output
-                default:
-                    return nil
-                }
-            }
-        }
+        guard let inflated = try? GzipInflater.decompress(Data(data)) else { return nil }
+        return [UInt8](inflated)
     }
 
     // MARK: - Little-Endian Readers

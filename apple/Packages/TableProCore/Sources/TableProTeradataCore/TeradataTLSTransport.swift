@@ -2,6 +2,7 @@ import Foundation
 import Network
 import os
 import Security
+import TableProWireIO
 
 internal enum TeradataTrustPolicy {
     case acceptAny
@@ -14,12 +15,17 @@ final class TeradataTLSTransport: TeradataTransport {
     private let condition = NSCondition()
     private let deadlineLock = NSLock()
     private var connectDeadline: TeradataConnectDeadline?
-    private var rawBuffer: [UInt8] = []
-    private var messageBuffer: [UInt8] = []
+    private var rawBuffer = ByteQueue()
+    private var messageBuffer = ByteQueue()
     private var receiveError: Error?
     private var peerClosed = false
     private var cancelled = false
     private var handshakeComplete = false
+    private var receivePaused = false
+
+    // Above this rawBuffer holds at least one whole frame, so the next drain always makes room.
+    private static let rawBufferLimit = WebSocketFrame.maxPayload + WebSocketFrame.maxHeaderLength
+    private static let maxUpgradeResponseLength = 64 * 1_024
 
     init(host: String, options: TeradataTLSOptions, deadline: TeradataConnectDeadline) throws {
         connectDeadline = deadline
@@ -78,16 +84,14 @@ final class TeradataTLSTransport: TeradataTransport {
         defer { condition.unlock() }
         let deadline = try waitDeadline()
         while messageBuffer.count < count {
-            try drainFramesLocked()
+            try drainFramesLocked(until: count)
             if messageBuffer.count >= count { break }
             if cancelled { throw TeradataWireError.cancelled }
             if let receiveError { throw TeradataWireError.truncated("TLS recv: \(receiveError)") }
             if peerClosed { throw TeradataWireError.truncated("WebSocket closed after \(messageBuffer.count)/\(count)") }
             if !condition.wait(until: deadline) { throw TeradataWireError.truncated("TLS recv timed out") }
         }
-        let result = Array(messageBuffer.prefix(count))
-        messageBuffer.removeFirst(count)
-        return result
+        return messageBuffer.removeFirst(count)
     }
 
     func cancel() { stop() }
@@ -134,12 +138,14 @@ final class TeradataTLSTransport: TeradataTransport {
         defer { condition.unlock() }
         let deadline = try waitDeadline()
         let terminator: [UInt8] = [0x0D, 0x0A, 0x0D, 0x0A]
+        var searchStart = 0
         while true {
-            if let range = Self.range(of: terminator, in: rawBuffer) {
-                let end = range.upperBound
-                let header = Array(rawBuffer[..<end])
-                rawBuffer.removeFirst(end)
-                return header
+            if let range = rawBuffer.firstRange(of: terminator, from: searchStart) {
+                return rawBuffer.removeFirst(range.upperBound)
+            }
+            searchStart = max(rawBuffer.count - (terminator.count - 1), 0)
+            if rawBuffer.count > Self.maxUpgradeResponseLength {
+                throw TeradataWireError.connectionFailed("WebSocket upgrade response has no end in its first \(Self.maxUpgradeResponseLength) bytes")
             }
             if cancelled { throw TeradataWireError.cancelled }
             if let receiveError { throw TeradataWireError.truncated("WebSocket handshake recv: \(receiveError)") }
@@ -148,8 +154,10 @@ final class TeradataTLSTransport: TeradataTransport {
         }
     }
 
-    private func drainFramesLocked() throws {
-        while let frame = try WebSocketFrame.decode(&rawBuffer) {
+    // Frames wait in rawBuffer until a read needs them, and the receive loop pauses while rawBuffer is
+    // over its limit, so a peer streaming data nobody reads cannot grow either buffer without bound.
+    private func drainFramesLocked(until wanted: Int) throws {
+        while messageBuffer.count < wanted, let frame = try WebSocketFrame.decode(&rawBuffer) {
             switch frame.opcode {
             case .binary, .continuation:
                 messageBuffer.append(contentsOf: frame.payload)
@@ -160,6 +168,10 @@ final class TeradataTLSTransport: TeradataTransport {
             case .pong:
                 break
             }
+        }
+        if receivePaused, rawBuffer.count <= Self.rawBufferLimit, !cancelled {
+            receivePaused = false
+            startReceiveLoop()
         }
     }
 
@@ -204,19 +216,15 @@ final class TeradataTLSTransport: TeradataTransport {
             if let data, !data.isEmpty { self.rawBuffer.append(contentsOf: data) }
             if let error { self.receiveError = error }
             if isComplete { self.peerClosed = true }
-            let shouldContinue = error == nil && !isComplete && !self.cancelled
+            var shouldContinue = error == nil && !isComplete && !self.cancelled
+            if shouldContinue, self.rawBuffer.count > Self.rawBufferLimit {
+                self.receivePaused = true
+                shouldContinue = false
+            }
             self.condition.signal()
             self.condition.unlock()
             if shouldContinue { self.startReceiveLoop() }
         }
-    }
-
-    private static func range(of needle: [UInt8], in haystack: [UInt8]) -> Range<Int>? {
-        guard !needle.isEmpty, haystack.count >= needle.count else { return nil }
-        for start in 0...(haystack.count - needle.count) where Array(haystack[start..<start + needle.count]) == needle {
-            return start..<(start + needle.count)
-        }
-        return nil
     }
 
     static func trustPolicy(for options: TeradataTLSOptions, host: String) throws -> TeradataTrustPolicy {

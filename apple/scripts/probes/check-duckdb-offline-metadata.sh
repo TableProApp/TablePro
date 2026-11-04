@@ -24,11 +24,33 @@ if [ ! -f "$LIB" ]; then
     exit 1
 fi
 
-FORBIDDEN='current_database\(\)|current_schema\(\)|key_column_usage|referential_constraints'
-if grep -nE "$FORBIDDEN" "$SWIFT_FILE" | grep -vE '^\s*[0-9]+:\s*///'; then
+FORBIDDEN='current_database\(\)|current_schema\(\)|key_column_usage|referential_constraints|generate_subscripts\(|generate_series\('
+if grep -nE "$FORBIDDEN" "$SWIFT_FILE" "$ROOT/Plugins/DuckDBDriverPlugin/DuckDBPluginDriver+Routines.swift" \
+    | grep -vE ':[0-9]+:\s*//'; then
     echo "error: the lines above need the core_functions extension, which the macOS libduckdb does not link." >&2
     exit 1
 fi
+
+# DuckDBSchemaQueries.swift imports TableProPluginKit, so the query builder links the framework this
+# checkout built, or the newest one anywhere.
+FRAMEWORK_DIR=""
+for info in "$HOME"/Library/Developer/Xcode/DerivedData/TablePro-*/info.plist; do
+    [ -f "$info" ] || continue
+    workspace="$(/usr/libexec/PlistBuddy -c 'Print :WorkspacePath' "$info" 2> /dev/null)"
+    products="$(dirname "$info")/Build/Products/Debug"
+    if [ "$workspace" = "$ROOT/TablePro.xcodeproj" ] && [ -d "$products/TableProPluginKit.framework" ]; then
+        FRAMEWORK_DIR="$products"
+    fi
+done
+if [ -z "$FRAMEWORK_DIR" ]; then
+    FRAMEWORK_DIR="$(find "$HOME/Library/Developer/Xcode/DerivedData" -type d -path '*/Build/Products/Debug/TableProPluginKit.framework' -print 2> /dev/null \
+        | while read -r path; do echo "$(stat -f %m "$path") $(dirname "$path")"; done \
+        | sort -rn | head -1 | cut -d' ' -f2-)"
+fi
+[ -n "$FRAMEWORK_DIR" ] || {
+    echo "no Debug TableProPluginKit.framework in DerivedData; build the app first" >&2
+    exit 3
+}
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -101,7 +123,15 @@ enum Builders {
     }
 }
 SWIFT
-xcrun swiftc -parse-as-library -module-name Builders "$SWIFT_FILE" "$WORK/builders.swift" -o "$WORK/builders"
+# The query builders quote through this TableProCore module.
+QUOTING="$ROOT/Packages/TableProCore/Sources/TableProSQLQuoting"
+xcrun swiftc -swift-version 6 -parse-as-library -module-name TableProSQLQuoting -Onone \
+    -emit-module -emit-module-path "$WORK/TableProSQLQuoting.swiftmodule" -emit-library -static \
+    -o "$WORK/libTableProSQLQuoting.a" "$QUOTING"/*.swift
+xcrun swiftc -parse-as-library -module-name Builders \
+    -I "$WORK" -Xlinker "$WORK/libTableProSQLQuoting.a" \
+    -F "$FRAMEWORK_DIR" -framework TableProPluginKit -Xlinker -rpath -Xlinker "$FRAMEWORK_DIR" \
+    "$SWIFT_FILE" "$WORK/builders.swift" -o "$WORK/builders"
 "$WORK/builders" >> "$WORK/queries.txt"
 
 cat > "$WORK/probe.c" <<'PROBE'

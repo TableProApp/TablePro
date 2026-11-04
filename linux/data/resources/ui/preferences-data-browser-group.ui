@@ -19,6 +19,11 @@
       </object>
     </child>
     <child>
+      <object class="AdwSwitchRow" id="alternate_rows_row">
+        <property name="title" translatable="yes">Show Alternate Row Backgrounds</property>
+      </object>
+    </child>
+    <child>
       <object class="AdwSwitchRow" id="confirm_row">
         <property name="title" translatable="yes">Confirm Before Deleting Rows</property>
       </object>

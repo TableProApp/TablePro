@@ -20,6 +20,9 @@ public enum AgentSocketOrigin: Sendable, Hashable, CaseIterable {
 public struct ResolvedSSHTarget: Sendable, Hashable {
     public let originalHost: String
     public let host: String
+    // The canonical name with a trailing dot, so the connection reaches the name canonicalization
+    // resolved rather than one the resolver's search list completes. `host` stays the identity.
+    public let dialHost: String
     public let port: Int
     public let username: String
     public let identityFiles: [String]
@@ -50,10 +53,12 @@ public struct ResolvedSSHTarget: Sendable, Hashable {
         useKeychain: Bool,
         addKeysToAgent: Bool,
         proxyJump: [SSHJumpHost],
-        expansionFailure: SSHTokenExpansionError? = nil
+        expansionFailure: SSHTokenExpansionError? = nil,
+        dialHost: String? = nil
     ) {
         self.originalHost = originalHost
         self.host = host
+        self.dialHost = dialHost ?? host
         self.port = port
         self.username = username
         self.identityFiles = identityFiles

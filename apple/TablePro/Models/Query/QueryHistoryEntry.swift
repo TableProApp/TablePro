@@ -47,7 +47,7 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable, Sendable {
         self.databaseType = databaseType
         self.schemaName = schemaName
         self.source = source
-        self.statementType = statementType ?? QueryHistoryStatementType.classify(query)
+        self.statementType = statementType ?? QueryHistoryStatementType.classify(query, grammar: databaseType.lexicalGrammar)
         self.executedAt = executedAt
         self.executionTime = executionTime
         self.rowCount = rowCount

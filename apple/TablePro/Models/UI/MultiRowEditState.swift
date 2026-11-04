@@ -127,6 +127,8 @@ final class MultiRowEditState: ObservableObject {
     @Published private(set) var expressionCells: [Set<Int>] = []
     @Published private(set) var columns: [String] = []
     @Published private(set) var columnTypes: [ColumnType] = []
+    // By column, not field id: every selection change reissues the ids. Cleared when the columns change.
+    @Published private(set) var expandedColumn: Int?
     private var nonNullableColumns: Set<String> = []
 
     // Nil and .none offer no Set Value command and promote nothing.
@@ -180,6 +182,7 @@ final class MultiRowEditState: ObservableObject {
         self.columnTypes = columnTypes
         self.nonNullableColumns = nonNullableColumns
         self.databaseType = databaseType
+        if columnsChanged { expandedColumn = nil }
         self.cellWriter = cellWriter
         rowsAreInserted = !rowIDs.isEmpty && rowIDs.allSatisfy { $0.isInserted }
 
@@ -576,6 +579,10 @@ final class MultiRowEditState: ObservableObject {
         }
     }
 
+    func toggleExpansion(ofColumn index: Int) {
+        expandedColumn = expandedColumn == index ? nil : index
+    }
+
     func clearEdits() {
         for index in fields.indices {
             resetPending(at: index)
@@ -598,6 +605,7 @@ final class MultiRowEditState: ObservableObject {
         columns = []
         columnTypes = []
         nonNullableColumns = []
+        expandedColumn = nil
         databaseType = nil
         cellWriter = .none
         rowsAreInserted = false

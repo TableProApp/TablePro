@@ -189,7 +189,7 @@ nonisolated enum PostgreSQLIndexQueries {
             let methodAndKeys = row[safe: 2]?.asText?.nilIfEmpty
             if methodAndKeys == nil {
                 logger.warning(
-                    "pg_get_indexdef for \(table, privacy: .public).\(index, privacy: .public) did not match its prefix or predicate, so the index is written from its fields"
+                    "pg_get_indexdef for \(table, privacy: .private(mask: .hash)).\(index, privacy: .private(mask: .hash)) did not match its prefix or predicate, so the index is written from its fields"
                 )
             }
             indexes[table, default: [:]][index] = PostgreSQLCatalogIndexDDL(

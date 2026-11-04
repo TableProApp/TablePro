@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TableProProcess
 
 public enum MCPHandshakeAcquisitionError: Error, LocalizedError, Equatable {
     case launchFailed(status: Int32)
@@ -50,6 +51,14 @@ public struct MCPHandshakeAcquirer: Sendable {
         return try await pollForTrustedHandshake(launchRequestedAt: launchRequestedAt)
     }
 
+    // The user may have quit TablePro, so this only waits out the window for one that comes back.
+    public func acquireWithoutLaunching() async throws -> MCPHandshakePayload {
+        if let trusted = loadTrusted().payload {
+            return trusted
+        }
+        return try await pollForTrustedHandshake(launchRequestedAt: nil)
+    }
+
     private func loadTrusted() -> (payload: MCPHandshakePayload?, failure: String) {
         do {
             return (try MCPHandshakeTrust.load(at: handshakeUrl), "")
@@ -60,8 +69,8 @@ public struct MCPHandshakeAcquirer: Sendable {
         }
     }
 
-    /// A forged refusal can only make the bridge give up, so it is read without the handshake's
-    /// ownership checks.
+    // A forged refusal can only make the bridge give up, so it is read without the handshake's
+    // ownership checks.
     private func refusalAnswers(launchRequestedAt: Date) -> Bool {
         guard let data = try? Data(contentsOf: refusalUrl),
               let refusal = try? MCPHandshakeCoding.decoder().decode(MCPStartRefusal.self, from: data) else {
@@ -70,17 +79,18 @@ public struct MCPHandshakeAcquirer: Sendable {
         return refusal.answers(launchRequestedAt: launchRequestedAt)
     }
 
-    /// `open` hands its own environment to the app it launches, which is how the flag arrives early
-    /// enough for the app to stay out of the Dock and the app switcher. Nobody asked for this window
-    /// of TablePro: a client did, to answer a question.
+    // `open` hands its own environment to the app it launches, which is how the flag arrives early
+    // enough for the app to stay out of the Dock and the app switcher. Nobody asked for this window
+    // of TablePro: a client did, to answer a question.
     public static func openHostApp(logger: any MCPBridgeLogger) throws {
         logger.log(.info, "No trusted MCP handshake; launching TablePro via \(Self.launchUrl)")
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = ["-g", Self.launchUrl]
-        var environment = ProcessInfo.processInfo.environment
+        var environment = ProcessEnvironment.inherited()
         environment[BackgroundLaunchFlag.variable] = BackgroundLaunchFlag.value
-        process.environment = environment
+        let process = try ProcessLauncher.process(for: ProcessCommand(
+            executable: URL(fileURLWithPath: "/usr/bin/open"),
+            arguments: ["-g", Self.launchUrl],
+            environment: environment
+        ))
         try process.run()
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
@@ -88,7 +98,7 @@ public struct MCPHandshakeAcquirer: Sendable {
         }
     }
 
-    private func pollForTrustedHandshake(launchRequestedAt: Date) async throws -> MCPHandshakePayload {
+    private func pollForTrustedHandshake(launchRequestedAt: Date?) async throws -> MCPHandshakePayload {
         let deadline = ContinuousClock().now.advanced(by: pollTimeout)
         var lastFailure = "no handshake file"
         while ContinuousClock().now < deadline {
@@ -96,7 +106,7 @@ public struct MCPHandshakeAcquirer: Sendable {
             if let payload = attempt.payload {
                 return payload
             }
-            if refusalAnswers(launchRequestedAt: launchRequestedAt) {
+            if let launchRequestedAt, refusalAnswers(launchRequestedAt: launchRequestedAt) {
                 logger.log(.error, "TablePro refused to start the MCP server: it is turned off")
                 throw MCPHandshakeAcquisitionError.serverTurnedOff
             }
@@ -109,8 +119,7 @@ public struct MCPHandshakeAcquirer: Sendable {
 }
 
 public extension MCPHandshakePayload {
-    func credentials() -> MCPUpstreamCredentials? {
-        guard let endpoint else { return nil }
-        return MCPUpstreamCredentials(endpoint: endpoint, bearerToken: token)
+    func credentials() -> MCPUpstreamCredentials {
+        MCPUpstreamCredentials(socketPath: socketPath, bearerToken: token)
     }
 }

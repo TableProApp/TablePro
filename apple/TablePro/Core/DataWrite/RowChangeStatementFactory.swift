@@ -51,6 +51,8 @@ struct DriverWrittenStatement {
     let keylessRowCount: Int?
     var kind: RowWriteKind?
     var lookup: RowLookup?
+    // A keyed write through a view, held to its one row: the key is the view's answer, not the table's own.
+    var keyedRowCount: Int?
 }
 
 @MainActor
@@ -68,6 +70,7 @@ struct RowChangeStatementFactory {
     /// The `GENERATED ALWAYS` and SQL Server `IDENTITY` columns among `generatedColumns`, which a restore writes back
     /// rather than leaving to the server. Nil when the source never said, as a record saved before it was kept.
     let identityColumns: Set<String>?
+    var holdsKeyedWritesToOneRow = false
 
     init(
         tableName: String,
@@ -520,7 +523,10 @@ struct RowChangeStatementFactory {
                 statement: ParameterizedStatement(sql: write.statement, parameters: write.parameters.map(\.asAny)),
                 keylessRowCount: write.lookup == nil ? keylessRowCount(of: write, keyed: keyed) : nil,
                 kind: write.rowIndices.first.flatMap(keyed.writeKind(ofRowIndex:)),
-                lookup: write.lookup.map(RowLookup.init)
+                lookup: write.lookup.map(RowLookup.init),
+                keyedRowCount: write.lookup == nil && holdsKeyedWritesToOneRow
+                    ? oneRowCount(of: write, keyed: keyed)
+                    : nil
             )
         }
     }
@@ -545,8 +551,11 @@ struct RowChangeStatementFactory {
     /// A keyless match can find nothing and still succeed, so it is held to its row where the engine's count is real.
     /// Only a statement naming one row: the default `generateRowWrites` puts every row on its first statement.
     private func keylessRowCount(of write: PluginRowWrite, keyed: PluginKeyedChanges) -> Int? {
-        guard primaryKeyColumns.isEmpty,
-              DataWriteRowCounts.areMeaningful(for: databaseType),
+        primaryKeyColumns.isEmpty ? oneRowCount(of: write, keyed: keyed) : nil
+    }
+
+    private func oneRowCount(of write: PluginRowWrite, keyed: PluginKeyedChanges) -> Int? {
+        guard DataWriteRowCounts.areMeaningful(for: databaseType),
               write.rowIndices.count == 1,
               let row = write.rowIndices.first
         else { return nil }

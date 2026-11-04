@@ -129,18 +129,6 @@ struct PostgreSQLColumnTypeSpellingTests {
 }
 
 struct PostgreSQLSchemaRelativeReadTests {
-    @Test("The prefix narrows the path to pg_catalog and the schema, with the identifier quoted")
-    func prefixQuotesTheSchema() {
-        #expect(
-            PostgreSQLSchemaQueries.schemaRelativeReadPrefix(schema: "sales")
-                == "SET LOCAL search_path = pg_catalog, \"sales\"; "
-        )
-        #expect(
-            PostgreSQLSchemaQueries.schemaRelativeReadPrefix(schema: "Weird \"Schema\"")
-                == "SET LOCAL search_path = pg_catalog, \"Weird \"\"Schema\"\"\"; "
-        )
-    }
-
     @Test("A type an extension owns is qualified, taken from the element type for an array")
     func extensionTypesAreQualified() {
         let expression = PostgreSQLSchemaQueries.declaredType(attribute: "a")
@@ -150,7 +138,7 @@ struct PostgreSQLSchemaRelativeReadTests {
         #expect(expression.contains("dtn.nspname <> 'pg_catalog'"))
         let collapsed = expression.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         #expect(collapsed.contains(
-            "dd.objid = CASE WHEN dt.typlen = -1 AND dt.typelem <> 0 THEN dt.typelem ELSE dt.oid END"
+            "dd.objid = CASE WHEN dt.typlen = -1 AND dt.typelem <> 0::pg_catalog.oid THEN dt.typelem ELSE dt.oid END"
         ))
         #expect(expression.contains("pg_catalog.quote_ident(dtn.nspname) || '.'"))
     }

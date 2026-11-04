@@ -15,6 +15,7 @@ struct WelcomeMenuSpecTests {
         connections: [DatabaseConnection] = [],
         groups: [ConnectionGroup] = [],
         disconnectable: Set<UUID> = [],
+        reconnectable: Set<UUID> = [],
         linkedFolders: Set<UUID> = [],
         isSyncEnabled: Bool = false,
         teamLibraryTeams: [TeamLibraryTeam] = [],
@@ -45,6 +46,7 @@ struct WelcomeMenuSpecTests {
             groups: groups,
             linkedFolderConnectionIds: linkedFolders,
             disconnectableConnectionIds: disconnectable,
+            reconnectableConnectionIds: reconnectable,
             isSyncEnabled: isSyncEnabled,
             canPublishToTeamCatalog: false,
             teamLibraryTeams: teamLibraryTeams,
@@ -105,6 +107,22 @@ struct WelcomeMenuSpecTests {
         #expect(!all.flatMap { $0 }.contains("Remove from Group"))
         #expect(!all.flatMap { $0 }.contains("Disconnect"))
         #expect(!all.flatMap { $0 }.contains("Exclude from iCloud Sync"))
+    }
+
+    @Test("A lost connection offers Reconnect where Connect would be")
+    func lostConnectionReconnects() {
+        let connection = DatabaseConnection(name: "Prod", type: .mysql)
+        let sections = WelcomeMenuSpec.sections(for: context(
+            rows: [.connection(connection.id, section: .connections)],
+            connections: [connection],
+            disconnectable: [connection.id],
+            reconnectable: [connection.id]
+        ))
+        let first = titles(sections).first ?? []
+
+        #expect(first.first == "Reconnect")
+        #expect(!first.contains("Connect"))
+        #expect(first.contains("Disconnect"))
     }
 
     @Test("Disconnect and iCloud appear only when they apply")

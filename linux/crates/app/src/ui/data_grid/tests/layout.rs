@@ -6,7 +6,7 @@ use tablepro_core::{ColumnInfo, Value};
 
 use super::{Layouts, data_column, text};
 use crate::services::grid::{ColumnLayout, LayoutSlot};
-use crate::test_support::{drain_main_context, wait_until};
+use crate::test_support::{after_next_frame, drain_main_context, wait_until};
 use crate::ui::data_grid::test_grid::{Grid, GridSpec, WAIT, named, persisted, two_text_columns, two_text_values};
 
 fn users() -> Vec<ColumnInfo> {
@@ -169,4 +169,172 @@ fn the_last_shown_column_cannot_be_hidden() {
 
     assert_eq!(grid.grid.shown_columns(), [1], "the cell menu hid the last column");
     assert!(data_column(&grid, 1).is_visible());
+}
+
+fn said(grid: &Grid) -> Vec<String> {
+    crate::ui::a11y::announced_in(&grid.grid)
+        .into_iter()
+        .map(|(text, _)| text)
+        .collect()
+}
+
+#[gtk4::test]
+fn a_column_moved_from_its_cell_skips_hidden_ones_and_is_kept() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    grid.grid.set_column_visible(1, false);
+    grid.focus(0, 2);
+
+    grid.activate("move-column-left");
+
+    assert_eq!(grid.grid.shown_columns(), [2, 0]);
+    assert_eq!(
+        grid.focused_cell().map(|cell| (cell.position(), cell.column())),
+        Some((Some(0), 2)),
+        "the focus left the moved cell"
+    );
+    assert_eq!(said(&grid).last().map(String::as_str), Some("Moved email before id"));
+    let saved = layouts.saved("users").order;
+    let at = |name: &str| {
+        saved
+            .iter()
+            .position(|kept| *kept == slot(name))
+            .unwrap_or_else(|| panic!("{name} has no slot in {saved:?}"))
+    };
+    assert!(at("email") < at("id"), "{saved:?}");
+    drop(grid);
+
+    let again = open_users(&layouts, "users");
+    assert_eq!(again.grid.shown_columns(), [2, 0]);
+}
+
+#[gtk4::test]
+fn the_first_column_stops_at_the_row_numbers() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    let view = grid.grid.column_view();
+    let row_numbers = grid.grid.row_numbers_column().expect("a row number column");
+    grid.focus(0, 0);
+    // A disabled action lets the key pass on without the bell.
+    assert!(grid.is_enabled("move-column-left"));
+
+    grid.activate("move-column-left");
+    grid.grid
+        .activate_action("grid.move-column-left-at", Some(&0u32.to_variant()))
+        .expect("the header's Move Column Left");
+    drain_main_context();
+
+    assert_eq!(grid.grid.shown_columns(), [0, 1, 2]);
+    assert_eq!(
+        position_in_view(&view, &row_numbers),
+        0,
+        "the column passed the row numbers"
+    );
+    assert!(
+        !said(&grid).iter().any(|text| text.starts_with("Moved")),
+        "{:?}",
+        said(&grid)
+    );
+}
+
+#[gtk4::test]
+fn the_header_menu_moves_its_column_and_stops_at_the_edge() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    let move_right = |index: u32| {
+        grid.grid
+            .activate_action("grid.move-column-right-at", Some(&index.to_variant()))
+            .expect("the header's Move Column Right");
+        drain_main_context();
+    };
+
+    move_right(0);
+    assert_eq!(grid.grid.shown_columns(), [1, 0, 2]);
+    move_right(0);
+    move_right(0);
+    assert_eq!(
+        grid.grid.shown_columns(),
+        [1, 2, 0],
+        "the column passed the space after the last"
+    );
+    let view = grid.grid.column_view();
+    let last = view
+        .columns()
+        .item(view.columns().n_items() - 1)
+        .and_downcast::<gtk::ColumnViewColumn>();
+    assert_ne!(last, Some(data_column(&grid, 0)), "the filler stays last");
+}
+
+#[gtk4::test]
+fn left_and_right_follow_the_column_views_direction() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    grid.grid.column_view().set_direction(gtk::TextDirection::Rtl);
+    grid.focus(0, 1);
+
+    grid.activate("move-column-left");
+    after_next_frame(&grid.window);
+
+    assert_eq!(grid.grid.shown_columns(), [0, 2, 1]);
+    let x = |column: usize| {
+        grid.cell_at(0, column)
+            .compute_bounds(&grid.window)
+            .expect("the cell is in the window")
+            .x()
+    };
+    assert!(x(1) < x(2), "the column moved right on screen");
+}
+
+#[gtk4::test]
+fn a_column_moved_past_a_wide_one_stays_in_view() {
+    let layouts = Layouts::new();
+    let grid = open_users(&layouts, "users");
+    let view = grid.grid.column_view();
+    data_column(&grid, 1).set_fixed_width(3000);
+    grid.focus(0, 0);
+    after_next_frame(&grid.window);
+
+    grid.activate("move-column-right");
+    after_next_frame(&grid.window);
+
+    assert_eq!(grid.grid.shown_columns(), [1, 0, 2]);
+    let cell = grid.focused_cell().expect("a focused cell");
+    assert_eq!(cell.column(), 0);
+    let bounds = cell.compute_bounds(&view).expect("the cell is in the view");
+    assert!(
+        bounds.x() >= 0.0 && bounds.x() + bounds.width() <= view.width() as f32,
+        "the focused cell spans {} to {} in a view {} wide",
+        bounds.x(),
+        bounds.x() + bounds.width(),
+        view.width()
+    );
+}
+
+/// These press keys on the X display every test shares; nextest runs them
+/// with no other test beside them.
+mod real_keys {
+    use gtk4::gdk;
+    use gtk4::prelude::*;
+
+    use super::{Layouts, open_users};
+    use crate::test_support::{KeyInjector, wait_until};
+    use crate::ui::data_grid::test_grid::WAIT;
+
+    #[gtk4::test]
+    fn alt_and_an_arrow_move_the_focused_column() {
+        let layouts = Layouts::new();
+        let grid = open_users(&layouts, "users");
+        KeyInjector::focus_only(&grid.window);
+        wait_until(WAIT, || grid.window.is_active()).expect("the window to take the focus");
+        let keys = KeyInjector::connect().expect("an X11 display");
+        grid.focus(0, 1);
+
+        keys.press(gdk::Key::Left, gdk::ModifierType::ALT_MASK)
+            .expect("Alt+Left");
+        wait_until(WAIT, || grid.grid.shown_columns() == [1, 0, 2]).expect("the column to move left");
+
+        keys.press(gdk::Key::Right, gdk::ModifierType::ALT_MASK)
+            .expect("Alt+Right");
+        wait_until(WAIT, || grid.grid.shown_columns() == [0, 1, 2]).expect("the column to move back");
+    }
 }

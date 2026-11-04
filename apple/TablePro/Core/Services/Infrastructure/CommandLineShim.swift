@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProProcess
 
 internal enum CommandLineShimStatus: Equatable, Sendable {
     case linked
@@ -51,7 +52,8 @@ internal struct CommandLineShim: Sendable {
         "sudo rm \(Self.quote(linkPath))"
     }
 
+    // A path holds no NUL. Were one there, the reader sees it escaped instead of a line the shell cuts short.
     internal static func quote(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        (try? ShellQuoting.singleQuoted(value)) ?? ShellQuoting.displayWord(value)
     }
 }

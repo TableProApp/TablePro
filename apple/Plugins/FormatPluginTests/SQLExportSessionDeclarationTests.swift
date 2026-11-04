@@ -148,10 +148,21 @@ struct SQLExportSessionDeclarationTests {
     func postgresDeclaresUTF8() {
         for typeId in ["PostgreSQL", "Greenplum", "AlloyDB", "Citus", "CockroachDB", "PGlite"] {
             let declaration = SQLExportSessionDeclaration.forDatabaseType(typeId)
-            #expect(declaration.prologue == "SET client_encoding = 'UTF8';\n\n", "\(typeId)")
+            #expect(
+                declaration.prologue == "SET client_encoding = 'UTF8';\nSET standard_conforming_strings = on;\n\n",
+                "\(typeId)"
+            )
             #expect(declaration.epilogue.isEmpty, "\(typeId)")
             #expect(SQLExportSessionDeclaration.forDatabaseType(typeId, readTimeZone: "+00:00") == declaration, "\(typeId)")
         }
+    }
+
+    @Test("A PostgreSQL dump whose literals escape a backslash declares it, so a restore reads `\\'` the same way")
+    func postgresDeclaresTheBackslashRuleItsLiteralsUse() {
+        let declaration = SQLExportSessionDeclaration.forDatabaseType("PostgreSQL", literalsEscapeBackslash: true)
+        #expect(declaration.prologue.contains("SET standard_conforming_strings = off;"))
+        #expect(SQLExportSessionDeclaration.forDatabaseType("PostgreSQL").prologue
+            .contains("SET standard_conforming_strings = on;"))
     }
 
     @Test("Redshift gets no declaration, because it does not document client_encoding as settable")
@@ -181,7 +192,7 @@ struct SQLExportSessionDeclarationTests {
         try writer.commit()
 
         let dump = try String(contentsOf: destination, encoding: .utf8)
-        #expect(dump == "SET client_encoding = 'UTF8';\n\nINSERT INTO \"t\" VALUES ('メール');\n")
+        #expect(dump == "SET client_encoding = 'UTF8';\nSET standard_conforming_strings = on;\n\nINSERT INTO \"t\" VALUES ('メール');\n")
     }
 
     @Test("An unsplit dump opens with the declaration and closes by restoring the session")

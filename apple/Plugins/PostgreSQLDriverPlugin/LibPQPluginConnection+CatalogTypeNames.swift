@@ -8,40 +8,53 @@ import Foundation
 import TableProPostgreSQLCore
 
 internal extension LibPQPluginConnection {
-    /// A type created after connect has an oid the connect-time probe never saw, so its columns
-    /// came back as text until the next reconnect. The oids a result leaves unresolved are looked
-    /// up on the same connection once the result is fully read, which is the only moment libpq
-    /// allows another statement, and remembered for every later result. An oid the catalog does
-    /// not know is remembered as unresolved for the same reason. A lookup that fails inside an
-    /// aborted transaction remembers nothing, because it will succeed after the rollback.
+    // A type created after connect has an oid the connect-time probe never saw. A failed lookup is asked again with the
+    // next result, unless it will fail the same way again.
     func learnTypeNames(for oids: [UInt32], conn: OpaquePointer) {
         preconditionOnQueue()
         guard let query = PostgreSQLCatalogTypeNames.lookupQuery(oids: oids) else { return }
-        let result: OpaquePointer? = query.withCString { PQexec(conn, $0) }
+        let result = pinnedCatalogSideQueryOnQueue(query, conn: conn)
         guard let result else { return }
         defer { PQclear(result) }
-
         guard PQresultStatus(result) == PGRES_TUPLES_OK else {
-            guard getResultError(from: result).sqlState != Self.transactionAbortedSQLState else { return }
-            typeNames.merge(PostgreSQLCatalogTypeNames.names(for: oids, rows: []))
+            if givesUpLookup(after: getResultError(from: result).sqlState) {
+                typeNames.merge(PostgreSQLCatalogTypeNames.names(for: oids, rows: []))
+            }
             return
         }
         typeNames.merge(PostgreSQLCatalogTypeNames.names(for: oids, rows: Self.textRows(from: result)))
     }
 
-    /// A streaming result sends its header with the first row, before anything could be looked
-    /// up, so a `SELECT` run right after a `CREATE TYPE` in the same tab would still read the new
-    /// enum as text once. The statement's own command tag says a type was just created, and one
-    /// enum probe there puts the oid in place before the next statement is sent.
+    // Pinned, a failed lookup is scoped by a savepoint, so only a refusal the catalog will repeat is final. Unpinned
+    // (Redshift, CockroachDB) it fails inside the user's transaction, so anything but a cancel or an aborted block is.
+    private func givesUpLookup(after sqlState: String?) -> Bool {
+        guard let sqlState else { return false }
+        if pinsCatalogSearchPath { return sqlState.hasPrefix("42") || sqlState == "0A000" }
+        return sqlState != "57014" && sqlState != "25P02"
+    }
+
+    // A streaming result sends its header with its first row, before a lookup can run, so a new enum or a PostGIS
+    // installed in this session is probed when the statement that made it reports its tag.
     func noteCommandTag(_ tag: String?, conn: OpaquePointer) {
         preconditionOnQueue()
-        guard tag == Self.createTypeCommandTag else { return }
-        let query = PostgreSQLSchemaQueries.enumTypeOidQuery
-        let result: OpaquePointer? = query.withCString { PQexec(conn, $0) }
-        guard let result else { return }
+        switch tag {
+        case Self.createTypeCommandTag:
+            guard let rows = sideQueryRows(PostgreSQLSchemaQueries.enumTypeOidQuery, conn: conn) else { return }
+            typeNames.merge(PostgreSQLCatalogTypeNames.enumProbeNames(rows: rows))
+        // Only the connections that probe PostGIS at connect; unpinned the probe would run in the user's transaction.
+        case Self.createExtensionCommandTag where pinsCatalogSearchPath:
+            guard let rows = sideQueryRows(PostGISTypes.probeQuery, conn: conn) else { return }
+            typeNames.setPostgisTypes(PostGISTypes.names(fromProbeRows: rows))
+        default:
+            return
+        }
+    }
+
+    private func sideQueryRows(_ query: String, conn: OpaquePointer) -> [[String?]]? {
+        guard let result = pinnedCatalogSideQueryOnQueue(query, conn: conn) else { return nil }
         defer { PQclear(result) }
-        guard PQresultStatus(result) == PGRES_TUPLES_OK else { return }
-        typeNames.merge(PostgreSQLCatalogTypeNames.enumProbeNames(rows: Self.textRows(from: result)))
+        guard PQresultStatus(result) == PGRES_TUPLES_OK else { return nil }
+        return Self.textRows(from: result)
     }
 
     private static func textRows(from result: OpaquePointer) -> [[String?]] {
@@ -59,8 +72,8 @@ internal extension LibPQPluginConnection {
         return rows
     }
 
-    private static let transactionAbortedSQLState = "25P02"
     private static let createTypeCommandTag = "CREATE TYPE"
+    private static let createExtensionCommandTag = "CREATE EXTENSION"
 
     func resolvingUnknownTypes(
         _ metadata: ColumnMetadata,

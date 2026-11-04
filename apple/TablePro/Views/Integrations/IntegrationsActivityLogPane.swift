@@ -356,7 +356,7 @@ private struct ActivityLogTable: View {
         if let name = entry.tokenName {
             Text(IntegrationsFormatting.displayTokenName(name))
         } else {
-            Text(verbatim: "—").foregroundStyle(.tertiary)
+            Text(verbatim: "-").foregroundStyle(.tertiary)
         }
     }
 
@@ -365,7 +365,7 @@ private struct ActivityLogTable: View {
         if let label = connectionLabel(entry.connectionId) {
             Text(label)
         } else {
-            Text(verbatim: "—").foregroundStyle(.tertiary)
+            Text(verbatim: "-").foregroundStyle(.tertiary)
         }
     }
 
@@ -439,13 +439,13 @@ private struct ActivityLogInspector: View {
 
             Section(String(localized: "Source")) {
                 LabeledContent(String(localized: "Token")) {
-                    let tokenText = entry.tokenName.map(IntegrationsFormatting.displayTokenName) ?? "—"
+                    let tokenText = entry.tokenName.map(IntegrationsFormatting.displayTokenName) ?? String(localized: "None")
                     Text(tokenText)
                         .foregroundStyle(entry.tokenName == nil ? .tertiary : .primary)
                         .textSelection(.enabled)
                 }
                 LabeledContent(String(localized: "Connection")) {
-                    Text(connectionLabel(entry.connectionId) ?? "—")
+                    Text(connectionLabel(entry.connectionId) ?? String(localized: "None"))
                         .foregroundStyle(entry.connectionId == nil ? .tertiary : .primary)
                         .textSelection(.enabled)
                 }

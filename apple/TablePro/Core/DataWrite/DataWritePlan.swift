@@ -179,7 +179,7 @@ extension DataWriteStep {
                 DataWriteStep(
                     kind: .rowWrite,
                     statement: $0.statement,
-                    expectedRowCount: $0.keylessRowCount,
+                    expectedRowCount: $0.keylessRowCount ?? $0.keyedRowCount,
                     tableName: tableName,
                     matchesRowsWithoutKey: $0.keylessRowCount != nil,
                     rowKind: $0.kind,
@@ -220,6 +220,12 @@ struct DataWritePlan: Sendable {
     /// SQL Server's `IDENTITY_INSERT` is not, since every restoring INSERT then fails, so the run stops first.
     let prologueIsRequired: Bool
 
+    // Rows written through a view land in its table, which cascade preview, rewind and other tabs reason about.
+    var viewTarget: PluginViewWriteTarget?
+
+    // The session's literal rules for the shown values; the MySQL family is shown in its own set instead.
+    var sessionLexicalState: PluginSessionLexicalState?
+
     init(
         scope: DatabaseScope,
         databaseType: DatabaseType,
@@ -255,18 +261,28 @@ struct DataWritePlan: Sendable {
             && prologue.isEmpty
     }
 
-    /// The plan as a person would read it, with the bound values written in.
-    ///
-    /// Everything that asks a human to approve a write reads this: the Preview SQL sheet, the
-    /// Safe Mode confirmation and the authorization gate. Showing them the parameterized form
-    /// asks someone to approve `WHERE "id" = ?`, which names no row at all.
+    // What the Preview SQL sheet, the Safe Mode confirmation and the authorization gate show: `WHERE "id" = ?`
+    // names no row at all.
     var displayStatements: [String] {
         prologue
-            + steps.flatMap { SQLParameterInliner.inline($0, databaseType: databaseType) }
+            + steps.flatMap { SQLParameterInliner.inline($0, databaseType: databaseType, session: sessionLexicalState) }
             + epilogue
     }
 
     var displaySQL: String {
         displayStatements.joined(separator: "\n")
+    }
+}
+
+extension DataWritePlan {
+    // Nil when the view's table lives in another database, which the cascade preview cannot follow.
+    var cascadeScope: DatabaseScope? {
+        guard let base = viewTarget?.baseTable else { return scope }
+        guard base.database == nil || base.database == scope.database else { return nil }
+        return DatabaseScope(
+            connectionId: scope.connectionId,
+            database: scope.database,
+            schema: base.schema ?? scope.schema
+        )
     }
 }

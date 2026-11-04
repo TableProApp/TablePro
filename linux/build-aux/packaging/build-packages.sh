@@ -40,8 +40,8 @@ volume="tablepro-packages-$$"
 trap '"$engine" volume rm -f "$volume" >/dev/null' EXIT
 
 # Paths stay the same inside the containers, so a worktree's .git file
-# still points at its repository. Not read-only: meson dist refreshes the
-# git index before it archives.
+# still points at its repository. Not read-only: make-dist.sh's status
+# check refreshes the index.
 run() {
     image="$1"
     shift

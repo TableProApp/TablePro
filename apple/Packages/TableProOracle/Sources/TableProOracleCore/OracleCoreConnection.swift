@@ -227,7 +227,7 @@ public final class OracleCoreConnection: @unchecked Sendable {
                 throw OracleCoreError.notConnected
             }
 
-            osLogger.debug("Connected to Oracle \(self.options.host, privacy: .public):\(self.options.port, privacy: .public)")
+            osLogger.debug("Connected to Oracle \(self.options.host, privacy: .private(mask: .hash)):\(self.options.port, privacy: .public)")
         } catch is OracleTimeoutError {
             osLogger.error("Oracle login handshake timed out after \(self.options.loginTimeoutSeconds, privacy: .public)s")
             throw OracleCoreError.loginTimedOut
@@ -333,8 +333,9 @@ public final class OracleCoreConnection: @unchecked Sendable {
     private func connectError(from sqlError: OracleSQLError) -> OracleCoreError {
         let detail = Self.connectFailureDetail(sqlError)
         let phase = sqlError.handshakePhase
+        let code = sqlError.code.description
         osLogger.error(
-            "Oracle connection failed at phase \(phase ?? "unknown", privacy: .public) (\(sqlError.code.description, privacy: .public))"
+            "Oracle connection failed at phase \(phase ?? "unknown", privacy: .public) (\(code, privacy: .public))"
         )
         if let kind = OracleSSLClassifier.classifyTLSFailure(detail) {
             return .tlsHandshakeFailed(kind: kind, serverMessage: detail)

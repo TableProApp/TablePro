@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProConnectionLibrary
 import TableProImport
 
 @MainActor
@@ -75,7 +76,7 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         var adding: [DatabaseConnection] = []
         var replacing: [DatabaseConnection] = []
         for connection in resolved {
-            let built = DatabaseConnection(
+            var built = DatabaseConnection(
                 importing: connection.planned.settings,
                 id: connection.planned.id,
                 groupId: connection.groupId,
@@ -83,6 +84,10 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
                 credentialProfileId: connection.credentialProfileId,
                 resolvesSSHProfile: { sshProfiles.profile(for: $0) != nil }
             )
+            // The row syncs to devices that dial its snapshot, so the snapshot is this Mac's profile, never the file's.
+            if case .profile(let profileId, _) = built.sshTunnelMode, let profile = sshProfiles.profile(for: profileId) {
+                built = profile.applied(to: built)
+            }
             switch connection.planned.write {
             case .add: adding.append(built)
             case .replace: replacing.append(built)
@@ -102,6 +107,7 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         Set(connections.loadConnections().map(\.id))
     }
 
+    // A file's credential is the secret itself: a key document given as a path would read a key file on this Mac.
     func writeCredentials(_ credentials: ExportableCredentials, connectionId: UUID) {
         if let password = credentials.password {
             connections.savePassword(password, for: connectionId)
@@ -118,7 +124,16 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
         if let totpSecret = credentials.totpSecret {
             connections.saveTOTPSecret(totpSecret, for: connectionId)
         }
-        for (fieldId, value) in credentials.pluginSecureFields ?? [:] {
+        let pluginSecureFields = credentials.pluginSecureFields ?? [:]
+        guard !pluginSecureFields.isEmpty else { return }
+        // A file names any id it likes; the Keychain holds only the fields this connection's type declares secure.
+        let declared = connections.loadConnection(id: connectionId)
+            .map { Set(PluginManager.shared.secureConnectionFieldIds(for: $0.type)) } ?? []
+        for (fieldId, value) in pluginSecureFields where declared.contains(fieldId) {
+            if ConnectionFieldCatalog.keyDocumentFieldIds.contains(fieldId),
+               !ConnectionFieldCatalog.isInlineKeyDocument(value) {
+                continue
+            }
             connections.savePluginSecureField(value, fieldId: fieldId, for: connectionId)
         }
     }
@@ -145,6 +160,15 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
             throw ImportStoreError.unreadable
         }
 
+        // Replace is offered only to an entry that connects like the saved connection, compared as an export reads.
+        let exporter = ConnectionBundleExporter(
+            connections: connections,
+            groups: groups,
+            tags: tags,
+            profiles: profiles,
+            sshProfiles: sshProfiles,
+            favorites: favorites
+        )
         let snapshot = ImportLibrarySnapshot(
             connections: stored.map { connection in
                 ImportLibrarySnapshot.Connection(
@@ -158,7 +182,8 @@ internal struct MacImportLibraryStore: ImportLibraryStore {
                         redisDatabase: ConnectionMatchKey.redisDatabase(in: connection.additionalFields)
                             ?? connection.redisDatabase,
                         socketPath: MySQLLocalSocket.path(in: connection.additionalFields)
-                    )
+                    ),
+                    settings: exporter.portableSettings(for: connection, keepingLocalCredentials: false)
                 )
             },
             savedQueries: ledger ?? []

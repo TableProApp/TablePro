@@ -4,7 +4,7 @@ Three layers, three tools. Each crate's test policy follows from its position in
 
 | Crate | Layer | Tools | Required for merge? |
 |---|---|---|---|
-| `core` | Pure traits + types | Unit tests in `crates/core/src/`, table-driven for type mappers | Yes |
+| `core` | Pure traits + types | Unit tests in `core/crates/core/src/`, table-driven for type mappers | Yes |
 | `storage` | Filesystem, the Secret Service through `oo7`, GSettings | Unit tests + integration tests with `tempfile` | Yes |
 | `net` | TLS setup | Unit tests, a TLS handshake test against a local server | Yes |
 | `ssh` | OpenSSH transport | Unit tests, `testcontainers-rs` tests against an OpenSSH server | Yes |
@@ -72,11 +72,11 @@ GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 meson devenv -C _build cargo te
 
 ## Integration tests
 
-Each crate keeps its integration tests in `crates/<crate>/tests/`. A driver has one target, `crates/drivers/<engine>/tests/integration/main.rs`, with one module per topic.
+Each crate keeps its integration tests in `crates/<crate>/tests/`. A driver has one target, `core/crates/drivers/<engine>/tests/integration/main.rs`, with one module per topic.
 
 For `storage`, integration tests build `StoragePaths::under(root, ..)` over a `tempfile::TempDir`, so every file lands under that root.
 
-For network drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) through the fixtures in `tablepro-test-fixtures`. Each network driver's `crates/drivers/<engine>/tests/integration/support.rs` turns a fixture into `ConnectOptions` and a connected `Connection`; SQLite's and DuckDB's open a file endpoint instead:
+For network drivers, integration tests use [`testcontainers`](https://docs.rs/testcontainers/latest/testcontainers/) through the fixtures in `tablepro-test-fixtures`. Each network driver's `core/crates/drivers/<engine>/tests/integration/support.rs` turns a fixture into `ConnectOptions` and a connected `Connection`; SQLite's and DuckDB's open a file endpoint instead:
 
 ```rust
 use tablepro_core::meta::{ObjectKind, ObjectScope};
@@ -103,7 +103,7 @@ Keep the fixture alive for the whole test: dropping it stops the container.
 
 ### Container fixtures
 
-`crates/test-fixtures` (`tablepro-test-fixtures`) holds the containers that need more than a default image: a generated PKI, TLS turned on in the engine's own config format, and OpenSSH servers with a chosen auth method. It is a dev-dependency only and depends on no other TablePro crate.
+`core/crates/test-fixtures` (`tablepro-test-fixtures`) holds the containers that need more than a default image: a generated PKI, TLS turned on in the engine's own config format, and OpenSSH servers with a chosen auth method. It is a dev-dependency only and depends on no other TablePro crate.
 
 `TestPki::generate()` writes `ca.pem`, `unrelated-ca.pem`, `server.pem`, `server.key`, `client.pem` and `client.key` to a `TempDir`, private keys at 0600. The server certificate carries SANs `localhost` and `db.tablepro.test` and no IP SAN, so verifying against `127.0.0.1` is a name mismatch. The client certificate's CN is `tablepro_client`, which PostgreSQL `cert` auth matches against the role name.
 
@@ -120,7 +120,7 @@ SQL Server has only the `sa` principal, because its TLS contract carries no clie
 
 ### Conformance
 
-Every driver runs the same contract tests against its real server. `tablepro_test_support::connection_conformance_suite!` emits them from an engine adapter the driver's `crates/drivers/<engine>/tests/integration/conformance_engine.rs` implements (`ConformanceEngine`: how to start the server, connect, and spell a scratch table, a statement that never ends and a row source):
+Every driver runs the same contract tests against its real server. `tablepro_test_support::connection_conformance_suite!` emits them from an engine adapter the driver's `core/crates/drivers/<engine>/tests/integration/conformance_engine.rs` implements (`ConformanceEngine`: how to start the server, connect, and spell a scratch table, a statement that never ends and a row source):
 
 ```rust
 tablepro_test_support::connection_conformance_suite! {
@@ -172,6 +172,7 @@ Every case but the last plans through `connection.dialect().ddl()` and runs the 
 - `failed_ddl_batch_outcome_matches_ddl_atomicity` sends two plans whose second statement the server rejects, and checks the outcome against `ddl_writes`: `RolledBack` and nothing applied, or `PartiallyApplied` and the first plan applied.
 - `create_table_script_recreates_the_table` drops a table and runs its `create_table_script`, which has to bring back the same column definitions and index keys.
 - `structure_changes_keep_rows_and_indexes` fills an indexed table, then changes a default and a nullability. The rows and the index have to come through, which on SQLite means through the table rebuild.
+- `index_statement_recreates_the_index` drops an index and runs the CREATE INDEX statement it was read with, which has to make the same index again.
 - `builtin_snippets_run_as_written` takes the SQL editor's built-in snippets for the connection's grammar, fills their table, index, column and value stops, with the row's `id` too on CQL, which finds a row only by its key, and keeps the rest as written (`tablepro_test_support::expand_snippet`), and runs each one through an editor session as the editor splits it: one statement each, all completing.
 
 The PostgreSQL, MySQL, SQL Server, ClickHouse, SQLite and DuckDB targets run it, and the MySQL target runs it on MariaDB as well. SQLite and DuckDB pass `docker: false`, so their cases run in the unit suite.
@@ -182,11 +183,11 @@ The PostgreSQL, MySQL, SQL Server, ClickHouse, SQLite and DuckDB targets run it,
 
 - It counts the table, then pages from the first page to the end by the browse tab's default page size, each page read past the edge row's key, by offset where the engine pages that way, or resumed from the server's paging state, as `BrowsePager` moves on. The last page is then read from the end, or by offset where the server pages. Every row is checked, in id order or, where the server pages a scan in its own order, once each.
 - It exports the table through the statement `build_export` writes, streamed by `stream_read` with no deadline into a CSV file in 64 KiB chunks, as the export dialog's Entire Table does. Every line of the file is checked.
-- The walk, each page and the export have time bounds, and where pages seek, the last pages may not take much longer than the first. Where the server pages, the last page is reached only by reading every row before it, so it may take up to twice as long as the export, which reads them all at the same speed. Neither the walk nor the export may raise the process's resident peak (`VmHWM`, reset through `/proc/self/clear_refs`) past a memory bound. The bounds are constants in `crates/test-support/src/conformance/cases/large_table.rs`.
+- The walk, each page and the export have time bounds, and where pages seek, the last pages may not take much longer than the first. Where the server pages, the last page is reached only by reading every row before it, so it may take up to twice as long as the export, which reads them all at the same speed. Neither the walk nor the export may raise the process's resident peak (`VmHWM`, reset through `/proc/self/clear_refs`) past a memory bound. The bounds are constants in `core/crates/test-support/src/conformance/cases/large_table.rs`.
 
 The peak is the whole process's, so the case needs a process to itself. The PostgreSQL, MySQL, MariaDB, SQL Server, ClickHouse, Cassandra and ScyllaDB targets pass `docker: true` and run under cargo-nextest, which gives each test a process of its own. The `ci` nextest profile prints its times and memory for a passing run, so the job log keeps what the bounds are set from.
 
-SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, as `crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
+SQLite and DuckDB pass `docker: false`, so the case runs in the unit suite, where `cargo test` runs the tests of one binary in one process. It is a test target of its own, as `core/crates/drivers/sqlite/tests/large_table.rs`, which holds nothing else and includes the adapter from `tests/integration/sqlite_engine.rs`. A passing run there prints nothing; `cargo test -p tablepro-driver-sqlite --test large_table -- --nocapture` shows the numbers.
 
 ### Large-catalog case
 
@@ -207,7 +208,7 @@ GSK_RENDERER=cairo GTK_A11Y=test GDK_BACKEND=x11 xvfb-run -a dbus-run-session --
 
 ### Value corpus
 
-`value_corpus_suite!` checks that real values read back as the grid shows them. Each driver's `crates/drivers/<engine>/tests/integration/value_corpus.rs` implements `ValueCorpusEngine` and invokes it:
+`value_corpus_suite!` checks that real values read back as the grid shows them. Each driver's `core/crates/drivers/<engine>/tests/integration/value_corpus.rs` implements `ValueCorpusEngine` and invokes it:
 
 ```rust
 tablepro_test_support::value_corpus_suite! {
@@ -222,7 +223,7 @@ Every target runs it, the MySQL target on MariaDB as well, and SQLite's and Duck
 
 ### Export round trip
 
-`round_trip_suite!` checks that a file the export writes, and rows the grid copies, load back with the same rows. Each driver's `crates/drivers/<engine>/tests/integration/round_trip.rs` invokes it with an engine that implements `ValueCorpusEngine` and `LargeTableEngine`:
+`round_trip_suite!` checks that a file the export writes, and rows the grid copies, load back with the same rows. Each driver's `core/crates/drivers/<engine>/tests/integration/round_trip.rs` invokes it with an engine that implements `ValueCorpusEngine` and `LargeTableEngine`:
 
 ```rust
 tablepro_test_support::round_trip_suite! {
@@ -241,7 +242,7 @@ Each case has four minutes (`ROUND_TRIP_CASE_LIMIT`). Every target runs the suit
 
 ### Keyspace conformance
 
-A key-value engine runs `keyspace_conformance_suite!` in place of the SQL suites, through `KeyspaceEngine`: how to start the server and connect, a route the case can drop (`FaultTransport`), the engine's commands that fill a key of each type, wait on a key, write a key and read a whole key, and how many commands the server holds waiting on a key. Redis's adapter is `crates/drivers/redis/tests/integration/conformance_engine.rs`:
+A key-value engine runs `keyspace_conformance_suite!` in place of the SQL suites, through `KeyspaceEngine`: how to start the server and connect, a route the case can drop (`FaultTransport`), the engine's commands that fill a key of each type, wait on a key, write a key and read a whole key, and how many commands the server holds waiting on a key. Redis's adapter is `core/crates/drivers/redis/tests/integration/conformance_engine.rs`:
 
 ```rust
 tablepro_test_support::keyspace_conformance_suite! {
@@ -253,7 +254,7 @@ The cases: keys are listed with their types; a pattern is matched on the server;
 
 ### Document conformance
 
-A document engine runs `document_conformance_suite!` in place of the SQL suites, through `DocumentEngine`: how to start the server and connect, a route the case can drop, the engine's statements that fill a collection, never end, and read while writing, and how many operations the server is running under a marker. MongoDB's adapter is `crates/drivers/mongodb/tests/integration/conformance_engine.rs`:
+A document engine runs `document_conformance_suite!` in place of the SQL suites, through `DocumentEngine`: how to start the server and connect, a route the case can drop, the engine's statements that fill a collection, never end, and read while writing, and how many operations the server is running under a marker. MongoDB's adapter is `core/crates/drivers/mongodb/tests/integration/conformance_engine.rs`:
 
 ```rust
 tablepro_test_support::document_conformance_suite! {
@@ -265,7 +266,7 @@ The cases: collections are listed in their database; fields become columns with 
 
 ### TLS conformance
 
-Every network driver's `crates/drivers/<engine>/tests/integration/tls.rs` also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:
+Every network driver's `core/crates/drivers/<engine>/tests/integration/tls.rs` also runs `tls_conformance_suite!` against a TLS-only server built from `TestPki`:
 
 ```rust
 tablepro_test_support::tls_conformance_suite! {
@@ -326,7 +327,7 @@ A fixture starts its engine's default release unless the engine's variable names
 | `TABLEPRO_TEST_MONGO` | 7.0, 8.0 | 8.0 |
 | `TABLEPRO_TEST_OPENSSH` | 9.9, 10.3 | 10.3 |
 
-`crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `CassandraVersion`, `ScyllaVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
+`core/crates/test-fixtures/src/fixture_image.rs` pins each release's image, and each engine's version type (`PostgresVersion`, `MysqlVersion`, `MariadbVersion`, `MssqlVersion`, `ClickHouseVersion`, `CassandraVersion`, `ScyllaVersion`, `RedisVersion`, `MongoVersion`, `OpenSshVersion`) reads its variable through `ServerVersion::selected`. An empty value picks the default; a release the fixtures do not pin fails the fixture with the ones they do. PostgreSQL 13 is past end of life and stays only for the catalogue test of the driver's query for servers before 14.
 
 The `integration` job runs each driver's suite on the defaults, then once more for each entry with a `release`: PostgreSQL 14 and 18, MySQL 8.0 with MariaDB 10.11, MySQL 9.7 with MariaDB 12.3, SQL Server 2017, 2019 and 2025, ClickHouse 26.3, Cassandra 4.0 with ScyllaDB 2025.1, Redis 7.4, MongoDB 7.0, and OpenSSH 9.9 for `tablepro-ssh`. The README's [supported servers](../README.md#supported-servers) table says why those releases and not others. A test that checks the server's version reads it from the fixture (`PostgresFixture::version`, `MysqlFixture::server_version`, `MssqlFixture::version`, `ClickHouseFixture::version`, `CassandraFixture::server_version`, `RedisFixture::version`, `MongoFixture::version`, `OpenSshFixture::version`), never from a literal, so it holds on every release.
 
@@ -460,13 +461,13 @@ Policy:
 
 ### The script planner
 
-`crates/core/tests/script_corpus.rs` holds the planner's fixtures, by grammar:
+`core/crates/core/tests/script_corpus.rs` holds the planner's fixtures, by grammar:
 
 - A named case for each rule an engine's client follows: dollar quotes and `BEGIN ATOMIC` bodies, a procedure with `DELIMITER` and one without, trigger bodies, `GO` with a count, heredocs, `#` and `//` comments, backslash escapes with the setting on and off, mongosh statements that end at a line break unless the next line goes on with `.`, and text left open, which keeps the statements before it.
 - `lexer_matches_sqlparser_where_engines_agree` checks the semicolons the lexer finds in `AGREED_CASES` against sqlparser's tokenizer, on cases where sqlparser reads the text as the engine does.
 - A proptest runs every grammar over random text with multibyte characters: the tokens cover the text with no gap, every range ends on a character boundary, and batches never overlap.
 
-`crates/drivers/sqlite/tests/script_plan_matches_sqlite3_complete.rs` checks every prefix of a SQLite corpus against SQLite's own `sqlite3_complete`. A new rule gets a named case, and a place in `AGREED_CASES` when sqlparser reads it the engine's way.
+`core/crates/drivers/sqlite/tests/script_plan_matches_sqlite3_complete.rs` checks every prefix of a SQLite corpus against SQLite's own `sqlite3_complete`. A new rule gets a named case, and a place in `AGREED_CASES` when sqlparser reads it the engine's way.
 
 The real servers run scripts in tests ignored with `requires docker`: MySQL and MariaDB create a trigger and procedures with and without `DELIMITER` (`create_trigger_and_procedure_in_session`), SQL Server runs `GO` batches past a failed one (`go_batches_run_in_order_and_continue_after_an_error`), and PostgreSQL splits with backslash escapes once `standard_conforming_strings` is off (`standard_conforming_strings_off_splits_with_backslash_escapes`).
 

@@ -107,8 +107,8 @@ enum ERDiagramDOTWriter {
 
     static func quoted(_ id: String) -> String {
         let escaped = id
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
         return "\"\(escaped)\""
     }
 

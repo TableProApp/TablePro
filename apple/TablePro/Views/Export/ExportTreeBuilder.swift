@@ -379,7 +379,7 @@ struct ExportTreeBuilder {
             return try await reader.fetchTables(schema: isCurrentDatabase ? nil : database)
         } catch {
             Self.logger.warning(
-                "Export tree read no tables for \(database, privacy: .public): \(error.publicLogShape, privacy: .public)"
+                "Export tree read no tables for \(database, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
             )
             return []
         }

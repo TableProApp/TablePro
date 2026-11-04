@@ -273,13 +273,13 @@ struct QueryBatchPlannerTests {
     func declarationsAndQueriesMap() throws {
         let batch = try #require(Self.batches(Self.reporterScript, on: .mssql).first)
         #expect(BatchResultMapping.mapsToStatements(
-            batch, resultSetCount: 4, hasErrors: false, isPlainQuery: Self.isPlainQuery(.mssql)
+            batch, resultSetCount: 4, hasErrors: false, grammar: DatabaseType.mssql.lexicalGrammar, isPlainQuery: Self.isPlainQuery(.mssql)
         ))
         #expect(!BatchResultMapping.mapsToStatements(
-            batch, resultSetCount: 3, hasErrors: false, isPlainQuery: Self.isPlainQuery(.mssql)
+            batch, resultSetCount: 3, hasErrors: false, grammar: DatabaseType.mssql.lexicalGrammar, isPlainQuery: Self.isPlainQuery(.mssql)
         ))
         #expect(!BatchResultMapping.mapsToStatements(
-            batch, resultSetCount: 4, hasErrors: true, isPlainQuery: Self.isPlainQuery(.mssql)
+            batch, resultSetCount: 4, hasErrors: true, grammar: DatabaseType.mssql.lexicalGrammar, isPlainQuery: Self.isPlainQuery(.mssql)
         ))
     }
 
@@ -287,11 +287,11 @@ struct QueryBatchPlannerTests {
     func controlFlowDoesNotMap() throws {
         let exec = try #require(Self.batches("SELECT 1;\nEXEC sp_who;", on: .mssql).first)
         #expect(!BatchResultMapping.mapsToStatements(
-            exec, resultSetCount: 2, hasErrors: false, isPlainQuery: Self.isPlainQuery(.mssql)
+            exec, resultSetCount: 2, hasErrors: false, grammar: DatabaseType.mssql.lexicalGrammar, isPlainQuery: Self.isPlainQuery(.mssql)
         ))
         let loop = try #require(Self.batches("WHILE 1 = 0 SELECT 1;\nSELECT 2;", on: .mssql).first)
         #expect(!BatchResultMapping.mapsToStatements(
-            loop, resultSetCount: 2, hasErrors: false, isPlainQuery: Self.isPlainQuery(.mssql)
+            loop, resultSetCount: 2, hasErrors: false, grammar: DatabaseType.mssql.lexicalGrammar, isPlainQuery: Self.isPlainQuery(.mssql)
         ))
     }
 
@@ -299,7 +299,7 @@ struct QueryBatchPlannerTests {
     func repeatedBatchDoesNotMap() throws {
         let batch = try #require(Self.batches("SELECT 1\nGO 2", on: .mssql).first)
         #expect(!BatchResultMapping.mapsToStatements(
-            batch, resultSetCount: 1, hasErrors: false, isPlainQuery: Self.isPlainQuery(.mssql)
+            batch, resultSetCount: 1, hasErrors: false, grammar: DatabaseType.mssql.lexicalGrammar, isPlainQuery: Self.isPlainQuery(.mssql)
         ))
     }
 

@@ -87,14 +87,12 @@ extension MainContentCoordinator {
     private func runMaterializedViewRefresh(_ target: DatabaseObjectTarget, concurrently: Bool) {
         Task {
             do {
+                // The refresh posts a rows change, which reloads every tab showing the view.
                 try await MaterializedViewRefreshing.refresh(target, concurrently: concurrently, connection: connection)
-                AlertHelper.showInfoSheet(
-                    title: String(localized: "Materialized View Refreshed"),
-                    message: String(format: String(localized: "“%@” now holds the current result of its query."), target.qualifiedName),
-                    window: contentWindow
-                )
+                AccessibilityAnnouncement.post(String(localized: "Materialized View Refreshed"))
             } catch ExecutionGateError.cancelledByUser {
             } catch {
+                Self.objectToolsLogger.error("Materialized view refresh failed: \(error.publicLogShape, privacy: .public)")
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Couldn't Refresh Materialized View"),
                     message: error.localizedDescription,
@@ -125,13 +123,18 @@ extension MainContentCoordinator {
 
     // MARK: - Object Changes
 
-    /// Brings every tab showing the changed object up to date, and no other tab.
-    ///
-    /// A rows or structure change goes through `refreshTableTabs`, which reloads the selected tab only
-    /// when nothing of the user's is in the way, leaves every other tab marked to reload when it is
-    /// next shown, and fetches the structure of each again. A rows change needs that too: a MongoDB
-    /// collection's columns are sampled from its documents, and a materialized view's refresh changes
-    /// what its **Indexes** tab reports.
+    private func viewTabIds(writingThrough change: DatabaseObjectChange) -> Set<UUID> {
+        Set(tabManager.tabs.filter { tab in
+            guard tab.tabType == .table, let base = tab.tableContext.viewWriteTarget?.baseTable else { return false }
+            return change.matches(
+                tableName: base.name,
+                databaseName: base.database ?? tab.tableContext.resolvedDatabaseName(browsing: browseDatabaseName),
+                schemaName: base.schema ?? tab.tableContext.schemaName
+            )
+        }.map(\.id))
+    }
+
+    // A rows change refreshes structure too: a MongoDB collection's columns and a matview's indexes follow its rows.
     func applyObjectChange(_ change: DatabaseObjectChange) {
         guard change.connectionId == connectionId else { return }
         let showing = tabManager.tabs.filter { tab in
@@ -143,15 +146,17 @@ extension MainContentCoordinator {
         }
         let showingIds = Set(showing.map(\.id))
         let selected = tabManager.selectedTab.flatMap { showingIds.contains($0.id) ? $0 : nil }
+        // A view tab writing through the changed table shows its rows, so it reloads with it.
+        let writingIds = showingIds.union(viewTabIds(writingThrough: change))
 
         switch change.kind {
         case .rows:
             let rows = TableFreshness.Change(extent: .rows, at: change.changedAt)
-            refreshTableTabs(for: rows, excluding: change.originTabId) { showingIds.contains($0.id) }
+            refreshTableTabs(for: rows, excluding: change.originTabId) { writingIds.contains($0.id) }
         case .structure:
             forgetSchemaColumns(of: change)
             let definition = TableFreshness.Change(extent: .definition, at: change.changedAt)
-            refreshTableTabs(for: definition, excluding: change.originTabId) { showingIds.contains($0.id) }
+            refreshTableTabs(for: definition, excluding: change.originTabId) { writingIds.contains($0.id) }
         case .comment:
             markTableMetadataStale(forTabs: showingIds)
             if let selected {

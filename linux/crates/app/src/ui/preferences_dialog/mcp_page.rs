@@ -10,8 +10,8 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use secrecy::ExposeSecret;
 use tablepro_core::credentials::SecretError;
-use tablepro_storage::AppSettings;
-use tablepro_storage::settings::keys;
+use tablepro_linux_platform::AppSettings;
+use tablepro_linux_platform::settings::keys;
 use tokio::sync::watch;
 
 use crate::services::mcp_service::McpService;

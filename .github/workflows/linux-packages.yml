@@ -18,8 +18,9 @@ on:
       - "linux/build-aux/debian/**"
       - "linux/build-aux/rpm/**"
       - "linux/build-aux/packaging/**"
-      - "linux/Cargo.toml"
-      - "linux/Cargo.lock"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "core/**"
       - "linux/meson.build"
       - "linux/meson.options"
       - "linux/crates/**/meson.build"
@@ -57,6 +58,11 @@ on:
         type: string
         default: "1"
 
+# A pull request keeps only its newest run; every other run, a release's call included, has its own group.
+concurrency:
+  group: linux-packages-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, inputs.release-tag) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -69,7 +75,7 @@ jobs:
       image: ubuntu:26.04
     steps:
       # Before the checkout: without git, actions/checkout downloads a
-      # tarball, which leaves no .git for meson dist to archive.
+      # tarball, which leaves no .git for make-dist.sh to archive.
       - name: Install git
         run: |
           apt-get update

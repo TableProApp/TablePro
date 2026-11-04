@@ -28,6 +28,7 @@ struct QueryClassifierPLSQLTests {
     @Test("A drop the block spells out is destructive", arguments: [
         "BEGIN EXECUTE IMMEDIATE 'DROP TABLE users'; END;",
         "BEGIN EXECUTE IMMEDIATE q'[DROP TABLE users]'; END;",
+        "BEGIN EXECUTE IMMEDIATE q'\u{1F600}DROP TABLE users\u{1F600}'; END;",
         "BEGIN execute immediate 'truncate table users'; END;",
         "BEGIN DBMS_UTILITY.EXEC_DDL_STATEMENT('DROP TABLE users'); END;",
         "DECLARE c INTEGER := DBMS_SQL.OPEN_CURSOR; BEGIN DBMS_SQL.PARSE(c, 'DROP TABLE users', DBMS_SQL.NATIVE); END;",

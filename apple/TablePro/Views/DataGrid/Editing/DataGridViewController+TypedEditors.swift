@@ -6,6 +6,7 @@
 import AppKit
 import SwiftUI
 import TableProPluginKit
+import TableProSQLQuoting
 
 extension DataGridViewController {
     // MARK: - Chevron
@@ -135,7 +136,7 @@ extension DataGridViewController {
         let name = cell.column.name
         // A string default arrives as the SQL after DEFAULT, quoted; the picker matches unquoted tokens.
         let storedDefault = rows.columnDefaults[name] ?? nil
-        let defaultValue = storedDefault.flatMap(SQLStringLiteral.unquoted) ?? storedDefault
+        let defaultValue = storedDefault.flatMap { SQLQuoting.decodedStringLiteral($0) } ?? storedDefault
         let commit = enteredTextCommit(for: cell)
         EnumMenuPicker.presentEnum(
             relativeTo: frame.rect,
@@ -373,7 +374,9 @@ extension DataGridViewController {
         switch cell.value {
         case .null: return
         case .bytes(let bytes): data = bytes
-        case .text(let text): data = text.storedBytes
+        case .text(let text):
+            let holdsBytes = BinaryValueBytes.holdsBytes(columnType: cell.column.type)
+            data = BinaryValueBytes.data(of: text, holdsBytes: holdsBytes) ?? text.storedBytes
         }
         let name = cell.column.name
         presentTypedPopover(for: cell, edits: false, contentSize: NSSize(width: 560, height: 360)) { dismiss in

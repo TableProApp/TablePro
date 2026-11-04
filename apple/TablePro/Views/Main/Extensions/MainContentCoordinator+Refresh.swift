@@ -43,19 +43,20 @@ extension MainContentCoordinator {
         onDiscard: @escaping () -> Void
     ) {
         guard let (tab, _) = tabManager.selectedTabAndIndex else { return }
-        if tab.tabType == .versionHistory {
-            AppEvents.shared.versionHistoryRefreshRequested.send(tab.id)
+        switch tab.tabType {
+        case .versionHistory, .tableListing, .serverDashboard, .insights, .tableHealth, .objectSource:
+            AppEvents.shared.tabRefreshRequested.send(tab.id)
             return
-        }
-        if tab.tabType == .tableListing {
-            AppEvents.shared.tableListingRefreshRequested.send(tab.id)
-            return
-        }
-        if tab.tabType == .erDiagram {
+        case .erDiagram:
             if let diagram = erDiagramModels[tab.id] {
                 Task { await diagram.refresh() }
             }
             return
+        case .usersRoles:
+            usersRolesActions?.refresh()
+            return
+        case .query, .table, .createTable, .routineDebug, .liveMessages:
+            break
         }
         if tab.display.resultsViewMode == .structure {
             activeStructureSession?.refresh()

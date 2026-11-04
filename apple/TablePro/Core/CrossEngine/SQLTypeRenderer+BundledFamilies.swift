@@ -6,14 +6,13 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 internal extension SQLTypeRenderer {
     // MARK: - MySQL
 
-    /// `UNSIGNED` is never spelled here. It is a column attribute rather than part of the type name
-    /// as far as `PluginColumnDefinition` is concerned, and `mysqlColumnAttributesSQL` writes it
-    /// from `unsigned`, so putting it in the type as well produced `INT UNSIGNED UNSIGNED`.
-    static func mysql(_ type: CanonicalColumnType) -> RenderedColumnType {
+    // `mysqlColumnAttributesSQL` writes `UNSIGNED` from the column, so spelling it here gave `INT UNSIGNED UNSIGNED`.
+    static func mysql(_ type: CanonicalColumnType, stringEscapes: SQLStringEscapes = .backslash) -> RenderedColumnType {
         switch type.kind {
         case .boolean:
             return RenderedColumnType(spelling: "TINYINT(1)")
@@ -59,7 +58,7 @@ internal extension SQLTypeRenderer {
                 spelling: "LONGTEXT", fidelity: .approximated, reason: noEquivalent("XML", as: "LONGTEXT")
             )
         case .enumeration(let values):
-            return mysqlEnum(values)
+            return mysqlEnum(values, stringEscapes: stringEscapes)
         case .bitString(let length):
             let bits = length ?? 1
             guard bits <= 64 else {
@@ -137,12 +136,12 @@ internal extension SQLTypeRenderer {
         return RenderedColumnType(spelling: "VARBINARY(\(length))")
     }
 
-    private static func mysqlEnum(_ values: [String]) -> RenderedColumnType {
+    private static func mysqlEnum(_ values: [String], stringEscapes: SQLStringEscapes) -> RenderedColumnType {
         guard !values.isEmpty else {
             return RenderedColumnType(spelling: "VARCHAR(255)", fidelity: .approximated, reason: enumBecomesText)
         }
         let labels = values
-            .map { "'\($0.replacingOccurrences(of: "'", with: "''"))'" }
+            .map { SQLQuoting.stringLiteral($0, escapes: stringEscapes) }
             .joined(separator: ", ")
         return RenderedColumnType(spelling: "ENUM(\(labels))")
     }

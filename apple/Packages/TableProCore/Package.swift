@@ -31,11 +31,15 @@ let package = Package(
         .library(name: "TableProKerberos", targets: ["TableProKerberos"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
         .library(name: "TableProTrinoCore", targets: ["TableProTrinoCore"]),
+        .library(name: "TableProDamengCore", targets: ["TableProDamengCore"]),
         .library(name: "TableProTLSClientIdentity", targets: ["TableProTLSClientIdentity"]),
         .library(name: "TableProTLSTestFixtures", targets: ["TableProTLSTestFixtures"]),
         .library(name: "TableProGoogleCloud", targets: ["TableProGoogleCloud"]),
         .library(name: "TableProSpannerCore", targets: ["TableProSpannerCore"]),
         .library(name: "TableProWeaviateCore", targets: ["TableProWeaviateCore"]),
+        .library(name: "TableProQdrantCore", targets: ["TableProQdrantCore"]),
+        .library(name: "TableProInfluxDBCore", targets: ["TableProInfluxDBCore"]),
+        .library(name: "TableProNeo4jCore", targets: ["TableProNeo4jCore"]),
         .library(name: "TableProFirebaseCore", targets: ["TableProFirebaseCore"]),
         .library(name: "TableProBigtableCore", targets: ["TableProBigtableCore"]),
         .library(name: "TableProNumberFormatting", targets: ["TableProNumberFormatting"]),
@@ -45,6 +49,8 @@ let package = Package(
         .library(name: "TableProR2SQLCore", targets: ["TableProR2SQLCore"]),
         .library(name: "TableProConnectionLibrary", targets: ["TableProConnectionLibrary"]),
         .library(name: "TableProSQLGrammar", targets: ["TableProSQLGrammar"]),
+        .library(name: "TableProSQLQuoting", targets: ["TableProSQLQuoting"]),
+        .library(name: "TableProProcess", targets: ["TableProProcess"]),
         .library(name: "TableProSQLVocabulary", targets: ["TableProSQLVocabulary"]),
         .library(name: "TableProAutocomplete", targets: ["TableProAutocomplete"]),
         .library(name: "TableProSSHTransport", targets: ["TableProSSHTransport"]),
@@ -55,7 +61,18 @@ let package = Package(
         .library(name: "TableProMySQLCore", targets: ["TableProMySQLCore"]),
         .library(name: "TableProPostgreSQLCore", targets: ["TableProPostgreSQLCore"]),
         .library(name: "TableProRedisCore", targets: ["TableProRedisCore"]),
-        .library(name: "TableProTestSupport", targets: ["TableProTestSupport"])
+        .library(name: "TableProMemcachedCore", targets: ["TableProMemcachedCore"]),
+        .library(name: "TableProHTTP", targets: ["TableProHTTP"]),
+        .library(name: "TableProSnowflakeCore", targets: ["TableProSnowflakeCore"]),
+        .library(name: "TableProTestSupport", targets: ["TableProTestSupport"]),
+        .library(name: "TableProWireIO", targets: ["TableProWireIO"]),
+        .library(name: "TableProGzip", targets: ["TableProGzip"]),
+        .library(name: "TableProKafkaCore", targets: ["TableProKafkaCore"]),
+        .library(name: "TableProCassandraCore", targets: ["TableProCassandraCore"])
+    ],
+    // Kafka brokers hand back whatever codec the producer stored, and macOS has no zstd.
+    dependencies: [
+        .package(url: "https://github.com/facebook/zstd", from: "1.5.0")
     ],
     targets: [
         .target(
@@ -105,18 +122,19 @@ let package = Package(
         ),
         .target(
             name: "TableProImport",
-            dependencies: ["TableProConnectionLibrary"],
+            dependencies: ["TableProConnectionLibrary", "TableProCoreTypes", "TableProSSHTransport"],
             path: "Sources/TableProImport"
         ),
         .target(
             name: "TableProDatabase",
-            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar", "TableProSSHTransport"],
+            dependencies: ["TableProModels", "TableProCoreTypes", "TableProPluginKit", "TableProSQLGrammar", "TableProSQLQuoting", "TableProSSHTransport"],
             path: "Sources/TableProDatabase"
         ),
         .target(
             name: "TableProQuery",
             dependencies: [
-                "TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar", "TableProRedisCore"
+                "TableProModels", "TableProPluginKit", "TableProCoreTypes", "TableProSQLGrammar", "TableProSQLQuoting",
+                "TableProRedisCore"
             ],
             path: "Sources/TableProQuery"
         ),
@@ -137,7 +155,7 @@ let package = Package(
         ),
         .target(
             name: "TableProMSSQLCore",
-            dependencies: ["TableProCoreTypes", "TableProSQLGrammar"],
+            dependencies: ["TableProCoreTypes", "TableProSQLGrammar", "TableProSQLQuoting"],
             path: "Sources/TableProMSSQLCore"
         ),
         .target(
@@ -147,13 +165,19 @@ let package = Package(
         ),
         .target(
             name: "TableProTeradataCore",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting", "TableProWireIO"],
             path: "Sources/TableProTeradataCore"
         ),
         .target(
             name: "TableProTrinoCore",
-            dependencies: [],
+            dependencies: ["TableProSQLGrammar", "TableProSQLQuoting", "TableProTLSClientIdentity"],
             path: "Sources/TableProTrinoCore"
+        ),
+        .target(
+            name: "TableProDamengCore",
+            dependencies: ["TableProSQLGrammar"],
+            path: "Sources/TableProDamengCore",
+            swiftSettings: pluginCoreSettings
         ),
         .target(
             name: "TableProTLSClientIdentity",
@@ -172,18 +196,34 @@ let package = Package(
         ),
         .target(
             name: "TableProGoogleCloud",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProGoogleCloud"
         ),
         .target(
             name: "TableProSpannerCore",
-            dependencies: ["TableProGoogleCloud"],
+            dependencies: ["TableProGoogleCloud", "TableProSQLQuoting"],
             path: "Sources/TableProSpannerCore"
         ),
         .target(
             name: "TableProWeaviateCore",
             dependencies: [],
             path: "Sources/TableProWeaviateCore"
+        ),
+        .target(
+            name: "TableProQdrantCore",
+            dependencies: [],
+            path: "Sources/TableProQdrantCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
+            name: "TableProInfluxDBCore",
+            dependencies: [],
+            path: "Sources/TableProInfluxDBCore"
+        ),
+        .target(
+            name: "TableProNeo4jCore",
+            dependencies: ["TableProSQLQuoting"],
+            path: "Sources/TableProNeo4jCore"
         ),
         .target(
             name: "TableProBigtableCore",
@@ -197,7 +237,7 @@ let package = Package(
         ),
         .target(
             name: "TableProR2SQLCore",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProR2SQLCore"
         ),
         .target(
@@ -207,8 +247,20 @@ let package = Package(
         ),
         .target(
             name: "TableProSQLGrammar",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProSQLGrammar"
+        ),
+        // Linked by PluginKit, plugin bundles and both apps, so it depends on nothing.
+        .target(
+            name: "TableProSQLQuoting",
+            dependencies: [],
+            path: "Sources/TableProSQLQuoting"
+        ),
+        // Starts every child process outside PluginKit. Foundation only, so it builds on Linux too.
+        .target(
+            name: "TableProProcess",
+            dependencies: [],
+            path: "Sources/TableProProcess"
         ),
         // Linked by the macOS app, six plugin bundles and the iOS app, so never TableProPluginKit.
         .target(
@@ -220,7 +272,7 @@ let package = Package(
         // The macOS app links it, so never TableProPluginKit.
         .target(
             name: "TableProAutocomplete",
-            dependencies: ["TableProSQLGrammar", "TableProSQLVocabulary"],
+            dependencies: ["TableProSQLGrammar", "TableProSQLQuoting", "TableProSQLVocabulary"],
             path: "Sources/TableProAutocomplete",
             swiftSettings: pluginCoreSettings
         ),
@@ -236,7 +288,7 @@ let package = Package(
         ),
         .target(
             name: "TableProTabularIO",
-            dependencies: [],
+            dependencies: ["TableProWireIO"],
             path: "Sources/TableProTabularIO"
         ),
         .target(
@@ -252,14 +304,20 @@ let package = Package(
         // Linked by a plugin bundle, so never TableProPluginKit: the plugin would carry its own copy of PluginKit's types.
         .target(
             name: "TableProMySQLCore",
-            dependencies: ["TableProGeometry"],
+            dependencies: ["TableProGeometry", "TableProSQLQuoting"],
             path: "Sources/TableProMySQLCore",
             swiftSettings: pluginCoreSettings
         ),
         .target(
             name: "TableProPostgreSQLCore",
-            dependencies: [],
+            dependencies: ["TableProSQLQuoting"],
             path: "Sources/TableProPostgreSQLCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
+            name: "TableProMemcachedCore",
+            dependencies: [],
+            path: "Sources/TableProMemcachedCore",
             swiftSettings: pluginCoreSettings
         ),
         .target(
@@ -268,10 +326,66 @@ let package = Package(
             path: "Sources/TableProRedisCore",
             swiftSettings: pluginCoreSettings
         ),
+        // Linked by the macOS app, a plugin bundle and the iOS app, so never TableProPluginKit.
+        .target(
+            name: "TableProHTTP",
+            dependencies: [],
+            path: "Sources/TableProHTTP",
+            swiftSettings: pluginCoreSettings
+        ),
+        // Linked by a plugin bundle, so never TableProPluginKit.
+        .target(
+            name: "TableProSnowflakeCore",
+            dependencies: ["TableProHTTP"],
+            path: "Sources/TableProSnowflakeCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
+            name: "TableProWireIO",
+            dependencies: [],
+            path: "Sources/TableProWireIO"
+        ),
+        .target(
+            name: "TableProGzip",
+            dependencies: ["TableProWireIO"],
+            path: "Sources/TableProGzip"
+        ),
+        // Linked by a plugin bundle, so never TableProPluginKit.
+        .target(
+            name: "TableProKafkaCore",
+            dependencies: [
+                "TableProWireIO",
+                "TableProGzip",
+                .product(name: "libzstd", package: "zstd")
+            ],
+            path: "Sources/TableProKafkaCore",
+            swiftSettings: pluginCoreSettings
+        ),
+        .target(
+            name: "TableProCassandraCore",
+            dependencies: ["TableProSQLGrammar", "TableProSQLQuoting"],
+            path: "Sources/TableProCassandraCore",
+            swiftSettings: pluginCoreSettings
+        ),
         .testTarget(
             name: "TableProBigtableCoreTests",
             dependencies: ["TableProBigtableCore", "TableProGoogleCloud"],
             path: "Tests/TableProBigtableCoreTests"
+        ),
+        .testTarget(
+            name: "TableProNeo4jCoreTests",
+            dependencies: ["TableProNeo4jCore"],
+            path: "Tests/TableProNeo4jCoreTests"
+        ),
+        .testTarget(
+            name: "TableProWeaviateCoreTests",
+            dependencies: ["TableProWeaviateCore", "TableProTLSTestFixtures"],
+            path: "Tests/TableProWeaviateCoreTests"
+        ),
+        .testTarget(
+            name: "TableProFirebaseCoreTests",
+            dependencies: ["TableProFirebaseCore"],
+            path: "Tests/TableProFirebaseCoreTests"
         ),
         .testTarget(
             name: "TableProSpannerCoreTests",
@@ -280,13 +394,30 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProTeradataCoreTests",
-            dependencies: ["TableProTeradataCore"],
+            dependencies: ["TableProTeradataCore", "TableProWireIO"],
             path: "Tests/TableProTeradataCoreTests"
         ),
         .testTarget(
+            name: "TableProQdrantCoreTests",
+            dependencies: ["TableProQdrantCore"],
+            path: "Tests/TableProQdrantCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProInfluxDBCoreTests",
+            dependencies: ["TableProInfluxDBCore"],
+            path: "Tests/TableProInfluxDBCoreTests"
+        ),
+        .testTarget(
             name: "TableProTrinoCoreTests",
-            dependencies: ["TableProTrinoCore"],
+            dependencies: ["TableProTrinoCore", "TableProSQLGrammar", "TableProTLSTestFixtures"],
             path: "Tests/TableProTrinoCoreTests"
+        ),
+        .testTarget(
+            name: "TableProDamengCoreTests",
+            dependencies: ["TableProDamengCore", "TableProSQLGrammar"],
+            path: "Tests/TableProDamengCoreTests",
+            swiftSettings: pluginCoreSettings
         ),
         .testTarget(
             name: "TableProTabularIOTests",
@@ -364,6 +495,19 @@ let package = Package(
             path: "Tests/TableProSQLGrammarTests"
         ),
         .testTarget(
+            name: "TableProSQLQuotingTests",
+            dependencies: ["TableProSQLQuoting", "TableProSQLGrammar", "CSQLite"],
+            path: "Tests/TableProSQLQuotingTests",
+            // CSQLite carries the headers only; the apps link the vendored library. The test reads quoted text
+            // back through SQLite's own tokenizer, which the system library shares.
+            linkerSettings: [.linkedLibrary("sqlite3")]
+        ),
+        .testTarget(
+            name: "TableProProcessTests",
+            dependencies: ["TableProProcess"],
+            path: "Tests/TableProProcessTests"
+        ),
+        .testTarget(
             name: "TableProSQLVocabularyTests",
             dependencies: ["TableProSQLVocabulary", "TableProPluginKit"],
             path: "Tests/TableProSQLVocabularyTests",
@@ -382,7 +526,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProMSSQLCoreTests",
-            dependencies: ["TableProMSSQLCore", "TableProTestSupport"],
+            dependencies: ["TableProMSSQLCore", "TableProSQLGrammar", "TableProTestSupport"],
             path: "Tests/TableProMSSQLCoreTests"
         ),
         .testTarget(
@@ -407,7 +551,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProPluginKitTests",
-            dependencies: ["TableProPluginKit"],
+            dependencies: ["TableProPluginKit", "TableProSQLQuoting"],
             path: "Tests/TableProPluginKitTests"
         ),
         .testTarget(
@@ -423,9 +567,49 @@ let package = Package(
             swiftSettings: pluginCoreSettings
         ),
         .testTarget(
+            name: "TableProMemcachedCoreTests",
+            dependencies: ["TableProMemcachedCore"],
+            path: "Tests/TableProMemcachedCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
             name: "TableProRedisCoreTests",
             dependencies: ["TableProRedisCore"],
             path: "Tests/TableProRedisCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProHTTPTests",
+            dependencies: ["TableProHTTP", "TableProTestSupport"],
+            path: "Tests/TableProHTTPTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProSnowflakeCoreTests",
+            dependencies: ["TableProSnowflakeCore", "TableProHTTP"],
+            path: "Tests/TableProSnowflakeCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProWireIOTests",
+            dependencies: ["TableProWireIO"],
+            path: "Tests/TableProWireIOTests"
+        ),
+        .testTarget(
+            name: "TableProGzipTests",
+            dependencies: ["TableProGzip", "TableProWireIO"],
+            path: "Tests/TableProGzipTests"
+        ),
+        .testTarget(
+            name: "TableProKafkaCoreTests",
+            dependencies: ["TableProKafkaCore", "TableProWireIO"],
+            path: "Tests/TableProKafkaCoreTests",
+            swiftSettings: pluginCoreSettings
+        ),
+        .testTarget(
+            name: "TableProCassandraCoreTests",
+            dependencies: ["TableProCassandraCore", "TableProSQLGrammar"],
+            path: "Tests/TableProCassandraCoreTests",
             swiftSettings: pluginCoreSettings
         )
     ]

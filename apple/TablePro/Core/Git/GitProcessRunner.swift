@@ -5,11 +5,14 @@
 
 import Foundation
 import os
+import TableProProcess
 
 internal struct GitProcessResult: Sendable {
     let exitCode: Int32
     let standardOutput: Data
     let standardError: Data
+    // False when a child of git still held the output open after the grace period, so more may have followed.
+    var isComplete = true
 
     var succeeded: Bool { exitCode == 0 }
 
@@ -59,12 +62,19 @@ internal struct GitProcessRunner: Sendable {
     }
 
     private func runSynchronously(_ command: GitCommand, handle: RunningProcess) throws -> GitProcessResult {
-        let process = Process()
-        process.executableURL = executableURL
-        process.arguments = command.processArguments
-        process.currentDirectoryURL = command.workingDirectory
-        process.environment = command.environment(base: ProcessInfo.processInfo.environment)
-        process.standardInput = FileHandle.nullDevice
+        let process: Process
+        do {
+            process = try ProcessLauncher.process(
+                for: ProcessCommand(
+                    executable: executableURL,
+                    arguments: command.processArguments,
+                    environment: command.environment(base: ProcessInfo.processInfo.environment),
+                    currentDirectory: command.workingDirectory
+                )
+            )
+        } catch {
+            throw GitProcessError.launchFailed(error.localizedDescription)
+        }
         let outputPipe = Pipe()
         let errorPipe = Pipe()
         process.standardOutput = outputPipe
@@ -98,7 +108,8 @@ internal struct GitProcessRunner: Sendable {
             throw GitProcessError.timedOut
         }
         // A hook's background job or an SSH ControlPersist master keeps the pipes open after git exits.
-        if readers.wait(timeout: .now() + Self.pipeDrainGrace) == .timedOut {
+        let drained = readers.wait(timeout: .now() + Self.pipeDrainGrace) == .success
+        if !drained {
             Self.logger.debug("git \(command.arguments.first ?? "", privacy: .public) left its output open in a child process")
         }
 
@@ -108,7 +119,8 @@ internal struct GitProcessRunner: Sendable {
         return GitProcessResult(
             exitCode: process.terminationStatus,
             standardOutput: output.data,
-            standardError: errors.data
+            standardError: errors.data,
+            isComplete: drained
         )
     }
 

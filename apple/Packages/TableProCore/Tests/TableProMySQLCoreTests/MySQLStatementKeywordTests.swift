@@ -66,6 +66,13 @@ struct MySQLStatementKeywordTests {
         #expect(mysqlLeadingKeyword("-- SHOW TABLES") == "")
     }
 
+    @Test("The * of a comment's opener does not close it")
+    func commentOpenerDoesNotCloseItself() {
+        #expect(mysqlLeadingKeyword("/*/ SHOW TABLES */ SELECT 1") == "SELECT")
+        #expect(mysqlLeadingKeyword("/**/ SHOW TABLES") == "SHOW")
+        #expect(mysqlLeadingKeyword("/*/") == "")
+    }
+
     @Test("The keyword runs to the first character that is not a letter")
     func keywordBoundary() {
         #expect(mysqlLeadingKeyword("Show\tTables") == "SHOW")

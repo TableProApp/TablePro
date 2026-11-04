@@ -25,7 +25,7 @@ internal final class TableListingViewModel: ObservableObject {
         scope: DatabaseScope,
         loader: TableListingLoader,
         metadataProvider: any ScopedMetadataProviding = DatabaseManager.shared,
-        refreshRequests: AnyPublisher<UUID, Never> = AppEvents.shared.tableListingRefreshRequested.eraseToAnyPublisher()
+        refreshRequests: AnyPublisher<UUID, Never> = AppEvents.shared.tabRefreshRequested.eraseToAnyPublisher()
     ) {
         self.scope = scope
         self.loader = loader

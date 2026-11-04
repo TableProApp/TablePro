@@ -33,6 +33,7 @@ struct ConnectionVerificationTests {
 
     private func cleanUp(_ connectionId: UUID) async {
         FakeMSSQLPlugin.clearConnectFailure(for: connectionId)
+        await DatabaseManager.shared.stopHealthMonitor(for: connectionId)
         DatabaseManager.shared.removeSession(for: connectionId)
         await SchemaService.shared.invalidate(connectionId: connectionId)
     }
@@ -87,8 +88,6 @@ struct ConnectionVerificationTests {
         await cleanUp(connection.id)
     }
 
-    /// Everything else in the app treats `.live` as "this driver can be believed", so a check that
-    /// succeeded has to say so, or a session that recovered keeps carrying the reason it failed.
     @Test("a successful check leaves the session live")
     func aSuccessfulCheckMarksTheSessionLive() async {
         let driver = MockDatabaseDriver()
@@ -115,7 +114,6 @@ struct ConnectionVerificationTests {
         await cleanUp(connection.id)
     }
 
-    /// A session the app already knows is in trouble has a reconnect of its own in flight.
     @Test("a session that is already unreachable is left to its own reconnect")
     func unreachableSessionIsNotChecked() async {
         let driver = MockDatabaseDriver()
@@ -151,8 +149,6 @@ struct ConnectionVerificationTests {
         await cleanUp(connection.id)
     }
 
-    /// Wall-clock time passes during sleep but nothing in the app observes it, so every answer it
-    /// is holding was given before a gap the server may well have closed the socket in.
     @Test("waking from sleep makes every connection worth asking about again")
     func wakeInvalidatesEveryAnswer() async {
         let driver = MockDatabaseDriver()
@@ -169,9 +165,6 @@ struct ConnectionVerificationTests {
         await cleanUp(connection.id)
     }
 
-    /// The engines that hold a file rather than a socket opt out of health checks, and the
-    /// on-demand path is the same question asked at a different moment: it must not become the way
-    /// a check reaches them anyway.
     @Test("an engine that opts out of health checks is not checked before use either")
     func optedOutEngineIsNotChecked() async {
         let driver = MockDatabaseDriver()
@@ -212,12 +205,9 @@ struct ConnectionVerificationTests {
         await cleanUp(connection.id)
     }
 
-    /// The reconnect disconnects the installed driver before it tries, so a failure that left
-    /// liveness alone would hand the user's own operation a handle that cannot work. The type has
-    /// no driver plugin registered, so the reconnect fails on its first step with no network and
-    /// no waiting.
-    @Test("a check that fails and cannot reconnect stops the session reading as live")
-    func aFailedRecoveryMarksTheSessionUnreachable() async {
+    // The type has no driver plugin registered, so the reconnect fails on its first step with no network.
+    @Test("a check that fails and cannot reconnect at once leaves the session to the reconnect loop")
+    func aFailedRecoveryHandsTheSessionToTheLoop() async {
         Self.registerUnreachableTypeIfNeeded()
         let driver = MockDatabaseDriver()
         let connection = makeSession(driver: driver, typeId: Self.unreachableTypeId)
@@ -226,11 +216,11 @@ struct ConnectionVerificationTests {
 
         await DatabaseManager.shared.verifyBeforeUse(connection.id)
 
-        #expect(DatabaseManager.shared.activeSessions[connection.id]?.liveness != .live)
-        #expect(
-            DatabaseManager.shared.activeSessions[connection.id]?.liveness
-                == .unreachable(DatabaseManager.unreachableBeforeUseInfo)
-        )
+        let session = DatabaseManager.shared.activeSessions[connection.id]
+        #expect(session?.liveness == .recovering)
+        #expect(session?.recovery?.attempt == 2)
+        #expect(session?.driver === driver)
+        #expect(DatabaseManager.shared.recoveryLoops[connection.id] != nil)
         await cleanUp(connection.id)
     }
 
@@ -245,10 +235,9 @@ struct ConnectionVerificationTests {
 
         await DatabaseManager.shared.verifyBeforeUse(connection.id)
 
-        #expect(
-            DatabaseManager.shared.activeSessions[connection.id]?.liveness
-                == .unreachable(ConnectionFailureClassifier.info(for: error))
-        )
+        let session = DatabaseManager.shared.activeSessions[connection.id]
+        #expect(session?.liveness == .recovering)
+        #expect(session?.recovery?.cause == ConnectionFailureClassifier.info(for: error).message)
         await cleanUp(connection.id)
     }
 
@@ -287,9 +276,6 @@ struct ConnectionVerificationTests {
         PluginMetadataRegistry.shared.register(snapshot: snapshot, forTypeId: unreachableTypeId)
     }
 
-    /// A ping cannot be cancelled once it is inside a C call, so it completes late. Applying its
-    /// answer to whatever driver the session holds by then is how a losing attempt tears down the
-    /// one that replaced it.
     @Test("a late answer about a driver that has been replaced is discarded")
     func aLateAnswerAboutAReplacedDriverIsDiscarded() async throws {
         let slow = MockDatabaseDriver()
@@ -313,8 +299,6 @@ struct ConnectionVerificationTests {
         await cleanUp(connectionId)
     }
 
-    /// A check that failed and could not recover leaves the driver installed and disconnected, so
-    /// the caller has to be told rather than handed it.
     @Test("a connection whose check failed and could not recover is not usable")
     func aFailedRecoveryLeavesTheConnectionUnusable() async {
         Self.registerUnreachableTypeIfNeeded()
@@ -329,7 +313,7 @@ struct ConnectionVerificationTests {
         await cleanUp(connection.id)
     }
 
-    @Test("a working connection is usable, and a recovering one still is")
+    @Test("a working connection is usable, and one recovering without a loop still is")
     func aWorkingConnectionIsUsable() async {
         let driver = MockDatabaseDriver()
         let connection = makeSession(driver: driver)
@@ -376,8 +360,6 @@ extension GlobalStateSuites {
             AppSettingsManager.shared.general.connectionHealthCheck = previous
         }
 
-        /// The whole point of the on-demand setting: not a very long interval, no scheduled work at
-        /// all. A task that wakes up to decide it has nothing to do is still something waking up.
         @Test("on demand starts no monitor at all")
         func onDemandStartsNoMonitor() async {
             let connection = makeSession()
@@ -433,8 +415,6 @@ extension GlobalStateSuites {
             DatabaseManager.shared.removeSession(for: connection.id)
         }
 
-        /// The monitor is built once, when the connection opens, so switching the setting has to reach
-        /// what is already open or it only applies to the next connection someone makes.
         @Test("turning the check off stops the monitor an open connection already has")
         func switchingToOnDemandStopsALiveMonitor() async {
             let connection = makeSession()

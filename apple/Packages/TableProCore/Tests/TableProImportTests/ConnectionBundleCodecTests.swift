@@ -284,20 +284,103 @@ struct ConnectionBundleCodecTests {
         }
     }
 
-    @Test("Decoding strips blocked additional fields and keeps valid timeouts")
+    @Test("Decoding keeps classified settings, drops every other field and keeps valid timeouts")
     func decodeStripsBlockedFields() throws {
         let settings = Self.settings(
             connectTimeoutSeconds: 12,
             queryTimeoutSeconds: 0,
-            additionalFields: ["schema": "public", "preConnectScript": "rm -rf /", "awsProfile": "admin"]
+            additionalFields: [
+                "mysqlConnectionEncoding": "utf8ViaLatin1",
+                "preConnectScript": "rm -rf /",
+                "awsProfile": "admin",
+                "zzzFutureSelector": "ambient",
+                "sqliteBackend": "agent"
+            ]
         )
         let data = try ConnectionBundleCodec.encode(Self.bundle(settings: [settings]))
 
         let imported = try #require(ConnectionBundleCodec.decode(data).connections.first?.settings)
 
-        #expect(imported.additionalFields == ["schema": "public"])
+        #expect(imported.additionalFields == ["mysqlConnectionEncoding": "utf8ViaLatin1"])
         #expect(imported.connectTimeoutSeconds == 12)
         #expect(imported.queryTimeoutSeconds == 0)
+    }
+
+    @Test("Decoding strips the fields that pick a credential kept on this device or let a ledger run code")
+    func decodeStripsLocalCredentialSelectors() throws {
+        let settings = Self.settings(additionalFields: [
+            "mssqlAuthMethod": "entra",
+            "entraTenantId": "5b0f3c1e-0000-4000-8000-00000000c0de",
+            "entraClientId": "9a1d7e42-0000-4000-8000-0000000000aa",
+            "snowflakeAccount": "org-account",
+            "snowflakeConnectionName": "default",
+            "beancountRunLedgerPlugins": "true",
+            "mongoAuthMechanism": "MONGODB-AWS"
+        ])
+        let data = try ConnectionBundleCodec.encode(Self.bundle(settings: [settings]))
+
+        let imported = try #require(ConnectionBundleCodec.decode(data).connections.first?.settings)
+
+        #expect(imported.additionalFields == ["snowflakeAccount": "org-account"])
+    }
+
+    @Test("Windows sign-in arrives only when the caller keeps local credentials for its gate")
+    func windowsSignInNeedsTheGate() async throws {
+        let settings = Self.settings(additionalFields: ["mssqlAuthMethod": "windows", "mssqlSchema": "sales"])
+        let data = try ConnectionBundleCodec.encode(Self.bundle(settings: [settings]))
+        let sealed = try await ConnectionBundleCodec.encode(Self.bundle(settings: [settings]), passphrase: Self.passphrase)
+
+        let saved = try #require(ConnectionBundleCodec.decode(data).connections.first?.settings)
+        let transient = try #require(
+            ConnectionBundleCodec.decode(data, keepingLocalCredentials: true).connections.first?.settings
+        )
+        let sealedSaved = try await ConnectionBundleCodec.decode(sealed, passphrase: Self.passphrase)
+        let sealedTransient = try await ConnectionBundleCodec.decode(
+            sealed,
+            passphrase: Self.passphrase,
+            keepingLocalCredentials: true
+        )
+
+        #expect(saved.additionalFields == ["mssqlSchema": "sales"])
+        #expect(transient.additionalFields == ["mssqlAuthMethod": "windows", "mssqlSchema": "sales"])
+        #expect(sealedSaved.connections.first?.settings.additionalFields == ["mssqlSchema": "sales"])
+        #expect(sealedTransient.connections.first?.settings.additionalFields == transient.additionalFields)
+    }
+
+    @Test("A saved import drops Google application default sign-in and keeps the project it names")
+    func savedImportDropsApplicationDefault() throws {
+        let settings = Self.settings(additionalFields: ["bqAuthMethod": "adc", "bqProjectId": "attacker-project"])
+        let data = try ConnectionBundleCodec.encode(Self.bundle(settings: [settings]))
+
+        let imported = try #require(ConnectionBundleCodec.decode(data).connections.first?.settings)
+
+        #expect(imported.additionalFields == ["bqProjectId": "attacker-project"])
+    }
+
+    @Test("A secure field carried as plain text is dropped even when local credentials are kept")
+    func decodeDropsPlainSecrets() throws {
+        let settings = Self.settings(additionalFields: [
+            "esApiKey": "c2VjcmV0",
+            "kerberosPassword": "hunter2",
+            "esHosts": "es.example.com:9200"
+        ])
+        let data = try ConnectionBundleCodec.encode(Self.bundle(settings: [settings]))
+
+        let imported = try #require(
+            ConnectionBundleCodec.decode(data, keepingLocalCredentials: true).connections.first?.settings
+        )
+
+        #expect(imported.additionalFields == ["esHosts": "es.example.com:9200"])
+    }
+
+    @Test("Decoding keeps a MongoDB auth mechanism that signs in with what the file carries")
+    func decodeKeepsOrdinaryMongoMechanisms() throws {
+        let settings = Self.settings(additionalFields: ["mongoAuthMechanism": "SCRAM-SHA-256"])
+        let data = try ConnectionBundleCodec.encode(Self.bundle(settings: [settings]))
+
+        let imported = try #require(ConnectionBundleCodec.decode(data).connections.first?.settings)
+
+        #expect(imported.additionalFields == ["mongoAuthMechanism": "SCRAM-SHA-256"])
     }
 
     @Test("An older file without timeout fields decodes them as nil")
@@ -318,7 +401,7 @@ struct ConnectionBundleCodecTests {
         let settings = Self.settings(
             connectTimeoutSeconds: 601,
             queryTimeoutSeconds: -1,
-            additionalFields: ["connectTimeoutSeconds": "15", "queryTimeoutSeconds": "30", "schema": "public"]
+            additionalFields: ["connectTimeoutSeconds": "15", "queryTimeoutSeconds": "30", "mysqlIdleReleaseMinutes": "5"]
         )
         let data = try ConnectionBundleCodec.encode(Self.bundle(settings: [settings]))
 
@@ -326,7 +409,7 @@ struct ConnectionBundleCodecTests {
 
         #expect(imported.connectTimeoutSeconds == nil)
         #expect(imported.queryTimeoutSeconds == nil)
-        #expect(imported.additionalFields == ["schema": "public"])
+        #expect(imported.additionalFields == ["mysqlIdleReleaseMinutes": "5"])
     }
 
     @Test("A legacy timeout field is used when no explicit timeout is set")
@@ -456,7 +539,7 @@ struct ConnectionBundleCodecTests {
             aiPolicy: "never",
             connectTimeoutSeconds: 12,
             queryTimeoutSeconds: 30,
-            additionalFields: ["schema": "public"],
+            additionalFields: ["connectionOptions": "-c search_path=public"],
             redisDatabase: 2,
             startupCommands: "SET search_path TO app",
             localOnly: true,

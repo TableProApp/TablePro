@@ -19,9 +19,7 @@ struct TestConnectionStatusButton: View {
                      : String(localized: "Test Connection"))
             }
         }
-        .disabled(coordinator.isTesting
-                  || coordinator.isInstallingPlugin
-                  || !coordinator.isFormValid)
+        .disabled(coordinator.isTesting || !coordinator.isFormValid)
         .help(helpText)
         .accessibilityLabel(helpText)
     }

@@ -10,6 +10,7 @@ struct MSSQLConnectionOptionsAuthMethodTests {
             user: "sa",
             password: "hunter2",
             database: "app",
+            certificateVerification: .none,
             authMethod: .sqlServer
         )
         #expect(options.user == "sa")
@@ -24,6 +25,7 @@ struct MSSQLConnectionOptionsAuthMethodTests {
             user: "sa",
             password: "hunter2",
             database: "app",
+            certificateVerification: .none,
             authMethod: .windows
         )
         #expect(options.user == "")
@@ -38,6 +40,7 @@ struct MSSQLConnectionOptionsAuthMethodTests {
             user: "sa",
             password: "hunter2",
             database: "app",
+            certificateVerification: .none,
             authMethod: .entra
         )
         #expect(options.user == "")
@@ -51,7 +54,9 @@ struct MSSQLConnectionOptionsAuthMethodTests {
 
     @Test("Default auth method is SQL Server")
     func defaultsToSqlServer() {
-        let options = MSSQLConnectionOptions(host: "h", user: "u", password: "p", database: "d")
+        let options = MSSQLConnectionOptions(
+            host: "h", user: "u", password: "p", database: "d", certificateVerification: .none
+        )
         #expect(options.authMethod == .sqlServer)
     }
 

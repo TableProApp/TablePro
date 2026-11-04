@@ -5,7 +5,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 
 use super::{open_editor, two_sessions};
-use crate::test_support::wait_until;
+use crate::test_support::{descendants, wait_until};
 use crate::ui::session_window::tests::WAIT;
 
 #[gtk4::test]
@@ -153,4 +153,119 @@ fn the_tab_menu_closes_later_tabs_of_any_session_and_ends_with_close() {
             assert!(!label.contains("Left") && !label.contains("Right"), "{label}");
         }
     }
+}
+
+/// libadwaita parents the tab menu to a tab box in the bar and to a
+/// tab grid in the overview, never to the view.
+#[gtk4::test]
+fn the_tab_menu_reaches_its_actions_from_the_bar_and_the_overview() {
+    let sessions = two_sessions("TabMenuReach", "Other");
+    let shell = &sessions.shell;
+    open_editor(&sessions.first);
+    let parents: Vec<gtk4::Widget> = descendants(&shell.imp().tab_overview.get())
+        .into_iter()
+        .filter(|widget| ["AdwTabBox", "AdwTabGrid"].contains(&widget.type_().name()))
+        .collect();
+    assert!(
+        parents.iter().any(|widget| widget.type_().name() == "AdwTabBox")
+            && parents.iter().any(|widget| widget.type_().name() == "AdwTabGrid"),
+        "no tab box or tab grid to open the menu from"
+    );
+    for parent in &parents {
+        for action in ["close-others", "close-after", "close"] {
+            assert!(
+                parent.activate_action(&format!("tab.{action}"), None).is_ok(),
+                "tab.{action} is out of reach of {}",
+                parent.type_().name()
+            );
+        }
+    }
+}
+
+#[gtk4::test]
+fn the_tab_menu_dims_what_would_close_nothing() {
+    let sessions = two_sessions("TabMenuDims", "Other");
+    let shell = &sessions.shell;
+    let view = shell.tab_view();
+    let only = open_editor(&sessions.first);
+    let enabled = |action: &str| {
+        shell
+            .imp()
+            .tab_actions
+            .get()
+            .is_some_and(|group| group.is_action_enabled(action))
+    };
+
+    view.emit_by_name::<()>("setup-menu", &[&Some(only.clone())]);
+    assert!(
+        !enabled("close-others") && !enabled("close-after"),
+        "one tab has nothing else to close"
+    );
+    assert!(enabled("close"));
+
+    let last = open_editor(&sessions.second);
+    view.emit_by_name::<()>("setup-menu", &[&Some(only)]);
+    assert!(enabled("close-others") && enabled("close-after"));
+    view.emit_by_name::<()>("setup-menu", &[&Some(last)]);
+    assert!(
+        enabled("close-others") && !enabled("close-after"),
+        "the last tab has none after it"
+    );
+}
+
+#[gtk4::test]
+fn close_all_tabs_closes_the_tabs_of_every_session() {
+    let sessions = two_sessions("CloseAllAcross", "Other");
+    let (shell, first, second) = (&sessions.shell, &sessions.first, &sessions.second);
+    let view = shell.tab_view();
+    open_editor(first);
+    open_editor(second);
+    open_editor(first);
+
+    WidgetExt::activate_action(&sessions.test.window, "win.close-all-tabs", None).expect("win.close-all-tabs");
+
+    wait_until(WAIT, || view.n_pages() == 0).expect("every tab to close");
+    assert!(!first.has_tabs() && !second.has_tabs());
+}
+
+/// As in GNOME Web: the overview lists every tab, and the tab menu
+/// holds what acts on its own tab.
+#[gtk4::test]
+fn close_all_tabs_is_in_the_overview_menu_and_off_with_no_tab() {
+    let sessions = two_sessions("CloseAllInOverview", "Other");
+    let window = &sessions.test.window;
+    let actions_of = |menu: &gio::MenuModel| -> Vec<String> {
+        (0..menu.n_items())
+            .filter_map(|section| menu.item_link(section, "section"))
+            .flat_map(|items| {
+                (0..items.n_items())
+                    .filter_map(|item| {
+                        items
+                            .item_attribute_value(item, "action", None)
+                            .and_then(|value| value.get::<String>())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    let overview_menu = sessions
+        .shell
+        .imp()
+        .tab_overview
+        .secondary_menu()
+        .expect("the overview's menu");
+    assert!(actions_of(&overview_menu).contains(&"win.close-all-tabs".to_owned()));
+    let tab_menu = sessions.shell.tab_view().menu_model().expect("the tab menu");
+    assert!(!actions_of(&tab_menu).iter().any(|action| action.contains("close-all")));
+    let enabled = || {
+        window
+            .lookup_action("close-all-tabs")
+            .is_some_and(|action| action.is_enabled())
+    };
+
+    assert!(!enabled(), "Close All Tabs is on with no tab to close");
+    let only = open_editor(&sessions.first);
+    assert!(enabled(), "Close All Tabs is off with a tab open");
+    sessions.shell.tab_view().close_page(&only);
+    wait_until(WAIT, || !enabled()).expect("Close All Tabs to go off with the last tab");
 }

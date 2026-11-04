@@ -1,5 +1,7 @@
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
+import TableProSQLQuoting
 import TableProUtilities
 
 enum MCPExportFormat: String, Sendable, CaseIterable {
@@ -97,38 +99,36 @@ private extension MCPExportValue {
 struct MCPSqlExportDialect: Sendable {
     let identifierQuote: String
     let booleanStyle: SQLDialectDescriptor.BooleanLiteralStyle
-    let usesBackslashEscaping: Bool
+    let stringEscapes: SQLStringEscapes
     let binaryStyle: CompareSQLLiteral.BinaryStyle
+    var identifierBackslashEscapes = false
 
-    static func resolve(for databaseType: DatabaseType) -> MCPSqlExportDialect? {
+    // The file runs later on a session nobody settled, so its literals are written as kept text.
+    static func resolve(
+        for databaseType: DatabaseType,
+        session: PluginSessionLexicalState? = nil
+    ) -> MCPSqlExportDialect? {
         guard let dialect = try? resolveSQLDialect(for: databaseType) else { return nil }
+        let quote = SQLIdentifierQuote(dialectQuote: dialect.identifierQuote)
         return MCPSqlExportDialect(
             identifierQuote: dialect.identifierQuote,
             booleanStyle: dialect.booleanLiteralStyle,
-            usesBackslashEscaping: dialect.requiresBackslashEscaping,
-            binaryStyle: CompareSQLLiteral.binaryStyle(for: databaseType)
+            stringEscapes: SQLLexicalResolver.keptTextStringEscapes(for: databaseType, session: session),
+            binaryStyle: CompareSQLLiteral.binaryStyle(for: databaseType),
+            identifierBackslashEscapes: databaseType.lexicalGrammar.backslashEscapes(in: quote)
         )
     }
 
     func quote(_ name: String) -> String {
-        guard identifierQuote != "[" else {
-            return "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
-        }
-        let escaped = name.replacingOccurrences(
-            of: identifierQuote,
-            with: identifierQuote + identifierQuote
+        SQLQuoting.identifier(
+            name,
+            quote: SQLIdentifierQuote(dialectQuote: identifierQuote),
+            backslashEscapes: identifierBackslashEscapes
         )
-        return "\(identifierQuote)\(escaped)\(identifierQuote)"
     }
 
     func literal(_ value: String) -> String {
-        guard usesBackslashEscaping else {
-            return "'\(value.replacingOccurrences(of: "'", with: "''"))'"
-        }
-        let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
-        return "'\(escaped)'"
+        SQLQuoting.stringLiteral(value, escapes: stringEscapes)
     }
 
     func boolean(_ value: Bool) -> String {

@@ -86,24 +86,10 @@ extension MainContentCoordinator {
         }
     }
 
+    // The control is reachable without a license on purpose, so this is where the gate explains itself.
     private func presentUpsellUnlessLicensed() -> Bool {
         guard !isDataRewindLicensed else { return true }
-        services.telemetry.featureGateShown(.dataRewind, access: services.featureAccess.check(.dataRewind))
-        Task { @MainActor in
-            let alert = NSAlert()
-            alert.messageText = ProFeature.dataRewind.paidPlanRequirement
-            alert.informativeText = String(
-                localized: "Restore the previous values of rows you already saved. Saves are kept on this Mac for 7 days, encrypted, and never leave it."
-            )
-            alert.alertStyle = .informational
-            alert.addButton(withTitle: String(localized: "Purchase License"))
-            AlertHelper.addCancelButton(to: alert, title: String(localized: "Not Now"))
-            AlertHelper.present(alert, in: contentWindow) { [services] response in
-                guard response == .alertFirstButtonReturn else { return }
-                services.telemetry.upgradeClicked(from: .featureGate(.dataRewind))
-                NSWorkspace.shared.open(SupportLinks.pricing(.featureGate(.dataRewind)))
-            }
-        }
+        LicenseGateAlert.present(for: .dataRewind, in: contentWindow, access: services.featureAccess)
         return false
     }
 

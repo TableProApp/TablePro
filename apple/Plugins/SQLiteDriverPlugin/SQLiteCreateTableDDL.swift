@@ -5,20 +5,68 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
+import TableProSQLQuoting
 
-/// SQLite's `CREATE TABLE` text, with no driver and no connection behind it.
-///
-/// Free functions in their own file, the shape `MySQLColumnDefinitionSQL.swift` already uses, so the
-/// generator can be listed in the test target and exercised directly. Before this the SQLite DDL
-/// path had no automated coverage at all, which is how a foreign key clause that silently discarded
-/// the constraint name went unnoticed.
+// Free functions, so the test target exercises the DDL without a connection.
 internal func sqliteQuoteIdentifier(_ name: String) -> String {
-    let escaped = name.replacingOccurrences(of: "`", with: "``", options: .literal)
-    return "`\(escaped)`"
+    SQLQuoting.identifier(name, quote: .backtick)
+}
+
+// Type, default and generation text, from the catalog or the user, goes into DDL only as one type or expression.
+internal func sqliteColumnRefusal(
+    name: String,
+    type: String?,
+    defaultValue: String?,
+    generationExpression: String? = nil
+) -> String? {
+    let typeId = SQLitePlugin.databaseTypeId
+    if let type, !type.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+       !SQLExpressionFragment.isSingleType(type, databaseTypeId: typeId) {
+        return String(format: String(localized: "The type of column %@ cannot be written as SQL."), name)
+    }
+    if let defaultValue, !defaultValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+       !SQLExpressionFragment.isSingleExpression(defaultValue, databaseTypeId: typeId) {
+        return String(format: String(localized: "The default of column %@ cannot be written as SQL."), name)
+    }
+    if let generationExpression = generationExpression?.nilIfEmpty,
+       !SQLExpressionFragment.isSingleExpression(generationExpression, databaseTypeId: typeId) {
+        return String(format: String(localized: "The expression of generated column %@ cannot be written as SQL."), name)
+    }
+    return nil
+}
+
+internal func sqliteColumnRefusal(_ column: PluginColumnDefinition) -> String? {
+    sqliteColumnRefusal(
+        name: column.name,
+        type: column.dataType,
+        defaultValue: column.defaultValue,
+        generationExpression: column.generationExpression
+    )
+}
+
+internal func sqliteRespecificationRefusal(_ respecification: PluginTableRespecification) -> String? {
+    respecification.addedColumns.lazy.compactMap { sqliteColumnRefusal($0) }.first
+        ?? respecification.alteredColumns.lazy.compactMap {
+            sqliteColumnRefusal(name: $0.column, type: $0.type, defaultValue: $0.defaultValue)
+        }.first
+}
+
+// The partial-index predicate and the key list come back from `sqlite_master` and are spliced as written.
+internal func sqliteIndexRefusal(_ index: PluginIndexDefinition) -> String? {
+    let typeId = SQLitePlugin.databaseTypeId
+    let keys = index.ddlMethodAndKeys?.nilIfEmpty.map { [$0] } ?? (index.expressions ?? [])
+    guard keys.allSatisfy({ SQLExpressionFragment.isSingleExpression($0, databaseTypeId: typeId) }) else {
+        return String(format: String(localized: "Index %@ has a key part that is not one SQL expression."), index.name)
+    }
+    if let predicate = index.whereClause?.nilIfEmpty, !SQLExpressionFragment.isSingleExpression(predicate, databaseTypeId: typeId) {
+        return String(format: String(localized: "The condition of index %@ cannot be written as SQL."), index.name)
+    }
+    return nil
 }
 
 internal func sqliteCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-    guard !definition.columns.isEmpty else { return nil }
+    guard !definition.columns.isEmpty, definition.columns.allSatisfy({ sqliteColumnRefusal($0) == nil }) else { return nil }
 
     let declaredKey = Set(definition.primaryKeyColumns)
     let keyColumns = definition.columns.filter { $0.isPrimaryKey || declaredKey.contains($0.name) }

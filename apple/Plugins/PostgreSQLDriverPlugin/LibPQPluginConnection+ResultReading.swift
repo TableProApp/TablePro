@@ -67,7 +67,7 @@ internal extension LibPQPluginConnection {
             generation: generation
         )
 
-        return allowsSideQueries ? applySpatialRendering(to: parsed) : parsed
+        return PostGISTypes.rendering(parsed, types: typeNames.postgisTypes)
     }
 
     static func decodeCell(

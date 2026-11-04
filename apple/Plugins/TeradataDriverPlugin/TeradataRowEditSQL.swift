@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 import TableProTeradataCore
 
 /// Teradata literals and the INSERT a new grid row becomes. The driver sends statements as text, so every value is
@@ -18,7 +19,7 @@ enum TeradataRowEditSQL {
         case .null:
             return "NULL"
         case .text(let string):
-            return "'" + string.replacingOccurrences(of: "'", with: "''") + "'"
+            return SQLQuoting.stringLiteral(string)
         case .bytes(let data):
             return "'" + data.map { String(format: "%02X", $0) }.joined() + "'XB"
         }

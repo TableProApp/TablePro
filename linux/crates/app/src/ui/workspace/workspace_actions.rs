@@ -2,8 +2,8 @@
 //! them once and each one goes to the session in front, so a change of
 //! front changes where they go without taking any off the window. Their
 //! keys are application accelerators; a tab's own keys belong to the tab.
-//! Reopen Closed Tab, Switch to Recent Tab and View Open Tabs are the
-//! shell's own: the tabs they name may be any session's.
+//! Reopen Closed Tab, Close All Tabs, Switch to Recent Tab and View Open
+//! Tabs are the shell's own: the tabs they name may be any session's.
 
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -32,6 +32,7 @@ const ENTRIES: [(&str, ActionInput); 6] = [
 ];
 
 const REOPEN_CLOSED_TAB: &str = "reopen-closed-tab";
+const CLOSE_ALL_TABS: &str = "close-all-tabs";
 const SWITCH_RECENT_TAB: &str = "switch-recent-tab";
 const SHOW_TABS: &str = "show-tabs";
 
@@ -62,6 +63,14 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
             }
         })
         .build()]);
+    let closing = shell.downgrade();
+    window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(CLOSE_ALL_TABS)
+        .activate(move |_, _, _| {
+            if let Some(shell) = closing.upgrade() {
+                shell.close_all_tabs();
+            }
+        })
+        .build()]);
     let switching = shell.downgrade();
     window.add_action_entries([gio::ActionEntry::<adw::ApplicationWindow>::builder(SWITCH_RECENT_TAB)
         .activate(move |_, _, _| {
@@ -80,7 +89,7 @@ pub(super) fn install(window: &adw::ApplicationWindow, shell: &WorkspaceShell) {
         .build()]);
     // The overview refuses to open or close with no tab, and with one tab
     // Ctrl+E goes on to the tab.
-    for (name, least) in [(SWITCH_RECENT_TAB, 2), (SHOW_TABS, 1)] {
+    for (name, least) in [(SWITCH_RECENT_TAB, 2), (SHOW_TABS, 1), (CLOSE_ALL_TABS, 1)] {
         if let Some(action) = window.lookup_action(name) {
             shell
                 .tab_view()
@@ -102,6 +111,7 @@ pub(super) fn remove(window: &adw::ApplicationWindow) {
         window.remove_action(name);
     }
     window.remove_action(REOPEN_CLOSED_TAB);
+    window.remove_action(CLOSE_ALL_TABS);
     window.remove_action(SWITCH_RECENT_TAB);
     window.remove_action(SHOW_TABS);
 }
@@ -181,6 +191,7 @@ mod tests {
         remove(&window);
         assert!(window.lookup_action("new-editor-tab").is_none());
         assert!(window.lookup_action(REOPEN_CLOSED_TAB).is_none());
+        assert!(window.lookup_action(CLOSE_ALL_TABS).is_none());
         assert!(window.lookup_action(SWITCH_RECENT_TAB).is_none());
         assert!(window.lookup_action(SHOW_TABS).is_none());
     }

@@ -7,6 +7,7 @@
 
 import Foundation
 import OSLog
+import TableProConnectionLibrary
 import TableProPluginKit
 import TableProRedisCore
 
@@ -69,6 +70,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
     /// not restore what the session is currently holding.
     func releaseIdleResource() async throws -> PluginResourceRelease
 
+    func importExportedDatabase(from folder: URL, into file: URL) async throws
+
     func resolveQueryCompletionProfile(
         databaseTypeId: String,
         base: QueryCompletionProfile
@@ -93,6 +96,25 @@ protocol DatabaseDriver: AnyObject, Sendable {
     ///   - parameters: Optional parameter list; nil means no parameter binding
     /// - Returns: Query result with `isTruncated` set when the cap clipped rows
     func executeUserQuery(query: String, rowCap: Int?, parameters: [Any?]?) async throws -> QueryResult
+
+    // The same calls for a statement an external caller had approved; `context` says what the approval covered.
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [Any?]?,
+        context: PluginStatementContext
+    ) async throws -> QueryResult
+
+    func executeParameterized(
+        query: String,
+        parameters: [Any?],
+        context: PluginStatementContext
+    ) async throws -> QueryResult
+
+    func execute(query: String, context: PluginStatementContext) async throws -> QueryResult
+
+    // Whether this driver runs a statement marked read-only in the engine's read-only mode.
+    var runsReadOnlyStatements: Bool { get }
 
     /// Run a read that stops once `rowCap` rows are known to be exceeded, rather than fetching the
     /// whole result and discarding the tail. Returns nil when the driver cannot bound its own fetch.
@@ -407,6 +429,8 @@ protocol DatabaseDriver: AnyObject, Sendable {
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing?
+
     // MARK: - Table Options
 
     /// Nil where the engine has no table options.
@@ -531,6 +555,38 @@ extension DatabaseDriver {
     func executeRead(query: String) async throws -> QueryResult {
         try await execute(query: query)
     }
+
+    // A read the app wrote against the engine's own catalogs. PostgreSQL, KingbaseES and PGlite pin it to pg_catalog, so
+    // a lookalike in the browsed schema never runs as the reader; Redshift and CockroachDB rely on qualified calls.
+    func executeCatalogRead(query: String) async throws -> QueryResult {
+        var context = PluginStatementContext()
+        context.readOnly = true
+        context.readsCatalog = true
+        return try await execute(query: query, context: context)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [Any?]?,
+        context: PluginStatementContext
+    ) async throws -> QueryResult {
+        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [Any?],
+        context: PluginStatementContext
+    ) async throws -> QueryResult {
+        try await executeParameterized(query: query, parameters: parameters)
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> QueryResult {
+        try await execute(query: query)
+    }
+
+    var runsReadOnlyStatements: Bool { false }
 
     var supportsResultSetBatches: Bool { false }
 
@@ -684,6 +740,10 @@ extension DatabaseDriver {
     var releasableResourceCommandTitle: String? { nil }
 
     func releaseIdleResource() async throws -> PluginResourceRelease { .nothingToRelease }
+
+    func importExportedDatabase(from folder: URL, into file: URL) async throws {
+        throw PluginDriverUnsupportedOperation.importExportedDatabase
+    }
 
     func testConnection() async throws -> Bool {
         try await connect()
@@ -906,6 +966,8 @@ extension DatabaseDriver {
         nil
     }
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? { nil }
+
     func fetchTableOptions(tableName: String) async throws -> TableOptions? { nil }
 
     func fetchTableOptionsCatalog() async throws -> TableOptionsCatalog? { nil }
@@ -1023,6 +1085,11 @@ enum DatabaseDriverFactory {
         try await PluginManager.shared.prepareForConnecting(to: connection.type)
         guard let plugin = PluginManager.shared.driverPlugin(for: connection.type) else {
             throw PluginManager.shared.driverUnavailableError(for: connection.type)
+        }
+        // The tunnel opens from the linked SSH profile as it is now, not the row's stored copy of it.
+        let tunneled = SSHProfileStorage.shared.refreshingLinkedProfile(connection)
+        if let refusal = SSLModeNotSupportedError.refusal(for: tunneled, pluginType: type(of: plugin)) {
+            throw refusal
         }
 
         var additionalFields = buildAdditionalFields(for: connection, plugin: plugin)
@@ -1152,7 +1219,7 @@ enum DatabaseDriverFactory {
             host: connection.host,
             port: connection.port,
             username: signIn.username ?? preparedConfiguration.username,
-            password: signIn.password,
+            password: keyDocumentSafePassword(signIn.password, plugin: plugin),
             database: connection.database,
             ssl: connection.transportSSLConfiguration,
             additionalFields: additionalFields,
@@ -1248,32 +1315,49 @@ enum DatabaseDriverFactory {
         return buildAdditionalFields(for: connection, plugin: plugin)
     }
 
+    // The factory sets these for every connect, so a value a saved, synced or imported row carries never reaches the
+    // driver. The tunnel keys arrive on the effective connection, which `buildEffectiveConnection` builds.
+    // A driver whose key field takes the password's place reads the key from the password, so a path there would sign in
+    // with a key file on this Mac; a plugin built before that check reads it all the same.
+    static func keyDocumentSafePassword(_ password: String, plugin: any DriverPlugin) -> String {
+        let passwordTakesKey = type(of: plugin).additionalConnectionFields.contains { field in
+            field.hidesPassword && ConnectionFieldCatalog.keyDocumentFieldIds.contains(field.id)
+        }
+        guard passwordTakesKey, !ConnectionFieldCatalog.isInlineKeyDocument(password) else { return password }
+        return ""
+    }
+
+    private static let factoryOwnedFieldKeys: Set<String> = [
+        "driverVariant",
+        "enableCleartextPlugin",
+        "connectionId",
+        "connectionPurpose",
+        "connectTimeoutMilliseconds",
+    ]
+
+    // A key-document field holds the document or the path of a key file here. A stored plain value arrived from a file,
+    // a link or another device, so only an inline document counts; the Keychain value the person entered is read below.
     static func buildAdditionalFields(
         for connection: DatabaseConnection,
         plugin: any DriverPlugin
     ) -> [String: String] {
-        var fields: [String: String] = [:]
+        var fields = connection.additionalFields.filter { key, value in
+            guard !factoryOwnedFieldKeys.contains(key) else { return false }
+            return !ConnectionFieldCatalog.keyDocumentFieldIds.contains(key)
+                || ConnectionFieldCatalog.isInlineKeyDocument(value)
+        }
 
         if let variant = type(of: plugin).driverVariant(for: connection.type.rawValue) {
             fields["driverVariant"] = variant
         }
 
-        for (key, value) in connection.additionalFields {
-            fields[key] = value
-        }
-
-        /// The superset, not the rendered form's list. A connection saved while a variant was
-        /// still being offered its primary's whole form holds those values in the Keychain, and
-        /// the connection still acts on them: a Redshift connection with `awsAuth` set reaches
-        /// `AWSIAMTokenSigner`, which reads `awsSecretAccessKey` from here. Loading only what the
-        /// form renders today would leave that secret behind and fail the connect, with no AWS
-        /// section left in the form to turn it off.
+        // Every secure field the type declares, not only what the form renders: a Redshift row with `awsAuth` still
+        // reads `awsSecretAccessKey` from here after its variant stopped offering the AWS section.
         let credentialProfile = connection.credentialMode.profileId
             .flatMap { CredentialProfileStorage.shared.profile(for: $0) }
         for fieldId in PluginManager.shared.secureConnectionFieldIds(for: connection.type) {
             if fields[fieldId] == nil || fields[fieldId]?.isEmpty == true {
-                /// A linked profile owns the field when it declares it, so the secret lives once
-                /// under the profile's id rather than once per connection.
+                // A profile that declares the field holds its secret once, under the profile's id.
                 if let credentialProfile, credentialProfile.secureFieldIds.contains(fieldId),
                    let profileValue = CredentialProfileStorage.shared.loadSecureField(
                        fieldId: fieldId, for: credentialProfile.id

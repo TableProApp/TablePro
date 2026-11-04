@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tablepro_core::column::{ColumnType, ResultColumn};
-use tablepro_core::{DriverError, EditorSession, ResultEvent, TransactionState, Truncation, Value};
+use tablepro_core::{DriverError, EditorSession, QueryTimeout, ResultEvent, TransactionState, Truncation, Value};
 use tablepro_session::Session;
 use tablepro_session::fakes::{FakeConnector, FakeCredentialSource};
 use tablepro_session::operation::DefaultDeadlines;
@@ -28,10 +28,20 @@ fn session_with(fake: Arc<FakeEditorSession>, tasks: Tasks) -> Arc<Session> {
     session_on(fake, tasks, ConnectionScript::default())
 }
 
-fn session_on(fake: Arc<FakeEditorSession>, tasks: Tasks, mut script: ConnectionScript) -> Arc<Session> {
+fn session_on(fake: Arc<FakeEditorSession>, tasks: Tasks, script: ConnectionScript) -> Arc<Session> {
+    session_timing_out(fake, tasks, script, QueryTimeout::Preference)
+}
+
+fn session_timing_out(
+    fake: Arc<FakeEditorSession>,
+    tasks: Tasks,
+    mut script: ConnectionScript,
+    editor_timeout: QueryTimeout,
+) -> Arc<Session> {
     let editor: Arc<dyn EditorSession> = fake;
     script.open_editor_session.always(FakeReply::ok(editor));
-    let request = FakeConnector::request().expect("a request");
+    let mut request = FakeConnector::request().expect("a request");
+    request.workspace_settings = request.workspace_settings.with_editor_timeout(editor_timeout);
     let (pending, _) = FakeConnector::pending_session(request, script);
     Session::start(
         pending,
@@ -511,6 +521,26 @@ fn stop_cancels_the_running_statement() {
         2,
         "the second statement has no line"
     );
+}
+
+#[gtk4::test]
+fn the_connection_query_timeout_wins_over_the_preference() {
+    let mut runs = Replies::default();
+    runs.always(FakeRun::until_stopped());
+    let settings = MemorySettings::new();
+    settings.get().set_query_timeout_secs(3600).expect("the preference");
+    let harness = build_editor_on(settings, runs, "SELECT pg_sleep(60)", |_| None);
+    harness.active.replace(session_timing_out(
+        harness.fake.clone(),
+        harness.runtime.tasks(),
+        ConnectionScript::default(),
+        QueryTimeout::After(Duration::from_millis(200)),
+    ));
+
+    harness.editor.run();
+
+    wait_until(WAIT, || !harness.editor.is_running()).expect("the connection's timeout to end the run");
+    assert_eq!(harness.editor.imp().results.n_entries(), 1);
 }
 
 #[gtk4::test]
@@ -2850,6 +2880,41 @@ fn a_connection_in_no_database_offers_one() {
     assert_eq!(harness.editor.imp().scope_button_label.label(), "analytics");
 }
 
+/// A tab in the database the server names as the connection's own once
+/// it lists them again is no longer a moved one, for its title and its
+/// record.
+#[gtk4::test]
+fn a_tab_in_the_database_the_server_then_calls_its_own_is_not_moved() {
+    let database = |name: &str, is_default: bool| tablepro_core::meta::SchemaInfo {
+        name: name.to_owned(),
+        is_default,
+        is_system: false,
+    };
+    let harness = scoped_editor_with(mysql_dialect(), &[], answering(), |script, request| {
+        if let tablepro_session::connect::RequestTarget::Network { database, .. } = &mut request.target {
+            *database = None;
+        }
+        script
+            .list_databases
+            .once(FakeReply::ok(vec![
+                database("analytics", false),
+                database("app", false),
+            ]))
+            .always(FakeReply::ok(vec![database("analytics", false), database("app", true)]));
+    });
+    let button = harness.editor.imp().scope_button.get();
+    wait_until(WAIT, || button.is_visible()).expect("the database menu");
+    let changed = SignalLog::connect(&harness.editor, "database-changed", |_| ());
+    pick_database(&harness, "app");
+    assert_eq!(harness.editor.tab_database().as_deref(), Some("app"));
+
+    harness.editor.buffer().set_text("CREATE DATABASE scratch");
+    run_and_wait(&harness);
+
+    wait_until(WAIT, || changed.count() == 2).expect("the workspace to hear the tab is in its own database");
+    assert_eq!(harness.editor.tab_database(), None);
+}
+
 /// All Rows runs the statement again on the connection, in another
 /// database than a moved tab's, so only the rows shown are offered.
 #[gtk4::test]
@@ -2928,4 +2993,55 @@ fn a_tab_holding_a_transaction_stays_where_it_is() {
     let action = imp_action(&harness.editor, "database").expect("the action");
 
     assert!(!action.is_enabled(), "the tab could leave its transaction");
+}
+
+fn session_in(database: &str, tasks: Tasks) -> Arc<Session> {
+    let mut request = FakeConnector::network_request("db.example", 3306).expect("a request");
+    if let tablepro_session::connect::RequestTarget::Network { database: opened, .. } = &mut request.target {
+        *opened = Some(database.to_owned());
+    }
+    let (pending, _) = FakeConnector::pending_session(request, ConnectionScript::default());
+    Session::start(
+        pending,
+        tablepro_session::SessionDeps {
+            connector: Arc::new(FakeConnector::new([])),
+            credentials: Arc::new(FakeCredentialSource::new()),
+            deadlines: Arc::new(DefaultDeadlines::new(tablepro_core::LivenessPolicy::DESKTOP)),
+            tasks,
+            prompter: None,
+        },
+    )
+}
+
+fn followed_catalog(harness: &Harness) -> Option<String> {
+    harness.editor.followed_catalog()
+}
+
+/// Completion reads the session the window hands over only while the tab
+/// is in that session's database, and lets it go when the tab moves.
+#[gtk4::test]
+fn completion_reads_only_the_session_of_the_tabs_database() {
+    let harness = databases_editor(answering(), false);
+    let analytics = session_in("analytics", harness.runtime.tasks());
+
+    harness.editor.follow_catalog(Some(analytics.clone()));
+    assert_eq!(
+        followed_catalog(&harness),
+        None,
+        "a session opened late for another database"
+    );
+
+    pick_database(&harness, "analytics");
+    harness.editor.follow_catalog(Some(analytics));
+    assert_eq!(followed_catalog(&harness).as_deref(), Some("analytics"));
+    let archive = session_in("archive", harness.runtime.tasks());
+    harness.editor.follow_catalog(Some(archive));
+    assert_eq!(
+        followed_catalog(&harness).as_deref(),
+        Some("analytics"),
+        "a late session for a database the tab left replaced the one it is in"
+    );
+
+    pick_database(&harness, "shop");
+    assert_eq!(followed_catalog(&harness), None, "the last database's catalog stayed");
 }

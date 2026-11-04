@@ -1,14 +1,12 @@
 import SwiftUI
 
 internal enum MaterialRole {
-    case banner
     case toolbar
-    case inlineControl
     case scrim
 
     var solidFallback: Color {
         switch self {
-        case .banner, .toolbar, .inlineControl:
+        case .toolbar:
             Color(nsColor: .controlBackgroundColor)
         case .scrim:
             Color(nsColor: .windowBackgroundColor)

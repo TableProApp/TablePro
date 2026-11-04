@@ -4,33 +4,33 @@
 //
 
 import Foundation
+import TableProCoreTypes
 import TableProTabular
 
 struct DataFileColumnNames: Equatable {
     let ids: [TabularColumnID]
     let displayNames: [String]
     private let idByName: [String: TabularColumnID]
+    private let indexByID: [TabularColumnID: Int]
 
     init(columns: [TabularColumn]) {
-        var used = Set<String>()
+        var allocator = UniqueNameAllocator(candidate: { base, ordinal in
+            ordinal == 1 ? base : "\(base) (\(ordinal))"
+        })
         var names: [String] = []
         var byName: [String: TabularColumnID] = [:]
+        var positions: [TabularColumnID: Int] = [:]
         names.reserveCapacity(columns.count)
         for (index, column) in columns.enumerated() {
-            let base = Self.baseName(column.name, position: index)
-            var candidate = base
-            var suffix = 2
-            while used.contains(candidate) {
-                candidate = "\(base) (\(suffix))"
-                suffix += 1
-            }
-            used.insert(candidate)
-            names.append(candidate)
-            byName[candidate] = column.id
+            let name = allocator.allocate(Self.baseName(column.name, position: index))
+            names.append(name)
+            byName[name] = column.id
+            if positions[column.id] == nil { positions[column.id] = index }
         }
         ids = columns.map(\.id)
         displayNames = names
         idByName = byName
+        indexByID = positions
     }
 
     var count: Int { ids.count }
@@ -40,12 +40,11 @@ struct DataFileColumnNames: Equatable {
     }
 
     func name(for id: TabularColumnID) -> String? {
-        guard let index = ids.firstIndex(of: id) else { return nil }
-        return displayNames[index]
+        indexByID[id].map { displayNames[$0] }
     }
 
     func index(of id: TabularColumnID) -> Int? {
-        ids.firstIndex(of: id)
+        indexByID[id]
     }
 
     private static func baseName(_ raw: String, position: Int) -> String {

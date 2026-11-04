@@ -40,7 +40,7 @@ enum MCPAuditLogger {
     }
 
     static func logAuthSuccess(tokenId: UUID, tokenName: String?, ip: String) {
-        serverAuth.info("Auth success: token=\(tokenId.uuidString, privacy: .public) ip=\(ip, privacy: .public)")
+        serverAuth.info("Auth success: token=\(tokenId.uuidString, privacy: .public) ip=\(ip, privacy: .private(mask: .hash))")
         record(
             category: .auth,
             tokenId: tokenId,
@@ -52,7 +52,7 @@ enum MCPAuditLogger {
     }
 
     static func logAuthFailure(reason: String, ip: String) {
-        serverAuth.warning("Auth failure: reason=\(reason, privacy: .public) ip=\(ip, privacy: .public)")
+        serverAuth.warning("Auth failure: reason=\(reason, privacy: .public) ip=\(ip, privacy: .private(mask: .hash))")
         record(
             category: .auth,
             action: "auth.failure",
@@ -63,7 +63,7 @@ enum MCPAuditLogger {
 
     static func logRateLimited(ip: String, retryAfterSeconds: Int) {
         serverAuth.warning(
-            "Rate limited: ip=\(ip, privacy: .public) retryAfter=\(retryAfterSeconds, privacy: .public)s"
+            "Rate limited: ip=\(ip, privacy: .private(mask: .hash)) retryAfter=\(retryAfterSeconds, privacy: .public)s"
         )
         record(
             category: .auth,
@@ -83,17 +83,17 @@ enum MCPAuditLogger {
         switch outcome {
         case .success:
             serverAuth.info(
-                "Pairing exchange success: token=\(tokenName ?? "-", privacy: .public) ip=\(ip, privacy: .public)"
+                "Pairing exchange success: token=\(tokenName ?? "-", privacy: .private(mask: .hash)) ip=\(ip, privacy: .private(mask: .hash))"
             )
         case .denied:
             serverAuth.warning(
-                "Pairing exchange denied: ip=\(ip, privacy: .public) details=\(details ?? "-", privacy: .public)"
+                "Pairing exchange denied: ip=\(ip, privacy: .private(mask: .hash)) details=\(details ?? "-", privacy: .public)"
             )
         case .rateLimited:
-            serverAuth.warning("Pairing exchange rate limited: ip=\(ip, privacy: .public)")
+            serverAuth.warning("Pairing exchange rate limited: ip=\(ip, privacy: .private(mask: .hash))")
         case .error:
             serverAuth.error(
-                "Pairing exchange error: ip=\(ip, privacy: .public) details=\(details ?? "-", privacy: .public)"
+                "Pairing exchange error: ip=\(ip, privacy: .private(mask: .hash)) details=\(details ?? "-", privacy: .public)"
             )
         }
         record(
@@ -108,7 +108,7 @@ enum MCPAuditLogger {
 
     static func logPairingRedirectRejected(clientName: String, ip: String, reason: String) {
         serverAuth.warning(
-            "Pairing redirect rejected: client=\(clientName, privacy: .public) reason=\(reason, privacy: .public)"
+            "Pairing redirect rejected: client=\(clientName, privacy: .private(mask: .hash)) reason=\(reason, privacy: .public)"
         )
         record(
             category: .auth,
@@ -120,7 +120,7 @@ enum MCPAuditLogger {
     }
 
     static func logTokenCreated(tokenId: UUID, tokenName: String) {
-        serverAdmin.info("Token created: \(tokenName, privacy: .public)")
+        serverAdmin.info("Token created: \(tokenName, privacy: .private(mask: .hash))")
         record(
             category: .admin,
             tokenId: tokenId,
@@ -131,7 +131,7 @@ enum MCPAuditLogger {
     }
 
     static func logTokenRevoked(tokenId: UUID, tokenName: String) {
-        serverAdmin.info("Token revoked: \(tokenName, privacy: .public)")
+        serverAdmin.info("Token revoked: \(tokenName, privacy: .private(mask: .hash))")
         record(
             category: .admin,
             tokenId: tokenId,
@@ -176,7 +176,7 @@ enum MCPAuditLogger {
         let digest = statementDigest(sql)
         serverQuery.info(
             """
-            Query: token=\(principal.auditLabel ?? "-", privacy: .public) \
+            Query: token=\(principal.auditLabel ?? "-", privacy: .private(mask: .hash)) \
             connection=\(connectionId, privacy: .public) \
             duration=\(durationMs, privacy: .public)ms \
             rows=\(rowCount, privacy: .public) \
@@ -214,7 +214,7 @@ enum MCPAuditLogger {
     ) {
         serverTool.info(
             """
-            Tool: token=\(principal.auditLabel ?? "-", privacy: .public) \
+            Tool: token=\(principal.auditLabel ?? "-", privacy: .private(mask: .hash)) \
             tool=\(toolName, privacy: .public) \
             connection=\(connectionId?.uuidString ?? "-", privacy: .public) \
             outcome=\(outcome.rawValue, privacy: .public)
@@ -264,7 +264,7 @@ enum MCPAuditLogger {
         let payloadDigest = String(digest.prefix(16))
         serverTool.info(
             """
-            Outbound tool: server=\(serverName, privacy: .public) \
+            Outbound tool: server=\(serverName, privacy: .private(mask: .hash)) \
             tool=\(toolName, privacy: .public) \
             connection=\(connectionId?.uuidString ?? "-", privacy: .public) \
             bytes=\(payload.count, privacy: .public) \
@@ -295,8 +295,8 @@ enum MCPAuditLogger {
     ) {
         serverResource.info(
             """
-            Resource: token=\(principal.auditLabel ?? "-", privacy: .public) \
-            uri=\(uri, privacy: .public) \
+            Resource: token=\(principal.auditLabel ?? "-", privacy: .private(mask: .hash)) \
+            uri=\(uri, privacy: .private(mask: .hash)) \
             outcome=\(outcome.rawValue, privacy: .public)
             """
         )

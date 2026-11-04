@@ -302,15 +302,15 @@ public enum WeaviateFilterBuilder {
 
     static func escape(_ value: String) -> String {
         var result = ""
-        result.reserveCapacity(value.count)
-        for character in value {
-            switch character {
+        result.reserveCapacity(value.utf8.count)
+        for scalar in value.unicodeScalars {
+            switch scalar {
             case "\\": result += "\\\\"
             case "\"": result += "\\\""
             case "\n": result += "\\n"
             case "\r": result += "\\r"
             case "\t": result += "\\t"
-            default: result.append(character)
+            default: result.unicodeScalars.append(scalar)
             }
         }
         return result

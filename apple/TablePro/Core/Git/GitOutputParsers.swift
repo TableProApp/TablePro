@@ -74,6 +74,25 @@ internal enum GitStatusParser {
     }
 }
 
+internal enum GitFilterDriverParser {
+    private static let section = Array("filter.".utf8)
+
+    // Bytes, since a dot and a combining mark are one Character; nil for a name that may not reach git intact.
+    static func parse(_ data: Data) -> [String]? {
+        var drivers: [String] = []
+        for key in data.split(separator: 0) where key.starts(with: section) {
+            let nameStart = key.startIndex + section.count
+            guard let variableDot = key.lastIndex(of: UInt8(ascii: ".")), variableDot >= nameStart else { continue }
+            let name = key[nameStart..<variableDot]
+            guard name.allSatisfy({ $0 < 0x80 }), let driver = String(bytes: name, encoding: .utf8) else { return nil }
+            if !drivers.contains(driver) {
+                drivers.append(driver)
+            }
+        }
+        return drivers
+    }
+}
+
 internal enum GitRepositoryInfoParser {
     static func parse(_ data: Data) -> GitRepositoryInfo? {
         let lines = (String(bytes: data, encoding: .utf8) ?? "")

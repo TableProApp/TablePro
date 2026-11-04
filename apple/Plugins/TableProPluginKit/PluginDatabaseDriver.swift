@@ -1,41 +1,43 @@
 import Foundation
 
+// ASCII digits by scalar: an engine reads `١٢`, `１`, `½` or a digit a combining mark follows as a name, not a number,
+// so such text written bare would be a column reference.
 public enum PluginNumericLiteral {
     public static func isValid(_ value: String) -> Bool {
-        guard !value.isEmpty else { return false }
-        var scanner = value.makeIterator()
+        var scalars = value.unicodeScalars.makeIterator()
         var hasDigit = false
         var hasDot = false
-        var hasE = false
-
+        var hasExponent = false
         var first = true
-        while let c = scanner.next() {
-            if first {
-                first = false
-                if c == "-" || c == "+" { continue }
-            }
-            if c.isNumber {
+        while let scalar = scalars.next() {
+            defer { first = false }
+            if first, scalar == "-" || scalar == "+" { continue }
+            if isDigit(scalar) {
                 hasDigit = true
                 continue
             }
-            if c == "." && !hasDot && !hasE {
+            if scalar == ".", !hasDot, !hasExponent {
                 hasDot = true
                 continue
             }
-            if (c == "e" || c == "E") && hasDigit && !hasE {
-                hasE = true
+            if scalar == "e" || scalar == "E", hasDigit, !hasExponent {
+                hasExponent = true
                 hasDigit = false
-                if let next = scanner.next() {
-                    if next == "+" || next == "-" || next.isNumber {
-                        if next.isNumber { hasDigit = true }
-                        continue
-                    }
+                guard let next = scalars.next() else { return false }
+                if isDigit(next) {
+                    hasDigit = true
+                } else if next != "+", next != "-" {
+                    return false
                 }
-                return false
+                continue
             }
             return false
         }
         return hasDigit
+    }
+
+    private static func isDigit(_ scalar: Unicode.Scalar) -> Bool {
+        ("0"..."9").contains(scalar)
     }
 }
 
@@ -278,6 +280,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// temporary objects, an open transaction, or settings the user changed are all reasons to keep
     /// it and say so. Throwing is reserved for a release that was attempted and failed.
     func releaseIdleResource() async throws -> PluginResourceRelease
+
+    // Builds a new database file from a folder the engine exported, in an engine instance of its own that can reach no
+    // file outside `folder`, because the folder's SQL is untrusted. Nothing runs on this connection.
+    func importExportedDatabase(from folder: URL, into file: URL) async throws
     var serverVersion: String? { get }
     /// The warning the server sent with a login that succeeded, in the server's own words, such as an Oracle
     /// password in its grace period, or `nil` when there was none. The app reads it once `connect()` returns.
@@ -646,6 +652,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
         materializedView: String,
         schema: String?
     ) async throws -> PluginConcurrentRefreshAvailability?
+
+    // Nil where the engine does not check, so its views stay read-only.
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing?
 
     // Nil where the engine has no sequences, which keeps the sequence commands off the menu.
     func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails?
@@ -1365,6 +1374,8 @@ public extension PluginDatabaseDriver {
         nil
     }
 
+    func fetchViewRowEditing(view: String, schema: String?) async throws -> PluginViewRowEditing? { nil }
+
     func fetchSequenceDetails(sequence: String, schema: String?) async throws -> PluginSequenceDetails? { nil }
 
     func sequenceNextValueStatement(
@@ -1408,8 +1419,7 @@ public extension PluginDatabaseDriver {
     func defaultExportQuery(table: String, schema: String?) -> String? { defaultExportQuery(table: table) }
 
     func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
-        return "\"\(escaped)\""
+        PluginSQLQuoting.identifier(name)
     }
 
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? { nil }
@@ -1445,7 +1455,9 @@ public extension PluginDatabaseDriver {
         parameters: [PluginCellValue]?,
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        try await PluginParameterBinder.$hostFeatures.withValue(context.lexicalFeatures) {
+            try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
     }
 
     func executeParameterized(
@@ -1453,7 +1465,9 @@ public extension PluginDatabaseDriver {
         parameters: [PluginCellValue],
         context: PluginStatementContext
     ) async throws -> PluginQueryResult {
-        try await executeParameterized(query: query, parameters: parameters)
+        try await PluginParameterBinder.$hostFeatures.withValue(context.lexicalFeatures) {
+            try await executeParameterized(query: query, parameters: parameters)
+        }
     }
 
     func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -1481,12 +1495,8 @@ public extension PluginDatabaseDriver {
         }
     }
 
-    // `.literal` compares code units: the default compares grapheme clusters and skips a quote a
-    // combining mark follows, which then ends the literal early.
     func escapeStringLiteral(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\0", with: "", options: .literal)
-            .replacingOccurrences(of: "'", with: "''", options: .literal)
+        PluginSQLQuoting.stringLiteralBody(value)
     }
 
     func fetchSessionContexts() async throws -> [PluginSessionContext]? { nil }
@@ -1497,155 +1507,13 @@ public extension PluginDatabaseDriver {
         guard !parameters.isEmpty else {
             return try await execute(query: query)
         }
-
-        let sql: String
-        switch parameterStyle {
-        case .questionMark:
-            sql = substituteQuestionMarks(query: query, parameters: parameters)
-        case .dollar:
-            sql = substituteDollarParams(query: query, parameters: parameters)
-        }
-
+        let sql = try PluginParameterBinder.bind(
+            query,
+            literals: parameters.map(sqlLiteral(for:)),
+            style: parameterStyle,
+            features: literalFeatures
+        )
         return try await execute(query: sql)
-    }
-
-    private func substituteQuestionMarks(query: String, parameters: [PluginCellValue]) -> String {
-        let nsQuery = query as NSString
-        let length = nsQuery.length
-        var sql = ""
-        var paramIndex = 0
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        var isEscaped = false
-        var i = 0
-
-        let backslash: UInt16 = 0x5C // \\
-        let singleQuote: UInt16 = 0x27 // '
-        let doubleQuote: UInt16 = 0x22 // "
-        let questionMark: UInt16 = 0x3F // ?
-
-        while i < length {
-            let char = nsQuery.character(at: i)
-
-            if isEscaped {
-                isEscaped = false
-                if let scalar = UnicodeScalar(char) {
-                    sql.append(Character(scalar))
-                } else {
-                    sql.append("\u{FFFD}")
-                }
-                i += 1
-                continue
-            }
-
-            if char == backslash && (inSingleQuote || inDoubleQuote) {
-                isEscaped = true
-                if let scalar = UnicodeScalar(char) {
-                    sql.append(Character(scalar))
-                } else {
-                    sql.append("\u{FFFD}")
-                }
-                i += 1
-                continue
-            }
-
-            if char == singleQuote && !inDoubleQuote {
-                inSingleQuote.toggle()
-            } else if char == doubleQuote && !inSingleQuote {
-                inDoubleQuote.toggle()
-            }
-
-            if char == questionMark && !inSingleQuote && !inDoubleQuote && paramIndex < parameters.count {
-                sql.append(sqlLiteral(for: parameters[paramIndex]))
-                paramIndex += 1
-            } else {
-                if let scalar = UnicodeScalar(char) {
-                    sql.append(Character(scalar))
-                } else {
-                    sql.append("\u{FFFD}")
-                }
-            }
-
-            i += 1
-        }
-
-        return sql
-    }
-
-    private func substituteDollarParams(query: String, parameters: [PluginCellValue]) -> String {
-        let nsQuery = query as NSString
-        let length = nsQuery.length
-        var sql = ""
-        var i = 0
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        var isEscaped = false
-
-        while i < length {
-            let char = nsQuery.character(at: i)
-
-            if isEscaped {
-                isEscaped = false
-                if let scalar = UnicodeScalar(char) {
-                    sql.append(Character(scalar))
-                } else {
-                    sql.append("\u{FFFD}")
-                }
-                i += 1
-                continue
-            }
-
-            let backslash: UInt16 = 0x5C // \\
-            if char == backslash && (inSingleQuote || inDoubleQuote) {
-                isEscaped = true
-                if let scalar = UnicodeScalar(char) {
-                    sql.append(Character(scalar))
-                } else {
-                    sql.append("\u{FFFD}")
-                }
-                i += 1
-                continue
-            }
-
-            let singleQuote: UInt16 = 0x27 // '
-            let doubleQuote: UInt16 = 0x22 // "
-            if char == singleQuote && !inDoubleQuote {
-                inSingleQuote.toggle()
-            } else if char == doubleQuote && !inSingleQuote {
-                inDoubleQuote.toggle()
-            }
-
-            let dollar: UInt16 = 0x24 // $
-            if char == dollar && !inSingleQuote && !inDoubleQuote {
-                var numStr = ""
-                var j = i + 1
-                while j < length {
-                    let digitChar = nsQuery.character(at: j)
-                    if digitChar >= 0x30 && digitChar <= 0x39 { // 0-9
-                        if let scalar = UnicodeScalar(digitChar) {
-                            numStr.append(Character(scalar))
-                        }
-                        j += 1
-                    } else {
-                        break
-                    }
-                }
-                if !numStr.isEmpty, let paramNum = Int(numStr), paramNum >= 1, paramNum <= parameters.count {
-                    sql.append(sqlLiteral(for: parameters[paramNum - 1]))
-                    i = j
-                    continue
-                }
-            }
-
-            if let scalar = UnicodeScalar(char) {
-                sql.append(Character(scalar))
-            } else {
-                sql.append("\u{FFFD}")
-            }
-            i += 1
-        }
-
-        return sql
     }
 
     func sqlLiteral(for value: PluginCellValue) -> String {
@@ -1669,33 +1537,7 @@ public extension PluginDatabaseDriver {
         if Self.isNumericLiteral(value) {
             return value
         }
-        var escaped = String.UnicodeScalarView()
-        escaped.append("'")
-        let escapeBackslashes = requiresBackslashEscapingInLiterals
-        // Scalars, not Characters: a quote with a combining mark after it is one Character no case matched, so it
-        // went out single and ended the literal.
-        for scalar in value.unicodeScalars {
-            switch scalar {
-            case "'":
-                escaped.append(contentsOf: "''".unicodeScalars)
-            case "\0":
-                continue
-            case "\\" where escapeBackslashes:
-                escaped.append(contentsOf: #"\\"#.unicodeScalars)
-            case "\n" where escapeBackslashes:
-                escaped.append(contentsOf: #"\n"#.unicodeScalars)
-            case "\r" where escapeBackslashes:
-                escaped.append(contentsOf: #"\r"#.unicodeScalars)
-            case "\t" where escapeBackslashes:
-                escaped.append(contentsOf: #"\t"#.unicodeScalars)
-            case "\u{1A}" where escapeBackslashes:
-                escaped.append(contentsOf: #"\Z"#.unicodeScalars)
-            default:
-                escaped.append(scalar)
-            }
-        }
-        escaped.append("'")
-        return String(escaped)
+        return PluginSQLQuoting.stringLiteral(value, escapes: PluginSQLQuoting.Escapes(features: literalFeatures))
     }
 
     static func isNumericLiteral(_ value: String) -> Bool {
@@ -1724,151 +1566,15 @@ public extension PluginDatabaseDriver {
     }
 }
 
-public enum PluginSQLFilter {
-    public static func escapeForLike(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "%", with: "\\%")
-            .replacingOccurrences(of: "_", with: "\\_")
-            .replacingOccurrences(of: "'", with: "''")
-    }
-
-    public static func buildOrderByClause(
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        quoteIdentifier: (String) -> String
-    ) -> String? {
-        let parts = sortColumns.compactMap { sortCol -> String? in
-            guard sortCol.columnIndex >= 0, sortCol.columnIndex < columns.count else { return nil }
-            let direction = sortCol.ascending ? "ASC" : "DESC"
-            return "\(quoteIdentifier(columns[sortCol.columnIndex])) \(direction)"
+extension PluginDatabaseDriver {
+    // The host's reading of the session first. A driver called without one falls back to its own answer, with what
+    // the session reported winning: MySQL's NO_BACKSLASH_ESCAPES turns the escape off for the connection.
+    var literalFeatures: SQLLexicalFeatures {
+        if let features = PluginParameterBinder.hostFeatures { return features }
+        var backslash = requiresBackslashEscapingInLiterals
+        if let state = sessionLexicalState, state.determined.contains(.backslashEscapesInSingleQuotes) {
+            backslash = state.enabled.contains(.backslashEscapesInSingleQuotes)
         }
-        guard !parts.isEmpty else { return nil }
-        return "ORDER BY " + parts.joined(separator: ", ")
-    }
-
-    public static func buildWhereClause(
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        quoteIdentifier: (String) -> String,
-        escapeValue: (String) -> String,
-        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
-    ) -> String {
-        let conditions = filters.compactMap { filter in
-            buildFilterCondition(
-                column: filter.column,
-                op: filter.op,
-                value: filter.value,
-                quoteIdentifier: quoteIdentifier,
-                escapeValue: escapeValue,
-                regexCondition: regexCondition
-            )
-        }
-        guard !conditions.isEmpty else { return "" }
-        let separator = logicMode == "and" ? " AND " : " OR "
-        return conditions.joined(separator: separator)
-    }
-
-    public static func buildFilterCondition(
-        column: String,
-        op: String,
-        value: String,
-        quoteIdentifier: (String) -> String,
-        escapeValue: (String) -> String,
-        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
-    ) -> String? {
-        let quoted = quoteIdentifier(column)
-        switch op {
-        case "=": return "\(quoted) = \(escapeValue(value))"
-        case "!=": return "\(quoted) != \(escapeValue(value))"
-        case ">": return "\(quoted) > \(escapeValue(value))"
-        case ">=": return "\(quoted) >= \(escapeValue(value))"
-        case "<": return "\(quoted) < \(escapeValue(value))"
-        case "<=": return "\(quoted) <= \(escapeValue(value))"
-        case "IS NULL": return "\(quoted) IS NULL"
-        case "IS NOT NULL": return "\(quoted) IS NOT NULL"
-        case "IS EMPTY": return "(\(quoted) IS NULL OR \(quoted) = '')"
-        case "IS NOT EMPTY": return "(\(quoted) IS NOT NULL AND \(quoted) != '')"
-        case "CONTAINS":
-            return "\(quoted) LIKE '%\(escapeForLike(value))%' ESCAPE '\\'"
-        case "NOT CONTAINS":
-            return "\(quoted) NOT LIKE '%\(escapeForLike(value))%' ESCAPE '\\'"
-        case "STARTS WITH":
-            return "\(quoted) LIKE '\(escapeForLike(value))%' ESCAPE '\\'"
-        case "ENDS WITH":
-            return "\(quoted) LIKE '%\(escapeForLike(value))' ESCAPE '\\'"
-        case "IN":
-            let values = value.split(separator: ",")
-                .map { escapeValue($0.trimmingCharacters(in: .whitespaces)) }
-                .joined(separator: ", ")
-            return values.isEmpty ? nil : "\(quoted) IN (\(values))"
-        case "NOT IN":
-            let values = value.split(separator: ",")
-                .map { escapeValue($0.trimmingCharacters(in: .whitespaces)) }
-                .joined(separator: ", ")
-            return values.isEmpty ? nil : "\(quoted) NOT IN (\(values))"
-        case "BETWEEN":
-            let parts = value.split(separator: ",", maxSplits: 1)
-            guard parts.count == 2 else { return nil }
-            let v1 = escapeValue(parts[0].trimmingCharacters(in: .whitespaces))
-            let v2 = escapeValue(parts[1].trimmingCharacters(in: .whitespaces))
-            return "\(quoted) BETWEEN \(v1) AND \(v2)"
-        case "REGEX":
-            return regexCondition(quoted, value)
-        default: return nil
-        }
-    }
-
-    public static func buildWhereClause(
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        columnKinds: [String: PluginColumnKind],
-        quoteIdentifier: (String) -> String,
-        escapeTypedValue: (_ value: String, _ kind: PluginColumnKind?) -> String,
-        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
-    ) -> String {
-        let conditions = filters.compactMap { filter in
-            buildFilterCondition(
-                column: filter.column,
-                op: filter.op,
-                value: filter.value,
-                kind: columnKinds[filter.column],
-                quoteIdentifier: quoteIdentifier,
-                escapeTypedValue: escapeTypedValue,
-                regexCondition: regexCondition
-            )
-        }
-        guard !conditions.isEmpty else { return "" }
-        let separator = logicMode == "and" ? " AND " : " OR "
-        return conditions.joined(separator: separator)
-    }
-
-    public static func buildFilterCondition(
-        column: String,
-        op: String,
-        value: String,
-        kind: PluginColumnKind?,
-        quoteIdentifier: (String) -> String,
-        escapeTypedValue: (_ value: String, _ kind: PluginColumnKind?) -> String,
-        regexCondition: (_ quotedColumn: String, _ value: String) -> String?
-    ) -> String? {
-        let quoted = quoteIdentifier(column)
-        switch op {
-        case "IS EMPTY":
-            guard PluginSQLLiteral.supportsEmptyStringComparison(kind) else { return "\(quoted) IS NULL" }
-            return "(\(quoted) IS NULL OR \(quoted) = '')"
-        case "IS NOT EMPTY":
-            guard PluginSQLLiteral.supportsEmptyStringComparison(kind) else { return "\(quoted) IS NOT NULL" }
-            return "(\(quoted) IS NOT NULL AND \(quoted) != '')"
-        default:
-            return buildFilterCondition(
-                column: column,
-                op: op,
-                value: value,
-                quoteIdentifier: quoteIdentifier,
-                escapeValue: { escapeTypedValue($0, kind) },
-                regexCondition: regexCondition
-            )
-        }
+        return backslash ? [.backslashEscapesInSingleQuotes, .backslashEscapesInDoubleQuotes] : []
     }
 }

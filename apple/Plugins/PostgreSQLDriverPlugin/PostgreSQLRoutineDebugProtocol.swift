@@ -60,7 +60,7 @@ struct PostgreSQLDebugRoutine: Equatable, Sendable {
     // f(bit) being debugged (both measured).
     let argumentCastTypes: [String]
     // Each argument's default expression from pg_get_function_arg_default, nil where it has none.
-    let defaultExpressions: [String?]
+    private(set) var defaultExpressions: [String?]
 
     // The columns of `PostgreSQLRoutineDebugProtocol.routineQuery`, in order.
     init(row: [String?], identity: String) {
@@ -90,6 +90,12 @@ struct PostgreSQLDebugRoutine: Equatable, Sendable {
         configuration = PostgreSQLTextArray.values(text(18))
         argumentCastTypes = PostgreSQLTextArray.values(text(19))
         defaultExpressions = PostgreSQLTextArray.elements(text(20))
+    }
+
+    func withDefaultExpressions(_ expressions: [String?]) -> PostgreSQLDebugRoutine {
+        var routine = self
+        routine.defaultExpressions = expressions
+        return routine
     }
 
     var isProcedure: Bool { kind == "p" }
@@ -314,7 +320,8 @@ enum PostgreSQLRoutineDebugProtocol {
                 AND NOT \(pseudoTypeArgumentTest)
                 AND NOT EXISTS (
                     SELECT 1 FROM pg_catalog.pg_depend d
-                    WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass AND d.objid = p.oid AND d.deptype = 'e'
+                    WHERE d.classid = 'pg_catalog.pg_proc'::pg_catalog.regclass::pg_catalog.oid
+                        AND d.objid = p.oid AND d.deptype = 'e'
                 )
             ORDER BY p.proname, 4
             """
@@ -343,12 +350,25 @@ enum PostgreSQLRoutineDebugProtocol {
         "SELECT pg_catalog.pg_cancel_backend(\(process))"
     }
 
+    // The call replays each default as text on the target's own path, so it is read there: the deparser qualifies a name
+    // that path would resolve elsewhere. No operator, and every function names pg_catalog, so any path parses it alike.
+    static func targetDefaultsStatement(oid: UInt32, argumentCount: Int) -> String? {
+        guard argumentCount > 0 else { return nil }
+        return """
+            SELECT ARRAY(
+                SELECT pg_catalog.pg_get_function_arg_default(\(oidLiteral(oid)), s.n)
+                FROM pg_catalog.generate_series(1, \(argumentCount)) AS s(n)
+                ORDER BY s.n
+            )
+            """
+    }
+
     static func backendCountStatement(process: Int) -> String {
-        "SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity WHERE pid = \(process)"
+        "SELECT pg_catalog.count(*) FROM pg_catalog.pg_stat_activity WHERE pid OPERATOR(pg_catalog.=) \(process)"
     }
 
     static func routineSourceStatement(oid: UInt32) -> String {
-        "SELECT p.prosrc FROM pg_catalog.pg_proc p WHERE p.oid = \(oidLiteral(oid))"
+        "SELECT p.prosrc FROM pg_catalog.pg_proc p WHERE p.oid OPERATOR(pg_catalog.=) \(oidLiteral(oid))"
     }
 
     // MARK: - pldbgapi calls

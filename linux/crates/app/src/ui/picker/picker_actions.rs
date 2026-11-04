@@ -4,6 +4,9 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag, SavedConnection};
+
+use crate::services::saved_connection_editor::GroupChoice;
+use crate::services::saved_connection_order::GroupLabels;
 use uuid::Uuid;
 
 use super::connection_menu::{
@@ -71,8 +74,8 @@ pub(crate) fn install_picker_actions(
             };
             let input = match picked {
                 Setting::Color => SessionWindowInput::SetConnectionColor(saved.id, ConnectionColor::from_id(&value)),
-                Setting::Group => match group_named(&value) {
-                    Ok(group) => SessionWindowInput::SetConnectionGroup(saved.id, group),
+                Setting::Group => match group_named(&list.labels(), &value) {
+                    Ok(choice) => SessionWindowInput::SetConnectionGroup(saved.id, choice),
                     Err(error) => {
                         tracing::warn!(action = name, %error, "a picker action named a group that cannot be saved");
                         return;
@@ -96,11 +99,12 @@ pub(crate) fn insert_choice_actions(
     menu: &impl IsA<gtk::Widget>,
     source: &gtk::Widget,
     saved: &SavedConnection,
+    group: Option<&str>,
     tags: &[ConnectionTag],
 ) {
     let actions = gio::SimpleActionGroup::new();
     let current_color = saved.color.map_or(NONE, |color| color.id());
-    let current_group = saved.group.as_ref().map_or(NONE, ConnectionGroupName::as_str);
+    let current_group = group.unwrap_or(NONE);
     for (name, state, forward) in [
         (ROW_COLOR, current_color, SET_COLOR),
         (ROW_GROUP, current_group, MOVE_TO_GROUP),
@@ -182,12 +186,17 @@ enum Setting {
     Group,
 }
 
-/// The group a radio target names. The empty target is no group.
-fn group_named(value: &str) -> Result<Option<ConnectionGroupName>, tablepro_storage::GroupNameError> {
+/// The group a radio target names: the empty target is no group, a
+/// label the list shows is that group, and any other a top-level group
+/// of that name.
+fn group_named(labels: &GroupLabels, value: &str) -> Result<GroupChoice, tablepro_storage::GroupNameError> {
     if value == NONE {
-        return Ok(None);
+        return Ok(GroupChoice::None);
     }
-    ConnectionGroupName::new(value).map(Some)
+    if let Some(id) = labels.group_labelled(value) {
+        return Ok(GroupChoice::Existing(id));
+    }
+    ConnectionGroupName::new(value).map(GroupChoice::Named)
 }
 
 /// The connection a target names, or `None`, with a warning, for a
@@ -206,15 +215,10 @@ fn connection(list: &SavedConnectionList, target: Option<String>, action: &str) 
 }
 
 /// Ask for a new group's name, then file the connection under it.
-fn ask_for_group(
-    parent: gtk::Widget,
-    id: Uuid,
-    existing: Vec<ConnectionGroupName>,
-    sender: InputSender<SessionWindowInput>,
-) {
+fn ask_for_group(parent: gtk::Widget, id: Uuid, existing: Vec<String>, sender: InputSender<SessionWindowInput>) {
     glib::spawn_future_local(async move {
         if let Some(group) = super::new_group_dialog::ask_group_name(&parent, &existing).await {
-            sender.deliver(SessionWindowInput::SetConnectionGroup(id, Some(group)));
+            sender.deliver(SessionWindowInput::SetConnectionGroup(id, GroupChoice::Named(group)));
         }
     });
 }
@@ -239,11 +243,31 @@ mod tests {
 
     #[test]
     fn an_empty_radio_target_is_no_group_and_a_blank_one_is_refused() {
-        assert_eq!(group_named(NONE), Ok(None));
+        let labels = GroupLabels::default();
+
+        assert_eq!(group_named(&labels, NONE), Ok(GroupChoice::None));
         assert_eq!(
-            group_named(" Work ").map(|group| group.map(String::from)),
-            Ok(Some("Work".to_owned()))
+            group_named(&labels, " Work "),
+            Ok(GroupChoice::Named(ConnectionGroupName::new("Work").expect("a name")))
         );
-        assert!(group_named("   ").is_err());
+        assert!(group_named(&labels, "   ").is_err());
+    }
+
+    #[test]
+    fn a_label_the_list_shows_names_that_group_even_a_nested_one() {
+        let work = tablepro_storage::ConnectionGroup::new(ConnectionGroupName::new("Work").expect("a name"), None);
+        let staging =
+            tablepro_storage::ConnectionGroup::new(ConnectionGroupName::new("Staging").expect("a name"), Some(work.id));
+        let labels = GroupLabels::new(&[work.clone(), staging.clone()]);
+
+        assert_eq!(group_named(&labels, "Work"), Ok(GroupChoice::Existing(work.id)));
+        assert_eq!(
+            group_named(&labels, "Work / Staging"),
+            Ok(GroupChoice::Existing(staging.id))
+        );
+        assert_eq!(
+            group_named(&labels, "Staging"),
+            Ok(GroupChoice::Named(ConnectionGroupName::new("Staging").expect("a name")))
+        );
     }
 }

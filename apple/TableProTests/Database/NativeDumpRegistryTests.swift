@@ -7,6 +7,7 @@ import Foundation
 import TableProPluginKit
 import TableProSSHConfig
 import Testing
+import Yams
 
 @testable import TablePro
 
@@ -39,6 +40,7 @@ struct NativeDumpRegistryTests {
         _ type: DatabaseType,
         kind: NativeDumpKind = .backup,
         connection overrideConnection: DatabaseConnection? = nil,
+        database: String = "sales",
         password: String? = "s3cret",
         fileURL: URL = URL(fileURLWithPath: "/tmp/out.bin"),
         scope: NativeDumpScope = .wholeDatabase,
@@ -60,7 +62,7 @@ struct NativeDumpRegistryTests {
             ),
             request: NativeDumpDescriptor.Request(
                 connection: effective,
-                database: "sales",
+                database: database,
                 fileURL: fileURL,
                 password: password,
                 scope: scope,
@@ -224,6 +226,24 @@ struct NativeDumpRegistryTests {
         #expect(!built.arguments.contains { $0.hasPrefix("--host") || $0.hasPrefix("--port") })
     }
 
+    @Test("The tools sign in with the Keychain's key passphrase and session token, never a plain copy")
+    func mongoToolsGetTheKeychainSecrets() throws {
+        var aws = connection(type: .mongodb, sslMode: .required, sslEnabled: true)
+        aws.sslConfig.clientCertificatePath = "/Users/alice/client.pem"
+        aws.mongoAuthMechanism = "MONGODB-AWS"
+        aws.additionalFields["sslClientKeyPassphrase"] = "hunter2"
+        aws.additionalFields["mongoAWSSessionToken"] = "FQoG"
+        aws.additionalFields["mongoParam_authMechanismProperties"] = "AWS_SESSION_TOKEN:stale"
+        aws.additionalFields["mongoParam_proxyPassword"] = "proxy-secret"
+
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, connection: aws)))
+
+        #expect(uri.contains("tlsCertificateKeyFilePassword=hunter2"))
+        #expect(uri.contains("authMechanismProperties=AWS_SESSION_TOKEN%3AFQoG"))
+        #expect(!uri.contains("stale"))
+        #expect(!uri.contains("proxy-secret"))
+    }
+
     @Test("A host list and its replica set reach the tool whole, not as the first host")
     func mongoHostListUsesAConnectionString() throws {
         var replicaSet = connection(type: .mongodb, host: "a.example.com", port: 27_017)
@@ -337,11 +357,37 @@ struct NativeDumpRegistryTests {
     func sqliteUsesTheFilePath() throws {
         let file = connection(type: .sqlite, host: "", port: 0, database: "/tmp/app.sqlite", username: "")
         let backup = try command(.sqlite, connection: file)
-        #expect(backup.arguments == ["/tmp/app.sqlite", ".dump"])
+        #expect(backup.arguments == ["-safe", "/tmp/app.sqlite", ".dump"])
 
         let restore = try command(.sqlite, kind: .restore, connection: file)
-        #expect(restore.arguments == ["/tmp/app.sqlite"])
+        #expect(restore.arguments == ["-safe", "-bail", "/tmp/app.sqlite"])
         #expect(restore.isRestore)
+    }
+
+    @Test("A SQLite restore refuses a dump's shell commands and stops at its first error")
+    func sqliteRestoreRunsNoShellCommand() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("sqlite-safe-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let marker = directory.appendingPathComponent("ran")
+        let dump = directory.appendingPathComponent("hostile.sql")
+        try "CREATE TABLE t(a);\n.shell touch '\(marker.path)'\nINSERT INTO t VALUES(1);\n"
+            .write(to: dump, atomically: true, encoding: .utf8)
+        let database = directory.appendingPathComponent("app.sqlite").path
+        let file = connection(type: .sqlite, host: "", port: 0, database: database, username: "")
+        let restore = try command(.sqlite, kind: .restore, connection: file)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = restore.arguments
+        process.standardInput = try FileHandle(forReadingFrom: dump)
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+
+        #expect(process.terminationStatus != 0)
+        #expect(!FileManager.default.fileExists(atPath: marker.path))
     }
 
     /// libSQL claims the SQLite descriptor and keeps its path in a plugin-declared additional
@@ -354,7 +400,41 @@ struct NativeDumpRegistryTests {
         let backup = try command(
             .libsql, connection: remote, localFilePath: "/tmp/turso.db"
         )
-        #expect(backup.arguments == ["/tmp/turso.db", ".dump"])
+        #expect(backup.arguments == ["-safe", "/tmp/turso.db", ".dump"])
+    }
+
+    // Measured with sqlite3 3.54.0: `sqlite3 -safe -cmd .dump` reads `-cmd` as an option and dumps an empty
+    // in-memory database with exit 0, and sqlite3 before 3.42 rejects `--`.
+    @Test("A SQLite path that starts with a dash or a tilde reaches sqlite3 absolute", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func sqlitePathIsAbsolute(kind: NativeDumpKind) throws {
+        let dashed = try command(
+            .sqlite, kind: kind, connection: connection(type: .sqlite, host: "", port: 0, database: "-cmd", username: "")
+        )
+        let dashedPath = try #require(dashed.arguments.first { $0 != "-safe" && $0 != "-bail" })
+        #expect(dashedPath == URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("-cmd").path)
+        #expect(dashedPath.hasPrefix("/"))
+        #expect(!dashed.arguments.contains("--"))
+
+        let home = try command(
+            .sqlite, kind: kind, connection: connection(type: .sqlite, host: "", port: 0, database: "~/x.db", username: "")
+        )
+        let homePath = try #require(home.arguments.first { $0 != "-safe" && $0 != "-bail" })
+        #expect(homePath == URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("x.db").path)
+
+        let dotted = try command(
+            .sqlite, kind: kind,
+            connection: connection(type: .sqlite, host: "", port: 0, database: "/tmp/a/../-b.db", username: "")
+        )
+        #expect(dotted.arguments.contains("/tmp/-b.db"))
+    }
+
+    @Test("A SQLite path holding a NUL is refused before anything runs")
+    func sqlitePathWithNULIsRefused() {
+        #expect(throws: NativeDumpError.nulInArgument) {
+            try command(.sqlite, connection: connection(type: .sqlite, host: "", port: 0, database: "/tmp/a\u{0}b", username: ""))
+        }
     }
 
     /// A libSQL connection to a Turso URL has no local file, so `sqlite3` cannot reach it at all.
@@ -368,6 +448,102 @@ struct NativeDumpRegistryTests {
         var local = remote
         local.additionalFields["libsqlFilePath"] = "/tmp/turso.db"
         #expect(NativeDumpRegistry.supports(local, localFilePath: "/tmp/turso.db"))
+    }
+
+    @Test("Every value of the SQL Server connection string is quoted", arguments: [
+        (NativeDumpKind.backup, "/SourceConnectionString:"), (.restore, "/TargetConnectionString:")
+    ])
+    func sqlServerConnectionStringQuotesItsValues(kind: NativeDumpKind, flag: String) throws {
+        #expect(try NativeDumpArgumentQuoting.sqlServerConnectionStringValue(#"a;b"c"#) == #""a;b""c""#)
+        let built = try command(
+            .mssql,
+            kind: kind,
+            connection: connection(type: .mssql, port: 1_433, sslMode: .verifyIdentity),
+            database: "x;Server=elsewhere;TrustServerCertificate=true",
+            password: "p;w"
+        )
+        let argument = try #require(built.arguments.first { $0.hasPrefix(flag) })
+        #expect(
+            argument.dropFirst(flag.count) == """
+                Server="db.example.com,1433";Database="x;Server=elsewhere;TrustServerCertificate=true";\
+                User ID="alice";Password="p;w";Encrypt=true
+                """
+        )
+    }
+
+    @Test("A NUL in a SQL Server or PostgreSQL value is refused before anything runs")
+    func nulInAConnectionValueIsRefused() {
+        #expect(throws: NativeDumpError.nulInArgument) {
+            try command(.mssql, connection: connection(type: .mssql, port: 1_433), password: "p\u{0}w")
+        }
+        #expect(throws: NativeDumpError.nulInArgument) {
+            try command(.postgresql, database: "sa\u{0}les")
+        }
+        #expect(throws: NativeDumpError.nulInArgument) {
+            try command(.postgresql, scope: .objects([NativeDumpObject(name: "or\u{0}ders", schema: "app")]))
+        }
+    }
+
+    // Process ends the app on a NUL in an argument, so the runner has to stop it first.
+    @Test("A NUL in a sign-in name is a thrown error, not a crash", arguments: [
+        DatabaseType.postgresql, .mysql
+    ])
+    func nulInTheUsernameIsAnError(type: DatabaseType) throws {
+        let built = try command(type, connection: connection(type: type, username: "a\u{0}b"))
+        let runner = ProcessNativeDumpRunner(command: built)
+        #expect(throws: NativeDumpError.nulInArgument) { try runner.start() }
+    }
+
+    @Test("A PostgreSQL database name with a quote and a table with a double quote reach the tool escaped")
+    func postgresQuotesReachTheTool() throws {
+        let built = try command(
+            .postgresql,
+            database: "o'brien",
+            scope: .objects([NativeDumpObject(name: "a\"b", schema: "app")])
+        )
+        let database = try #require(built.arguments.firstIndex(of: "-d").map { built.arguments[$0 + 1] })
+        #expect(database == "dbname='o\\'brien'")
+        let table = try #require(built.arguments.firstIndex(of: "-t").map { built.arguments[$0 + 1] })
+        #expect(table == "\"app\".\"a\"\"b\"")
+    }
+
+    // libpq reads a -d value holding `=` as a conninfo whose host overrides -h. Measured with
+    // pg_dump 17.11: the raw name dialed 127.0.0.66, the quoted one dumped the named database.
+    @Test("A PostgreSQL database name reaches -d as a quoted dbname, in both directions", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func postgresDatabaseNameIsQuoted(kind: NativeDumpKind) throws {
+        let hostile = try command(.postgresql, kind: kind, database: "host=127.0.0.66 port=15433 sslmode=disable")
+        let value = try #require(hostile.arguments.firstIndex(of: "-d").map { hostile.arguments[$0 + 1] })
+        #expect(value == "dbname='host=127.0.0.66 port=15433 sslmode=disable'")
+        #expect(hostile.arguments.starts(with: ["--no-password", "-h", "db.example.com", "-p", "5432"]))
+
+        let quoted = try command(.postgresql, kind: kind, database: "a'b\\c'\u{301}")
+        let escaped = try #require(quoted.arguments.firstIndex(of: "-d").map { quoted.arguments[$0 + 1] })
+        #expect(escaped == "dbname='a\\'b\\\\c\\'\u{301}'")
+    }
+
+    // `\!` and `system` in piped input run a shell command, with MYSQL_PWD in its environment.
+    // Measured with MariaDB 13.0.2: --binary-mode refuses both and `\.`, and a mariadb-dump of
+    // routines, triggers, events and binary data restores the same under these flags.
+    @Test("A MySQL or MariaDB restore turns the client's own commands off", arguments: [
+        (NativeDumpToolFlavor.mysql, "mysql  Ver 8.4.6 for macos15 on arm64 (Homebrew)", "--skip-system-command"),
+        (.mysql, "mysql  Ver 8.0.39 for macos14 on arm64", nil),
+        (.mariadb, "mysql from 13.0.2-MariaDB, client 15.2 for osx10.23 (arm64) using  EditLine wrapper", "--sandbox"),
+        (.mariadb, "mysql  Ver 15.1 Distrib 10.6.17-MariaDB, for osx10.19 (arm64)", nil),
+        (.unidentified, nil, nil),
+    ] as [(NativeDumpToolFlavor, String?, String?)])
+    func mysqlRestoreTurnsClientCommandsOff(flavor: NativeDumpToolFlavor, versionText: String?, switchFlag: String?) throws {
+        let restore = try command(.mysql, kind: .restore, flavor: flavor, toolVersionText: versionText)
+        let terminator = try #require(restore.arguments.firstIndex(of: "--"))
+        let options = restore.arguments[..<terminator]
+        #expect(options.contains("--binary-mode"))
+        #expect(options.contains("--local-infile=0"))
+        #expect(options.contains("--skip-system-command") == (switchFlag == "--skip-system-command"))
+        #expect(options.contains("--sandbox") == (switchFlag == "--sandbox"))
+
+        let backup = try command(.mysql, kind: .backup, flavor: flavor, toolVersionText: versionText)
+        #expect(!backup.arguments.contains("--binary-mode"))
     }
 
     @Test("An empty host falls back to loopback on every engine that takes one")
@@ -585,11 +761,29 @@ struct NativeDumpRegistryTests {
         #expect(tool.restoreBinaries == ["mysql", "mariadb"])
     }
 
-    @Test("A YAML-quoted password survives quotes and backslashes")
-    func yamlQuotingIsLossless() {
-        #expect(NativeDumpService.mongoYAMLQuoted("plain") == "\"plain\"")
-        #expect(NativeDumpService.mongoYAMLQuoted("a\"b") == "\"a\\\"b\"")
-        #expect(NativeDumpService.mongoYAMLQuoted("a\\b") == "\"a\\\\b\"")
+    // A raw line break inside a double-quoted scalar folds to a space, and YAML 1.1 also breaks lines at U+0085,
+    // U+2028 and U+2029, so the tool would sign in with another password.
+    @Test("Every MongoDB config value reads back as written", arguments: [
+        "plain", "a\"b", "a\\b", "é ✓", "a\nb\r\tc", "\u{1}\u{1B}\u{7F}\u{9F}", "\u{85}\u{2028}\u{2029}",
+        "p\nuri: mongodb://evil.example.com",
+    ])
+    func mongoConfigurationRoundTrips(value: String) throws {
+        let text = try NativeDumpService.mongoConfigurationText([
+            NativeDumpDescriptor.ConfigurationEntry(key: "uri", value: "mongodb://db.example.com"),
+            NativeDumpDescriptor.ConfigurationEntry(key: "password", value: value),
+        ])
+        let parsed = try #require(try Yams.load(yaml: text) as? [String: String])
+        #expect(parsed == ["uri": "mongodb://db.example.com", "password": value])
+        #expect(text.split(separator: "\n").count == 2)
+    }
+
+    @Test("A MongoDB password holding a newline stays one line of the config file")
+    func mongoPasswordWithANewlineStaysOneLine() throws {
+        let contents = try configuration(of: command(.mongodb, password: "p\nuri: mongodb://evil.example.com"))
+        let lines = contents.split(separator: "\n")
+        #expect(lines.count == 2)
+        #expect(lines.filter { $0.hasPrefix("uri:") }.count == 1)
+        #expect(try configurationValue("password", in: contents) == #"p\nuri: mongodb://evil.example.com"#)
     }
 
     /// A progress bar showing a percentage of a number nobody measured is worse than an
@@ -600,6 +794,12 @@ struct NativeDumpRegistryTests {
         #expect(NativeDumpService.sizeQuery(for: .mysql) != nil)
         #expect(NativeDumpService.sizeQuery(for: .mongodb) == nil)
         #expect(NativeDumpService.sizeQuery(for: .sqlite) == nil)
+    }
+
+    // An untyped $1 picked a planted pg_database_size(text) in the browsed schema over pg_catalog's (name).
+    @Test("The PostgreSQL size query names pg_catalog's function and types its parameter")
+    func postgresSizeQueryIsQualified() {
+        #expect(NativeDumpService.sizeQuery(for: .postgresql) == "SELECT pg_catalog.pg_database_size($1::pg_catalog.name)")
     }
 
     @Test("A MySQL dump signed in with a token requires TLS, and MySQL's tools send the token in cleartext")
@@ -635,5 +835,123 @@ struct NativeDumpRegistryTests {
             #expect(!tool.installHint.contains("`"), "\(type.rawValue)")
             #expect(tool.installHint.contains("brew install"), "\(type.rawValue)")
         }
+    }
+
+    // What the session hands the tools through a TCP forward: loopback, with the server's name beside it.
+    @MainActor
+    private func throughTunnel(_ connection: DatabaseConnection) -> DatabaseConnection {
+        DatabaseManager.shared.tunneledConnection(from: connection, localPort: 61_000)
+    }
+
+    @Test("pg_dump without a password never reads ~/.pgpass on its own", arguments: [NativeDumpKind.backup, .restore])
+    func postgresWithoutPasswordSkipsPgpass(kind: NativeDumpKind) throws {
+        for password in [nil, ""] as [String?] {
+            let built = try command(.postgresql, kind: kind, password: password)
+            #expect(built.environment["PGPASSFILE"] == "/dev/null/pgpass")
+            #expect(built.environment["PGPASSWORD"] == nil)
+        }
+        let typed = try command(.postgresql, kind: kind, password: "s3cret")
+        #expect(typed.environment["PGPASSWORD"] == "s3cret")
+        #expect(typed.environment["PGPASSFILE"] == nil)
+    }
+
+    @MainActor
+    @Test("Through a tunnel pg_dump checks the certificate against the server and dials the forward", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func postgresThroughTunnelNamesTheServer(kind: NativeDumpKind) throws {
+        var secured = connection(type: .postgresql, host: "db.example.com", sslMode: .verifyIdentity, sslEnabled: true)
+        secured.sslConfig.caCertificatePath = "/certs/ca.pem"
+
+        let tunneled = try command(.postgresql, kind: kind, connection: throughTunnel(secured))
+        #expect(tunneled.arguments.starts(with: ["--no-password", "-h", "db.example.com", "-p", "61000"]))
+        #expect(tunneled.environment["PGHOSTADDR"] == "127.0.0.1")
+        #expect(tunneled.environment["PGSSLMODE"] == "verify-full")
+        #expect(tunneled.environment["PGSSLROOTCERT"] == "/certs/ca.pem")
+
+        let direct = try command(.postgresql, kind: kind, connection: secured)
+        #expect(direct.arguments.starts(with: ["--no-password", "-h", "db.example.com", "-p", "5432"]))
+        #expect(direct.environment["PGHOSTADDR"] == nil)
+    }
+
+    @MainActor
+    @Test("Through a tunnel mysqldump refuses Verify Identity and MariaDB's dump refuses every verify mode", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func mysqlThroughTunnelRefusesUncheckedModes(kind: NativeDumpKind) throws {
+        var identity = connection(type: .mysql, port: 3_306, sslMode: .verifyIdentity, sslEnabled: true)
+        identity.sslConfig.caCertificatePath = "/certs/ca.pem"
+        var chain = identity
+        chain.sslConfig.mode = .verifyCa
+        let tunneledIdentity = throughTunnel(identity)
+        let tunneledChain = throughTunnel(chain)
+
+        #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+            tool: "/usr/bin/tool", mode: .verifyIdentity, supportedModes: [.disabled, .preferred, .required, .verifyCa]
+        )) {
+            try command(.mysql, kind: kind, connection: tunneledIdentity, flavor: .mysql)
+        }
+        let mysqlChain = try command(.mysql, kind: kind, connection: tunneledChain, flavor: .mysql)
+        #expect(mysqlChain.arguments.contains("--ssl-mode=VERIFY_CA"))
+        #expect(mysqlChain.arguments.contains("--ssl-ca=/certs/ca.pem"))
+
+        for (mode, tunneled) in [(SSLMode.verifyCa, tunneledChain), (.verifyIdentity, tunneledIdentity)] {
+            #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+                tool: "/usr/bin/tool", mode: mode, supportedModes: [.disabled, .preferred, .required]
+            )) {
+                try command(.mysql, kind: kind, connection: tunneled, flavor: .mariadb)
+            }
+        }
+
+        let direct = try command(.mysql, kind: kind, connection: identity, flavor: .mysql)
+        #expect(direct.arguments.contains("--ssl-mode=VERIFY_IDENTITY"))
+    }
+
+    @MainActor
+    @Test("Through a tunnel mongodump keeps Verify CA without the name check and refuses Verify Identity", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func mongoThroughTunnel(kind: NativeDumpKind) throws {
+        var chain = connection(type: .mongodb, port: 27_017, sslMode: .verifyCa, sslEnabled: true)
+        chain.sslConfig.caCertificatePath = "/certs/ca.pem"
+        var identity = chain
+        identity.sslConfig.mode = .verifyIdentity
+        let tunneledIdentity = throughTunnel(identity)
+
+        let uri = try configurationValue("uri", in: configuration(of: command(.mongodb, kind: kind, connection: throughTunnel(chain))))
+        #expect(uri.hasPrefix("mongodb://alice@127.0.0.1:61000/?"))
+        #expect(uri.contains("tls=true&tlsAllowInvalidHostnames=true&tlsCAFile=%2Fcerts%2Fca.pem"))
+        #expect(!uri.contains("tlsInsecure"))
+
+        #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+            tool: "/usr/bin/tool", mode: .verifyIdentity, supportedModes: [.disabled, .preferred, .required, .verifyCa]
+        )) {
+            try command(.mongodb, kind: kind, connection: tunneledIdentity)
+        }
+
+        let direct = try configurationValue("uri", in: configuration(of: command(.mongodb, kind: kind, connection: identity)))
+        #expect(direct.contains("tls=true&tlsCAFile=%2Fcerts%2Fca.pem"))
+        #expect(!direct.contains("tlsAllowInvalidHostnames"))
+    }
+
+    @MainActor
+    @Test("Through a tunnel sqlpackage refuses the verify modes and keeps Required", arguments: [
+        NativeDumpKind.backup, .restore
+    ])
+    func sqlServerThroughTunnel(kind: NativeDumpKind) throws {
+        for mode in [SSLMode.verifyCa, .verifyIdentity] {
+            let tunneled = throughTunnel(connection(type: .mssql, port: 1_433, sslMode: mode, sslEnabled: true))
+            #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+                tool: "/usr/bin/tool", mode: mode, supportedModes: [.disabled, .preferred, .required]
+            )) {
+                try command(.mssql, kind: kind, connection: tunneled)
+            }
+        }
+
+        let required = throughTunnel(connection(type: .mssql, port: 1_433, sslMode: .required, sslEnabled: true))
+        let built = try command(.mssql, kind: kind, connection: required)
+        let connectionString = try #require(built.arguments.first { $0.contains("ConnectionString:") })
+        #expect(connectionString.contains(#"Server="127.0.0.1,61000""#))
+        #expect(connectionString.hasSuffix("Encrypt=true;TrustServerCertificate=true"))
     }
 }

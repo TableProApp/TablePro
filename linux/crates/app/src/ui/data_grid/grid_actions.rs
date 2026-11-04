@@ -129,6 +129,20 @@ fn install_column_actions(grid: &DataGrid) {
         "narrow-column",
         on_target_column(|grid, index| grid.step_column(index, false)),
     );
+    add(
+        grid,
+        "move-column-left",
+        on_target_column(|grid, index| grid.move_column(index, true)),
+    );
+    add(
+        grid,
+        "move-column-right",
+        on_target_column(|grid, index| grid.move_column(index, false)),
+    );
+    add_for_column(grid, "move-column-left-at", |grid, index| grid.move_column(index, true));
+    add_for_column(grid, "move-column-right-at", |grid, index| {
+        grid.move_column(index, false)
+    });
 }
 
 impl DataGrid {
@@ -169,7 +183,14 @@ impl DataGrid {
         enable(self, "sort-ascending", sorts);
         enable(self, "sort-descending", sorts);
         enable(self, "clear-sort", sorting != GridSorting::None && self.is_sorted());
-        for name in ["hide-column", "size-to-fit", "widen-column", "narrow-column"] {
+        for name in [
+            "hide-column",
+            "size-to-fit",
+            "widen-column",
+            "narrow-column",
+            "move-column-left",
+            "move-column-right",
+        ] {
             enable(self, name, !editing && column.is_some());
         }
         enable(self, "clear-selection", !editing && self.selected_count() > 1);

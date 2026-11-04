@@ -182,7 +182,7 @@ mod tests {
             row_key: row(id),
             col: 1,
             original: Value::Int(0),
-            value: Value::Int(value),
+            value: CellInput::Value(Value::Int(value)),
         });
     }
 
@@ -313,7 +313,7 @@ mod tests {
             row_key: row(1),
             col: 1,
             original: Value::Text("a".into()),
-            value: Value::Text("b".into()),
+            value: CellInput::Value(Value::Text("b".into())),
         });
         let inserted = tracker.apply(TrackerEdit::InsertDrafts {
             rows: vec![
@@ -346,7 +346,7 @@ mod tests {
                 row_key: row(1),
                 col: 1,
                 original: fetched.clone(),
-                value: Value::Text(value.into()),
+                value: CellInput::Value(Value::Text(value.into())),
             });
         }
 
@@ -377,7 +377,7 @@ mod tests {
             row_key: row(1),
             col: 0,
             original: Value::Int(1),
-            value: Value::Int(2),
+            value: CellInput::Value(Value::Int(2)),
         });
 
         for key in &delta.changed {

@@ -27,6 +27,27 @@ struct MySQLClientArgumentsTests {
         )
     }
 
+    @Test("A restore client gets the family's command switch only from the release that has it", arguments: [
+        (NativeDumpToolFlavor.mysql, "8.0.39", false), (.mysql, "8.0.40", true), (.mysql, "8.3.0", false),
+        (.mysql, "8.4.2", false), (.mysql, "8.4.3", true), (.mysql, "9.0.1", false), (.mysql, "9.1.0", true),
+        (.mysql, "9.5.0", true), (.mariadb, "10.5.25", false), (.mariadb, "10.6.17", false),
+        (.mariadb, "10.6.18", true), (.mariadb, "10.11.8", true), (.mariadb, "11.4.1", false),
+        (.mariadb, "11.4.2", true), (.mariadb, "13.0.2", true)
+    ] as [(NativeDumpToolFlavor, String, Bool)])
+    func restoreSafetyFollowsTheRelease(flavor: NativeDumpToolFlavor, release: String, hasSwitch: Bool) {
+        let banner = flavor == .mariadb ? "mariadb from \(release)-MariaDB, client 15.2" : "mysql  Ver \(release) for macos"
+        let tool = NativeDumpResolvedTool(name: "mysql", path: "/usr/bin/mysql", flavor: flavor, versionText: banner)
+        let switchFlag = flavor == .mariadb ? "--sandbox" : "--skip-system-command"
+        let flags = MySQLClientArguments.restoreSafety(tool: tool)
+        #expect(flags == ["--binary-mode", "--local-infile=0"] + (hasSwitch ? [switchFlag] : []))
+    }
+
+    @Test("A restore client that names no release still gets binary mode and no local files")
+    func restoreSafetyWithoutARelease() {
+        let unnamed = NativeDumpResolvedTool(name: "mysql", path: "/usr/bin/mysql", flavor: .unidentified)
+        #expect(MySQLClientArguments.restoreSafety(tool: unnamed) == ["--binary-mode", "--local-infile=0"])
+    }
+
     @Test("MySQL's tools take --ssl-mode for every mode")
     func mysqlSpelling() throws {
         let expected: [SSLMode: String] = [
@@ -129,6 +150,38 @@ struct MySQLClientArgumentsTests {
         }
         #expect(try MySQLClientArguments.tls(ssl(.preferred), flavor: .unidentified, toolPath: "/t").isEmpty)
         #expect(try MySQLClientArguments.tls(ssl(.disabled), flavor: .unidentified, toolPath: "/t").isEmpty)
+    }
+
+    @Test("Through a tunnel MySQL's tools refuse Verify Identity and keep Verify CA, which checks no name")
+    func mysqlThroughTunnelRefusesVerifyIdentity() throws {
+        #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+            tool: "/usr/bin/mysqldump", mode: .verifyIdentity, supportedModes: [.disabled, .preferred, .required, .verifyCa]
+        )) {
+            try MySQLClientArguments.tls(
+                ssl(.verifyIdentity, ca: "/certs/ca.pem"), flavor: .mysql, toolPath: "/usr/bin/mysqldump", throughTunnel: true
+            )
+        }
+        let verifyCa = try MySQLClientArguments.tls(
+            ssl(.verifyCa, ca: "/certs/ca.pem"), flavor: .mysql, toolPath: "/t", throughTunnel: true
+        )
+        #expect(verifyCa == ["--ssl-mode=VERIFY_CA", "--ssl-ca=/certs/ca.pem"])
+        #expect(try MySQLClientArguments.tls(ssl(.verifyIdentity), flavor: .mysql, toolPath: "/t") == ["--ssl-mode=VERIFY_IDENTITY"])
+    }
+
+    @Test("Through a tunnel MariaDB's tools refuse every verify mode, since they accept any certificate from 127.0.0.1")
+    func mariadbThroughTunnelRefusesVerifyModes() throws {
+        for mode in [SSLMode.verifyCa, .verifyIdentity] {
+            #expect(throws: NativeDumpError.uncheckedThroughTunnel(
+                tool: "/usr/bin/mariadb-dump", mode: mode, supportedModes: [.disabled, .preferred, .required]
+            )) {
+                try MySQLClientArguments.tls(
+                    ssl(mode, ca: "/certs/ca.pem"), flavor: .mariadb, toolPath: "/usr/bin/mariadb-dump", throughTunnel: true
+                )
+            }
+            #expect(try MySQLClientArguments.tls(ssl(mode), flavor: .mariadb, toolPath: "/t").contains("--ssl-verify-server-cert"))
+        }
+        let required = try MySQLClientArguments.tls(ssl(.required), flavor: .mariadb, toolPath: "/t", throughTunnel: true)
+        #expect(required == ["--ssl", "--ssl-verify-server-cert"])
     }
 
     private func tool(_ flavor: NativeDumpToolFlavor, _ versionText: String?) -> NativeDumpResolvedTool {

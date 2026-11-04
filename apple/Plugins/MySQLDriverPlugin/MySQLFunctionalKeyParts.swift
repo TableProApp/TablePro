@@ -24,22 +24,22 @@ internal enum MySQLFunctionalKeyParts {
         case .mysql:
             guard MySQLServerVersion.isKnownBelow(firstRelease, banner: banner) else { return nil }
             return String(localized: "Indexing an expression needs MySQL 8.0.13 or later.")
-        case .tidb, .oceanbase, .databend:
+        case .tidb, .oceanbase, .databend, .starrocks:
             return nil
         }
     }
 
     static func unescaped(_ catalogExpression: String) -> String {
-        var result = ""
+        var result = String.UnicodeScalarView()
         var escaping = false
-        for character in catalogExpression {
-            if !escaping, character == "\\" {
+        for scalar in catalogExpression.unicodeScalars {
+            if !escaping, scalar == "\\" {
                 escaping = true
                 continue
             }
             escaping = false
-            result.append(character)
+            result.append(scalar)
         }
-        return result
+        return String(result)
     }
 }

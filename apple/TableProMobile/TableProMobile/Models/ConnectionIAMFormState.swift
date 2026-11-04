@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProDatabase
+import TableProLogRedaction
 import TableProModels
 import TableProPluginKit
 
@@ -20,7 +21,7 @@ nonisolated struct ConnectionIAMSecrets: Equatable, Sendable {
         do {
             secrets.device = try DeviceIAMCredentials.load(for: connectionId, from: store)
         } catch {
-            logger.error("Reading the device sign-in settings failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Reading the device sign-in settings failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
         return secrets
     }
@@ -54,7 +55,7 @@ nonisolated struct ConnectionIAMSecrets: Equatable, Sendable {
                 try value.save(for: connectionId, to: store)
                 device = value
             } catch {
-                Self.logger.error("Failed to store the device sign-in settings: \(error.localizedDescription, privacy: .public)")
+                Self.logger.error("Failed to store the device sign-in settings: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
                 succeeded = false
             }
         }
@@ -69,7 +70,7 @@ nonisolated struct ConnectionIAMSecrets: Equatable, Sendable {
         do {
             return try store.retrieve(forKey: kind.account(for: connectionId)) ?? ""
         } catch {
-            logger.error("Reading a sign-in secret failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Reading a sign-in secret failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return ""
         }
     }
@@ -89,7 +90,7 @@ nonisolated struct ConnectionIAMSecrets: Equatable, Sendable {
             }
             return true
         } catch {
-            logger.error("Failed to store a sign-in secret: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to store a sign-in secret: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return false
         }
     }

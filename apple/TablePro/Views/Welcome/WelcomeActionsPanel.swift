@@ -1,9 +1,10 @@
-import Combine
 import SwiftUI
+import TableProSyncTransport
 
 struct WelcomeActionsPanel: View {
     @ObservedObject private var featureAccess = FeatureAccess.shared
-    @ObservedObject private var updater = SoftwareUpdater.shared
+    @ObservedObject private var updates = UpdateCenter.shared
+    @ObservedObject private var syncCoordinator = SyncCoordinator.shared
     let onSignIn: () -> Void
     let onNewConnection: () -> Void
     let onOpenFile: () -> Void
@@ -12,13 +13,6 @@ struct WelcomeActionsPanel: View {
     let onImportFromAWS: () -> Void
     let onImportConnectionsFile: () -> Void
     let onOpenProjectFolder: () -> Void
-
-    // One key, not the whole manager: the window lives all session and every settings write would redraw it.
-    @State private var showsVersionInfo = AppSettingsManager.shared.general.showWelcomeVersionInfo
-
-    private static let versionInfoSetting = AppSettingsManager.shared.$general
-        .map(\.showWelcomeVersionInfo)
-        .removeDuplicates()
 
     // Captured once: the same appearance that reads the stored value overwrites it.
     @State private var showsWhatsNew: Bool?
@@ -36,7 +30,6 @@ struct WelcomeActionsPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear(perform: recordAppVersion)
-        .onReceive(Self.versionInfoSetting) { showsVersionInfo = $0 }
     }
 
     private var identity: some View {
@@ -51,22 +44,19 @@ struct WelcomeActionsPanel: View {
                 Text(verbatim: "TablePro")
                     .font(.title2.weight(.semibold))
 
-                if showsVersionInfo {
-                    Text(String(format: String(localized: "Version %@"), Bundle.main.displayVersion))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("welcome-version-line")
-                }
+                Text(String(format: String(localized: "Version %@"), Bundle.main.displayVersion))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("welcome-version-line")
 
-                // A deferred update has its gentle reminder here, so hiding the line never hides that.
-                if showsVersionInfo || updater.hasPendingUpdate {
-                    Button(updater.checkForUpdatesTitle) {
-                        updater.checkForUpdates()
+                if let title = updates.status.indicatorTitle {
+                    Button(title) {
+                        updates.performPrimaryAction()
                     }
                     .buttonStyle(.link)
                     .font(.callout)
-                    .disabled(!updater.canCheckForUpdates)
-                    .accessibilityIdentifier("welcome-check-for-updates-link")
+                    .help(updates.status.indicatorHelp ?? "")
+                    .accessibilityIdentifier("welcome-update-link")
                 }
 
                 if showsWhatsNew == true {
@@ -80,12 +70,36 @@ struct WelcomeActionsPanel: View {
             }
 
             VStack(spacing: 4) {
-                licenseNotice
+                licenseLine
+                syncLine
                 if featureAccess.supportAudience == .prospect {
-                    SupportPromptLink()
+                    prospectLinks
                 }
             }
             .font(.subheadline)
+        }
+    }
+
+    // The timeline holds both links, not the sale line alone: an empty TimelineView still takes the
+    // stack's spacing, so outside the sale it would leave a gap under the support link.
+    private var prospectLinks: some View {
+        let sale = DatedSale.blackFriday2026
+        return TimelineView(DatedSaleSchedule(sale: sale)) { context in
+            VStack(spacing: 4) {
+                SupportPromptLink()
+                if sale.isLive(at: context.date) {
+                    Link(
+                        String(
+                            format: String(localized: "Black Friday: %lld%% off Pro until %@"),
+                            sale.percentOff,
+                            sale.end.formatted(.dateTime.month(.abbreviated).day())
+                        ),
+                        destination: sale.page
+                    )
+                    .buttonStyle(.link)
+                    .accessibilityIdentifier("welcome-sale-link")
+                }
+            }
         }
     }
 
@@ -118,22 +132,46 @@ struct WelcomeActionsPanel: View {
         showsWhatsNew = WhatsNewNotice(bundle: .main, defaults: AppStorageEnvironment.shared.defaults).recordLaunch()
     }
 
-    // Only states that need the person: a working entitlement says nothing, and neither does a free account.
+    // Only a state that needs the person: a working plan says nothing, and neither does a free account.
     @ViewBuilder
-    private var licenseNotice: some View {
-        let state = featureAccess.state
-        if featureAccess.currentEntitlement != nil {
-            EmptyView()
-        } else if case .failed = state.refresh, state.isSignedIn {
-            Label(String(localized: "License validation failed"), systemImage: "exclamationmark.seal.fill")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.orange)
-                .help(String(localized: "Connect to the internet to verify your license."))
-        } else if !state.isSignedIn, state.legacy == nil {
-            Button(action: onSignIn) {
-                Text(String(localized: "Sign In"))
+    private var licenseLine: some View {
+        if let line = LicensePresentation.welcomeLine(
+            state: featureAccess.state,
+            configuration: AccountServices.shared.configuration,
+            now: Date()
+        ) {
+            Button(line.title) {
+                perform(line.action)
             }
             .buttonStyle(.link)
+            .help(line.message)
+            .accessibilityIdentifier("welcome-license-line")
+        }
+    }
+
+    // A state without an action, and a check whose outcome needs room, open Settings > Account.
+    private func perform(_ action: LicenseNoticeAction?) {
+        switch action {
+        case .signIn:
+            onSignIn()
+        case .some(let action):
+            action.perform(referrer: .welcome)
+        case nil:
+            WindowOpener.shared.openSettings(tab: .account)
+        }
+    }
+
+    // Only a blocker that stops uploads until the person acts; the Sync pane explains it.
+    @ViewBuilder
+    private var syncLine: some View {
+        let presentation = SyncStatusPresentation(status: syncCoordinator.syncStatus)
+        if presentation.showsOnWelcome {
+            Button(presentation.title) {
+                WindowOpener.shared.openSettings(tab: .sync)
+            }
+            .buttonStyle(.link)
+            .help(presentation.message ?? "")
+            .accessibilityIdentifier("welcome-sync-line")
         }
     }
 }

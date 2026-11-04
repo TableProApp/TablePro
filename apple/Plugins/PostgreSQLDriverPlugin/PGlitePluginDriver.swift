@@ -28,6 +28,8 @@ final class PGlitePluginDriver: PostgreSQLPluginDriver {
 
     // pldebugger is a server C extension and needs a second session; PGlite has neither.
     override var canDebugRoutines: Bool { false }
+    // A second session would open a different, empty database, so a NOTIFY from the person's session never arrives.
+    override var canFollowNotifications: Bool { false }
 
     override func connect() async throws {
         do {

@@ -84,6 +84,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private var activity: NSUserActivity?
 
     private let windowBackdrop: ThemeWindowBackdrop
+    private let updateIndicator: UpdateIndicatorAccessory
 
     /// `adopting` carries a connection that is moving here from another window, whole. Everything
     /// the user has in it lives on that object, so the window takes it rather than building a
@@ -116,6 +117,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         window.representedURL = splitVC.windowRepresentedURL
         splitVC.installTabStripAccessory(on: window)
         windowBackdrop = ThemeWindowBackdrop(window: window)
+        updateIndicator = UpdateIndicatorAccessory(window: window)
 
         super.init(window: window)
 
@@ -237,13 +239,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
-    /// `NSWindow.undoManager` resolves through here, so every undo domain that registers on the
-    /// window (the data grid's change manager, and the query editor's text view) lands in the
-    /// selected connection's own history. One window hosts every connection now, so sharing the
-    /// window's manager let Cmd+Z in one connection roll back an edit made in another.
+    // Every undo domain registering on the window lands in the selected connection's history for the mode on screen.
     internal func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
         guard let host = window.contentViewController as? MainSplitViewController else { return nil }
-        return host.workspaces.selected?.undoManager
+        return host.workspaces.selected?.activeUndoManager
     }
 
     internal func windowDidResignKey(_ notification: Notification) {

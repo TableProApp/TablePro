@@ -2,11 +2,14 @@ tablepro for Ubuntu
 ===================
 
 This is the debian/ directory of the source package TablePro uploads to its
-Launchpad PPA. It lives in the upstream tree under build-aux/debian.
-build-aux/packaging/build-source.sh copies it to debian/ and writes
+Launchpad PPA. It lives in the upstream tree under linux/build-aux/debian.
+linux/build-aux/packaging/build-source.sh copies it to debian/ and writes
 debian/changelog for the version and Ubuntu series being built.
 
-Sources: tablepro_X.Y.Z.orig.tar.xz is the meson dist tarball.
+Sources: tablepro_X.Y.Z.orig.tar.xz is the tarball
+linux/build-aux/packaging/make-dist.sh writes, with the repository's layout:
+linux/, the Linux app and its Meson project, core/, the shared Rust core,
+and the Cargo workspace at the top that both build in.
 tablepro_X.Y.Z.orig-vendor.tar.xz holds vendor/ from cargo vendor
 --versioned-dirs, with the source replacement cargo printed as
 vendor/cargo-config.toml. dpkg-source unpacks it into vendor/, and
@@ -15,7 +18,7 @@ configures, so the build needs no network.
 
 Toolchain: the package build-depends on rustc-X.Y and cargo-X.Y, X.Y being
 the workspace rust-version, and debian/rules puts /usr/lib/rust-X.Y/bin first
-on PATH. build-aux/packaging/check_packaging.py keeps the three in step.
+on PATH. linux/build-aux/packaging/check_packaging.py keeps the three in step.
 Ubuntu 26.04 gets them from ppa:rust-toolchain/staging, which the PPA depends
 on; Ubuntu 26.10 has them in its archive.
 
@@ -29,5 +32,5 @@ maintainer, and a third dotted part, which lintian reads as a binary NMU.
 An upstream pre-release such as 0.2.0-rc.1 becomes 0.2.0~rc.1, which sorts
 below 0.2.0.
 
-debian/copyright is generated from data/licenses/third-party.json by
-build-aux/update-third-party-licenses.sh. Do not edit it by hand.
+debian/copyright is generated from linux/data/licenses/third-party.json by
+linux/build-aux/update-third-party-licenses.sh. Do not edit it by hand.

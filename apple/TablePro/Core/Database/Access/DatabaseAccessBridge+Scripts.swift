@@ -8,11 +8,8 @@ import os
 import TableProPluginKit
 import TableProSQLGrammar
 
-/// A text an external caller sends where one statement is not the unit: a SQL Server script.
-///
-/// It takes the route the editor takes for the same text on the same connection. A lone plain query keeps the path
-/// that bounds its fetch; anything else a driver that sends batches whole runs batch by batch, cut at `GO` lines, and
-/// every result set comes back. The caller's gate has already been cleared for the whole text.
+// A text an external caller sends where one statement is not the unit: a SQL Server script, cut at `GO` lines the
+// way the editor cuts it, with every result set coming back.
 extension DatabaseAccessBridge {
     internal struct ScriptOutcome: Sendable {
         /// Every result the text returned, in order: a statement's own result, or each result set a script returned.
@@ -33,59 +30,47 @@ extension DatabaseAccessBridge {
         }
     }
 
+    // An approved statement as a statement; an approved SQL Server script batch by batch at its GO lines.
     internal func runScript(
-        scope: DatabaseScope,
-        query: String,
+        _ operation: ApprovedOperation,
         maxRows: Int,
         timeoutSeconds: Int,
         cancellation: (any StatementCancellationSignal)?
     ) async throws -> ScriptOutcome {
-        guard !Self.statementText(query, grammar: .ansi).isEmpty else {
-            throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
-        }
-        let (driver, databaseType) = try await resolveDriver(scope.connectionId)
-        let route = await MainActor.run {
-            QueryExecutionRoute.resolve(
-                QueryBatchPlanner.batches(
-                    in: query,
-                    model: QueryStatementModel.forDatabaseType(databaseType),
-                    grammar: SQLLexicalResolver.executionGrammar(for: databaseType, connectionId: scope.connectionId)
-                ),
-                databaseType: databaseType,
-                sendsBatchesWhole: driver.supportsResultSetBatches
-            )
-        }
-        switch route {
-        case .single(let statement):
+        guard operation.unit == .script else {
             let outcome = try await runStatement(
-                scope: scope,
-                query: statement.sql,
+                operation,
                 maxRows: maxRows,
                 timeoutSeconds: timeoutSeconds,
                 cancellation: cancellation
             )
             return .statement(outcome.result, executionTimeMs: outcome.executionTimeMs)
-        case .batches(let batches):
-            return try await runBatches(
-                batches,
-                of: query,
-                scope: scope,
-                databaseType: databaseType,
-                rowCap: maxRows,
-                timeoutSeconds: timeoutSeconds,
-                cancellation: cancellation
-            )
-        case .statements:
-            throw DatabaseAccessError.invalidArgument(
-                String(localized: "Update the database driver in Settings > Extensions to run several statements in one call.")
-            )
-        case .needsBatchDriver:
-            throw DatabaseAccessError.invalidArgument(
-                String(localized: "Update the database driver in Settings > Extensions to run a batch more than once with GO.")
-            )
-        case nil:
-            throw DatabaseAccessError.invalidArgument(String(localized: "The query is empty."))
         }
+        guard operation.statements.count == 1, let script = operation.statements.first, script.parameters.isEmpty
+        else { throw Self.notApproved }
+        let scope = operation.scope
+        let (driver, databaseType) = try await resolveDriver(scope.connectionId)
+        guard databaseType == operation.databaseType,
+              case .batches(let batches)? = await scriptRoute(
+                  script.sql, scope: scope, databaseType: databaseType, driver: driver
+              )
+        else { throw Self.notApproved }
+        let outcome = try await runBatches(
+            batches,
+            of: script.sql,
+            scope: scope,
+            databaseType: databaseType,
+            rowCap: maxRows,
+            timeoutSeconds: timeoutSeconds,
+            cancellation: cancellation,
+            context: operation.context
+        )
+        let policy = await maskingPolicy(for: scope.connectionId)
+        return ScriptOutcome(
+            resultSets: outcome.resultSets.map { $0.masked(by: policy) },
+            primary: outcome.primary.masked(by: policy),
+            executionTimeMs: outcome.executionTimeMs
+        )
     }
 
     /// Batch by batch on one lease, stopping at the first that raises an error, the way the editor runs them. Every
@@ -97,7 +82,8 @@ extension DatabaseAccessBridge {
         databaseType: DatabaseType,
         rowCap: Int,
         timeoutSeconds: Int,
-        cancellation: (any StatementCancellationSignal)?
+        cancellation: (any StatementCancellationSignal)?,
+        context: PluginStatementContext
     ) async throws -> ScriptOutcome {
         let classification = QueryClassifier.classify(text, databaseType: databaseType)
         let connectionId = scope.connectionId
@@ -128,7 +114,7 @@ extension DatabaseAccessBridge {
                 timeoutSeconds: timeoutSeconds
             ) { driver in
                 try await ScriptBatchRun.run(
-                    batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress
+                    batches, startLines: startLines, rowCap: rowCap, driver: driver, progress: progress, context: context
                 )
             }
         } catch {
@@ -224,7 +210,8 @@ struct ScriptBatchRun: Sendable {
         startLines: [Int],
         rowCap: Int,
         driver: DatabaseDriver,
-        progress: ScriptBatchProgress
+        progress: ScriptBatchProgress,
+        context: PluginStatementContext? = nil
     ) async throws -> ScriptBatchRun {
         let startState = await driver.heldSessionTransactionState()
         progress.begin(in: startState)
@@ -232,7 +219,7 @@ struct ScriptBatchRun: Sendable {
         var answers: [QueryBatchResult] = []
         for (batch, startLine) in zip(batches, startLines) {
             try Task.checkCancellation()
-            let answer = try await repeatedAnswer(to: batch, rowCap: rowCap, driver: driver)
+            let answer = try await repeatedAnswer(to: batch, rowCap: rowCap, driver: driver, context: context)
             answers.append(answer)
             guard answer.errors.isEmpty else {
                 let endState = await driver.heldSessionTransactionState()
@@ -260,12 +247,15 @@ struct ScriptBatchRun: Sendable {
     private static func repeatedAnswer(
         to batch: ExecutableBatch,
         rowCap: Int,
-        driver: DatabaseDriver
+        driver: DatabaseDriver,
+        context: PluginStatementContext?
     ) async throws -> QueryBatchResult {
         var combined = QueryBatchResult.empty
         for _ in 0..<max(batch.repeatCount, 1) {
             try Task.checkCancellation()
-            let repetition = try await driver.answerBatch(query: batch.sql, rowCap: rowCap, parameters: nil)
+            let repetition = try await driver.answerBatch(
+                query: batch.sql, rowCap: rowCap, parameters: nil, context: context
+            )
             combined = combined.followed(by: repetition)
             guard repetition.errors.isEmpty else { break }
         }

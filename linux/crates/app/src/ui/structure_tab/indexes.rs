@@ -1,6 +1,7 @@
 //! The index rows of the Structure tab's Indexes page.
 
 use gtk4 as gtk;
+use gtk4::gio;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 
@@ -10,7 +11,7 @@ use tablepro_core::meta::IndexKey;
 
 use super::columns::gate;
 use super::index_object::IndexObject;
-use super::{IndexesInput, StructureTabSender};
+use super::{IndexesInput, StructureTab, StructureTabOutput, StructureTabSender};
 
 fn index_badge(label: &str, accent_class: &str) -> gtk::Label {
     let badge = gtk::Label::builder().label(label).valign(gtk::Align::Center).build();
@@ -63,7 +64,55 @@ pub(super) fn build_index_row(
     });
     row.add_suffix(&remove_button);
 
+    if let Some(definition) = &idx.definition {
+        row.add_suffix(&statement_menu(format!("{definition};"), sender));
+    }
+
     row
+}
+
+// Changes nothing, so it skips the edit lock; the page still dims while the table is read again.
+fn statement_menu(statement: String, sender: &StructureTabSender) -> gtk::MenuButton {
+    let menu = gio::Menu::new();
+    menu.append(
+        Some(&crate::i18n::gettext("_Show CREATE INDEX")),
+        Some("index.show-create"),
+    );
+    menu.append(
+        Some(&crate::i18n::gettext("_Copy CREATE INDEX")),
+        Some("index.copy-create"),
+    );
+    let entry = |name: &str, act: fn(&StructureTab, String)| {
+        let (statement, sender) = (statement.clone(), sender.clone());
+        gio::ActionEntry::<gio::SimpleActionGroup>::builder(name)
+            .activate(move |_, _, _| {
+                if let Some(tab) = sender.tab() {
+                    act(&tab, statement.clone());
+                }
+            })
+            .build()
+    };
+    let actions = gio::SimpleActionGroup::new();
+    actions.add_action_entries([
+        entry("show-create", |tab, sql| {
+            tab.emit_output(StructureTabOutput::OpenInEditor(sql));
+        }),
+        entry("copy-create", |tab, sql| {
+            crate::ui::clipboard::copy_text(tab, sql, |message| {
+                tab.emit_output(StructureTabOutput::ShowToast(message.to_owned()));
+            });
+        }),
+    ]);
+    let button = gtk::MenuButton::builder()
+        .icon_name(crate::ui::icons::VIEW_MORE)
+        .valign(gtk::Align::Center)
+        .menu_model(&menu)
+        .build();
+    button.add_css_class("flat");
+    crate::ui::a11y::describe_icon_button(&button, &crate::i18n::gettext("Index Options"), None);
+    button.set_widget_name("index-statement");
+    button.insert_action_group("index", Some(&actions));
+    button
 }
 
 /// The keys an index covers, as the subtitle reads them: each column or
@@ -108,6 +157,7 @@ mod tests {
             unique: false,
             primary: false,
             predicate: predicate.map(str::to_owned),
+            definition: None,
         }
     }
 

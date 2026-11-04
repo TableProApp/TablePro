@@ -6,9 +6,9 @@ import TableProPluginKit
 import Testing
 
 struct ClickHouseOnIOSTests {
-    private func driver() -> PluginBackedDriver {
+    private func driver() -> PluginRowWritingDriver {
         let config = DriverConnectionConfig(host: "ch.example.com", port: 8_123, username: "u", password: "p", database: "default")
-        return PluginBackedDriver(
+        return PluginRowWritingDriver(
             plugin: ClickHousePluginDriver(config: config),
             dialedHosts: [],
             rowIdentity: .everyColumn,
@@ -60,7 +60,7 @@ struct ClickHouseOnIOSTests {
 
     @Test("Names are quoted with backquotes, a backslash or backquote inside escaped")
     func namesAreBackquoted() {
-        #expect(SQLBuilder.quoteIdentifier("a`b\\c", for: .clickhouse) == "`a``b\\\\c`")
+        #expect(SQLBuilder.quoteIdentifier("a`b\\c", for: .clickhouse) == #"`a\`b\\c`"#)
         #expect(SQLBuilder.buildSelect(table: "events", schema: nil, type: .clickhouse, limit: 10, offset: 20)
             == "SELECT * FROM `events` LIMIT 10 OFFSET 20")
     }
@@ -72,7 +72,7 @@ struct ClickHouseOnIOSTests {
         let opened = try IOSDriverFactory(materializer: CertificateMaterializer(store: InMemoryCertificateStore()))
             .createDriver(for: connection, password: "p")
 
-        let writer = try #require(opened as? PluginBackedDriver)
+        let writer = try #require(opened as? PluginRowWritingDriver)
         #expect(writer.rowIdentity == .everyColumn)
         #expect(writer.supportsTransactions == false)
     }

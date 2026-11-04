@@ -5,18 +5,18 @@
   <menu id="more_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">Reset Layout</attribute>
+        <attribute name="label" translatable="yes">_Reset Layout</attribute>
         <attribute name="action">diagram.reset-layout</attribute>
       </item>
     </section>
     <section>
       <item>
-        <attribute name="label" translatable="yes">Export as PNG…</attribute>
+        <attribute name="label" translatable="yes">Export as _PNG…</attribute>
         <attribute name="action">diagram.export</attribute>
         <attribute name="target">png</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">Export as SVG…</attribute>
+        <attribute name="label" translatable="yes">Export as _SVG…</attribute>
         <attribute name="action">diagram.export</attribute>
         <attribute name="target">svg</attribute>
       </item>

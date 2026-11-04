@@ -44,12 +44,15 @@ internal extension MySQLPluginDriver {
         createTableDefaults: MySQLCreateTableDefaults?
     ) -> String? {
         guard flavor.isOceanBase else {
+            let identity = serverIdentity
             return mysqlColumnDefault(
                 createTableDefaults?.catalogDefault(forColumn: column, extra: extra)
                     ?? (catalogQuotesDefaults ? .quoted(catalogDefault) : .bare(catalogDefault)),
                 extra: extra,
                 dataType: dataType,
-                isNullable: isNullable
+                isNullable: isNullable,
+                banner: identity.banner,
+                flavor: identity.flavor
             )
         }
         if let catalogDefault, let createTableClauses,
@@ -61,7 +64,7 @@ internal extension MySQLPluginDriver {
                 return value
             }
             Self.logger.warning(
-                "OceanBase default of \(column, privacy: .public) is not in SHOW CREATE TABLE as reported"
+                "OceanBase default of \(column, privacy: .private(mask: .hash)) is not in SHOW CREATE TABLE as reported"
             )
         }
         return OceanBaseColumnDefaults.columnDefault(

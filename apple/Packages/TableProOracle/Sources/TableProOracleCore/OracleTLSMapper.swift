@@ -10,6 +10,10 @@ public enum OracleTLSMapper {
         if description.mode == .verifyCA, description.caCertificatePath == nil {
             throw OracleCoreError.certificateAuthorityRequired
         }
+        // NIOSSL matches an address only against the peer it dialed, which behind a tunnel is the loopback forward.
+        if description.mode == .verifyIdentity, let name = description.serverName, isIPAddress(name) {
+            throw OracleCoreError.verifyIdentityNeedsHostName(address: name)
+        }
 
         var configuration = TLSConfiguration.makeClientConfiguration()
         configuration.certificateVerification = certificateVerification(for: description.mode)

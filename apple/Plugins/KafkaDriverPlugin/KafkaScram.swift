@@ -1,6 +1,7 @@
 import CommonCrypto
 import CryptoKit
 import Foundation
+import TableProKafkaCore
 
 /// SCRAM's cryptography and the rules that decide whether a broker's half of the exchange
 /// is acceptable. Split from the exchange itself because none of it needs a connection, so
@@ -105,13 +106,10 @@ enum KafkaScram {
         return Data(bytes).base64EncodedString().filter { $0 != "," && $0 != "=" }
     }
 
-    /// RFC 5802's `saslname` escaping. It applies to the USERNAME in the `n=` attribute, whose
-    /// commas and equals signs would otherwise break SCRAM's own framing. It must never be
-    /// applied to the password: PBKDF2 takes the password as typed, and escaping it first
-    /// derives a different key than the broker computed, so every password containing `,` or
-    /// `=` would fail to authenticate.
+    // RFC 5802 `saslname`, for the username only: PBKDF2 takes the password as typed.
     static func escapedUsername(_ value: String) -> String {
-        value.replacingOccurrences(of: "=", with: "=3D").replacingOccurrences(of: ",", with: "=2C")
+        value.replacingOccurrences(of: "=", with: "=3D", options: .literal)
+            .replacingOccurrences(of: ",", with: "=2C", options: .literal)
     }
 
     static func parseAttributes(_ message: String) -> [String: String] {

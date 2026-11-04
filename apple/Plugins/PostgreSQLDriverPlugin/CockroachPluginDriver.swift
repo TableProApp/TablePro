@@ -31,11 +31,12 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
             .materializedViews,
             .schemaCompare,
             .dataCompare,
+            .readOnlyStatements,
         ]
     }
 
     init(config: DriverConnectionConfig) {
-        self.core = LibPQDriverCore(config: config)
+        self.core = LibPQDriverCore(config: config, pinsCatalogSearchPath: false)
         core.onPostConnect = { [weak self] in
             await self?.probeServerVersion()
         }
@@ -48,7 +49,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     private func probeServerVersion() async {
-        if let result = try? await core.execute(query: "SELECT version()"),
+        if let result = try? await core.executeCatalogRead("SELECT pg_catalog.version()"),
            let version = result.rows.first?.first?.asText {
             cachedServerVersion = version
         }
@@ -61,27 +62,27 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
-        let result = try await execute(query: CockroachRelationSQL.tablesQuery(schema: schema ?? core.currentSchema))
+        let result = try await catalogRead(CockroachRelationSQL.tablesQuery(schema: schema ?? core.currentSchema))
         return result.rows.compactMap { CockroachRelationSQL.table(fromRow: $0.map(\.asText)) }
     }
 
     func fetchTables(inSchemas schemas: [String]) async throws -> [PluginTableInfo]? {
         guard !schemas.isEmpty else { return [] }
-        let result = try await execute(query: CockroachRelationSQL.tablesQuery(inSchemas: schemas))
+        let result = try await catalogRead(CockroachRelationSQL.tablesQuery(inSchemas: schemas))
         return result.rows.compactMap { CockroachRelationSQL.table(fromRow: $0.map(\.asText)) }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
         let resolvedSchema = schema ?? core.currentSchema
         let query = CockroachRelationSQL.columnsQuery(schema: resolvedSchema, table: table)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return result.rows.compactMap { Self.mapColumnRow($0, includesTableName: false) }
     }
 
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let resolvedSchema = schema ?? core.currentSchema
         let query = CockroachRelationSQL.columnsQuery(schema: resolvedSchema, table: nil)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         var allColumns: [String: [PluginColumnInfo]] = [:]
         for row in result.rows {
             guard let tableName = row.first?.asText,
@@ -93,7 +94,7 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
         let query = CockroachRelationSQL.showIndexes(table: table, schema: schema ?? core.currentSchema)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
 
         guard let columnIndex = result.columns.firstIndex(of: "column_name"),
               let nameIndex = result.columns.firstIndex(of: "index_name") else {
@@ -147,13 +148,13 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
                 serverVersionNumber: core.serverVersionNumber
             )
         )
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return PostgreSQLCatalogForeignKeys.foreignKeys(from: result.rows.map { $0.map(\.asText) })
     }
 
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
-        let result = try await execute(
-            query: CockroachRelationSQL.showCreateTable(table: table, schema: schema ?? core.currentSchema)
+        let result = try await catalogRead(
+            CockroachRelationSQL.showCreateTable(table: table, schema: schema ?? core.currentSchema)
         )
         guard let ddl = Self.createStatement(from: result) else {
             throw LibPQPluginError(message: "Failed to fetch DDL for table '\(table)'", sqlState: nil, detail: nil)
@@ -162,8 +163,8 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        let result = try await execute(
-            query: CockroachRelationSQL.showCreateView(view: view, schema: schema ?? core.currentSchema)
+        let result = try await catalogRead(
+            CockroachRelationSQL.showCreateView(view: view, schema: schema ?? core.currentSchema)
         )
         guard let ddl = Self.createStatement(from: result) else {
             throw LibPQPluginError(message: "Failed to fetch definition for view '\(view)'", sqlState: nil, detail: nil)
@@ -192,26 +193,26 @@ final class CockroachPluginDriver: LibPQBackedDriver, @unchecked Sendable {
     }
 
     func fetchDatabases() async throws -> [String] {
-        let result = try await execute(
-            query: "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
+        let result = try await catalogRead(
+            "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname"
         )
         return result.rows.compactMap { $0.first?.asText }
     }
 
     func fetchSchemas() async throws -> [String] {
-        let result = try await execute(query: PostgreSQLSchemaQueries.listSchemas)
+        let result = try await catalogRead(PostgreSQLSchemaQueries.listSchemas)
         return result.rows.compactMap { $0.first?.asText }
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
         let databaseLiteral = PostgreSQLObjectQueries.quoteLiteral(database)
         let query = """
-            SELECT COUNT(*)
+            SELECT pg_catalog.count(*)
             FROM information_schema.tables
             WHERE table_catalog = \(databaseLiteral)
               AND table_schema NOT IN ('pg_catalog', 'information_schema', 'crdb_internal', 'pg_extension')
             """
-        let tableCount = (try? await execute(query: query))
+        let tableCount = (try? await catalogRead(query))
             .flatMap { $0.rows.first?.first?.asText }
             .flatMap { Int($0) }
 

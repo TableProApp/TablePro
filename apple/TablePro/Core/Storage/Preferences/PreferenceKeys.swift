@@ -4,10 +4,8 @@ enum PreferenceKeys {
     static let linkedFolders = DefaultsKey<[LinkedFolder]>("com.TablePro.linkedFolders")
     static let linkedSQLFolders = DefaultsKey<[LinkedSQLFolder]>("com.TablePro.linkedSQLFolders")
     static let selectedSettingsPane = DefaultsKey<String>("com.TablePro.settings.selectedPane")
-    static let rowInspectorJsonFieldHeight = DefaultsKey<Double>("com.TablePro.rightSidebar.jsonFieldHeight")
-    static let rowInspectorTextFieldHeight = DefaultsKey<Double>("com.TablePro.rightSidebar.textFieldHeight")
-    static let rowInspectorGeometryFieldHeight = DefaultsKey<Double>("com.TablePro.rightSidebar.geometryFieldHeight")
-    /// Text or Map, as the field's picker last left it. Device-local, like the heights beside it.
+    static let rowInspectorFieldHeights = DefaultsKey<Data>("com.TablePro.rightSidebar.fieldHeights")
+    // Text or Map, as the field's picker last left it. Device-local, like the heights beside it.
     static let rowInspectorGeometryFieldMode = DefaultsKey<String>("com.TablePro.rightSidebar.geometryFieldMode")
     static let workspaceRailOrder = DefaultsKey<[WorkspaceID]>("com.TablePro.workspaceRail.order")
     static let queryPlanRawFontSize = DefaultsKey<Double>("com.TablePro.queryPlan.rawFontSize")
@@ -26,6 +24,10 @@ enum PreferenceKeys {
     static let recentConnections = DefaultsKey<Data>("com.TablePro.connectionList.recentConnections")
     /// Device-local, and in the standard domain so a configuration profile can pin it.
     static let receivesBetaUpdates = DefaultsKey<Bool>("com.TablePro.updates.receivesBetaUpdates")
+    /// Set by Relaunch to Update and cleared by the next launch, which reopens the last session once.
+    static let reopenSessionAfterRelaunch = DefaultsKey<Bool>("com.TablePro.updates.reopenSessionAfterRelaunch")
+    // Device-local: the highest plugin manifest serial accepted here, so an older signed manifest is refused.
+    static let pluginRegistrySerial = DefaultsKey<Int>("com.TablePro.plugins.registrySerial")
 
     static let registeredKeyNames: [String] = [
         connectionListSortMode.name,
@@ -35,9 +37,7 @@ enum PreferenceKeys {
         linkedFolders.name,
         linkedSQLFolders.name,
         selectedSettingsPane.name,
-        rowInspectorJsonFieldHeight.name,
-        rowInspectorTextFieldHeight.name,
-        rowInspectorGeometryFieldHeight.name,
+        rowInspectorFieldHeights.name,
         rowInspectorGeometryFieldMode.name,
         workspaceRailOrder.name,
         queryPlanRawFontSize.name,
@@ -47,6 +47,8 @@ enum PreferenceKeys {
         lastSeenAppVersion.name,
         signInPromptShown.name,
         receivesBetaUpdates.name,
+        reopenSessionAfterRelaunch.name,
+        pluginRegistrySerial.name,
     ]
 
     static let columnDisplayFormatsPrefix = "com.TablePro.columns.displayFormat."

@@ -155,11 +155,20 @@ struct SqlLexerTests {
     @Test("An Oracle q-quote runs to its delimiter followed by a quote")
     func alternativeQuotedString() {
         let text = "q'[it's; x]' tail" as NSString
-        #expect(SqlLexer.skipAlternativeQuotedString(text, at: 0, length: text.length)?.next == 12)
+        #expect(SqlLexer.skipAlternativeQuotedString(text, at: 0, length: text.length)?.span.next == 12)
         let national = "NQ'{a'b}' tail" as NSString
-        #expect(SqlLexer.skipAlternativeQuotedString(national, at: 0, length: national.length)?.next == 9)
+        #expect(SqlLexer.skipAlternativeQuotedString(national, at: 0, length: national.length)?.span.next == 9)
         let sameDelimiter = "q'!a'b!' tail" as NSString
-        #expect(SqlLexer.skipAlternativeQuotedString(sameDelimiter, at: 0, length: sameDelimiter.length)?.next == 8)
+        #expect(SqlLexer.skipAlternativeQuotedString(sameDelimiter, at: 0, length: sameDelimiter.length)?.span.next == 8)
+    }
+
+    @Test("A q-quote delimiter outside the BMP is one character of two units")
+    func alternativeQuotedStringWithAnAstralDelimiter() {
+        let text = "nq'\u{1F600}a\u{1F601}';\u{1F600}' tail" as NSString
+        let literal = SqlLexer.skipAlternativeQuotedString(text, at: 0, length: text.length)
+        #expect(literal?.bodyStart == 5)
+        #expect(literal?.bodyEnd == 10)
+        #expect(literal?.span.next == 13)
     }
 
     @Test("A word that only starts with q is not a q-quote")

@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// A table browse the plugin builds and runs itself, written as the CQL it sends behind a comment that carries what
 /// CQL cannot say: which rows of the result to show and the values for its bind markers.
@@ -45,7 +46,11 @@ struct CassandraBrowseStatement: Equatable, Sendable {
     static func parse(_ text: String) -> CassandraBrowseStatement? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix(opening),
-              let end = trimmed.range(of: "*/", range: trimmed.index(trimmed.startIndex, offsetBy: opening.count)..<trimmed.endIndex)
+              let end = trimmed.range(
+                  of: "*/",
+                  options: .literal,
+                  range: trimmed.index(trimmed.startIndex, offsetBy: opening.count)..<trimmed.endIndex
+              )
         else { return nil }
         let header = trimmed[trimmed.index(trimmed.startIndex, offsetBy: opening.count)..<end.lowerBound]
         guard let data = header.trimmingCharacters(in: .whitespaces).data(using: .utf8),
@@ -130,7 +135,7 @@ enum CassandraBrowseRenderer {
     }
 
     static func quote(_ identifier: String) -> String {
-        "\"" + identifier.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        SQLQuoting.identifier(identifier)
     }
 
     static func qualifiedTable(keyspace: String?, table: String) -> String {
@@ -165,12 +170,13 @@ enum CassandraBrowseRenderer {
         switch filter.op.uppercased() {
         case "=", ">", ">=", "<", "<=":
             return Condition(cql: "\(column) \(filter.op) ?", values: [filter.value])
+        // ScyllaDB reads `%` and `_` as wildcards and a backslash as their escape, measured.
         case "CONTAINS":
-            return Condition(cql: "\(column) LIKE ?", values: ["%" + likeLiteral(filter.value) + "%"])
+            return Condition(cql: "\(column) LIKE ?", values: ["%" + SQLQuoting.likePattern(filter.value) + "%"])
         case "STARTS WITH":
-            return Condition(cql: "\(column) LIKE ?", values: [likeLiteral(filter.value) + "%"])
+            return Condition(cql: "\(column) LIKE ?", values: [SQLQuoting.likePattern(filter.value) + "%"])
         case "ENDS WITH":
-            return Condition(cql: "\(column) LIKE ?", values: ["%" + likeLiteral(filter.value)])
+            return Condition(cql: "\(column) LIKE ?", values: ["%" + SQLQuoting.likePattern(filter.value)])
         case "IN":
             let items = listItems(filter.value)
             guard !items.isEmpty else { throw CassandraBrowseRefusal.emptyList }
@@ -184,18 +190,6 @@ enum CassandraBrowseRenderer {
         }
     }
 
-    /// ScyllaDB reads `%` and `_` in a `LIKE` pattern as wildcards and a backslash as their escape, measured, so a
-    /// value holding either would otherwise match text it does not contain.
-    static func likeLiteral(_ value: String) -> String {
-        var escaped = ""
-        for scalar in value.unicodeScalars {
-            if scalar == "\\" || scalar == "%" || scalar == "_" {
-                escaped.unicodeScalars.append("\\")
-            }
-            escaped.unicodeScalars.append(scalar)
-        }
-        return escaped
-    }
 
     private static func listItems(_ value: String) -> [String] {
         value.split(separator: ",", omittingEmptySubsequences: true).compactMap {

@@ -67,6 +67,7 @@ internal enum BatchStatementRun {
         failureSQL: (Statement) -> String,
         isCommitPoint: (Statement) -> Bool,
         serverError: (Output) -> String? = { _ in nil },
+        replanned: @escaping @MainActor @Sendable (_ ranCount: Int) async -> [Statement]? = { _ in nil },
         execute: @escaping @MainActor @Sendable (Statement) async throws -> Output
     ) async -> BatchStatementOutcome<Output> {
         let opensTransaction = plan.opensTransaction && driver.supportsTransactions
@@ -79,7 +80,10 @@ internal enum BatchStatementRun {
         }
 
         var results: [Output] = []
-        for statement in statements {
+        var queue = statements
+        var position = 0
+        while position < queue.count {
+            let statement = queue[position]
             guard !Task.isCancelled, gate.isCurrent() else {
                 await rollback(driver: driver, connectionId: connectionId, plan: plan, opensTransaction: opensTransaction)
                 return .cancelled(results: plan.keepsExecutedStatements ? results : [])
@@ -119,6 +123,10 @@ internal enum BatchStatementRun {
                     failure: .statement(sql: failureSQL(statement)),
                     errorDescription: failure.errorDescription
                 )
+            }
+            position += 1
+            if position < queue.count, let rest = await replanned(position) {
+                queue = Array(queue.prefix(position)) + rest
             }
         }
 

@@ -44,6 +44,9 @@ struct QueryClassifierDynamoDBTests {
         #"UpdateTable {"TableName": "orders", "GlobalSecondaryIndexUpdates": [{"Create": {"IndexName": "byDate"}}]}"#,
         #"UpdateTimeToLive {"TableName": "orders", "TimeToLiveSpecification": {"Enabled": false, "AttributeName": "ttl"}}"#,
         #"UpdateContinuousBackups {"TableName": "orders", "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": true}}"#,
+        #"UpdateContinuousBackups {"TableName": "orders", "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": true, "RecoveryPeriodInDays": 35}}"#,
+        #"UpdateTable {"TableName": "orders", "StreamSpecification": {"StreamEnabled": true, "StreamViewType": "NEW_IMAGE"}}"#,
+        #"UpdateTable {"TableName": "orders", "TableClass": "STANDARD_INFREQUENT_ACCESS"}"#,
         #"BatchWriteItem {"RequestItems": {"orders": [{"PutRequest": {"Item": {"DeleteRequest": {"S": "a"}}}}]}}"#,
         #"TransactWriteItems {"TransactItems": [{"Put": {"TableName": "orders", "Item": {"Delete": {"S": "a"}}}}]}"#,
         #"TagResource {"ResourceArn": "arn", "Tags": [{"Key": "team", "Value": "data"}]}"#,
@@ -62,6 +65,13 @@ struct QueryClassifierDynamoDBTests {
         #"UpdateTable {"TableName": "orders", "DeletionProtectionEnabled": false}"#,
         #"UpdateTimeToLive {"TableName": "orders", "TimeToLiveSpecification": {"Enabled": true, "AttributeName": "ttl"}}"#,
         #"UpdateContinuousBackups {"TableName": "orders", "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": false}}"#,
+        #"UpdateContinuousBackups {"TableName": "orders", "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": true, "RecoveryPeriodInDays": 1}}"#,
+        #"UpdateContinuousBackups {"TableName": "orders", "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": true, "recoveryperiodindays": 34}}"#,
+        #"UpdateContinuousBackups {"PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": true, "RecoveryPeriodInDays": 35, "RecoveryPeriodInDays": 1}}"#,
+        #"UpdateContinuousBackups {"TableName": "orders", "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": true, "RecoveryPeriodInDays": 35.0}}"#,
+        #"UpdateContinuousBackups {"TableName": "orders", "PointInTimeRecoverySpecification": {"PointInTimeRecoveryEnabled": true, "RetentionMode": "x"}}"#,
+        #"UpdateTable {"TableName": "orders", "GlobalTableWitnessUpdates": [{"Delete": {"RegionName": "eu-west-1"}}]}"#,
+        #"UpdateTable {"TableName": "orders", "SomeFutureSetting": {"Enabled": false}}"#,
         #"BatchWriteItem {"RequestItems": {"orders": [{"PutRequest": {"Item": {}}}, {"DeleteRequest": {"Key": {}}}]}}"#,
         #"TransactWriteItems {"TransactItems": [{"Put": {"TableName": "a"}}, {"Delete": {"TableName": "b"}}]}"#,
         "-- tidy up\nDeleteTable {\"TableName\": \"orders\"}"
@@ -101,7 +111,8 @@ struct QueryClassifierDynamoDBTests {
         #"Scan {"TableName": "orders"} DELETE FROM orders"#,
         "Scan {\"TableName\": \"orders\"}\nDeleteItem {\"TableName\": \"orders\"}",
         #"Scan {"TableName": "orders"} LIMIT ten"#,
-        #"Scan {"TableName": "orders"} ORDER BY"#
+        #"Scan {"TableName": "orders"} ORDER BY"#,
+        #"Scan {"TableName": "orders"} /*/ -- */ DELETE FROM orders"#
     ])
     func unreadableRequestsAreWrites(_ sql: String) {
         #expect(tier(sql) == .write)

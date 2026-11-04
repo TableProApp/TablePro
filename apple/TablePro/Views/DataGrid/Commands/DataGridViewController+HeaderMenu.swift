@@ -87,8 +87,11 @@ extension DataGridViewController {
     }
 
     private func displayAsItem(for column: DataGridColumn) -> NSMenuItem? {
-        let formats = ValueDisplayFormat.applicableFormats(for: column.type, databaseType: model.configuration.traits.databaseType)
-        guard formats.count > 1 else { return nil }
+        let databaseType = model.configuration.traits.databaseType
+        let formats = ValueDisplayFormat.applicableFormats(for: column.type, databaseType: databaseType)
+        guard formats.count > 1 || schemaRegistryFormat?.isApplicable(to: column.type, databaseType: databaseType) == true else {
+            return nil
+        }
         let current = model.displayFormat(for: column) ?? .raw
         let submenu = NSMenu()
         for format in formats {
@@ -100,9 +103,48 @@ extension DataGridViewController {
             item.state = format == current ? .on : .off
             submenu.addItem(item)
         }
+        if ValueDisplayFormat.offersAvro(for: column.type, databaseType: databaseType) {
+            if case .avro = current {
+                let item = menuItem(
+                    current.displayName,
+                    #selector(setDisplayFormatFromMenu(_:)),
+                    DataGridDisplayFormatChoice(columnID: column.id, format: current)
+                )
+                item.state = .on
+                submenu.addItem(item)
+            }
+            submenu.addItem(menuItem(String(localized: "Avro Schema…"), #selector(chooseAvroSchemaFromMenu(_:)), column.id))
+        }
+        if ValueDisplayFormat.offersProtobufSchema(for: column.type, databaseType: databaseType) {
+            if case .protobufSchema = current {
+                let item = menuItem(
+                    current.displayName,
+                    #selector(setDisplayFormatFromMenu(_:)),
+                    DataGridDisplayFormatChoice(columnID: column.id, format: current)
+                )
+                item.state = .on
+                submenu.addItem(item)
+            }
+            submenu.addItem(menuItem(String(localized: "Protobuf Schema…"), #selector(chooseProtobufSchemaFromMenu(_:)), column.id))
+        }
+        if let registry = schemaRegistryFormat, registry.isApplicable(to: column.type, databaseType: databaseType) {
+            let item = menuItem(
+                registry.displayName,
+                #selector(setDisplayFormatFromMenu(_:)),
+                DataGridDisplayFormatChoice(columnID: column.id, format: registry)
+            )
+            item.state = registry == current ? .on : .off
+            submenu.addItem(item)
+        }
         let item = NSMenuItem(title: String(localized: "Display As"), action: nil, keyEquivalent: "")
         item.submenu = submenu
         return item
+    }
+
+    private var schemaRegistryFormat: ValueDisplayFormat? {
+        guard let connectionID = model.configuration.traits.connectionScope?.connectionId,
+              SchemaRegistryEndpoint.isConfigured(for: connectionID) else { return nil }
+        return .schemaRegistry(connectionID: connectionID)
     }
 
     // Refused, with the reason, when the frozen run would leave too little of the grid to scroll.
@@ -142,6 +184,8 @@ extension DataGridViewController {
         #selector(DataGridViewController.clearValueFilterFromMenu(_:)),
         #selector(DataGridViewController.clearAllValueFiltersFromMenu(_:)),
         #selector(DataGridViewController.setDisplayFormatFromMenu(_:)),
+        #selector(DataGridViewController.chooseAvroSchemaFromMenu(_:)),
+        #selector(DataGridViewController.chooseProtobufSchemaFromMenu(_:)),
         #selector(DataGridViewController.sizeColumnToFitFromMenu(_:)),
         #selector(DataGridViewController.sizeAllColumnsToFitFromMenu(_:)),
         #selector(DataGridViewController.hideColumnFromMenu(_:)),
@@ -224,17 +268,47 @@ extension DataGridViewController {
 
     // Only a value filter can renumber rows on a format change, so only then does the owner confirm it.
     @objc func setDisplayFormatFromMenu(_ sender: Any?) {
-        guard let choice = (sender as? NSMenuItem)?.representedObject as? DataGridDisplayFormatChoice,
-              model.columns.column(id: choice.columnID) != nil else { return }
+        guard let choice = (sender as? NSMenuItem)?.representedObject as? DataGridDisplayFormatChoice else { return }
+        setDisplayFormat(choice.format, columnID: choice.columnID)
+    }
+
+    private func setDisplayFormat(_ format: ValueDisplayFormat, columnID: DataGridColumnID) {
+        guard model.columns.column(id: columnID) != nil else { return }
         let apply: @MainActor () -> Void = { [weak self] in
-            guard let self, let column = self.model.columns.column(id: choice.columnID) else { return }
-            self.model.setDisplayFormat(choice.format, for: column)
+            guard let self, let column = self.model.columns.column(id: columnID) else { return }
+            self.model.setDisplayFormat(format, for: column)
         }
         guard model.store.valueFilter.isActive, let actions = model.actions else {
             apply()
             return
         }
         actions.gridConfirmDisplayOrderChange(then: apply)
+    }
+
+    // The schema is copied in, so the column still decodes after the file moves.
+    @objc func chooseAvroSchemaFromMenu(_ sender: Any?) {
+        guard let columnID = menuColumn(sender)?.id, let window = view.window else { return }
+        Task { @MainActor [weak self] in
+            guard let text = await AvroSchemaFilePanel.chooseSchemaText(in: window) else { return }
+            do {
+                self?.setDisplayFormat(.avro(schemaID: try AvroSchemaStore.shared.add(text)), columnID: columnID)
+            } catch {
+                NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil)
+            }
+        }
+    }
+
+    @objc func chooseProtobufSchemaFromMenu(_ sender: Any?) {
+        guard let columnID = menuColumn(sender)?.id, let window = view.window else { return }
+        Task { @MainActor [weak self] in
+            guard let choice = await ProtobufSchemaFilePanel.chooseSchema(in: window) else { return }
+            do {
+                let schemaID = try ProtobufSchemaStore.shared.add(choice.contents)
+                self?.setDisplayFormat(.protobufSchema(schemaID: schemaID, message: choice.message), columnID: columnID)
+            } catch {
+                NSAlert(error: error).beginSheetModal(for: window, completionHandler: nil)
+            }
+        }
     }
 
     @objc func sizeColumnToFitFromMenu(_ sender: Any?) {

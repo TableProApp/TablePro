@@ -4,6 +4,7 @@ import TableProAutocomplete
 import TableProEditorKit
 import TableProPluginKit
 import TableProSQLGrammar
+import TableProSQLQuoting
 import TableProTextEngine
 
 @MainActor
@@ -240,14 +241,22 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         return NSRange(location: start, length: cursor - start)
     }
 
-    // Between the quotes, close doubled and added if missing, caret past it; a qualified column replaces the quotes.
+    // Between the quotes, close escaped and added if missing, caret past it; a qualified column replaces the quotes.
+    // An opener SQLQuoting has no form for takes the plain token edit.
     private func quotedNameEdit(for item: SQLCompletionItem, in text: NSString?, cursor: Int?, session: Session) -> Edit? {
         guard let quoted = session.quotedName, let text, let cursor,
               SQLTokenBoundary.segmentStart(inside: quoted.name, in: text, endingAt: cursor) != nil else { return nil }
 
         let open = quoted.name.open
         let opener = text.character(at: open)
-        let closer = opener == UInt16(UInt8(ascii: "[")) ? UInt16(UInt8(ascii: "]")) : opener
+        let quote: SQLIdentifierQuote
+        let closer: UInt16
+        switch opener {
+        case UInt16(UInt8(ascii: "\"")): (quote, closer) = (.doubleQuote, opener)
+        case UInt16(UInt8(ascii: "`")): (quote, closer) = (.backtick, opener)
+        case UInt16(UInt8(ascii: "[")): (quote, closer) = (.bracket, UInt16(UInt8(ascii: "]")))
+        default: return nil
+        }
         let close = quoted.closeFromEnd.map { text.length - $0 }.flatMap { close in
             close >= cursor && close < text.length && text.character(at: close) == closer ? close : nil
         }
@@ -259,7 +268,9 @@ final class QueryCompletionAdapter: CodeSuggestionDelegate {
         }
 
         let closeText = String(decoding: [closer], as: UTF16.self)
-        let name = item.label.replacingOccurrences(of: closeText, with: closeText + closeText)
+        let backslashEscapes = configuration?.grammar?.backslashEscapes(in: quote) ?? false
+        let quotedLabel = SQLQuoting.identifier(item.label, quote: quote, backslashEscapes: backslashEscapes)
+        let name = String(quotedLabel.unicodeScalars.dropFirst().dropLast())
         let inner = NSRange(location: open + 1, length: (close ?? cursor) - open - 1)
         return Edit(
             range: inner,

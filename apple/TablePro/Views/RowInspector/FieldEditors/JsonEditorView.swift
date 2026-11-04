@@ -11,8 +11,6 @@ internal struct JsonEditorView: View {
     var isExpanded = false
 
     @State private var model: JsonFieldEditingModel
-    @AppStorage(PreferenceKeys.rowInspectorJsonFieldHeight.name, store: AppStorageEnvironment.shared.defaults) private var fieldHeight = ResizableFieldMetrics
-        .defaultJsonHeight
 
     init(context: FieldEditorContext, onPopOut: ((String) -> Void)? = nil, isExpanded: Bool = false) {
         self.context = context
@@ -21,9 +19,7 @@ internal struct JsonEditorView: View {
         self._model = State(wrappedValue: JsonFieldEditingModel(storedValue: context.value.wrappedValue))
     }
 
-    /// The editor writes through the model, which decides whether the text is worth publishing.
-    /// Binding `$model.displayText` straight to the editor would publish the model's own
-    /// corrections back into the store.
+    // Through the model: binding `$model.displayText` directly would publish the model's own corrections.
     private var editorText: Binding<String> {
         Binding(
             get: { model.displayText },
@@ -35,43 +31,44 @@ internal struct JsonEditorView: View {
     }
 
     var body: some View {
-        ResizableEditorContainer(
-            height: $fieldHeight,
-            range: ResizableFieldMetrics.jsonHeightRange,
-            expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
-        ) {
-            JSONCodeEditor(
-                text: editorText,
-                isEditable: !context.isReadOnly,
-                accessibilityIdentifier: "inspector-json-field"
-            )
-                .valueWell(clipsContent: true)
-                .overlay(alignment: .bottomTrailing) { actionButtons }
+        VStack(alignment: .leading, spacing: 2) {
+            if let onPopOut {
+                header(onPopOut: onPopOut)
+            }
+            ResizableEditorContainer(
+                column: context.columnName,
+                defaultHeight: ResizableFieldMetrics.defaultJsonHeight,
+                range: ResizableFieldMetrics.jsonHeightRange,
+                expandedHeight: isExpanded ? ResizableFieldMetrics.expandedHeight : nil
+            ) {
+                JSONCodeEditor(
+                    text: editorText,
+                    isEditable: !context.isReadOnly,
+                    accessibilityIdentifier: "inspector-json-field"
+                )
+                    .valueWell(clipsContent: true)
+            }
         }
-        /// `newValue`, never a re-read of `context.value.wrappedValue`. An `onChange` action
-        /// closure belongs to the render that registered it, so its captured context is a render
-        /// behind and answers with the value this edit has just replaced. Re-reading it made the
-        /// editor undo every keystroke and push the undone text back, at 75 rounds a second and
-        /// without ever settling (#3051).
+        // On a bare container the row's accessibility value lands on the Open in Window button too.
+        .accessibilityElement(children: .contain)
+        // `newValue`, never `context.value`: the action's context is a render behind and undid every keystroke (#3051).
         .onChange(of: context.value.wrappedValue) { newValue in
             _ = model.received(newValue)
         }
     }
 
-    private var actionButtons: some View {
-        HStack(spacing: 2) {
-            if let onPopOut {
-                Button { onPopOut(model.displayText) } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                        .font(.caption2)
-                        .padding(4)
-                        .themeMaterial(.inlineControl, .ultraThinMaterial, in: RoundedRectangle(cornerRadius: 4))
-                }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Open in Window"))
-                .accessibilityLabel(String(localized: "Open in Window"))
+    private func header(onPopOut: @escaping (String) -> Void) -> some View {
+        HStack(spacing: 8) {
+            Spacer(minLength: 4)
+            Button(String(localized: "Open in Window"), systemImage: "arrow.up.forward.app") {
+                onPopOut(model.displayText)
             }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .font(.caption)
+            .help(String(localized: "Open in Window"))
+            .accessibilityLabel(String(localized: "Open in Window"))
         }
-        .padding(4)
     }
 }

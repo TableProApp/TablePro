@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 /// The DynamoDB actions the editor accepts as `<Action> {request JSON}`.
 enum DynamoDBOperation: String, CaseIterable, Sendable {
@@ -141,7 +142,7 @@ enum DynamoDBStatement: Sendable, Equatable {
     }
 
     static func quote(_ identifier: String) -> String {
-        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+        SQLQuoting.identifier(identifier)
     }
 
     // MARK: - Parsing helpers

@@ -48,6 +48,21 @@ struct PluginExportUtilitiesTests {
         #expect(parsed?.toString().unicodeScalars.elementsEqual(name.unicodeScalars) == true)
     }
 
+    @Test("A line break a combining mark follows does not end a SQL comment",
+          arguments: ["\n", "\r", "\r\n", "\u{85}", "\u{2028}", "\u{2029}"])
+    func commentKeepsNoLineBreakBeforeACombiningMark(lineBreak: String) {
+        let cleaned = PluginExportUtilities.sanitizeForSQLComment("x\(lineBreak)\u{301}; DELETE FROM accounts;")
+        let breaks: Set<Unicode.Scalar> = ["\n", "\r", "\u{85}", "\u{2028}", "\u{2029}"]
+        #expect(!cleaned.unicodeScalars.contains { breaks.contains($0) })
+        #expect(cleaned.unicodeScalars.last == ";")
+    }
+
+    @Test("A comment keeps a plain name as it is and drops comment markers")
+    func commentKeepsPlainName() {
+        #expect(PluginExportUtilities.sanitizeForSQLComment("orders") == "orders")
+        #expect(PluginExportUtilities.sanitizeForSQLComment("a/*b*/c--d\ne") == "abcd e")
+    }
+
     @Test("A collection reached through getCollection has its separators escaped")
     func accessorEscapesSeparators() {
         #expect(MongoCollectionAccessor.expression(for: "a\u{2028}b") == "db.getCollection(\"a\\u2028b\")")

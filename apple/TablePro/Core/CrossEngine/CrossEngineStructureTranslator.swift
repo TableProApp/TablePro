@@ -20,6 +20,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 internal enum CrossEngineStructureTranslator {
     internal struct Result: Sendable {
@@ -44,11 +45,13 @@ internal enum CrossEngineStructureTranslator {
         internal let translated: Bool
     }
 
+    // `targetStringEscapes` is the target session's: without it the target's curated grammar answers.
     internal static func translate(
         _ snapshot: TableStructureSnapshot,
         from source: DatabaseType,
         to target: DatabaseType,
-        targetServerVersion: String? = nil
+        targetServerVersion: String? = nil,
+        targetStringEscapes: SQLStringEscapes? = nil
     ) -> Result {
         let targetFamily = SQLTypeFamily.of(target)
         guard SQLTypeFamily.needsTranslation(from: source, to: target) else {
@@ -71,6 +74,7 @@ internal enum CrossEngineStructureTranslator {
         let jsonColumnType = PostgreSQLServerVersion.jsonColumnType(
             for: target, serverVersion: targetServerVersion
         )
+        let stringEscapes = targetStringEscapes ?? SQLLexicalResolver.stringEscapes(for: target)
         let creatableIndexes = CrossEngineIndexTranslator.creatable(
             snapshot.indexes, table: snapshot.name, from: source, to: target
         )
@@ -87,7 +91,9 @@ internal enum CrossEngineStructureTranslator {
                 name: column.name,
                 isNullable: column.isNullable,
                 source: canonical,
-                rendered: SQLTypeRenderer.render(canonical, family: targetFamily, jsonColumnType: jsonColumnType),
+                rendered: SQLTypeRenderer.render(
+                    canonical, family: targetFamily, jsonColumnType: jsonColumnType, stringEscapes: stringEscapes
+                ),
                 family: targetFamily
             )
         }

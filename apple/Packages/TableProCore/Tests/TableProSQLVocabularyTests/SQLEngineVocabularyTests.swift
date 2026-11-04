@@ -8,7 +8,7 @@ struct SQLEngineVocabularyTests {
     func everyEngineHasVocabulary() {
         let typeIds = SQLEngineVocabulary.curatedDatabaseTypeIds
         #expect(typeIds == [
-            "MySQL", "MariaDB", "TiDB", "Databend", "OceanBase",
+            "MySQL", "MariaDB", "TiDB", "Databend", "OceanBase", "StarRocks",
             "PostgreSQL", "CockroachDB", "PGlite", "KingbaseES", "Redshift",
             "SQLite", "SQL Server", "Oracle", "DuckDB",
         ])
@@ -30,6 +30,7 @@ struct SQLEngineVocabularyTests {
         ("TiDB", "MySQL"),
         ("Databend", "MySQL"),
         ("OceanBase", "MySQL"),
+        ("StarRocks", "MySQL"),
         ("CockroachDB", "PostgreSQL"),
         ("PGlite", "PostgreSQL"),
         ("KingbaseES", "PostgreSQL"),

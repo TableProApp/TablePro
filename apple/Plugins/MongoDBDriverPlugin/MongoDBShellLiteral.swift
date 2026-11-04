@@ -34,7 +34,7 @@ nonisolated enum MongoDBShellLiteral {
     /// `true`, `false` or `null` is written as the string it spells, so no text reaches the
     /// statement outside a literal.
     private static func scalar(_ token: String) -> String {
-        if token.hasPrefix("\"") {
+        if token.unicodeScalars.first == "\"" {
             return MongoScriptJson.jsonString(MongoScriptJson.decodedString(token) ?? token)
         }
         let isLiteral = ["true", "false", "null"].contains(token)

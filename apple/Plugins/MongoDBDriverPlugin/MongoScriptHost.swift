@@ -166,10 +166,8 @@ nonisolated final class MongoScriptHost {
     }
 
     private func perform(op: String, request: [String: Any]) throws -> String {
-        guard MongoScriptAccessPolicy.allows(op: op, request: request, access: access) else {
-            throw MongoScriptError(
-                MongoScriptText.refusedUnderRead(MongoScriptAccessPolicy.refusedName(op: op, request: request))
-            )
+        if let refusal = MongoScriptAccessPolicy.refusal(op: op, request: request, access: access) {
+            throw MongoScriptError(refusal.message)
         }
         switch op {
         case "currentDatabase": return MongoScriptJson.jsonString(database)
@@ -293,14 +291,10 @@ nonisolated final class MongoScriptHost {
         }
         let cursor = try cursors.cursor(for: handle)
         guard cursor.isFind else { return try countAggregate(cursor) }
+        let command = "{\"count\": \(MongoScriptJson.jsonString(cursor.collection)), \"query\": \(cursor.filterJson)}"
+        try refuseServerCode("count", in: [command])
         let reply = try withClient {
-            try connection.scriptRunCommand(
-                client: $0,
-                command: """
-                    {"count": \(MongoScriptJson.jsonString(cursor.collection)), "query": \(cursor.filterJson)}
-                    """,
-                database: cursor.database
-            )
+            try connection.scriptRunCommand(client: $0, command: command, database: cursor.database)
         }
         return String(MongoScriptJson.number(in: reply, key: "n") ?? 0)
     }
@@ -320,9 +314,10 @@ nonisolated final class MongoScriptHost {
                 collection: cursor.collection, pipeline: cursor.pipelineJson, options: cursor.options
             )
         let command = "{\"explain\": \(inner), \"verbosity\": \(MongoScriptJson.jsonString(verbosity))}"
-        if access == .read, MongoScriptAccessPolicy.writesThroughPipeline(command) {
+        if !access.writes, MongoScriptAccessPolicy.writesThroughPipeline(command) {
             throw MongoScriptError(MongoScriptText.refusedWritingPipelineUnderRead)
         }
+        try refuseServerCode("explain", in: [command])
         return try withClient {
             try connection.scriptRunCommand(client: $0, command: command, database: cursor.database)
         }
@@ -338,7 +333,7 @@ nonisolated final class MongoScriptHost {
             return String(drained.json.count)
         }
         let options = cursor.options.countingOptions
-        try refuseWritingAggregate(pipeline: counted, options: options)
+        try refuseUnapprovedAggregate(pipeline: counted, options: options)
         let batch = try withClient {
             try connection.scriptAggregate(
                 client: $0,
@@ -371,8 +366,13 @@ nonisolated final class MongoScriptHost {
     }
 
     private func load(_ cursor: MongoScriptCursor, ceiling: Int) throws -> MongoScriptDocumentBatch {
-        if !cursor.isFind {
-            try refuseWritingAggregate(pipeline: cursor.pipelineJson, options: cursor.options)
+        if cursor.isFind {
+            try refuseServerCode(
+                "find",
+                in: [cursor.filterJson, cursor.options.findOptionsJson(limit: ceiling, timeoutMS: connection.queryTimeoutMS)]
+            )
+        } else {
+            try refuseUnapprovedAggregate(pipeline: cursor.pipelineJson, options: cursor.options)
         }
         return try withClient { client in
             if cursor.isFind {
@@ -396,17 +396,22 @@ nonisolated final class MongoScriptHost {
         }
     }
 
-    /// Checks the texts `scriptAggregate` builds from these, so a stage spliced in through a modifier
-    /// or an option is seen too. A cursor can outlive the statement that opened it, so a read can
-    /// reach one a write opened.
-    private func refuseWritingAggregate(pipeline: String, options: MongoScriptCursorOptions) throws {
-        guard access == .read else { return }
-        let writes = MongoScriptAccessPolicy.writes(
-            pipeline: options.decoratedPipeline(pipeline),
-            options: options.aggregateOptionsJson(timeoutMS: connection.queryTimeoutMS)
-        )
-        guard writes else { return }
-        throw MongoScriptError(MongoScriptText.refusedWritingPipelineUnderRead)
+    // Checks the texts `scriptAggregate` builds, so a stage spliced in through a modifier or an option is seen too. A
+    // cursor can outlive the statement that opened it, so a statement can reach one a less restricted one opened.
+    private func refuseUnapprovedAggregate(pipeline: String, options: MongoScriptCursorOptions) throws {
+        let pipeline = options.decoratedPipeline(pipeline)
+        let optionsJson = options.aggregateOptionsJson(timeoutMS: connection.queryTimeoutMS)
+        if !access.writes, MongoScriptAccessPolicy.writes(pipeline: pipeline, options: optionsJson) {
+            throw MongoScriptError(MongoScriptText.refusedWritingPipelineUnderRead)
+        }
+        try refuseServerCode("aggregate", in: [pipeline, optionsJson])
+    }
+
+    // What a cursor sends outside `perform`, held to the same server-code rule as an op.
+    private func refuseServerCode(_ name: String, in documents: @autoclosure () -> [String?]) throws {
+        guard !access.allowsServerCode,
+              documents().contains(where: { $0.map(MongoScriptAccessPolicy.holdsServerCode) == true }) else { return }
+        throw MongoScriptError(MongoScriptRefusal.serverCode(name).message)
     }
 
     // MARK: - Commands
@@ -576,7 +581,7 @@ nonisolated final class MongoScriptHost {
     }
 
     private func delete(_ request: [String: Any]) throws -> String {
-        let multi = request["multi"] as? Bool ?? false
+        let multi = MongoScriptAccessPolicy.deletesMany(request)
         let filter = try requiredDocument(request, "filter")
         let concern = try writeConcern(for: request)
         let statement = MongoScriptCommandBuilder.delete(
@@ -609,7 +614,6 @@ nonisolated final class MongoScriptHost {
     }
 
     private func bulkWrite(_ request: [String: Any]) throws -> String {
-        let operations = MongoScriptJson.topLevelElements(MongoScriptJson.rawJson(request["operations"]) ?? "[]")
         var inserted = 0
         var matched = 0
         var modified = 0
@@ -618,11 +622,11 @@ nonisolated final class MongoScriptHost {
 
         let concern = try writeConcern(for: request)
         let acknowledged = MongoScriptCommandBuilder.isAcknowledged(writeConcern: concern)
-        let statements = try operations.map { operation in
-            try MongoScriptCommandBuilder.bulkOperation(
-                operation, collection: collectionName(request), writeConcern: concern
-            )
-        }
+        let statements = try MongoScriptCommandBuilder.bulkStatements(
+            operations: MongoScriptJson.rawJson(request["operations"]),
+            collection: collectionName(request),
+            writeConcern: concern
+        )
 
         for statement in statements {
             let reply = try write(

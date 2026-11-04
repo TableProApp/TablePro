@@ -236,6 +236,40 @@ final class ChatComposerNSTextView: NSTextView {
         return textView
     }
 
+    // Its own typing history: the window's is the connection's, and the window's Undo routes into tab histories.
+    private let typingUndoManager = UndoManager()
+
+    override var undoManager: UndoManager? {
+        typingUndoManager
+    }
+
+    @objc func undo(_ sender: Any?) {
+        typingUndoManager.undo()
+    }
+
+    @objc func redo(_ sender: Any?) {
+        typingUndoManager.redo()
+    }
+
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(undo(_:)):
+            Self.setTitle(typingUndoManager.undoMenuItemTitle, on: menuItem)
+            return typingUndoManager.canUndo
+        case #selector(redo(_:)):
+            Self.setTitle(typingUndoManager.redoMenuItemTitle, on: menuItem)
+            return typingUndoManager.canRedo
+        default:
+            return super.validateMenuItem(menuItem)
+        }
+    }
+
+    // A title write re-lays out an open menu and cancels its tracking.
+    private static func setTitle(_ title: String, on menuItem: NSMenuItem) {
+        guard menuItem.title != title else { return }
+        menuItem.title = title
+    }
+
     override func becomeFirstResponder() -> Bool {
         let became = super.becomeFirstResponder()
         if became { onFocusChange?(true) }

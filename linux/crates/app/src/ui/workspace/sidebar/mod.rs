@@ -6,6 +6,7 @@ mod catalog_watch;
 mod connection_tree;
 mod key_listing;
 mod object_key;
+mod object_target;
 mod sidebar_affordances;
 mod sidebar_event;
 mod sidebar_index;
@@ -93,6 +94,7 @@ fn workspace_input(event: SidebarEvent) -> WorkspaceInput {
         },
         SidebarEvent::NewTable(schema) => WorkspaceInput::NewTableTab { schema },
         SidebarEvent::ShowDiagram(schema) => WorkspaceInput::ShowDiagram { schema },
+        SidebarEvent::ShowDefinition(object) => WorkspaceInput::ShowDefinition(object),
     }
 }
 
@@ -139,7 +141,7 @@ fn shown_schemas(schemas: &[SchemaInfo], objects: &[ObjectInfo]) -> Vec<SchemaIn
     let known: BTreeSet<&str> = schemas.iter().map(|schema| schema.name.as_str()).collect();
     let extra: BTreeSet<&str> = objects
         .iter()
-        .filter(|object| object.kind.is_browsable())
+        .filter(|object| object.kind.is_browsable() || object.kind.has_definition())
         .filter_map(|object| object.schema.as_deref())
         .filter(|schema| !known.contains(schema))
         .collect();
@@ -273,12 +275,23 @@ impl WorkspaceModel {
     /// A run that sent DDL, or a commit that may publish it, changes what
     /// the sidebar and the completion list.
     pub(super) fn on_editor_run_finished(&mut self, id: uuid::Uuid) {
-        let changed = matches!(
-            self.workspace_tabs.borrow().get(&id),
-            Some(super::WorkspaceTab::Editor(slot)) if slot.editor.last_run_changes_catalog()
-        );
-        if changed {
-            self.refresh_catalog();
+        let moved_to = match self.workspace_tabs.borrow().get(&id) {
+            Some(super::WorkspaceTab::Editor(slot)) if slot.editor.last_run_changes_catalog() => {
+                Some(slot.editor.tab_database())
+            }
+            _ => None,
+        };
+        let Some(moved_to) = moved_to else {
+            return;
+        };
+        self.refresh_catalog();
+        // The statement ran in the tab's database, whose session the
+        // window may hold beside this one (0030).
+        if let (Some(database), Some(shell)) = (moved_to, self.shell.upgrade()) {
+            shell.tell_window(crate::ui::SessionWindowInput::MovedTab(crate::ui::MovedTab::Refresh {
+                key: self.key.clone(),
+                database,
+            }));
         }
     }
 

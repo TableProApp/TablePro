@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProSQLGrammar
 import Testing
 
 struct QueryClassifierInvisibleCharacterTests {
@@ -51,6 +52,20 @@ struct QueryClassifierInvisibleCharacterTests {
     }
 
     @Test(
+        "A blank SQL Server reads as a space between two words is the space it is read as",
+        arguments: ["\u{01}", "\u{08}", "\u{1F}", "\u{7F}", "\u{200B}", "\u{200C}", "\u{FEFF}"]
+    )
+    func blankBetweenWords(blank: String) {
+        for sql in ["SELECT NEXT\(blank)VALUE FOR dbo.orders_seq", "SELECT NEXT VALUE\(blank)FOR dbo.orders_seq"] {
+            #expect(QueryClassifier.classifyTier(sql, databaseType: .mssql) == .write, "\(sql)")
+        }
+        let auditFile = "SELECT * FROM sys.fn_get_audit_file\(blank)('C:\\a.sqlaudit', DEFAULT, DEFAULT)"
+        #expect(QueryClassifier.reachesFilesystemOrExecutesCode(auditFile, databaseType: .mssql))
+        #expect(QueryClassifier.isDangerousQuery("ALTER TABLE t\(blank)DROP\(blank)COLUMN c", databaseType: .mssql))
+        #expect(QueryClassifier.classifyTier("SELECT 'NEXT\(blank)VALUE FOR s'", databaseType: .mssql) == .safe)
+    }
+
+    @Test(
         "A filler that is a letter belongs to the word after it",
         arguments: ["\u{3164}SELECT 1", "\u{115F}SELECT 1", "\u{FFA0}SELECT 1"]
     )
@@ -71,7 +86,7 @@ struct QueryClassifierInvisibleCharacterTests {
 
     @Test("A leading invisible character does not hide an EXPLAIN")
     func explainBehindInvisibleCharacter() {
-        #expect(QueryClassifier.isExplainStatement("\u{FEFF}EXPLAIN SELECT 1"))
-        #expect(QueryClassifier.explainedStatement(in: "\u{0008}EXPLAIN SELECT 1") == "SELECT 1")
+        #expect(QueryClassifier.isExplainStatement("\u{FEFF}EXPLAIN SELECT 1", grammar: .ansi))
+        #expect(QueryClassifier.explainedStatement(in: "\u{0008}EXPLAIN SELECT 1", databaseType: .postgresql) == "SELECT 1")
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 
 /// How a multi-partition read is presented as one list.
 ///

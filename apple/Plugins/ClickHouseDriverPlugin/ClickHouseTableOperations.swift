@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLQuoting
 
 nonisolated func clickHouseTableType(forEngine engine: String?) -> String {
     switch engine {
@@ -16,14 +17,9 @@ nonisolated func clickHouseTableType(forEngine engine: String?) -> String {
     }
 }
 
-/// ClickHouse reads backslash escapes inside a backquoted name, so the backslash is doubled first or
-/// `\`` would end the name early. `.literal` matches by code unit, so a combining mark after a
-/// backquote cannot hide it from the replacement.
+// ClickHouse reads backslash escapes inside a backquoted name.
 nonisolated func clickHouseQuotedIdentifier(_ name: String) -> String {
-    let escaped = name
-        .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
-        .replacingOccurrences(of: "`", with: "``", options: .literal)
-    return "`\(escaped)`"
+    SQLQuoting.identifier(name, quote: .backtick, backslashEscapes: true)
 }
 
 nonisolated func clickHouseDropObjectStatement(name: String, objectType: String) -> String? {

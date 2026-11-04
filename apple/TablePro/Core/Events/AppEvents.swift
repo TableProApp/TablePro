@@ -48,6 +48,8 @@ final class AppEvents {
     // MARK: - Connections
 
     let connectionStatusChanged = PassthroughSubject<ConnectionStatusChange, Never>()
+    /// A workspace's window phase changed. Carries the connection id; the phase lives on the workspace.
+    let connectionPhaseChanged = PassthroughSubject<UUID, Never>()
 
     // A driver's Vault lease can no longer be renewed, so the driver has to sign in again.
     let credentialLeaseEnding = PassthroughSubject<CredentialLeaseEnding, Never>()
@@ -128,10 +130,8 @@ final class AppEvents {
     /// uniformly handle "this update may affect me" via `payload == nil || payload == self.connectionId`.
     let linkedSQLFoldersDidUpdate = PassthroughSubject<UUID?, Never>()
 
-    let versionHistoryRefreshRequested = PassthroughSubject<UUID, Never>()
-
-    /// Refresh on a table listing tab, which loads its own rows rather than through the coordinator.
-    let tableListingRefreshRequested = PassthroughSubject<UUID, Never>()
+    // Refresh on a tab that loads its own content rather than through the coordinator, by tab id.
+    let tabRefreshRequested = PassthroughSubject<UUID, Never>()
 
     // MARK: - License & Sync
 

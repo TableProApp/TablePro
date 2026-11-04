@@ -60,6 +60,14 @@ private final class SqlStandardStubDriver: PluginDatabaseDriver, @unchecked Send
 // MARK: - isNumericLiteral
 
 struct IsNumericLiteralTests {
+    @Test("Digits outside ASCII are not a number, so the value is quoted", arguments: [
+        "\u{0661}\u{0662}", "1\u{0301}", "\u{216B}", "\u{00BD}", "\u{00B2}", "\u{FF11}",
+    ])
+    func nonASCIIDigitsAreText(value: String) {
+        #expect(!StubDriver.isNumericLiteral(value))
+        #expect(StubDriver().escapedParameterValue(value).unicodeScalars.first == "'")
+    }
+
     @Test("Integers")
     func integers() {
         #expect(StubDriver.isNumericLiteral("0"))
@@ -126,22 +134,24 @@ struct EscapedParameterValueTests {
         #expect(driver.escapedParameterValue("it''s") == "'it''''s'")
     }
 
-    @Test("Control characters escaped")
-    func controlCharactersEscaped() {
-        #expect(driver.escapedParameterValue("a\nb") == "'a\\nb'")
-        #expect(driver.escapedParameterValue("a\rb") == "'a\\rb'")
-        #expect(driver.escapedParameterValue("a\tb") == "'a\\tb'")
+    // Every backslash engine reads a raw control back as itself; Dameng's own escapes were never measured.
+    @Test("Control characters written as they are, the backslash doubled")
+    func controlCharactersKeptRaw() {
+        #expect(driver.escapedParameterValue("a\nb") == "'a\nb'")
+        #expect(driver.escapedParameterValue("a\rb") == "'a\rb'")
+        #expect(driver.escapedParameterValue("a\tb") == "'a\tb'")
         #expect(driver.escapedParameterValue("a\\b") == "'a\\\\b'")
     }
 
-    @Test("NUL bytes stripped")
-    func nulBytesStripped() {
-        #expect(driver.escapedParameterValue("a\0b") == "'ab'")
+    @Test("NUL written as its escape")
+    func nulWrittenAsEscape() {
+        #expect(driver.escapedParameterValue("a\0b") == "'a\\0b'")
     }
 
-    @Test("SUB character escaped")
-    func subCharacterEscaped() {
-        #expect(driver.escapedParameterValue("a\u{1A}b") == "'a\\Zb'")
+    // ClickHouse and Snowflake read MySQL's `\Z` as the letter, so only MySQL's own escaper writes it.
+    @Test("SUB character kept as it is")
+    func subCharacterKept() {
+        #expect(driver.escapedParameterValue("a\u{1A}b") == "'a\u{1A}b'")
     }
 
     @Test("A quote or backslash a combining mark follows is still escaped")
@@ -192,5 +202,46 @@ struct SqlStandardEscapeTests {
     @Test("NUL bytes still stripped")
     func nulBytesStripped() {
         #expect(driver.escapedParameterValue("a\0b") == "'ab'")
+    }
+}
+
+// MARK: - Default quoting
+
+struct DefaultQuotingTests {
+    private let driver = SqlStandardStubDriver()
+
+    private static func scalars(_ text: String) -> [Unicode.Scalar] {
+        Array(text.unicodeScalars)
+    }
+
+    @Test("The default identifier quoter doubles a quote a combining mark follows",
+          arguments: ["\u{301}", "\u{200C}", "\u{FE0F}", "\u{FF9E}", "\u{1F3FB}"])
+    func identifierQuoteBeforeMarkIsDoubled(mark: String) {
+        let quoted = driver.quoteIdentifier("t\"\(mark); DROP TABLE users; --")
+        #expect(Self.scalars(quoted) == Self.scalars("\"t\"\"\(mark); DROP TABLE users; --\""))
+    }
+
+    @Test("A table name made to close the row count subquery stays one identifier")
+    func rowCountTableNameStaysOneIdentifier() {
+        let quoted = driver.quoteIdentifier("sqlite_master\"\u{301}); DROP TABLE users; --")
+        #expect(Self.scalars(quoted) == Self.scalars("\"sqlite_master\"\"\u{301}); DROP TABLE users; --\""))
+    }
+
+    @Test("The default literal escape doubles a quote a combining mark follows")
+    func literalQuoteBeforeMarkIsDoubled() {
+        let escaped = driver.escapeStringLiteral("x'\u{301}); DROP TABLE users; --")
+        #expect(Self.scalars(escaped) == Self.scalars("x''\u{301}); DROP TABLE users; --"))
+    }
+
+    @Test("A LIKE escape doubles a quote and escapes a backslash a combining mark follows")
+    func likeEscapeBeforeMark() {
+        let escaped = PluginSQLFilter.escapeForLike("a'\u{301}b\\\u{301}c%\u{301}")
+        #expect(Self.scalars(escaped) == Self.scalars("a''\u{301}b\\\\\u{301}c\\%\u{301}"))
+    }
+
+    @Test("A regex metacharacter a combining mark follows is still escaped")
+    func regexMetacharacterBeforeMarkIsEscaped() {
+        let pattern = PluginSQLRegexPattern.pattern(matchingLiteral: ".\u{301}", anchoring: .exact, ignoresCase: true)
+        #expect(Self.scalars(pattern) == Self.scalars("(?i)^\\.\u{301}$"))
     }
 }

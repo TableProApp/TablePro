@@ -6,11 +6,15 @@ import TableProPluginKit
 import Testing
 
 struct PluginBackedDriverTests {
-    private func makeDriver(_ plugin: StubPluginDriver, identity: RowIdentity = .everyColumn) -> PluginBackedDriver {
-        PluginBackedDriver(
+    private func makeDriver(_ plugin: StubPluginDriver) -> PluginBackedDriver {
+        PluginBackedDriver(plugin: plugin, dialedHosts: [], readsOnly: { $0.uppercased().hasPrefix("SELECT") })
+    }
+
+    private func makeWriter(_ plugin: StubPluginDriver) -> PluginRowWritingDriver {
+        PluginRowWritingDriver(
             plugin: plugin,
             dialedHosts: [],
-            rowIdentity: identity,
+            rowIdentity: .everyColumn,
             readsOnly: { $0.uppercased().hasPrefix("SELECT") }
         )
     }
@@ -79,7 +83,7 @@ struct PluginBackedDriverTests {
         let plugin = StubPluginDriver()
         let long = String(repeating: "x", count: 5_000)
         plugin.scriptedResult = result(rows: [["7", .text(long)]])
-        let driver = makeDriver(plugin, identity: .keyColumns)
+        let driver = makeDriver(plugin)
         let options = StreamOptions(maxRows: 10, lazyContext: LazyContext(table: "t", primaryKeyColumns: ["id"]))
 
         let elements = try await drain(driver.executeStreaming(query: "SELECT * FROM t", options: options))
@@ -116,6 +120,17 @@ struct PluginBackedDriverTests {
         #expect(RowLocator.locate(cells: row.cells, columns: columns, columnDetails: columns, identity: .everyColumn) == nil)
     }
 
+    // The Mac writes such a plugin's rows with its own SQL; on iOS that is SQLBuilder, reached only by a non-writer.
+    @Test("A plugin that generates no row writes of its own leaves its driver out of the row writers")
+    func plainPluginIsNotARowWriter() {
+        let plain: any DatabaseDriver = makeDriver(StubPluginDriver())
+        let writer: any DatabaseDriver = makeWriter(StubPluginDriver())
+
+        #expect(!(plain is any DriverRowWriting))
+        #expect(writer is any DriverRowWriting)
+        #expect(RowLocator.identity(of: plain) == .keyColumns)
+    }
+
     @Test("An engine without transactions reports nothing pending")
     func noTransactionsMeansIdle() async {
         let plugin = StubPluginDriver()
@@ -135,7 +150,7 @@ struct PluginBackedDriverTests {
     @Test("A row edit hands the plugin the row as it was read and the changed cell, then binds its parameters")
     func updateHandsThePluginTheWholeRow() async throws {
         let plugin = StubPluginDriver()
-        let driver = makeDriver(plugin)
+        let driver = makeWriter(plugin)
 
         let writes = try driver.updateWrites(
             table: "events",
@@ -158,26 +173,26 @@ struct PluginBackedDriverTests {
     @Test("A new row marks every column it leaves out as the server default")
     func insertLeavesOmittedColumnsToTheServer() throws {
         let plugin = StubPluginDriver()
-        let driver = makeDriver(plugin)
+        let driver = makeWriter(plugin)
 
         _ = try driver.insertWrites(
             table: "events", schema: nil, columns: ["id", "name", "note"], values: [(column: "name", value: "x")]
         )
 
         #expect(plugin.generatedInserts[0] == [
-            .text(PluginBackedDriver.defaultSentinel), "x", .text(PluginBackedDriver.defaultSentinel)
+            .text(PluginRowWritingDriver.defaultSentinel), "x", .text(PluginRowWritingDriver.defaultSentinel)
         ])
     }
 
     @Test("A value spelled as the default marker is refused, never stored as the default")
     func insertRefusesTheDefaultMarker() {
         let plugin = StubPluginDriver()
-        let driver = makeDriver(plugin)
+        let driver = makeWriter(plugin)
 
         #expect(throws: DatabaseError.self) {
             try driver.insertWrites(
                 table: "events", schema: nil, columns: ["id", "note"],
-                values: [(column: "id", value: "1"), (column: "note", value: PluginBackedDriver.defaultSentinel)]
+                values: [(column: "id", value: "1"), (column: "note", value: PluginRowWritingDriver.defaultSentinel)]
             )
         }
         #expect(plugin.generatedInserts.isEmpty)
@@ -188,9 +203,7 @@ struct PluginBackedDriverTests {
     ])
     func savedQueryTimeoutIsApplied(saved: Int?, applied: [Int]) async throws {
         let plugin = StubPluginDriver()
-        let driver = PluginBackedDriver(
-            plugin: plugin, dialedHosts: [], queryTimeoutSeconds: saved, rowIdentity: .everyColumn, readsOnly: { _ in true }
-        )
+        let driver = PluginBackedDriver(plugin: plugin, dialedHosts: [], queryTimeoutSeconds: saved, readsOnly: { _ in true })
 
         try await driver.connect()
 

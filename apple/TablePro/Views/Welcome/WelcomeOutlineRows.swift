@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import TableProConnectionLibrary
 
 internal struct WelcomeOutlineRow: View {
     let model: WelcomeRowModel
@@ -39,7 +40,7 @@ internal struct ConnectionTile: View {
         glyph
             .frame(width: size, height: size)
             .background {
-                RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+                RoundedRectangle(cornerRadius: ConnectionTileMetrics.cornerRadius(for: size), style: .continuous)
                     .fill(fill)
             }
             .accessibilityHidden(true)
@@ -50,8 +51,11 @@ internal struct ConnectionTile: View {
         let image = LibraryGlyph.connectionImage(type: type, iconName: iconName)
             .renderingMode(.template)
             .scaledToFit()
-            .font(.system(size: size * 0.5, weight: .medium))
-            .frame(width: size * 0.58, height: size * 0.58)
+            .font(.system(size: ConnectionTileMetrics.glyphPointSize(for: size), weight: .medium))
+            .frame(
+                width: ConnectionTileMetrics.glyphSide(for: size),
+                height: ConnectionTileMetrics.glyphSide(for: size)
+            )
         if let identityColor {
             image.foregroundStyle(Color.legibleForeground(on: identityColor.color))
         } else {
@@ -152,33 +156,7 @@ private struct WelcomeConnectionAccessories: View {
                     .accessibilityLabel(String(localized: "Local only"))
             }
 
-            WelcomeConnectionStatus(connectionId: model.id)
-        }
-    }
-}
-
-private struct WelcomeConnectionStatus: View {
-    @ObservedObject private var databaseManager = DatabaseManager.shared
-    let connectionId: UUID
-
-    var body: some View {
-        switch databaseManager.activeSessions[connectionId]?.reportedStatus {
-        case .connected:
-            Text("Connected")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .connecting:
-            ProgressView()
-                .controlSize(.mini)
-                .accessibilityLabel(Text("Connecting"))
-        case .error(let message):
-            Image(systemName: "exclamationmark.triangle.fill")
-                .imageScale(.small)
-                .selectionAwareTint(.orange)
-                .help(message)
-                .accessibilityLabel(Text("Connection error"))
-        case .disconnected, .none:
-            EmptyView()
+            ConnectionStatusMark(presentation: ConnectionStatusPresentation(model.status))
         }
     }
 }

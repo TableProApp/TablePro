@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 
 extension QueryClassifier {
     static func etcdClassification(_ trimmed: String) -> QueryClassification {

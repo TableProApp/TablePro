@@ -177,6 +177,7 @@ struct PreConnectScriptConsentTests {
 struct PreConnectScriptEntryPointTests {
     private struct Fixture {
         let manager: DatabaseManager
+        let clock: ManualClock
         let spy: ScriptQuestionSpy
         let connection: DatabaseConnection
         let marker: URL
@@ -200,10 +201,12 @@ struct PreConnectScriptEntryPointTests {
         let suite = try EphemeralDefaults()
         let storage = ConnectionStorage(fileURL: fileURL, userDefaults: suite.defaults, keychain: InMemoryKeychain())
         let spy = ScriptQuestionSpy(answer: answer)
+        let clock = ManualClock()
         let manager = DatabaseManager(
             connectionStorage: storage,
             preConnectScriptConsent: PreConnectScriptConsent(asker: spy),
-            postDisconnectScripts: PostDisconnectScripts(run: { ranPostDisconnect.record($0) })
+            postDisconnectScripts: PostDisconnectScripts(run: { ranPostDisconnect.record($0) }),
+            recoveryClock: clock
         )
 
         var connection = TestFixtures.makeConnection(name: "Scripted", type: .mssql)
@@ -216,6 +219,7 @@ struct PreConnectScriptEntryPointTests {
         let connectionId = connection.id
         return Fixture(
             manager: manager,
+            clock: clock,
             spy: spy,
             connection: connection,
             marker: marker,
@@ -407,34 +411,27 @@ struct PreConnectScriptEntryPointTests {
         expectNothingRan(fixture)
     }
 
-    @Test("A tunnel recovery never asks and stops at the refusal")
+    @Test("A tunnel recovery never asks and never runs the script")
     func tunnelRecoveryNeverAsks() async throws {
         let fixture = try makeFixture(answer: .approved)
         defer { fixture.cleanUp() }
         let id = fixture.connection.id
-        fixture.manager.injectSession(
-            ConnectionSession(connection: fixture.connection, driver: MockDatabaseDriver(connection: fixture.connection)),
-            for: id
-        )
+        let driver = MockDatabaseDriver(connection: fixture.connection)
+        var session = ConnectionSession(connection: fixture.connection, driver: driver)
+        session.status = .connected
+        fixture.manager.injectSession(session, for: id)
 
-        let manager = fixture.manager
-        let finished = await BoundedCall.result(within: .seconds(10)) { @MainActor in
-            await manager.recoverDeadTunnel(
-                connectionId: id,
-                kind: "SSH",
-                disconnectedMessage: "The SSH tunnel closed."
-            )
-            return true
-        }
+        fixture.manager.recoverDeadTunnel(connectionId: id, kind: "SSH", disconnectedMessage: "The SSH tunnel closed.")
+        let loop = try #require(fixture.manager.recoveryLoops[id]?.task)
+        await fixture.clock.waitUntilSleeping()
+        fixture.clock.advance(by: .seconds(DatabaseManager.maxRecoveryDelay))
+        await loop.value
+        await fixture.manager.stopHealthMonitor(for: id)
 
-        #expect(finished == true)
         #expect(fixture.spy.askedScripts.isEmpty)
         #expect(!fixture.scriptRan)
-        #expect(fixture.manager.session(for: id) == nil)
-        #expect(
-            fixture.manager.disconnectReason(for: id)?.info.message
-                == PreConnectScriptConsentError.needsPerson.errorDescription
-        )
+        #expect(fixture.manager.session(for: id)?.liveness == .live)
+        #expect(fixture.manager.session(for: id)?.driver !== driver)
     }
 
     @Test("A tab's auto-load never asks")

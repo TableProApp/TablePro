@@ -25,6 +25,7 @@ internal struct FieldEditorContext {
 
     // False where the store has no NULL or DEFAULT to write, as in a data file.
     internal let allowsNullAndDefault: Bool
+    internal let isBinaryValue: Bool
 
     internal init(
         columnName: String,
@@ -36,7 +37,8 @@ internal struct FieldEditorContext {
         isReadOnly: Bool,
         commitBytes: ((Data) -> Void)? = nil,
         editor: FieldEditorKind? = nil,
-        allowsNullAndDefault: Bool = true
+        allowsNullAndDefault: Bool = true,
+        isBinaryValue: Bool = false
     ) {
         self.columnName = columnName
         self.columnType = columnType
@@ -48,6 +50,7 @@ internal struct FieldEditorContext {
         self.commitBytes = commitBytes
         self.editor = editor
         self.allowsNullAndDefault = allowsNullAndDefault
+        self.isBinaryValue = isBinaryValue
     }
 
     internal var hasMultipleValues: Bool { valueState == .multipleValues }

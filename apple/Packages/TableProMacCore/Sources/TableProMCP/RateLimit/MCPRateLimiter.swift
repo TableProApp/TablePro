@@ -145,7 +145,7 @@ public actor MCPRateLimiter {
             bucket.lockedUntil = lockUntil
             failureBuckets[key] = bucket
             Self.logger.warning(
-                "Rate limit lockout \(Self.describe(key), privacy: .public) until \(lockUntil, privacy: .public)"
+                "Rate limit lockout \(Self.describe(key), privacy: .private(mask: .hash)) until \(lockUntil, privacy: .public)"
             )
             return .lockedUntil(lockUntil)
         }
@@ -186,7 +186,7 @@ public actor MCPRateLimiter {
         if bucket.inFlight >= requestPolicy.maxConcurrentRequests {
             requestBuckets[subject] = bucket
             Self.logger.warning(
-                "Concurrency limit reached for \(subject.describedValue, privacy: .public)"
+                "Concurrency limit reached for \(subject.describedValue, privacy: .private(mask: .hash))"
             )
             return .rejected(retryAfterSeconds: 1, reason: .concurrencyExceeded)
         }
@@ -196,7 +196,7 @@ public actor MCPRateLimiter {
             let freesAt = oldest.addingTimeInterval(Self.seconds(of: requestPolicy.windowDuration))
             requestBuckets[subject] = bucket
             Self.logger.warning(
-                "Request rate limit reached for \(subject.describedValue, privacy: .public)"
+                "Request rate limit reached for \(subject.describedValue, privacy: .private(mask: .hash))"
             )
             return .rejected(
                 retryAfterSeconds: await retryAfterSeconds(until: freesAt),

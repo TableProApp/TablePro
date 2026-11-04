@@ -1,6 +1,6 @@
 # Adding a database driver
 
-Every engine is one crate under `crates/drivers/`, linked into the app at compile time and registered in one place. There is no plugin system ([ADR 0001](decisions/0001-no-plugin-system.md)). The contract a driver implements lives in `tablepro-core` and is described here; [ADR 0016](decisions/0016-driver-contract-v2.md) records why it has this shape. How each shipped engine meets it: [PostgreSQL](drivers/postgresql.md), [MySQL and MariaDB](drivers/mysql.md), [SQLite](drivers/sqlite.md), [DuckDB](drivers/duckdb.md), [SQL Server](drivers/sql-server.md), [ClickHouse](drivers/clickhouse.md), [Cassandra and ScyllaDB](drivers/cassandra.md), [Redis](drivers/redis.md), [MongoDB](drivers/mongodb.md). An engine that does not speak SQL meets the same contract the way [Engines without SQL](#engines-without-sql) says.
+Every engine is one crate under `core/crates/drivers/`, linked into the app at compile time and registered in one place. There is no plugin system ([ADR 0001](decisions/0001-no-plugin-system.md)). The contract a driver implements lives in `tablepro-core` and is described here; [ADR 0016](decisions/0016-driver-contract-v2.md) records why it has this shape. How each shipped engine meets it: [PostgreSQL](drivers/postgresql.md), [MySQL and MariaDB](drivers/mysql.md), [SQLite](drivers/sqlite.md), [DuckDB](drivers/duckdb.md), [SQL Server](drivers/sql-server.md), [ClickHouse](drivers/clickhouse.md), [Cassandra and ScyllaDB](drivers/cassandra.md), [Redis](drivers/redis.md), [MongoDB](drivers/mongodb.md). An engine that does not speak SQL meets the same contract the way [Engines without SQL](#engines-without-sql) says.
 
 The work, in order:
 
@@ -21,7 +21,7 @@ The library must:
 
 - be maintained and published on crates.io, used without a fork ([ADR 0005](decisions/0005-supply-chain-policy.md)); `deny.toml` allows no git source;
 - use rustls with aws-lc-rs, or no TLS of its own ([ADR 0009](decisions/0009-crypto-provider-and-sources.md));
-- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket ([Transports](../ARCHITECTURE.md#transports)). A client that dials only TCP reaches the transport through a loopback relay, as the Cassandra driver's does ([ADR 0023](decisions/0023-loopback-relay-for-cql.md));
+- either take a stream the driver hands it, or dial a TCP endpoint and a Unix socket path itself, because an SSH forward is a Unix socket ([Transports](../../core/ARCHITECTURE.md#transports)). A client that dials only TCP reaches the transport through a loopback relay, as the Cassandra driver's does ([ADR 0023](decisions/0023-loopback-relay-for-cql.md));
 - have a way to stop a statement already sent: a cancel request, a KILL, an attention, an interrupt. Where the protocol has none, as CQL's has not, it drops the request and keeps the connection serving (`StatementStop::Abandon`);
 - let the driver keep a connection clean for the next caller, with no server-side state it did not ask for.
 
@@ -32,7 +32,7 @@ What the shipped drivers use:
 | PostgreSQL | tokio-postgres 0.7.18, tokio-postgres-rustls 0.14 | deadpool-postgres 0.14.2 | `Transport::open` |
 | MySQL, MariaDB | sqlx 0.9 (`mysql`) | deadpool 0.13 | `Transport::route`, dialled by sqlx |
 | SQLite | sqlx 0.9 (`sqlite-unbundled`) | sqlx, one connection | a file path |
-| DuckDB | duckdb 1.10506 (`bundled`), DuckDB 1.5.6 compiled in ([ADR 0025](decisions/0025-bundled-duckdb.md)) | deadpool 0.13, connections to the one instance the process keeps per file | a file path |
+| DuckDB | duckdb 1.20000.1 (`bundled`), DuckDB 2.0.0 compiled in ([ADR 0031](decisions/0031-duckdb-2.md)) | deadpool 0.13, connections to the one instance the process keeps per file | a file path |
 | SQL Server | tiberius 0.13 | deadpool 0.13 | `Transport::open` |
 | ClickHouse | clickhouse 0.15 over hyper-util and hyper-rustls | hyper's connection pool | `Transport::open` |
 | Cassandra, ScyllaDB | scylla 1.9 (`rustls-023`) | none: one multiplexed connection per session | a loopback relay over `Transport::open` |
@@ -43,7 +43,7 @@ Open an issue before starting an engine that is not listed, and say which librar
 
 ## 2. The crate
 
-`crates/drivers/<engine>/`, package `tablepro-driver-<engine>`, library `tablepro_driver_<engine>`:
+`core/crates/drivers/<engine>/`, package `tablepro-driver-<engine>`, library `tablepro_driver_<engine>`:
 
 ```toml
 [package]
@@ -71,7 +71,7 @@ tokio = { workspace = true, features = ["test-util"] }
 workspace = true
 ```
 
-A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. `secrecy` reads the password of a password login. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` and to `[workspace.dependencies]` in `linux/Cargo.toml`. A member lists only the features its workspace entry does not already name.
+A driver depends on `tablepro-core`, and on `tablepro-net` when it speaks TLS or dials TCP. `secrecy` reads the password of a password login. It never depends on GTK, on `tablepro-session`, on `tablepro-ssh` or on another driver. Add the crate to `members` and to `[workspace.dependencies]` in the `Cargo.toml` at the top of the repository. A member lists only the features its workspace entry does not already name.
 
 ## 3. `DatabaseDriver` and capabilities
 
@@ -147,7 +147,7 @@ SQL Server offers Kerberos only when built with the `kerberos` feature. MySQL's 
 A `NetworkTarget` carries `transport`, `credentials`, `database`, `tls` and `options`. `connect`:
 
 1. validates `tls` with `TlsConfig::validate(caps, transport.kind().class())` and `options` with `NetworkOptions::validate`, and refuses `Credentials` whose mode the driver does not support;
-2. builds its TLS from `tls` (see [Trust](../ARCHITECTURE.md#trust)) and checks the certificate against `NetworkTarget::tls_server_name()`, never against the socket's address;
+2. builds its TLS from `tls` (see [Trust](../../core/ARCHITECTURE.md#trust)) and checks the certificate against `NetworkTarget::tls_server_name()`, never against the socket's address;
 3. opens every stream with `transport.open()`, or dials `transport.route()` when the library dials itself;
 4. logs in under `liveness.login_timeout`, with `APPLICATION_NAME` as the client name;
 5. opens the first pool member before returning, so a refused password or a failed handshake is the connect's error, and gives up as soon as `cancel` fires;
@@ -268,7 +268,7 @@ When a write is interrupted, `WriteLedger::interrupted(cause, fate)` gives the o
 | `StatementByStatement` | one in flight, and nothing confirmed or a commit token held | `CommitOutcomeUnknown { token }` |
 | `StatementByStatement` | one in flight, some confirmed, no token | `PartiallyApplied { applied: confirmed }`, that statement `Unknown` |
 
-A discarded session leaves nothing behind on a transactional engine, because a COMMIT that was never written cannot land once the session is gone. `WriteLedger::failed` and `WriteLedger::guard_failed` give the outcome of a statement the server refused and of a guard mismatch, with the same rules. The full tables are the `a_lost_transaction_rolls_back_until_its_commit_is_sent` and `a_lost_statement_by_statement_write_keeps_what_was_confirmed` tests in `crates/core/src/write_ledger.rs`.
+A discarded session leaves nothing behind on a transactional engine, because a COMMIT that was never written cannot land once the session is gone. `WriteLedger::failed` and `WriteLedger::guard_failed` give the outcome of a statement the server refused and of a guard mismatch, with the same rules. The full tables are the `a_lost_transaction_rolls_back_until_its_commit_is_sent` and `a_lost_statement_by_statement_write_keeps_what_was_confirmed` tests in `core/crates/core/src/write_ledger.rs`.
 
 A transactional COMMIT that the server answers with an error rolled back; only a COMMIT with no answer is `CommitOutcomeUnknown`.
 
@@ -329,13 +329,15 @@ A run streams `ResultEvent`s into a `ResultSink`:
 
 A table whose scan has no order to page by, as a CQL scan in token order has none, returns `TablePaging::ServerState` from `table_paging`: the browse tab then pages by the state the server hands back, through `Connection::query_server_page`, offers no sort, and reaches a page by number by skipping rows. `filter_operators`, `filter_combinators` and `filtered_read_suffix` narrow the filter strip to what the engine evaluates and add what it needs after a WHERE clause. `capabilities().insert_conflict` says what an INSERT of a taken key does, which decides how a save proves an insert: refused (`Refused`), skipped (`Skipped`, proved by the count), or replaced (`Replaced`, proved by a probe for the key first). A column that holds one value per partition, a CQL partition key or static column, is `ColumnInfo::partition_scoped`: an update of such columns alone names only the partition, is spelled by `partition_update_statement`, and is proved by a probe for its row.
 
-`SqlDialect::grammar()` names the engine's `SqlGrammar`, which the editor's split and completion, filter and default validation, and the history check read. `SqlGrammar` is closed: an engine with its own lexical rules adds a variant, and the compiler lists every match to extend, starting with its rules in `crates/core/src/sql_syntax/script/script_rules.rs`. A language that is not SQL adds a variant too, with no SQL rules ([Engines without SQL](#engines-without-sql)). Each rule gets a named case in `crates/core/tests/script_corpus.rs` ([testing.md](testing.md#the-script-planner)). An engine with its own error numbering adds a `ServerCode` variant the same way ([error-handling.md](error-handling.md#serverdiagnostics)).
+`SqlDialect::cell_expressions` lists the SQL a date, time or timestamp cell may be set to, such as `NOW()`, each with the column kinds it fills and the other spellings typed for it. The grid matches what the user types against this list and the save writes the listed spelling into the statement, so only list an expression after running it against the engine for every kind it names; `check_cell_expressions` in `tablepro-test-support` does that from a driver's integration tests. `update_sets_default` says whether `UPDATE ... SET c = DEFAULT` parses, which lets a saved row's cell take the column's default.
+
+`SqlDialect::grammar()` names the engine's `SqlGrammar`, which the editor's split and completion, filter and default validation, and the history check read. `SqlGrammar` is closed: an engine with its own lexical rules adds a variant, and the compiler lists every match to extend, starting with its rules in `core/crates/core/src/sql_syntax/script/script_rules.rs`. A language that is not SQL adds a variant too, with no SQL rules ([Engines without SQL](#engines-without-sql)). Each rule gets a named case in `core/crates/core/tests/script_corpus.rs` ([testing.md](testing.md#the-script-planner)). An engine with its own error numbering adds a `ServerCode` variant the same way ([error-handling.md](error-handling.md#serverdiagnostics)).
 
 `SqlDialect::history_recording` says whether SQL the user ran may go into the query history. Implement it as `classify_for_history(<grammar>, &CREDENTIAL_RULES, sql)`, with a `CredentialRules` const next to the dialect naming the engine's statements, conditional statements and functions that can carry a password or a connection string, and test each one ([storage.md](storage.md#what-goes-into-the-history)).
 
 ### Structure changes
 
-`DdlDialect` lives in the driver's `ddl` module, as `crates/drivers/postgres/src/ddl.rs` or, once it spans files, `crates/drivers/sqlite/src/ddl/`, implemented on the dialect type itself, so `ddl()` returns `Some(self)`. It plans every structure change the Structure tab makes, against the `TableDefinition` that `fetch_table_definition` returned:
+`DdlDialect` lives in the driver's `ddl` module, as `core/crates/drivers/postgres/src/ddl.rs` or, once it spans files, `core/crates/drivers/sqlite/src/ddl/`, implemented on the dialect type itself, so `ddl()` returns `Some(self)`. It plans every structure change the Structure tab makes, against the `TableDefinition` that `fetch_table_definition` returned:
 
 | Method | What it does |
 |---|---|
@@ -378,8 +380,8 @@ Without this step the crate compiles and the app never offers it.
 The layout every driver follows:
 
 - Unit tests next to the code, for pure logic: the dialect, error mapping, decoders, statement classification.
-- One integration target with one module per topic, as `crates/drivers/postgres/tests/integration/main.rs`: `support.rs` (start a fixture, connect, run), `conformance_engine.rs`, `tls.rs` for a network engine, and the engine's own behaviour (`metadata.rs`, `write_batch.rs`, `cancellation.rs` and so on). A network engine's test starts its own container and is `#[ignore = "requires docker"]`.
-- A container fixture in `crates/test-fixtures` for anything the default image cannot do: TLS from the generated PKI, a second principal that logs in with a client certificate.
+- One integration target with one module per topic, as `core/crates/drivers/postgres/tests/integration/main.rs`: `support.rs` (start a fixture, connect, run), `conformance_engine.rs`, `tls.rs` for a network engine, and the engine's own behaviour (`metadata.rs`, `write_batch.rs`, `cancellation.rs` and so on). A network engine's test starts its own container and is `#[ignore = "requires docker"]`.
+- A container fixture in `core/crates/test-fixtures` for anything the default image cannot do: TLS from the generated PKI, a second principal that logs in with a client certificate.
 
 The conformance suites are the contract's own tests. The driver's `conformance_engine.rs` invokes the connection and DDL suites, plus the large-table suite for a network engine, its `value_corpus.rs` the value corpus, and a network engine's `tls.rs` the TLS suite. A file engine runs the large-table suite from a test target of its own, as SQLite's and DuckDB's `tests/large_table.rs` do. [testing.md](testing.md#conformance) has the adapter traits, the flags and the cases, with the [DDL](testing.md#ddl-conformance), [large-table](testing.md#large-table-conformance), [value corpus](testing.md#value-corpus) and [TLS](testing.md#tls-conformance) suites after them.
 
@@ -403,7 +405,7 @@ What a new engine without SQL does:
 
 1. **Capabilities.** `data_model: KeyValue`, `object_kinds` the `ObjectKind::Key(KeyKind)`s it lists, and `read_only: ClientGuard` when the engine cannot hold a session read-only.
 2. **Keys.** `scan_keys` walks the keyspace in bounded steps under the call's stop, never in one command that holds the server, keeps at most `KeyScan::limit` keys and sets `complete` when it reached the end. `KeyScan::pattern` is a glob (`*`, `?`, `[...]`, `\` to escape); `KeyScan::search` turns what the user typed into one. A key's name is its text as listed, quoted the engine's way when it is not plain text, and `read_key` takes that name back. `read_key` returns the type, the TTL, the length and one window of rows in the columns the type has, with an opaque `KeyCursor` for the next window, or `None` for a key that is gone.
-3. **Grammar.** A `SqlGrammar` variant for the language, whose `rules_for` is `None` and whose `parser_dialect` is `None`, so `parse_type` and `parse_expression` refuse it. Its own module under `crates/core/src/sql_syntax/` (Redis: `sql_syntax/redis/`) builds the `ScriptPlan` (a statement and a batch per command, tokens covering the text, a diagnostic for what does not close), reads `statement_access` from the command's name and options, with an unknown command a write, and decides `history_recording` from the commands that carry a password. `ScriptPlan::build`, `statement_access` and `classify_for_history` hand the variant to it. Each rule gets a named case in `crates/core/tests/script_corpus.rs`.
+3. **Grammar.** A `SqlGrammar` variant for the language, whose `rules_for` is `None` and whose `parser_dialect` is `None`, so `parse_type` and `parse_expression` refuse it. Its own module under `core/crates/core/src/sql_syntax/` (Redis: `sql_syntax/redis/`) builds the `ScriptPlan` (a statement and a batch per command, tokens covering the text, a diagnostic for what does not close), reads `statement_access` from the command's name and options, with an unknown command a write, and decides `history_recording` from the commands that carry a password. `ScriptPlan::build`, `statement_access` and `classify_for_history` hand the variant to it. Each rule gets a named case in `core/crates/core/tests/script_corpus.rs`.
 4. **Dialect.** `Connection::dialect()` still returns a `SqlDialect`, because the editor reads its grammar and its history check from one. Its `grammar()` is the engine's, `history_recording` the module's rules, `quote_identifier` writes a name as one argument of a command, `escape_like_text` escapes a glob, `ddl()` is `None`, and every builder that would write SQL (`placeholder`, `literal`, `parse_type`) refuses.
 5. **Editor session.** One link per tab, one command at a time in the order written, stopping at the first that fails. A command that would turn the link into a stream the editor cannot read is refused with `Unsupported(EditorCommand)`. With `ClientGuard`, a command that is not a read is refused with `ReadOnlyRefusal::ClientGuard` before it is sent, in `run` and in `stream_read`. A transaction the engine keeps per link is tracked from the replies, since it cannot be asked.
 6. **Tests.** `keyspace_conformance_suite!` through `KeyspaceEngine`, and `tls_conformance_suite!` for a network engine. The connection, DDL, large-table, value corpus and round-trip suites are SQL's and do not apply.

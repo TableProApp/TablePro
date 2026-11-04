@@ -9,6 +9,7 @@
 
 @testable import TablePro
 import TableProPluginKit
+import Testing
 import XCTest
 
 /// Shared through a refining protocol rather than a base class on purpose. A conformance is
@@ -471,5 +472,85 @@ final class SourceObjectSyncBuilderTests: XCTestCase {
 
         XCTAssertEqual(statements.map(\.sql), ["DROP MATERIALIZED VIEW \"public\".\"mv\"", matviewDefinition])
         XCTAssertTrue(statements[0].hazards.contains { $0.explanation.contains("along with its indexes") })
+    }
+}
+
+@MainActor
+private func createStatements(
+    _ definition: String,
+    kind: CompareObjectKind,
+    databaseType: DatabaseType
+) throws -> [String] {
+    try SourceObjectSyncBuilder(targetDriver: PlainDropDriver(), targetDatabaseType: databaseType)
+        .build(
+            for: CompareObjectResult(
+                identity: CompareObjectIdentity(kind: kind, schema: "APP", name: "x"),
+                status: .onlyInSource,
+                sourceDefinition: definition.components(separatedBy: "\n")
+            ),
+            action: .create
+        )
+        .map(\.sql)
+}
+
+@MainActor
+struct SourceObjectSyncBuilderWholeDefinitionTests {
+    // Cut under the target's mode it was two statements, the second `DROP DATABASE prod`.
+    @Test("A MySQL definition goes out as one statement")
+    func mySQLDefinitionGoesOutWhole() throws {
+        let definition = "CREATE DEFINER=`mallory`@`%` PROCEDURE `p`()\nSET @a = '\\''; DROP DATABASE prod; #'"
+        #expect(try createStatements(definition, kind: .procedure, databaseType: .mysql) == [definition])
+    }
+
+    // The driver refuses a second statement, so the server decides where the text ends.
+    @Test("A DuckDB definition goes out as one statement")
+    func duckDBDefinitionGoesOutWhole() throws {
+        let definition = "CREATE OR REPLACE MACRO main.vat() AS 0; DROP TABLE IF EXISTS main.orders; "
+            + "CREATE OR REPLACE MACRO main.vat2(amount) AS (amount * 0.2)"
+        #expect(try createStatements(definition + ";", kind: .function, databaseType: .duckdb) == [definition])
+    }
+
+    // libSQL over HTTP, Turso and D1 are not known to refuse a second statement in one call.
+    @Test("A definition of several statements is refused where the driver may run a second")
+    func severalStatementsRefusedOnLibSQL() throws {
+        #expect(throws: (any Error).self) {
+            try createStatements("CREATE VIEW v AS SELECT 1; DROP TABLE IF EXISTS invoices", kind: .view, databaseType: .libsql)
+        }
+        #expect(try createStatements("CREATE VIEW v AS SELECT 1;", kind: .view, databaseType: .libsql) == [
+            "CREATE VIEW v AS SELECT 1",
+        ])
+    }
+
+    @Test("A MySQL routine is created under the mode the source recorded")
+    func mySQLRoutineUnderItsRecordedMode() throws {
+        let definition = "CREATE PROCEDURE `p`()\nSET @a = '\\''; DROP DATABASE prod; #'"
+        let scope = PluginStatementScope(
+            opening: [
+                "/*!50003 SET @saved_sql_mode = @@sql_mode */",
+                "/*!50003 SET sql_mode = 'NO_BACKSLASH_ESCAPES' */",
+            ],
+            closing: ["/*!50003 SET sql_mode = @saved_sql_mode */"]
+        )
+        let result = CompareObjectResult(
+            identity: CompareObjectIdentity(kind: .procedure, schema: "shop", name: "p", signature: "()"),
+            status: .onlyInSource,
+            sourceDefinition: [definition],
+            sourceCreationScope: scope
+        )
+
+        let statements = try SourceObjectSyncBuilder(targetDriver: PlainDropDriver(), targetDatabaseType: .mysql)
+            .build(for: result, action: .create)
+
+        #expect(statements.map(\.sql) == scope.opening + [definition] + scope.closing)
+        guard case .opens(let opened, let closingSQL)? = statements.first?.sessionEffect,
+              case .closes(let closed)? = statements.last?.sessionEffect
+        else {
+            Issue.record("expected the mode to open before the definition and close after it")
+            return
+        }
+        #expect(opened == closed)
+        #expect(closingSQL == scope.closing[0])
+        #expect(statements[1].sessionEffect == nil)
+        #expect(statements[2].sessionEffect == nil)
     }
 }

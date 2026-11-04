@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TableProSQLQuoting
 
 /// The editor behind a chevron menu's `Custom…` item.
 ///
@@ -46,17 +47,27 @@ internal struct CustomValueContentView: View {
         self.stringLiteralPrefix = stringLiteralPrefix
         self.onCommit = onCommit
         self.onDismiss = onDismiss
-        let quotedPart = stringLiteralPrefix.isEmpty || !initialValue.hasPrefix(stringLiteralPrefix)
-            ? initialValue
-            : String(initialValue.dropFirst(stringLiteralPrefix.count))
-        if let text = SQLStringLiteral.unquoted(quotedPart),
-           initialValue == "\(stringLiteralPrefix)'\(escapeStringLiteral(text))'" {
-            _mode = State(initialValue: .text)
-            _text = State(initialValue: text)
-        } else {
-            _mode = State(initialValue: .expression)
-            _text = State(initialValue: initialValue)
-        }
+        let initial = Self.initialMode(
+            of: initialValue, escapeStringLiteral: escapeStringLiteral, stringLiteralPrefix: stringLiteralPrefix
+        )
+        _mode = State(initialValue: initial.mode)
+        _text = State(initialValue: initial.text)
+    }
+
+    // Doubled quotes undone and nothing else; a value that does not re-encode to itself, a MySQL backslash escape for
+    // one, is edited as the expression it already is rather than escaped again on every save.
+    static func initialMode(
+        of value: String,
+        escapeStringLiteral: (String) -> String,
+        stringLiteralPrefix: String
+    ) -> (mode: Mode, text: String) {
+        let quotedPart = stringLiteralPrefix.isEmpty || !value.hasPrefix(stringLiteralPrefix)
+            ? value
+            : String(value.dropFirst(stringLiteralPrefix.count))
+        guard let text = SQLQuoting.decodedStringLiteral(quotedPart),
+              value.unicodeScalars.elementsEqual("\(stringLiteralPrefix)'\(escapeStringLiteral(text))'".unicodeScalars)
+        else { return (.expression, value) }
+        return (.text, text)
     }
 
     var body: some View {
@@ -117,38 +128,5 @@ internal struct CustomValueContentView: View {
         guard !sql.isEmpty else { return }
         onCommit(sql)
         onDismiss()
-    }
-}
-
-/// Reading a SQL string literal back into the text it stands for.
-///
-/// It undoes doubled quotes and nothing else, which is the shared half of every dialect. The
-/// engines that escape more than that (MySQL's backslashes, ClickHouse's control characters) are
-/// why the caller checks that re-encoding the result reproduces the original before trusting it: a
-/// value this cannot round-trip is edited as the expression it already is, rather than escaped a
-/// second time on every open and save.
-internal enum SQLStringLiteral {
-    /// The text inside a single-quoted literal, or nil where the value is not one.
-    ///
-    /// A literal with an unescaped quote in the middle is not one value, so it reports nil rather
-    /// than a truncated guess: `'a' || b` is an expression that happens to start with a quote.
-    static func unquoted(_ value: String) -> String? {
-        guard value.count >= 2, value.hasPrefix("'"), value.hasSuffix("'") else { return nil }
-        let inner = String(value.dropFirst().dropLast())
-        var result = ""
-        var index = inner.startIndex
-        while index < inner.endIndex {
-            let character = inner[index]
-            let next = inner.index(after: index)
-            guard character == "'" else {
-                result.append(character)
-                index = next
-                continue
-            }
-            guard next < inner.endIndex, inner[next] == "'" else { return nil }
-            result.append("'")
-            index = inner.index(after: next)
-        }
-        return result
     }
 }

@@ -5,6 +5,7 @@
 
 import Foundation
 @testable import TablePro
+import TableProPluginKit
 import Testing
 
 struct SQLTypeRendererTests {
@@ -186,6 +187,25 @@ struct SQLTypeRendererTests {
     func anEnumLabelIsEscaped() {
         let type = CanonicalColumnType(kind: .enumeration(values: ["it's"]), sourceSpelling: "enum")
         #expect(SQLTypeRenderer.render(type, family: .mysql).spelling == "ENUM('it''s')")
+    }
+
+    // MySQL's default sql_mode and ClickHouse read a backslash as an escape, so a label ending in one swallowed its
+    // closing quote and the next label ran as SQL.
+    @Test("An enum label ending in a backslash stays one literal", arguments: [
+        (SQLTypeFamily.mysql, "ENUM('a\\\\', ' OR 1=1 -- ')"),
+        (SQLTypeFamily.clickhouse, "Enum8('a\\\\' = 1, ' OR 1=1 -- ' = 2)"),
+    ])
+    func aLabelEndingInABackslashStaysOneLiteral(family: SQLTypeFamily, expected: String) {
+        let type = CanonicalColumnType(kind: .enumeration(values: ["a\\", " OR 1=1 -- "]), sourceSpelling: "enum")
+        #expect(SQLTypeRenderer.render(type, family: family).spelling == expected)
+    }
+
+    @Test("A MySQL target session with NO_BACKSLASH_ESCAPES writes the backslash once")
+    func aSessionWithoutBackslashEscapesWritesTheLabelAsItIs() {
+        let session = PluginSessionLexicalState(determined: [.backslashEscapesInSingleQuotes], enabled: [])
+        let escapes = SQLLexicalResolver.stringEscapes(for: .mysql, session: session)
+        let type = CanonicalColumnType(kind: .enumeration(values: ["a\\", "it's"]), sourceSpelling: "enum")
+        #expect(SQLTypeRenderer.render(type, family: .mysql, stringEscapes: escapes).spelling == "ENUM('a\\', 'it''s')")
     }
 
     /// PostgreSQL enums are a separate `CREATE TYPE` with a dependency of its own, so the column

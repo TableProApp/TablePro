@@ -26,6 +26,29 @@ private actor RecordingExecutionGate: ExecutionGate {
 }
 
 struct ScriptingPolicyTests {
+    private func approve(
+        _ sql: String,
+        databaseType: DatabaseType,
+        caller: OperationCaller = .appleScript(client: nil),
+        capabilities: CallerCapabilities,
+        connectionId: UUID = UUID(),
+        operationDescription: String = "a query",
+        gate: any ExecutionGate
+    ) async throws {
+        _ = try await ExternalStatementGate.approve(
+            PendingOperation(
+                scope: DatabaseScope(connectionId: connectionId, database: "app", schema: nil),
+                databaseType: databaseType,
+                statements: [OperationStatement(sql: sql)],
+                kind: OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: databaseType)),
+                caller: caller,
+                capabilities: capabilities,
+                operationDescription: operationDescription
+            ),
+            gate: gate
+        )
+    }
+
     private func authorized() -> OperationDecision {
         .authorized(
             OperationReceipt(
@@ -46,12 +69,12 @@ struct ScriptingPolicyTests {
         let gate = RecordingExecutionGate(decision: authorized())
         let connectionId = UUID()
 
-        try await ExternalStatementGate.authorizeExecution(
-            sql: "DELETE FROM users WHERE id = 1",
-            connectionId: connectionId,
+        try await approve(
+            "DELETE FROM users WHERE id = 1",
             databaseType: .postgresql,
             caller: .appleScript(client: "Script Editor"),
             capabilities: ScriptQueryRunner.capabilities(on: .postgresql),
+            connectionId: connectionId,
             operationDescription: "Script Editor wants to run a query on \"Production\"",
             gate: gate
         )
@@ -89,27 +112,16 @@ struct ScriptingPolicyTests {
         )
 
         for script in ["SELECT 1 AS a;\nSELECT 2 AS b;", "SELECT 1 AS a\nGO\nSELECT 2 AS b", "SELECT 1 AS a\nGO 3"] {
-            try await ExternalStatementGate.authorizeExecution(
-                sql: script,
-                connectionId: UUID(),
-                databaseType: .mssql,
-                caller: .appleScript(client: nil),
-                capabilities: ScriptQueryRunner.capabilities(on: .mssql),
-                operationDescription: "a query",
-                gate: gate
-            )
+            try await approve(script, databaseType: .mssql, capabilities: ScriptQueryRunner.capabilities(on: .mssql), gate: gate)
         }
 
         await #expect(throws: ExternalStatementGateError.denied(
             String(localized: "Multiple statements are not permitted for this client")
         )) {
-            try await ExternalStatementGate.authorizeExecution(
-                sql: "SELECT 1; SELECT 2",
-                connectionId: UUID(),
+            try await approve(
+                "SELECT 1; SELECT 2",
                 databaseType: .postgresql,
-                caller: .appleScript(client: nil),
                 capabilities: ScriptQueryRunner.capabilities(on: .postgresql),
-                operationDescription: "a query",
                 gate: gate
             )
         }
@@ -120,15 +132,7 @@ struct ScriptingPolicyTests {
         let gate = RecordingExecutionGate(decision: .denied(reason: "Operation cancelled by user"))
 
         await #expect(throws: ExternalStatementGateError.denied("Operation cancelled by user")) {
-            try await ExternalStatementGate.authorizeExecution(
-                sql: "DELETE FROM users",
-                connectionId: UUID(),
-                databaseType: .postgresql,
-                caller: .appleScript(client: nil),
-                capabilities: [.mayWrite, .mayRunDestructive],
-                operationDescription: "a query",
-                gate: gate
-            )
+            try await approve("DELETE FROM users", databaseType: .postgresql, capabilities: [.mayWrite, .mayRunDestructive], gate: gate)
         }
     }
 

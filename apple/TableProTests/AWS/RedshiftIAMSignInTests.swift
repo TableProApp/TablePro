@@ -46,6 +46,21 @@ struct RedshiftIAMSignInTests {
         return parameters
     }
 
+    @Test("An AWS Region field that would name another host is refused before anything is signed", arguments: [
+        "attacker.example/",
+        "x@attacker.example#",
+    ])
+    func regionNamingAnotherHostIsRefused(region: String) {
+        let cluster = RedshiftIAMSignIn.Endpoint.cluster(identifier: "analytics", region: "us-east-1")
+        let workgroup = RedshiftIAMSignIn.Endpoint.serverless(workgroup: "reporting", region: "eu-west-1")
+        for endpoint in [cluster, workgroup] {
+            #expect(throws: AWSAuthError.self) {
+                try Self.signIn(fields: ["awsAuth": "profile", "awsRegion": region])
+                    .request(for: endpoint, region: region, credentials: Self.credentials)
+            }
+        }
+    }
+
     @Test("Cluster and workgroup endpoints name what to ask for and where")
     func endpointsParse() {
         #expect(RedshiftIAMSignIn.endpoint(forHost: Self.clusterHost) == .cluster(identifier: "analytics", region: "us-east-1"))

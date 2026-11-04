@@ -56,6 +56,8 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
 
     var isConnected: Bool { current?.isConnected ?? false }
 
+    func pubSubConnection() -> RedisPluginConnection? { current }
+
     private var current: RedisPluginConnection? {
         lock.lock()
         defer { lock.unlock() }
@@ -74,7 +76,7 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
             reportingStage: report
         )
         logger.info(
-            "Sentinel group \(self.group, privacy: .public) resolved to \(resolution.primary.identifier, privacy: .public)"
+            "Sentinel group \(self.group, privacy: .private(mask: .hash)) resolved to \(resolution.primary.identifier, privacy: .private(mask: .hash))"
         )
     }
 
@@ -138,7 +140,7 @@ final class RedisSentinelChannel: RedisCommandChannel, @unchecked Sendable {
         let resolution = try await resolvePrimary(deadline: deadline)
         guard !isPointing(at: resolution.primary) else { return }
         logger.warning(
-            "Sentinel moved primary for \(self.group, privacy: .public) to \(resolution.primary.identifier, privacy: .public)"
+            "Sentinel moved primary for \(self.group, privacy: .private(mask: .hash)) to \(resolution.primary.identifier, privacy: .private(mask: .hash))"
         )
         try await open(
             resolution.primary,

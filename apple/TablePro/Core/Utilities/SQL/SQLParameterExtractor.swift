@@ -185,7 +185,9 @@ enum SQLParameterExtractor {
                     while j <= length - tagLen {
                         if nsSQL.character(at: j) == dollarChar {
                             let candidate = nsSQL.substring(with: NSRange(location: j, length: tagLen))
-                            if candidate == openTag {
+                            // PostgreSQL compares the tag bytes; `String ==` would take a canonically
+                            // equivalent tag such as `$\u{212A}$` (KELVIN SIGN) as the close of `$K$`.
+                            if candidate.utf16.elementsEqual(openTag.utf16) {
                                 i = j + tagLen
                                 found = true
                                 break

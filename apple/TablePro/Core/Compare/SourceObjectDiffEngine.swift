@@ -97,7 +97,8 @@ internal struct SourceObjectDiffEngine {
             comparisonError: comparisonError,
             sourceIndexes: indexes.source,
             targetIndexes: indexes.target,
-            definitionMatches: definitionMatches
+            definitionMatches: definitionMatches,
+            sourceCreationScope: source?.creationScope
         )
     }
 
@@ -176,15 +177,13 @@ internal struct SourceObjectDiffEngine {
         return "\(read.kind.rawValue)|\(schema)|\(name)|\(signature)"
     }
 
-    /// The text that would run is taken before any whitespace is folded. Folding first turns a line comment's
-    /// newline into a space, so the comment swallows the rest of the body, and a unit's own `;` has to survive:
-    /// Oracle stores `END` without it INVALID and with it VALID.
+    // Cut before folding: a folded line comment swallows the body, and Oracle stores `END` without its `;` INVALID.
     private func normalize(_ source: String, scriptText: SQLScriptText) -> String {
         var text = scriptText.comparableText(SqlNormalizer.normalize(source))
         if options.ignoreWhitespaceInText {
             text = text
-                .replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "\t", with: " ")
+                .replacingOccurrences(of: "\n", with: " ", options: .literal)
+                .replacingOccurrences(of: "\t", with: " ", options: .literal)
             while text.contains("  ") {
                 text = text.replacingOccurrences(of: "  ", with: " ")
             }

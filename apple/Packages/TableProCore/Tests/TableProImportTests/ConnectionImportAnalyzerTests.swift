@@ -21,8 +21,145 @@ struct ConnectionImportAnalyzerTests {
 
         let row = try #require(preview.connections.first)
         #expect(row.duplicate == ExistingConnection(id: existingId, name: "Local Postgres"))
-        #expect(row.resolutions == [.addCopy, .replace(existingId)])
+        // Another engine signs in differently, so Replace would hand it the saved password.
+        #expect(row.resolutions == [.addCopy])
         #expect(!row.isSelectedByDefault)
+    }
+
+    private static func tunnel(host: String) -> ExportableSSHConfig {
+        ExportableSSHConfig(
+            enabled: true,
+            host: host,
+            port: nil,
+            username: "deploy",
+            authMethod: "Password",
+            privateKeyPath: "",
+            agentSocketPath: "",
+            jumpHosts: nil,
+            totpMode: nil,
+            totpAlgorithm: nil,
+            totpDigits: nil,
+            totpPeriod: nil
+        )
+    }
+
+    private static func elasticsearchProduction() -> ExportableConnection {
+        Fixtures.settings(
+            name: "Production",
+            host: "es.prod.internal",
+            port: 9_200,
+            database: "",
+            username: "elastic",
+            type: "Elasticsearch"
+        )
+    }
+
+    private static func resolutions(
+        of imported: ExportableConnection,
+        against saved: ExportableConnection,
+        id: UUID
+    ) throws -> [ConnectionResolution] {
+        let preview = Fixtures.makePreview(
+            try Fixtures.makeBundle(connections: [BundleConnection(ref: "c1", settings: imported)]),
+            library: ImportLibrarySnapshot(connections: [Fixtures.existing(saved, id: id)]),
+            environment: Fixtures.makeEnvironment(registeredTypeIds: ["Elasticsearch", "PostgreSQL", "MySQL"])
+        )
+        let row = try #require(preview.connections.first)
+        #expect(row.duplicate?.id == id)
+        return row.resolutions
+    }
+
+    @Test("A file that points a saved Elasticsearch connection's host list elsewhere is not offered Replace")
+    func reportedHostListChangeIsNotOfferedReplace() throws {
+        let id = UUID()
+        let saved = Self.elasticsearchProduction()
+        var imported = saved
+        imported.additionalFields = ["esHosts": "es.attacker.example:9200"]
+
+        #expect(try Self.resolutions(of: imported, against: saved, id: id) == [.addCopy])
+    }
+
+    @Test("Another SSH server, TLS mode, engine or tunnel command is not offered Replace")
+    func reroutedDuplicatesAreNotOfferedReplace() throws {
+        let id = UUID()
+        var saved = Self.elasticsearchProduction()
+        saved.sslConfig = ExportableSSLConfig(mode: "Verify Identity")
+        saved.sshConfig = Self.tunnel(host: "bastion.prod.internal")
+
+        var otherServer = saved
+        otherServer.sshConfig = Self.tunnel(host: "bastion.attacker.example")
+        var noTunnel = saved
+        noTunnel.sshConfig = nil
+        var weakerTLS = saved
+        weakerTLS.sslConfig = ExportableSSLConfig(mode: "Required")
+        var otherEngine = saved
+        otherEngine.type = "PostgreSQL"
+        var tunnelCommand = saved
+        tunnelCommand.tunnelCommand = ExportableTunnelCommand(
+            method: "custom",
+            command: "ssh -L 9200:es.attacker.example:9200 jump",
+            executablePath: nil,
+            kubernetesNamespace: nil,
+            kubernetesResource: nil,
+            kubernetesContext: nil,
+            awsTarget: nil,
+            awsProfile: nil,
+            awsRegion: nil
+        )
+
+        for imported in [otherServer, noTunnel, weakerTLS, otherEngine, tunnelCommand] {
+            #expect(try Self.resolutions(of: imported, against: saved, id: id) == [.addCopy])
+        }
+    }
+
+    @Test("A duplicate that differs only in how it is shown or what runs once it is open is offered Replace")
+    func cosmeticDifferencesAreOfferedReplace() throws {
+        let id = UUID()
+        var saved = Self.elasticsearchProduction()
+        saved.additionalFields = ["esHosts": "es.prod.internal:9200"]
+        saved.sslConfig = ExportableSSLConfig(mode: "Verify Identity")
+        var imported = saved
+        imported.name = "Production (laptop)"
+        imported.color = "red"
+        imported.iconName = "server.rack"
+        imported.connectTimeoutSeconds = 20
+        imported.queryTimeoutSeconds = 60
+        imported.startupCommands = "SET search_path TO app"
+        imported.localOnly = true
+        imported.host = " ES.PROD.INTERNAL "
+
+        #expect(try Self.resolutions(of: imported, against: saved, id: id) == [.addCopy, .replace(id)])
+    }
+
+    @Test("A duplicate that lowers Safe Mode or changes the AI policy is offered As Copy only", arguments: [
+        ("safeModeLevel", "off"), ("aiPolicy", "alwaysAllow"),
+    ])
+    func safetySettingsAreNotReplaced(field: String, value: String) throws {
+        let id = UUID()
+        let saved = Self.elasticsearchProduction()
+        var imported = saved
+        if field == "safeModeLevel" {
+            imported.safeModeLevel = value
+        } else {
+            imported.aiPolicy = value
+        }
+
+        #expect(try Self.resolutions(of: imported, against: saved, id: id) == [.addCopy])
+    }
+
+    @Test("A library that does not describe its connections never offers Replace")
+    func libraryWithoutSettingsOffersNoReplace() throws {
+        let id = UUID()
+        let saved = Fixtures.settings()
+        let existing = ImportLibrarySnapshot.Connection(id: id, name: saved.name, matchKey: ConnectionMatchKey(saved))
+        let preview = Fixtures.makePreview(
+            try Fixtures.makeBundle(connections: [BundleConnection(ref: "c1", settings: saved)]),
+            library: ImportLibrarySnapshot(connections: [existing])
+        )
+
+        let row = try #require(preview.connections.first)
+        #expect(row.duplicate?.id == id)
+        #expect(row.resolutions == [.addCopy])
     }
 
     @Test("The first library connection with a matching key is the duplicate")

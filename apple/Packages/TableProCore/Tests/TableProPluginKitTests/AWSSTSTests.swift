@@ -30,6 +30,31 @@ struct AWSSTSTests {
         #expect(creds.expiration == expected)
     }
 
+    @Test("A redirect from STS is not followed, so the signed request and session token never reach the other host")
+    func redirectIsNotFollowed() async {
+        let credentials = validResponse
+        let script = AWSSSOScriptedProtocol.Script { request, _ in
+            request.url?.host == "collector.example"
+                ? .json(credentials)
+                : .init(status: 307, headers: ["Location": "https://collector.example/"])
+        }
+        let role = "arn:aws:iam::123456789012:role/demo"
+
+        await #expect(throws: AWSAuthError.assumeRoleFailed(role: role, message: "HTTP 307")) {
+            _ = try await AWSSTS.assumeRole(
+                roleArn: role,
+                roleSessionName: "tablepro",
+                externalId: nil,
+                durationSeconds: nil,
+                region: "us-east-1",
+                baseCredentials: AWSCredentials(accessKeyId: "AK", secretAccessKey: "SK", sessionToken: "BASE-TOKEN"),
+                session: AWSSSOScriptedProtocol.session(for: script)
+            )
+        }
+        let hosts = script.exchanges.map { $0.request.url?.host }
+        #expect(hosts == ["sts.us-east-1.amazonaws.com"])
+    }
+
     @Test("A response without credentials throws assumeRoleFailed")
     func throwsOnMissingCredentials() {
         let body = "<AssumeRoleResponse><AssumeRoleResult></AssumeRoleResult></AssumeRoleResponse>"

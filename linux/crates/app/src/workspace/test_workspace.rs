@@ -296,7 +296,7 @@ fn edit(tracker: &TabTrackerHandle, value: i64) {
         row_key: RowKey::from_pk_values(&[Value::Int(1)]).expect("a key"),
         col: 1,
         original: Value::Int(1),
-        value: Value::Int(value),
+        value: tablepro_core::edit::CellInput::Value(Value::Int(value)),
     });
 }
 

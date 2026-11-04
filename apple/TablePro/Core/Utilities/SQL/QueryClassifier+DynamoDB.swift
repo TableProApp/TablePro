@@ -4,32 +4,34 @@
 //
 
 import Foundation
+import TableProSQLGrammar
 import TableProUtilities
 
 /// Tiering a DynamoDB request by the action it names and what its body asks for.
 ///
 /// A request is one statement of its own, so it is tiered where every split statement is, under each reading. A
 /// read is safe. A write is a write, and destructive where the request takes data or a safeguard away: deleting a
-/// table, an index or a replica, turning deletion protection or point-in-time recovery off, enabling a TTL that
-/// expires items, or deleting items in a batch or a transaction. An action it does not know is destructive, because
-/// a plugin from the registry can be newer than the app and run one this list has never heard of. A body it
-/// cannot read is the worst its action can do, because the text no longer shows which of those requests will run
-/// and the driver may still send it. Text after the body that is not a read window is tiered as statements of its
-/// own, which is how a gate reads statements joined without a semicolon. PartiQL keeps the SQL rules, including the
-/// PartiQL a request carries in its body.
+/// table, an index or a replica, turning deletion protection or point-in-time recovery off, shortening the recovery
+/// period, enabling a TTL that expires items, or deleting items in a batch or a transaction. A table or backup setting
+/// this reader does not know is destructive, since a newer API can take something away with it. An action it does not
+/// know is destructive, because a plugin from the registry can be newer than the app and run one this list has never
+/// heard of. A body it cannot read is the worst its action can do, because the text no longer shows which of those
+/// requests will run and the driver may still send it. Text after the body that is not a read window is tiered as
+/// statements of its own, which is how a gate reads statements joined without a semicolon. PartiQL keeps the SQL
+/// rules, including the PartiQL a request carries in its body.
 extension QueryClassifier {
-    static func dynamoDBClassification(_ statement: String, databaseType: DatabaseType) -> QueryClassification? {
-        guard databaseType == .dynamodb, let request = DynamoDBRequestStatement(statement) else { return nil }
+    static func dynamoDBClassification(_ statement: String, grammar: SQLLexicalGrammar) -> QueryClassification? {
+        guard let request = DynamoDBRequestStatement(statement, grammar: grammar) else { return nil }
         return QueryClassification(tier: dynamoDBTier(of: request), reachesFilesystemOrExecutesCode: false)
     }
 
     /// Nil for PartiQL, which the SQL rule answers. A request deletes everything only through the PartiQL it carries
     /// or the statements after it.
-    static func dynamoDBDeletesEverything(_ statement: String, databaseType: DatabaseType) -> Bool? {
-        guard databaseType == .dynamodb, let request = DynamoDBRequestStatement(statement) else { return nil }
+    static func dynamoDBDeletesEveryRow(_ statement: String, grammar: SQLLexicalGrammar) -> Bool? {
+        guard let request = DynamoDBRequestStatement(statement, grammar: grammar) else { return nil }
         let carried = request.partiQLStatements ?? []
         let following = request.hasOnlyReadWindowAfterBody ? [] : [request.trailingText]
-        return (carried + following).contains { isDangerousQuery($0, databaseType: databaseType) }
+        return (carried + following).contains { isDangerousQuery($0, databaseType: .dynamodb) }
     }
 
     private static func dynamoDBTier(of request: DynamoDBRequestStatement) -> QueryTier {
@@ -81,15 +83,25 @@ extension QueryClassifier {
         }
     }
 
+    /// The UpdateTable members that change a setting without taking data or a safeguard away. Indexes, replicas and
+    /// witnesses are read entry by entry, since each entry may delete one.
+    private static let updateTableSettings: Set<String> = [
+        "TableName", "AttributeDefinitions", "BillingMode", "ProvisionedThroughput", "OnDemandThroughput",
+        "WarmThroughput", "SSESpecification", "StreamSpecification", "TableClass", "MultiRegionConsistency",
+        "DeletionProtectionEnabled", "GlobalSecondaryIndexUpdates", "ReplicaUpdates", "GlobalTableWitnessUpdates",
+    ]
+
     private static func updateTableTakesSomethingAway(_ body: DynamoDBRequestJSON) -> Bool {
-        let dropsIndex = body.values(forKey: "GlobalSecondaryIndexUpdates")
-            .flatMap(\.elements)
-            .contains { $0.hasMember("Delete") }
-        let dropsReplica = body.values(forKey: "ReplicaUpdates")
-            .flatMap(\.elements)
-            .contains { $0.hasMember("Delete") }
+        let deletesEntry = ["GlobalSecondaryIndexUpdates", "ReplicaUpdates", "GlobalTableWitnessUpdates"].contains { key in
+            body.values(forKey: key).flatMap(\.elements).contains { $0.hasMember("Delete") }
+        }
         let liftsProtection = body.values(forKey: "DeletionProtectionEnabled").contains { $0.boolValue != true }
-        return dropsIndex || dropsReplica || liftsProtection
+        return deletesEntry || liftsProtection || !hasOnlyMembers(updateTableSettings, body)
+    }
+
+    private static func hasOnlyMembers(_ known: Set<String>, _ object: DynamoDBRequestJSON) -> Bool {
+        guard case .object(let members) = object else { return false }
+        return members.allSatisfy { member in known.contains { $0.caseInsensitiveCompare(member.key) == .orderedSame } }
     }
 
     /// Enabling a TTL starts DynamoDB deleting every item whose attribute has passed, so only a request that visibly
@@ -99,11 +111,20 @@ extension QueryClassifier {
         return !settings.isEmpty && settings.allSatisfy { $0.boolValue == false }
     }
 
+    /// DynamoDB keeps restore points only for the recovery period, and the text does not show the period in force, so
+    /// only the longest one, which a request that names none also gets, visibly takes none away.
     private static func pointInTimeRecoveryStaysOn(_ body: DynamoDBRequestJSON) -> Bool {
-        let settings = body.values(forKey: "PointInTimeRecoverySpecification")
-            .flatMap { $0.values(forKey: "PointInTimeRecoveryEnabled") }
-        return !settings.isEmpty && settings.allSatisfy { $0.boolValue == true }
+        let specifications = body.values(forKey: "PointInTimeRecoverySpecification")
+        let settings = specifications.flatMap { $0.values(forKey: "PointInTimeRecoveryEnabled") }
+        let periods = specifications.flatMap { $0.values(forKey: "RecoveryPeriodInDays") }
+        return hasOnlyMembers(["TableName", "PointInTimeRecoverySpecification"], body)
+            && specifications.allSatisfy { hasOnlyMembers(["PointInTimeRecoveryEnabled", "RecoveryPeriodInDays"], $0) }
+            && !settings.isEmpty
+            && settings.allSatisfy { $0.boolValue == true }
+            && periods.allSatisfy { $0 == .number(longestRecoveryPeriodInDays) }
     }
+
+    private static let longestRecoveryPeriodInDays = "35"
 
     private static func batchDeletesItems(_ body: DynamoDBRequestJSON) -> Bool {
         body.values(forKey: "RequestItems")

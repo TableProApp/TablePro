@@ -211,7 +211,7 @@ struct PhpSerializeParserSpecialTests {
         #expect(payload == "xyzab")
     }
 
-    /// PHP 8.1 writes an enum case as `E:`. Before, any value holding one failed to parse at all.
+    // PHP 8.1 writes an enum case as `E:`. Before, any value holding one failed to parse at all.
     @Test("E token returns .enumCase, inside an array too")
     func enumCaseToken() {
         #expect(PhpSerializeParser.parse(#"E:11:"Suit:Hearts";"#) == .enumCase(className: "Suit", caseName: "Hearts"))
@@ -228,9 +228,20 @@ struct PhpSerializeParserSpecialTests {
         #expect(tree.badgeLabel == "enum")
     }
 
-    @Test("r token returns .reference")
+    @Test("An object member with an integer key, as ArrayObject and __serialize data have, parses and writes back")
+    func integerObjectKeys() {
+        let text = #"O:11:"ArrayObject":4:{i:0;i:0;i:1;a:2:{i:0;i:1;i:1;i:2;}i:2;a:0:{}i:3;N;}"#
+        guard case .object("ArrayObject", let properties)? = PhpSerializeParser.parse(text) else {
+            Issue.record("expected an object")
+            return
+        }
+        #expect(properties.map(\.index) == [0, 1, 2, 3])
+        #expect(PhpSerializeWriter.text(.object(className: "ArrayObject", properties: properties)) == text)
+    }
+
+    @Test("r token returns .objectReference, so it is written back as r and not as R")
     func referenceLowerR() {
-        #expect(PhpSerializeParser.parse("r:7;") == .reference(id: 7))
+        #expect(PhpSerializeParser.parse("r:7;") == .objectReference(id: 7))
     }
 
     @Test("R token returns .reference")
@@ -292,5 +303,44 @@ struct PhpSerializeParserDepthTests {
     func looksLikeRejectsAmbiguous() {
         #expect(!PhpSerializeParser.looksLikePhpSerialized("a quick brown fox"))
         #expect(!PhpSerializeParser.looksLikePhpSerialized("some text"))
+    }
+
+    private static func nested(_ inner: String, wrappers: Int, padding: Int = 0) -> String {
+        String(repeating: "a:1:{i:0;", count: wrappers) + inner + String(repeating: "}", count: wrappers)
+            + String(repeating: " ", count: padding)
+    }
+
+    @Test("A value nested to the depth cap parses, one level deeper is refused")
+    func nestingAtTheCap() {
+        let cap = PhpSerializeParser.depthCap
+        #expect(PhpSerializeParser.parse(Self.nested("i:1;", wrappers: cap)) != nil)
+        #expect(PhpSerializeParser.parse(Self.nested("i:1;", wrappers: cap + 1)) == nil)
+    }
+
+    @Test("An array at the depth cap that declares entries it does not carry is refused")
+    func forgedCountAtTheCap() {
+        let value = Self.nested("a:60000:{}", wrappers: PhpSerializeParser.depthCap, padding: 60_000)
+        #expect(PhpSerializeParser.parse(value) == nil)
+    }
+
+    @Test("Sibling arrays at the depth cap cannot each claim the trailing padding")
+    func forgedSiblingCountsAtTheCap() {
+        let siblings = (0..<50).map { "i:\($0);a:5000:{}" }.joined()
+        let value = Self.nested("a:50:{\(siblings)}", wrappers: PhpSerializeParser.depthCap - 1, padding: 5_000)
+        #expect(PhpSerializeParser.parse(value) == nil)
+    }
+
+    @Test("A parse in a cancelled task stops and returns nil")
+    func cancelledParse() async {
+        let value = "a:5000:{" + (0..<5_000).map { "i:\($0);i:\($0);" }.joined() + "}"
+        #expect(PhpSerializeParser.parse(value) != nil)
+        let stopped = await Task.detached { () -> Bool in
+            withUnsafeCurrentTask { task in
+                guard let task else { return }
+                task.cancel()
+            }
+            return PhpSerializeParser.parse(value) == nil
+        }.value
+        #expect(stopped)
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 enum TeradataMessages {
     static func authBytes(_ value: UInt64) -> [UInt8] {
@@ -130,10 +131,10 @@ enum TeradataMessages {
     }
 
     private static func quoteDouble(_ value: String) -> String {
-        "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        SQLQuoting.identifier(value)
     }
 
     private static func quoteSingle(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        SQLQuoting.stringLiteral(value)
     }
 }

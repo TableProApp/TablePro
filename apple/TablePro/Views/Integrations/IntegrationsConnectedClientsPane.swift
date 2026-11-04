@@ -156,7 +156,7 @@ private struct ConnectedClientsTable: View {
         if let version = client.clientVersion {
             Text(version).foregroundStyle(.secondary)
         } else {
-            Text(verbatim: "—").foregroundStyle(.tertiary)
+            Text(verbatim: "-").foregroundStyle(.tertiary)
         }
     }
 
@@ -165,7 +165,7 @@ private struct ConnectedClientsTable: View {
         if let name = client.tokenName {
             Text(IntegrationsFormatting.displayTokenName(name))
         } else {
-            Text(verbatim: "—").foregroundStyle(.tertiary)
+            Text(verbatim: "-").foregroundStyle(.tertiary)
         }
     }
 
@@ -174,7 +174,7 @@ private struct ConnectedClientsTable: View {
         if let address = client.remoteAddress {
             Text(address).font(.system(.body, design: .monospaced))
         } else {
-            Text(verbatim: "—").foregroundStyle(.tertiary)
+            Text(verbatim: "-").foregroundStyle(.tertiary)
         }
     }
 

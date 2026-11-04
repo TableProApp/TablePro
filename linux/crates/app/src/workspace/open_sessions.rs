@@ -114,7 +114,8 @@ impl OpenSessions {
     }
 
     /// Ignored while a quit runs: the windows it closes are the ones the
-    /// next launch reopens.
+    /// next launch reopens. A connection's other databases go with it,
+    /// since they reopen only beside it (0030).
     pub fn remove(&self, key: &SessionKey) {
         if self.frozen.get() {
             return;
@@ -122,7 +123,7 @@ impl OpenSessions {
         {
             let mut keys = self.keys.borrow_mut();
             let before = keys.len();
-            keys.retain(|(kept, _)| kept != key);
+            keys.retain(|(kept, _)| kept != key && !opens_beside(kept, key));
             if keys.len() == before {
                 return;
             }
@@ -210,6 +211,11 @@ impl std::fmt::Debug for OpenSessions {
     }
 }
 
+/// Whether `kept` is another database of the connection `key`.
+fn opens_beside(kept: &SessionKey, key: &SessionKey) -> bool {
+    matches!((kept, key), (SessionKey::SavedIn { id, .. }, SessionKey::Saved(of)) if id == of)
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::{Path, PathBuf};
@@ -293,6 +299,33 @@ mod tests {
 
         assert_eq!(fixture.sessions.keys(), [first.clone(), second.clone()]);
         assert_eq!(fixture.on_disk(), [first, second]);
+    }
+
+    /// A connection's other databases reopen only beside it, so they go
+    /// from the record with it.
+    #[gtk4::test]
+    fn removing_a_connection_removes_its_other_databases() {
+        let fixture = Fixture::new();
+        let connection = saved();
+        let SessionKey::Saved(id) = connection else {
+            panic!("a saved key");
+        };
+        let database = SessionKey::SavedIn {
+            id,
+            database: "analytics".to_owned(),
+        };
+        let other = SessionKey::SavedIn {
+            id: Uuid::new_v4(),
+            database: "analytics".to_owned(),
+        };
+        for key in [&connection, &database, &other] {
+            fixture.sessions.add(key.clone(), 1);
+        }
+
+        fixture.sessions.remove(&connection);
+
+        assert_eq!(fixture.sessions.keys(), std::slice::from_ref(&other));
+        assert_eq!(fixture.on_disk(), [other]);
     }
 
     #[gtk4::test]

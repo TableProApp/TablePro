@@ -33,10 +33,10 @@ extension PostgreSQLPluginDriver {
     private func position(schema: String, sequence: String) async -> PostgreSQLSequencePosition? {
         do {
             let query = PostgreSQLSequencePosition.query(schema: schema, sequence: sequence)
-            return PostgreSQLSequencePosition(row: try await execute(query: query).rows.first)
+            return PostgreSQLSequencePosition(row: try await catalogRead(query).rows.first)
         } catch {
             Self.sequenceLogger.debug(
-                "Sequence position unavailable for \(sequence, privacy: .public): \(error.localizedDescription)"
+                "Sequence position unavailable for \(sequence, privacy: .private(mask: .hash)): \(error.localizedDescription)"
             )
             return nil
         }
@@ -76,10 +76,8 @@ extension PostgreSQLPluginDriver {
         named sequence: String? = nil
     ) async throws -> [PostgreSQLSequenceDefinition] {
         let source = PostgreSQLSequenceQueries.source(hasSequencesCatalog: includesSequencesCatalog())
-        let listing = try await execute(
-            query: PostgreSQLSequenceQueries.sequenceList(
-                schema: schema, dependentOnTable: table, source: source, named: sequence
-            )
+        let listing = try await catalogRead(
+            PostgreSQLSequenceQueries.sequenceList(schema: schema, dependentOnTable: table, source: source, named: sequence)
         )
         var definitions: [PostgreSQLSequenceDefinition] = []
         for definition in PostgreSQLSequenceQueries.definitions(from: listing.rows) {
@@ -95,10 +93,10 @@ extension PostgreSQLPluginDriver {
     private func lastValue(schema: String, sequence: String) async -> String? {
         do {
             let query = PostgreSQLSequenceQueries.lastValue(schema: schema, sequence: sequence)
-            return try await execute(query: query).rows.first?[safe: 0]?.asText
+            return try await catalogRead(query).rows.first?[safe: 0]?.asText
         } catch {
             Self.sequenceLogger.debug(
-                "Sequence last value unavailable for \(sequence, privacy: .public): \(error.localizedDescription)"
+                "Sequence last value unavailable for \(sequence, privacy: .private(mask: .hash)): \(error.localizedDescription)"
             )
             return nil
         }

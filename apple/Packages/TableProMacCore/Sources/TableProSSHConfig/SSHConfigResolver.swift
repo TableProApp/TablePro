@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProSSHTransport
 
 public struct ResolverEnvironment: Sendable {
     var runShell: @Sendable (String) -> Bool
@@ -90,11 +91,18 @@ public enum SSHConfigResolver {
         env: ResolverEnvironment
     ) -> ResolvedSSHTarget {
         let localUser = env.currentLocalUser()
-        var failure: SSHTokenExpansionError?
+        // The host, user and port can come from an imported file or a link, and Match exec hands them
+        // to /bin/sh, so like ssh no block is evaluated for a value it would refuse.
+        var failure = SSHDestinationName.problem(host: originalHost, user: formUser, port: formPort)
+            .map(SSHTokenExpansionError.invalidDestination)
+        if let failure {
+            logger.warning("\(failure.explanation, privacy: .private)")
+        }
+        let blocks = failure == nil ? document.blocks : []
 
         var firstPass = ResolutionState()
         applyMatchingBlocks(
-            blocks: document.blocks,
+            blocks: blocks,
             pass: PassInputs(
                 originalHost: originalHost,
                 currentHost: originalHost,
@@ -121,7 +129,7 @@ public enum SSHConfigResolver {
 
         let canonicalOptions = SSHCanonicalizationOptions(
             mode: firstPass.canonicalizeHostname ?? .no,
-            domains: firstPass.canonicalDomains,
+            domains: firstPass.canonicalDomains ?? [],
             fallbackLocal: firstPass.canonicalizeFallbackLocal ?? true,
             maxDots: firstPass.canonicalizeMaxDots ?? 1,
             permittedCNAMEs: firstPass.canonicalizePermittedCNAMEs
@@ -130,15 +138,21 @@ public enum SSHConfigResolver {
         let isProxied = !formJumpHosts.isEmpty || firstPass.proxyJump.map { !SSHConfigParser.isNone($0) } == true
         let canonicalizes = canonicalOptions.mode == .always || (canonicalOptions.mode == .yes && !isProxied)
         let canonicalizedHost: String
-        if canonicalizes, let canonical = env.canonicalize(substitutedHost, canonicalOptions) {
+        if !canonicalizes {
+            canonicalizedHost = substitutedHost
+        } else if let canonical = env.canonicalize(substitutedHost, canonicalOptions) {
             canonicalizedHost = canonical
         } else {
+            // Dialing the short name would leave the server to the network's search list.
+            let error = SSHTokenExpansionError.hostNotInCanonicalDomains(host: substitutedHost)
+            logger.warning("\(error.explanation, privacy: .private)")
+            if failure == nil { failure = error }
             canonicalizedHost = substitutedHost
         }
 
         var secondPass = ResolutionState()
         applyMatchingBlocks(
-            blocks: document.blocks,
+            blocks: blocks,
             pass: PassInputs(
                 originalHost: originalHost,
                 currentHost: canonicalizedHost,
@@ -159,6 +173,10 @@ public enum SSHConfigResolver {
         let merged = firstPass.merging(secondPass)
 
         let effectivePort = formPort ?? merged.port ?? 22
+        // ssh refuses a `Port` it cannot use when it reads the config.
+        if failure == nil, !SSHDestinationName.isValidPort(effectivePort) {
+            failure = .invalidDestination(.port(effectivePort))
+        }
         let effectiveUser = !formUser.isEmpty ? formUser : (merged.user ?? "")
         let effectiveHost = canonicalizedHost.isEmpty ? originalHost : canonicalizedHost
 
@@ -246,7 +264,8 @@ public enum SSHConfigResolver {
             useKeychain: merged.useKeychain ?? true,
             addKeysToAgent: merged.addKeysToAgent ?? false,
             proxyJump: effectiveProxyJump,
-            expansionFailure: failure
+            expansionFailure: failure,
+            dialHost: canonicalizes && canonicalizedHost != substitutedHost ? canonicalizedHost + "." : effectiveHost
         )
     }
 
@@ -265,7 +284,7 @@ public enum SSHConfigResolver {
         do {
             return try context.expand(value, scope: scope, keyword: keyword)
         } catch let error as SSHTokenExpansionError {
-            logger.warning("\(error.explanation, privacy: .public)")
+            logger.warning("\(error.explanation, privacy: .private)")
             if failure == nil { failure = error }
             return nil
         } catch {
@@ -509,6 +528,12 @@ public enum SSHConfigResolver {
                 localUser: inputs.localUser,
                 localHostname: env.localHostname()
             )
+            // A HostName substitution or a canonical name from DNS never passed the entry check.
+            if let problem = destinationProblem(in: context, substituting: tokens(in: command)) {
+                logger.warning("\(problem.explanation, privacy: .private)")
+                if failure == nil { failure = problem }
+                return nil
+            }
             guard let expanded = expand(
                 command,
                 scope: .matchExec,
@@ -518,6 +543,44 @@ public enum SSHConfigResolver {
             ) else { return nil }
             return env.runShell(expanded)
         }
+    }
+
+    private static func destinationProblem(
+        in context: SSHTokenContext,
+        substituting tokens: Set<Character>
+    ) -> SSHTokenExpansionError? {
+        var hosts: [String?] = []
+        if !tokens.isDisjoint(with: ["n", "k"]) { hosts.append(context.originalHost) }
+        if tokens.contains("h") { hosts.append(context.hostname) }
+        for host in hosts.compactMap({ $0 }) where !SSHDestinationName.isValidHost(host) {
+            return .invalidDestination(.host(host))
+        }
+        // A user may hold a backslash for DOMAIN\user, and an unquoted %r drops a leading one, which
+        // turns `\-oProxyCommand=…` into an option of the probe's command.
+        if tokens.contains("r"), let user = context.remoteUser,
+           !SSHDestinationName.isValidUser(user) || user.unicodeScalars.first == "\\" {
+            return .invalidDestination(.user(user))
+        }
+        // A config `Port` reaches here unchecked, and `-1` would be read as an option.
+        if tokens.contains("p"), let port = context.port, !SSHDestinationName.isValidPort(port) {
+            return .invalidDestination(.port(port))
+        }
+        return nil
+    }
+
+    private static func tokens(in command: String) -> Set<Character> {
+        var tokens: Set<Character> = []
+        var index = command.startIndex
+        while index < command.endIndex {
+            let next = command.index(after: index)
+            guard command[index] == "%", next < command.endIndex else {
+                index = next
+                continue
+            }
+            if command[next] != "%" { tokens.insert(command[next]) }
+            index = command.index(after: next)
+        }
+        return tokens
     }
 }
 
@@ -536,7 +599,8 @@ private struct ResolutionState {
     var addKeysToAgent: Bool?
     var useKeychain: Bool?
     var canonicalizeHostname: CanonicalizeMode?
-    var canonicalDomains: [String] = []
+    // `CanonicalDomains none` is set and empty, so a later line does not apply either.
+    var canonicalDomains: [String]?
     var canonicalizePermittedCNAMEs: String?
     var canonicalizeFallbackLocal: Bool?
     var canonicalizeMaxDots: Int?
@@ -569,7 +633,7 @@ private struct ResolutionState {
         case .canonicalizeHostname(let value):
             if canonicalizeHostname == nil { canonicalizeHostname = value }
         case .canonicalDomains(let domains):
-            if canonicalDomains.isEmpty { canonicalDomains = domains }
+            if canonicalDomains == nil { canonicalDomains = domains }
         case .canonicalizePermittedCNAMEs(let value):
             if canonicalizePermittedCNAMEs == nil { canonicalizePermittedCNAMEs = value }
         case .canonicalizeFallbackLocal(let value):
@@ -601,7 +665,7 @@ private struct ResolutionState {
         if result.addKeysToAgent == nil { result.addKeysToAgent = other.addKeysToAgent }
         if result.useKeychain == nil { result.useKeychain = other.useKeychain }
         if result.canonicalizeHostname == nil { result.canonicalizeHostname = other.canonicalizeHostname }
-        if result.canonicalDomains.isEmpty { result.canonicalDomains = other.canonicalDomains }
+        if result.canonicalDomains == nil { result.canonicalDomains = other.canonicalDomains }
         if result.canonicalizePermittedCNAMEs == nil {
             result.canonicalizePermittedCNAMEs = other.canonicalizePermittedCNAMEs
         }

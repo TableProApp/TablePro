@@ -16,25 +16,56 @@ struct LinkedConnection: Identifiable, Sendable {
     let sourceFileURL: URL
 }
 
+struct LinkedFolderStatus: Equatable, Sendable {
+    enum Contents: Equatable, Sendable {
+        case connections(Int, unreadableFiles: Int)
+        case missing
+        case unreadable
+    }
+
+    let contents: Contents
+    let isWatched: Bool
+}
+
+struct LinkedFolderScan: Sendable {
+    var connections: [LinkedConnection] = []
+    var contents: [UUID: LinkedFolderStatus.Contents] = [:]
+}
+
 @MainActor
 final class LinkedFolderWatcher: ObservableObject {
     static let shared = LinkedFolderWatcher()
     nonisolated private static let logger = Logger(subsystem: "com.TablePro", category: "LinkedFolderWatcher")
 
     @Published private(set) var linkedConnections: [LinkedConnection] = []
-    @Published private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]
+    @Published private(set) var folderStatuses: [UUID: LinkedFolderStatus] = [:]
+    private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]
     private var debounceTask: Task<Void, Never>?
-    @Published private var hasStarted = false
+    private var hasStarted = false
 
-    private init() {}
+    private let loadFolders: @MainActor () -> [LinkedFolder]
+    private let isFeatureAvailable: @MainActor () -> Bool
+    private let scan: @MainActor ([LinkedFolder]) async -> LinkedFolderScan
+
+    init(
+        loadFolders: @escaping @MainActor () -> [LinkedFolder] = { LinkedFolderStorage.shared.loadFolders() },
+        isFeatureAvailable: @escaping @MainActor () -> Bool = { FeatureAccess.shared.isAvailable(.linkedFolders) },
+        scan: @escaping @MainActor ([LinkedFolder]) async -> LinkedFolderScan = { folders in
+            await Task.detached(priority: .utility) { LinkedFolderWatcher.scanFolders(folders) }.value
+        }
+    ) {
+        self.loadFolders = loadFolders
+        self.isFeatureAvailable = isFeatureAvailable
+        self.scan = scan
+    }
 
     func start() {
         guard !hasStarted else { return }
-        guard FeatureAccess.shared.isAvailable(.linkedFolders) else { return }
+        guard isFeatureAvailable() else { return }
         hasStarted = true
-        let folders = LinkedFolderStorage.shared.loadFolders()
-        scheduleScan(folders)
+        let folders = loadFolders()
         setupWatchers(for: folders)
+        scheduleScan(folders)
     }
 
     func stop() {
@@ -53,33 +84,33 @@ final class LinkedFolderWatcher: ObservableObject {
 
     private func scheduleScan(_ folders: [LinkedFolder]) {
         debounceTask?.cancel()
-        debounceTask = Task { @MainActor [weak self] in
-            let results = await Self.scanFoldersAsync(folders)
-            self?.linkedConnections = results
-            AppEvents.shared.linkedFoldersDidUpdate.send(())
+        debounceTask = Task { [weak self] in
+            await self?.runScan(of: folders)
         }
     }
 
     private func scheduleDebouncedRescan() {
         debounceTask?.cancel()
-        debounceTask = Task { @MainActor [weak self] in
+        debounceTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
-            let folders = LinkedFolderStorage.shared.loadFolders()
-            let results = await Self.scanFoldersAsync(folders)
-            self?.linkedConnections = results
-            AppEvents.shared.linkedFoldersDidUpdate.send(())
+            guard !Task.isCancelled, let self else { return }
+            await runScan(of: loadFolders())
         }
     }
 
-    nonisolated private static func scanFoldersAsync(_ folders: [LinkedFolder]) async -> [LinkedConnection] {
-        await Task.detached(priority: .utility) {
-            scanFolders(folders)
-        }.value
+    private func runScan(of folders: [LinkedFolder]) async {
+        let result = await scan(folders)
+        // A reload cancels this scan; landing anyway would bring back a removed folder's rows.
+        guard !Task.isCancelled else { return }
+        linkedConnections = result.connections
+        folderStatuses = result.contents.reduce(into: [:]) { statuses, entry in
+            statuses[entry.key] = LinkedFolderStatus(contents: entry.value, isWatched: watchSources[entry.key] != nil)
+        }
+        AppEvents.shared.linkedFoldersDidUpdate.send(())
     }
 
-    nonisolated private static func scanFolders(_ folders: [LinkedFolder]) -> [LinkedConnection] {
-        var results: [LinkedConnection] = []
+    nonisolated static func scanFolders(_ folders: [LinkedFolder]) -> LinkedFolderScan {
+        var scan = LinkedFolderScan()
         var seenIds: Set<UUID> = []
         let fm = FileManager.default
 
@@ -87,39 +118,53 @@ final class LinkedFolderWatcher: ObservableObject {
             let expandedPath = folder.expandedPath
             guard fm.fileExists(atPath: expandedPath) else {
                 logger.warning("Linked folder not found: \(expandedPath, privacy: .private(mask: .hash))")
+                scan.contents[folder.id] = .missing
                 continue
             }
 
             guard let contents = try? fm.contentsOfDirectory(atPath: expandedPath) else {
                 logger.warning("Cannot read linked folder: \(expandedPath, privacy: .private(mask: .hash))")
+                scan.contents[folder.id] = .unreadable
                 continue
             }
 
+            var found = 0
+            var unreadable = 0
             for filename in contents where filename.hasSuffix(".tablepro") {
                 let fileURL = URL(fileURLWithPath: expandedPath).appendingPathComponent(filename)
-                guard let data = try? Data(contentsOf: fileURL) else { continue }
-
-                if ConnectionBundleCodec.isEncrypted(data) { continue }
-
-                let bundle: ConnectionBundle
-                do {
-                    bundle = try ConnectionBundleCodec.decode(data)
-                } catch {
-                    logger.warning(
-                        "Skipped linked file \(filename, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)"
-                    )
+                guard let data = try? Data(contentsOf: fileURL) else {
+                    logger.warning("Cannot read linked file \(filename, privacy: .private(mask: .hash))")
+                    unreadable += 1
                     continue
                 }
 
-                for exportable in bundle.connections.map(\.settings) {
-                    let linked = linkedConnection(folderId: folder.id, sourceFileURL: fileURL, exportable: exportable)
+                // A linked folder has no way to ask for the passphrase.
+                guard !ConnectionBundleCodec.isEncrypted(data) else {
+                    unreadable += 1
+                    continue
+                }
+
+                let linkedInFile: [LinkedConnection]
+                do {
+                    linkedInFile = try linkedConnections(in: data, folderId: folder.id, sourceFileURL: fileURL)
+                } catch {
+                    logger.warning(
+                        "Skipped linked file \(filename, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
+                    )
+                    unreadable += 1
+                    continue
+                }
+
+                for linked in linkedInFile {
                     guard seenIds.insert(linked.id).inserted else { continue }
-                    results.append(linked)
+                    scan.connections.append(linked)
+                    found += 1
                 }
             }
+            scan.contents[folder.id] = .connections(found, unreadableFiles: unreadable)
         }
 
-        return results
+        return scan
     }
 
     // MARK: - Watchers
@@ -161,6 +206,18 @@ final class LinkedFolderWatcher: ObservableObject {
             source.cancel()
         }
         watchSources.removeAll()
+    }
+
+    // A linked row is never saved and asks before it signs in with a credential this Mac holds, so it keeps the
+    // selectors a saved import drops.
+    nonisolated static func linkedConnections(
+        in data: Data,
+        folderId: UUID,
+        sourceFileURL: URL
+    ) throws -> [LinkedConnection] {
+        try ConnectionBundleCodec.decode(data, keepingLocalCredentials: true).connections.map {
+            linkedConnection(folderId: folderId, sourceFileURL: sourceFileURL, exportable: $0.settings)
+        }
     }
 
     // MARK: - Stable IDs (SHA-256 based, deterministic across launches)

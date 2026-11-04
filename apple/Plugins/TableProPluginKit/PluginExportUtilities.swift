@@ -93,13 +93,10 @@ public enum PluginExportUtilities {
     }
 
     public static func sanitizeForSQLComment(_ name: String) -> String {
-        var result = name
-        result = result.replacingOccurrences(of: "\n", with: " ")
-        result = result.replacingOccurrences(of: "\r", with: " ")
-        result = result.replacingOccurrences(of: "/*", with: "")
-        result = result.replacingOccurrences(of: "*/", with: "")
-        result = result.replacingOccurrences(of: "--", with: "")
-        return result
+        PluginSQLQuoting.lineCommentText(name)
+            .replacingOccurrences(of: "/*", with: "", options: .literal)
+            .replacingOccurrences(of: "*/", with: "", options: .literal)
+            .replacingOccurrences(of: "--", with: "", options: .literal)
     }
 
     public static func isNumericColumnType(_ typeName: String) -> Bool {

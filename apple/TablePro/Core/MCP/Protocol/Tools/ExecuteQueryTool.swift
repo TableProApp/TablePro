@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProMCP
+import TableProSQLGrammar
 
 public struct ExecuteQueryTool: MCPToolImplementation {
     public static let name = "execute_query"
@@ -80,20 +81,37 @@ public struct ExecuteQueryTool: MCPToolImplementation {
         await context.progress.emit(progress: 0.0, total: 1.0, message: "Resolving connection")
 
         let meta = try await ToolConnectionMetadata.resolve(connectionId: connectionId)
-        try await MCPStatementGate.authorize(
+        let allowsMultiStatement = ExternalStatementGate.acceptsScripts(on: meta.databaseType)
+        let classification = try MCPStatementGate.classify(
             sql: query,
             meta: meta,
             allowsDestructive: false,
-            allowsMultiStatement: ExternalStatementGate.acceptsScripts(on: meta.databaseType),
+            allowsMultiStatement: allowsMultiStatement,
             readOnly: readOnly,
-            operationLabel: String(localized: "a query"),
-            context: context,
-            services: services
+            context: context
         )
 
         let scope = try await MCPScopeArguments.resolve(
             arguments,
             connectionId: connectionId,
+            services: services
+        )
+        let planned: DatabaseAccessBridge.PlannedText
+        do {
+            planned = try await services.connectionBridge.plannedScript(scope: scope, query: query, maxRows: maxRows)
+        } catch {
+            throw ToolQueryExecutor.translate(error, secrets: meta.redactionSecrets)
+        }
+        let operation = try await MCPStatementGate.approve(
+            [planned.statement],
+            kind: OperationKind.from(classification.tier),
+            unit: planned.unit,
+            scope: scope,
+            meta: meta,
+            allowsDestructive: false,
+            allowsMultiStatement: allowsMultiStatement,
+            operationLabel: String(localized: "a query"),
+            context: context,
             services: services
         )
 
@@ -104,13 +122,11 @@ public struct ExecuteQueryTool: MCPToolImplementation {
 
         let result = try await ToolQueryExecutor.executeAndLog(
             services: services,
-            query: query,
-            scope: scope,
+            operation: operation,
             maxRows: maxRows,
             timeoutSeconds: timeoutSeconds,
             context: context,
-            secrets: meta.redactionSecrets,
-            unit: .script
+            secrets: meta.redactionSecrets
         )
 
         await context.progress.emit(progress: 1.0, total: 1.0, message: "Done")

@@ -17,6 +17,11 @@ public enum SQLExecutableCommentReadings {
         case mariaDB
         /// A MariaDB Galera node, which also runs `/*!99997` (`sql_lex.cc`, not measured).
         case galera
+        /// A Galera node built on MySQL before 8.1, such as Percona XtraDB Cluster: the same wsrep patch runs
+        /// `/*!99997` there too, and everything else reads as `mySQL5` (`sql_lex.cc`, not measured).
+        case mySQL5Galera
+        /// A Galera node built on MySQL 8.1 or later, which otherwise reads as `mySQL81`.
+        case mySQL81Galera
         /// TiDB: `/*!` runs whatever its version, `/*T!` runs, and `/*T![feature]` reads as plain when TiDB lacks it.
         case tiDB
         /// OceanBase rereads a statement that fails with every `/*!` as a plain comment (`ob_parser.cpp`, not measured).
@@ -163,9 +168,9 @@ extension SQLExecutableCommentReadings {
             guard digits >= 5, marker != .tiDB else { return nil }
             let length: Int
             switch family {
-            case .mySQL5, .tiDB:
+            case .mySQL5, .mySQL5Galera, .tiDB:
                 length = 5
-            case .mySQL81:
+            case .mySQL81, .mySQL81Galera:
                 length = digits == 6 && followedByWhitespace ? 6 : 5
             case .mariaDB, .galera:
                 length = min(digits, 6)
@@ -180,7 +185,9 @@ extension SQLExecutableCommentReadings {
         func decision(on server: Server, in units: [UInt16]) -> Decision {
             switch (marker, server.family) {
             case (_, .oceanBase), (.tiDB, .mySQL5), (.tiDB, .mySQL81), (.tiDB, .mariaDB), (.tiDB, .galera),
-                 (.mariaDB, .mySQL5), (.mariaDB, .mySQL81), (.mariaDB, .tiDB):
+                 (.tiDB, .mySQL5Galera), (.tiDB, .mySQL81Galera),
+                 (.mariaDB, .mySQL5), (.mariaDB, .mySQL81), (.mariaDB, .tiDB),
+                 (.mariaDB, .mySQL5Galera), (.mariaDB, .mySQL81Galera):
                 return .plain
             case (.tiDB, .tiDB):
                 return .runs(openerLength: markerLength)
@@ -194,6 +201,8 @@ extension SQLExecutableCommentReadings {
             switch server.family {
             case .mySQL5, .mySQL81:
                 runs = version.value <= server.version
+            case .mySQL5Galera, .mySQL81Galera:
+                runs = version.value <= server.version || version.value == 99_997
             case .tiDB:
                 runs = true
             case .mariaDB, .galera:
@@ -329,6 +338,12 @@ extension SQLExecutableCommentReadings {
                 return [0] + versions.filter { $0 < Self.firstSixDigitMySQL }.sorted()
             case .mySQL81:
                 return [Self.firstSixDigitMySQL] + versions.filter { $0 > Self.firstSixDigitMySQL }.sorted()
+            case .mySQL5Galera:
+                guard versions.contains(99_997) else { return [] }
+                return thresholds(for: .mySQL5, openers: openers)
+            case .mySQL81Galera:
+                guard versions.contains(99_997) else { return [] }
+                return thresholds(for: .mySQL81, openers: openers)
             case .mariaDB:
                 return [0] + versions.sorted()
             case .galera:

@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import TableProSQLQuoting
 
 internal protocol UserDefinedTypeCatalogReading: Sendable {
     func fetchSchemas() async throws -> [String]
@@ -54,21 +55,19 @@ enum UserDefinedTypeSuggestions {
             .sorted { sortKey($0).localizedCaseInsensitiveCompare(sortKey($1)) == .orderedAscending }
     }
 
-    /// Quotes are spelling, not order: `app."select"` belongs between `app.mood` and `app.zeta`,
-    /// not ahead of every bare name because a quote sorts before a letter.
+    // Quotes are spelling, not order: `app."select"` sorts between `app.mood` and `app.zeta`.
     private static func sortKey(_ entry: String) -> String {
-        entry.replacingOccurrences(of: "\"", with: "")
+        entry.replacingOccurrences(of: "\"", with: "", options: .literal)
     }
 
-    /// Bare only for a name PostgreSQL would read back unchanged: lower-case letters, digits and
-    /// underscores, not starting with a digit. Anything else is double-quoted, quotes doubled.
+    // Bare only for a name PostgreSQL reads back unchanged: lower-case letters, digits and underscores, no leading digit.
     static func identifier(_ name: String) -> String {
         let scalars = name.unicodeScalars
         let isPlain = !scalars.isEmpty
             && !(scalars.first.map { CharacterSet.decimalDigits.contains($0) } ?? false)
             && scalars.allSatisfy { Self.plainIdentifierScalars.contains($0) }
         guard !isPlain else { return name }
-        return "\"\(name.replacingOccurrences(of: "\"", with: "\"\""))\""
+        return SQLQuoting.identifier(name)
     }
 
     private static let plainIdentifierScalars = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789_")

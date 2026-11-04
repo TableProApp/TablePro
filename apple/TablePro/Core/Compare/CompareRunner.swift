@@ -37,6 +37,7 @@ internal struct CompareRunner {
         session.informationalMessage = nil
 
         let claim = session.currentClaim
+        let startedAt = ContinuousClock.now
         session.runTask = Task { [session] in
             session.activity = .connecting
             defer { session.activity = .idle }
@@ -45,6 +46,7 @@ internal struct CompareRunner {
                 if let refusal = try await capabilityRefusal(context) {
                     guard session.ownsAnswer(claim) else { return }
                     session.errorMessage = refusal
+                    report(.compareRun, startedAt: startedAt, outcome: .failed(reason: refusal))
                     return
                 }
                 session.activity = .comparing
@@ -56,12 +58,29 @@ internal struct CompareRunner {
                 }
                 guard session.ownsAnswer(claim) else { return }
                 session.informationalMessage = session.crossEngineNotice
+                report(.compareRun, startedAt: startedAt, outcome: .succeeded(OperationSummary()))
             } catch is CancellationError {
+                report(.compareRun, startedAt: startedAt, outcome: .cancelled)
             } catch {
                 guard session.ownsAnswer(claim) else { return }
                 session.errorMessage = error.localizedDescription
+                report(.compareRun, startedAt: startedAt, outcome: .failed(reason: error.localizedDescription))
             }
         }
+    }
+
+    private func report(_ kind: TrackedOperationKind, startedAt: ContinuousClock.Instant, outcome: OperationOutcome) {
+        guard let endpoint = session.target ?? session.source,
+              let windowId = CompareSyncRunRegistry.shared.windowId(of: session) else { return }
+        OperationCompletionReporter.shared.report(OperationCompletion(
+            kind: kind,
+            owner: .compareWindow(windowId),
+            connectionId: endpoint.scope.connectionId,
+            connectionName: endpoint.connectionName,
+            databaseName: endpoint.databaseLabel.isEmpty ? nil : endpoint.databaseLabel,
+            elapsed: startedAt.duration(to: .now),
+            outcome: outcome
+        ))
     }
 
     internal func buildScript() {
@@ -133,18 +152,16 @@ internal struct CompareRunner {
             ? session.nonTransactionalTables(in: session.statements)
             : []
 
+        let startedAt = ContinuousClock.now
         session.runTask = Task { [session] in
             session.activity = .applying
-            CompareSyncRunRegistry.shared.markApplying(session, target: target.qualifiedDescription)
             defer {
                 session.activity = .idle
                 session.progress = nil
-                CompareSyncRunRegistry.shared.clear(session)
             }
 
             do {
-                /// Resolved for its validation: it throws when a connection has gone away, which
-                /// must stop the run before anything is written.
+                // Resolved for its validation: it throws when a connection has gone away.
                 _ = try resolveContext()
                 let statements = session.statements
                 let settings = session.executionSettings
@@ -165,13 +182,9 @@ internal struct CompareRunner {
                         nonTransactionalObjects: nonTransactionalObjects
                     )
                 }
-                /// Set from the result, not before the run. Setting it up front meant a declined
-                /// authorization or a driver that could not run the script still flipped the status
-                /// strip to "written", next to text that still read "Nothing has been written."
+                // Set from the result: a declined run must not flip the strip to written.
                 session.hasWrittenToTarget = session.hasWrittenToTarget || result.writtenStatementCount > 0
-                /// The setup cannot change while a run applies, and this is the fence if it did:
-                /// the result describes the pair it ran against, so it is never published onto
-                /// another.
+                // The fence if the setup changed anyway: the result describes the pair it ran against.
                 guard session.isCurrent(setupGeneration) else {
                     Self.announceCatalogChange(in: target)
                     return
@@ -180,20 +193,29 @@ internal struct CompareRunner {
                 session.lastAction = .applied(
                     Date(), target: target.qualifiedDescription, statements: result.executedCount
                 )
-                /// The Apply sheet closes before the run starts, so the result it would have shown
-                /// is reported on the window instead. A rollback that could not reach every table is
-                /// the case this exists for.
+                // The Apply sheet closed before the run, so the result is reported on the window.
                 session.reportRunResult(result, target: target)
-                /// The script just ran, so it describes work the target has already had. Leaving it
-                /// armed left Apply enabled on a stale plan, one click from running the same
-                /// CREATE/ALTER/DELETE a second time.
+                if let problem = session.errorMessage {
+                    report(.compareApply, startedAt: startedAt, outcome: .failed(reason: problem))
+                } else if result.cancelled {
+                    report(.compareApply, startedAt: startedAt, outcome: .cancelled)
+                } else {
+                    report(
+                        .compareApply,
+                        startedAt: startedAt,
+                        outcome: .succeeded(OperationSummary(statementCount: result.executedCount))
+                    )
+                }
+                // The script describes work the target already had; a second Apply would run it again.
                 session.markAppliedAndStale()
                 Self.announceCatalogChange(in: target)
             } catch is CancellationError {
                 Self.announceCatalogChange(in: target)
+                report(.compareApply, startedAt: startedAt, outcome: .cancelled)
             } catch {
                 session.errorMessage = error.localizedDescription
                 Self.announceCatalogChange(in: target)
+                report(.compareApply, startedAt: startedAt, outcome: .failed(reason: error.localizedDescription))
             }
         }
     }
@@ -390,7 +412,7 @@ internal struct CompareRunner {
 
         if includedKinds.contains(.procedure) || includedKinds.contains(.function) {
             async let sourceRoutines = metadataService.routineReads(
-                for: context.source, connection: context.sourceConnection
+                for: context.source, connection: context.sourceConnection, readsCreationScopes: true
             )
             async let targetRoutines = metadataService.routineReads(
                 for: context.target, connection: context.targetConnection
@@ -402,7 +424,8 @@ internal struct CompareRunner {
             async let sourceTriggers = metadataService.triggerReads(
                 for: context.source,
                 connection: context.sourceConnection,
-                tables: sourceReads.map(\.table.name)
+                tables: sourceReads.map(\.table.name),
+                readsCreationScopes: true
             )
             async let targetTriggers = metadataService.triggerReads(
                 for: context.target,

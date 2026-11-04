@@ -30,7 +30,9 @@ struct SQLiteDefaultValueTests {
             (catalog: "abc", expected: "'abc'"),
             (catalog: "it's", expected: "'it''s'"),
             (catalog: "'x' || 'y'", expected: "('x' || 'y')"),
-            (catalog: "'it''s'", expected: "'it''s'")
+            (catalog: "'it''s'", expected: "'it''s'"),
+            // A doubled quote followed by a combining mark is still one literal, not a bare word to re-quote.
+            (catalog: "'O''\u{301}Neil'", expected: "'O''\u{301}Neil'")
         ]
     )
     func roundTrip(catalog: String, expected: String) {

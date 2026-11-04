@@ -1,5 +1,6 @@
+import Darwin
 import Foundation
-import Network
+import TableProMCP
 
 public struct MockHttpRequest: Sendable {
     public let method: String
@@ -13,27 +14,66 @@ public struct MockHttpRequest: Sendable {
 }
 
 public struct MockHttpResponse: Sendable {
+    public enum Framing: Sendable, Equatable {
+        case contentLength
+        case chunked(size: Int)
+        case untilClose
+    }
+
     public let status: Int
     public let headers: [(String, String)]
     public let body: Data
+    public let framing: Framing
 
-    public init(status: Int, headers: [(String, String)], body: Data) {
+    public init(status: Int, headers: [(String, String)], body: Data, framing: Framing = .contentLength) {
         self.status = status
         self.headers = headers
         self.body = body
+        self.framing = framing
+    }
+}
+
+// Short, since sun_path holds 104 bytes, and 0700, since the bridge trusts no other socket folder.
+public enum MCPTestSocketFolder {
+    public static func url() -> URL {
+        let name = "mcp-" + UUID().uuidString.prefix(8).lowercased()
+        return MCPSocketLocation.userTemporaryDirectory().appendingPathComponent(name, isDirectory: true)
+    }
+
+    public static func make() throws -> URL {
+        let folder = url()
+        try create(folder)
+        return folder
+    }
+
+    public static func create(_ folder: URL) throws {
+        try FileManager.default.createDirectory(
+            at: folder,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
     }
 }
 
 private actor MockServerState {
     private(set) var requests: [MockHttpRequest] = []
     private var responses: [MockHttpResponse] = []
+    private var handler: (@Sendable (MockHttpRequest) -> MockHttpResponse?)?
 
     func setResponses(_ responses: [MockHttpResponse]) {
         self.responses = responses
     }
 
+    func setHandler(_ handler: @escaping @Sendable (MockHttpRequest) -> MockHttpResponse?) {
+        self.handler = handler
+    }
+
     func record(_ request: MockHttpRequest) -> MockHttpResponse {
         requests.append(request)
+        if let handler, let answer = handler(request) {
+            return answer
+        }
         if responses.count > 1 {
             return responses.removeFirst()
         }
@@ -49,18 +89,23 @@ private actor MockServerState {
 }
 
 public final class MockHttpServer: @unchecked Sendable {
-    private var listener: NWListener?
+    public let socketPath: String
+
+    private let ownedFolder: URL?
     private let state = MockServerState()
     private let lock = NSLock()
-    private var assignedPort: UInt16 = 0
-    private var connections: [NWConnection] = []
+    private var listener: MCPUnixSocketListener?
+    private var connections: [MCPUnixSocketConnection] = []
 
-    public init() {}
-
-    public var port: UInt16 {
-        lock.lock()
-        defer { lock.unlock() }
-        return assignedPort
+    public init(socketPath: String? = nil) {
+        if let socketPath {
+            self.socketPath = socketPath
+            ownedFolder = nil
+        } else {
+            let folder = MCPTestSocketFolder.url()
+            self.socketPath = MCPSocketLocation.primarySocket(in: folder).path
+            ownedFolder = folder
+        }
     }
 
     public var requests: [MockHttpRequest] {
@@ -75,6 +120,11 @@ public final class MockHttpServer: @unchecked Sendable {
         await state.setResponses(responses)
     }
 
+    // Answers first; a nil answer falls back to the queued responses.
+    public func setHandler(_ handler: @escaping @Sendable (MockHttpRequest) -> MockHttpResponse?) async {
+        await state.setHandler(handler)
+    }
+
     public func respondWithJson(_ body: Data) async {
         await setResponse(MockHttpResponse(
             status: 200,
@@ -84,160 +134,137 @@ public final class MockHttpServer: @unchecked Sendable {
     }
 
     public func start() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            do {
-                let parameters = NWParameters.tcp
-                parameters.allowLocalEndpointReuse = true
-                let listener = try NWListener(using: parameters)
-                lock.lock()
-                self.listener = listener
-                lock.unlock()
-
-                listener.stateUpdateHandler = { [weak self] state in
-                    guard let self else { return }
-                    switch state {
-                    case .ready:
-                        if let port = listener.port?.rawValue {
-                            self.lock.lock()
-                            self.assignedPort = port
-                            self.lock.unlock()
-                        }
-                        continuation.resume()
-                    case .failed(let error):
-                        continuation.resume(throwing: error)
-                    default:
-                        break
-                    }
-                }
-                listener.newConnectionHandler = { [weak self] connection in
-                    self?.handle(connection)
-                }
-                listener.start(queue: .global(qos: .userInitiated))
-            } catch {
-                continuation.resume(throwing: error)
-            }
+        if let ownedFolder {
+            try MCPTestSocketFolder.create(ownedFolder)
         }
+        let listener = MCPUnixSocketListener(path: socketPath) { [weak self] connection in
+            guard let self else {
+                connection.cancel()
+                return
+            }
+            self.serve(connection)
+        }
+        try listener.start()
+        lock.withLock { self.listener = listener }
     }
 
     public func stop() async {
-        let (listener, connections) = lock.withLock { () -> (NWListener?, [NWConnection]) in
+        let (listener, connections) = lock.withLock { () -> (MCPUnixSocketListener?, [MCPUnixSocketConnection]) in
             let taken = (self.listener, self.connections)
             self.listener = nil
             self.connections = []
             return taken
         }
-        listener?.cancel()
+        listener?.stop()
         for connection in connections {
             connection.cancel()
         }
-    }
-
-    private func handle(_ connection: NWConnection) {
-        lock.lock()
-        connections.append(connection)
-        lock.unlock()
-
-        connection.stateUpdateHandler = { [weak self] state in
-            guard case .ready = state else { return }
-            self?.readRequest(connection: connection, accumulated: Data())
+        if let ownedFolder {
+            try? FileManager.default.removeItem(at: ownedFolder)
         }
-        connection.start(queue: .global(qos: .userInitiated))
     }
 
-    private func readRequest(connection: NWConnection, accumulated: Data) {
-        connection.receive(
-            minimumIncompleteLength: 1,
-            maximumLength: 64 * 1_024
-        ) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
-            if error != nil {
+    private func serve(_ connection: MCPUnixSocketConnection) {
+        lock.withLock { connections.append(connection) }
+        connection.start { [weak self] streamState in
+            guard case .ready = streamState else { return }
+            self?.read(connection, parser: HttpRequestStreamParser())
+        }
+    }
+
+    private func read(_ connection: MCPUnixSocketConnection, parser: HttpRequestStreamParser) {
+        connection.receive(maximumLength: 65_536) { [weak self] data, isComplete, failure in
+            guard let self else {
                 connection.cancel()
                 return
             }
-            var buffer = accumulated
+            var parser = parser
             if let data {
-                buffer.append(data)
+                parser.append(data)
             }
-
-            if let request = Self.parseRequest(buffer) {
+            let parsed: HttpParsedRequest?
+            do {
+                parsed = try parser.next()
+            } catch {
+                connection.cancel()
+                return
+            }
+            if let parsed {
+                let request = MockHttpRequest(
+                    method: parsed.head.method.rawValue,
+                    path: parsed.head.path,
+                    headers: parsed.head.headers.all,
+                    body: parsed.body
+                )
+                let state = self.state
                 Task {
-                    let response = await self.state.record(request)
-                    connection.send(
-                        content: Self.serializeResponse(response),
-                        completion: .contentProcessed { _ in connection.cancel() }
-                    )
+                    let response = await state.record(request)
+                    Self.send(Self.serialize(response)[...], on: connection)
                 }
                 return
             }
-
-            if isComplete {
+            if isComplete || failure != nil {
                 connection.cancel()
                 return
             }
-            self.readRequest(connection: connection, accumulated: buffer)
+            self.read(connection, parser: parser)
         }
     }
 
-    private static func parseRequest(_ data: Data) -> MockHttpRequest? {
-        guard let separator = data.range(of: Data("\r\n\r\n".utf8)) else { return nil }
-        let headerData = data[..<separator.lowerBound]
-        let bodyStart = separator.upperBound
-        guard let headerText = String(data: headerData, encoding: .utf8) else { return nil }
-
-        let lines = headerText.components(separatedBy: "\r\n")
-        guard let requestLine = lines.first else { return nil }
-        let parts = requestLine.split(separator: " ")
-        guard parts.count >= 3 else { return nil }
-
-        var headers: [(String, String)] = []
-        for line in lines.dropFirst() where !line.isEmpty {
-            guard let colon = line.firstIndex(of: ":") else { continue }
-            let key = String(line[line.startIndex ..< colon])
-            var rest = line[line.index(after: colon)...]
-            if rest.first == " " {
-                rest = rest.dropFirst()
+    private static func send(_ pieces: ArraySlice<Data>, on connection: MCPUnixSocketConnection) {
+        guard let first = pieces.first else {
+            connection.cancel()
+            return
+        }
+        connection.send(first) { failure in
+            guard failure == nil else {
+                connection.cancel()
+                return
             }
-            headers.append((key, String(rest)))
+            send(pieces.dropFirst(), on: connection)
         }
-
-        var contentLength = 0
-        if let raw = headers.first(where: { $0.0.lowercased() == "content-length" })?.1,
-           let parsed = Int(raw) {
-            contentLength = parsed
-        }
-
-        let body: Data
-        if contentLength > 0 {
-            guard data.count - bodyStart >= contentLength else { return nil }
-            body = data.subdata(in: bodyStart ..< (bodyStart + contentLength))
-        } else {
-            body = Data()
-        }
-
-        return MockHttpRequest(
-            method: String(parts[0]),
-            path: String(parts[1]),
-            headers: headers,
-            body: body
-        )
     }
 
-    private static func serializeResponse(_ response: MockHttpResponse) -> Data {
-        var output = "HTTP/1.1 \(response.status) \(reasonPhrase(for: response.status))\r\n"
+    private static func serialize(_ response: MockHttpResponse) -> [Data] {
         var headers = response.headers
-        if !headers.contains(where: { $0.0.lowercased() == "content-length" }) {
-            headers.append(("Content-Length", "\(response.body.count)"))
+        switch response.framing {
+        case .contentLength:
+            if !headers.contains(where: { $0.0.lowercased() == "content-length" }) {
+                headers.append(("Content-Length", "\(response.body.count)"))
+            }
+        case .chunked:
+            headers.append(("Transfer-Encoding", "chunked"))
+        case .untilClose:
+            break
         }
         if !headers.contains(where: { $0.0.lowercased() == "connection" }) {
             headers.append(("Connection", "close"))
         }
+
+        var head = "HTTP/1.1 \(response.status) \(reasonPhrase(for: response.status))\r\n"
         for (key, value) in headers {
-            output.append("\(key): \(value)\r\n")
+            head.append("\(key): \(value)\r\n")
         }
-        output.append("\r\n")
-        var data = Data(output.utf8)
-        data.append(response.body)
-        return data
+        head.append("\r\n")
+
+        guard case .chunked(let size) = response.framing else {
+            var data = Data(head.utf8)
+            data.append(response.body)
+            return [data]
+        }
+        var pieces = [Data(head.utf8)]
+        var offset = 0
+        while offset < response.body.count {
+            let end = min(offset + max(1, size), response.body.count)
+            var piece = Data(String(end - offset, radix: 16).utf8)
+            piece.append(Data("\r\n".utf8))
+            piece.append(response.body.subdata(in: offset..<end))
+            piece.append(Data("\r\n".utf8))
+            pieces.append(piece)
+            offset = end
+        }
+        pieces.append(Data("0\r\n\r\n".utf8))
+        return pieces
     }
 
     private static func reasonPhrase(for status: Int) -> String {

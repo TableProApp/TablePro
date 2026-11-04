@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProConnectionLibrary
 
 // The parameters typed into a MongoDB connection (its `mongoParam_` fields) that reach the driver. The connection's own
 // fields own their options, so a parameter named like one, in any case or under an old `ssl` name, never overrides it,
@@ -47,7 +48,9 @@ internal enum MongoTypedParameters {
         }
         return connection.additionalFields
             .compactMap { key, value -> (key: String, value: String)? in
-                guard key.hasPrefix("mongoParam_"), !value.isEmpty else { return nil }
+                // A credential is never a typed option; the backup tools get the Keychain's copy separately.
+                guard key.hasPrefix("mongoParam_"), !value.isEmpty,
+                      !ConnectionSecretOptions.isSecret(key: key, value: value) else { return nil }
                 let name = String(key.dropFirst("mongoParam_".count))
                 return name.isEmpty ? nil : (name, value)
             }

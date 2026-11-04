@@ -18,6 +18,21 @@ pub(crate) fn color_name(color: ConnectionColor) -> String {
     }
 }
 
+// A tooltip or a drop-down shows `color_name`, which has no access key.
+pub(crate) fn color_menu_label(color: ConnectionColor) -> String {
+    match color {
+        ConnectionColor::Blue => crate::i18n::gettext("_Blue"),
+        ConnectionColor::Teal => crate::i18n::gettext("_Teal"),
+        ConnectionColor::Green => crate::i18n::gettext("_Green"),
+        ConnectionColor::Yellow => crate::i18n::gettext("_Yellow"),
+        ConnectionColor::Orange => crate::i18n::gettext("_Orange"),
+        ConnectionColor::Red => crate::i18n::gettext("Re_d"),
+        ConnectionColor::Pink => crate::i18n::gettext("Pin_k"),
+        ConnectionColor::Purple => crate::i18n::gettext("_Purple"),
+        ConnectionColor::Slate => crate::i18n::gettext("_Slate"),
+    }
+}
+
 pub(crate) fn color_class(color: ConnectionColor) -> &'static str {
     match color {
         ConnectionColor::Blue => "tp-tag-blue",

@@ -106,6 +106,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     private let sslConfig: SSLConfiguration
     private let enableCleartextPlugin: Bool
     private let tunnelSecuresTransport: Bool
+    private let tlsServerName: MariaDBTLSServerName?
     private let queryTimeoutSeconds: Int
     private let connectionEncoding: MySQLConnectionEncoding
     private let connectTimeoutMilliseconds: Int
@@ -312,6 +313,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         sslConfig: SSLConfiguration,
         enableCleartextPlugin: Bool = false,
         tunnelSecuresTransport: Bool = false,
+        tlsServerName: String? = nil,
         queryTimeoutSeconds: Int = 0,
         connectionEncoding: MySQLConnectionEncoding = .utf8,
         connectTimeoutMilliseconds: Int = MySQLConnectTimeout.defaultMilliseconds,
@@ -325,6 +327,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         self.sslConfig = sslConfig
         self.enableCleartextPlugin = enableCleartextPlugin
         self.tunnelSecuresTransport = tunnelSecuresTransport
+        self.tlsServerName = MariaDBTLSServerName(tlsServerName)
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.connectionEncoding = connectionEncoding
         self.connectTimeoutMilliseconds = MySQLConnectTimeout(milliseconds: connectTimeoutMilliseconds).milliseconds
@@ -672,7 +675,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     /// plaintext fallback and every kill after it repeats the attempt that already failed.
     private func deliverKill(_ killQuery: String) -> Bool {
         guard let killConn = openKillConnection() else {
-            logger.warning("\(killQuery, privacy: .public) could not open a connection")
+            logger.warning("\(killQuery, privacy: .private) could not open a connection")
             return false
         }
         defer { mysql_close(killConn) }
@@ -723,7 +726,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // Connector/C turns TLS on for any CA, certificate or key it is given, so a plaintext attempt gets none.
     private func applyTLS(_ mode: SSLMode, to handle: UnsafeMutablePointer<MYSQL>) {
-        MariaDBTLSMode.apply(mode, to: handle)
+        MariaDBTLSMode.apply(mode, serverName: tlsServerName, to: handle)
         // A local socket never leaves this Mac, and the mysql client trusts it the same way. The Cloud SQL Auth Proxy and
         // an SSH forward to the server's socket encrypt the way there, which their loopback listener cannot show as TLS.
         let withoutTLS = (mode == .disabled || mode == .preferred) && !transport.isUnixSocket && !tunnelSecuresTransport
@@ -761,7 +764,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             mysql_real_query(killConn, queryPtr, UInt(killQuery.utf8.count))
         }
         guard killStatus == 0 else {
-            logger.warning("\(killQuery, privacy: .public) rejected: \(self.errorMessage(from: killConn))")
+            logger.warning("\(killQuery, privacy: .private) rejected: \(self.errorMessage(from: killConn))")
             return false
         }
         return true
@@ -899,6 +902,29 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
     }
 
+    // `sessionState` runs in this same block, so nothing queued behind it can open a transaction before the wrap.
+    func executeReadOnly(
+        _ query: String,
+        parameters: [PluginCellValue]?,
+        rowCap: Int?,
+        sessionState: @escaping @Sendable (Bool) -> PluginSessionTransactionState
+    ) async throws -> MariaDBPluginQueryResult {
+        let queryToRun = String(query)
+        let params = parameters
+
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown else { throw MariaDBPluginError.notConnected }
+            return try MySQLReadOnlyTransaction.run(
+                state: sessionState(isInTransaction),
+                send: { _ = try executeQuerySync($0) },
+                statement: {
+                    guard let params else { return try executeQuerySync(queryToRun, rowCap: rowCap) }
+                    return try executeParameterizedQuerySync(queryToRun, parameters: params, rowCap: rowCap)
+                }
+            )
+        }
+    }
+
     private func executeQuerySync(_ query: String, rowCap: Int? = nil) throws -> MariaDBPluginQueryResult {
         try runStatement(query) {
             try self.runCancellableStatement { mysql, generation in
@@ -932,8 +958,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     }
 
     private func binaryStringsAreText(in query: String, flavor: MySQLServerFlavor) -> Bool {
-        MySQLServerVersion.labelsShowTextAsBinary(banner: serverVersion(), flavor: flavor)
-            && mysqlStatementListsServerMetadata(query)
+        flavor.labelsTextResultsAsBinary
+            || (MySQLServerVersion.labelsShowTextAsBinary(banner: serverVersion(), flavor: flavor)
+                && mysqlStatementListsServerMetadata(query))
     }
 
     private func runTextStatement(
@@ -1382,7 +1409,11 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     // MARK: - Streaming Query
 
-    func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    // With `readOnlySessionState` the whole stream runs inside `executeReadOnly`'s transaction.
+    func streamQuery(
+        _ query: String,
+        readOnlySessionState: (@Sendable (Bool) -> PluginSessionTransactionState)? = nil
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
 
         /// The drain belongs to the producer. Enqueued from `onTermination` it would sit behind the
@@ -1391,12 +1422,27 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         return PluginRowStream.make { continuation, abort in
             self.queue.async { [self] in
                 do {
-                    try runStatement(queryToRun) {
-                        try self.runCancellableStatement { mysql, generation in
-                            try self.streamStatement(
-                                queryToRun, continuation: continuation, abort: abort, on: mysql, generation: generation
-                            )
+                    let stream = {
+                        try self.runStatement(queryToRun) {
+                            try self.runCancellableStatement { mysql, generation in
+                                try self.streamStatement(
+                                    queryToRun, continuation: continuation, abort: abort, on: mysql, generation: generation
+                                )
+                            }
                         }
+                    }
+                    if let readOnlySessionState {
+                        guard !abort.isAborted else {
+                            continuation.finish()
+                            return
+                        }
+                        try MySQLReadOnlyTransaction.run(
+                            state: readOnlySessionState(isInTransaction),
+                            send: { _ = try executeQuerySync($0) },
+                            statement: stream
+                        )
+                    } else {
+                        try stream()
                     }
                     continuation.finish()
                 } catch {

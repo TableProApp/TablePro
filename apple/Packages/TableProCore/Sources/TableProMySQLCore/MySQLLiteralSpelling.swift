@@ -24,7 +24,7 @@ public enum MySQLLiteralSpelling: Equatable, Sendable {
         case .backslashEscapes:
             return mysqlEscapeStringLiteral(value)
         case .quoteDoubling:
-            return value.replacingOccurrences(of: "'", with: "''")
+            return value.replacingOccurrences(of: "'", with: "''", options: .literal)
         }
     }
 
@@ -123,15 +123,12 @@ public enum MySQLLiteralSpelling: Equatable, Sendable {
         }
     }
 
+    // Only a NO_BACKSLASH_ESCAPES session reads respelled text, and there a backslash escapes nothing in `"` either.
     private static func endOfQuoted(in scalars: [Unicode.Scalar], openingAt start: Int) -> Int {
         let quote = scalars[start]
         var index = start + 1
         while index < scalars.count {
             let scalar = scalars[index]
-            if scalar == "\\", quote != "`" {
-                index += 2
-                continue
-            }
             index += 1
             guard scalar == quote else { continue }
             guard index < scalars.count, scalars[index] == quote else { return index }
@@ -140,11 +137,12 @@ public enum MySQLLiteralSpelling: Equatable, Sendable {
         return scalars.count
     }
 
+    /// `--` opens a comment only when a space or a control character follows it, U+007F among them.
     private static func opensDashComment(_ scalars: [Unicode.Scalar], at index: Int) -> Bool {
         guard index + 1 < scalars.count, scalars[index + 1] == "-" else { return false }
         guard index + 2 < scalars.count else { return true }
         let next = scalars[index + 2]
-        return next == " " || next == "\t" || next == "\n" || next == "\r"
+        return next <= " " || next == "\u{7F}"
     }
 
     private static func endOfLine(in scalars: [Unicode.Scalar], from start: Int) -> Int {

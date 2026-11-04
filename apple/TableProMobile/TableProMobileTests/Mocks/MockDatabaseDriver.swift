@@ -14,13 +14,17 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     var fetchColumnsError: Error?
     var scriptedTables: [TableInfo] = []
     var scriptedDatabases: [String] = []
+    // The database the driver says it is in, which may be named differently from the one the connection stores.
+    var scriptedCurrentDatabase: String?
     var scriptedSchemas: [String] = []
     var scriptedTransactionState: DriverTransactionState = .unknown
-    /// Answered in order, one per call, before falling back to `scriptedTransactionState`.
+    // Answered in order, one per call, before falling back to `scriptedTransactionState`.
     var scriptedTransactionStates: [DriverTransactionState] = []
-    /// Answered in order, one per call, then nil.
+    // Answered in order, one per call, then nil.
     var scriptedLexicalFacts: [SQLSessionLexicalFacts?] = []
     var pingError: Error?
+    var connectError: Error?
+    var switchDatabaseError: Error?
     var fetchTablesError: Error?
     var commitError: Error?
     var rollbackError: Error?
@@ -35,6 +39,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     private(set) var didCommitTransaction = false
     private(set) var didRollbackTransaction = false
     private(set) var pingCount = 0
+    private(set) var switchedDatabases: [String] = []
 
     var supportsSchemas: Bool = false
     var currentSchema: String?
@@ -60,6 +65,7 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
     func connect() async throws {
         await beforeConnect?()
         connectSawCancellation = Task.isCancelled
+        if let connectError { throw connectError }
     }
     func disconnect() async throws {
         await beforeDisconnect?()
@@ -107,7 +113,12 @@ final class MockDatabaseDriver: DatabaseDriver, @unchecked Sendable {
 
     func fetchDatabases() async throws -> [String] { scriptedDatabases }
     func fetchSchemas() async throws -> [String] { scriptedSchemas }
-    func switchDatabase(to name: String) async throws {}
+    var currentDatabase: String? { scriptedCurrentDatabase }
+
+    func switchDatabase(to name: String) async throws {
+        if let switchDatabaseError { throw switchDatabaseError }
+        switchedDatabases.append(name)
+    }
     func switchSchema(to name: String) async throws {
         currentSchema = name
     }

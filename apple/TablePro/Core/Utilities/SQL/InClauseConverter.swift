@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 internal struct InClauseConverter {
     internal let columnIndex: Int
@@ -15,6 +16,9 @@ internal struct InClauseConverter {
     /// without it an `IN` list pasted into a query on a non-Unicode collation matches the rows
     /// whose text was already damaged rather than the rows the user copied.
     internal var stringLiteralPrefix: String = ""
+
+    // The session's escapes, for when no driver escaper is passed.
+    internal var stringEscapes: SQLStringEscapes = .standard
 
     private static let maxRows = 50_000
 
@@ -59,7 +63,7 @@ internal struct InClauseConverter {
     }
 
     private func quoted(_ value: String) -> String {
-        let escaped = escapeStringLiteral?(value) ?? value.replacingOccurrences(of: "'", with: "''")
+        let escaped = escapeStringLiteral?(value) ?? SQLQuoting.stringLiteralBody(value, escapes: stringEscapes)
         return "\(stringLiteralPrefix)'\(escaped)'"
     }
 }

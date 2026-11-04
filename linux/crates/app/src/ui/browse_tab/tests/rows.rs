@@ -512,7 +512,7 @@ fn saved_cells(tracker: &TabTrackerHandle) -> Vec<(String, Option<String>)> {
         .map(|(col, value)| {
             (
                 batch.columns[col].name.clone(),
-                tablepro_core::export::value_to_text(&value),
+                tablepro_core::export::value_to_text(value.value().unwrap_or(&tablepro_core::Value::Null)),
             )
         })
         .collect()
@@ -530,7 +530,7 @@ fn edit_first_row(harness: &Harness, column: usize, input: &str) {
         row_key: key(0),
         col: column,
         original,
-        value: Value::Text(input.to_owned()),
+        value: CellInput::Value(Value::Text(input.to_owned())),
     }));
     assert_eq!(harness.tracker.pending_count(), 1);
 }

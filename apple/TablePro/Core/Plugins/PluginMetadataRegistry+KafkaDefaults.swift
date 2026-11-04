@@ -40,10 +40,11 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsDropSchema: false,
-                    defaultSSLMode: .verifyIdentity,
+                    defaultSSLMode: .disabled,
                     supportsOpportunisticTLS: false,
                     verifiesServerWithSystemTrust: true,
-                    supportsColumnSort: false
+                    supportsColumnSort: false,
+                    statementPolicyInDriver: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -141,6 +142,26 @@ private func kafkaConnectionFields() -> [ConnectionField] {
                 .init(value: "bootstrapOnly", label: String(localized: "Only use the bootstrap address"))
             ]),
             section: .advanced
+        ),
+        ConnectionField(
+            id: SchemaRegistryConnectionField.url,
+            label: String(localized: "Schema Registry URL"),
+            placeholder: "http://localhost:8081",
+            required: false,
+            section: .authentication
+        ),
+        ConnectionField(
+            id: SchemaRegistryConnectionField.username,
+            label: String(localized: "Schema Registry User"),
+            required: false,
+            section: .authentication
+        ),
+        ConnectionField(
+            id: SchemaRegistryConnectionField.password,
+            label: String(localized: "Schema Registry Password"),
+            required: false,
+            fieldType: .secure,
+            section: .authentication
         )
     ]
 }

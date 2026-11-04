@@ -1,4 +1,5 @@
 import Foundation
+import TableProWireIO
 
 enum ParcelFlavor: UInt16 {
     case request = 1

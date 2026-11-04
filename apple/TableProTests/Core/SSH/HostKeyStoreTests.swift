@@ -7,6 +7,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSSHTransport
 import Testing
 
 @testable import TablePro
@@ -231,5 +232,32 @@ struct HostKeyStoreTests {
         default:
             Issue.record("Expected .mismatch for old key after update, got \(result)")
         }
+    }
+
+    @Test("A host with a line break plants no key for another host", arguments: [
+        "replica.attacker.example\n[prod.corp.example",
+        "replica.attacker.example\r\n[prod.corp.example",
+        "replica.attacker.example [prod.corp.example",
+    ])
+    func lineBreakInHostPlantsNoEntry(hostile: String) {
+        let path = makeTempFilePath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+
+        let store = HostKeyStore(filePath: path)
+        let real = makeTestKey(0x01)
+        let forged = makeTestKey(0x02)
+        store.trust(hostname: "prod.corp.example", port: 22, key: real, keyType: "ssh-ed25519")
+
+        #expect(
+            store.verify(keyData: forged, keyType: "ssh-ed25519", hostname: hostile, port: 22)
+                == .invalidHost(.host(hostile))
+        )
+        store.trust(hostname: hostile, port: 22, key: forged, keyType: "ssh-ed25519")
+
+        #expect(
+            store.verify(keyData: forged, keyType: "ssh-ed25519", hostname: "prod.corp.example", port: 22)
+                == .mismatch(expected: HostKeyStore.fingerprint(of: real), actual: HostKeyStore.fingerprint(of: forged))
+        )
+        #expect(store.verify(keyData: real, keyType: "ssh-ed25519", hostname: "prod.corp.example", port: 22) == .trusted)
     }
 }

@@ -113,8 +113,16 @@ public struct FirebaseConnectionSettings: Sendable, Equatable {
             return url
         }
         let trusted = host.hasSuffix(".firebaseio.com") || host.hasSuffix(".firebasedatabase.app")
-        guard scheme == "https", trusted else { throw invalidURL(text) }
-        return URL(string: "https://\(host)/") ?? url
+        guard scheme == "https", trusted, isDNSName(host), let instance = URL(string: "https://\(host)/") else {
+            throw invalidURL(text)
+        }
+        return instance
+    }
+
+    // `URL.host` is percent-decoded, so an encoded `/`, `:`, `?`, `#` or `@` would pass the suffix check and then end
+    // the host early once the text is parsed again.
+    static func isDNSName(_ host: String) -> Bool {
+        host.range(of: #"^[a-z0-9-]+(\.[a-z0-9-]+)+$"#, options: .regularExpression) != nil
     }
 
     static func parseEmulatorHost(_ text: String?) throws -> String {

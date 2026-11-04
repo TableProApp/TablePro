@@ -1,8 +1,10 @@
-840741c66e9ee257f97eb7cc16407c37960aa49faa4b110e56ccc0f8dc3a6db2  ./DuckDB.xcframework/Info.plist
-c8dd688cf14559c744255d1bb3879330d6ae3523268e8904fa7b885e140030aa  ./DuckDB.xcframework/ios-arm64/Headers/duckdb.h
-f4073989393e739b0b5ad68c7f47f7750715d2d46e46141e81b1bc49cf782620  ./DuckDB.xcframework/ios-arm64/libduckdb-device.a
-c8dd688cf14559c744255d1bb3879330d6ae3523268e8904fa7b885e140030aa  ./DuckDB.xcframework/ios-arm64_x86_64-simulator/Headers/duckdb.h
-75523877523153f63249a39eb4ec0d7f1bb05db3a4dbb5e6c35ee848b09afb71  ./DuckDB.xcframework/ios-arm64_x86_64-simulator/libduckdb-sim.a
+fcfb2160ac0c32d40fd3241bb0ec0ec157238a5db6ef68a5d98e93a616956cf6  ./DuckDB.xcframework/Info.plist
+8dbc9c71a10f0a75fcacc1a3f4f7c76093a84d232fc152222ee5b6e512ab4560  ./DuckDB.xcframework/ios-arm64-simulator/Headers/duckdb.h
+a90f28cbe2662c69fc73f726832479ae7b5d043566b83eb1ac95a8ab35d3e37d  ./DuckDB.xcframework/ios-arm64-simulator/Headers/duckdb_static_extensions.h
+842bd80d7f54472c4161434474af155675e0d7b19c7751e1d1046d8e144a19b6  ./DuckDB.xcframework/ios-arm64-simulator/libduckdb-sim.a
+8dbc9c71a10f0a75fcacc1a3f4f7c76093a84d232fc152222ee5b6e512ab4560  ./DuckDB.xcframework/ios-arm64/Headers/duckdb.h
+a90f28cbe2662c69fc73f726832479ae7b5d043566b83eb1ac95a8ab35d3e37d  ./DuckDB.xcframework/ios-arm64/Headers/duckdb_static_extensions.h
+c667055fe35aa1e47ca8f2dd36b8328743429872022a0bb25701b593d9a7d1f0  ./DuckDB.xcframework/ios-arm64/libduckdb-device.a
 0481f79db3949ba16425ffd8e15e640757a208ca05728d98cdbfb4bc617e06c3  ./FreeTDS.xcframework/Info.plist
 734d8502be13513e974a621557b1a4776d9f605b5a48039e28a3597f27f704ce  ./FreeTDS.xcframework/ios-arm64-simulator/Headers/sybdb.h
 eaa21732fa7cfb538b3bb9bcca7342b99b407d2e838c09e5f3d07398c21406a3  ./FreeTDS.xcframework/ios-arm64-simulator/Headers/sybfront.h

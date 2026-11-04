@@ -32,11 +32,13 @@ fn connection(name: &str, group: Option<&str>) -> SavedConnection {
         safe_mode: tablepro_core::SafeModeLevel::Off,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
+        query_timeout_secs: None,
         auth_mode: tablepro_core::AuthMode::Password,
         ssh: None,
         last_opened_at: None,
         color: None,
-        group: group.map(|group| tablepro_storage::ConnectionGroupName::new(group).expect("a group name")),
+        group_id: group.map(crate::test_support::group_id),
+        order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),
@@ -97,10 +99,7 @@ impl Drop for Pickers {
 }
 
 fn ready<const N: usize>(connections: [SavedConnection; N]) -> ConnectionListState {
-    ConnectionListState::Ready(tablepro_storage::ConnectionList::new(
-        Vec::from(connections),
-        Vec::new(),
-    ))
+    ConnectionListState::Ready(crate::test_support::library(Vec::from(connections), Vec::new()))
 }
 
 fn rows(sections: &[(String, Vec<String>)]) -> Vec<String> {
@@ -410,6 +409,37 @@ fn duplicate_focuses_the_new_row() {
 }
 
 #[gtk4::test]
+fn a_group_nested_elsewhere_has_a_section_named_by_its_path() {
+    let pickers = Pickers::new();
+    let name = |name: &str| tablepro_storage::ConnectionGroupName::new(name).expect("a group name");
+    let work = tablepro_storage::ConnectionGroup::new(name("Work"), None);
+    let staging = tablepro_storage::ConnectionGroup::new(name("Staging"), Some(work.id));
+    let nested = SavedConnection {
+        group_id: Some(staging.id),
+        ..connection("nested", None)
+    };
+    let filed = SavedConnection {
+        group_id: Some(work.id),
+        ..connection("filed", None)
+    };
+
+    pickers.list.apply(ConnectionListState::Ready(
+        tablepro_storage::ConnectionList::new(vec![nested, filed, connection("loose", None)], Vec::new())
+            .with_groups(vec![work, staging]),
+    ));
+
+    assert_eq!(
+        pickers.views[0].sections(),
+        [
+            ("Connections".to_owned(), vec!["loose".to_owned()]),
+            ("Work".to_owned(), vec!["filed".to_owned()]),
+            ("Work / Staging".to_owned(), vec!["nested".to_owned()]),
+        ]
+    );
+    assert_eq!(pickers.list.groups(), ["Work", "Work / Staging"]);
+}
+
+#[gtk4::test]
 fn a_group_picked_from_the_row_reaches_the_store() {
     let test = TestWindow::picker("PickerGroup");
     let row = picker_row(&test.window, "Fake");
@@ -421,7 +451,7 @@ fn a_group_picked_from_the_row_reaches_the_store() {
         test.services
             .saved_connections
             .get(test.saved.id)
-            .is_some_and(|saved| saved.group.as_ref().is_some_and(|group| group.as_str() == "Work"))
+            .is_some_and(|saved| test.services.saved_connections.group_label(&saved).as_deref() == Some("Work"))
     })
     .expect("the group saved and shown");
     let row = picker_row(&test.window, "Fake");
@@ -432,7 +462,7 @@ fn a_group_picked_from_the_row_reaches_the_store() {
         test.services
             .saved_connections
             .get(test.saved.id)
-            .is_some_and(|saved| saved.group.is_some()),
+            .is_some_and(|saved| saved.group_id.is_some()),
         "a blank group took the connection out of its group"
     );
 }
@@ -473,7 +503,7 @@ fn a_search_for_a_tag_lists_every_connection_that_has_it() {
     let (acme, production) = (tag("acme"), tag("production"));
     pickers
         .list
-        .apply(ConnectionListState::Ready(tablepro_storage::ConnectionList::new(
+        .apply(ConnectionListState::Ready(crate::test_support::library(
             vec![
                 tagged("acme-prod", Some("Acme"), &[&production, &acme]),
                 tagged("acme-dev", Some("Acme"), &[&acme]),

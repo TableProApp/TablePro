@@ -19,9 +19,13 @@ import Foundation
 public enum SQLUnterminatedStatements {
     /// Every text a gate has to tier for `statement`: the statement itself, then, when `grammar` needs no terminator,
     /// the text of each statement that begins inside it, less the statements nested in that one, which come on their
-    /// own.
+    /// own. A grammar that takes a statement in place of a value or a table adds what ``SQLEmbeddedStatements`` finds,
+    /// and one with a pipe operator each statement ``SQLPipeOperatorChain`` finds.
     public static func runnable(in statement: String, grammar: SQLLexicalGrammar) -> [String] {
-        guard grammar.contains(.unterminatedStatements) else { return [statement] }
+        guard grammar.contains(.unterminatedStatements) else {
+            return [statement] + SQLEmbeddedStatements.texts(in: statement, grammar: grammar)
+                + SQLPipeOperatorChain.statements(in: statement, grammar: grammar)
+        }
         let text = statement as NSString
         let tokens = TSQLTokens.read(text, grammar: grammar)
         guard !definesRoutine(tokens) else { return [statement] }
@@ -31,14 +35,21 @@ public enum SQLUnterminatedStatements {
     /// The reserved keywords that begin a T-SQL statement. `ELSE` and `FETCH` are left out because they also continue
     /// a `CASE` and an `OFFSET` clause, and the statement after an `ELSE` begins with a keyword of its own. `WITH` is
     /// left out because a common table expression cannot follow a statement without a `;`, and the word also opens
-    /// table hints.
+    /// table hints. `ADD` begins `ADD SIGNATURE` and `ADD SENSITIVITY CLASSIFICATION`, and like `DROP` it otherwise
+    /// only continues an `ALTER` or a `CREATE`, which already write.
     private static let statementKeywords: Set<String> = [
-        "ALTER", "BACKUP", "BEGIN", "BREAK", "BULK", "CHECKPOINT", "CLOSE", "COMMIT", "CONTINUE", "CREATE", "DBCC",
-        "DEALLOCATE", "DECLARE", "DELETE", "DENY", "DROP", "DUMP", "END", "EXEC", "EXECUTE", "GOTO", "GRANT", "IF",
-        "INSERT", "KILL", "LINENO", "LOAD", "MERGE", "OPEN", "PRINT", "RAISERROR", "READTEXT", "RECONFIGURE",
+        "ADD", "ALTER", "BACKUP", "BEGIN", "BREAK", "BULK", "CHECKPOINT", "CLOSE", "COMMIT", "CONTINUE", "CREATE",
+        "DBCC", "DEALLOCATE", "DECLARE", "DELETE", "DENY", "DROP", "DUMP", "END", "EXEC", "EXECUTE", "GOTO", "GRANT",
+        "IF", "INSERT", "KILL", "LINENO", "LOAD", "MERGE", "OPEN", "PRINT", "RAISERROR", "READTEXT", "RECONFIGURE",
         "RESTORE", "RETURN", "REVERT", "REVOKE", "ROLLBACK", "SAVE", "SELECT", "SET", "SETUSER", "SHUTDOWN",
         "TRUNCATE", "UPDATE", "UPDATETEXT", "USE", "WAITFOR", "WHILE", "WRITETEXT",
     ]
+
+    /// Whether T-SQL runs a batch that opens with `keyword` as the procedure of that name, as it runs `SHOW 'x'`: no
+    /// statement begins with the word. A common table expression's `WITH` begins one.
+    public static func callsProcedure(opening keyword: String) -> Bool {
+        !keyword.isEmpty && keyword != "WITH" && !statementKeywords.contains(keyword)
+    }
 
     private static let routineKinds: Set<String> = ["PROC", "PROCEDURE", "FUNCTION", "TRIGGER"]
 
@@ -107,7 +118,7 @@ public enum SQLUnterminatedStatements {
         return kind.map(routineKinds.contains) ?? false
     }
 
-    private struct StatementSpan {
+    struct StatementSpan {
         var range: NSRange
         let parent: Int?
     }
@@ -160,7 +171,7 @@ public enum SQLUnterminatedStatements {
 
     /// Each statement's text without the statements nested in it, so every character is tiered once however deep the
     /// nesting goes. Read whole at every level, 100 KB of nested `SELECT`s took 45 seconds to classify.
-    private static func ownTexts(of spans: [StatementSpan], in text: NSString) -> [String] {
+    static func ownTexts(of spans: [StatementSpan], in text: NSString) -> [String] {
         var nested = [[NSRange]](repeating: [], count: spans.count)
         for span in spans {
             guard let parent = span.parent else { continue }
@@ -225,12 +236,31 @@ enum TSQLTokens {
     /// into a span ``SQLNonCodeSpan`` found.
     static func read(_ text: NSString, grammar: SQLLexicalGrammar) -> [Token] {
         let code = SQLCodeProjection.code(of: text as String, grammar: grammar) as NSString
+        return read(text, code: code, grammar: grammar)
+    }
+
+    /// `code` is `text`'s projection under `grammar`, for a caller that already has it.
+    static func read(_ text: NSString, code: NSString, grammar: SQLLexicalGrammar) -> [Token] {
+        read(code: code, grammar: grammar) { SQLNonCodeSpan.span(at: $0, in: text, grammar: grammar) }
+    }
+
+    /// The tokens of a projection whose comments and literals are already blank, such as one that keeps an executable
+    /// comment's body as code. Nothing in it is quoted any more.
+    static func read(code: NSString, grammar: SQLLexicalGrammar) -> [Token] {
+        read(code: code, grammar: grammar) { _ in nil }
+    }
+
+    private static func read(
+        code: NSString,
+        grammar: SQLLexicalGrammar,
+        nonCodeSpan: (Int) -> SQLNonCodeSpan.Span?
+    ) -> [Token] {
         let length = code.length
         var tokens: [Token] = []
         var depth = 0
         var index = 0
         while index < length {
-            if let span = SQLNonCodeSpan.span(at: index, in: text, grammar: grammar) {
+            if let span = nonCodeSpan(index) {
                 if span.kind == .quoted {
                     tokens.append(Token(kind: .quoted, location: index, depth: depth))
                 }
@@ -254,8 +284,8 @@ enum TSQLTokens {
             } else if startsNumber(code, at: index, length: length) {
                 tokens.append(Token(kind: .other, location: index, depth: depth))
                 index = endOfNumber(code, from: index, length: length)
-            } else if startsWord(code, at: index) {
-                let end = endOfWord(code, from: index, length: length)
+            } else if startsWord(code, at: index, grammar: grammar) {
+                let end = endOfWord(code, from: index, length: length, grammar: grammar)
                 let word = code.substring(with: NSRange(location: index, length: end - index))
                 tokens.append(Token(kind: wordKind(word), location: index, depth: depth))
                 index = end
@@ -324,17 +354,56 @@ enum TSQLTokens {
         return cursor
     }
 
-    private static func startsWord(_ code: NSString, at index: Int) -> Bool {
-        let unit = code.character(at: index)
-        return SqlDollarQuote.isIdentifierStart(unit) || unit == at || unit == SqlLexer.hash
-            || isLetterOutsideASCII(code, at: index)
+    /// Whether the `-` at `index` is the sign of a number's exponent. Only reading forward tells that `e` from a name's
+    /// or a hex digit: `1E-` takes its sign, and `a1E-`, `0x1E-` and `1E+1E-` leave it. So the words and numbers
+    /// written with nothing between them up to `index` are read from the first one.
+    static func signsExponent(at index: Int, in text: NSString) -> Bool {
+        guard index > 0, [smallE, capitalE].contains(text.character(at: index - 1)) else { return false }
+        var cursor = index
+        while cursor > 0, continuesWordsAndNumbers(text, at: cursor - 1) {
+            cursor -= 1
+        }
+        let length = index + 1
+        while cursor < index {
+            if startsNumber(text, at: cursor, length: length) {
+                cursor = endOfNumber(text, from: cursor, length: length)
+            } else if startsWord(text, at: cursor, grammar: .hashAndAtInIdentifiers) {
+                cursor = endOfWord(text, from: cursor, length: length, grammar: .hashAndAtInIdentifiers)
+            } else {
+                cursor += StatementBlank.scalar(in: text, at: cursor).map { $0.utf16.count } ?? 1
+            }
+        }
+        return cursor > index
     }
 
-    private static func endOfWord(_ code: NSString, from start: Int, length: Int) -> Int {
+    /// Whether the unit at `index` may belong to a word or a number, so a token may have begun before it. A sign does
+    /// only after an `e`, which is why a run never reaches back past a `--`.
+    private static func continuesWordsAndNumbers(_ text: NSString, at index: Int) -> Bool {
+        let unit = text.character(at: index)
+        if [plus, SqlLexer.dash].contains(unit) {
+            return index > 0 && [smallE, capitalE].contains(text.character(at: index - 1))
+        }
+        return SqlDollarQuote.isIdentifierContinuation(unit) || [at, SqlLexer.hash, period].contains(unit)
+    }
+
+    // T-SQL's `@var` and `#temp` are names. Elsewhere `@` is an operator, a variable sigil or a database link, so
+    // `INTO@v`, `seq.NEXTVAL@link` and SurrealQL's `@@http::get` each keep their keyword. A grammar that runs
+    // statements with no `;` between them is T-SQL's, whichever reading declared it.
+    private static func startsWord(_ code: NSString, at index: Int, grammar: SQLLexicalGrammar) -> Bool {
+        let unit = code.character(at: index)
+        return SqlDollarQuote.isIdentifierStart(unit) || isLetterOutsideASCII(code, at: index)
+            || ((unit == at || unit == SqlLexer.hash) && takesTSQLNames(grammar))
+    }
+
+    private static func takesTSQLNames(_ grammar: SQLLexicalGrammar) -> Bool {
+        !grammar.isDisjoint(with: [.hashAndAtInIdentifiers, .unterminatedStatements])
+    }
+
+    private static func endOfWord(_ code: NSString, from start: Int, length: Int, grammar: SQLLexicalGrammar) -> Int {
         var cursor = start
         while cursor < length {
             let unit = code.character(at: cursor)
-            if SqlDollarQuote.isIdentifierPart(unit) || unit == at || unit == SqlLexer.hash || unit == dollar {
+            if SqlDollarQuote.isIdentifierPart(unit) || unit == dollar || continuesName(unit, grammar: grammar) {
                 cursor += 1
                 continue
             }
@@ -343,6 +412,14 @@ enum TSQLTokens {
             cursor += scalar.utf16.count
         }
         return cursor
+    }
+
+    private static func continuesName(_ unit: UInt16, grammar: SQLLexicalGrammar) -> Bool {
+        switch unit {
+        case SqlLexer.hash: return grammar.contains(.dollarAndHashInIdentifiers) || takesTSQLNames(grammar)
+        case at: return takesTSQLNames(grammar)
+        default: return false
+        }
     }
 
     private static func isLetterOutsideASCII(_ code: NSString, at index: Int) -> Bool {

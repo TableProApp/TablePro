@@ -18,6 +18,14 @@ struct MySQLGrantEscapingTests {
         #expect(MySQLGrantPatternEscaping.escapeDatabasePattern(#"back\slash"#) == #"back\\slash"#)
     }
 
+    @Test("A wildcard a combining mark follows is still escaped", arguments: ["%", "_", "\\"])
+    func escapesWildcardBeforeCombiningMark(wildcard: String) {
+        let escaped = MySQLGrantPatternEscaping.escapeDatabasePattern("db\(wildcard)\u{301}")
+        #expect(Array(escaped.unicodeScalars) == Array("db\\\(wildcard)\u{301}".unicodeScalars))
+        #expect(MySQLGrantPatternEscaping.unescapeDatabasePattern(escaped).unicodeScalars
+            .elementsEqual("db\(wildcard)\u{301}".unicodeScalars))
+    }
+
     @Test("Names without wildcards are left alone")
     func leavesPlainNames() {
         #expect(MySQLGrantPatternEscaping.escapeDatabasePattern("analytics") == "analytics")

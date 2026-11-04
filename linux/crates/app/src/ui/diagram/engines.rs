@@ -343,13 +343,13 @@ async fn connect(request: &ConnectRequest, tasks: &Tasks) -> Arc<Session> {
     let connector = Arc::new(DriverConnector::new(
         ConnectServices {
             environment: ConnectEnvironment::new("test"),
-            ssh: SshServices {
+            ssh: Arc::new(SshServices {
                 runtime: Arc::new(SshRuntimeCell::new(std::env::temp_dir().join("tablepro-diagram"))),
                 ssh_program: PathBuf::from("ssh"),
                 ssh_keygen_program: PathBuf::from("ssh-keygen"),
                 askpass_program: PathBuf::from("/nonexistent/tablepro-askpass"),
                 config_file: None,
-            },
+            }),
             liveness,
         },
         deadlines.clone(),

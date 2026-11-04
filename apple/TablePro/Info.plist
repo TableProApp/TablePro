@@ -28,6 +28,8 @@
 	<string>$(TABLEPRO_PLUGINKIT_VERSION)</string>
 	<key>TableProPluginKitMinimumVersion</key>
 	<string>$(TABLEPRO_PLUGINKIT_MINIMUM_VERSION)</string>
+	<key>TableProPluginRegistryPublicEDKey</key>
+	<string>IsE0vGXqPdxMY8cRrdi1B61ju4heTs+/cOXISYjs2tE=</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>

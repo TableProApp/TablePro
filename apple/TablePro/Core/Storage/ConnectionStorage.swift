@@ -179,6 +179,7 @@ final class ConnectionStorage {
             guard let index = connections.firstIndex(where: { $0.id == incoming.id }) else { continue }
             let stored = connections[index]
             var updated = incoming.adoptingDeviceLocalState(from: stored)
+            updated.origin = .imported
             if incoming.credentialMode.profileId != nil {
                 updated.credentialMode = incoming.credentialMode
             }
@@ -187,6 +188,11 @@ final class ConnectionStorage {
             }
             // A file carries no route, and readers drop the stored one once it no longer describes the tunnel.
             updated.sshRoute = stored.sshRoute
+            // A saved import brings no sign-in with this Mac's credentials, scripts or fields this build does not know, so
+            // the row keeps its own.
+            for (key, value) in stored.additionalFields where ConnectionFieldCatalog.survivesReplace(key) {
+                updated.additionalFields[key] = value
+            }
             updated.sortOrder = stored.groupId == updated.groupId
                 ? stored.sortOrder
                 : Self.nextSortOrder(in: connections, groupId: updated.groupId)
@@ -200,6 +206,7 @@ final class ConnectionStorage {
         for incoming in adding {
             guard knownIds.insert(incoming.id).inserted else { continue }
             var placed = incoming
+            placed.origin = .imported
             placed.sortOrder = Self.nextSortOrder(in: connections, groupId: incoming.groupId)
             connections.append(placed)
             added.append(placed)
@@ -534,6 +541,7 @@ final class ConnectionStorage {
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
         duplicate.sshRoute = connection.sshRoute
+        duplicate.origin = connection.origin
 
         var connections = loadConnections()
         let siblings = LibrarySorting.sorted(connections.filter { $0.groupId == connection.groupId }, mode: .manual)
@@ -602,6 +610,9 @@ final class ConnectionStorage {
             }
         }
         LoadableExtensionApprovalStore.shared.copyApprovals(from: connection.id, to: newId)
+        for store in ConnectionApprovalStore.all {
+            store.copyApprovals(from: connection.id, to: newId)
+        }
 
         appEventsProvider().connectionUpdated.send(nil)
         return placedDuplicate
@@ -663,9 +674,10 @@ final class ConnectionStorage {
 
     // MARK: - SSL Client Key Passphrase Storage
 
-    func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) {
+    @discardableResult
+    func saveSSLClientKeyPassphrase(_ passphrase: String, for connectionId: UUID) -> Bool {
         let key = "com.TablePro.sslkeypassphrase.\(connectionId.uuidString)"
-        keychain.writeString(passphrase, forKey: key)
+        return keychain.writeString(passphrase, forKey: key)
     }
 
     func loadSSLClientKeyPassphrase(for connectionId: UUID) -> String? {
@@ -863,5 +875,61 @@ final class ConnectionStorage {
                 Self.logger.error("Failed to persist plugin secure field migration; will retry on next launch")
             }
         }
+    }
+
+    // MARK: - MongoDB Connection-String Secrets
+
+    // Import from URL once kept these as plain options, which exports, links, the team library and sync carry. Runs
+    // every launch, so a row an older build wrote is moved too.
+    func moveMongoURISecretsToKeychain() {
+        let connections = loadConnections()
+        guard !lastLoadFailed else { return }
+        var cleaned: [UUID: [String: String]] = [:]
+        for connection in connections {
+            let kept = keepingMongoURISecretsInKeychain(connection)
+            if kept.additionalFields != connection.additionalFields {
+                cleaned[connection.id] = kept.additionalFields
+            }
+        }
+        guard !cleaned.isEmpty else { return }
+        let moved = mutateConnections(ids: Set(cleaned.keys), byUser: false) { connection in
+            connection.additionalFields = cleaned[connection.id] ?? connection.additionalFields
+        }
+        if !moved {
+            Self.logger.error("Could not remove MongoDB connection-string secrets from connections.json; retrying next launch")
+        }
+    }
+
+    // The Keychain write comes first: a field whose write fails stays in the record rather than being lost. A value
+    // already in the Keychain wins, since a legacy record an older build syncs can carry a stale copy.
+    func keepingMongoURISecretsInKeychain(_ connection: DatabaseConnection) -> DatabaseConnection {
+        var kept = connection
+        let id = connection.id
+        let tokenId = ConnectionSecretOptions.mongoSessionTokenFieldId
+        let holdsToken = { [self] (token: String) in
+            !(loadPluginSecureField(fieldId: tokenId, for: id) ?? "").isEmpty
+                || savePluginSecureField(token, fieldId: tokenId, for: id)
+        }
+        for (key, value) in connection.additionalFields where ConnectionSecretOptions.isSecret(key: key, value: value) {
+            guard let option = ConnectionSecretOptions.mongoOption(in: key) else {
+                if holdsToken(value) {
+                    kept.additionalFields[key] = nil
+                }
+                continue
+            }
+            if ConnectionSecretOptions.isMongoKeyPassphrase(option: option) {
+                if !(loadSSLClientKeyPassphrase(for: id) ?? "").isEmpty || saveSSLClientKeyPassphrase(value, for: id) {
+                    kept.additionalFields[key] = nil
+                }
+            } else if ConnectionSecretOptions.isMongoMechanismProperties(option: option) {
+                let split = ConnectionSecretOptions.splitSessionToken(from: value)
+                if let token = split.sessionToken, holdsToken(token) {
+                    kept.additionalFields[key] = split.remaining
+                }
+            } else {
+                kept.additionalFields[key] = nil
+            }
+        }
+        return kept
     }
 }

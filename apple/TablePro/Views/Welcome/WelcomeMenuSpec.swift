@@ -67,6 +67,7 @@ internal struct WelcomeMenuContext {
     internal let groups: [ConnectionGroup]
     internal let linkedFolderConnectionIds: Set<UUID>
     internal let disconnectableConnectionIds: Set<UUID>
+    internal let reconnectableConnectionIds: Set<UUID>
     internal let isSyncEnabled: Bool
     internal let canPublishToTeamCatalog: Bool
     internal let teamLibraryTeams: [TeamLibraryTeam]
@@ -141,8 +142,9 @@ internal enum WelcomeMenuSpec {
         context: WelcomeMenuContext
     ) -> [WelcomeMenuSection] {
         let id = connection.id
+        let connectTitle = context.reconnectableConnectionIds.contains(id) ? Titles.reconnect : Titles.connect(count: 1)
         var primary: [WelcomeMenuItem] = [
-            .command(Titles.connect(count: 1), .connect(context.rows)),
+            .command(connectTitle, .connect(context.rows)),
             .command(Titles.startAgentSession, .startAgentSession(id)),
         ]
         if context.disconnectableConnectionIds.contains(id) {
@@ -381,6 +383,7 @@ internal extension WelcomeMenuSpec {
         static var importFromAWS: String { String(localized: "Import from AWS…") }
         static var openProjectFolder: String { String(localized: "Open Project Folder…") }
         static var disconnect: String { String(localized: "Disconnect") }
+        static var reconnect: String { String(localized: "Reconnect") }
         static var edit: String { String(localized: "Edit…") }
         static var rename: String { String(localized: "Rename") }
         static var duplicate: String { String(localized: "Duplicate") }

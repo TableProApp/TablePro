@@ -37,6 +37,13 @@ struct SQLBuilderDefaultValuesTests {
         }
     }
 
+    // Without it an Insert Row that leaves every column to its default built no statement on D1.
+    @Test("Every engine that runs SQLite takes DEFAULT VALUES", arguments: [DatabaseType.cloudflareD1, .libsql, .turso])
+    func sqliteFamilyTakesDefaultValues(type: DatabaseType) {
+        #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "\"t\"", for: type) == "INSERT INTO \"t\" DEFAULT VALUES")
+        #expect(SQLBuilder.supportsAllDefaultsInsert(type))
+    }
+
     @Test("Oracle has no all-defaults statement")
     func oracleHasNoForm() {
         #expect(SQLBuilder.buildAllDefaultsInsert(qualifiedTable: "\"t\"", for: .oracle) == nil)

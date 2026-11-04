@@ -6,6 +6,7 @@
 import CryptoKit
 import Foundation
 @testable import TablePro
+import TableProHTTP
 import Testing
 
 struct AccountConfigurationTests {
@@ -36,5 +37,13 @@ struct AccountConfigurationTests {
         #expect(configuration.tokenEndpoint.absoluteString == "http://account.localhost:5284/oauth/token")
         #expect(configuration.apiServerURL.absoluteString == "http://api.localhost:5284/v2")
         #expect(configuration.entitlementKeys.map { $0.rawRepresentation }.contains(local.rawRepresentation))
+    }
+
+    @Test("Account calls follow a redirect only on their own origin")
+    func sessionRefusesCrossOriginRedirects() {
+        let session = AccountServices.liveSession()
+        defer { session.invalidateAndCancel() }
+
+        #expect(session.delegate === SameOriginRedirects.shared)
     }
 }

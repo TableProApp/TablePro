@@ -1,4 +1,5 @@
 import Foundation
+import TableProWireIO
 
 enum Td2Wrap {
     static let macLen = 32

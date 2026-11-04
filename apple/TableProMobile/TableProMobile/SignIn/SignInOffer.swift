@@ -1,7 +1,7 @@
 import Foundation
 import TableProDatabase
+import TableProHTTP
 import TableProModels
-import UIKit
 
 struct SignInMethod {
     let question: ConnectionPrompt
@@ -54,6 +54,6 @@ enum SignInOffer {
             ),
             generation: generation
         )
-        UIApplication.shared.open(url)
+        WebPageOpener.open(url, scope: .https)
     }
 }

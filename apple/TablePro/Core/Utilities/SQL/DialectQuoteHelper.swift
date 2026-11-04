@@ -5,6 +5,8 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
+import TableProSQLQuoting
 
 enum SQLDialectError: Error, LocalizedError {
     case dialectUnavailable(typeId: String)
@@ -20,49 +22,42 @@ enum SQLDialectError: Error, LocalizedError {
     }
 }
 
-func quoteIdentifierFromDialect(_ dialect: SQLDialectDescriptor) -> @Sendable (String) -> String {
-    let q = dialect.identifierQuote
-    if q == "[" {
-        return { name in
-            let escaped = name.replacingOccurrences(of: "]", with: "]]", options: .literal)
-            return "[\(escaped)]"
+// ClickHouse and GoogleSQL read a backslash inside a quoted name as an escape, so a name ending in `\` would run on.
+func quoteIdentifierFromDialect(
+    _ dialect: SQLDialectDescriptor,
+    databaseType: DatabaseType? = nil
+) -> @Sendable (String) -> String {
+    let quote = SQLIdentifierQuote(dialectQuote: dialect.identifierQuote)
+    let backslashEscapes = databaseType?.lexicalGrammar.backslashEscapes(in: quote) ?? false
+    return { SQLQuoting.identifier($0, quote: quote, backslashEscapes: backslashEscapes) }
+}
+
+extension SQLIdentifierQuote {
+    init(dialectQuote: String) {
+        switch dialectQuote {
+        case "[": self = .bracket
+        case "`": self = .backtick
+        default: self = .doubleQuote
         }
-    }
-    return { name in
-        // By code unit: the default compares grapheme clusters and skips a quote a combining mark follows.
-        let escaped = name.replacingOccurrences(of: q, with: q + q, options: .literal)
-        return "\(q)\(escaped)\(q)"
     }
 }
 
-/// The body of a single-quoted literal, escaped the way the engine reads it back.
-///
-/// MySQL, MariaDB, ClickHouse and Snowflake treat a backslash as an escape inside a literal, so a
-/// value holding one has to double it. Writing ANSI rules for those engines does not fail: it
-/// silently rewrites the data, and `C:\temp\next` comes back with a tab and a newline in it.
-///
-/// The escaped set matches what the MySQL driver itself writes, character for character, so a dump
-/// taken with a driver and one taken without are the same file. `\u{1A}` is the one that matters
-/// beyond tidiness: a raw SUB byte truncates a dump fed to the Windows `mysql` client, which is why
-/// `mysqldump` writes `\Z`.
-///
-/// Dameng is the one engine a static descriptor cannot answer for, because it detects its own
-/// escaping at connect time and its descriptor carries the pre-detection default. Ask its driver,
-/// which is what every path holding one already does.
-func escapeStringLiteralFromDialect(_ dialect: SQLDialectDescriptor) -> @Sendable (String) -> String {
-    guard dialect.requiresBackslashEscaping else { return SQLEscaping.escapeStringLiteral }
-    return { value in
-        var result = value
-        result = result.replacingOccurrences(of: "\\", with: "\\\\")
-        result = result.replacingOccurrences(of: "'", with: "''")
-        result = result.replacingOccurrences(of: "\n", with: "\\n")
-        result = result.replacingOccurrences(of: "\r", with: "\\r")
-        result = result.replacingOccurrences(of: "\t", with: "\\t")
-        result = result.replacingOccurrences(of: "\0", with: "\\0")
-        result = result.replacingOccurrences(of: "\u{08}", with: "\\b")
-            result = result.replacingOccurrences(of: "\u{1A}", with: "\\Z")
-        return result
+// MySQL's own set, `\Z` included, so a dump taken without a driver is the same file as one taken with it; ClickHouse
+// and Snowflake read `\Z` as a letter, so they get the set every backslash engine decodes. Dameng detects its
+// escaping at connect time and its descriptor carries the pre-detection default: ask its driver.
+func escapeStringLiteralFromDialect(
+    _ dialect: SQLDialectDescriptor,
+    databaseType: DatabaseType? = nil
+) -> @Sendable (String) -> String {
+    let escapes: SQLStringEscapes
+    if !dialect.requiresBackslashEscaping {
+        escapes = .standard
+    } else if let databaseType, SqlDialect.from(databaseTypeId: databaseType.rawValue) != .mysql {
+        escapes = .backslash
+    } else {
+        escapes = .mysql
     }
+    return { SQLQuoting.stringLiteralBody($0, escapes: escapes) }
 }
 
 func resolveSQLDialect(

@@ -139,7 +139,7 @@ extension MainContentCoordinator {
 
     private func presentRenameFailure(_ error: Error, object: String = "") {
         renameLogger.error(
-            "Rename failed for \(object, privacy: .public): \(error.publicLogShape, privacy: .public)"
+            "Rename failed for \(object, privacy: .private(mask: .hash)): \(error.publicLogShape, privacy: .public)"
         )
         AlertHelper.showErrorSheet(
             title: String(localized: "Rename Failed"),

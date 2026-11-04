@@ -26,27 +26,11 @@ struct RemoteCommandResult: Sendable {
     }
 }
 
-/// Runs one command on the SSH server and collects what it printed.
-///
-/// The app needs this for exactly two things: asking whether the remote has a `sqlite3` new enough
-/// to take a consistent snapshot of a database another process is writing, and then asking it to
-/// take one. Both are reads. Nothing here composes a command from user input, and the one argument
-/// that varies (a path) is single-quoted by `shellQuoted`.
-///
-/// Some servers refuse exec entirely, which a chrooted SFTP-only account does by design. That is an
-/// ordinary answer rather than a failure: the caller falls back to copying the file directly and
-/// tells the user why that is weaker.
+// A server may refuse exec (a chrooted SFTP-only account does), which the caller answers by copying the file.
 enum LibSSH2ExecChannel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHExec")
 
     private static let readChunk = 16 * 1_024
-
-    /// Wraps a string as one shell word. Single quotes suppress every expansion the shell performs,
-    /// and the only character they cannot carry is a single quote, which is closed, escaped and
-    /// reopened. A remote path is the only thing the app ever passes through here.
-    static func shellQuoted(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
-    }
 
     static func runSerialized(
         _ command: String,
@@ -104,7 +88,7 @@ enum LibSSH2ExecChannel {
         let signal = exitSignal(channel: channel, session: session)
 
         Self.logger.debug(
-            "remote command exited \(status, privacy: .public) signal \(signal ?? "none", privacy: .public): \(command, privacy: .public)"
+            "remote command exited \(status, privacy: .public) signal \(signal ?? "none", privacy: .public): \(command, privacy: .private(mask: .hash))"
         )
         return RemoteCommandResult(
             exitStatus: status, standardOutput: out, standardError: err, exitSignal: signal

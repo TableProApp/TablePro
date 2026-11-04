@@ -49,38 +49,36 @@ struct NativeDumpScopeTests {
 
     // MARK: - PostgreSQL
 
-    /// Measured with pg_dump 17.11: `-t` is a psql `\d` pattern, not a name. `-t 'app.Orders'`
-    /// exits with "no matching tables were found" because the pattern folds to lower case, and
-    /// `-t 'order.item'` splits on the dot. Only the fully quoted form matches exactly one table.
+    // Measured with pg_dump 17.11: `-t` is a psql `\d` pattern that folds case and splits on the dot.
     @Test("Every picked PostgreSQL table is quoted schema and name apart")
-    func postgresQuotesEveryPattern() {
+    func postgresQuotesEveryPattern() throws {
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "Orders", schema: "app")
             ) == "\"app\".\"Orders\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "order.item", schema: "app")
             ) == "\"app\".\"order.item\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "t[1]", schema: "app")
             ) == "\"app\".\"t[1]\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "star*", schema: "app")
             ) == "\"app\".\"star*\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "we\"ird", schema: "app")
             ) == "\"app\".\"we\"\"ird\""
         )
         #expect(
-            NativeDumpArgumentQuoting.postgresTablePattern(
+            try NativeDumpArgumentQuoting.postgresTablePattern(
                 NativeDumpObject(name: "plain")
             ) == "\"plain\""
         )
@@ -210,8 +208,8 @@ struct NativeDumpScopeTests {
             ]),
             localFilePath: "/tmp/app.sqlite"
         )
-        #expect(narrowed == ["/tmp/app.sqlite", ".dump \"user\\\\_data\" \"idx\\\\_user\\\\_data\\\\_b\""])
-        #expect(narrowed.count == 2, "every name must stay inside the one command argument")
+        #expect(narrowed == ["-safe", "/tmp/app.sqlite", ".dump \"user\\\\_data\" \"idx\\\\_user\\\\_data\\\\_b\""])
+        #expect(narrowed.count == 3, "every name must stay inside the one command argument")
     }
 
     @Test("A hostile SQLite object name cannot reach argv as an option")
@@ -224,15 +222,15 @@ struct NativeDumpScopeTests {
             ]),
             localFilePath: "/tmp/app.sqlite"
         )
-        #expect(narrowed.count == 2)
-        #expect(!narrowed.contains { $0.hasPrefix("-") })
-        #expect(narrowed[1] == ".dump \"-cmd\" \".shell touch /tmp/pwned\"")
+        #expect(narrowed.count == 3)
+        #expect(!narrowed.dropFirst().contains { $0.hasPrefix("-") })
+        #expect(narrowed[2] == ".dump \"-cmd\" \".shell touch /tmp/pwned\"")
     }
 
     @Test("A whole-database SQLite dump passes a bare .dump")
     func sqliteWholeDatabaseArguments() throws {
         let whole = try arguments(.sqlite, scope: .wholeDatabase, localFilePath: "/tmp/app.sqlite")
-        #expect(whole == ["/tmp/app.sqlite", ".dump"])
+        #expect(whole == ["-safe", "/tmp/app.sqlite", ".dump"])
     }
 
     // MARK: - SQL Server
@@ -327,7 +325,8 @@ struct DuckDBDumpStatementTests {
         )
         #expect(statements == [
             "ATTACH '/tmp/out.duckdb' AS \"bak1\"",
-            "COPY FROM DATABASE \"my-weird\" TO \"bak1\"",
+            "COPY FROM DATABASE \"my-weird\" TO \"bak1\" (SCHEMA)",
+            "COPY FROM DATABASE \"my-weird\" TO \"bak1\" (DATA)",
             "DETACH \"bak1\""
         ])
     }
@@ -344,7 +343,8 @@ struct DuckDBDumpStatementTests {
         )
         #expect(statements == [
             "ATTACH '/tmp/out.duckdb' AS \"bak1\" (READ_ONLY)",
-            "COPY FROM DATABASE \"bak1\" TO \"live\"",
+            "COPY FROM DATABASE \"bak1\" TO \"live\" (SCHEMA)",
+            "COPY FROM DATABASE \"bak1\" TO \"live\" (DATA)",
             "DETACH \"bak1\""
         ])
     }
@@ -377,10 +377,13 @@ struct DuckDBDumpStatementTests {
         #expect(statements.first == "ATTACH '/tmp/o''ut.duckdb' AS \"bak1\"")
     }
 
-    @Test("The Parquet format exports and imports a folder and needs no catalog")
+    @Test("The Parquet format exports a folder, and restores the file an isolated import builds from it")
     func duckDBParquetStatements() throws {
         let engine = try #require(
             NativeDumpRegistry.descriptor(for: .duckdb, formatId: "parquet")?.engineStatements
+        )
+        let file = try #require(
+            NativeDumpRegistry.descriptor(for: .duckdb, formatId: "duckdb")?.engineStatements
         )
         let backup = engine.statements(
             for: .backup,
@@ -389,12 +392,13 @@ struct DuckDBDumpStatementTests {
         )
         #expect(backup == ["EXPORT DATABASE '/tmp/dump' (FORMAT PARQUET)"])
 
-        let restore = engine.statements(
-            for: .restore,
-            request: request(fileURL: URL(fileURLWithPath: "/tmp/dump"), catalog: nil),
-            alias: "unused"
+        let staged = request(fileURL: URL(fileURLWithPath: "/tmp/staged.duckdb"), catalog: "live")
+        #expect(engine.isolatedImportFormat?.id == "duckdb")
+        #expect(file.isolatedImportFormat == nil)
+        #expect(
+            engine.statements(for: .restore, request: staged, alias: "bak1")
+                == file.statements(for: .restore, request: staged, alias: "bak1")
         )
-        #expect(restore == ["IMPORT DATABASE '/tmp/dump'"])
     }
 
     /// Measured: `EXPORT DATABASE` merges into a folder that already holds one, leaving the

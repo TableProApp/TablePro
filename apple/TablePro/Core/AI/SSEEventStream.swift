@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProHTTP
 
 enum SSEEventStream {
     static func make<State>(
@@ -20,11 +21,11 @@ enum SSEEventStream {
             let task = Task {
                 do {
                     let request = try await buildRequest()
-                    var (bytes, response) = try await session.bytes(for: request)
+                    var (bytes, response) = try await session.bytes(for: request, delegate: SameOriginRedirects.shared)
                     if (response as? HTTPURLResponse)?.statusCode == 401,
                        let refreshOnUnauthorized {
                         try await refreshOnUnauthorized()
-                        (bytes, response) = try await session.bytes(for: buildRequest())
+                        (bytes, response) = try await session.bytes(for: buildRequest(), delegate: SameOriginRedirects.shared)
                     }
 
                     guard let httpResponse = response as? HTTPURLResponse else {

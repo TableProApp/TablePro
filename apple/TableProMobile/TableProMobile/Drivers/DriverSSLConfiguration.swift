@@ -77,6 +77,14 @@ nonisolated struct DriverSSLConfiguration: Equatable, Sendable {
         }
     }
 
+    var mssqlCertificateVerification: MSSQLCertificateVerification {
+        switch mode {
+        case .disable, .require: return .none
+        case .verifyCa: return .chain
+        case .verifyFull: return .chainAndHostname
+        }
+    }
+
     var mssqlEncryptionLevel: MSSQLEncryptionLevel {
         switch mode {
         case .disable: return .request

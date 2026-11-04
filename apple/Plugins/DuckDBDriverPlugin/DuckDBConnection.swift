@@ -209,16 +209,57 @@ actor DuckDBConnectionActor {
         try Self.streamResultRows(&resolved.result, schema: resolved.schema, continuation: continuation)
     }
 
+    // The state check, the BEGIN, the statement and the ROLLBACK share one actor turn, so nothing lands in between.
+    // The statement text is not tracked: the ROLLBACK leaves the session as idle as it was found.
+    func executeReadOnly(_ query: String, parameters: [PluginCellValue]) throws -> DuckDBRawResult {
+        let conn = try readOnlyConnection()
+        let startTime = Date()
+        return try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState()) {
+            var resolved = try Self.resolvedResult(query: query, parameters: parameters, connection: conn)
+            defer { duckdb_destroy_result(&resolved.result) }
+            return Self.extractResult(from: &resolved.result, schema: resolved.schema, startTime: startTime)
+        }
+    }
+
+    func streamReadOnly(
+        _ query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) throws {
+        let conn = try readOnlyConnection()
+        try DuckDBReadOnlyStatement.run(on: conn, session: sessionTransactionState()) {
+            var resolved = try Self.resolvedResult(query: query, parameters: [], connection: conn)
+            defer { duckdb_destroy_result(&resolved.result) }
+            try Self.streamResultRows(&resolved.result, schema: resolved.schema, continuation: continuation)
+        }
+    }
+
+    private func readOnlyConnection() throws -> duckdb_connection {
+        try ensureOpen()
+        guard let conn = connection else { throw DuckDBPluginError.notConnected }
+        lastActivity = ContinuousClock.now
+        return conn
+    }
+
     // MARK: - Handle lifecycle
 
     private func openHandle(spec: DuckDBOpenSpec) throws {
         var config: duckdb_config?
+        guard duckdb_create_config(&config) != DuckDBError else {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "DuckDB could not allocate a configuration to open the file")
+            )
+        }
+        defer { duckdb_destroy_config(&config) }
+        guard duckdb_set_config(
+            config,
+            DuckDBStorageCompatibility.configurationOption,
+            DuckDBStorageCompatibility.version
+        ) != DuckDBError else {
+            throw DuckDBPluginError.connectionFailed(
+                String(localized: "This build of DuckDB does not accept the storage version that keeps files readable by DuckDB 1.x")
+            )
+        }
         if spec.accessMode == .readOnly {
-            guard duckdb_create_config(&config) != DuckDBError else {
-                throw DuckDBPluginError.connectionFailed(
-                    String(localized: "DuckDB could not allocate a configuration to open the file read-only")
-                )
-            }
             /// Measured: a value `duckdb_set_config` rejects leaves the option unset and the open
             /// then succeeds read-write with writes allowed, so an unchecked return here is a
             /// read-only setting that silently does nothing.
@@ -227,13 +268,11 @@ actor DuckDBConnectionActor {
                 DuckDBAccessMode.configurationOption,
                 spec.accessMode.rawValue
             ) != DuckDBError else {
-                duckdb_destroy_config(&config)
                 throw DuckDBPluginError.connectionFailed(
                     String(localized: "This build of DuckDB does not accept a read-only access mode")
                 )
             }
         }
-        defer { duckdb_destroy_config(&config) }
 
         var db: duckdb_database?
         var errorPtr: UnsafeMutablePointer<CChar>?

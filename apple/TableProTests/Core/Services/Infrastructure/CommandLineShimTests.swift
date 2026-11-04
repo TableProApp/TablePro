@@ -126,5 +126,11 @@ struct CommandLineShimTests {
     @Test("A single quote in a path cannot break out of the quoting")
     func quotingEscapesSingleQuotes() {
         #expect(CommandLineShim.quote("/Apps/Dat's.app") == "'/Apps/Dat'\\''s.app'")
+        #expect(CommandLineShim.quote("/Apps/Dat'\u{301}s.app") == "'/Apps/Dat'\\''\u{301}s.app'")
+    }
+
+    @Test("A NUL in a path is shown escaped rather than put raw into the line")
+    func quotingShowsANulEscaped() {
+        #expect(CommandLineShim.quote("/Apps/a\u{0}b.app") == #"$'/Apps/a\x00b.app'"#)
     }
 }

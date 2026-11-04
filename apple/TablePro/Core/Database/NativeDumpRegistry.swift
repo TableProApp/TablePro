@@ -5,6 +5,7 @@
 
 import Foundation
 import TableProPluginKit
+import TableProSQLQuoting
 
 /// Which engines can dump and restore, and how to drive them.
 ///
@@ -93,18 +94,31 @@ enum NativeDumpRegistry {
                     requiresUntranslatedMessages: true,
                     toolForServer: toolForServer,
                     backupArguments: { request, _ in
-                        connectionFlags(request)
-                            + ["-Fc", "-d", request.database]
+                        try connectionFlags(request)
+                            + ["-Fc", "-d", NativeDumpArgumentQuoting.postgresDatabase(request.database)]
                             + postgresTableFlags(request)
                             + ["-f", request.fileURL.path]
                     },
                     restoreArguments: { request, _ in
-                        connectionFlags(request) + ["--no-owner", "--no-acl", "-d", request.database, request.fileURL.path]
+                        try connectionFlags(request) + [
+                            "--no-owner",
+                            "--no-acl",
+                            "-d",
+                            NativeDumpArgumentQuoting.postgresDatabase(request.database),
+                            request.fileURL.path
+                        ]
                     },
                     environment: { request in
                         var environment: [String: String] = [:]
                         if let password = request.password, !password.isEmpty {
                             environment["PGPASSWORD"] = password
+                        } else {
+                            // Without a password libpq reads ~/.pgpass itself. As in the driver, only the Use ~/.pgpass setting
+                            // reaches that file, through the app's own reader.
+                            environment["PGPASSFILE"] = unreadablePassfile
+                        }
+                        if let hostaddr = postgresEndpoint(request).hostaddr {
+                            environment["PGHOSTADDR"] = hostaddr
                         }
                         environment.merge(
                             postgresSSLEnvironment(request.connection.transportSSLConfiguration)
@@ -128,26 +142,39 @@ enum NativeDumpRegistry {
         )
     }
 
-    /// `-t` takes a `psql` pattern rather than a name, so every picked table is quoted part by
-    /// part. Measured with pg_dump 17.11: `-t 'app.Orders'` matches nothing and
-    /// `-t '"app"."Orders"'` matches exactly one table.
-    private static func postgresTableFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
-        request.scope.objects.flatMap { object in
-            ["-t", NativeDumpArgumentQuoting.postgresTablePattern(object)]
+    // Measured with pg_dump 17.11: `-t 'app.Orders'` matches nothing and `-t '"app"."Orders"'` exactly one table.
+    private static func postgresTableFlags(_ request: NativeDumpDescriptor.Request) throws -> [String] {
+        try request.scope.objects.flatMap { object in
+            try ["-t", NativeDumpArgumentQuoting.postgresTablePattern(object)]
         }
     }
 
-    // A socket goes to `-h` as its directory, the way libpq reads a host starting with `/`.
     private static func connectionFlags(_ request: NativeDumpDescriptor.Request) -> [String] {
-        let socket = request.connection.type.localSocketIsDirectory ? request.connection.localSocketEndpoint : nil
-        let host = socket?.path ?? request.host
-        let port = socket?.port ?? request.connection.port
-        var flags = ["--no-password", "-h", host, "-p", String(port)]
+        let endpoint = postgresEndpoint(request)
+        var flags = ["--no-password", "-h", endpoint.host, "-p", String(endpoint.port)]
         if !request.connection.username.isEmpty {
             flags.append(contentsOf: ["-U", request.connection.username])
         }
         return flags
     }
+
+    // A socket goes to `-h` as its directory, the way libpq reads a host starting with `/`. Through a tunnel libpq
+    // dials `hostaddr` and checks the certificate against `host`, as the driver does, so `host` names the server.
+    private static func postgresEndpoint(
+        _ request: NativeDumpDescriptor.Request
+    ) -> (host: String, port: Int, hostaddr: String?) {
+        if request.connection.type.localSocketIsDirectory, let socket = request.connection.localSocketEndpoint {
+            return (socket.path, socket.port, nil)
+        }
+        if let serverName = request.tunneledServerName, serverName != request.host,
+           request.host.lowercased() != "localhost" {
+            return (serverName, request.connection.port, request.host)
+        }
+        return (request.host, request.connection.port, nil)
+    }
+
+    // Nothing can exist under a device file, so libpq finds no file there and says nothing.
+    static let unreadablePassfile = "/dev/null/pgpass"
 
     static func postgresSSLMode(_ mode: SSLMode) -> String? {
         switch mode {
@@ -212,6 +239,7 @@ enum NativeDumpRegistry {
                     },
                     restoreArguments: { request, resolved in
                         try mysqlConnectionFlags(request, resolved)
+                            + MySQLClientArguments.restoreSafety(tool: resolved)
                             + ["--default-character-set=utf8mb4", "--", request.database]
                     },
                     environment: { request in
@@ -347,7 +375,8 @@ enum NativeDumpRegistry {
                 request.connection.transportSSLConfiguration,
                 flavor: resolved.flavor,
                 toolPath: resolved.path,
-                serverOffersTLS: request.serverOffersTLS
+                serverOffersTLS: request.serverOffersTLS,
+                throughTunnel: request.tunneledServerName != nil
             )
         )
         if request.connection.usesIAMToken {
@@ -373,11 +402,19 @@ enum NativeDumpRegistry {
                     installHint: String(localized: "Install it with “brew install mongodb-database-tools”."),
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
-                    backupArguments: { request, _ in
-                        mongoNamespaceFlags(request) + ["--gzip", "--archive=\(request.fileURL.path)"]
+                    backupArguments: { request, resolved in
+                        try refuseUncheckedThroughTunnel(
+                            request, mode: request.connection.sslConfig.mode, toolPath: resolved.path,
+                            keeping: mongoModesThroughTunnel
+                        )
+                        return mongoNamespaceFlags(request) + ["--gzip", "--archive=\(request.fileURL.path)"]
                     },
-                    restoreArguments: { request, _ in
-                        NativeDumpArgumentQuoting.mongoRestoreRenaming(into: request.database)
+                    restoreArguments: { request, resolved in
+                        try refuseUncheckedThroughTunnel(
+                            request, mode: request.connection.sslConfig.mode, toolPath: resolved.path,
+                            keeping: mongoModesThroughTunnel
+                        )
+                        return NativeDumpArgumentQuoting.mongoRestoreRenaming(into: request.database)
                             + ["--gzip", "--archive=\(request.fileURL.path)"]
                     },
                     configurationFileEntries: { request in mongoConfigurationEntries(request) }
@@ -391,6 +428,9 @@ enum NativeDumpRegistry {
             restoreSemantics: .addsToExistingObjects
         )
     }
+
+    // The tools check the name in the URI, 127.0.0.1 through a tunnel, and no option names another. Verify CA skips it.
+    private static let mongoModesThroughTunnel: [SSLMode] = [.disabled, .preferred, .required, .verifyCa]
 
     /// A whole-database dump names the database; a narrowed one names each collection, because
     /// `--db` plus `--collection` takes only one collection at a time while `--nsInclude` repeats.
@@ -435,16 +475,27 @@ enum NativeDumpRegistry {
                     backupDelivery: .toolWritesFile,
                     restoreDelivery: .toolWritesFile,
                     exposesPasswordInArguments: true,
-                    backupArguments: { request, _ in
-                        ["/Action:Export",
-                         "/TargetFile:\(request.fileURL.path)",
-                         "/SourceConnectionString:\(sqlServerConnectionString(request))"]
-                            + request.scope.objects.map { "/p:TableData=\(sqlServerTableData($0))" }
+                    backupArguments: { request, resolved in
+                        try refuseUncheckedThroughTunnel(
+                            request, mode: request.connection.sslConfig.mode, toolPath: resolved.path,
+                            keeping: sqlServerModesThroughTunnel
+                        )
+                        return try [
+                            "/Action:Export",
+                            "/TargetFile:\(request.fileURL.path)",
+                            "/SourceConnectionString:\(sqlServerConnectionString(request))"
+                        ] + request.scope.objects.map { "/p:TableData=\(sqlServerTableData($0))" }
                     },
-                    restoreArguments: { request, _ in
-                        ["/Action:Import",
-                         "/SourceFile:\(request.fileURL.path)",
-                         "/TargetConnectionString:\(sqlServerConnectionString(request))"]
+                    restoreArguments: { request, resolved in
+                        try refuseUncheckedThroughTunnel(
+                            request, mode: request.connection.sslConfig.mode, toolPath: resolved.path,
+                            keeping: sqlServerModesThroughTunnel
+                        )
+                        return try [
+                            "/Action:Import",
+                            "/SourceFile:\(request.fileURL.path)",
+                            "/TargetConnectionString:\(sqlServerConnectionString(request))"
+                        ]
                     }
                 )
             ),
@@ -463,6 +514,9 @@ enum NativeDumpRegistry {
         )
     }
 
+    // sqlpackage checks the certificate against the address it dials whenever it verifies, 127.0.0.1 through a tunnel.
+    private static let sqlServerModesThroughTunnel: [SSLMode] = [.disabled, .preferred, .required]
+
     private static func sqlServerTableData(_ object: NativeDumpObject) -> String {
         guard let schema = object.schema else { return object.name }
         return "\(schema).\(object.name)"
@@ -472,22 +526,35 @@ enum NativeDumpRegistry {
     /// string is the only channel it has. That puts the password in `argv`, where `ps` can read it,
     /// so the string is built here and `NativeDumpService` keeps SQL Server out of the flows that
     /// promise otherwise. Anything better needs Entra or integrated auth, which have no password.
-    private static func sqlServerConnectionString(_ request: NativeDumpDescriptor.Request) -> String {
-        var parts = [
-            "Server=\(request.host),\(request.connection.port)",
-            "Database=\(request.database)"
+    private static func sqlServerConnectionString(_ request: NativeDumpDescriptor.Request) throws -> String {
+        let quoted = NativeDumpArgumentQuoting.sqlServerConnectionStringValue
+        var parts = try [
+            "Server=\(quoted("\(request.host),\(request.connection.port)"))",
+            "Database=\(quoted(request.database))"
         ]
         if request.connection.username.isEmpty {
             parts.append("Integrated Security=true")
         } else {
-            parts.append("User ID=\(request.connection.username)")
-            parts.append("Password=\(request.password ?? "")")
+            try parts.append("User ID=\(quoted(request.connection.username))")
+            try parts.append("Password=\(quoted(request.password ?? ""))")
         }
         parts.append(request.connection.sslConfig.isEnabled ? "Encrypt=true" : "Encrypt=false")
         if request.connection.sslConfig.mode == .required || request.connection.sslConfig.mode == .preferred {
             parts.append("TrustServerCertificate=true")
         }
         return parts.joined(separator: ";")
+    }
+
+    // A tool dialing a tunnel's forward checks the certificate against that loopback address, so a mode it cannot keep
+    // there is refused before it runs.
+    private static func refuseUncheckedThroughTunnel(
+        _ request: NativeDumpDescriptor.Request,
+        mode: SSLMode,
+        toolPath: String,
+        keeping supportedModes: [SSLMode]
+    ) throws {
+        guard request.tunneledServerName != nil, !supportedModes.contains(mode) else { return }
+        throw NativeDumpError.uncheckedThroughTunnel(tool: toolPath, mode: mode, supportedModes: supportedModes)
     }
 
     // MARK: - SQLite
@@ -507,15 +574,18 @@ enum NativeDumpRegistry {
                     installHint: String(localized: "Install it with “brew install sqlite” and link it."),
                     backupDelivery: .standardOutput,
                     restoreDelivery: .standardOutput,
+                    // `.shell`, `.system` and writefile() run from a dump read on stdin unless `-safe`
+                    // is given. Not `-readonly`: it cannot open a WAL database whose -wal and -shm are gone.
                     backupArguments: { request, _ in
-                        [
+                        try [
+                            "-safe",
                             sqlitePath(request),
                             NativeDumpArgumentQuoting.sqliteDumpCommand(
                                 names: request.scope.objects.map(\.name)
                             )
                         ]
                     },
-                    restoreArguments: { request, _ in [sqlitePath(request)] }
+                    restoreArguments: { request, _ in try ["-safe", "-bail", sqlitePath(request)] }
                 )
             ),
             archiveFormat: NativeDumpDescriptor.ArchiveFormat(
@@ -523,14 +593,19 @@ enum NativeDumpRegistry {
                 contentDescription: String(localized: "SQL statements")
             ),
             objectScope: .tables(caveat: nil),
-            restoreSemantics: .addsToExistingObjects,
+            restoreSemantics: .stopsAtFirstError,
             requiresLocalFile: true
         )
     }
 
-    private static func sqlitePath(_ request: NativeDumpDescriptor.Request) -> String {
-        let resolved = request.localFilePath ?? request.connection.database
-        return resolved.trimmingCharacters(in: .whitespaces)
+    // Absolute, so a file named like `-cmd` is never read as an option: sqlite3 before 3.42 rejects `--`.
+    private static func sqlitePath(_ request: NativeDumpDescriptor.Request) throws -> String {
+        let resolved = (request.localFilePath ?? request.connection.database).trimmingCharacters(in: .whitespaces)
+        guard !resolved.isEmpty else { throw NativeDumpError.sourceUnreadable }
+        guard !resolved.unicodeScalars.contains("\0") else { throw NativeDumpError.nulInArgument }
+        let path = URL(fileURLWithPath: (resolved as NSString).expandingTildeInPath).standardizedFileURL.path
+        guard path.hasPrefix("/") else { throw NativeDumpError.sourceUnreadable }
+        return path
     }
 
     // MARK: - DuckDB
@@ -548,36 +623,9 @@ enum NativeDumpRegistry {
         producesDirectory: true
     )
 
-    /// One `.duckdb` file, written by the engine already in front of the app.
-    ///
-    /// Measured against the vendored libduckdb v1.5.2: `ATTACH` plus `COPY FROM DATABASE` carries
-    /// tables, views, indexes, foreign keys and sequences, and restores with the same statement
-    /// reversed. The source catalog comes from `current_database()`, because DuckDB derives a
-    /// catalog name from the file's basename: a file `my-weird.name.db` attaches as `my-weird`, and
-    /// `COPY FROM DATABASE main` fails with `Catalog "main" does not exist`.
     private static var duckDBFile: NativeDumpDescriptor {
         NativeDumpDescriptor(
-            mechanism: .engineStatements(
-                NativeDumpDescriptor.EngineStatements(
-                    backupStatements: { request, alias in
-                        guard let source = request.currentCatalog, !source.isEmpty else { return [] }
-                        return [
-                            "ATTACH \(quotedLiteral(request.fileURL.path)) AS \(quotedIdentifier(alias))",
-                            "COPY FROM DATABASE \(quotedIdentifier(source)) TO \(quotedIdentifier(alias))",
-                            "DETACH \(quotedIdentifier(alias))"
-                        ]
-                    },
-                    restoreStatements: { request, alias in
-                        guard let target = request.currentCatalog, !target.isEmpty else { return [] }
-                        return [
-                            "ATTACH \(quotedLiteral(request.fileURL.path)) AS \(quotedIdentifier(alias)) (READ_ONLY)",
-                            "COPY FROM DATABASE \(quotedIdentifier(alias)) TO \(quotedIdentifier(target))",
-                            "DETACH \(quotedIdentifier(alias))"
-                        ]
-                    },
-                    cleanupStatements: { alias in ["DETACH \(quotedIdentifier(alias))"] }
-                )
-            ),
+            mechanism: .engineStatements(duckDBFileStatements),
             archiveFormat: duckDBFileFormat,
             objectScope: .unsupported(
                 reason: String(localized: "DuckDB copies the whole database. There is no table filter.")
@@ -586,20 +634,42 @@ enum NativeDumpRegistry {
         )
     }
 
-    /// A folder of Parquet next to `schema.sql` and `load.sql`, which tools other than DuckDB can
-    /// read. `EXPORT DATABASE` merges into a folder that already holds one, leaving the previous
-    /// run's data files behind, so the caller empties the destination first.
+    // The catalog is the session's, never `main`: DuckDB names one after the file, so `my-weird.name.db` attaches as `my-weird`.
+    private static let duckDBFileStatements = NativeDumpDescriptor.EngineStatements(
+        backupStatements: { request, alias in
+            guard let source = request.currentCatalog, !source.isEmpty else { return [] }
+            return ["ATTACH \(SQLQuoting.stringLiteral(request.fileURL.path)) AS \(SQLQuoting.identifier(alias))"]
+                + copyDatabase(from: source, to: alias)
+                + ["DETACH \(SQLQuoting.identifier(alias))"]
+        },
+        restoreStatements: { request, alias in
+            guard let target = request.currentCatalog, !target.isEmpty else { return [] }
+            return ["ATTACH \(SQLQuoting.stringLiteral(request.fileURL.path)) AS \(SQLQuoting.identifier(alias)) (READ_ONLY)"]
+                + copyDatabase(from: alias, to: target)
+                + ["DETACH \(SQLQuoting.identifier(alias))"]
+        },
+        cleanupStatements: { alias in ["DETACH \(SQLQuoting.identifier(alias))"] }
+    )
+
+    // Without an option, COPY FROM DATABASE expands to these two statements, and a prepared statement holds only one.
+    private static func copyDatabase(from source: String, to target: String) -> [String] {
+        ["SCHEMA", "DATA"].map { part in
+            "COPY FROM DATABASE \(SQLQuoting.identifier(source)) TO \(SQLQuoting.identifier(target)) (\(part))"
+        }
+    }
+
+    // EXPORT DATABASE merges into an earlier export, so the caller empties the folder first. On restore the folder's
+    // schema.sql and load.sql run only in the driver's isolated instance, and the session restores the file it builds.
     private static var duckDBParquet: NativeDumpDescriptor {
         NativeDumpDescriptor(
             mechanism: .engineStatements(
                 NativeDumpDescriptor.EngineStatements(
                     backupStatements: { request, _ in
-                        ["EXPORT DATABASE \(quotedLiteral(request.fileURL.path)) (FORMAT PARQUET)"]
+                        ["EXPORT DATABASE \(SQLQuoting.stringLiteral(request.fileURL.path)) (FORMAT PARQUET)"]
                     },
-                    restoreStatements: { request, _ in
-                        ["IMPORT DATABASE \(quotedLiteral(request.fileURL.path))"]
-                    },
-                    cleanupStatements: { _ in [] }
+                    restoreStatements: duckDBFileStatements.restoreStatements,
+                    cleanupStatements: duckDBFileStatements.cleanupStatements,
+                    isolatedImportFormat: duckDBFileFormat
                 )
             ),
             archiveFormat: duckDBParquetFormat,
@@ -608,13 +678,5 @@ enum NativeDumpRegistry {
             ),
             restoreSemantics: .stopsAtExistingObjects
         )
-    }
-
-    private static func quotedLiteral(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "''"))'"
-    }
-
-    private static func quotedIdentifier(_ value: String) -> String {
-        "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
     }
 }

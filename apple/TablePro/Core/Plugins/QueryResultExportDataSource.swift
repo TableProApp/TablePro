@@ -6,6 +6,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLQuoting
 
 final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Sendable {
     let databaseTypeId: String
@@ -25,6 +26,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
     /// not parse or, worse, parses and rewrites the data.
     private let quoteIdentifierFn: (String) -> String
     private let escapeStringFn: (String) -> String
+    let lexicalFeatures: SQLLexicalFeatures
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryResultExportDataSource")
 
@@ -36,7 +38,8 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         fillUnloaded: UnloadedValueFill? = nil,
         databaseTypeId: String,
         quoteIdentifier: @escaping (String) -> String,
-        escapeStringLiteral: @escaping (String) -> String
+        escapeStringLiteral: @escaping (String) -> String,
+        lexicalFeatures: SQLLexicalFeatures = []
     ) {
         self.databaseTypeId = databaseTypeId
         self.columns = columns
@@ -46,6 +49,7 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         self.fillUnloaded = fillUnloaded
         self.quoteIdentifierFn = quoteIdentifier
         self.escapeStringFn = escapeStringLiteral
+        self.lexicalFeatures = lexicalFeatures
     }
 
     convenience init(
@@ -64,10 +68,11 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
             columnTypeNames: Self.columnTypeNames(of: tableRows),
             rows: tableRows.rows.map { Array($0.values) },
             unloadedRows: unloadedRows,
-            fillUnloaded: fillUnloaded,
+            fillUnloaded: fillUnloaded.map { Self.masking($0, by: tableRows.masks) },
             databaseTypeId: databaseType.rawValue,
             quoteIdentifier: quoting.quoteIdentifier,
-            escapeStringLiteral: quoting.escapeStringLiteral
+            escapeStringLiteral: quoting.escapeStringLiteral,
+            lexicalFeatures: quoting.lexicalFeatures
         )
     }
 
@@ -85,6 +90,16 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         )
     }
 
+    // A value the page left on the server arrives raw, so it takes the same masks as the rows already held.
+    private static func masking(_ fill: @escaping UnloadedValueFill, by masks: ColumnMasks) -> UnloadedValueFill {
+        guard !masks.isEmpty else { return fill }
+        return { rows in
+            try await fill(rows).mapValues { cells in
+                Dictionary(uniqueKeysWithValues: cells.map { ($0.key, masks.value($0.value, column: $0.key)) })
+            }
+        }
+    }
+
     private static func columnTypeNames(of tableRows: TableRows) -> [String] {
         tableRows.columnTypes.map { $0.rawType ?? "" }
     }
@@ -92,19 +107,33 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
     private static func quoting(
         for databaseType: DatabaseType,
         driver: DatabaseDriver?
-    ) -> (quoteIdentifier: (String) -> String, escapeStringLiteral: (String) -> String) {
+    ) -> (
+        quoteIdentifier: (String) -> String,
+        escapeStringLiteral: (String) -> String,
+        lexicalFeatures: SQLLexicalFeatures
+    ) {
         if let driver {
-            return ({ driver.quoteIdentifier($0) }, { driver.escapeStringLiteral($0) })
+            let features = SQLLexicalResolver.executionFeatures(for: databaseType, session: driver.sessionLexicalState)
+            return ({ driver.quoteIdentifier($0) }, { driver.escapeStringLiteral($0) }, features)
         }
-        /// `resolveSQLDialect` reads the metadata snapshot through `snapshot(for:)`, which remaps a
-        /// variant onto the engine it is a variant of. An engine with no SQL dialect at all
-        /// (MongoDB, Redis) reaches this only through a format that writes no SQL, so ANSI is a
-        /// harmless answer there rather than a wrong one.
+        // An engine with no SQL dialect (MongoDB, Redis) reaches this only through a format that writes no SQL.
         guard let dialect = try? resolveSQLDialect(for: databaseType) else {
             logger.warning("No SQL dialect for \(databaseType.rawValue, privacy: .public), quoting as ANSI")
-            return (SQLEscaping.quoteIdentifier, SQLEscaping.escapeStringLiteral)
+            return (SQLEscaping.quoteIdentifier, SQLEscaping.escapeStringLiteral, [])
         }
-        return (quoteIdentifierFromDialect(dialect), escapeStringLiteralFromDialect(dialect))
+        // No session says whether a backslash escapes, so the form no reading of the engine can end early.
+        let escapes = SQLLexicalResolver.stringEscapes(for: databaseType)
+        var features = SQLLexicalResolver.executionFeatures(for: databaseType, session: nil)
+        if escapes.backslashEscapes {
+            features.insert(.backslashEscapesInSingleQuotes)
+        } else {
+            features.remove(.backslashEscapesInSingleQuotes)
+        }
+        return (
+            quoteIdentifierFromDialect(dialect, databaseType: databaseType),
+            { SQLQuoting.stringLiteralBody($0, escapes: escapes) },
+            features
+        )
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

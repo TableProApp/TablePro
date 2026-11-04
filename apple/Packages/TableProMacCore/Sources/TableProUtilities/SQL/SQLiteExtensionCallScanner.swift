@@ -37,15 +37,23 @@ public enum SQLiteExtensionCallScanner {
     /// A parenthesis that opens a column list rather than a call: `INSERT INTO t(id)`,
     /// `CREATE TABLE t(...)`, `CREATE VIEW v(x)`, `REFERENCES t(id)`, `IF NOT EXISTS t(...)`, and a
     /// common table expression's `WITH ids(id) AS (...)`. SQLite rejects a call after each of those
-    /// words (measured), and a call followed by `AS` names a column, never a `(`. A virtual table's
-    /// `USING module(` is not among them: an extension's module can read files.
+    /// words (measured). A virtual table's `USING module(` is not among them: an extension's module
+    /// can read files.
     private static let columnListIntroducers: Set<String> = ["INTO", "TABLE", "VIEW", "REFERENCES", "EXISTS"]
 
     private static func isColumnList(nameStart: Int, parenthesis: Int, code: NSString) -> Bool {
-        if let previous = wordBefore(nameStart, code: code), columnListIntroducers.contains(previous) {
+        let previous = wordBefore(nameStart, code: code)
+        if let previous, columnListIntroducers.contains(previous) {
             return true
         }
+        guard previous == "WITH" || previous == "RECURSIVE" || followsComma(nameStart, code: code) else { return false }
         return opensCommonTableExpressionColumns(parenthesis, code: code)
+    }
+
+    /// A common table expression after the first follows the comma that ends the one before it.
+    private static func followsComma(_ start: Int, code: NSString) -> Bool {
+        let cursor = skipBlanksBackward(from: start - 1, code: code)
+        return cursor >= 0 && code.character(at: cursor) == UInt16(UnicodeScalar(",").value)
     }
 
     /// The keyword in front of a name, past a `schema.` qualifier.
@@ -66,15 +74,20 @@ public enum SQLiteExtensionCallScanner {
         return code.substring(with: NSRange(location: wordStart, length: cursor - wordStart + 1)).uppercased()
     }
 
+    /// `(...) AS [[NOT] MATERIALIZED] (`, down to the parenthesis. `MATERIALIZED` is an ordinary name
+    /// wherever SQLite takes one, so `SELECT f() AS materialized` is a call with a column alias, and
+    /// `CAST(f() AS 'int'(1))` reads `AS (1)` once its literal is blanked.
     private static func opensCommonTableExpressionColumns(_ parenthesis: Int, code: NSString) -> Bool {
         guard let close = matchingClose(of: parenthesis, code: code) else { return false }
         var cursor = close + 1
         guard wordAfter(&cursor, code: code) == "AS" else { return false }
+        if let hint = wordAfter(&cursor, code: code) {
+            guard hint == "MATERIALIZED" || (hint == "NOT" && wordAfter(&cursor, code: code) == "MATERIALIZED") else {
+                return false
+            }
+        }
         cursor = skipBlanksForward(from: cursor, code: code)
-        guard cursor < code.length else { return false }
-        if code.character(at: cursor) == SQLFunctionCallScanner.openParenthesis { return true }
-        let next = wordAfter(&cursor, code: code)
-        return next == "MATERIALIZED" || next == "NOT"
+        return cursor < code.length && code.character(at: cursor) == SQLFunctionCallScanner.openParenthesis
     }
 
     private static func matchingClose(of open: Int, code: NSString) -> Int? {

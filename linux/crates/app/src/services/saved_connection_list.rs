@@ -8,11 +8,11 @@ use std::sync::Arc;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use tablepro_core::DriverRegistry;
-use tablepro_storage::{ConnectionGroupName, ConnectionListState, ConnectionStore, ConnectionTag, SavedConnection};
+use tablepro_storage::{ConnectionListState, ConnectionStore, ConnectionTag, SavedConnection};
 use uuid::Uuid;
 
 use super::saved_connection_object::SavedConnectionObject;
-use super::saved_connection_order;
+use super::saved_connection_order::{self, GroupLabels};
 
 type StateObserver = Rc<dyn Fn(&ConnectionListState)>;
 
@@ -28,6 +28,7 @@ pub struct SavedConnectionList {
     connections: RefCell<Arc<[SavedConnection]>>,
     /// The tags of that list, by name.
     tags: RefCell<Arc<[ConnectionTag]>>,
+    labels: RefCell<GroupLabels>,
     state: RefCell<ConnectionListState>,
     watch: RefCell<Option<glib::JoinHandle<()>>>,
     observers: RefCell<Vec<(u64, StateObserver)>>,
@@ -50,6 +51,7 @@ impl SavedConnectionList {
             drivers,
             connections: RefCell::new(Arc::from([])),
             tags: RefCell::new(Arc::from([])),
+            labels: RefCell::new(GroupLabels::default()),
             state: RefCell::new(ConnectionListState::Loading),
             watch: RefCell::new(None),
             observers: RefCell::new(Vec::new()),
@@ -88,9 +90,18 @@ impl SavedConnectionList {
         self.connections.borrow().clone()
     }
 
-    /// The groups the list files connections under, in display order.
-    pub fn groups(&self) -> Vec<ConnectionGroupName> {
-        saved_connection_order::groups(&self.connections.borrow())
+    /// The labels of the groups the list files connections under, in
+    /// display order.
+    pub fn groups(&self) -> Vec<String> {
+        saved_connection_order::groups(&self.connections.borrow(), &self.labels.borrow())
+    }
+
+    pub fn group_label(&self, saved: &SavedConnection) -> Option<String> {
+        self.labels.borrow().of(saved).map(str::to_owned)
+    }
+
+    pub(crate) fn labels(&self) -> GroupLabels {
+        self.labels.borrow().clone()
     }
 
     /// Every tag, by name.
@@ -122,20 +133,23 @@ impl SavedConnectionList {
         // The state first: the rows the splice builds read it.
         self.state.replace(state.clone());
         if let ConnectionListState::Ready(list) = &state {
+            let labels = GroupLabels::new(&list.groups);
             let mut sorted = list.connections.to_vec();
-            saved_connection_order::sort(&mut sorted);
+            saved_connection_order::sort(&mut sorted, &labels);
             let mut tags = list.tags.to_vec();
             saved_connection_order::sort_tags(&mut tags);
-            let regrouped = saved_connection_order::groups(&sorted) != self.groups();
+            let regrouped = saved_connection_order::groups(&sorted, &labels) != self.groups();
             let retagged = *tags != **self.tags.borrow();
             let sorted: Arc<[SavedConnection]> = Arc::from(sorted);
             self.connections.replace(sorted.clone());
             self.tags.replace(Arc::from(tags));
+            self.labels.replace(labels);
             if regrouped || retagged || self.store.n_items() == 0 {
                 let objects: Vec<SavedConnectionObject> = sorted.iter().map(|saved| self.object(saved)).collect();
                 self.store.splice(0, self.store.n_items(), &objects);
             } else {
-                patch(&self.store, &sorted, |saved| self.object(saved));
+                let labels = self.labels.borrow();
+                patch(&self.store, &sorted, &labels, |saved| self.object(saved));
             }
         }
         let observers: Vec<StateObserver> = self
@@ -156,15 +170,16 @@ impl SavedConnectionList {
             .drivers
             .get(&saved.driver_id)
             .is_some_and(|driver| driver.capabilities().is_file_based());
-        SavedConnectionObject::new(saved.clone(), file_based)
+        SavedConnectionObject::new(saved.clone(), self.group_label(saved), file_based)
     }
 }
 
-/// Bring `store` to `wanted`, keeping each object whose connection is
-/// unchanged where it can.
+/// Bring `store` to `wanted`, keeping each object whose connection and
+/// group label are unchanged where it can.
 fn patch(
     store: &gio::ListStore,
     wanted: &[SavedConnection],
+    labels: &GroupLabels,
     object: impl Fn(&SavedConnection) -> SavedConnectionObject,
 ) {
     let mut position = 0;
@@ -173,7 +188,7 @@ fn patch(
             store
                 .item(at)
                 .and_downcast::<SavedConnectionObject>()
-                .is_some_and(|object| object.saved() == Some(saved))
+                .is_some_and(|object| object.saved() == Some(saved) && object.group().as_deref() == labels.of(saved))
         });
         match kept {
             Some(at) if at > position => store.splice(position, at - position, &[] as &[SavedConnectionObject]),
@@ -228,11 +243,13 @@ mod tests {
             safe_mode: tablepro_core::SafeModeLevel::Off,
             external_access: tablepro_core::ExternalAccess::ReadOnly,
             ai_policy: tablepro_core::AiPolicy::Ask,
+            query_timeout_secs: None,
             auth_mode: tablepro_core::AuthMode::Password,
             ssh: None,
             last_opened_at: None,
             color: None,
-            group: None,
+            group_id: None,
+            order: 0,
             tags: Vec::new(),
             icon: None,
             options: Default::default(),
@@ -251,7 +268,7 @@ mod tests {
     }
 
     fn ready(connections: &[SavedConnection]) -> ConnectionListState {
-        ConnectionListState::Ready(tablepro_storage::ConnectionList::new(connections.to_vec(), Vec::new()))
+        ConnectionListState::Ready(crate::test_support::library(connections.to_vec(), Vec::new()))
     }
 
     #[gtk4::test]
@@ -334,12 +351,51 @@ mod tests {
         let before = objects(&list);
 
         let mut filed = beta;
-        filed.group = Some(ConnectionGroupName::new("Work").expect("a group name"));
+        filed.group_id = Some(crate::test_support::group_id("Work"));
         list.apply(ready(&[alpha, filed]));
 
         let after = objects(&list);
-        assert_eq!(list.groups(), [ConnectionGroupName::new("Work").expect("a group name")]);
+        assert_eq!(list.groups(), ["Work"]);
         assert_ne!(after[0], before[0], "Alpha's menu does not offer the new group");
+    }
+
+    #[gtk4::test]
+    fn a_nested_group_reads_by_its_path_and_a_renamed_parent_renames_it() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let store = ConnectionStore::new(&StoragePaths::under(dir.path(), "tablepro", crate::config::APP_ID));
+        let list = SavedConnectionList::follow(&store, Arc::new(DriverRegistry::new()));
+        let work = tablepro_storage::ConnectionGroup::new(
+            tablepro_storage::ConnectionGroupName::new("Work").expect("a group name"),
+            None,
+        );
+        let staging = tablepro_storage::ConnectionGroup::new(
+            tablepro_storage::ConnectionGroupName::new("Staging").expect("a group name"),
+            Some(work.id),
+        );
+        let alpha = SavedConnection {
+            group_id: Some(staging.id),
+            ..connection("Alpha")
+        };
+        let state = |work: &tablepro_storage::ConnectionGroup| {
+            ConnectionListState::Ready(
+                tablepro_storage::ConnectionList::new(vec![alpha.clone()], Vec::new())
+                    .with_groups(vec![work.clone(), staging.clone()]),
+            )
+        };
+        list.apply(state(&work));
+        let before = objects(&list);
+
+        assert_eq!(list.groups(), ["Work / Staging"]);
+        assert_eq!(before[0].group().as_deref(), Some("Work / Staging"));
+        let renamed = tablepro_storage::ConnectionGroup {
+            name: tablepro_storage::ConnectionGroupName::new("Office").expect("a group name"),
+            ..work.clone()
+        };
+        list.apply(state(&renamed));
+
+        assert_eq!(list.groups(), ["Office / Staging"]);
+        assert_eq!(objects(&list)[0].group().as_deref(), Some("Office / Staging"));
+        assert_eq!(list.group_label(&alpha).as_deref(), Some("Office / Staging"));
     }
 
     #[gtk4::test]

@@ -47,10 +47,14 @@ public enum MongoStatementClassifier {
         "removeall", "renamecollection"
     ]
 
-    // What the destructive methods do by name, done through `runCommand`.
-    private static let destructiveCommands: Set<String> = [
-        "drop", "dropdatabase", "dropindexes", "delete", "renamecollection"
-    ]
+    // `runCommand` and `adminCommand` send whatever command their document names, so the command decides.
+    private static let commandMethods: Set<String> = ["runcommand", "admincommand"]
+
+    // `bulkWrite` names its deletes in keys: `deleteMany` in the method's operations, `delete` in the command's.
+    private static let destructiveBulkOperations: Set<String> = ["deleteMany", "delete"]
+
+    // Index and collection changes that can carry a TTL or a capped size.
+    private static let expiringCalls: Set<String> = ["createindex", "createindexes", "collmod", "ensureindex"]
 
     // A pipeline may hold `$out` or `$merge` only as its last stage, so the key spelled exactly so is the whole test.
     private static let pipelineWriteStages: Set<String> = ["$out", "$merge"]
@@ -82,16 +86,22 @@ public enum MongoStatementClassifier {
 
     private static func verdict(of statement: MongoStatement) -> MongoStatementVerdict {
         let reachesCode = !statement.objectKeys.isDisjoint(with: codeExecutionKeys)
-            || statement.objectKeys.contains { $0.hasPrefix(internalOperatorPrefix) }
+            || statement.objectKeys.contains { $0.hasPrefix(internalOperatorPrefix) || $0.lowercased() == "mapreduce" }
             || statement.calls.contains { call in
                 codeExecutionCalls.contains(call.name.lowercased())
                     || call.commandName.map { codeExecutionCalls.contains($0.lowercased()) } == true
             }
         let destroys = statement.calls.contains { call in
-            destructiveMethods.contains(call.name.lowercased())
-                || call.commandName.map { destructiveCommands.contains($0.lowercased()) } == true
+            let name = call.name.lowercased()
+            guard commandMethods.contains(name) else { return destructiveMethods.contains(name) }
+            // No document, as in `db.runCommand("dropDatabase")`, names no command the catalog could clear.
+            return call.commandName.map(MongoCommandCatalog.preserves) != true
         }
-        if destroys {
+        let destroysInBulk = !statement.objectKeys.isDisjoint(with: destructiveBulkOperations)
+            && statement.calls.contains { ($0.commandName ?? $0.name).lowercased() == "bulkwrite" }
+        let expires = !statement.objectKeys.isDisjoint(with: MongoCommandCatalog.expiringOptions)
+            && statement.calls.contains { expiringCalls.contains(($0.commandName ?? $0.name).lowercased()) }
+        if destroys || destroysInBulk || expires {
             return MongoStatementVerdict(tier: .destructive, reachesCode: reachesCode)
         }
         let writesThroughPipeline = !statement.objectKeys.isDisjoint(with: pipelineWriteStages)
@@ -101,11 +111,14 @@ public enum MongoStatementClassifier {
         return MongoStatementVerdict(tier: .read, reachesCode: reachesCode)
     }
 
-    // Never a read. The scan only decides whether the confirmation warns that data goes away.
+    // Never a read. The scan only decides whether the confirmation warns that data goes away. A command or a bulkWrite
+    // whose argument the grammar could not read may hold anything, so it warns.
     private static func unparsedVerdict(_ text: String) -> MongoStatementVerdict {
         let lowered = javaScriptEscapesDecoded(text).lowercased()
         let reachesCode = codeExecutionMarkers.contains { lowered.contains($0) }
-        let destroys = memberNames(in: lowered).contains { destructiveMethods.contains($0) }
+        let destroys = memberNames(in: lowered).contains {
+            destructiveMethods.contains($0) || commandMethods.contains($0) || $0 == "bulkwrite"
+        }
         return MongoStatementVerdict(tier: destroys ? .destructive : .write, reachesCode: reachesCode)
     }
 

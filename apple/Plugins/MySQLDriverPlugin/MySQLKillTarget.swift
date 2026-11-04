@@ -1,5 +1,4 @@
 import Foundation
-import TableProMySQLCore
 
 internal enum MySQLKillTarget: Equatable, Sendable {
     case threadId
@@ -17,7 +16,7 @@ internal enum MySQLKillTarget: Equatable, Sendable {
         case .tidbConnection(let id):
             return "KILL TIDB QUERY \(id)"
         case .databendSession(let session):
-            return "KILL QUERY '\(mysqlEscapeStringLiteral(session))'"
+            return "KILL QUERY \(DatabendLiteral.quoted(session))"
         }
     }
 
@@ -40,7 +39,7 @@ internal extension MySQLServerFlavor {
         case .databend:
             guard let session = connectionIdentifier, !session.isEmpty else { return .threadId }
             return .databendSession(session)
-        case .mysql, .mariadb, .oceanbase:
+        case .mysql, .mariadb, .oceanbase, .starrocks:
             return .threadId
         }
     }

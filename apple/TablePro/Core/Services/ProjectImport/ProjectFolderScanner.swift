@@ -34,15 +34,24 @@ enum ProjectFolderScanner {
             return .failure(.rootUnreadable)
         }
         let files = ProjectFolderFileWalker.walk(root: rootURL, fileManager: fileManager)
-        let index = ProjectScanEnvironmentIndex(files: files, rootURL: rootURL)
+        let budget = ProjectScanExpansionBudget()
+        let index = ProjectScanEnvironmentIndex(files: files, rootURL: rootURL, budget: budget)
         var candidates: [ScannedConnectionCandidate] = []
         for file in files {
+            guard !Task.isCancelled else {
+                break
+            }
             candidates.append(contentsOf: extract(
                 file: file,
                 rootURL: rootURL,
                 index: index,
+                budget: budget,
                 fileManager: fileManager
             ))
+        }
+        // Nothing waits for a cancelled scan, so it offers no partial result.
+        guard !Task.isCancelled else {
+            return .success(ProjectFolderScanResult(candidates: [], scannedFileCount: files.count))
         }
         candidates.append(contentsOf: parentWordPressCandidates(rootURL: rootURL, fileManager: fileManager))
         let ranked = ScannedConnectionRanking.rankAndDeduplicate(candidates)
@@ -56,6 +65,7 @@ enum ProjectFolderScanner {
         file: ProjectScanFile,
         rootURL: URL,
         index: ProjectScanEnvironmentIndex,
+        budget: ProjectScanExpansionBudget,
         fileManager: FileManager
     ) -> [ScannedConnectionCandidate] {
         let directoryURL = file.url.deletingLastPathComponent()
@@ -91,12 +101,21 @@ enum ProjectFolderScanner {
             guard let contents = ProjectFileReader.text(at: file.url) else {
                 return []
             }
-            return SpringPropertiesExtractor.extract(contents: contents, relativePath: file.relativePath)
+            return SpringPropertiesExtractor.extract(
+                contents: contents,
+                relativePath: file.relativePath,
+                processEnvironment: [:]
+            )
         case .springYaml:
             guard let contents = ProjectFileReader.text(at: file.url) else {
                 return []
             }
-            return SpringYamlExtractor.extract(contents: contents, relativePath: file.relativePath)
+            return SpringYamlExtractor.extract(
+                contents: contents,
+                relativePath: file.relativePath,
+                processEnvironment: [:],
+                budget: budget
+            )
         case .appSettingsJson:
             guard let data = ProjectFileReader.data(at: file.url) else {
                 return []
@@ -110,7 +129,8 @@ enum ProjectFolderScanner {
                 contents: contents,
                 relativePath: file.relativePath,
                 projectRootURL: rootURL,
-                environment: index.environment(near: file.url)
+                environment: index.environment(near: file.url),
+                budget: budget
             )
         case .dockerCompose:
             guard let contents = ProjectFileReader.text(at: file.url) else {
@@ -119,7 +139,8 @@ enum ProjectFolderScanner {
             return DockerComposeExtractor.extract(
                 contents: contents,
                 relativePath: file.relativePath,
-                environment: index.environment(near: file.url)
+                environment: index.environment(near: file.url),
+                budget: budget
             )
         }
     }

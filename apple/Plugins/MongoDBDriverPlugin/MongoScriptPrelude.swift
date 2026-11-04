@@ -34,6 +34,12 @@ nonisolated enum MongoScriptPrelude {
 
     function __ejson(value) { return JSON.stringify(EJSON.serialize(value)); }
 
+    // The value types inherit `toEJSON` and MinKey and MaxKey are functions; a plain object's own `toEJSON` is a field.
+    function __serializesItself(value) {
+        return typeof value.toEJSON === "function"
+            && (typeof value === "function" || !Object.prototype.hasOwnProperty.call(value, "toEJSON"));
+    }
+
     // Assigning a member named `__proto__` sets the object's prototype instead of adding the
     // member, so the field was never sent and never read. That one name is defined instead.
     function __setMember(target, key, value) {
@@ -819,7 +825,7 @@ nonisolated enum MongoScriptPrelude {
             if (value === null || value === undefined) { return null; }
             if (typeof value === "boolean" || typeof value === "string") { return value; }
             if (typeof value === "number") { return serializeNumber(value); }
-            if (typeof value.toEJSON === "function") { return value.toEJSON(); }
+            if (__serializesItself(value)) { return value.toEJSON(); }
             if (typeof value === "function") { return { "$code": String(value) }; }
             if (Array.isArray(value)) {
                 var list = [];
@@ -955,7 +961,7 @@ nonisolated enum MongoScriptPrelude {
         if (value === undefined) { return "undefined"; }
         if (value === null) { return "null"; }
         if (typeof value === "string") { return value; }
-        if (typeof value.toEJSON === "function") { return value.toString(); }
+        if (__serializesItself(value)) { return value.toString(); }
         if (typeof value !== "object") { return String(value); }
         if (value instanceof Cursor) { return value.toString(); }
         return JSON.stringify(EJSON.serialize(value), null, indent === undefined ? 2 : indent);
@@ -1001,7 +1007,7 @@ nonisolated enum MongoScriptPrelude {
             return JSON.stringify({ kind: "array", json: __ejson(value), texts: texts });
         }
         return JSON.stringify({
-            kind: typeof value === "object" && typeof value.toEJSON !== "function" ? "document" : "scalar",
+            kind: typeof value === "object" && !__serializesItself(value) ? "document" : "scalar",
             json: __ejson(value),
             text: tojson(value, 0)
         });

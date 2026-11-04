@@ -1,5 +1,7 @@
 import Foundation
+import TableProDamengCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 final class DamengPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "Dameng Driver"
@@ -173,6 +175,16 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func connect() async throws {
+        // The bridge opens plain TCP only. The form offers no SSL mode, but a dm:// URL or an import can store one.
+        switch config.ssl.mode {
+        case .disabled, .preferred:
+            break
+        case .required, .verifyCa, .verifyIdentity:
+            throw DamengError(message: String(localized: """
+                This connection asks for TLS, which the Dameng driver does not support. Add the connection again \
+                without an SSL mode, and use an SSH, SOCKS or Cloudflare tunnel on a network you do not trust.
+                """))
+        }
         try await connection.connect(
             host: config.host,
             port: config.port,
@@ -273,11 +285,63 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    /// Every statement in a script has to be a read, not just the first one. A script now
-    /// really executes, so `SELECT ...; DELETE ...` classified on its leading keyword alone
-    /// would replay the delete on a rebuilt connection.
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        try await executeWithReconnect(
+            query: query, parameters: [], rowCap: nil, replay: replayPolicy(for: query), hostSplit: context.hostSplit
+        )
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await executeWithReconnect(
+            query: query,
+            parameters: parameters ?? [],
+            rowCap: rowCap,
+            replay: replayPolicy(for: query),
+            hostSplit: context.hostSplit
+        )
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        try await executeWithReconnect(
+            query: query, parameters: parameters, rowCap: nil, replay: replayPolicy(for: query), hostSplit: context.hostSplit
+        )
+    }
+
+    // PluginKit's default stream runs `execute(query:)`, which cuts the text again.
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard context.hostSplit else { return streamRows(query: query) }
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let result = try await self.execute(query: query, context: context)
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: result.columns,
+                        columnTypeNames: result.columnTypeNames
+                    )))
+                    if !result.rows.isEmpty {
+                        continuation.yield(.rows(result.rows))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    // Every statement has to be a read, or `SELECT ...; DELETE ...` would replay the DELETE on a rebuilt connection.
     func replayPolicy(for query: String) -> DamengReplayPolicy {
-        let statements = DamengScriptSplitter.statements(in: query, escaping: textEscaping)
+        let statements = DamengScriptSplitter.statements(in: query, backslashEscapes: textEscaping == .backslashEscape)
         guard !statements.isEmpty else { return .reportFailure }
         return statements.allSatisfy(DamengStatementClassifier.isReadOnly) ? .replayable : .reportFailure
     }
@@ -354,12 +418,7 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        var quoted = String.UnicodeScalarView()
-        for scalar in name.unicodeScalars {
-            if scalar == "\"" { quoted.append(scalar) }
-            quoted.append(scalar)
-        }
-        return "\"\(String(quoted))\""
+        SQLQuoting.identifier(name)
     }
 
     var requiresBackslashEscapingInLiterals: Bool { textEscaping == .backslashEscape }
@@ -402,18 +461,19 @@ final class DamengPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "EXPLAIN \(sql)"
     }
 
-    /// DM8 rejects a string holding more than one statement, so a script is sent a statement at
-    /// a time and the last one's result is returned. A single statement is passed through
-    /// untouched, terminator and all, so nothing changes for the common path.
+    // DM8 rejects a batch, so a script goes a statement at a time; one statement goes through untouched, terminator and all.
     func executeOnce(
         query: String,
         parameters: [PluginCellValue],
-        rowCap: Int?
+        rowCap: Int?,
+        hostSplit: Bool = false
     ) async throws -> PluginQueryResult {
         let bound = parameters.isEmpty
             ? query
             : try DamengParameterBinder.bind(query: query, parameters: parameters, escaping: textEscaping)
-        let statements = DamengScriptSplitter.statements(in: bound, escaping: textEscaping)
+        let statements = DamengScriptSplitter.statements(
+            in: bound, backslashEscapes: textEscaping == .backslashEscape, hostSplit: hostSplit
+        )
         let generation = cancellationGate.beginQuery()
         defer { cancellationGate.endQuery(generation) }
 

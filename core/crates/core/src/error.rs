@@ -1,0 +1,394 @@
+use std::path::PathBuf;
+
+use thiserror::Error;
+
+use crate::busy_reason::BusyReason;
+use crate::commit::CommitToken;
+use crate::config_error::ConfigError;
+use crate::error_category::ErrorCategory;
+use crate::loss_phase::LossPhase;
+use crate::read_only_refusal::ReadOnlyRefusal;
+use crate::server_diagnostics::ServerDiagnostics;
+use crate::timeout_phase::TimeoutPhase;
+use crate::tls_failure::TlsFailure;
+use crate::transport_error::TransportError;
+use crate::unsupported_feature::UnsupportedFeature;
+use crate::write_report::StatementOutcome;
+
+/// What a driver could not do, in enough detail for the app to say
+/// what to try next.
+///
+/// The three write variants are the reason this is not a flat list of
+/// messages. After a write fails, the only question that matters is
+/// what is now in the database, and `RolledBack`, `PartiallyApplied`
+/// and `CommitOutcomeUnknown` are three different answers.
+#[derive(Debug, Clone, PartialEq, Error)]
+#[non_exhaustive]
+pub enum DriverError {
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+
+    #[error("the server refused the credentials{}", diagnostics.as_ref().map(|d| format!(": {d}")).unwrap_or_default())]
+    Auth {
+        diagnostics: Option<Box<ServerDiagnostics>>,
+    },
+
+    /// The server turned the login away for a reason other than the
+    /// password: its host rules, a role that may not log in. Typing the
+    /// password again cannot change the answer.
+    #[error("the server refused the login: {0}")]
+    LoginRefused(Box<ServerDiagnostics>),
+
+    #[error("integrated authentication failed: {0}")]
+    IntegratedAuth(String),
+
+    #[error("TLS failed: {detail}")]
+    Tls { failure: TlsFailure, detail: String },
+
+    #[error("{0}")]
+    Server(Box<ServerDiagnostics>),
+
+    #[error("{0}")]
+    ReadOnly(ReadOnlyRefusal),
+
+    #[error("cancelled")]
+    Cancelled,
+
+    #[error("timed out during {phase}")]
+    Timeout {
+        phase: TimeoutPhase,
+        server_cancelled: bool,
+    },
+
+    #[error("the connection was lost while {during}")]
+    ConnectionLost { during: LossPhase },
+
+    /// Statement `statement_index` failed and the transaction was
+    /// rolled back. Nothing was applied.
+    #[error("rolled back at statement {statement_index}: {source}")]
+    RolledBack {
+        statement_index: usize,
+        source: Box<DriverError>,
+    },
+
+    /// Statement `statement_index` was written to match exactly
+    /// `expected` rows and matched `actual`, so the row it meant to
+    /// change is not the row that is there. Nothing was applied.
+    #[error("statement {statement_index} matched {actual} rows, not {expected}")]
+    RowGuardFailed {
+        statement_index: usize,
+        expected: u64,
+        actual: u64,
+    },
+
+    /// The engine cannot report how many rows a statement touched, so
+    /// a write that has to know cannot run there.
+    #[error("statement {statement_index} needs a row count this engine does not report")]
+    GuardUnsupported { statement_index: usize },
+
+    /// The commit was sent and the answer never arrived. The token,
+    /// where the engine has one, is what asks the server later.
+    #[error("the commit was sent and the outcome is unknown: {source}")]
+    CommitOutcomeUnknown {
+        token: Option<CommitToken>,
+        source: Box<DriverError>,
+    },
+
+    /// `applied` statements are known to have landed, and the one at
+    /// `statement_index` either failed or is unknown. The engine has no
+    /// transaction to undo them.
+    #[error("{applied} statements applied before statement {statement_index}: {source}")]
+    PartiallyApplied {
+        applied: usize,
+        statement_index: usize,
+        failed_outcome: StatementOutcome,
+        source: Box<DriverError>,
+    },
+
+    #[error("no database file at {}", .path.display())]
+    FileNotFound { path: PathBuf },
+
+    #[error("no permission to open {}", .path.display())]
+    FileAccessDenied { path: PathBuf },
+
+    #[error("{} is not a database file", .path.display())]
+    NotADatabase { path: PathBuf },
+
+    /// The file system refused for a reason other than permission, such
+    /// as a full disk or a read-only mount. The kind is kept rather than
+    /// the error, so the variant stays comparable and cloneable.
+    #[error("could not write {}: {kind}", .path.display())]
+    FileIo { path: PathBuf, kind: std::io::ErrorKind },
+
+    #[error("{0}")]
+    Busy(BusyReason),
+
+    #[error("the editor session is already running a statement")]
+    EditorSessionBusy,
+
+    #[error(transparent)]
+    Config(#[from] ConfigError),
+
+    #[error("could not read column {column}: {detail}")]
+    Decode { column: String, detail: String },
+
+    #[error("the server sent something the driver could not read: {0}")]
+    Protocol(String),
+
+    #[error("this engine has no {feature}")]
+    Unsupported { feature: UnsupportedFeature },
+}
+
+impl DriverError {
+    /// A name for the variant that stays the same across releases, for
+    /// a caller outside Rust, such as another platform's UI, that words the error itself. The variant's fields are its parameters.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Transport(..) => "driver.transport",
+            Self::Auth { .. } => "driver.auth",
+            Self::LoginRefused(..) => "driver.login_refused",
+            Self::IntegratedAuth(..) => "driver.integrated_auth",
+            Self::Tls { .. } => "driver.tls",
+            Self::Server(..) => "driver.server",
+            Self::ReadOnly(..) => "driver.read_only",
+            Self::Cancelled => "driver.cancelled",
+            Self::Timeout { .. } => "driver.timeout",
+            Self::ConnectionLost { .. } => "driver.connection_lost",
+            Self::RolledBack { .. } => "driver.rolled_back",
+            Self::RowGuardFailed { .. } => "driver.row_guard_failed",
+            Self::GuardUnsupported { .. } => "driver.guard_unsupported",
+            Self::CommitOutcomeUnknown { .. } => "driver.commit_outcome_unknown",
+            Self::PartiallyApplied { .. } => "driver.partially_applied",
+            Self::FileNotFound { .. } => "driver.file_not_found",
+            Self::FileAccessDenied { .. } => "driver.file_access_denied",
+            Self::NotADatabase { .. } => "driver.not_a_database",
+            Self::FileIo { .. } => "driver.file_io",
+            Self::Busy(..) => "driver.busy",
+            Self::EditorSessionBusy => "driver.editor_session_busy",
+            Self::Config(..) => "driver.config",
+            Self::Decode { .. } => "driver.decode",
+            Self::Protocol(..) => "driver.protocol",
+            Self::Unsupported { .. } => "driver.unsupported",
+        }
+    }
+}
+
+impl DriverError {
+    /// What stopped a save, inside the outcome it reports, or the error
+    /// itself. A lost connection under `CommitOutcomeUnknown` still says
+    /// the link may be gone.
+    pub fn cause(&self) -> &DriverError {
+        match self {
+            Self::RolledBack { source, .. }
+            | Self::CommitOutcomeUnknown { source, .. }
+            | Self::PartiallyApplied { source, .. } => source.cause(),
+            other => other,
+        }
+    }
+
+    /// What kind of problem this is, which is what the app acts on.
+    /// The message is for the user; the category decides which button
+    /// to offer beside it.
+    pub fn category(&self) -> ErrorCategory {
+        match self {
+            Self::Transport(error) => error.category(),
+            Self::Auth { .. } | Self::LoginRefused(_) | Self::IntegratedAuth(_) => ErrorCategory::Authentication,
+            Self::Tls { .. } => ErrorCategory::Tls,
+            Self::Server(_) => ErrorCategory::Server,
+            Self::ReadOnly(_) => ErrorCategory::ReadOnly,
+            Self::Cancelled => ErrorCategory::Interrupted,
+            Self::Timeout { .. } => ErrorCategory::Timeout,
+            Self::ConnectionLost { .. } => ErrorCategory::ConnectionLost,
+            Self::RolledBack { .. }
+            | Self::RowGuardFailed { .. }
+            | Self::CommitOutcomeUnknown { .. }
+            | Self::PartiallyApplied { .. } => ErrorCategory::WriteOutcome,
+            Self::FileNotFound { .. }
+            | Self::FileAccessDenied { .. }
+            | Self::NotADatabase { .. }
+            | Self::FileIo { .. } => ErrorCategory::File,
+            Self::Busy(_) | Self::EditorSessionBusy => ErrorCategory::Busy,
+            Self::Config(_) | Self::Unsupported { .. } => ErrorCategory::Configuration,
+            Self::GuardUnsupported { .. } | Self::Decode { .. } | Self::Protocol(_) => ErrorCategory::Internal,
+        }
+    }
+
+    /// A server error with nothing but its message, for an engine that
+    /// numbers only some of what it reports.
+    pub fn server(message: impl Into<String>) -> Self {
+        Self::reported(ServerDiagnostics::new(None, message))
+    }
+
+    /// What the server said, in its own words.
+    pub fn reported(diagnostics: ServerDiagnostics) -> Self {
+        Self::Server(Box::new(diagnostics))
+    }
+
+    /// Credentials the server refused, with its explanation where it
+    /// gave one.
+    pub fn auth(diagnostics: Option<ServerDiagnostics>) -> Self {
+        Self::Auth {
+            diagnostics: diagnostics.map(Box::new),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::server_diagnostics::ServerCode;
+
+    fn assert_send_sync_error<E: std::error::Error + Send + Sync + 'static>() {}
+
+    #[test]
+    fn a_driver_error_crosses_threads() {
+        assert_send_sync_error::<DriverError>();
+    }
+
+    #[test]
+    fn a_full_disk_is_a_file_problem_that_names_its_cause() {
+        let full = DriverError::FileIo {
+            path: PathBuf::from("/data/app.sqlite3"),
+            kind: std::io::ErrorKind::StorageFull,
+        };
+
+        assert_eq!(full.category(), ErrorCategory::File);
+        assert!(full.to_string().contains("/data/app.sqlite3"), "{full}");
+        assert!(
+            full.to_string().contains(&std::io::ErrorKind::StorageFull.to_string()),
+            "{full}"
+        );
+    }
+
+    #[test]
+    fn a_saves_cause_is_found_under_its_outcome() {
+        let lost = DriverError::ConnectionLost {
+            during: crate::LossPhase::Statement,
+        };
+        let unknown = DriverError::PartiallyApplied {
+            applied: 1,
+            statement_index: 1,
+            failed_outcome: crate::StatementOutcome::Unknown,
+            source: Box::new(DriverError::CommitOutcomeUnknown {
+                token: None,
+                source: Box::new(lost.clone()),
+            }),
+        };
+
+        assert_eq!(unknown.cause(), &lost);
+        assert_eq!(lost.cause(), &lost);
+    }
+
+    #[test]
+    fn a_write_that_rolled_back_is_not_a_server_error() {
+        let rolled_back = DriverError::RolledBack {
+            statement_index: 2,
+            source: Box::new(DriverError::server("duplicate key")),
+        };
+
+        assert_eq!(rolled_back.category(), ErrorCategory::WriteOutcome);
+        assert_eq!(
+            DriverError::server("duplicate key").category(),
+            ErrorCategory::Server,
+            "the cause keeps its own category"
+        );
+    }
+
+    #[test]
+    fn a_guard_mismatch_reads_as_the_two_counts() {
+        let failed = DriverError::RowGuardFailed {
+            statement_index: 0,
+            expected: 1,
+            actual: 3,
+        };
+
+        assert_eq!(failed.to_string(), "statement 0 matched 3 rows, not 1");
+        assert_eq!(failed.category(), ErrorCategory::WriteOutcome);
+    }
+
+    #[test]
+    fn an_auth_failure_carries_the_servers_own_words() {
+        let diagnostics = ServerDiagnostics::new(
+            Some(ServerCode::SqlState("28P01".to_owned())),
+            "password authentication failed",
+        );
+        let error = DriverError::auth(Some(diagnostics));
+
+        assert_eq!(
+            error.to_string(),
+            "the server refused the credentials: password authentication failed (28P01)"
+        );
+        assert_eq!(error.category(), ErrorCategory::Authentication);
+    }
+
+    #[test]
+    fn a_refused_login_parks_like_a_wrong_password_but_is_not_one() {
+        let refused = DriverError::LoginRefused(Box::new(ServerDiagnostics::new(
+            Some(ServerCode::SqlState("28000".to_owned())),
+            "no pg_hba.conf entry for host",
+        )));
+
+        assert_eq!(refused.category(), ErrorCategory::Authentication);
+        assert_ne!(refused, DriverError::auth(None));
+    }
+
+    #[test]
+    fn a_locked_file_is_busy_but_not_a_full_server() {
+        let locked = DriverError::Busy(BusyReason::FileLocked);
+        let full = DriverError::Busy(BusyReason::NoFreeConnection);
+
+        assert_eq!(locked.category(), ErrorCategory::Busy);
+        assert_eq!(full.category(), ErrorCategory::Busy);
+        assert!(!locked.to_string().contains("server"), "{locked}");
+        assert_ne!(locked.to_string(), full.to_string());
+    }
+
+    #[test]
+    fn an_unreadable_column_is_ours_to_fix_not_the_servers() {
+        let error = DriverError::Decode {
+            column: "payload".to_owned(),
+            detail: "unsupported type".to_owned(),
+        };
+
+        assert_eq!(error.category(), ErrorCategory::Internal);
+    }
+
+    #[test]
+    fn each_error_names_its_variant_with_a_code_that_does_not_change() {
+        let cases = [
+            (DriverError::Cancelled.code(), "driver.cancelled"),
+            (DriverError::auth(None).code(), "driver.auth"),
+            (DriverError::server("no such table").code(), "driver.server"),
+            (DriverError::Config(ConfigError::EmptyHost).code(), "driver.config"),
+            (ConfigError::EmptyHost.code(), "config.empty_host"),
+            (
+                DriverError::Timeout {
+                    phase: TimeoutPhase::Statement,
+                    server_cancelled: true,
+                }
+                .code(),
+                "driver.timeout",
+            ),
+            (
+                TransportError::Timeout {
+                    phase: TimeoutPhase::Connect,
+                }
+                .code(),
+                "transport.timeout",
+            ),
+            (
+                crate::SshFailure::InteractionCancelled.code(),
+                "ssh.interaction_cancelled",
+            ),
+            (
+                crate::CertificateFileProblem::NoPrivateKey.code(),
+                "certificate_file.no_private_key",
+            ),
+            (crate::credentials::SecretError::Locked.code(), "secret.locked"),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(code, expected);
+        }
+    }
+}

@@ -7,6 +7,7 @@ import CSQLite
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLiteCore
 
 struct LibSQLLocalFirstStep: Sendable {
     let result: Int32
@@ -101,14 +102,7 @@ actor SQLiteLocalBackend {
         busyTimeout.beginOperation()
 
         let startTime = Date()
-        var statement: OpaquePointer?
-
-        let prepareResult = sqlite3_prepare_v2(db, query, -1, &statement, nil)
-
-        if prepareResult != SQLITE_OK {
-            let errorMessage = String(cString: sqlite3_errmsg(db))
-            throw LibSQLError(message: errorMessage)
-        }
+        let statement = try Self.prepareOnlyStatement(query, db: db)
 
         defer {
             sqlite3_finalize(statement)
@@ -164,13 +158,7 @@ actor SQLiteLocalBackend {
         }
         busyTimeout.beginOperation()
 
-        var statement: OpaquePointer?
-
-        let prepareResult = sqlite3_prepare_v2(db, query, -1, &statement, nil)
-        if prepareResult != SQLITE_OK {
-            let errorMessage = String(cString: sqlite3_errmsg(db))
-            throw LibSQLError(message: errorMessage)
-        }
+        let statement = try Self.prepareOnlyStatement(query, db: db)
 
         defer {
             sqlite3_finalize(statement)
@@ -277,6 +265,24 @@ actor SQLiteLocalBackend {
                 return .null
             }
             return .text(String(cString: text))
+        }
+    }
+
+    // SQLite compiles only a text's first statement; a second one in the tail would be dropped without a word. The
+    // tail is read, never prepared: preparing a PRAGMA already applies it.
+    static func prepareOnlyStatement(_ query: String, db: OpaquePointer) throws -> OpaquePointer? {
+        try query.withCString { text in
+            guard !SQLiteStatementTail.pragmaHoldsSecondStatement(text) else {
+                throw LibSQLError(message: String(localized: "Send one statement at a time."))
+            }
+            var statement: OpaquePointer?
+            var tail: UnsafePointer<CChar>?
+            guard sqlite3_prepare_v2(db, text, -1, &statement, &tail) == SQLITE_OK else {
+                throw LibSQLError(message: String(cString: sqlite3_errmsg(db)))
+            }
+            guard let tail, SQLiteStatementTail.holdsStatement(tail) else { return statement }
+            sqlite3_finalize(statement)
+            throw LibSQLError(message: String(localized: "Send one statement at a time."))
         }
     }
 }

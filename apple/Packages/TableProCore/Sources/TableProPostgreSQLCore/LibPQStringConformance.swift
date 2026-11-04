@@ -1,4 +1,5 @@
 import Foundation
+import TableProSQLQuoting
 
 public enum LibPQStringConformance {
     public static let parameterName = "standard_conforming_strings"
@@ -21,10 +22,11 @@ public enum LibPQStringConformance {
     }
 
     public static func escape(_ value: String, standardConformingStrings: Bool) -> String {
-        let quoted = value
-            .replacingOccurrences(of: "\0", with: "")
-            .replacingOccurrences(of: "'", with: "''")
-        guard !standardConformingStrings else { return quoted }
-        return quoted.replacingOccurrences(of: "\\", with: "\\\\")
+        SQLQuoting.stringLiteralBody(withoutNUL(value), escapes: standardConformingStrings ? .standard : .backslash)
+    }
+
+    // PostgreSQL text cannot hold NUL, and `\0` in an escape string is refused, so it is dropped as libpq does.
+    public static func withoutNUL(_ value: String) -> String {
+        String(String.UnicodeScalarView(value.unicodeScalars.filter { $0 != "\0" }))
     }
 }

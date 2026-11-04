@@ -159,7 +159,7 @@ struct SQLReviewSheetTests {
     }
 
     @Test("A request body keeps a stored $oid as the JSON it is", arguments: [
-        DatabaseType.elasticsearch, .typesense, .weaviate
+        DatabaseType.elasticsearch, .typesense, .weaviate, .qdrant
     ])
     func requestBodyKeepsExtendedJSON(databaseType: DatabaseType) {
         let statement = """

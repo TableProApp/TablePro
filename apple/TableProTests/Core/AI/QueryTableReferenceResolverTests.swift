@@ -29,10 +29,11 @@ struct QueryTableReferenceResolverTests {
         ])
     }
 
-    @Test("Backticked and bracketed names are read as identifiers")
+    @Test("Backticked, bracketed and angle-quoted names are read as identifiers")
     func backticksAndBrackets() {
         #expect(names("SELECT * FROM `my-table`", grammar: .backtickQuotes) == ["my-table"])
         #expect(names("SELECT * FROM [dbo].[Order Items]", grammar: .bracketQuotedIdentifiers) == ["dbo.Order Items"])
+        #expect(names("SELECT * FROM ⟨my-table⟩", grammar: .angleQuotedIdentifiers) == ["my-table"])
     }
 
     @Test("A table named only inside a string literal or a comment is not a reference")

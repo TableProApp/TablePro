@@ -16,6 +16,8 @@ pub struct GridMenus {
     pub empty: Option<gtk::PopoverMenu>,
     /// Filled from the table's foreign keys as a menu opens.
     pub references: gio::Menu,
+    /// Filled with the expressions the cell takes as a menu opens.
+    pub expressions: gio::Menu,
     /// The keys a column is in, for Ctrl+J to choose from.
     pub reference_chooser: gtk::PopoverMenu,
     /// An enum or set cell's labels, for a grid that edits.
@@ -37,9 +39,9 @@ fn item(label: &str, action: &str) -> gio::MenuItem {
 /// Set to Empty, NULL or DEFAULT, each shown where the cell takes it.
 pub(crate) fn presets_section() -> gio::Menu {
     section([
-        hidden_while_disabled(&gettext("Set to Empty"), "grid.set-empty"),
-        hidden_while_disabled(&gettext("Set to NULL"), "grid.set-null"),
-        hidden_while_disabled(&gettext("Set to DEFAULT"), "grid.set-default"),
+        hidden_while_disabled(&gettext("Set _to Empty"), "grid.set-empty"),
+        hidden_while_disabled(&gettext("Set to _NULL"), "grid.set-null"),
+        hidden_while_disabled(&gettext("Set to DEFAU_LT"), "grid.set-default"),
     ])
 }
 
@@ -55,13 +57,14 @@ impl GridMenus {
     pub fn new(grid: &DataGrid) -> Self {
         let editable = grid.config().is_some_and(|config| config.tracker.is_some());
         let references = gio::Menu::new();
-        let cell = popover(grid, &cell_menu(grid, &references));
+        let expressions = gio::Menu::new();
+        let cell = popover(grid, &cell_menu(grid, &references, &expressions));
         let empty = editable.then(|| {
             popover(
                 grid,
                 &section([
-                    item(&gettext("Insert Row"), "grid.insert-row"),
-                    item(&gettext("Paste"), "grid.paste"),
+                    item(&gettext("_Insert Row"), "grid.insert-row"),
+                    item(&gettext("_Paste"), "grid.paste"),
                 ]),
             )
         });
@@ -71,6 +74,7 @@ impl GridMenus {
             cell,
             empty,
             references,
+            expressions,
             reference_chooser,
             choices,
         }
@@ -105,56 +109,60 @@ fn popover(grid: &DataGrid, model: &gio::Menu) -> gtk::PopoverMenu {
     popover
 }
 
-fn cell_menu(grid: &DataGrid, references: &gio::Menu) -> gio::Menu {
+fn cell_menu(grid: &DataGrid, references: &gio::Menu, expressions: &gio::Menu) -> gio::Menu {
     let config = grid.config();
     let editable = config.is_some_and(|config| config.tracker.is_some());
     let sorts = config.is_some_and(|config| config.sorting != GridSorting::None);
     let menu = gio::Menu::new();
     if editable {
         let edits = presets_section();
-        edits.prepend_item(&hidden_while_disabled(&gettext("Edit Cell"), "grid.edit"));
+        edits.prepend_item(&hidden_while_disabled(&gettext("_Edit Cell"), "grid.edit"));
         menu.append_section(None, &edits);
+        menu.append_section(None, expressions);
     }
     let copy_as = section([
-        item(&gettext("Rows"), "grid.copy-rows"),
-        item(&gettext("With Headers"), "grid.copy-rows-headers"),
-        item(&gettext("CSV"), "grid.copy-csv"),
-        item(&gettext("CSV With Headers"), "grid.copy-csv-headers"),
+        item(&gettext("_Rows"), "grid.copy-rows"),
+        item(&gettext("_With Headers"), "grid.copy-rows-headers"),
+        item(&gettext("_CSV"), "grid.copy-csv"),
+        item(&gettext("CSV With _Headers"), "grid.copy-csv-headers"),
     ]);
     copy_as.append_section(
         None,
         &section([
-            item(&gettext("JSON"), "grid.copy-json"),
-            item(&gettext("JSON Lines"), "grid.copy-json-lines"),
-            item(&gettext("Markdown"), "grid.copy-markdown"),
-            item(&gettext("Text Table"), "grid.copy-text-table"),
+            item(&gettext("_JSON"), "grid.copy-json"),
+            item(&gettext("JSON _Lines"), "grid.copy-json-lines"),
+            item(&gettext("_Markdown"), "grid.copy-markdown"),
+            item(&gettext("_Text Table"), "grid.copy-text-table"),
         ]),
     );
     copy_as.append_section(
         None,
         &section([
-            hidden_while_disabled(&gettext("IN Clause"), "grid.copy-in-clause"),
-            hidden_while_disabled(&gettext("One Row"), "grid.copy-one-row"),
-            hidden_while_disabled(&gettext("INSERT Statement"), "grid.copy-insert"),
+            hidden_while_disabled(&gettext("_IN Clause"), "grid.copy-in-clause"),
+            hidden_while_disabled(&gettext("_One Row"), "grid.copy-one-row"),
+            hidden_while_disabled(&gettext("INSERT _Statement"), "grid.copy-insert"),
             hidden_while_disabled(
-                &gettext("INSERT Without Generated Keys"),
+                &gettext("INSERT Without Generated _Keys"),
                 "grid.copy-insert-without-generated-keys",
             ),
         ]),
     );
-    copy_as.append_section(None, &section([item(&gettext("Column Name"), "grid.copy-column-name")]));
-    let clipboard = section([item(&gettext("Copy"), "grid.copy")]);
-    clipboard.append_submenu(Some(&gettext("Copy As")), &copy_as);
+    copy_as.append_section(
+        None,
+        &section([item(&gettext("Column _Name"), "grid.copy-column-name")]),
+    );
+    let clipboard = section([item(&gettext("_Copy"), "grid.copy")]);
+    clipboard.append_submenu(Some(&gettext("Copy _As")), &copy_as);
     if editable {
-        clipboard.append_item(&item(&gettext("Paste"), "grid.paste"));
+        clipboard.append_item(&item(&gettext("_Paste"), "grid.paste"));
     }
     menu.append_section(None, &clipboard);
     if config.is_some_and(|config| config.filter_by_value) {
         menu.append_section(
             None,
             &section([
-                hidden_while_disabled(&gettext("Filter by Value"), "grid.filter-by-value"),
-                hidden_while_disabled(&gettext("Exclude Value"), "grid.exclude-value"),
+                hidden_while_disabled(&gettext("_Filter by Value"), "grid.filter-by-value"),
+                hidden_while_disabled(&gettext("Exclude _Value"), "grid.exclude-value"),
             ]),
         );
     }
@@ -162,16 +170,16 @@ fn cell_menu(grid: &DataGrid, references: &gio::Menu) -> gio::Menu {
     menu.append_section(
         None,
         &section([
-            item(&gettext("Row Details"), "grid.show-details"),
-            item(&gettext("Show Row as JSON"), "grid.show-row-json"),
+            item(&gettext("_Row Details"), "grid.show-details"),
+            item(&gettext("Show Row as _JSON"), "grid.show-row-json"),
         ]),
     );
     menu.append_section(None, &column_section(sorts));
-    let rows = section([item(&gettext("Export…"), "grid.export")]);
+    let rows = section([item(&gettext("E_xport…"), "grid.export")]);
     if editable {
-        rows.append_item(&item(&gettext("Insert Row"), "grid.insert-row"));
-        rows.append_item(&item(&gettext("Duplicate"), "grid.duplicate-rows"));
-        rows.append_item(&item(&gettext("Delete"), "grid.delete-rows"));
+        rows.append_item(&item(&gettext("_Insert Row"), "grid.insert-row"));
+        rows.append_item(&item(&gettext("D_uplicate"), "grid.duplicate-rows"));
+        rows.append_item(&item(&gettext("_Delete"), "grid.delete-rows"));
     }
     menu.append_section(None, &rows);
     menu
@@ -183,25 +191,27 @@ fn column_section(sorts: bool) -> gio::Menu {
     let column = gio::Menu::new();
     if sorts {
         column.append_item(&hidden_while_disabled(
-            &gettext("Sort Ascending"),
+            &gettext("Sort _Ascending"),
             "grid.sort-ascending",
         ));
         column.append_item(&hidden_while_disabled(
-            &gettext("Sort Descending"),
+            &gettext("Sort _Descending"),
             "grid.sort-descending",
         ));
-        column.append_item(&item(&gettext("Clear Sort"), "grid.clear-sort"));
+        column.append_item(&item(&gettext("_Clear Sort"), "grid.clear-sort"));
     }
     column.append_section(
         None,
         &section([
-            item(&gettext("Hide Column"), "grid.hide-column"),
-            item(&gettext("Size to Fit"), "grid.size-to-fit"),
-            item(&gettext("Columns…"), "grid.columns"),
+            item(&gettext("_Hide Column"), "grid.hide-column"),
+            item(&gettext("_Size to Fit"), "grid.size-to-fit"),
+            item(&gettext("Move Column _Left"), "grid.move-column-left"),
+            item(&gettext("Move Column _Right"), "grid.move-column-right"),
+            item(&gettext("Col_umns…"), "grid.columns"),
         ]),
     );
     let menu = gio::Menu::new();
-    menu.append_submenu(Some(&gettext("Column")), &column);
+    menu.append_submenu(Some(&gettext("Colu_mn")), &column);
     menu
 }
 
@@ -219,21 +229,23 @@ pub fn header_menu(column: &GridColumn, sorting: GridSorting) -> gio::Menu {
         menu.append_section(
             None,
             &section([
-                at(gettext("Sort Ascending"), "grid.sort-column-ascending"),
-                at(gettext("Sort Descending"), "grid.sort-column-descending"),
-                item(&gettext("Clear Sort"), "grid.clear-sort"),
+                at(gettext("Sort _Ascending"), "grid.sort-column-ascending"),
+                at(gettext("Sort _Descending"), "grid.sort-column-descending"),
+                item(&gettext("_Clear Sort"), "grid.clear-sort"),
             ]),
         );
     }
     menu.append_section(
         None,
         &section([
-            at(gettext("Hide Column"), "grid.hide-column-at"),
-            at(gettext("Size to Fit"), "grid.size-column-to-fit"),
-            at(gettext("Copy Column Name"), "grid.copy-column-name-at"),
+            at(gettext("_Hide Column"), "grid.hide-column-at"),
+            at(gettext("_Size to Fit"), "grid.size-column-to-fit"),
+            at(gettext("Move Column _Left"), "grid.move-column-left-at"),
+            at(gettext("Move Column _Right"), "grid.move-column-right-at"),
+            at(gettext("Copy Column _Name"), "grid.copy-column-name-at"),
         ]),
     );
-    menu.append_section(None, &section([item(&gettext("Columns…"), "grid.columns")]));
+    menu.append_section(None, &section([item(&gettext("Col_umns…"), "grid.columns")]));
     menu
 }
 
@@ -241,13 +253,13 @@ pub fn header_menu(column: &GridColumn, sorting: GridSorting) -> gio::Menu {
 /// sorting, so the header selects the rows from here. The key is
 /// GtkListBase's `list.select-all`, out of a header menu's reach.
 pub fn row_numbers_header_menu() -> gio::Menu {
-    let select_all = item(&gettext("Select All Rows"), "grid.select-all");
+    let select_all = item(&gettext("Select _All Rows"), "grid.select-all");
     if let Some(key) = crate::application::triggers_for("list.select-all").first() {
         select_all.set_attribute_value("accel", Some(&key.to_variant()));
     }
     let menu = gio::Menu::new();
     menu.append_section(None, &section([select_all]));
-    menu.append_section(None, &section([item(&gettext("Columns…"), "grid.columns")]));
+    menu.append_section(None, &section([item(&gettext("Col_umns…"), "grid.columns")]));
     menu
 }
 
@@ -306,6 +318,7 @@ impl DataGrid {
         self.hold_menu_target(target);
         self.refresh_actions();
         self.arm_references(cell);
+        self.edit().arm_expressions(self, cell);
     }
 
     /// A popover parented to the grid points in the grid's coordinates.

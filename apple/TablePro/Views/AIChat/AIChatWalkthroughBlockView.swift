@@ -538,15 +538,19 @@ struct AIChatWalkthroughBlockView: View {
 private struct ImportancePillView: View {
     let importance: SqlWalkthroughImportance
 
+    // A critical step carries the one symbol; the others read as plain secondary text.
     var body: some View {
-        Text(label)
-            .font(.caption2)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15))
-            .foregroundStyle(color)
-            .clipShape(Capsule())
-            .accessibilityLabel(Text(verbatim: "\(String(localized: "Importance")): \(label)"))
+        Group {
+            if importance == .critical {
+                NoticeLabel(label, severity: .error)
+            } else {
+                Text(label)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(String(localized: "Importance")): \(label)"))
     }
 
     private var label: String {
@@ -554,14 +558,6 @@ private struct ImportancePillView: View {
         case .critical: String(localized: "Critical")
         case .normal: String(localized: "Change")
         case .context: String(localized: "Context")
-        }
-    }
-
-    private var color: Color {
-        switch importance {
-        case .critical: .red
-        case .normal: .accentColor
-        case .context: .secondary
         }
     }
 }

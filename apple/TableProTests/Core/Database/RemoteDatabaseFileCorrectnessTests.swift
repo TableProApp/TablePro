@@ -7,6 +7,7 @@ import Foundation
 import Testing
 
 @testable import TablePro
+import TableProProcess
 import TableProTestSupport
 
 struct RemoteDatabaseFileCorrectnessTests {
@@ -519,11 +520,13 @@ struct RemoteDatabaseFileCorrectnessTests {
         let sleepStarted = directory.appendingPathComponent("sleep-started")
         let sleepRelease = directory.appendingPathComponent("sleep-release")
         defer { signalFile(sleepRelease) }
+        let quotedStarted = try ShellQuoting.singleQuoted(sleepStarted.path)
+        let quotedRelease = try ShellQuoting.singleQuoted(sleepRelease.path)
         try writeExecutable(
             """
             #!/bin/sh
-            : > \(LibSSH2ExecChannel.shellQuoted(sleepStarted.path))
-            while [ ! -e \(LibSSH2ExecChannel.shellQuoted(sleepRelease.path)) ]; do
+            : > \(quotedStarted)
+            while [ ! -e \(quotedRelease) ]; do
                 /bin/sleep 0.01
             done
             """,
@@ -611,6 +614,82 @@ struct RemoteDatabaseFileCorrectnessTests {
         #expect(try Data(contentsOf: destination) == payload)
         #expect(session.removeAttempts == [snapshotPath])
         #expect(session.effectiveImmediateRemovals == [snapshotPath])
+    }
+
+    // MARK: - Snapshot command quoting
+
+    @Test("A remote path with quotes and combining marks adds no command to the snapshot command")
+    func snapshotCommandRunsNothingFromThePath() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let injectionMarker = directory.appendingPathComponent("INJECTED")
+        let remotePath = directory.appendingPathComponent("app.db'\u{301};: > INJECTED;: '\u{301}x").path
+        let command = try RemoteDatabaseFileTransfer.remoteSnapshotCommand(
+            executable: "/usr/bin/true",
+            remotePath: remotePath,
+            snapshotPath: remotePath + ".tablepro-snapshot-test",
+            cleanupDelaySeconds: 0
+        )
+
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+        shell.arguments = ["-c", command]
+        shell.currentDirectoryURL = directory
+        shell.standardOutput = FileHandle.nullDevice
+        shell.standardError = FileHandle.nullDevice
+        try shell.run()
+        shell.waitUntilExit()
+
+        #expect(!FileManager.default.fileExists(atPath: injectionMarker.path))
+    }
+
+    @Test("A remote path that starts with a dash reaches sqlite3 as a path, not an option")
+    func dashLedRemotePathIsNotAnOption() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recorded = directory.appendingPathComponent("first-argument")
+        let recorder = directory.appendingPathComponent("record-first-argument")
+        let quotedRecorded = try ShellQuoting.singleQuoted(recorded.path)
+        try writeExecutable("#!/bin/sh\nprintf '%s' \"$1\" > \(quotedRecorded)\n", to: recorder)
+        let command = try RemoteDatabaseFileTransfer.remoteSnapshotCommand(
+            executable: try ShellQuoting.singleQuoted(recorder.path),
+            remotePath: "-cmd.db",
+            snapshotPath: "-cmd.db.tablepro-snapshot-test",
+            cleanupDelaySeconds: 0
+        )
+
+        let shell = try ProcessLauncher.process(for: .userShell(
+            command,
+            shell: .sh,
+            environment: ["PATH": "/usr/bin:/bin"],
+            currentDirectory: directory
+        ))
+        shell.standardOutput = FileHandle.nullDevice
+        shell.standardError = FileHandle.nullDevice
+        try shell.run()
+        shell.waitUntilExit()
+
+        #expect(try String(contentsOf: recorded, encoding: .utf8) == "./-cmd.db")
+    }
+
+    @Test("A remote path holding a NUL is refused before any command reaches the server")
+    func nulInRemotePathIsRefused() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let session = RecordingRemoteSnapshotSession(downloadBehavior: .success(Data("snapshot".utf8)))
+
+        #expect(throws: ProcessLaunchError.nulCharacter) {
+            _ = try RemoteDatabaseFileTransfer.fetchViaRemoteSnapshot(
+                session: session,
+                executable: "sqlite3",
+                remotePath: "/srv/app\u{0}.db",
+                staging: directory.appendingPathComponent("app.db"),
+                deadline: ConnectionDeadline(configuredSeconds: 60),
+                progress: nil,
+                isCancelled: { false }
+            )
+        }
+        #expect(session.commands.isEmpty)
     }
 
     // MARK: - Killed remote command

@@ -61,15 +61,39 @@ extension MainContentCommandActions {
         )
     }
 
+    // What Close does with no tab on screen: the container, else the connection.
+    func closeWorkspace() {
+        guard let coordinator else {
+            Task { await closeWindowAwaiting() }
+            return
+        }
+        if let entry = WorkspaceCloseAction.closableEntry(
+            connectionId: connectionId,
+            container: coordinator.tabManager.visibleContainer
+        ) {
+            Task { await WorkspaceCloseAction.close(entry.workspace) }
+            return
+        }
+        Task { await ConnectionCloseAction.close(connectionId: connectionId) }
+    }
+
     // A list edit, not a window close: the window hosts every connection, so closing all tabs leaves this one empty.
     private func runBatchClose(kind: BatchCloseKind) async {
         guard let coordinator else { return }
         let victims = tabsToClose(kind: kind)
         guard !victims.isEmpty else { return }
-        guard case .close(let closable) = await resolveUnsavedWork(in: victims) else { return }
+        let work = runningWork(.tabs(Set(victims.map(\.id))))
+        // An open cell editor is unsaved work, so it lands before the question is chosen.
+        coordinator.commitActiveGridEdit()
+        if !hasUnsavedWork(among: victims) {
+            guard await confirmsStoppingWork(work) else { return }
+        }
+        guard case .close(let closable) = await resolveUnsavedWork(in: victims, alsoStopping: work) else { return }
         // A save can suspend long enough for a victim to be pinned.
         let unpinned = Set(coordinator.tabManager.tabs.filter { !$0.isPinned }.map(\.id))
-        coordinator.closeTabsByUser(ids: victims.map(\.id).filter { closable.contains($0) && unpinned.contains($0) })
+        let closing = Set(victims.map(\.id).filter { closable.contains($0) && unpinned.contains($0) })
+        stop(work.filter { $0.tabId.map(closing.contains) ?? false })
+        coordinator.closeTabsByUser(ids: victims.map(\.id).filter(closing.contains))
     }
 
     internal enum UnsavedWorkOutcome: Equatable {
@@ -79,12 +103,13 @@ extension MainContentCommandActions {
     }
 
     // One prompt for the batch: NSWindow.beginSheet queues a second sheet behind the first instead of presenting it.
-    internal func resolveUnsavedWork(in victims: [QueryTab]) async -> UnsavedWorkOutcome {
+    internal func resolveUnsavedWork(in victims: [QueryTab], alsoStopping work: [RunningWork] = []) async -> UnsavedWorkOutcome {
         let everything = Set(victims.map(\.id))
         coordinator?.commitActiveGridEdit()
         guard hasUnsavedWork(among: victims) else { return .close(everything) }
 
-        switch await confirmSaveChanges(unsavedWorkMessage(for: victims), closeAnchorWindow) {
+        let message = RunningWorkPrompt.saveMessage(unsavedWorkMessage(for: victims), action: .close, alsoStopping: work)
+        switch await confirmSaveChanges(message, closeAnchorWindow) {
         case .save:
             return .close(await saveVictims(victims))
         case .dontSave:
@@ -96,9 +121,16 @@ extension MainContentCommandActions {
 
     // Save cannot reach off-screen grid edits, staged principals or table drafts; those tabs stay open and the alert says so.
     private func unsavedWorkMessage(for victims: [QueryTab]) -> String {
-        guard let coordinator,
-              victims.contains(where: { coordinator.savability(of: $0) == .mountedOnly })
-        else {
+        Self.unsavedWorkMessage(keepsTabsOpen: holdsWorkOnlyItsTabCanSave(among: victims))
+    }
+
+    func holdsWorkOnlyItsTabCanSave(among victims: [QueryTab]) -> Bool {
+        guard let coordinator else { return false }
+        return victims.contains { coordinator.savability(of: $0) == .mountedOnly }
+    }
+
+    static func unsavedWorkMessage(keepsTabsOpen: Bool) -> String {
+        guard keepsTabsOpen else {
             return String(localized: "Your changes will be lost if you don't save them.")
         }
         return String(
@@ -107,6 +139,16 @@ extension MainContentCommandActions {
             Tabs whose changes can only be saved from the tab itself stay open.
             """
         )
+    }
+
+    // Closing the connection takes every tab, so Save has to reach each one; false keeps the connection open.
+    func saveEveryTabsWork() async -> Bool {
+        guard let coordinator else { return true }
+        coordinator.commitActiveGridEdit()
+        let tabs = coordinator.tabManager.tabs
+        guard !tabs.isEmpty else { return await saveSelectedTabWork() }
+        let saved = await saveVictims(tabs)
+        return tabs.allSatisfy { saved.contains($0.id) }
     }
 
     // A victim it cannot save keeps its tab, a file conflict too: the conflict sheet is one window-level slot with no queue.

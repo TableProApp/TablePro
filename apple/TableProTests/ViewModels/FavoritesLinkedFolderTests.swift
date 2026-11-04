@@ -56,17 +56,17 @@ struct FavoritesLinkedFolderTests {
         #expect(LinkedSQLFolderStorage.shared.loadFolders().last?.isEnabled == true)
     }
 
-    @Test("A folder that is already linked and enabled reports itself by name")
-    func reportsAnAlreadyLinkedFolder() {
+    @Test("A folder that is already linked and enabled reports the stored folder, so its row can be selected")
+    func reportsAnAlreadyLinkedFolder() throws {
         clearStoredFolders()
         defer { clearStoredFolders() }
         let viewModel = makeViewModel()
         defer { release(viewModel) }
-        let name = "tablepro-linked-\(UUID().uuidString)"
-        let url = URL(fileURLWithPath: "/tmp/\(name)")
+        let url = URL(fileURLWithPath: "/tmp/tablepro-linked-\(UUID().uuidString)")
         #expect(viewModel.addLinkedFolder(at: url) == .added)
+        let stored = try #require(LinkedSQLFolderStorage.shared.loadFolders().last)
 
-        #expect(viewModel.addLinkedFolder(at: url) == .alreadyLinked(name: name))
+        #expect(viewModel.addLinkedFolder(at: url) == .alreadyLinked(folderId: stored.id))
     }
 
     @Test("Disabling a folder leaves it stored, so its row and its Enable command survive")

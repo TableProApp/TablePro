@@ -49,7 +49,7 @@ internal enum ProtobufWireDecoder {
         return ProtobufMessage(fields: fields, framing: framing)
     }
 
-    private static func readFraming(_ reader: inout BinaryValueReader) throws -> ProtobufFraming {
+    static func readFraming(_ reader: inout BinaryValueReader) throws -> ProtobufFraming {
         _ = try reader.readByte()
         let schemaID = try reader.readUInt32()
         let start = reader.offset
@@ -65,7 +65,71 @@ internal enum ProtobufWireDecoder {
         return ProtobufFraming(schemaID: schemaID, messageIndexes: indexes)
     }
 
-    private static func zigzag(_ value: UInt64) -> Int64 {
+    // Spends the caller's budget, so a cell stops inside a large field the schema does not name.
+    static func lengthDelimited(_ window: BinaryValueReader, depth: Int, budget: inout Int) -> ProtobufFieldValue {
+        var parser = Parser(budget: budget)
+        var window = window
+        let value = parser.lengthDelimited(&window, depth: depth)
+        budget = parser.budget
+        return value
+    }
+
+    static func fields(in window: BinaryValueReader, depth: Int, budget: inout Int) throws -> [ProtobufField] {
+        var parser = Parser(budget: budget)
+        var window = window
+        let fields = try parser.fields(&window, depth: depth, group: nil)
+        budget = parser.budget
+        return fields
+    }
+
+    // The bytes between a group's start tag, already read, and its end tag. Past `limit` tags it stops at the last whole
+    // field and reports the cut, so a cell never reads more of a group than its budget.
+    static func groupContents(
+        _ reader: inout BinaryValueReader,
+        number: Int,
+        depth: Int,
+        limit: Int
+    ) throws -> (contents: BinaryValueReader, isCut: Bool) {
+        let contents = reader
+        var openGroups = [number]
+        var boundary = reader.offset
+        var scanned = 0
+        while true {
+            let start = reader.offset
+            if openGroups.count == 1 { boundary = start }
+            guard scanned < limit else { return (try contents.window(boundary - contents.offset), true) }
+            guard !reader.isAtEnd else { throw reader.error(.unexpectedEnd) }
+            let tag = try reader.readVarint()
+            scanned += 1
+            let fieldNumber = tag >> 3
+            guard tag <= UInt64(UInt32.max), fieldNumber > 0, fieldNumber <= UInt64(maxFieldNumber) else {
+                throw BinaryValueDecodeError(kind: .invalidField, offset: start)
+            }
+            switch tag & 7 {
+            case 0:
+                _ = try reader.readVarint()
+            case 1:
+                try reader.skip(8)
+            case 2:
+                let length = try reader.readVarint()
+                guard length <= UInt64(reader.remaining) else { throw reader.error(.unexpectedEnd) }
+                try reader.skip(Int(length))
+            case 3:
+                guard depth + openGroups.count < maxDepth else { throw BinaryValueDecodeError(kind: .nestingTooDeep, offset: start) }
+                openGroups.append(Int(fieldNumber))
+            case 4:
+                guard openGroups.last == Int(fieldNumber) else { throw BinaryValueDecodeError(kind: .unmatchedGroupEnd, offset: start) }
+                openGroups.removeLast()
+                if openGroups.isEmpty { return (try contents.window(start - contents.offset), false) }
+            case 5:
+                try reader.skip(4)
+            default:
+                throw BinaryValueDecodeError(kind: .invalidField, offset: start)
+            }
+        }
+    }
+
+    static func zigzag(_ value: UInt64) -> Int64 {
         Int64(bitPattern: value >> 1) ^ -Int64(bitPattern: value & 1)
     }
 
@@ -128,7 +192,7 @@ internal enum ProtobufWireDecoder {
             return result
         }
 
-        private mutating func lengthDelimited(_ window: inout BinaryValueReader, depth: Int) -> ProtobufFieldValue {
+        mutating func lengthDelimited(_ window: inout BinaryValueReader, depth: Int) -> ProtobufFieldValue {
             if window.remaining > 0, depth < ProtobufWireDecoder.maxDepth, budget > 0 {
                 var attempt = self
                 var nested = window

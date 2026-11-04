@@ -4,6 +4,12 @@ import Testing
 @testable import TableProMySQLCore
 
 struct MySQLObjectQueryTests {
+    @Test("A backtick a combining mark follows is still doubled", arguments: ["\u{301}", "\u{200C}", "\u{FE0F}"])
+    func backtickBeforeMarkIsDoubled(mark: String) {
+        let quoted = MySQLObjectQueries.quoteIdentifier("t`\(mark);DROP DATABASE prod;#")
+        #expect(Array(quoted.unicodeScalars) == Array("`t``\(mark);DROP DATABASE prod;#`".unicodeScalars))
+    }
+
     @Test("The DDL statement is schema-qualified")
     func routineDefinitionIsQualified() {
         let sql = MySQLObjectQueries.routineDefinition(kind: "PROCEDURE", schema: "analytics", name: "cleanup")
@@ -109,6 +115,23 @@ struct MySQLObjectQueryTests {
         #expect(statement.contains("`app`.`audit`"))
         #expect(statement.contains("ON `app`.`orders`"))
         #expect(statement.contains("FOR EACH ROW"))
+    }
+
+    @Test("Catalog text that is none of a trigger clause's keywords goes in as a name")
+    func triggerKeywordsAreChecked() {
+        let statement = MySQLObjectQueries.triggerStatement(
+            name: "audit", table: "orders", schema: nil,
+            timing: "BEFORE INSERT ON x FOR EACH ROW DELETE FROM y; --", event: "insert", orientation: "statement",
+            condition: nil, definer: nil
+        )
+        #expect(statement == "CREATE TRIGGER `audit` `BEFORE INSERT ON x FOR EACH ROW DELETE FROM y; --` INSERT ON `orders` "
+            + "FOR EACH STATEMENT")
+    }
+
+    @Test("A definer is split at an @ a combining mark follows")
+    func definerSplitsByScalar() {
+        let quoted = MySQLObjectQueries.quotedDefiner("root@\u{301}evil")
+        #expect(Array(quoted.unicodeScalars) == Array("`root`@`\u{301}evil`".unicodeScalars))
     }
 
     @Test("A definer is quoted as two identifiers, not one")

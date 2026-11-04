@@ -60,6 +60,19 @@ MARIADB_FLAGS=(
     "--ssl-key=/dev/null"
     "--plugin-dir=/dev/null"
 )
+# The restore client's own flags, checked against `mysql` and `mariadb` rather than the dump tool.
+# MySQLClientArguments.restoreSafety adds the last of each list only from the release that has it,
+# and release_has_switch below holds the same gates.
+MYSQL_RESTORE_FLAGS=(
+    "--binary-mode"
+    "--local-infile=0"
+    "--skip-system-command"
+)
+MARIADB_RESTORE_FLAGS=(
+    "--binary-mode"
+    "--local-infile=0"
+    "--sandbox"
+)
 
 failures=0
 
@@ -81,7 +94,8 @@ source_flags() {
 }
 
 checked_flags() {
-    printf '%s\n' "${MYSQL_FLAGS[@]}" "${MARIADB_FLAGS[@]}" | sed -E 's|=/dev/null|=|' | sort -u
+    printf '%s\n' "${MYSQL_FLAGS[@]}" "${MARIADB_FLAGS[@]}" "${MYSQL_RESTORE_FLAGS[@]}" "${MARIADB_RESTORE_FLAGS[@]}" \
+        | sed -E 's|=/dev/null|=|' | sort -u
 }
 
 # Both directions, so neither a flag the code dropped nor one it gained goes unchecked.
@@ -107,16 +121,45 @@ flavor_of() {
     esac
 }
 
+# `Distrib` beats `Ver` on MySQL 5.7 and MariaDB 10, `from` is MariaDB 11 and later: the last
+# marker on the line is the release.
+release_of() {
+    "$1" --version 2> /dev/null | sed -nE 's/.*(Distrib|from|Ver)[[:space:]]+([0-9]+(\.[0-9]+)*).*/\2/p' | head -1
+}
+
+# 0 when the release is in [low, high). An empty high is open.
+release_in() {
+    local release=$1 low=$2 high=$3
+    [ "$(printf '%s\n%s\n' "$low" "$release" | sort -V | head -1)" = "$low" ] || return 1
+    [ -z "$high" ] && return 0
+    [ "$release" != "$high" ] && [ "$(printf '%s\n%s\n' "$release" "$high" | sort -V | head -1)" = "$release" ]
+}
+
+release_has_switch() {
+    local flavor=$1 release=$2
+    [ -n "$release" ] || return 1
+    if [ "$flavor" = "mariadb" ]; then
+        release_in "$release" 10.6.18 10.7 || release_in "$release" 10.11.8 10.12 || release_in "$release" 11.4.2 ""
+    else
+        release_in "$release" 8.0.40 8.1 || release_in "$release" 8.4.3 8.5 || release_in "$release" 9.1.0 ""
+    fi
+}
+
 # A tool that rejects the flag says so before connecting, so the connection failure is the pass.
 check_tool() {
-    local tool=$1 flavor=$2 flag output
+    local tool=$1 flavor=$2 role=${3:-dump} flag output
     local -a flags
-    if [ "$flavor" = "mariadb" ]; then
-        flags=("${MARIADB_FLAGS[@]}")
-    else
-        flags=("${MYSQL_FLAGS[@]}")
+    case "$flavor/$role" in
+        mariadb/restore) flags=("${MARIADB_RESTORE_FLAGS[@]}") ;;
+        mysql/restore) flags=("${MYSQL_RESTORE_FLAGS[@]}") ;;
+        mariadb/dump) flags=("${MARIADB_FLAGS[@]}") ;;
+        *) flags=("${MYSQL_FLAGS[@]}") ;;
+    esac
+    echo "checking $flavor $role tool $tool ($("$tool" --version 2> /dev/null | head -1))"
+    if [ "$role" = "restore" ] && ! release_has_switch "$flavor" "$(release_of "$tool")"; then
+        echo "  skip ${flags[${#flags[@]} - 1]}: the app adds it only from the release that has it"
+        unset 'flags[${#flags[@]}-1]'
     fi
-    echo "checking $flavor tool $tool"
     for flag in "${flags[@]}"; do
         output="$("$tool" --protocol=TCP -h 127.0.0.1 -P "$CLOSED_PORT" --socket="$MISSING_SOCKET" -u probe "$flag" nodb 2>&1)"
         case "$output" in
@@ -138,6 +181,14 @@ candidates() {
     ls -1 /opt/homebrew/opt/*/bin/mysqldump /usr/local/opt/*/bin/mysqldump /usr/local/mysql/bin/mysqldump 2> /dev/null
 }
 
+restore_candidates() {
+    local name
+    for name in mysql mariadb; do
+        command -v "$name" 2> /dev/null
+    done
+    ls -1 /opt/homebrew/opt/*/bin/mysql /usr/local/opt/*/bin/mysql /usr/local/mysql/bin/mysql 2> /dev/null
+}
+
 check_source_agrees
 
 declare -a seen_flavors=()
@@ -150,6 +201,17 @@ while read -r tool; do
     seen_flavors+=("$flavor")
     check_tool "$tool" "$flavor"
 done < <(candidates | sort -u)
+
+declare -a seen_restore_flavors=()
+while read -r tool; do
+    [ -x "$tool" ] || continue
+    flavor="$(flavor_of "$tool")" || continue
+    case " ${seen_restore_flavors[*]:-} " in
+        *" $flavor "*) continue ;;
+    esac
+    seen_restore_flavors+=("$flavor")
+    check_tool "$tool" "$flavor" restore
+done < <(restore_candidates | sort -u)
 
 if [ ${#seen_flavors[@]} -eq 0 ]; then
     echo "no mysql-family client found; install mysql-client or mariadb to run this check" >&2

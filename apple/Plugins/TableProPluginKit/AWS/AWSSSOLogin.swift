@@ -378,6 +378,7 @@ public enum AWSSSOLogin {
             "grantType": "urn:ietf:params:oauth:grant-type:device_code",
             "deviceCode": deviceCode
         ]
+        try AWSPartition.requireValidRegion(region)
         guard let url = URL(string: "https://\(AWSPartition.host(service: "oidc", region: region))/token") else {
             return TokenPollOutcome(poll: .failed("invalid token endpoint"), refreshToken: nil)
         }
@@ -386,7 +387,7 @@ public enum AWSSSOLogin {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request, delegate: RedirectRefusingTaskDelegate.shared)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             return TokenPollOutcome(
                 poll: interpretTokenResponse(status: status, data: data),
@@ -403,6 +404,7 @@ public enum AWSSSOLogin {
         body: [String: Any],
         session: URLSession
     ) async throws -> Data {
+        try AWSPartition.requireValidRegion(region)
         guard let url = URL(string: "https://\(AWSPartition.host(service: "oidc", region: region))/\(path)") else {
             throw AWSSSOLoginError.unexpectedResponse
         }
@@ -414,7 +416,7 @@ public enum AWSSSOLogin {
         let response: URLResponse
         do {
             try AWSHTTP.applyConnectDeadline(to: &request, session: session)
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: request, delegate: RedirectRefusingTaskDelegate.shared)
         } catch {
             throw AWSSSOLoginError.network(error.localizedDescription)
         }

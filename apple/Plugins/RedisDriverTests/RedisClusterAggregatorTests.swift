@@ -28,6 +28,12 @@ struct RedisClusterAggregatorKeyspaceTests {
     func declinedPrimaryIsUnknown() {
         #expect(RedisClusterAggregator.keyspace([[0: 2], nil]) == nil)
     }
+
+    @Test("Key counts whose total passes the integer range stop at its end instead of crashing")
+    func hugeCountsSaturate() {
+        #expect(RedisClusterAggregator.keyspace([[0: Int.max, 1: 3], [0: 1, 1: 4]]) == [0: Int.max, 1: 7])
+        #expect(RedisClusterAggregator.keyspace([[0: Int.min], [0: -1]]) == [0: Int.min])
+    }
 }
 
 struct RedisClusterAggregatorNumericTests {
@@ -41,6 +47,21 @@ struct RedisClusterAggregatorNumericTests {
     func sumsDeletions() {
         let combined = RedisClusterAggregator.combine([.integer(1), .integer(1), .integer(1)], policy: .aggSum)
         #expect(intValue(combined) == 3)
+    }
+
+    @Test("agg_sum of shard replies whose total passes the integer range stops at its end instead of crashing")
+    func hugeSumsSaturate() {
+        let overflowing = RedisClusterAggregator.combine([.integer(.max), .string("1"), .integer(5)], policy: .aggSum)
+        #expect(intValue(overflowing) == Int64.max)
+
+        let underflowing = RedisClusterAggregator.combine([.integer(.min), .integer(-1)], policy: .aggSum)
+        #expect(intValue(underflowing) == Int64.min)
+
+        let perPosition = RedisClusterAggregator.combine(
+            [.array([.integer(.max), .integer(1)]), .array([.integer(.max), .integer(2)])],
+            policy: .aggSum
+        )
+        #expect(perPosition.arrayValue?.map(intValue) == [Int64.max, 3])
     }
 
     @Test("agg_min takes the smallest")

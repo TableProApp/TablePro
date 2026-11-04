@@ -1,6 +1,7 @@
 import Foundation
 @testable import TablePro
 import TableProPluginKit
+import TableProProcess
 import TableProTestSupport
 import Testing
 
@@ -288,6 +289,21 @@ struct PasswordSourceResolverTests {
         #expect(try await PasswordSourceResolver.resolve(source, for: context, cache: cache) == "2")
     }
 
+    @Test("The password command runs under bash and reads the host from TABLEPRO_HOST, never as source")
+    func commandRunsUnderBashWithTheHostFromItsVariable() async throws {
+        let host = "db'$(echo injected)`echo injected`"
+        let context = ConnectionScriptContext(
+            connectionId: UUID(), connectionName: "c", host: host, port: 1, user: "u", database: "d"
+        )
+
+        let output = try await PasswordSourceResolver.resolve(
+            .command(shell: #"[ "$BASH" = /bin/bash ] && printf '%s' {host}"#),
+            for: context
+        )
+
+        #expect(output == host)
+    }
+
     @Test("Large stdout drains in full while stderr is also draining")
     func drainsLargeStdoutWithoutTruncation() async throws {
         let shell = """
@@ -301,40 +317,66 @@ struct PasswordSourceResolverTests {
 
     // MARK: - Secret manager references
 
-    @Test("Local sources have no external command")
-    func localSourcesHaveNoCommand() {
-        #expect(PasswordSourceResolver.externalCommand(for: .file(path: "~/x")) == nil)
-        #expect(PasswordSourceResolver.externalCommand(for: .env(variable: "X")) == nil)
-        #expect(PasswordSourceResolver.externalCommand(for: .command(shell: "echo hi")) == nil)
+    @Test("Local sources run no tool")
+    func localSourcesRunNoTool() throws {
+        #expect(try PasswordSourceResolver.externalTool(for: .file(path: "~/x"), environment: [:]) == nil)
+        #expect(try PasswordSourceResolver.externalTool(for: .env(variable: "X"), environment: [:]) == nil)
+        #expect(try PasswordSourceResolver.externalTool(for: .command(shell: "echo hi"), environment: [:]) == nil)
     }
 
-    @Test("1Password reference builds an op read command")
-    func onePasswordCommand() {
-        let command = PasswordSourceResolver.externalCommand(for: .onePassword(reference: "op://vault/db/password"))
-        #expect(command == "op read --no-newline 'op://vault/db/password'")
-    }
-
-    @Test("Vault reference builds a vault kv get command")
-    func vaultCommand() {
-        let command = PasswordSourceResolver.externalCommand(for: .vault(path: "secret/data/db", field: "password"))
-        #expect(command == "vault kv get -field='password' 'secret/data/db'")
-    }
-
-    @Test("AWS Secrets Manager reference builds an aws command")
-    func awsCommand() {
-        let command = PasswordSourceResolver.externalCommand(
-            for: .awsSecretsManager(secretId: "prod/db", jsonKey: "password")
+    @Test("A secret manager CLI runs with no shell, and a value that starts with a dash stays a value", arguments: [
+        (
+            PasswordSource.onePassword(reference: "--account=other"),
+            "op",
+            ["read", "--no-newline", "--", "--account=other"]
+        ),
+        (
+            PasswordSource.vault(path: "-address=https://elsewhere.example", field: "password"),
+            "vault",
+            ["kv", "get", "-field=password", "--", "-address=https://elsewhere.example"]
+        ),
+        (
+            PasswordSource.awsSecretsManager(secretId: "--profile=other", jsonKey: nil),
+            "aws",
+            ["secretsmanager", "get-secret-value", "--secret-id=--profile=other", "--query", "SecretString", "--output", "text"]
         )
-        #expect(command == "aws secretsmanager get-secret-value --secret-id 'prod/db' --query SecretString --output text")
+    ] as [(PasswordSource, String, [String])])
+    func secretManagerArguments(source: PasswordSource, tool: String, arguments: [String]) async throws {
+        let tools = try FakeSecretTools()
+        defer { tools.remove() }
+
+        let command = try #require(try PasswordSourceResolver.externalTool(for: source, environment: tools.environment))
+        #expect(command.executable.path == tools.path(of: tool))
+        #expect(command.arguments == arguments)
+
+        let output = try await PasswordSourceResolver.resolve(source, environment: tools.environment)
+        #expect(output == arguments.map { "[\($0)]" }.joined())
     }
 
-    @Test("Shell quoting neutralizes injection attempts")
-    func shellQuotingIsInjectionSafe() {
-        let malicious = "x'; rm -rf ~ #"
-        #expect(PasswordSourceResolver.shellQuote(malicious) == "'x'\\''; rm -rf ~ #'")
+    @Test("A 1Password reference with a quote and $(...) reaches op as it was typed")
+    func onePasswordReferenceArrivesVerbatim() async throws {
+        let tools = try FakeSecretTools()
+        defer { tools.remove() }
+        let reference = "op://vault/it'em/$(id)`id`"
 
-        let command = PasswordSourceResolver.externalCommand(for: .onePassword(reference: malicious))
-        #expect(command == "op read --no-newline 'x'\\''; rm -rf ~ #'")
+        let output = try await PasswordSourceResolver.resolve(.onePassword(reference: reference), environment: tools.environment)
+
+        #expect(output == "[read][--no-newline][--][\(reference)]")
+    }
+
+    @Test("A secret manager CLI missing from the search path is reported by name")
+    func missingToolIsReportedByName() throws {
+        let empty = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-empty-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: empty) }
+
+        #expect(throws: PasswordSourceResolver.ResolutionError.toolNotInstalled(name: "vault")) {
+            _ = try PasswordSourceResolver.externalTool(
+                for: .vault(path: "secret/data/db", field: "password"),
+                environment: ["PATH": empty.path]
+            )
+        }
     }
 
     @Test("Extracts a JSON field from a secret string")
@@ -384,6 +426,34 @@ struct PasswordSourceResolverTests {
 
     private func uniqueEnvName() -> String {
         "TABLEPRO_PWTEST_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+    }
+}
+
+// Stand-ins for op, vault and aws that print each argument in brackets.
+private struct FakeSecretTools {
+    let folder: URL
+
+    init() throws {
+        folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-tools-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for name in ["op", "vault", "aws"] {
+            let tool = folder.appendingPathComponent(name)
+            try Data("#!/bin/sh\nprintf '[%s]' \"$@\"\n".utf8).write(to: tool)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tool.path)
+        }
+    }
+
+    var environment: [String: String] {
+        ["PATH": folder.path]
+    }
+
+    func path(of name: String) -> String {
+        folder.appendingPathComponent(name).path
+    }
+
+    func remove() {
+        try? FileManager.default.removeItem(at: folder)
     }
 }
 

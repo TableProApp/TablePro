@@ -127,7 +127,7 @@ enum DataFileLoader {
             throw DataFileLoadError.invalidJSON(error)
         }
         let table = TabularTable(source: source, usesFirstRowAsHeader: false)
-        let kinds = TabularTypeInference.inferKinds(of: table)
+        let kinds = try TabularTypeInference.inferKinds(of: table)
         progress(1)
         let sheet = DataFileSheet(
             name: request.url.lastPathComponent,
@@ -157,7 +157,7 @@ enum DataFileLoader {
     ) async throws -> DataFileLoadedSheet {
         let source = try workbook.source(for: sheet, progress: progress, isCancelled: { Task.isCancelled })
         let table = TabularTable(source: source, usesFirstRowAsHeader: source.firstRowLooksLikeHeader)
-        return DataFileLoadedSheet(table: table, kinds: TabularTypeInference.inferKinds(of: table))
+        return try DataFileLoadedSheet(table: table, kinds: TabularTypeInference.inferKinds(of: table))
     }
 
     private static func loadWorkbook(
@@ -176,7 +176,7 @@ enum DataFileLoader {
         let first = workbook.sheets[initial]
         let source = try workbook.source(for: first, progress: { progress(0.1 + $0 * 0.9) }, isCancelled: { Task.isCancelled })
         let table = TabularTable(source: source, usesFirstRowAsHeader: source.firstRowLooksLikeHeader)
-        let kinds = TabularTypeInference.inferKinds(of: table)
+        let kinds = try TabularTypeInference.inferKinds(of: table)
         let sheets = workbook.sheets.map { sheet in
             DataFileSheet(
                 name: sheet.name,
@@ -234,7 +234,7 @@ enum DataFileLoader {
         }
         let source = contents.source
         let table = TabularTable(source: source, usesFirstRowAsHeader: source.dialect.hasHeaderRow)
-        let kinds = TabularTypeInference.inferKinds(of: table)
+        let kinds = try TabularTypeInference.inferKinds(of: table)
         progress(1)
         let sheet = DataFileSheet(
             name: request.url.lastPathComponent,

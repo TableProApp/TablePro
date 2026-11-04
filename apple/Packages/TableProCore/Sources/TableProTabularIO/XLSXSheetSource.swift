@@ -79,9 +79,29 @@ public struct XLSXSheetSource: TabularSource {
         return (0..<columnCount).map { cell(row: row, column: $0) }
     }
 
+    public func occupiedRows() -> [Int] {
+        var occupied = [Bool](repeating: false, count: rowCount)
+        for store in columns {
+            store.forEachOccupiedRow { row in
+                if row >= 0, row < occupied.count { occupied[row] = true }
+            }
+        }
+        return occupied.indices.filter { occupied[$0] }
+    }
+
     public func scan<Rows: Collection>(
         columns requested: [Int],
         rows: Rows,
+        _ body: (Int, TabularRowCells) -> Bool
+    ) where Rows.Element == Int {
+        scan(columns: requested, rows: rows, absentKind: .text, body)
+    }
+
+    // `.missing` tells a slot with no stored cell apart from a stored cell whose text is empty.
+    public func scan<Rows: Collection>(
+        columns requested: [Int],
+        rows: Rows,
+        absentKind: TabularCellKind,
         _ body: (Int, TabularRowCells) -> Bool
     ) where Rows.Element == Int {
         guard !requested.isEmpty else { return }
@@ -90,7 +110,7 @@ public struct XLSXSheetSource: TabularSource {
         var hints = [Int](repeating: -1, count: requested.count)
         for row in rows {
             guard row >= 0, row < rowCount else { continue }
-            buffer.reset(slots: requested.count, fill: .text)
+            buffer.reset(slots: requested.count, fill: absentKind)
             for (slot, column) in requested.enumerated() where column >= 0 && column < columnCount {
                 let store = columns[column]
                 guard let index = store.slot(forRow: row, hint: &hints[slot]) else { continue }

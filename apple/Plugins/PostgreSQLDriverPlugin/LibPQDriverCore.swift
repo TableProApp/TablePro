@@ -14,6 +14,7 @@ final class LibPQDriverCore: @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let schemaFallbackQueries: [String]
     private let singleConnectionMode: Bool
+    private let pinsCatalogSearchPath: Bool
     private let connectionLock = NSLock()
     private var _libpqConnection: LibPQPluginConnection?
     private var _lostConnection = false
@@ -58,14 +59,19 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    // Redshift and CockroachDB pass false: CockroachDB drops a SET LOCAL sent outside an explicit transaction (v25.2),
+    // and Redshift was never measured with one. Neither has user-defined operators, so their catalog SQL names
+    // pg_catalog on every function call instead (apple/scripts/ci/check-postgresql-qualified-calls.py).
     init(
         config: DriverConnectionConfig,
         schemaFallbackQueries: [String] = PostgreSQLSchemaQueries.schemaFallbackQueries,
-        singleConnectionMode: Bool = false
+        singleConnectionMode: Bool = false,
+        pinsCatalogSearchPath: Bool = true
     ) {
         self.config = config
         self.schemaFallbackQueries = schemaFallbackQueries
         self.singleConnectionMode = singleConnectionMode
+        self.pinsCatalogSearchPath = pinsCatalogSearchPath
     }
 
     // MARK: - Connection
@@ -92,7 +98,9 @@ final class LibPQDriverCore: @unchecked Sendable {
             ),
             suppressServerSideCancel: singleConnectionMode,
             connectTimeout: LibPQConnectTimeout(milliseconds: timeout.milliseconds - elapsedMilliseconds),
-            kerberos: kerberos
+            kerberos: kerberos,
+            serverName: config.tunneledServerName,
+            pinsCatalogSearchPath: pinsCatalogSearchPath
         )
 
         do {
@@ -141,15 +149,23 @@ final class LibPQDriverCore: @unchecked Sendable {
 
     private func firstFallbackSchema(_ pqConn: LibPQPluginConnection) async -> String? {
         for query in schemaFallbackQueries {
-            if case .schema(let schema) = await probeSchema(pqConn, query: query) {
+            // The search-path read answers from the session's own path; a schema listing reads the catalogs.
+            let readsCatalogs = query != PostgreSQLSchemaQueries.firstSearchPathSchema
+            if case .schema(let schema) = await probeSchema(pqConn, query: query, readsCatalogs: readsCatalogs) {
                 return schema
             }
         }
         return nil
     }
 
-    private func probeSchema(_ pqConn: LibPQPluginConnection, query: String) async -> PostgreSQLSchemaProbe {
-        let result = try? await pqConn.executeQuery(query)
+    private func probeSchema(
+        _ pqConn: LibPQPluginConnection,
+        query: String,
+        readsCatalogs: Bool = false
+    ) async -> PostgreSQLSchemaProbe {
+        let result = readsCatalogs && pinsCatalogSearchPath
+            ? try? await pqConn.executeTransactionScopedRead(PostgreSQLCatalogSearchPath.pinned + query)
+            : try? await pqConn.executeQuery(query)
         return PostgreSQLSchemaQueries.probe(rows: result?.rows)
     }
 
@@ -204,7 +220,33 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
-    func executeTransactionScopedRead(_ statement: String) async throws -> PluginQueryResult {
+    func executeSingleStatement(query: String) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let result = try await pqConn.executeSingleStatement(query)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated
+        )
+    }
+
+    /// The one way a statement the driver or the host (`PluginStatementContext.readsCatalog`) writes against the
+    /// catalogs runs. Under `PostgreSQLCatalogSearchPath`,
+    /// whatever schema the session is pinned to, so a function or operator in that schema cannot stand in for a
+    /// `pg_catalog` one. A definition that is replayed (table DDL, routines, triggers, types) reads pinned and comes
+    /// back qualified, as `pg_dump` writes it. `namesRelativeTo` is for what a person reads or compares across
+    /// schemas: the column spellings, index definitions, check constraints and partition bounds.
+    func executeCatalogRead(_ statement: String, namesRelativeTo schema: String? = nil) async throws -> PluginQueryResult {
+        guard pinsCatalogSearchPath else { return try await execute(query: statement) }
+        let path = schema.map(PostgreSQLCatalogSearchPath.relative(to:)) ?? PostgreSQLCatalogSearchPath.pinned
+        return try await executeTransactionScopedRead(path + statement)
+    }
+
+    private func executeTransactionScopedRead(_ statement: String) async throws -> PluginQueryResult {
         let pqConn = try connection()
         let startTime = Date()
         let result = try await pqConn.executeTransactionScopedRead(statement)
@@ -232,6 +274,20 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
+    func executeReadOnly(query: String, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        let pqConn = try connection()
+        let startTime = Date()
+        let result = try await pqConn.executeReadOnlyStatement(query, parameters: parameters)
+        return PluginQueryResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            rowsAffected: result.affectedRows,
+            executionTime: Date().timeIntervalSince(startTime),
+            isTruncated: result.isTruncated
+        )
+    }
+
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         let pqConn = try connection()
         let startTime = Date()
@@ -249,11 +305,11 @@ final class LibPQDriverCore: @unchecked Sendable {
         )
     }
 
-    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+    func streamRows(query: String, readOnly: Bool = false) -> AsyncThrowingStream<PluginStreamElement, Error> {
         guard let pqConn = libpqConnection else {
             return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
         }
-        return pqConn.streamQuery(query)
+        return pqConn.streamQuery(query, readOnly: readOnly)
     }
 
     func cancelQuery() {
@@ -264,6 +320,11 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.observeServerNotices(observer)
     }
 
+    func nextNotifications(waitMicroseconds: Int64) async throws -> [LibPQNotification] {
+        guard let connection = libpqConnection else { throw LibPQPluginError.notConnected }
+        return try await connection.nextNotifications(waitMicroseconds: waitMicroseconds)
+    }
+
     func cancelQueryKeepingReply() {
         libpqConnection?.requestServerCancelKeepingReply()
     }
@@ -272,7 +333,7 @@ final class LibPQDriverCore: @unchecked Sendable {
         libpqConnection?.interruptBlockedCallOnDisconnect()
     }
 
-    func setPostgisOidMap(_ map: [UInt32: PostGISType]) {
+    func setPostgisOidMap(_ map: [UInt32: String]) {
         libpqConnection?.setPostgisOidMap(map)
     }
 
@@ -353,12 +414,14 @@ extension LibPQBackedDriver {
         )
     }
 
+    func catalogRead(_ statement: String, namesRelativeTo schema: String? = nil) async throws -> PluginQueryResult {
+        try await core.executeCatalogRead(statement, namesRelativeTo: schema)
+    }
+
     func fetchCheckConstraints(table: String, schema: String?) async throws -> [PluginCheckConstraintInfo] {
-        let query = PostgreSQLSchemaQueries.checkConstraintsQuery(
-            schema: schema ?? core.currentSchema,
-            table: table
-        )
-        let result = try await execute(query: query)
+        let resolvedSchema = schema ?? core.currentSchema
+        let query = PostgreSQLSchemaQueries.checkConstraintsQuery(schema: resolvedSchema, table: table)
+        let result = try await catalogRead(query, namesRelativeTo: resolvedSchema)
         return result.rows.compactMap { row in
             guard let name = row[safe: 0]?.asText,
                   let definition = row[safe: 1]?.asText else { return nil }
@@ -373,7 +436,7 @@ extension LibPQBackedDriver {
 
     func fetchRelationComment(table: String, schema: String) async throws -> String? {
         let query = PostgreSQLCommentStatements.relationCommentQuery(name: table, schema: schema)
-        let result = try await execute(query: query)
+        let result = try await catalogRead(query)
         return result.rows.first?.first?.asText?.nilIfEmpty
     }
 
@@ -405,12 +468,72 @@ extension LibPQBackedDriver {
         try await core.executeParameterized(query: query, parameters: parameters)
     }
 
+    // The host sends a user's statements one at a time, so each goes through the extended query protocol.
+    func executeUserQuery(query: String, rowCap: Int?, parameters: [PluginCellValue]?) async throws -> PluginQueryResult {
+        let raw: PluginQueryResult
+        if let parameters {
+            raw = try await executeParameterized(query: query, parameters: parameters)
+        } else {
+            raw = try await core.executeSingleStatement(query: query)
+        }
+        return Self.capped(raw, rowCap: rowCap)
+    }
+
+    func executeUserQuery(
+        query: String,
+        rowCap: Int?,
+        parameters: [PluginCellValue]?,
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else {
+            return try await executeUserQuery(query: query, rowCap: rowCap, parameters: parameters)
+        }
+        return Self.capped(try await core.executeReadOnly(query: query, parameters: parameters), rowCap: rowCap)
+    }
+
+    func execute(query: String, context: PluginStatementContext) async throws -> PluginQueryResult {
+        if runsReadOnly(context) { return try await core.executeReadOnly(query: query, parameters: nil) }
+        // The catalog entry runs its text as a multi-statement string, so it takes only the app's own SQL.
+        if context.readsCatalog, context.origin == .app { return try await catalogRead(query) }
+        return try await execute(query: query)
+    }
+
+    func executeParameterized(
+        query: String,
+        parameters: [PluginCellValue],
+        context: PluginStatementContext
+    ) async throws -> PluginQueryResult {
+        guard runsReadOnly(context) else { return try await executeParameterized(query: query, parameters: parameters) }
+        return try await core.executeReadOnly(query: query, parameters: parameters)
+    }
+
+    private func runsReadOnly(_ context: PluginStatementContext) -> Bool {
+        LibPQReadOnlyTransaction.applies(to: context, capabilities: capabilities)
+    }
+
+    private static func capped(_ raw: PluginQueryResult, rowCap: Int?) -> PluginQueryResult {
+        guard let cap = rowCap, cap > 0, raw.rows.count > cap else { return raw }
+        return PluginQueryResult(
+            columns: raw.columns,
+            columnTypeNames: raw.columnTypeNames,
+            rows: Array(raw.rows.prefix(cap)),
+            rowsAffected: raw.rowsAffected,
+            executionTime: raw.executionTime,
+            isTruncated: true
+        )
+    }
+
     func executeBoundedQuery(query: String, rowCap: Int) async throws -> PluginQueryResult? {
         try await core.executeBoundedQuery(query: query, rowCap: rowCap)
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         core.streamRows(query: query)
+    }
+
+    func streamRows(query: String, context: PluginStatementContext) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard runsReadOnly(context) else { return streamRows(query: query) }
+        return core.streamRows(query: query, readOnly: true)
     }
 
     func cancelQuery() throws {

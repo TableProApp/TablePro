@@ -28,6 +28,7 @@ enum DatabaseTypeStyle {
         case "Redis": return .red
         case "MongoDB": return .green
         case "ClickHouse": return .yellow
+        case "Cloudflare D1": return .orange
         case "SQL Server": return .indigo
         case "Oracle": return .red
         default: return .gray

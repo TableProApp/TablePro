@@ -293,9 +293,38 @@ struct ConnectionCoordinatorCatalogTests {
         appState.setEditorHold(false, by: otherWindow, on: connection.id)
     }
 
+    // The Mac lets a D1 connection store its database's UUID, and the account lists its databases by name.
+    @Test("A database the connection names by its id moves the picker to the listed name the driver reports")
+    func reportedNameReplacesTheStoredId() async {
+        let d1 = DatabaseConnection(name: "Edge", type: .cloudflareD1, database: "0f6c1f8e-5a8b-4c4e-9a65-3d1f2c7e9b10")
+        let session = driver(tables: ["events"])
+        session.scriptedDatabases = ["analytics", "app"]
+        session.scriptedCurrentDatabase = "app"
+        factory.queue(session)
+        let coordinator = ConnectionCoordinator(connection: d1, appState: appState)
+
+        await coordinator.connect()
+
+        #expect(coordinator.activeDatabase == "app")
+        #expect(session.switchedDatabases == ["app"])
+        #expect(appState.connectionManager.session(for: d1.id)?.activeDatabase == "app")
+    }
+
+    @Test("A stored database the list holds stays the picker's, whatever the driver reports")
+    func listedDatabaseStays() async {
+        let session = driver(tables: ["orders"])
+        session.scriptedDatabases = ["app_prod", "archive"]
+        session.scriptedCurrentDatabase = "archive"
+
+        let coordinator = await connected(session)
+
+        #expect(coordinator.activeDatabase == "app_prod")
+        #expect(session.switchedDatabases.isEmpty)
+    }
+
     private func usedDatabaseDriver(_ plugin: StubPluginDriver) -> UsedDatabaseDriver {
         UsedDatabaseDriver(
-            plugin: plugin, dialedHosts: [], rowIdentity: .keyColumns, readsOnly: { _ in true },
+            plugin: plugin, dialedHosts: [], readsOnly: { _ in true },
             cancelsRunningRequest: { try? plugin.cancelQuery() }
         )
     }

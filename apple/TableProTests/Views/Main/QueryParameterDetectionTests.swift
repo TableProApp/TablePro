@@ -13,8 +13,8 @@ extension GlobalStateSuites {
             "Only SQL reads :name as a bind parameter",
             arguments: [
                 (DatabaseType.mysql, true), (.postgresql, true), (.sqlite, true),
-                (.elasticsearch, false), (.typesense, false), (.weaviate, false), (.mongodb, false),
-                (.redis, false), (.etcd, false), (.surrealdb, false), (.kafka, false)
+                (.elasticsearch, false), (.typesense, false), (.weaviate, false), (.qdrant, false), (.mongodb, false),
+                (.redis, false), (.etcd, false), (.memcached, false), (.surrealdb, false), (.kafka, false)
             ]
         )
         func onlySQLBindsNamedParameters(type: DatabaseType, binds: Bool) {

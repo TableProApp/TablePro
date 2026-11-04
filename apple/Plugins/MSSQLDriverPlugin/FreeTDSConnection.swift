@@ -467,7 +467,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
     private func establishSession(_ proc: UnsafeMutablePointer<DBPROCESS>) {
         for statement in MSSQLSessionOptions.establishment {
             guard dbcmd(proc, statement) != FAIL, dbsqlexec(proc) != FAIL else {
-                freetdsLogger.error("Session option statement refused: \(statement, privacy: .public)")
+                freetdsLogger.error("Session option statement refused: \(statement, privacy: .private)")
                 continue
             }
             drainResults(proc)
@@ -593,7 +593,7 @@ nonisolated final class FreeTDSConnection: @unchecked Sendable {
                 .singleResult()
         } catch {
             // A session left in showplan mode would plan every later statement instead of running it.
-            freetdsLogger.error("Closing the connection: \(showplan.offStatement, privacy: .public) failed")
+            freetdsLogger.error("Closing the connection: \(showplan.offStatement, privacy: .private) failed")
             disconnect()
             throw MSSQLCoreError.queryFailed(MSSQLShowplan.resetFailedMessage)
         }

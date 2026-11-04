@@ -283,6 +283,11 @@ struct ChunkedBodyDecoder: Sendable {
     private(set) var decoded: [UInt8] = []
     private var state: State = .size
 
+    mutating func takeDecoded() -> [UInt8] {
+        defer { decoded.removeAll(keepingCapacity: true) }
+        return decoded
+    }
+
     mutating func consume(_ buffer: [UInt8], limit: Int) throws -> (consumed: Int, isComplete: Bool) {
         var cursor = 0
         while true {

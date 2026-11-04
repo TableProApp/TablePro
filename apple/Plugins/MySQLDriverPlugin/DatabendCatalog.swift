@@ -6,21 +6,22 @@
 import Foundation
 import TableProMySQLCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 internal enum DatabendCatalog {
+    // Databend reads a backslash in a double-quoted name as an escape, so a name with a backtick doubles both.
     static func quoteIdentifier(_ name: String) -> String {
-        guard name.contains("`") else { return "`\(name)`" }
-        let escaped = name
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\"\"")
-        return "\"\(escaped)\""
+        guard name.unicodeScalars.contains("`") else { return SQLQuoting.identifier(name, quote: .backtick) }
+        return SQLQuoting.identifier(
+            name.replacingOccurrences(of: "\\", with: "\\\\", options: .literal), quote: .doubleQuote
+        )
     }
 
     static func columnsQuery(database: String, table: String) -> String {
         """
         SELECT name, data_type, default_kind, default_expression, is_nullable, comment
         FROM system.columns
-        WHERE `database` = '\(mysqlEscapeStringLiteral(database))' AND `table` = '\(mysqlEscapeStringLiteral(table))'
+        WHERE `database` = '\(DatabendLiteral.escapeString(database))' AND `table` = '\(DatabendLiteral.escapeString(table))'
         """
     }
 
@@ -28,7 +29,7 @@ internal enum DatabendCatalog {
         """
         SELECT `table`, name, data_type, default_kind, default_expression, is_nullable, comment
         FROM system.columns
-        WHERE `database` = '\(mysqlEscapeStringLiteral(database))'
+        WHERE `database` = '\(DatabendLiteral.escapeString(database))'
         """
     }
 
@@ -50,7 +51,7 @@ internal enum DatabendCatalog {
         """
         SELECT name, expression
         FROM system.constraints
-        WHERE `database` = '\(mysqlEscapeStringLiteral(database))' AND `table` = '\(mysqlEscapeStringLiteral(table))'
+        WHERE `database` = '\(DatabendLiteral.escapeString(database))' AND `table` = '\(DatabendLiteral.escapeString(table))'
             AND type = 'check'
         ORDER BY name
         """
@@ -60,10 +61,10 @@ internal enum DatabendCatalog {
         var query = """
             SELECT table_name, table_rows, data_length, index_length, table_comment, engine
             FROM information_schema.tables
-            WHERE table_schema = '\(mysqlEscapeStringLiteral(database))'
+            WHERE table_schema = '\(DatabendLiteral.escapeString(database))'
             """
         if let table {
-            query += " AND table_name = '\(mysqlEscapeStringLiteral(table))'"
+            query += " AND table_name = '\(DatabendLiteral.escapeString(table))'"
         }
         return query
     }
@@ -107,7 +108,7 @@ internal enum DatabendCatalog {
             definition += " DEFAULT \(defaultValue)"
         }
         if let comment = column.comment, !comment.isEmpty {
-            definition += " COMMENT '\(mysqlEscapeStringLiteral(comment))'"
+            definition += " COMMENT '\(DatabendLiteral.escapeString(comment))'"
         }
         return definition
     }

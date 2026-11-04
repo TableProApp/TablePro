@@ -73,7 +73,7 @@ internal struct FavoritesTabView: View {
         FavoriteTableCatalogReader(
             connectionId: connectionId,
             grouping: groupingStrategy,
-            isConnected: session?.isConnected ?? false,
+            isConnected: session?.reportedStatus.isConnected ?? false,
             schemaService: schemaService,
             treeService: treeMetadata,
             keptSchemas: SidebarSchemaFilter().keptSchemas(connectionId: connectionId, database: activeDatabase ?? "")
@@ -301,7 +301,7 @@ internal struct FavoritesTabView: View {
             } catch {
                 outcome = .failed(error)
             }
-            TeamLibraryPublishing.present(outcome, itemCount: favorites.count, kind: .savedQueries) {
+            TeamLibraryPublishing.present(outcome) {
                 showsTeamLibraryConflicts = true
             }
         }
@@ -794,12 +794,10 @@ internal struct FavoritesTabView: View {
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return }
             MainActor.assumeIsolated {
-                guard case .alreadyLinked(let name) = viewModel.addLinkedFolder(at: url) else { return }
-                AlertHelper.showInfoSheet(
-                    title: String(localized: "This folder is already linked"),
-                    message: String(format: String(localized: "%@ is already in the favorites list."), name),
-                    window: window
-                )
+                guard case .alreadyLinked(let folderId) = viewModel.addLinkedFolder(at: url),
+                      let row = viewModel.nodes.first(where: { $0.asLinkedFolder?.id == folderId })
+                else { return }
+                sharedSidebarState.selectedFavorite = .node(id: row.id)
             }
         }
     }

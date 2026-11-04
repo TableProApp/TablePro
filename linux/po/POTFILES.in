@@ -126,9 +126,11 @@ crates/app/src/services/tracker_delta.rs
 crates/app/src/services/tracker_edit.rs
 crates/app/src/services/undo_op.rs
 crates/app/src/storage.rs
+crates/app/src/test_support/access_keys.rs
 crates/app/src/test_support/accessible_label.rs
 crates/app/src/test_support/alert_response.rs
 crates/app/src/test_support/application_end.rs
+crates/app/src/test_support/connection_groups.rs
 crates/app/src/test_support/fake_clocks.rs
 crates/app/src/test_support/fake_reachability.rs
 crates/app/src/test_support/fake_session.rs
@@ -240,10 +242,12 @@ crates/app/src/ui/data_grid/edit/actions.rs
 crates/app/src/ui/data_grid/edit/cell_editor.rs
 crates/app/src/ui/data_grid/edit/choice_menu.rs
 crates/app/src/ui/data_grid/edit/deletion.rs
+crates/app/src/ui/data_grid/edit/expression_menu.rs
 crates/app/src/ui/data_grid/edit/mod.rs
 crates/app/src/ui/data_grid/edit/paste.rs
 crates/app/src/ui/data_grid/edit/row_edits.rs
 crates/app/src/ui/data_grid/edit/tests/choices.rs
+crates/app/src/ui/data_grid/edit/tests/expressions.rs
 crates/app/src/ui/data_grid/edit/tests/mod.rs
 crates/app/src/ui/data_grid/edit/tests/paste.rs
 crates/app/src/ui/data_grid/edit/tests/rows.rs
@@ -276,6 +280,7 @@ crates/app/src/ui/data_grid/row_number_column.rs
 crates/app/src/ui/data_grid/selection.rs
 crates/app/src/ui/data_grid/selection_summary.rs
 crates/app/src/ui/data_grid/server_sorter.rs
+crates/app/src/ui/data_grid/stripes.rs
 crates/app/src/ui/data_grid/table_keys.rs
 crates/app/src/ui/data_grid/test_grid.rs
 crates/app/src/ui/data_grid/tests/cells.rs
@@ -291,6 +296,7 @@ crates/app/src/ui/data_grid/tests/summary.rs
 crates/app/src/ui/data_grid/tests/values.rs
 crates/app/src/ui/data_grid/tests/view.rs
 crates/app/src/ui/data_grid/tracked_values.rs
+crates/app/src/ui/definition_dialog.rs
 crates/app/src/ui/delete_connection_dialog.rs
 crates/app/src/ui/diagram/canvas.rs
 crates/app/src/ui/diagram/canvas_imp.rs
@@ -475,6 +481,7 @@ crates/app/src/ui/session_window/mod.rs
 crates/app/src/ui/session_window/notification_request.rs
 crates/app/src/ui/session_window/notification_sink.rs
 crates/app/src/ui/session_window/notifications.rs
+crates/app/src/ui/session_window/other_databases.rs
 crates/app/src/ui/session_window/picker_page.rs
 crates/app/src/ui/session_window/resolve_file_identity.rs
 crates/app/src/ui/session_window/secret_retry.rs
@@ -486,11 +493,13 @@ crates/app/src/ui/session_window/session_window_input.rs
 crates/app/src/ui/session_window/tests/mod.rs
 crates/app/src/ui/session_window/tests/notification.rs
 crates/app/src/ui/session_window/tests/open_file.rs
+crates/app/src/ui/session_window/tests/other_databases.rs
 crates/app/src/ui/session_window/tests/sessions.rs
 crates/app/src/ui/session_window/window_actions.rs
 crates/app/src/ui/session_window/work_notifier.rs
 crates/app/src/ui/shell/mod.rs
 crates/app/src/ui/shell/primary_menu_button.rs
+crates/app/src/ui/source_dialog.rs
 crates/app/src/ui/ssh_inputs.rs
 crates/app/src/ui/ssh_section.rs
 crates/app/src/ui/structure_tab/character_set_choices.rs
@@ -550,6 +559,7 @@ crates/app/src/ui/welcome_view.rs
 crates/app/src/ui/window_geometry.rs
 crates/app/src/ui/workspace/assistant.rs
 crates/app/src/ui/workspace/close_flow.rs
+crates/app/src/ui/workspace/definitions.rs
 crates/app/src/ui/workspace/diagram.rs
 crates/app/src/ui/workspace/editor_label.rs
 crates/app/src/ui/workspace/finished_work.rs
@@ -567,6 +577,7 @@ crates/app/src/ui/workspace/sidebar/connection_tree.rs
 crates/app/src/ui/workspace/sidebar/key_listing.rs
 crates/app/src/ui/workspace/sidebar/mod.rs
 crates/app/src/ui/workspace/sidebar/object_key.rs
+crates/app/src/ui/workspace/sidebar/object_target.rs
 crates/app/src/ui/workspace/sidebar/sidebar_affordances.rs
 crates/app/src/ui/workspace/sidebar/sidebar_event.rs
 crates/app/src/ui/workspace/sidebar/sidebar_index.rs
@@ -593,6 +604,7 @@ crates/app/src/ui/workspace/tab_title.rs
 crates/app/src/ui/workspace/table_naming.rs
 crates/app/src/ui/workspace/tests/assistant.rs
 crates/app/src/ui/workspace/tests/close_tab.rs
+crates/app/src/ui/workspace/tests/definitions.rs
 crates/app/src/ui/workspace/tests/diagram.rs
 crates/app/src/ui/workspace/tests/keys.rs
 crates/app/src/ui/workspace/tests/large_catalog.rs

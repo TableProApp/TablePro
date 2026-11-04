@@ -1,6 +1,7 @@
 import CommonCrypto
 import CryptoKit
 import Foundation
+import TableProKafkaCore
 
 /// SASL over Kafka's own framing: SaslHandshake names the mechanism, then each SASL token
 /// travels inside a SaslAuthenticate request rather than as a bare byte block on the socket.

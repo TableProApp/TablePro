@@ -106,7 +106,7 @@ fn an_edit_counts_as_the_cell_shows_it_while_the_focus_is_elsewhere() {
         row_key: key(1),
         col: 1,
         original: Value::Int(10),
-        value: Value::Int(20),
+        value: tablepro_core::edit::CellInput::Value(Value::Int(20)),
     }));
 
     wait_for_label(&button, "Sum 52, Average 26, Count 2");
@@ -132,7 +132,7 @@ fn rows_marked_for_deletion_are_left_out_also_after_a_failed_save() {
         row_key: key(1),
         col: 1,
         original: Value::Int(10),
-        value: Value::Int(11),
+        value: tablepro_core::edit::CellInput::Value(Value::Int(11)),
     }));
     wait_for_label(&button, "Sum 11, Average 11, Count 1");
 }
@@ -263,7 +263,7 @@ fn a_long_figure_keeps_its_popover_row_on_one_line() {
         row_key: key(1),
         col: 1,
         original: Value::Int(10),
-        value: Value::Decimal(wide),
+        value: tablepro_core::edit::CellInput::Value(Value::Decimal(wide)),
     }));
     wait_until(WAIT, || button.label().is_some_and(|label| label.len() > 1_000)).expect("the wide sum");
 

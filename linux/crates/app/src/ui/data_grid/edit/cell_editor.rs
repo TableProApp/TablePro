@@ -3,14 +3,14 @@ use std::rc::Rc;
 
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gdk, glib};
-use tablepro_core::edit::{CellInput, EditParseError, EditText, edit_text};
+use tablepro_core::edit::{EditParseError, EditText};
 
 use super::{EditController, edit_start, ticket_after};
 use crate::application::component_matches;
 use crate::i18n::{gettext, gettext_f};
 use crate::services::grid::{
     CellEditorKind, CommitResult, EDIT_MAX_BYTES, EditDirection, EditStart, GridColumn, TextPurpose, commit_edit,
-    empty_placeholder, next_edit_target,
+    empty_placeholder, next_edit_target, opening_text,
 };
 use crate::ui::data_grid::grid_cell::holds_window_focus;
 use crate::ui::data_grid::{DataGrid, GridCell, GridRow, PinnedRow};
@@ -246,10 +246,7 @@ impl EditController {
         let start = edit_start(&tracked, row, index);
         // From the whole value with any pending edit, never from the text
         // the cell draws, which is cut short or stands in for the value.
-        let text = match &start.original {
-            CellInput::Value(value) => edit_text(value, column.value_type()),
-            CellInput::Default => EditText::Editable(String::new()),
-        };
+        let text = opening_text(&start.original, column.value_type());
         let refusal = match &text {
             EditText::ReadOnly(reason) => {
                 return Plan::Refused(edit_parse_message(&EditParseError::NotEditable(*reason)));
@@ -412,7 +409,7 @@ impl EditController {
             tracing::debug!(column = column.index, "refused an edit to a locked cell");
             return None;
         }
-        Some(commit_edit(&column, start, typed))
+        Some(commit_edit(&column, start, typed, grid.sql_dialect().as_deref()))
     }
 
     fn current(&self, id: u64) -> Option<Rc<OpenEdit>> {

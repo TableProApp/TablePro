@@ -16,15 +16,31 @@ use crate::services::grid::{
     CellDisplay, ColumnLayout, GridColumn, LayoutSlot, Placement, default_width_chars, header_text, merge_order,
     number_width_chars, sampled_texts, typical_texts, typical_width_chars,
 };
+use crate::ui::handler_guard::HandlerGuard;
 
 /// Rows sampled for a column's opening width.
 const WIDTH_SAMPLE: usize = 200;
-/// Cell padding Adwaita gives a data table's cell, both sides, and the
+/// The padding `style.css` gives a cell's child, both sides, and the
 /// column separator.
 const CELL_CHROME_PX: i32 = 13;
 /// A resize step, in digits of the font the cells draw in, so a step is
 /// the same number of characters at any text size.
 const STEP_DIGITS: i32 = 2;
+/// Adwaita draws a header's title in `.caption-heading`: bold, at 82 % of
+/// the grid's font.
+const HEADER_SCALE: f64 = 0.82;
+/// GTK keeps a sort indicator beside the title of every sortable column,
+/// sorted or not: 16 px wide in Adwaita, 6 px from the title.
+const SORT_INDICATOR_PX: i32 = 16 + 6;
+
+/// Whether measuring may narrow a column the grid sized itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Measure {
+    /// More rows only widen it, so it holds still as pages arrive.
+    Widen,
+    /// A font changed, so the width it had means nothing now.
+    Again,
+}
 
 /// What a column's cells read to draw a row. The column makes one and
 /// every cell it builds shares it.
@@ -66,6 +82,8 @@ pub struct ColumnSet {
     /// keep: a better guess from other rows should still reach them.
     auto_widths: std::collections::HashMap<usize, i32>,
     pages: Pages,
+    /// The fonts the grid last sized its columns in.
+    measured_in: Option<String>,
     handlers: Vec<(glib::WeakRef<glib::Object>, glib::SignalHandlerId)>,
 }
 
@@ -186,6 +204,7 @@ impl DataGrid {
             let grid_cell = GridCell::new(setup_paint.clone());
             grid_cell.attach(cell);
             cell.set_child(Some(&grid_cell));
+            super::stripes::follow(cell);
         });
         factory.connect_bind(|_, item| {
             let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
@@ -234,20 +253,55 @@ impl DataGrid {
     /// the first rows, and keeps it while rows scroll by, since an
     /// automatic width measures every row GTK builds and shifts.
     fn size_unsized_columns(&self) {
-        let widths = self.opening_widths();
+        self.size_columns(Measure::Widen);
+    }
+
+    /// The monospace font, the interface font or the text size changed:
+    /// the columns the grid sized itself take the new measure, and a width
+    /// the user gave stays.
+    pub(super) fn fonts_changed(&self) {
+        self.size_columns(Measure::Again);
+        row_number_column::fit(self);
+    }
+
+    /// A grid out of any window hears of no font change, and one sized
+    /// before it had a window measured in no theme's font.
+    pub(super) fn rooted(&self) {
+        let measured_in = self.imp().columns.borrow().measured_in.clone();
+        if measured_in.is_some_and(|fonts| fonts != fonts_now(&self.column_view())) {
+            self.fonts_changed();
+        }
+    }
+
+    /// The interface font and the text size reach the grid as GTK system
+    /// settings; the monospace font is libadwaita's.
+    pub(super) fn watch_fonts(&self) {
+        let style = adw::StyleManager::default();
+        let handler = style.connect_monospace_font_name_notify(glib::clone!(
+            #[weak(rename_to = grid)]
+            self,
+            move |_| grid.fonts_changed()
+        ));
+        self.imp().font_watch.replace(Some(HandlerGuard::new(&style, handler)));
+    }
+
+    fn size_columns(&self, measure: Measure) {
+        let widths = self.opening_widths(measure);
+        self.imp().columns.borrow_mut().measured_in = Some(fonts_now(&self.column_view()));
         for (index, view_column, width) in widths {
             self.imp().columns.borrow_mut().auto_widths.insert(index, width);
             view_column.set_fixed_width(width);
         }
     }
 
-    fn opening_widths(&self) -> Vec<(usize, gtk::ColumnViewColumn, i32)> {
+    fn opening_widths(&self, measure: Measure) -> Vec<(usize, gtk::ColumnViewColumn, i32)> {
         let set = self.imp().columns.borrow();
         let sample: Vec<Option<Arc<[Value]>>> = self.store().rows().take(WIDTH_SAMPLE).map(|row| row.cells()).collect();
         let by_type = set.pages == Pages::Empty;
         let view = self.column_view();
-        let font = value_font(&view);
-        let metrics = view.pango_context().metrics(Some(&font), None);
+        let context = view.create_pango_context();
+        let font = value_font(&context);
+        let metrics = context.metrics(Some(&font), None);
         let char_px = pango::units_to_double(metrics.approximate_char_width());
         let null = editable_null_sentinel();
         let mut widths = Vec::new();
@@ -272,31 +326,37 @@ impl DataGrid {
             // no rows a value its type spells out, as a UUID or an enum's
             // label, so those are measured as the cell draws them.
             let sampled = match (by_type, paint.numbers.get()) {
-                (_, true) => tabular_width(&view, &font, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
+                (_, true) => tabular_width(&context, &font, &"0".repeat(usize::try_from(chars).unwrap_or_default())),
                 (true, false) => 0,
                 // One line each, so one layout measures them all.
-                (false, false) => drawn_width(&view, &font, &sampled_texts(column, values.iter().copied()).join("\n")),
+                (false, false) => drawn_width(
+                    &context,
+                    &font,
+                    &sampled_texts(column, values.iter().copied()).join("\n"),
+                ),
             };
             let spelled = match by_type || column.display() == CellDisplay::Temporal {
                 true => typical_texts(column)
                     .iter()
-                    .map(|typical| tabular_width(&view, &font, typical))
+                    .map(|typical| tabular_width(&context, &font, typical))
                     .max()
                     .unwrap_or(0),
                 false => 0,
             };
-            // The header draws its title smaller than the body font, so the
-            // body font's width holds it.
-            let header = view.create_pango_layout(Some(header_text(column))).pixel_size().0;
+            let indicator = match view_column.sorter() {
+                Some(_) => SORT_INDICATOR_PX,
+                None => 0,
+            };
+            let header = header_width(&context, header_text(column)) + indicator;
             // A NULL the user can replace draws as `<NULL>`, wider than the
             // fewest cells a column takes.
             let placeholder = match paint.tracked.tracks_changes() && values.iter().any(|value| value.is_null()) {
-                true => drawn_width(&view, &font, &null),
+                true => drawn_width(&context, &font, &null),
                 false => 0,
             };
             let text = estimate.max(sampled).max(spelled).max(header).max(placeholder);
             let width = text + CELL_CHROME_PX;
-            if auto.is_none_or(|auto| width > auto) {
+            if measure == Measure::Again || auto.is_none_or(|auto| width > auto) {
                 widths.push((index, view_column.clone(), width));
             }
         }
@@ -493,7 +553,8 @@ impl DataGrid {
             return;
         };
         let view = self.column_view();
-        let metrics = view.pango_context().metrics(Some(&value_font(&view)), None);
+        let context = view.create_pango_context();
+        let metrics = context.metrics(Some(&value_font(&context)), None);
         let step = (pango::units_to_double(metrics.approximate_digit_width()) * f64::from(STEP_DIGITS)).ceil() as i32;
         let width = column.fixed_width();
         let width = match wider {
@@ -501,19 +562,92 @@ impl DataGrid {
             // Narrow stops at one step, so the column the focus is in stays
             // on screen to widen again.
             false if width > step => (width - step).max(step),
-            false => return,
+            false => {
+                view.error_bell();
+                return;
+            }
         };
         self.set_column_width(index, Some(width));
     }
 
-    /// The data columns on screen, in the order the user arranged them.
-    pub(crate) fn shown_columns(&self) -> Vec<usize> {
-        let set = self.imp().columns.borrow();
+    pub(super) fn move_column(&self, index: usize, left: bool) {
         let view = self.column_view();
-        (0..view.columns().n_items())
-            .filter_map(|position| view.columns().item(position).and_downcast::<gtk::ColumnViewColumn>())
-            .filter(|column| column.is_visible())
-            .filter_map(|column| set.index_of(&column))
+        // GtkColumnView mirrors its columns by its own direction, not the grid's.
+        let toward_start = left != (view.direction() == gtk::TextDirection::Rtl);
+        let shown = self.shown_slots();
+        let neighbour = shown
+            .iter()
+            .position(|(_, slot)| *slot == index)
+            .and_then(|at| match toward_start {
+                true => at.checked_sub(1),
+                false => at.checked_add(1),
+            })
+            .and_then(|neighbour| shown.get(neighbour).copied());
+        let (Some((destination, passed)), Some(column)) = (neighbour, self.data_view_column(index)) else {
+            // As GtkTreeView does at the edge, so the key never passes on unheard.
+            view.error_bell();
+            return;
+        };
+        // `insert_column` takes the column out first, so either way it lands past the neighbour.
+        view.insert_column(destination, &column);
+        self.keep_focus_in_view(index);
+        self.announce_move(index, passed, toward_start);
+    }
+
+    // `scroll_to` reads the headers' last layout, and GtkNative's layout handler runs before this one.
+    fn keep_focus_in_view(&self, index: usize) {
+        let Some(surface) = self.native().and_then(|native| native.surface()) else {
+            return;
+        };
+        let grid = self.downgrade();
+        let handler = Rc::new(Cell::new(None::<glib::SignalHandlerId>));
+        let slot = handler.clone();
+        let id = surface.connect_layout(move |surface, _, _| {
+            if let Some(id) = slot.take() {
+                surface.disconnect(id);
+            }
+            if let Some(grid) = grid.upgrade()
+                && let Some(position) = grid
+                    .focused_cell()
+                    .filter(|cell| cell.column() == index)
+                    .and_then(|cell| cell.position())
+                && let Some(column) = grid.data_view_column(index)
+            {
+                grid.column_view()
+                    .scroll_to(position, Some(&column), gtk::ListScrollFlags::NONE, None);
+            }
+        });
+        handler.set(Some(id));
+        surface.request_layout();
+    }
+
+    fn announce_move(&self, index: usize, passed: usize, toward_start: bool) {
+        let columns = self.grid_columns();
+        let (Some(moved), Some(passed)) = (columns.get(index), columns.get(passed)) else {
+            return;
+        };
+        let names = [("column", moved.name.as_str()), ("neighbour", passed.name.as_str())];
+        let text = match toward_start {
+            true => crate::i18n::gettext_f("Moved {column} before {neighbour}", &names),
+            false => crate::i18n::gettext_f("Moved {column} after {neighbour}", &names),
+        };
+        crate::ui::a11y::announce(&self.column_view(), &text, gtk::AccessibleAnnouncementPriority::Medium);
+    }
+
+    pub(crate) fn shown_columns(&self) -> Vec<usize> {
+        self.shown_slots().into_iter().map(|(_, index)| index).collect()
+    }
+
+    // View positions count the row numbers, the filler and hidden columns too.
+    fn shown_slots(&self) -> Vec<(u32, usize)> {
+        let set = self.imp().columns.borrow();
+        let columns = self.column_view().columns();
+        (0..columns.n_items())
+            .filter_map(|position| {
+                let column = columns.item(position).and_downcast::<gtk::ColumnViewColumn>()?;
+                let index = set.index_of(&column).filter(|_| column.is_visible())?;
+                Some((position, index))
+            })
             .collect()
     }
 
@@ -694,8 +828,20 @@ impl DataGrid {
 
 // GTK makes the header and rows only as wide as the columns unless one
 // expands, and never resizes the last column; this one takes both.
+// Its empty child carries the stripe out to the view's edge.
 fn filler_column() -> gtk::ColumnViewColumn {
-    let column = gtk::ColumnViewColumn::builder().expand(true).build();
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, item| {
+        let Some(cell) = item.downcast_ref::<gtk::ColumnViewCell>() else {
+            return;
+        };
+        let blank = adw::Bin::builder()
+            .accessible_role(gtk::AccessibleRole::Presentation)
+            .build();
+        cell.set_child(Some(&blank));
+        super::stripes::follow(cell);
+    });
+    let column = gtk::ColumnViewColumn::builder().expand(true).factory(&factory).build();
     column.set_id(Some("filler"));
     column
 }
@@ -721,18 +867,44 @@ fn same_names(layout: &ColumnLayout, columns: &[GridColumn]) -> bool {
 
 /// The font a cell draws its value in: libadwaita's `monospace` class
 /// sets only the family and size of the desktop's monospace font.
-fn value_font(view: &gtk::ColumnView) -> pango::FontDescription {
+fn value_font(context: &pango::Context) -> pango::FontDescription {
     let mut monospace = pango::FontDescription::from_string(&adw::StyleManager::default().monospace_font_name());
     monospace.unset_fields(!(pango::FontMask::FAMILY | pango::FontMask::SIZE));
-    let mut font = view.pango_context().font_description().unwrap_or_default();
+    let mut font = context.font_description().unwrap_or_default();
     font.merge(Some(&monospace), true);
     font
 }
 
+/// How wide a header draws `title`. The scaled size rounds up, since GTK
+/// scales the size before it rounds and the view's font is rounded.
+fn header_width(context: &pango::Context, title: &str) -> i32 {
+    let mut font = context.font_description().unwrap_or_default();
+    font.set_weight(pango::Weight::Bold);
+    let size = (f64::from(font.size()) * HEADER_SCALE).ceil();
+    match font.is_size_absolute() {
+        true => font.set_absolute_size(size),
+        false => font.set_size(size as i32),
+    }
+    drawn_width(context, &font, title)
+}
+
+/// The grid's font, the text size in it, and the monospace font. A
+/// widget's own context follows a change only at the next frame, so a
+/// fresh one is read.
+fn fonts_now(view: &gtk::ColumnView) -> String {
+    let grid = view
+        .create_pango_context()
+        .font_description()
+        .map(|font| font.to_string())
+        .unwrap_or_default();
+    format!("{grid}; {}", adw::StyleManager::default().monospace_font_name())
+}
+
 /// How wide `text` is in the tabular figures libadwaita's `numeric`
 /// class draws.
-fn tabular_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, text: &str) -> i32 {
-    let layout = widget.create_pango_layout(Some(text));
+fn tabular_width(context: &pango::Context, font: &pango::FontDescription, text: &str) -> i32 {
+    let layout = pango::Layout::new(context);
+    layout.set_text(text);
     layout.set_font_description(Some(font));
     let tabular = pango::AttrList::new();
     tabular.insert(pango::AttrFontFeatures::new("tnum"));
@@ -740,8 +912,9 @@ fn tabular_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, 
     layout.pixel_size().0
 }
 
-fn drawn_width(widget: &impl IsA<gtk::Widget>, font: &pango::FontDescription, text: &str) -> i32 {
-    let layout = widget.create_pango_layout(Some(text));
+fn drawn_width(context: &pango::Context, font: &pango::FontDescription, text: &str) -> i32 {
+    let layout = pango::Layout::new(context);
+    layout.set_text(text);
     layout.set_font_description(Some(font));
     layout.pixel_size().0
 }

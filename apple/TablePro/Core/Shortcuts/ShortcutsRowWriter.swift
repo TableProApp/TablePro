@@ -74,19 +74,21 @@ internal enum ShortcutsRowWriter {
         guard !plan.steps.isEmpty else { throw IntentDataError.noInsertableValues(request.table) }
 
         // The person approving the write reads every row with its values, as a grid save shows them.
-        try await ExternalStatementGate.authorizeExecution(
-            sql: plan.displaySQL,
-            connectionId: request.connectionId,
-            databaseType: databaseType,
-            caller: .shortcuts,
-            capabilities: [.mayWrite, .mayRunMultiStatement],
-            operationDescription: confirmationTitle(rows: rowCount, table: request.table),
-            kind: .writeQuery,
+        let operation = try await ExternalStatementGate.approve(
+            PendingOperation(
+                scope: scope,
+                databaseType: databaseType,
+                statements: plan.statements.map(OperationStatement.init(bound:)),
+                kind: .writeQuery,
+                caller: .shortcuts,
+                capabilities: [.mayWrite, .mayRunMultiStatement],
+                operationDescription: confirmationTitle(rows: rowCount, table: request.table),
+                gradedSQL: plan.displaySQL,
+                displayStatements: plan.displayStatements
+            ),
             gate: gate
         )
 
-        let route = await MainActor.run { DatabaseManager.shared.schemaChangeRoute(for: scope) }
-        let ownsConnection = route.isPooled
         let started = Date()
         let recorded = historyText(of: plan)
         func record(rowCount: Int, error: String?) async {
@@ -107,13 +109,8 @@ internal enum ShortcutsRowWriter {
         }
 
         do {
-            _ = try await DatabaseManager.shared.withScopedDriver(
-                scope: scope,
-                route: route,
-                cancellation: .protectedWrite
-            ) { driver in
+            _ = try await bridge.runRowWrites(operation, plan: plan) { driver, ownsConnection in
                 try await refuseHeldTransaction(on: driver, ownsConnection: ownsConnection)
-                return try await DataWriteExecutor.run(plan, on: driver)
             }
         } catch let partial as DataWritePartialCommitError {
             let reason = ScriptingError.from(partial.underlying, secrets: snapshot.redactionSecrets)

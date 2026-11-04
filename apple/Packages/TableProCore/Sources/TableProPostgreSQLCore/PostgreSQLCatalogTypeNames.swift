@@ -105,8 +105,11 @@ public enum PostgreSQLCatalogTypeNames {
     /// because Redshift's catalog predates `typcategory` and the predicate agrees with it on
     /// every real type: `point` and `name` carry a `typelem` at a fixed length, and the one
     /// disagreement is the pseudo-type `_record`, which no column has.
+    ///
+    /// Sent on the user's own session under its search path, so each oid is typed: a bare integer compares oid with
+    /// integer, which a `=(oid, integer)` in a schema on that path takes exactly.
     public static func lookupQuery(oids: [UInt32]) -> String? {
-        let list = Set(oids).sorted().map(String.init).joined(separator: ", ")
+        let list = Set(oids).sorted().map { "'\($0)'::pg_catalog.oid" }.joined(separator: ", ")
         guard !list.isEmpty else { return nil }
         return """
             SELECT t.oid::text, t.typname, t.typtype::text,

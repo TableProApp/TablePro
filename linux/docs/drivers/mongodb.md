@@ -1,6 +1,6 @@
 # MongoDB
 
-Driver id `mongodb`, crate `crates/drivers/mongodb`. It speaks the wire protocol through the mongodb crate 3.9 with its default features off, `compat-3-3-0`, `bson-3`, `rustls-tls-aws-lc` and `dns-resolver`. The integration suite runs against MongoDB 8.0, and CI runs it again on 7.0 ([supported servers](../../README.md#supported-servers)). MongoDB has no SQL: how a document engine meets the contract is in [adding-drivers.md, Engines without SQL](../adding-drivers.md#engines-without-sql), and why collections open in the table tab is [ADR 0026](../decisions/0026-documents-in-the-table-tab.md).
+Driver id `mongodb`, crate `core/crates/drivers/mongodb`. It speaks the wire protocol through the mongodb crate 3.9 with its default features off, `compat-3-3-0`, `bson-3`, `rustls-tls-aws-lc` and `dns-resolver`. The integration suite runs against MongoDB 8.0, and CI runs it again on 7.0 ([supported servers](../../README.md#supported-servers)). MongoDB has no SQL: how a document engine meets the contract is in [adding-drivers.md, Engines without SQL](../adding-drivers.md#engines-without-sql), and why collections open in the table tab is [ADR 0026](../decisions/0026-documents-in-the-table-tab.md).
 
 The default port is 27017.
 

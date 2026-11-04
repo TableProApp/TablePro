@@ -9,7 +9,7 @@ enum SpringPropertiesExtractor {
     static func extract(
         contents: String,
         relativePath: String,
-        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
+        processEnvironment: [String: String]
     ) -> [ScannedConnectionCandidate] {
         let properties = parse(contents)
         guard let rawURL = properties["spring.datasource.url"] else {

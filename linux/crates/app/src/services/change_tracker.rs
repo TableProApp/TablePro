@@ -70,10 +70,18 @@ pub struct DraftRow {
 /// A pending edit to a fetched cell.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CellEdit {
-    /// The fetched value. An edit back to it drops the entry.
-    pub original: Value,
-    pub pending: Value,
+    /// The fetched value. An edit back to it drops the entry. `None`
+    /// once a save had the server compute the cell, until it is read again.
+    pub original: Option<Value>,
+    pub pending: CellInput,
     pub touched: Touch,
+}
+
+impl CellEdit {
+    /// Whether the edit leaves the cell as it was before it.
+    fn is_no_change(&self) -> bool {
+        matches!((&self.pending, &self.original), (CellInput::Value(pending), Some(original)) if pending == original)
+    }
 }
 
 /// A fetched row marked for delete, with the row as it was read.
@@ -115,7 +123,7 @@ struct InFlightSave {
     /// Until the save settles, each of these cells holds either this
     /// value or the one that was fetched, so no later edit to it can be
     /// called a return to the cell's value.
-    written: HashMap<(RowKey, usize), Value>,
+    written: HashMap<(RowKey, usize), CellInput>,
 }
 
 /// A pending change the table's columns no longer have a place for.
@@ -238,15 +246,19 @@ impl TabChangeTracker {
         self.redo.clear();
     }
 
-    fn track_cell_edit(&mut self, row_key: RowKey, col: usize, original: Value, value: Value) -> TrackerDelta {
+    fn track_cell_edit(&mut self, row_key: RowKey, col: usize, original: Value, value: CellInput) -> TrackerDelta {
         let key = (row_key.clone(), col);
         let before = self.updates.get(&key).cloned();
         let in_flight = self.is_being_written(&key);
-        let original = before.as_ref().map_or(original, |edit| edit.original.clone());
-        let after = (in_flight || value != original).then(|| CellEdit {
+        let original = before.as_ref().map_or(Some(original), |edit| edit.original.clone());
+        let edit = CellEdit {
             original,
             pending: value,
+            touched: Touch::default(),
+        };
+        let after = (in_flight || !edit.is_no_change()).then(|| CellEdit {
             touched: self.touch(),
+            ..edit
         });
         self.push_undo(UndoOp::CellEdit {
             row_key: row_key.clone(),
@@ -361,7 +373,7 @@ impl TabChangeTracker {
         // An edit equal to the fetched value is kept only while a save
         // writes the cell. Undo and redo wait for the save, so they find
         // such an edit no longer changing anything.
-        let edit = edit.filter(|edit| edit.pending != edit.original || self.is_being_written(&key));
+        let edit = edit.filter(|edit| !edit.is_no_change() || self.is_being_written(&key));
         match edit {
             Some(edit) => self.updates.insert(key, edit),
             None => self.updates.remove(&key),
@@ -537,12 +549,13 @@ impl TabChangeTracker {
             RowKey::Persisted(_) => self
                 .updates
                 .get(&(row_key.clone(), col))
-                .map(|edit| CellInput::Value(edit.pending.clone())),
+                .map(|edit| edit.pending.clone()),
         }
     }
 
     /// A saved row's pending values among its first `width` columns, in
-    /// column order.
+    /// column order. A value the server computes reads as NULL, as a
+    /// draft's does.
     pub fn pending_values(&self, row_key: &RowKey, width: usize) -> Vec<(usize, Value)> {
         if self.updates.is_empty() {
             return Vec::new();
@@ -551,7 +564,9 @@ impl TabChangeTracker {
         (0..width)
             .filter_map(|col| {
                 cell.1 = col;
-                self.updates.get(&cell).map(|edit| (col, edit.pending.clone()))
+                self.updates
+                    .get(&cell)
+                    .map(|edit| (col, edit.pending.value().cloned().unwrap_or(Value::Null)))
             })
             .collect()
     }
@@ -718,7 +733,10 @@ impl TabChangeTracker {
         let mut removed_drafts = Vec::new();
         let set_aside = self.set_aside.len();
         for ((row_key, col), edit) in std::mem::take(&mut self.updates) {
-            match layout.key(&row_key).and_then(|()| layout.cell(col, &edit.pending)) {
+            match layout
+                .key(&row_key)
+                .and_then(|()| layout.input_cell(col, &edit.pending))
+            {
                 Ok(moved) => {
                     self.updates.insert((row_key.clone(), moved), edit);
                 }
@@ -904,16 +922,18 @@ impl TabChangeTracker {
     /// holds what the save wrote, which becomes the value an edit is
     /// measured against; after a rollback it still holds what was
     /// fetched. Either way an edit back to that value is no change.
-    fn rebase(&mut self, written: HashMap<(RowKey, usize), Value>, committed: bool) -> Vec<RowKey> {
+    fn rebase(&mut self, written: HashMap<(RowKey, usize), CellInput>, committed: bool) -> Vec<RowKey> {
         let mut rows = Vec::new();
-        for (cell, value) in written {
+        for (cell, input) in written {
             let Some(edit) = self.updates.get_mut(&cell) else {
                 continue;
             };
             if committed {
-                edit.original = value;
+                // What the server computed is not known here, so no
+                // later edit is a return to it.
+                edit.original = input.value().cloned();
             }
-            if edit.pending == edit.original {
+            if edit.is_no_change() {
                 self.updates.remove(&cell);
                 rows.push(cell.0);
             }
@@ -1116,7 +1136,12 @@ mod tests {
     fn cell_edit_creates_modified_state() {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
-        t.track_cell_edit(key.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
+        t.track_cell_edit(
+            key.clone(),
+            1,
+            Value::Text("a".into()),
+            CellInput::Value(Value::Text("b".into())),
+        );
         assert_eq!(t.cell_state(&key, 1), CellState::Modified);
         assert_eq!(t.row_state(&key), RowState::Modified);
         assert_eq!(t.pending_count(), 1);
@@ -1126,9 +1151,19 @@ mod tests {
     fn cell_edit_back_to_original_drops_modification() {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
-        t.track_cell_edit(key.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
+        t.track_cell_edit(
+            key.clone(),
+            1,
+            Value::Text("a".into()),
+            CellInput::Value(Value::Text("b".into())),
+        );
         // User edits again, this time back to "a"
-        t.track_cell_edit(key.clone(), 1, Value::Text("a".into()), Value::Text("a".into()));
+        t.track_cell_edit(
+            key.clone(),
+            1,
+            Value::Text("a".into()),
+            CellInput::Value(Value::Text("a".into())),
+        );
         assert_eq!(t.cell_state(&key, 1), CellState::Clean);
         // pending_count drops; undo stack still has 2 ops
         assert_eq!(t.pending_count(), 0);
@@ -1149,7 +1184,12 @@ mod tests {
     fn cell_marks_tint_a_cell_by_its_own_edit_and_its_rows_delete() {
         let mut t = TabChangeTracker::default();
         let (edited, deleted) = (rk(&[Value::Int(1)]), rk(&[Value::Int(2)]));
-        t.track_cell_edit(edited.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
+        t.track_cell_edit(
+            edited.clone(),
+            1,
+            Value::Text("a".into()),
+            CellInput::Value(Value::Text("b".into())),
+        );
         delete(&mut t, deleted.clone(), vec![Value::Int(2), Value::Text("c".into())]);
         let draft = RowKey::Draft(insert(&mut t, vec![Value::Null, Value::Null]));
 
@@ -1176,7 +1216,12 @@ mod tests {
     fn undo_reverts_cell_edit() {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
-        t.track_cell_edit(key.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
+        t.track_cell_edit(
+            key.clone(),
+            1,
+            Value::Text("a".into()),
+            CellInput::Value(Value::Text("b".into())),
+        );
         let undone = t.undo();
         assert_eq!(undone.map(|delta| delta.changed), Some(vec![key.clone()]));
         assert_eq!(t.cell_state(&key, 1), CellState::Clean);
@@ -1187,7 +1232,12 @@ mod tests {
     fn redo_reapplies_cell_edit() {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
-        t.track_cell_edit(key.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
+        t.track_cell_edit(
+            key.clone(),
+            1,
+            Value::Text("a".into()),
+            CellInput::Value(Value::Text("b".into())),
+        );
         t.undo();
         t.redo();
         assert_eq!(t.cell_state(&key, 1), CellState::Modified);
@@ -1198,7 +1248,7 @@ mod tests {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
         for i in 0..100 {
-            t.track_cell_edit(key.clone(), 1, Value::Int(i), Value::Int(i + 1));
+            t.track_cell_edit(key.clone(), 1, Value::Int(i), CellInput::Value(Value::Int(i + 1)));
         }
         assert_eq!(t.undo.len(), UNDO_LIMIT);
     }
@@ -1207,7 +1257,12 @@ mod tests {
     fn clear_removes_all_state() {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
-        t.track_cell_edit(key.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
+        t.track_cell_edit(
+            key.clone(),
+            1,
+            Value::Text("a".into()),
+            CellInput::Value(Value::Text("b".into())),
+        );
         t.track_insert(vec![vec![CellInput::Value(Value::Null)]]);
         delete(&mut t, rk(&[Value::Int(2)]), vec![Value::Int(2)]);
         t.discard();
@@ -1233,7 +1288,7 @@ mod tests {
     }
 
     fn edit(t: &mut TabChangeTracker, id: i64, from: &str, to: &str) {
-        t.track_cell_edit(rk(&[Value::Int(id)]), 1, text(from), text(to));
+        t.track_cell_edit(rk(&[Value::Int(id)]), 1, text(from), CellInput::Value(text(to)));
     }
 
     /// The cell as the grid draws it, over a fetched "a".
@@ -1477,7 +1532,7 @@ mod tests {
             for id in (0..40).rev() {
                 match id % 3 {
                     0 => delete(t, rk(&[Value::Int(id)]), vec![Value::Int(id)]),
-                    _ => t.track_cell_edit(rk(&[Value::Int(id)]), 1, text("a"), text("b")),
+                    _ => t.track_cell_edit(rk(&[Value::Int(id)]), 1, text("a"), CellInput::Value(text("b"))),
                 };
             }
             let _ = t.track_insert(vec![vec![
@@ -1544,7 +1599,12 @@ mod tests {
         let mut t = TabChangeTracker::default();
         let columns = vec![pk_col("a"), pk_col("b"), data_col("name")];
         let key = RowKey::from_pk_values(&[Value::Int(1), Value::Int(2)]).unwrap();
-        t.track_cell_edit(key, 2, Value::Text("old".into()), Value::Text("new".into()));
+        t.track_cell_edit(
+            key,
+            2,
+            Value::Text("old".into()),
+            CellInput::Value(Value::Text("new".into())),
+        );
 
         let tracked = t.change_set(&columns).unwrap();
 
@@ -1552,7 +1612,7 @@ mod tests {
             tracked.changes.changes,
             vec![RowChange::Update(RowUpdate {
                 key: vec![Value::Int(1), Value::Int(2)],
-                assignments: vec![(2, Value::Text("new".into()))],
+                assignments: vec![(2, CellInput::Value(Value::Text("new".into())))],
             })]
         );
         assert_eq!(
@@ -1633,7 +1693,7 @@ mod tests {
             rk(&[Value::Int(1)]),
             0,
             Value::Text("a".into()),
-            Value::Text("b".into()),
+            CellInput::Value(Value::Text("b".into())),
         );
 
         assert!(matches!(t.change_set(&columns), Err(BuildSqlError::NoRowIdentity)));
@@ -1760,7 +1820,7 @@ mod tests {
             row_key: key.clone(),
             col: 1,
             original: Value::Text("a".into()),
-            value: Value::Text("b".into()),
+            value: CellInput::Value(Value::Text("b".into())),
         });
         let deleted = delete(&mut t, rk(&[Value::Int(2)]), vec![Value::Int(2)]);
 
@@ -1884,7 +1944,12 @@ mod tests {
     fn redo_of_a_persisted_cell_edit_leaves_the_fetched_row_alone() {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
-        t.track_cell_edit(key.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
+        t.track_cell_edit(
+            key.clone(),
+            1,
+            Value::Text("a".into()),
+            CellInput::Value(Value::Text("b".into())),
+        );
         let _ = t.undo();
 
         let redone = t.redo();
@@ -1899,8 +1964,8 @@ mod tests {
     fn discard_drops_every_draft_row_and_reports_each_touched_row_once() {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
-        t.track_cell_edit(key.clone(), 1, Value::Int(1), Value::Int(2));
-        t.track_cell_edit(key.clone(), 2, Value::Int(3), Value::Int(4));
+        t.track_cell_edit(key.clone(), 1, Value::Int(1), CellInput::Value(Value::Int(2)));
+        t.track_cell_edit(key.clone(), 2, Value::Int(3), CellInput::Value(Value::Int(4)));
         let draft_id = insert(&mut t, vec![Value::Null]);
 
         let delta = t.discard();
@@ -1916,7 +1981,12 @@ mod tests {
         let mut t = TabChangeTracker::default();
         let key = rk(&[Value::Int(1)]);
         let fetched = Value::Text("a".into());
-        t.track_cell_edit(key.clone(), 1, fetched.clone(), Value::Text("b".into()));
+        t.track_cell_edit(
+            key.clone(),
+            1,
+            fetched.clone(),
+            CellInput::Value(Value::Text("b".into())),
+        );
 
         let edited = t.cell_overlay(&key, 1);
         let untouched = t.cell_overlay(&key, 0);
@@ -1957,7 +2027,7 @@ mod tests {
                 RowChange::Update(update) => update.assignments,
                 other => panic!("only updates were made: {other:?}"),
             })
-            .map(|(col, value)| (columns[col].name.clone(), value))
+            .map(|(col, input)| (columns[col].name.clone(), input.value().cloned().unwrap_or(Value::Null)))
             .collect()
     }
 
@@ -1976,6 +2046,24 @@ mod tests {
         // is a change.
         assert_eq!(assignments(&t, &columns), vec![("name".to_owned(), text("a"))]);
         assert_eq!(t.cell_state(&rk(&[Value::Int(1)]), 1), CellState::Modified);
+    }
+
+    #[test]
+    fn no_edit_is_a_return_to_a_value_the_server_computed() {
+        let columns = vec![pk_col("id"), data_col("name")];
+        let mut t = saving_on(columns.clone());
+        let now = tablepro_core::edit::CellExpression::new("NOW()", &[], &[]);
+        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("a"), CellInput::Expression(now));
+        let batch = t.begin_save().unwrap().unwrap();
+        edit(&mut t, 1, "a", "c");
+        edit(&mut t, 1, "a", "a");
+
+        let _ = t.settle_save(&committed(), batch.snapshot);
+
+        // The database holds what NOW() gave, not a.
+        assert_eq!(assignments(&t, &columns), vec![("name".to_owned(), text("a"))]);
+        edit(&mut t, 1, "a", "a");
+        assert_eq!(t.pending_count(), 1);
     }
 
     #[test]
@@ -2030,7 +2118,7 @@ mod tests {
         let before = vec![pk_col("id"), data_col("nickname"), data_col("name"), data_col("email")];
         let after = vec![pk_col("id"), data_col("name"), data_col("email")];
         let mut t = saving_on(before);
-        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), text("Grace"));
+        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), CellInput::Value(text("Grace")));
 
         retarget(&mut t, &after);
 
@@ -2059,7 +2147,7 @@ mod tests {
         let before = vec![pk_col("id"), data_col("nickname"), data_col("name")];
         let after = vec![pk_col("id"), data_col("name")];
         let mut t = saving_on(before);
-        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("ada"), text("countess"));
+        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("ada"), CellInput::Value(text("countess")));
         edit(&mut t, 2, "Grace", "Hopper");
 
         retarget(&mut t, &after);
@@ -2087,7 +2175,7 @@ mod tests {
         let before = vec![pk_col("id"), test_column("score", "text")];
         let after = vec![pk_col("id"), test_column("score", "integer")];
         let mut t = saving_on(before);
-        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("1"), text("high"));
+        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("1"), CellInput::Value(text("high")));
 
         retarget(&mut t, &after);
 
@@ -2099,7 +2187,7 @@ mod tests {
         let before = vec![pk_col("id"), test_column("score", "integer")];
         let after = vec![pk_col("id"), test_column("score", "bigint")];
         let mut t = saving_on(before);
-        t.track_cell_edit(rk(&[Value::Int(1)]), 1, Value::Int(1), Value::Int(2));
+        t.track_cell_edit(rk(&[Value::Int(1)]), 1, Value::Int(1), CellInput::Value(Value::Int(2)));
 
         retarget(&mut t, &after);
 
@@ -2116,7 +2204,7 @@ mod tests {
         plain_id.nullable = false;
         let after = vec![plain_id, legacy_key, data_col("name")];
         let mut t = saving_on(before);
-        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), text("Grace"));
+        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), CellInput::Value(text("Grace")));
         delete(
             &mut t,
             rk(&[Value::Int(2)]),
@@ -2134,8 +2222,8 @@ mod tests {
         let before = vec![pk_col("id"), data_col("nickname"), data_col("name")];
         let after = vec![pk_col("id"), data_col("name")];
         let mut t = saving_on(before);
-        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), text("Grace"));
-        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), text("Hopper"));
+        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), CellInput::Value(text("Grace")));
+        t.track_cell_edit(rk(&[Value::Int(1)]), 2, text("Ada"), CellInput::Value(text("Hopper")));
         retarget(&mut t, &after);
 
         let _ = t.undo();
@@ -2150,7 +2238,7 @@ mod tests {
         let before = vec![pk_col("id"), data_col("nickname")];
         let after = vec![pk_col("id")];
         let mut t = saving_on(before);
-        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("ada"), text("countess"));
+        t.track_cell_edit(rk(&[Value::Int(1)]), 1, text("ada"), CellInput::Value(text("countess")));
         retarget(&mut t, &after);
 
         let _ = t.discard();
@@ -2169,7 +2257,7 @@ mod tests {
         let mut t = TabChangeTracker::default();
         let failed = rk(&[Value::Int(1)]);
         let other = rk(&[Value::Int(2)]);
-        t.track_cell_edit(failed.clone(), 1, text("a"), text("b"));
+        t.track_cell_edit(failed.clone(), 1, text("a"), CellInput::Value(text("b")));
 
         let marked = t.mark_error_row(failed.clone());
         assert_eq!(marked.changed, std::slice::from_ref(&failed));
@@ -2177,7 +2265,7 @@ mod tests {
             row_key: other,
             col: 1,
             original: text("c"),
-            value: text("d"),
+            value: CellInput::Value(text("d")),
         });
         assert!(t.is_error_row(&failed), "an edit of another row took the mark off");
 
@@ -2185,7 +2273,7 @@ mod tests {
             row_key: failed.clone(),
             col: 1,
             original: text("a"),
-            value: text("e"),
+            value: CellInput::Value(text("e")),
         });
         assert!(!t.is_error_row(&failed));
     }
@@ -2194,7 +2282,7 @@ mod tests {
     fn undo_and_discard_of_the_failed_row_take_its_mark_off() {
         let mut t = TabChangeTracker::default();
         let failed = rk(&[Value::Int(1)]);
-        t.track_cell_edit(failed.clone(), 1, text("a"), text("b"));
+        t.track_cell_edit(failed.clone(), 1, text("a"), CellInput::Value(text("b")));
         let _ = t.mark_error_row(failed.clone());
 
         let _ = t.undo();
@@ -2230,7 +2318,7 @@ mod tests {
     fn starting_a_save_takes_the_mark_off() {
         let mut t = saving_on(vec![pk_col("id"), data_col("name")]);
         let failed = rk(&[Value::Int(1)]);
-        t.track_cell_edit(failed.clone(), 1, text("a"), text("b"));
+        t.track_cell_edit(failed.clone(), 1, text("a"), CellInput::Value(text("b")));
         let _ = t.mark_error_row(failed.clone());
 
         assert!(t.begin_save().is_ok_and(|batch| batch.is_some()));

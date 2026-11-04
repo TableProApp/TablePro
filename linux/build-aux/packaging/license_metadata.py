@@ -17,6 +17,8 @@ DEP5_FORMAT = "https://www.debian.org/doc/packaging-manuals/copyright-format/1.0
 UPSTREAM_LICENSE = "AGPL-3.0-or-later"
 UPSTREAM_COPYRIGHT = "TablePro Authors"
 METAINFO = Path("data/app.tablepro.TablePro.metainfo.xml.in.in")
+# The source package unpacks the repository's layout, with the app in linux/.
+SOURCE_METAINFO = Path("linux") / METAINFO
 
 APACHE_TITLE = re.compile(r"^\s*Apache License\s*$")
 APACHE_TERMS = "TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION"
@@ -310,8 +312,8 @@ def render_copyright(licenses, crates, upstream_text, metadata_license):
         + field(
             "Comment",
             [
-                "build-aux/packaging/license_metadata.py writes this file from",
-                "data/licenses/third-party.json. The vendor/ paragraphs cover the crates",
+                "linux/build-aux/packaging/license_metadata.py writes this file from",
+                "linux/data/licenses/third-party.json. The vendor/ paragraphs cover the crates",
                 "linked into tablepro and tablepro-askpass. Each names every license",
                 "the crate offers and holds the text of the one TablePro uses, as the",
                 "crate ships it.",
@@ -325,7 +327,7 @@ def render_copyright(licenses, crates, upstream_text, metadata_license):
         if metadata_license not in COMMON_LICENSES:
             raise MetadataError(f"the metainfo is under {metadata_license}, which has no text here")
         paragraphs.append(
-            field("Files", [METAINFO.as_posix()])
+            field("Files", [SOURCE_METAINFO.as_posix()])
             + field("Copyright", [UPSTREAM_COPYRIGHT])
             + field("License", [dep5_id(metadata_license, False)] + common_license_pointer(metadata_license))
         )

@@ -6,6 +6,7 @@ mod actions;
 mod cell_editor;
 mod choice_menu;
 mod deletion;
+mod expression_menu;
 mod paste;
 mod row_edits;
 #[cfg(test)]

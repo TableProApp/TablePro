@@ -91,6 +91,10 @@ jobs:
       - name: Check every plugin Info.plist declares the ids its class provides
         run: python3 apple/scripts/ci/check-plugin-provides.py
 
+      # Import, export and sync drop a field the trust catalog does not classify.
+      - name: Check every connection field has a trust class
+        run: python3 apple/scripts/ci/check-connection-field-trust.py
+
       - name: Check no build script hardcodes the deployment target
         run: bash apple/scripts/ci/check-deployment-target.sh
 
@@ -116,6 +120,21 @@ jobs:
 
       - name: Check every test target is in its test plan
         run: python3 apple/scripts/ci/check-test-plans.py
+
+      # Oracle reads a bare dictionary name from the current schema before the SYS synonym.
+      - name: Check Oracle SQL names dictionary objects through OracleDictionary
+        run: python3 apple/scripts/ci/check-oracle-dictionary-names.py
+
+      # Only ProcessLauncher makes a Process, and only the files that run what a user wrote may name a shell.
+      - name: Check child processes start only through ProcessLauncher
+        run: python3 apple/scripts/ci/check-process-launches.py
+
+      # PostgreSQL takes an exact match from any schema on search_path over a pg_catalog built-in that needs a cast.
+      - name: Check PostgreSQL SQL calls built-ins through pg_catalog
+        run: python3 apple/scripts/ci/check-postgresql-qualified-calls.py
+
+      - name: Check the statement classifiers read words through the grammar's tokens
+        run: python3 apple/scripts/ci/check-classifier-text-matching.py
 
       # The corpora run by hand against servers (scripts/probes/check-column-type-corpus.sh), so a type a driver
       # starts listing is caught here.

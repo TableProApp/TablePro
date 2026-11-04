@@ -38,7 +38,7 @@ extension LibPQBackedDriver {
     }
 
     func fetchSchemaDetails(name: String) async throws -> PluginSchemaDetails? {
-        let header = try await execute(query: PostgreSQLSchemaManagementQueries.ownerAndComment(schema: name))
+        let header = try await catalogRead(PostgreSQLSchemaManagementQueries.ownerAndComment(schema: name))
         guard let row = header.rows.first else { return nil }
         return PluginSchemaDetails(
             name: name,
@@ -54,7 +54,7 @@ extension LibPQBackedDriver {
     /// `REVOKE` only removes what the executing role granted.
     private func fetchSchemaACL(name: String) async throws -> [PluginSchemaGrant] {
         guard supportsSchemaACLIntrospection else { return [] }
-        let result = try await execute(query: PostgreSQLSchemaManagementQueries.grants(schema: name))
+        let result = try await catalogRead(PostgreSQLSchemaManagementQueries.grants(schema: name))
         return result.rows.compactMap { row -> PluginSchemaGrant? in
             guard let privilege = row[safe: 2]?.asText else { return nil }
             let granteeId = row[safe: 0]?.asText.flatMap(Int.init)

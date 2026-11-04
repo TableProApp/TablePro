@@ -155,6 +155,12 @@ struct PluginMetadataSnapshot: Sendable {
         // Set, a table page reads a large binary value's size through it and loads the value on demand.
         var binaryLengthFunction: String?
 
+        var readOnlyEnforcement: ReadOnlyEnforcement = .loginPrivileges
+
+        // The driver is what refuses a destructive or server-code effect for an external caller, because the host
+        // cannot read its language in full. A loaded driver without `.statementPolicy` runs no external write.
+        var statementPolicyInDriver: Bool = false
+
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
             supportsImport: true,
@@ -689,7 +695,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         let parameterStyle = driverType.parameterStyle
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
-        let additionalConnectionFields = driverType.additionalConnectionFields.filter {
+        let pluginFields = driverType.additionalConnectionFields.filter {
             // Kafka releases before the shared timeout setting exposed a second control under
             // this id. An installed old bundle still registers its metadata over the curated
             // snapshot, so retire the field here too while its saved value migrates in the model.
@@ -701,6 +707,13 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         // struct default. Cannot read these from driverType directly: stale plugins without
         // the property crash with EXC_BAD_INSTRUCTION (missing witness table entry).
         let existingSnapshot = snapshot(forRegisteredTypeId: driverType.databaseTypeId)
+
+        // The app reads the Schema Registry fields itself, so an older bundle keeps the curated ones.
+        let declared = Set(pluginFields.map(\.id))
+        let additionalConnectionFields = pluginFields
+            + (existingSnapshot?.connection.additionalConnectionFields ?? []).filter {
+                SchemaRegistryConnectionField.all.contains($0.id) && !declared.contains($0.id)
+            }
 
         return PluginMetadataSnapshot(
             displayName: driverType.databaseDisplayName,
@@ -793,7 +806,9 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsPrincipalConnectionLimit: existingSnapshot?.capabilities
                     .supportsPrincipalConnectionLimit ?? true,
                 supportsRoleLogin: existingSnapshot?.capabilities.supportsRoleLogin ?? true,
-                binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction
+                binaryLengthFunction: existingSnapshot?.capabilities.binaryLengthFunction,
+                readOnlyEnforcement: existingSnapshot?.capabilities.readOnlyEnforcement ?? .loginPrivileges,
+                statementPolicyInDriver: existingSnapshot?.capabilities.statementPolicyInDriver ?? false
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

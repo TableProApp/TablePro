@@ -8,7 +8,8 @@ public enum AWSHTTP {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = requestTimeout
         configuration.timeoutIntervalForResource = resourceTimeout
-        return URLSession(configuration: configuration)
+        // AWS endpoints never redirect, so a 3xx comes back as the response for any call that sets no policy itself.
+        return URLSession(configuration: configuration, delegate: RedirectRefusingTaskDelegate.shared, delegateQueue: nil)
     }()
 
     /// Connect-only credential sessions carry one monotonic deadline in their description. Keeping

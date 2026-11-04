@@ -23,9 +23,10 @@ use tablepro_app::application::{AppServices, AppServicesParts, TableProApplicati
 use tablepro_app::runtime::AppRuntime;
 use tablepro_app::storage::AppStorage;
 use tablepro_core::{AuthMode, DriverRegistry, EditorSession, LivenessPolicy, TlsConfig, TransactionState};
+use tablepro_linux_platform::AppSettings;
 use tablepro_session::fakes::{FakeConnector, FakeEstablish};
 use tablepro_session::operation::DefaultDeadlines;
-use tablepro_storage::{AppSettings, SavedConnection, StoragePaths};
+use tablepro_storage::{SavedConnection, StoragePaths};
 use tablepro_test_support::{
     CloseBehaviour, ConnectionScript, FakeConnection, FakeDriver, FakeEditorSession, FakeReply, FakeRun,
     FakeSecretVault, Replies,
@@ -472,11 +473,13 @@ fn saved_connection(database: &Path) -> SavedConnection {
         safe_mode: tablepro_core::SafeModeLevel::Off,
         external_access: tablepro_core::ExternalAccess::ReadOnly,
         ai_policy: tablepro_core::AiPolicy::Ask,
+        query_timeout_secs: None,
         auth_mode: AuthMode::Password,
         ssh: None,
         last_opened_at: None,
         color: None,
-        group: None,
+        group_id: None,
+        order: 0,
         tags: Vec::new(),
         icon: None,
         options: Default::default(),

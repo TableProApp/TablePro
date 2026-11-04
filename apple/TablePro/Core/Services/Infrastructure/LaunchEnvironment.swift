@@ -90,11 +90,12 @@ internal final class LiveLaunchEnvironment: LaunchEnvironment {
     /// last session, or falling back to the welcome window, would put the person's connections on
     /// screen because a client asked a question.
     internal func runStartupBehavior(hadIntents: Bool) {
+        let reopensAfterRelaunch = AppRelauncher.consumeReopenRequest()
         guard AppActivationPolicyController.shared.origin == .user else { return }
         guard !hadIntents else { return }
 
         let general = AppSettingsStorage.shared.loadGeneral()
-        switch general.startupBehavior {
+        switch reopensAfterRelaunch ? .reopenLast : general.startupBehavior {
         case .showWelcome:
             for window in NSApp.windows where AppLaunchCoordinator.isMainWindow(window) {
                 window.close()

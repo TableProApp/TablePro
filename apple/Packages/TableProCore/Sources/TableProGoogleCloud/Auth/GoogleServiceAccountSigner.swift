@@ -35,8 +35,8 @@ internal struct GoogleServiceAccountSigner {
     static func der(fromPEM pem: String) throws -> [UInt8] {
         guard pem.utf8.count <= maximumPEMLength else { throw GoogleAuthError.malformedPrivateKey }
         let normalized = pem
-            .replacingOccurrences(of: "\\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\\n", with: "\n", options: .literal)
+            .replacingOccurrences(of: "\r", with: "\n", options: .literal)
         let lines = normalized
             .split(separator: "\n")
             .map { $0.trimmingCharacters(in: .whitespaces) }

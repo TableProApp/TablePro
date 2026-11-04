@@ -1,6 +1,8 @@
+mod access_keys;
 mod accessible_label;
 mod alert_response;
 mod application_end;
+mod connection_groups;
 mod fake_clocks;
 mod fake_reachability;
 mod fake_session;
@@ -22,9 +24,11 @@ mod unlabelled_widget;
 mod wait_timed_out;
 mod widget_lookup;
 
+pub(crate) use access_keys::{access_key_problems, assert_access_keys, menu_pages};
 pub(crate) use accessible_label::{assert_labelled, test_backend_records_properties};
 pub(crate) use alert_response::{click_response, respond};
 pub(crate) use application_end::end_application;
+pub(crate) use connection_groups::{group_id, groups_of, library, save_filed, seed_library};
 pub(crate) use fake_clocks::FakeClocks;
 pub(crate) use fake_reachability::{Attached, FakeProbe, attach_remote};
 pub(crate) use fake_session::FakeSession;

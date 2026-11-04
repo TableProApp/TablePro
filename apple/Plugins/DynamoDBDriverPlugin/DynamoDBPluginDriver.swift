@@ -1,6 +1,7 @@
 import Foundation
 import os
 import TableProPluginKit
+import TableProSQLQuoting
 
 final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     static let logger = Logger(subsystem: "com.TablePro", category: "DynamoDBPluginDriver")
@@ -46,7 +47,7 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func escapeStringLiteral(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+        SQLQuoting.stringLiteralBody(value)
     }
 
     // MARK: - Connection

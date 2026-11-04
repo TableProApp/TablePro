@@ -11,7 +11,9 @@ import CCassandra
 #endif
 import Foundation
 import os
+import TableProCassandraCore
 import TableProPluginKit
+import TableProSQLQuoting
 
 // MARK: - Plugin Entry Point
 
@@ -25,6 +27,9 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin, Pl
     static let databaseDisplayName = "Cassandra / ScyllaDB"
     static let iconName = "cassandra-icon"
     static let defaultPort = 9_042
+    // The C driver checks the identity only against the address it dials, so Verify Identity cannot pass through
+    // a forward.
+    static let sslModesThroughTunnel: [SSLMode] = [.disabled, .preferred, .required, .verifyCa]
     static let additionalConnectionFields: [ConnectionField] =
         AWSAuthFields.standard() + CassandraConsistency.connectionFields
     static let additionalDatabaseTypeIds: [String] = ["ScyllaDB"]
@@ -228,6 +233,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             sslClientCertPath: clientCertPath,
             sslClientKeyPath: clientKeyPath,
             sslClientKeyPassphrase: clientKeyPassphrase,
+            pinnedToContactPoint: config.tunneledServerName != nil,
             awsCredentials: awsCredentials,
             awsRegion: awsRegion,
             connectTimeout: CassandraConnectTimeout(milliseconds: Int(remainingConnectMilliseconds))
@@ -495,7 +501,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let ks = resolveKeyspace(schema)
 
         let tablesQuery = """
-            SELECT table_name FROM system_schema.tables WHERE keyspace_name = '\(escapeSingleQuote(ks))'
+            SELECT table_name FROM system_schema.tables WHERE keyspace_name = \(SQLQuoting.stringLiteral(ks))
         """
         let tablesResult = try await executeCatalogQuery(tablesQuery)
 
@@ -512,8 +518,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let query = """
             SELECT column_name, type, kind, clustering_order, position
             FROM system_schema.columns
-            WHERE keyspace_name = '\(escapeSingleQuote(ks))'
-              AND table_name = '\(escapeSingleQuote(table))'
+            WHERE keyspace_name = \(SQLQuoting.stringLiteral(ks))
+              AND table_name = \(SQLQuoting.stringLiteral(table))
         """
         let result = try await executeCatalogQuery(query)
 
@@ -557,7 +563,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let query = """
             SELECT table_name, column_name, type, kind, clustering_order, position
             FROM system_schema.columns
-            WHERE keyspace_name = '\(escapeSingleQuote(ks))'
+            WHERE keyspace_name = \(SQLQuoting.stringLiteral(ks))
         """
         let result = try await executeCatalogQuery(query)
 
@@ -591,8 +597,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let query = """
             SELECT index_name, kind, options
             FROM system_schema.indexes
-            WHERE keyspace_name = '\(escapeSingleQuote(ks))'
-              AND table_name = '\(escapeSingleQuote(table))'
+            WHERE keyspace_name = \(SQLQuoting.stringLiteral(ks))
+              AND table_name = \(SQLQuoting.stringLiteral(table))
         """
 
         do {
@@ -632,18 +638,17 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let result = try await executeCatalogQuery("""
             SELECT index_name, kind, options
             FROM system_schema.indexes
-            WHERE keyspace_name = '\(escapeSingleQuote(ks))'
-              AND table_name = '\(escapeSingleQuote(table))'
+            WHERE keyspace_name = \(SQLQuoting.stringLiteral(ks))
+              AND table_name = \(SQLQuoting.stringLiteral(table))
             """)
         return CassandraIndexStatements.render(
             rows: result.rows.map { row in row.map { $0.asText } },
             keyspace: ks,
             table: table,
-            quote: { "\"\(escapeIdentifier($0))\"" })
+            quote: { SQLQuoting.identifier($0) })
     }
 
-    /// `system_schema.columns` lists a materialized view's columns as it lists a table's, so a view
-    /// is looked up first: without it a view read here came back as a `CREATE TABLE` of its columns.
+    // system_schema.columns also lists a materialized view's columns, which would read back as a CREATE TABLE.
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let ks = resolveKeyspace(schema)
         if await isMaterializedView(table, keyspace: ks) {
@@ -655,17 +660,18 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let partitionKeys = columns.filter(\.isPrimaryKey)
         let regularColumns = columns.filter { !$0.isPrimaryKey }
 
-        var ddl = "CREATE TABLE \"\(escapeIdentifier(ks))\".\"\(escapeIdentifier(table))\" (\n"
+        var ddl = "CREATE TABLE \(SQLQuoting.identifier(ks)).\(SQLQuoting.identifier(table)) (\n"
 
         let allCols = partitionKeys + regularColumns
-        let colDefs = allCols.map { col in
-            "    \"\(escapeIdentifier(col.name))\" \(col.dataType)"
+        let colDefs = try allCols.map { col in
+            guard CassandraObjectQueries.isSingleType(col.dataType) else { throw Self.unwritableDefinition(col.name) }
+            return "    \(SQLQuoting.identifier(col.name)) \(col.dataType)"
         }
 
         var allDefs = colDefs
 
         if !partitionKeys.isEmpty {
-            let pkCols = partitionKeys.map { "\"\(escapeIdentifier($0.name))\"" }
+            let pkCols = partitionKeys.map { SQLQuoting.identifier($0.name) }
                 .joined(separator: ", ")
             allDefs.append("    PRIMARY KEY (\(pkCols))")
         }
@@ -680,8 +686,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     private func isMaterializedView(_ name: String, keyspace: String) async -> Bool {
         let query = """
             SELECT view_name FROM system_schema.views
-            WHERE keyspace_name = '\(escapeSingleQuote(keyspace))'
-              AND view_name = '\(escapeSingleQuote(name))'
+            WHERE keyspace_name = \(SQLQuoting.stringLiteral(keyspace))
+              AND view_name = \(SQLQuoting.stringLiteral(name))
             """
         guard let result = try? await executeCatalogQuery(query) else { return false }
         return !result.rows.isEmpty
@@ -692,8 +698,8 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let query = """
             SELECT base_table_name, where_clause, include_all_columns
             FROM system_schema.views
-            WHERE keyspace_name = '\(escapeSingleQuote(ks))'
-              AND view_name = '\(escapeSingleQuote(view))'
+            WHERE keyspace_name = \(SQLQuoting.stringLiteral(ks))
+              AND view_name = \(SQLQuoting.stringLiteral(view))
         """
         let result = try await executeCatalogQuery(query)
 
@@ -705,14 +711,15 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         let whereClause = row[safe: 1]?.asText ?? ""
 
         let columns = try await fetchColumns(table: view, schema: ks)
-        let colNames = columns.map { "\"\(escapeIdentifier($0.name))\"" }.joined(separator: ", ")
+        let colNames = columns.map { SQLQuoting.identifier($0.name) }.joined(separator: ", ")
         let pkColumns = columns.filter(\.isPrimaryKey)
-        let pkStr = pkColumns.map { "\"\(escapeIdentifier($0.name))\"" }.joined(separator: ", ")
+        let pkStr = pkColumns.map { SQLQuoting.identifier($0.name) }.joined(separator: ", ")
 
-        var ddl = "CREATE MATERIALIZED VIEW \"\(escapeIdentifier(ks))\".\"\(escapeIdentifier(view))\" AS\n"
+        var ddl = "CREATE MATERIALIZED VIEW \(SQLQuoting.identifier(ks)).\(SQLQuoting.identifier(view)) AS\n"
         ddl += "    SELECT \(colNames)\n"
-        ddl += "    FROM \"\(escapeIdentifier(ks))\".\"\(escapeIdentifier(baseTable))\"\n"
+        ddl += "    FROM \(SQLQuoting.identifier(ks)).\(SQLQuoting.identifier(baseTable))\n"
         if !whereClause.isEmpty {
+            guard CassandraObjectQueries.isSingleExpression(whereClause) else { throw Self.unwritableDefinition(view) }
             ddl += "    WHERE \(whereClause)\n"
         }
         ddl += "    PRIMARY KEY (\(pkStr));"
@@ -764,17 +771,15 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
     }
 
     func createDatabase(_ request: PluginCreateDatabaseRequest) async throws {
-        let safeKs = escapeIdentifier(request.name)
         let query = """
-            CREATE KEYSPACE "\(safeKs)"
+            CREATE KEYSPACE \(SQLQuoting.identifier(request.name))
             WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}
         """
         _ = try await execute(query: query)
     }
 
     func dropDatabase(name: String) async throws {
-        let safeKs = escapeIdentifier(name)
-        _ = try await execute(query: "DROP KEYSPACE \"\(safeKs)\"")
+        _ = try await execute(query: "DROP KEYSPACE \(SQLQuoting.identifier(name))")
     }
 
     func switchDatabase(to database: String) async throws {
@@ -841,12 +846,10 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         return _currentKeyspace ?? "system"
     }
 
-    private func escapeIdentifier(_ value: String) -> String {
-        value.replacingOccurrences(of: "\"", with: "\"\"")
-    }
-
-    private func escapeSingleQuote(_ value: String) -> String {
-        value.replacingOccurrences(of: "'", with: "''")
+    private static func unwritableDefinition(_ name: String) -> CassandraPluginError {
+        .queryFailed(
+            String(format: String(localized: "TablePro cannot rebuild the definition of %@ from what the server reported."), name)
+        )
     }
 
     private func stripTrailingSemicolon(_ query: String) -> String {

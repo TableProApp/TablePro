@@ -1,6 +1,6 @@
 # SQL Server
 
-Driver id `mssql`, crate `crates/drivers/mssql`. It runs on tiberius 0.13.0 from crates.io (`tds73`, `rustls`, `chrono`, and `integrated-auth-gssapi` behind the crate's `kerberos` feature) with a deadpool 0.13 pool. The integration suite runs against SQL Server 2022, and CI runs it again on 2017, 2019 and 2025 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `mssql`, crate `core/crates/drivers/mssql`. It runs on tiberius 0.13.0 from crates.io (`tds73`, `rustls`, `chrono`, `integrated-auth-gssapi` behind the crate's `kerberos` feature, and `winauth` on Windows) with a deadpool 0.13 pool. The integration suite runs against SQL Server 2022, and CI runs it again on 2017, 2019 and 2025 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 The driver needs SQL Server 2016 or later: every column read joins `sys.masked_columns`, and dropping a table uses `DROP TABLE IF EXISTS`.
 
@@ -101,6 +101,10 @@ SQL Server has no session statement timeout. A workspace call's deadline is the 
 - The affected-row count includes rows a trigger touched, so a save proves it hit the right row with a probe before the statement rather than with that count.
 - A `COMMIT` the server answers with an error rolled back; one whose connection dropped is `CommitOutcomeUnknown` with no token. There is nothing to ask the server afterwards (`CommitResolutionSupport::Unavailable`).
 - SQL Server cannot suspend foreign keys for one batch, so a batch that asks for it is refused before anything is sent.
+
+## Definitions
+
+The sidebar's objects and their table triggers come from one `UNION ALL` over `sys.objects` and `sys.triggers`. A definition is `OBJECT_DEFINITION`, the module's text as it was written, so a name written without its schema is given it, and a trigger's table too, before the text reaches the editor: the header rewrite the server's own scripting does. A module made with other `ANSI_NULLS` or `QUOTED_IDENTIFIER` than the session's (`sys.sql_modules` against `SESSIONPROPERTY`, in the same read; an editor tab's login sets the same) does not open in the editor, since its body would read otherwise there. Nor does a body that holds a line that is only `GO` (a column alias to the server), where the editor would end a batch and run the rest on its own. A sequence's type is named as declared, an alias type by its schema. A CLR module keeps its code in an assembly and an encrypted one keeps its text hidden, and each says so instead of reading as gone. A sequence's `CREATE SEQUENCE` is built from `sys.sequences`.
 
 ## Editor sessions
 

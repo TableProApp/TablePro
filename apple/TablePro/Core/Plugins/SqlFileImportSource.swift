@@ -14,7 +14,7 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
 
     private let url: URL
     private let encoding: String.Encoding
-    private let grammar: SQLLexicalGrammar
+    private let grammar: OSAllocatedUnfairLock<@Sendable () -> SQLLexicalGrammar>
     private let family: TransactionEngineFamily
     private let parser = SQLFileParser()
 
@@ -25,14 +25,14 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     init(
         url: URL,
         encoding: String.Encoding,
-        grammar: SQLLexicalGrammar = .ansi,
+        grammar: @escaping @Sendable () -> SQLLexicalGrammar = { .ansi },
         family: TransactionEngineFamily = .other,
         decompressedURL: URL? = nil,
         ownsDecompressedFile: Bool? = nil
     ) {
         self.url = url
         self.encoding = encoding
-        self.grammar = grammar
+        self.grammar = OSAllocatedUnfairLock(initialState: grammar)
         self.family = family
         self.externalDecompressedURL = decompressedURL
         self.ownsDecompressedFile = ownsDecompressedFile ?? (decompressedURL == nil)
@@ -53,8 +53,14 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
         }
     }
 
+    // The source is built before the import leases its session, so the session's grammar arrives here.
+    func readsGrammar(from provider: @escaping @Sendable () -> SQLLexicalGrammar) {
+        grammar.withLock { $0 = provider }
+    }
+
     func statements() async throws -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
         let fileURL = try await resolveURL()
+        let grammar = self.grammar.withLock { $0 }
         let parsed = parser.parseFile(url: fileURL, encoding: encoding, grammar: grammar)
         guard !sendsFileBytesUnchanged else { return parsed }
         return Self.sentAsUTF8(parsed, decodedFrom: encoding, family: family, grammar: grammar)
@@ -68,7 +74,7 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
         _ statements: AsyncThrowingStream<(statement: String, lineNumber: Int), Error>,
         decodedFrom encoding: String.Encoding,
         family: TransactionEngineFamily,
-        grammar: SQLLexicalGrammar
+        grammar: @escaping @Sendable () -> SQLLexicalGrammar
     ) -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
         let rewriting = TranscodedDumpStatements(statements, decodedFrom: encoding, family: family, grammar: grammar)
         return AsyncThrowingStream(unfolding: {
@@ -126,7 +132,7 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
             return existing
         }
 
-        let result = try await FileDecompressor.decompressIfNeeded(url) { $0.path() }
+        let result = try await FileDecompressor.decompressIfNeeded(url)
 
         if result != url {
             _decompressedURL.withLock { $0 = result }
@@ -157,14 +163,13 @@ private final class TranscodedDumpStatements: @unchecked Sendable {
     private var statements: AsyncThrowingStream<(statement: String, lineNumber: Int), Error>.AsyncIterator
     private let encoding: String.Encoding
     private let family: TransactionEngineFamily
-    private let grammar: SQLLexicalGrammar
-    private var backslashEscapesAreOn = true
+    private let grammar: @Sendable () -> SQLLexicalGrammar
 
     init(
         _ statements: AsyncThrowingStream<(statement: String, lineNumber: Int), Error>,
         decodedFrom encoding: String.Encoding,
         family: TransactionEngineFamily,
-        grammar: SQLLexicalGrammar
+        grammar: @escaping @Sendable () -> SQLLexicalGrammar
     ) {
         self.statements = statements.makeAsyncIterator()
         self.encoding = encoding
@@ -174,7 +179,8 @@ private final class TranscodedDumpStatements: @unchecked Sendable {
 
     func next() async throws -> (statement: String, lineNumber: Int)? {
         guard let (statement, lineNumber) = try await statements.next() else { return nil }
-        let literals = try rewrittenLiterals(of: statement, at: lineNumber) ?? statement
+        let grammar = self.grammar()
+        let literals = try rewrittenLiterals(of: statement, at: lineNumber, grammar: grammar) ?? statement
         guard let rewritten = SQLClientEncodingRewriter.rewritten(literals, family: family, grammar: grammar) else {
             return (literals, lineNumber)
         }
@@ -182,20 +188,13 @@ private final class TranscodedDumpStatements: @unchecked Sendable {
         return (rewritten, lineNumber)
     }
 
-    private func rewrittenLiterals(of statement: String, at lineNumber: Int) throws -> String? {
+    private func rewrittenLiterals(of statement: String, at lineNumber: Int, grammar: SQLLexicalGrammar) throws -> String? {
         guard family == .mysql else { return nil }
-        defer {
-            backslashEscapesAreOn = SQLTranscodedLiteralRewriter.backslashEscapesAreOn(
-                after: statement,
-                currently: backslashEscapesAreOn,
-                grammar: grammar
-            )
-        }
         do {
             return try SQLTranscodedLiteralRewriter.rewritten(
                 statement,
                 decodedFrom: encoding,
-                backslashEscapesAreOn: backslashEscapesAreOn,
+                backslashEscapesAreOn: grammar.contains(.backslashEscapesInSingleQuotes),
                 grammar: grammar
             )
         } catch SQLTranscodedLiteralError.unrecoverableBinaryLiteral {

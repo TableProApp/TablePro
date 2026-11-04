@@ -208,12 +208,14 @@ extension TeamLibraryChange {
     }
 
     // A pulled connection is authored by another account and lands here with no confirmation step, so anything the app
-    // would run by itself is dropped before it is shown.
+    // would run by itself is dropped before it is shown, and so is a connection whose SSH host ssh would refuse. The row
+    // is never saved and asks before it signs in with a credential this Mac holds, so its sign-in choice stays.
     var connection: ExportableConnection? {
         guard kind == TeamLibraryKind.connection, !deleted,
-              let settings = TeamLibraryPayload.decode(ExportableConnection.self, from: dataValues)
+              let settings = TeamLibraryPayload.decode(ExportableConnection.self, from: dataValues),
+              settings.refusedSSHDestination == nil
         else { return nil }
-        return settings.sanitizedForImport().withoutStartupCommands().withoutTunnelCommand()
+        return settings.sanitizedForImport(keepingLocalCredentials: true).withoutStartupCommands().withoutTunnelCommand()
     }
 
     // The server leaves updated_by_name out for a writer it does not name to this account.

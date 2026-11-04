@@ -281,64 +281,24 @@ public actor MCPAuthPolicy {
         await approvalLedger.grants()
     }
 
-    /// The MCP surface never pre-clears Safe Mode on the client's word alone. `confirmationPreCleared`
-    /// says a human already confirmed, and over MCP nobody did: the client typed a phrase. Only an
-    /// admin-scoped token may substitute that phrase for the dialog, which is what separates Full
-    /// Access from Read & Write in enforcement rather than only in the settings UI.
-    func checkSafeModeDialog(
-        principal: MCPPrincipal,
-        sql: String,
-        connectionId: UUID,
-        databaseType: DatabaseType,
-        capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement],
-        operationLabel: String? = nil
-    ) async throws {
-        try await runExecutionGate(
-            sql: sql,
-            connectionId: connectionId,
-            databaseType: databaseType,
-            capabilities: Self.effectiveCapabilities(capabilities, for: principal),
-            callerLabel: principal.auditLabel,
-            operationLabel: operationLabel
-        )
+    // The MCP surface never pre-clears Safe Mode on the client's word alone: only an admin-scoped token may
+    // substitute its own elicited answer for the dialog, which is what separates Full Access from Read & Write.
+    func checkSafeModeDialog(principal: MCPPrincipal, operation: PendingOperation) async throws -> ApprovedOperation {
+        var pending = operation
+        pending.capabilities = Self.effectiveCapabilities(operation.capabilities, for: principal)
+        pending.caller = .mcpClient(label: principal.auditLabel)
+        return try await approve(pending)
     }
 
-    func checkSafeModeDialog(
-        sql: String,
-        connectionId: UUID,
-        databaseType: DatabaseType,
-        capabilities: CallerCapabilities = [.mayWrite, .mayRunDestructive, .mayRunMultiStatement]
-    ) async throws {
-        try await runExecutionGate(
-            sql: sql,
-            connectionId: connectionId,
-            databaseType: databaseType,
-            capabilities: capabilities,
-            callerLabel: nil,
-            operationLabel: nil
-        )
+    // The in-app assistant, which AI Policy governs and which names itself as the caller.
+    func checkSafeModeDialog(operation: PendingOperation) async throws -> ApprovedOperation {
+        try await approve(operation)
     }
 
-    private func runExecutionGate(
-        sql: String,
-        connectionId: UUID,
-        databaseType: DatabaseType,
-        capabilities: CallerCapabilities,
-        callerLabel: String?,
-        operationLabel: String?
-    ) async throws {
-        let decision = await executionGate.authorize(
-            OperationRequest(
-                connectionId: connectionId,
-                databaseType: databaseType,
-                sql: sql,
-                kind: OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: databaseType)),
-                caller: .mcpClient(label: callerLabel),
-                capabilities: capabilities,
-                operationDescription: Self.operationDescription(for: operationLabel)
-            )
-        )
-        if case .denied(let reason, _) = decision {
+    private func approve(_ pending: PendingOperation) async throws -> ApprovedOperation {
+        do {
+            return try await ExternalStatementGate.approve(pending, gate: executionGate)
+        } catch ExternalStatementGateError.denied(let reason) {
             throw DatabaseAccessError.forbidden(reason)
         }
     }

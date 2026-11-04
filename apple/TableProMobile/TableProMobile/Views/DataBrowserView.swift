@@ -19,8 +19,8 @@ struct DataBrowserView: View {
     private var session: ConnectionSession? { coordinator.session }
 
     @State private var viewModel = DataBrowserViewModel()
-    /// Not persisted. This search runs on the server and is applied on submit, so a value restored
-    /// into the field would name a filter the rows on screen were never fetched under.
+    // Not persisted. This search runs on the server and is applied on submit, so a value restored
+    // into the field would name a filter the rows on screen were never fetched under.
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @State private var showInsertSheet = false
@@ -37,6 +37,7 @@ struct DataBrowserView: View {
     @State private var isCompletingCells = false
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @AppStorage(AppPreferences.rowLayoutKey) private var preferredLayout: RowLayout?
 
     private var activeSchema: String? {
         coordinator.supportsSchemas ? coordinator.activeSchema : nil
@@ -51,14 +52,14 @@ struct DataBrowserView: View {
         reference?.displaySchema(current: activeSchema)
     }
 
-    /// Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
-    /// which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
+    // Asked of the kind rather than compared against the two view cases, so a MariaDB sequence,
+    // which refuses UPDATE and DELETE with ERROR 1031, is read-only here as it is on Mac.
     private var allowsRowEditing: Bool { table.type.allowsRowEditing }
     private var browseMode: TableBrowseMode { TableBrowseMode(driver: session?.driver) }
     private var browsesSQLRows: Bool { browseMode == .sql }
 
-    /// Both entry points ask this. A key's contents take no `INSERT`, and the form cannot be filled
-    /// in before the column list has arrived.
+    // Both entry points ask this. A key's contents take no `INSERT`, and the form cannot be filled
+    // in before the column list has arrived.
     private var canInsertRow: Bool {
         allowsRowEditing && browsesSQLRows
             && !connection.safeModeLevel.blocksWrites && !viewModel.columnDetails.isEmpty
@@ -71,16 +72,9 @@ struct DataBrowserView: View {
     private var columns: [ColumnInfo] { viewModel.columns }
     private var rows: [[String?]] { viewModel.legacyRows }
 
-    // A list reload reading the session would end the page with its next statement, so the page waits for it; nothing
-    // suspends between that wait and `track` marking the session busy.
     private var pageReads: DataBrowserViewModel.SessionReadTracker {
-        let transactions = appState.sessionTransactions
-        let catalogChanges = appState.catalogChanges
-        let connectionId = connection.id
-        return { read in
-            await catalogChanges.sessionReadsFinished(for: connectionId)
-            await transactions.track(connectionId, reading: true) { await read() }
-        }
+        let viewModel = viewModel
+        return coordinator.trackPageRead { viewModel.loadError != nil }
     }
 
     private var sortColumnBinding: Binding<String?> {
@@ -299,7 +293,21 @@ struct DataBrowserView: View {
                 }
             }
         } else {
-            rowList
+            rowsView
+        }
+    }
+
+    private var rowLayout: RowLayout {
+        RowLayout.resolved(preferred: preferredLayout, idiom: UIDevice.current.userInterfaceIdiom)
+    }
+
+    @ViewBuilder
+    private var rowsView: some View {
+        switch rowLayout {
+        case .cards:
+            pageContainer(rowList)
+        case .grid:
+            pageContainer(rowGrid)
         }
     }
 
@@ -311,12 +319,50 @@ struct DataBrowserView: View {
             }
         }
         .listStyle(.plain)
-        .id(viewModel.pagination.currentPage)
-        .opacity(viewModel.isPageLoading ? 0.5 : 1)
-        .allowsHitTesting(!viewModel.isPageLoading)
-        .overlay { if viewModel.isPageLoading { ProgressView() } }
-        .animation(.default, value: viewModel.isPageLoading)
-        .refreshable { await viewModel.load() }
+    }
+
+    private var rowGrid: some View {
+        let primaryKeys = primaryKeyNames
+        return RowGrid(
+            columns: columns,
+            rows: rows,
+            keyColumn: RowKey.columnIndex(columns: columns, primaryKeys: primaryKeys)
+        ) { index, line in
+            NavigationLink {
+                rowDetail(index: index)
+            } label: {
+                line
+            }
+            .hoverEffect()
+            .contextMenu {
+                rowContextMenu(index: index)
+            } preview: {
+                // The row itself can be thousands of points wide; the lift preview shows its card.
+                RowCard(
+                    columns: columns,
+                    columnDetails: viewModel.columnDetails,
+                    row: rows.indices.contains(index) ? rows[index] : [],
+                    previewFieldCount: DuoLayoutResolver.regularPreviewFieldCount
+                )
+                .padding()
+                .frame(maxWidth: 360, alignment: .leading)
+            }
+            .accessibilityActions { deleteAccessibilityAction(index: index) }
+        }
+    }
+
+    private var primaryKeyNames: Set<String> {
+        Set(viewModel.columnDetails.filter(\.isPrimaryKey).map(\.name))
+    }
+
+    private func pageContainer(_ rows: some View) -> some View {
+        rows
+            .id(viewModel.pagination.currentPage)
+            .opacity(viewModel.isPageLoading ? 0.5 : 1)
+            .allowsHitTesting(!viewModel.isPageLoading)
+            .overlay { if viewModel.isPageLoading { ProgressView() } }
+            .animation(.default, value: viewModel.isPageLoading)
+            .refreshable { await viewModel.load() }
     }
 
     private func rowDetail(index: Int) -> some View {
@@ -351,8 +397,7 @@ struct DataBrowserView: View {
     }
 
     private func rowLink(index: Int, row: [String?]) -> some View {
-        let cells = viewModel.cells(at: index)
-        let deleteKeys = canDeleteRows ? viewModel.rowLocator(forRowAt: index) : nil
+        let deleteKeys = deletableRow(at: index)
         return NavigationLink {
             rowDetail(index: index)
         } label: {
@@ -364,7 +409,7 @@ struct DataBrowserView: View {
             )
         }
         .hoverEffect()
-        .contextMenu { rowContextMenu(cells: cells) }
+        .contextMenu { rowContextMenu(index: index) }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if let deleteKeys {
                 Button {
@@ -375,10 +420,17 @@ struct DataBrowserView: View {
                 .tint(.red)
             }
         }
-        .accessibilityActions {
-            if let deleteKeys {
-                Button("Delete row") { confirmDelete(deleteKeys) }
-            }
+        .accessibilityActions { deleteAccessibilityAction(index: index) }
+    }
+
+    private func deletableRow(at index: Int) -> RowLocator? {
+        canDeleteRows ? viewModel.rowLocator(forRowAt: index) : nil
+    }
+
+    @ViewBuilder
+    private func deleteAccessibilityAction(index: Int) -> some View {
+        if let locator = deletableRow(at: index) {
+            Button("Delete row") { confirmDelete(locator) }
         }
     }
 
@@ -388,7 +440,8 @@ struct DataBrowserView: View {
     }
 
     @ViewBuilder
-    private func rowContextMenu(cells: [Cell]) -> some View {
+    private func rowContextMenu(index: Int) -> some View {
+        let cells = viewModel.cells(at: index)
         if DataBrowserViewModel.canComplete(cells) {
             Menu("Share Row") {
                 ForEach(ExportFormat.offered(for: connection.type)) { format in
@@ -435,6 +488,10 @@ struct DataBrowserView: View {
                 }
             }
         }
+        if let locator = deletableRow(at: index) {
+            Divider()
+            Button("Delete Row", systemImage: "trash", role: .destructive) { confirmDelete(locator) }
+        }
     }
 
     @ToolbarContentBuilder
@@ -450,6 +507,8 @@ struct DataBrowserView: View {
                     }
                     Divider()
                 }
+                RowLayoutPicker()
+                Divider()
                 Section("Export") {
                     ForEach(ExportFormat.offered(for: connection.type)) { format in
                         Button {

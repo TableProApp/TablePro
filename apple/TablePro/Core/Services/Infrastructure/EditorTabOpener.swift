@@ -90,12 +90,8 @@ internal enum EditorTabOpener {
                 databaseName: payload.databaseName ?? openingDatabaseName,
                 schemaName: payload.schemaName
             )
-        case .serverDashboard:
-            tabManager.addServerDashboardTab()
-        case .usersRoles:
-            tabManager.addUsersRolesTab()
-        case .insights:
-            tabManager.addQueryInsightsTab()
+        case .serverDashboard, .usersRoles, .insights, .tableHealth:
+            tabManager.addSingletonTab(payload.tabType)
         case .objectSource:
             guard let objectRef = payload.objectRef else { return }
             tabManager.addObjectSourceTab(objectRef: objectRef)
@@ -108,8 +104,8 @@ internal enum EditorTabOpener {
                 databaseName: payload.databaseName ?? openingDatabaseName,
                 schemaName: payload.schemaName
             )
-        case .routineDebug:
-            // A payload cannot carry a live session; the coordinator opens debug tabs itself.
+        case .routineDebug, .liveMessages:
+            // A payload cannot carry a live session; the coordinator opens these tabs itself.
             return
         }
     }

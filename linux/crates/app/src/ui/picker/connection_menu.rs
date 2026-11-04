@@ -1,9 +1,9 @@
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use tablepro_storage::{ConnectionColor, ConnectionGroupName, ConnectionTag};
+use tablepro_storage::{ConnectionColor, ConnectionTag};
 use uuid::Uuid;
 
-use crate::ui::connection_appearance::color_name;
+use crate::ui::connection_appearance::color_menu_label;
 use crate::ui::menu_label;
 
 pub(super) const PICKER: &str = "picker";
@@ -44,7 +44,7 @@ pub(crate) fn connect_action(id: Uuid) -> (String, glib::Variant) {
 /// The Connect item of the connection `id`'s menu.
 pub(crate) fn connect_item(id: Uuid) -> gio::MenuItem {
     item(
-        &crate::i18n::gettext("Connect"),
+        &crate::i18n::gettext("_Connect"),
         PICKER,
         CONNECT,
         &id.to_string().to_variant(),
@@ -55,7 +55,8 @@ pub(crate) fn connect_item(id: Uuid) -> gio::MenuItem {
 /// menu acts on the row it opened on whatever the list does meanwhile.
 /// Delete sits in its own section so a destructive action is never the
 /// neighbour of an ordinary one.
-pub(crate) fn connection_menu(id: Uuid, groups: &[ConnectionGroupName], tags: &[ConnectionTag]) -> gio::Menu {
+/// `groups` are the labels of the list's groups.
+pub(crate) fn connection_menu(id: Uuid, groups: &[String], tags: &[ConnectionTag]) -> gio::Menu {
     let open = gio::Menu::new();
     open.append_item(&connect_item(id));
     connection_menu_with(&open, id, groups, tags)
@@ -64,30 +65,25 @@ pub(crate) fn connection_menu(id: Uuid, groups: &[ConnectionGroupName], tags: &[
 /// `connection_menu` with `lead` in place of its Connect section, as the
 /// window's tree leads with what a connection open or connecting there
 /// offers.
-pub(crate) fn connection_menu_with(
-    lead: &gio::Menu,
-    id: Uuid,
-    groups: &[ConnectionGroupName],
-    tags: &[ConnectionTag],
-) -> gio::Menu {
+pub(crate) fn connection_menu_with(lead: &gio::Menu, id: Uuid, groups: &[String], tags: &[ConnectionTag]) -> gio::Menu {
     let target = id.to_string().to_variant();
     let menu = gio::Menu::new();
     menu.append_section(None, lead);
     let change = gio::Menu::new();
-    change.append_item(&item(&crate::i18n::gettext("Edit…"), PICKER, EDIT, &target));
-    change.append_item(&item(&crate::i18n::gettext("Duplicate"), PICKER, DUPLICATE, &target));
+    change.append_item(&item(&crate::i18n::gettext("_Edit…"), PICKER, EDIT, &target));
+    change.append_item(&item(&crate::i18n::gettext("D_uplicate"), PICKER, DUPLICATE, &target));
     menu.append_section(None, &change);
     let file = gio::Menu::new();
-    file.append_submenu(Some(&crate::i18n::gettext("Colour")), &color_menu());
-    file.append_submenu(Some(&crate::i18n::gettext("Tags")), &tag_menu(&target, tags));
+    file.append_submenu(Some(&crate::i18n::gettext("Colou_r")), &color_menu());
+    file.append_submenu(Some(&crate::i18n::gettext("Tag_s")), &tag_menu(&target, tags));
     file.append_submenu(
-        Some(&crate::i18n::gettext("Move to Group")),
+        Some(&crate::i18n::gettext("_Move to Group")),
         &group_menu(&target, groups),
     );
     menu.append_section(None, &file);
     let danger = gio::Menu::new();
     // Named as the dialog it opens names it.
-    danger.append_item(&item(&crate::i18n::gettext("Delete…"), PICKER, DELETE, &target));
+    danger.append_item(&item(&crate::i18n::gettext("Dele_te…"), PICKER, DELETE, &target));
     menu.append_section(None, &danger);
     menu
 }
@@ -103,14 +99,19 @@ fn item(label: &str, group: &str, action: &str, target: &glib::Variant) -> gio::
 fn color_menu() -> gio::Menu {
     let menu = gio::Menu::new();
     menu.append_item(&item(
-        &crate::i18n::gettext("No Colour"),
+        &crate::i18n::gettext("_No Colour"),
         ROW,
         ROW_COLOR,
         &NONE.to_variant(),
     ));
     let colors = gio::Menu::new();
     for color in ConnectionColor::ALL {
-        colors.append_item(&item(&color_name(color), ROW, ROW_COLOR, &color.id().to_variant()));
+        colors.append_item(&item(
+            &color_menu_label(color),
+            ROW,
+            ROW_COLOR,
+            &color.id().to_variant(),
+        ));
     }
     menu.append_section(None, &colors);
     menu
@@ -118,10 +119,10 @@ fn color_menu() -> gio::Menu {
 
 /// The groups already in the list, as a radio group ticked at the one
 /// the connection is in, with a way to start a new one at the end.
-fn group_menu(target: &glib::Variant, groups: &[ConnectionGroupName]) -> gio::Menu {
+fn group_menu(target: &glib::Variant, groups: &[String]) -> gio::Menu {
     let menu = gio::Menu::new();
     menu.append_item(&item(
-        &crate::i18n::gettext("No Group"),
+        &crate::i18n::gettext("_No Group"),
         ROW,
         ROW_GROUP,
         &NONE.to_variant(),
@@ -129,17 +130,12 @@ fn group_menu(target: &glib::Variant, groups: &[ConnectionGroupName]) -> gio::Me
     if !groups.is_empty() {
         let existing = gio::Menu::new();
         for group in groups {
-            existing.append_item(&item(
-                &menu_label(group.as_str()),
-                ROW,
-                ROW_GROUP,
-                &group.as_str().to_variant(),
-            ));
+            existing.append_item(&item(&menu_label(group), ROW, ROW_GROUP, &group.to_variant()));
         }
         menu.append_section(None, &existing);
     }
     let new = gio::Menu::new();
-    new.append_item(&item(&crate::i18n::gettext("New Group…"), PICKER, NEW_GROUP, target));
+    new.append_item(&item(&crate::i18n::gettext("New _Group…"), PICKER, NEW_GROUP, target));
     menu.append_section(None, &new);
     menu
 }
@@ -159,9 +155,9 @@ fn tag_menu(target: &glib::Variant, tags: &[ConnectionTag]) -> gio::Menu {
         menu.append_section(None, &existing);
     }
     let change = gio::Menu::new();
-    change.append_item(&item(&crate::i18n::gettext("New Tag…"), PICKER, NEW_TAG, target));
+    change.append_item(&item(&crate::i18n::gettext("_New Tag…"), PICKER, NEW_TAG, target));
     change.append_item(&gio::MenuItem::new(
-        Some(&crate::i18n::gettext("Manage Tags…")),
+        Some(&crate::i18n::gettext("_Manage Tags…")),
         Some(MANAGE_TAGS),
     ));
     menu.append_section(None, &change);
@@ -171,6 +167,7 @@ fn tag_menu(target: &glib::Variant, tags: &[ConnectionTag]) -> gio::Menu {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::assert_access_keys;
 
     /// Each item's label, action and target, in order, sections and
     /// submenus flattened.
@@ -206,10 +203,10 @@ mod tests {
         let found = items(connection_menu(id, &[], &[]).upcast_ref());
 
         let first = found.first().expect("an item");
-        assert_eq!(first.0, "Connect");
+        assert_eq!(first.0, "_Connect");
         assert_eq!(first.1.as_deref(), Some("picker.connect"));
         let last = found.last().expect("an item");
-        assert_eq!(last.0, "Delete…");
+        assert_eq!(last.0, "Dele_te…");
         assert_eq!(last.1.as_deref(), Some("picker.delete"));
         for (label, action, target) in &found {
             if action.as_deref().is_some_and(|action| action.starts_with("picker.")) {
@@ -222,8 +219,13 @@ mod tests {
         }
     }
 
-    fn group(name: &str) -> ConnectionGroupName {
-        ConnectionGroupName::new(name).expect("a group name")
+    #[test]
+    fn every_item_has_an_access_key_of_its_own() {
+        assert_access_keys(&connection_menu(Uuid::new_v4(), &[], &[]));
+    }
+
+    fn group(label: &str) -> String {
+        label.to_owned()
     }
 
     #[test]
@@ -237,13 +239,13 @@ mod tests {
         };
 
         let order = [
-            shown("Connect"),
-            shown("Edit…"),
-            shown("Duplicate"),
-            shown("Colour"),
-            shown("Tags"),
-            shown("Move to Group"),
-            shown("Delete…"),
+            shown("_Connect"),
+            shown("_Edit…"),
+            shown("D_uplicate"),
+            shown("Colou_r"),
+            shown("Tag_s"),
+            shown("_Move to Group"),
+            shown("Dele_te…"),
         ];
 
         assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{labels:?}");
@@ -258,8 +260,8 @@ mod tests {
         let labels = labels(&connection_menu_with(&lead, id, &[], &[]));
 
         assert_eq!(labels.first().map(String::as_str), Some("Disconnect"));
-        assert!(!labels.contains(&"Connect".to_owned()), "{labels:?}");
-        assert_eq!(labels.last().map(String::as_str), Some("Delete…"));
+        assert!(!labels.contains(&"_Connect".to_owned()), "{labels:?}");
+        assert_eq!(labels.last().map(String::as_str), Some("Dele_te…"));
         let (action, target) = connect_action(id);
         assert_eq!(action, "picker.connect");
         assert_eq!(target.get::<String>(), Some(id.to_string()));
@@ -269,14 +271,15 @@ mod tests {
     fn the_group_menu_offers_every_group_the_list_already_has() {
         let labels = labels(&connection_menu(
             Uuid::new_v4(),
-            &[group("Archive"), group("Work")],
+            &[group("Archive"), group("Work"), group("Work / Staging")],
             &[],
         ));
 
         assert!(labels.contains(&"Archive".to_owned()), "{labels:?}");
+        assert!(labels.contains(&"Work / Staging".to_owned()), "{labels:?}");
         assert!(labels.contains(&"Work".to_owned()), "{labels:?}");
-        assert!(labels.contains(&"No Group".to_owned()), "{labels:?}");
-        assert!(labels.contains(&"New Group…".to_owned()), "{labels:?}");
+        assert!(labels.contains(&"_No Group".to_owned()), "{labels:?}");
+        assert!(labels.contains(&"New _Group…".to_owned()), "{labels:?}");
     }
 
     #[test]
@@ -308,11 +311,11 @@ mod tests {
             .expect("the tag's item");
         assert_eq!(check.1.as_deref(), Some(format!("picker-row.tag-{}", tag.id).as_str()));
         assert_eq!(check.2, None, "a check item carries no target");
-        let new = found.iter().find(|(label, ..)| label == "New Tag…").expect("New Tag…");
+        let new = found.iter().find(|(label, ..)| label == "_New Tag…").expect("New Tag…");
         assert_eq!(new.1.as_deref(), Some("picker.new-tag"));
         let manage = found
             .iter()
-            .find(|(label, ..)| label == "Manage Tags…")
+            .find(|(label, ..)| label == "_Manage Tags…")
             .expect("Manage Tags…");
         assert_eq!(manage.1.as_deref(), Some(MANAGE_TAGS));
     }

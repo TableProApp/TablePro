@@ -7,6 +7,7 @@ import plistlib
 import sys
 import tarfile
 import tempfile
+import time
 import unittest
 import zipfile
 from contextlib import redirect_stderr, redirect_stdout
@@ -18,6 +19,12 @@ import registry
 import version
 
 KEY = "cHJvYmUta2V5LW5vdC1hLXJlYWwtb25l"
+MANIFEST_KEY = "cmVnaXN0cnkta2V5LW5vdC1hLXJlYWwtb25l"
+MANIFEST_PUBLIC_KEY = "cHVibGljLWhhbGYtb2YtdGhlLXJlZ2lzdHJ5LWtleQ=="
+
+
+def fake_public_key(private_key):
+    return {MANIFEST_KEY: MANIFEST_PUBLIC_KEY}.get(private_key, "c29tZS1vdGhlci1rZXk=")
 REPOSITORY = "TableProApp/TablePro"
 
 SIGNATURE = r'''
@@ -25,6 +32,8 @@ import hashlib, re
 TRAILER = re.compile(r"<!-- sparkle-signatures:.*?-->\s*$", re.S)
 def content(text):
     return TRAILER.sub("", text)
+def detached(data, key):
+    return hashlib.sha256(key.strip().encode() + data).hexdigest()
 def signed(text, key):
     body = content(text)
     signature = hashlib.sha256((key.strip() + body).encode()).hexdigest()
@@ -109,7 +118,17 @@ args = sys.argv[1:]
 key = sys.stdin.read()
 with open(os.environ["FAKE_LOG"], "a") as log:
     log.write(json.dumps(["sign_update", *args, "stdin=" + key.strip()]) + "\n")
-path = Path(args[-1])
+positional = [arg for arg in args if not arg.startswith("-")]
+path = Path(positional[0])
+if path.suffix != ".xml":
+    expected = detached(path.read_bytes(), key)
+    if "--verify" in args:
+        if positional[1:] != [expected]:
+            print("Error: failed to pass signing verification.")
+            sys.exit(1)
+        sys.exit(0)
+    print("c2ln" if os.environ.get("FAKE_BAD_DETACHED") else expected)
+    sys.exit(0)
 text = path.read_text()
 if "--verify" in args:
     if signed(text, key) != text:
@@ -151,6 +170,11 @@ METADATA = {
 }
 
 
+REFUSED_UNSIGNED = (r"no signature vouches for the published plugins/v3.json\. Check it by hand, then rerun with "
+                    r"--sign-unsigned-manifest \(in CI, set the repository variable PLUGIN_MANIFEST_RESIGN to true "
+                    r"for one run, then unset it\)")
+
+
 def item(build, short, channel=None, critical=None, signature="c2ln", url=None):
     lines = ["<item>"]
     if channel is not None:
@@ -175,6 +199,12 @@ def fake_signed(text, key=KEY):
     namespace = {}
     exec(SIGNATURE, namespace)
     return namespace["signed"](text, key)
+
+
+def fake_detached(data, key=MANIFEST_KEY):
+    namespace = {}
+    exec(SIGNATURE, namespace)
+    return namespace["detached"](data, key)
 
 
 class FeedRulesTests(unittest.TestCase):
@@ -286,6 +316,7 @@ class FeedSiteTests(unittest.TestCase):
         (self.site / "plugins").mkdir(parents=True)
         (self.site / "appcast.xml").write_text(fake_signed(SEED))
         registry.write_manifest(self.site / "plugins/v3.json", registry.empty_manifest(39))
+        self.sign_published_manifest()
 
         self.root = self.base / "tag"
         (self.root / ".github").mkdir(parents=True)
@@ -293,6 +324,9 @@ class FeedSiteTests(unittest.TestCase):
         (self.root / "apple/Configs").mkdir(parents=True)
         (self.root / "apple/Configs/PluginKit.xcconfig").write_text(
             "TABLEPRO_PLUGINKIT_VERSION = 39\nTABLEPRO_PLUGINKIT_MINIMUM_VERSION = 19\n")
+        (self.root / "apple/TablePro").mkdir(parents=True)
+        (self.root / "apple/TablePro/Info.plist").write_bytes(plistlib.dumps({
+            "SUPublicEDKey": "c3BhcmtsZS1wdWJsaWMta2V5", "TableProPluginRegistryPublicEDKey": MANIFEST_PUBLIC_KEY}))
         self.notes = self.base / "feed.md"
         self.notes.write_text("- A fix. (#1)\n")
 
@@ -306,17 +340,39 @@ class FeedSiteTests(unittest.TestCase):
         plugin_zip(folder / f"ParquetExport-{release}.zip", "ParquetExport", str(release), release.build, kit,
                    TableProProvidesExportFormatIds=["parquet"])
 
-    def add(self, tag, critical=False):
+    def sign_published_manifest(self):
+        manifest = self.site / "plugins/v3.json"
+        (self.site / "plugins/v3.json.sig").write_text(fake_detached(manifest.read_bytes()) + "\n")
+
+    def add(self, tag, critical=False, sign_unsigned=False, manifest_key=MANIFEST_KEY):
         messages = []
-        changed = feed.add(self.root, self.site, tag, self.notes, critical, self.tools, KEY,
-                           feed.Releases(REPOSITORY), REPOSITORY, log=messages.append)
+        changed = feed.add(self.root, self.site, tag, self.notes, critical, self.tools, KEY, manifest_key,
+                           feed.Releases(REPOSITORY), REPOSITORY, log=messages.append,
+                           sign_unsigned_manifest=sign_unsigned, derive=fake_public_key)
         return changed, messages
 
-    def withdraw(self, text):
-        return feed.withdraw(self.site, text, self.tools, KEY, log=lambda message: None)
+    def withdraw(self, text, sign_unsigned=False, manifest_key=MANIFEST_KEY):
+        return feed.withdraw(self.site, text, self.tools, KEY, manifest_key, log=lambda message: None,
+                             sign_unsigned_manifest=sign_unsigned, root=self.root, derive=fake_public_key)
+
+    def restore(self, written):
+        for name, data in zip(("appcast.xml", "plugins/v3.json", "plugins/v3.json.sig"), written):
+            path = self.site / name
+            if data is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(data)
 
     def files(self):
-        return [(self.site / name).read_bytes() for name in ("appcast.xml", "plugins/v3.json")]
+        paths = [self.site / name for name in ("appcast.xml", "plugins/v3.json", "plugins/v3.json.sig")]
+        return [path.read_bytes() if path.exists() else None for path in paths]
+
+    def signings(self):
+        return [call for call in self.calls("sign_update") if "--verify" not in call]
+
+    def assert_manifest_is_signed(self):
+        signature = self.published("plugins/v3.json.sig")
+        self.assertEqual(signature, fake_detached((self.site / "plugins/v3.json").read_bytes()) + "\n")
 
     def calls(self, tool):
         if not self.log_path.exists():
@@ -327,12 +383,17 @@ class FeedSiteTests(unittest.TestCase):
         return (self.site / path).read_text()
 
     def test_adds_a_beta_and_its_plugins(self):
+        started = int(time.time())
         self.publish("v0.82.0-beta.1")
         changed, messages = self.add("v0.82.0-beta.1")
         self.assertTrue(changed)
         (generate,) = self.calls("generate_appcast")
         self.assertEqual(generate[-1], f"stdin={KEY}")
-        self.assertEqual([call for call in self.calls("sign_update") if "--verify" not in call], [])
+        (signing,) = self.signings()
+        self.assertEqual(signing[:3], ["-p", "--ed-key-file", "-"])
+        self.assertEqual(Path(signing[3]).name, "v3.json")
+        self.assertEqual(signing[-1], f"stdin={MANIFEST_KEY}")
+        self.assert_manifest_is_signed()
         self.assertIn("--channel", generate)
         self.assertNotIn("--critical-update-version", generate)
         self.assertNotIn("--phased-rollout-interval", generate)
@@ -347,6 +408,7 @@ class FeedSiteTests(unittest.TestCase):
         self.assertEqual([(each.short_version, each.channel) for each in items],
                          [("0.82.0-beta.1", "beta"), ("0.81.0", None), ("0.80.0", None)])
         manifest = json.loads(self.published("plugins/v3.json"))
+        self.assertGreaterEqual(manifest["serial"], started)
         self.assertEqual([plugin["id"] for plugin in manifest["plugins"]],
                          ["com.TablePro.OracleDriver", "com.TablePro.ParquetExport"])
         oracle, parquet = manifest["plugins"]
@@ -378,9 +440,11 @@ class FeedSiteTests(unittest.TestCase):
         self.publish("v0.82.0-beta.1")
         self.add("v0.82.0-beta.1")
         written = self.files()
+        signings = len(self.signings())
         changed, messages = self.add("v0.82.0-beta.1")
         self.assertFalse(changed)
         self.assertEqual(self.files(), written)
+        self.assertEqual(len(self.signings()), signings)
         self.assertEqual(len(self.calls("generate_appcast")), 1)
         self.assertIn("appcast.xml already has 0.82.0-beta.1 (820001)", messages)
 
@@ -459,15 +523,87 @@ class FeedSiteTests(unittest.TestCase):
         self.publish("v0.82.0")
         self.add("v0.82.0-beta.1")
         self.add("v0.82.0")
-        signed_before = sum("--verify" not in call for call in self.calls("sign_update"))
+        signed_before = len(self.signings())
+        serial_before = json.loads(self.published("plugins/v3.json"))["serial"]
         self.assertTrue(self.withdraw("0.82.0"))
         published = self.published("appcast.xml")
         self.assertEqual([each.short_version for each in feed.parse_items(published.encode())],
                          ["0.82.0-beta.1", "0.81.0", "0.80.0"])
         self.assertEqual(fake_signed(published), published)
-        self.assertEqual(sum("--verify" not in call for call in self.calls("sign_update")), signed_before + 1)
-        self.assertEqual(json.loads(self.published("plugins/v3.json"))["plugins"], [])
+        self.assertEqual(len(self.signings()), signed_before + 2)
+        manifest = json.loads(self.published("plugins/v3.json"))
+        self.assertEqual(manifest["plugins"], [])
+        self.assertGreater(manifest["serial"], serial_before)
+        self.assert_manifest_is_signed()
         self.assertFalse(self.withdraw("0.82.0"))
+
+    def test_a_manifest_that_fails_its_signature_check_writes_nothing(self):
+        self.publish("v0.82.0-beta.1")
+        written = self.files()
+        with mock.patch.dict(os.environ, {"FAKE_BAD_DETACHED": "1"}):
+            with self.assertRaisesRegex(feed.FeedError, "the new plugins/v3.json fails its signature check"):
+                self.add("v0.82.0-beta.1")
+        self.assertEqual(self.files(), written)
+
+    def test_a_manifest_no_signature_vouches_for_is_refused_without_the_flag(self):
+        self.publish("v0.82.0-beta.1")
+        self.publish("v0.82.0")
+        self.add("v0.82.0-beta.1")
+        manifest = self.site / "plugins/v3.json"
+        manifest.write_text(manifest.read_text().replace("OracleDriver-0.82.0-beta.1.zip", "evil.zip"))
+        tampered = self.files()
+        (self.site / "plugins/v3.json.sig").unlink()
+        unsigned = self.files()
+        for written in (tampered, unsigned):
+            self.restore(written)
+            for attempt in (lambda: self.add("v0.82.0"), lambda: self.withdraw("0.82.0-beta.1")):
+                with self.subTest(signature=written[2] is not None, attempt=attempt):
+                    with self.assertRaisesRegex(feed.FeedError, REFUSED_UNSIGNED):
+                        attempt()
+                    self.assertEqual(self.files(), written)
+
+    def test_a_missing_manifest_is_refused_without_the_flag(self):
+        self.publish("v0.82.0")
+        (self.site / "plugins/v3.json.sig").unlink()
+        (self.site / "plugins/v3.json").unlink()
+        written = self.files()
+        for attempt in (lambda: self.add("v0.82.0"), lambda: self.withdraw("0.80.0")):
+            with self.subTest(attempt=attempt):
+                with self.assertRaisesRegex(feed.FeedError, REFUSED_UNSIGNED):
+                    attempt()
+                self.assertEqual(self.files(), written)
+
+    def test_the_flag_publishes_the_first_manifest_on_a_new_site(self):
+        self.publish("v0.82.0")
+        (self.site / "plugins/v3.json.sig").unlink()
+        (self.site / "plugins/v3.json").unlink()
+        changed, _ = self.add("v0.82.0", sign_unsigned=True)
+        self.assertTrue(changed)
+        self.assert_manifest_is_signed()
+        self.assertEqual(len(json.loads(self.published("plugins/v3.json"))["plugins"]), 2)
+
+    def test_the_flag_signs_a_manifest_published_before_signing(self):
+        self.publish("v0.82.0")
+        (self.site / "plugins/v3.json.sig").unlink()
+        self.add("v0.82.0", sign_unsigned=True)
+        self.assert_manifest_is_signed()
+        self.assertGreaterEqual(json.loads(self.published("plugins/v3.json"))["serial"], 1)
+
+    def test_the_flag_signs_an_unchanged_manifest_with_a_serial(self):
+        (self.site / "plugins/v3.json.sig").unlink()
+        started = int(time.time())
+        self.assertTrue(self.withdraw("0.80.0", sign_unsigned=True))
+        manifest = json.loads(self.published("plugins/v3.json"))
+        self.assertEqual(manifest["plugins"], [])
+        self.assertGreaterEqual(manifest["serial"], started)
+        self.assert_manifest_is_signed()
+
+    def test_the_flag_changes_nothing_when_the_published_signature_verifies(self):
+        written = self.files()
+        signings = len(self.signings())
+        self.assertTrue(self.withdraw("0.80.0", sign_unsigned=True))
+        self.assertEqual(self.files()[1:], written[1:])
+        self.assertEqual(len(self.signings()), signings + 1)
 
     def test_withdraw_keeps_a_default_channel_item(self):
         (self.site / "appcast.xml").write_text(fake_signed(feed.remove_items(SEED.encode(), "0.80.0")[0].decode()))
@@ -484,9 +620,28 @@ class FeedSiteTests(unittest.TestCase):
             self.assertEqual(feed.main(["latest", "--site", str(self.site)]), 0)
         self.assertEqual(output.getvalue(), "0.81.0\n")
 
+    def test_a_manifest_key_the_app_does_not_pin_writes_nothing(self):
+        self.publish("v0.82.0-beta.1")
+        before = self.files()
+        with self.assertRaisesRegex(feed.FeedError, "PLUGIN_REGISTRY_ED_PRIVATE_KEY does not match the app's "
+                                                    "TableProPluginRegistryPublicEDKey"):
+            self.add("v0.82.0-beta.1", manifest_key=KEY)
+        with self.assertRaisesRegex(feed.FeedError, "does not match"):
+            self.withdraw("0.81.0", manifest_key=KEY)
+        self.assertEqual(self.files(), before)
+        self.assertEqual(self.calls("sign_update"), [])
+
+    def test_an_app_without_the_registry_key_writes_nothing(self):
+        (self.root / "apple/TablePro/Info.plist").write_bytes(plistlib.dumps({"SUPublicEDKey": "c3BhcmtsZQ=="}))
+        before = self.files()
+        with self.assertRaisesRegex(feed.FeedError, "has no TableProPluginRegistryPublicEDKey"):
+            self.withdraw("0.81.0")
+        self.assertEqual(self.files(), before)
+
     def test_main_needs_the_sparkle_tools_and_key(self):
         command = ["withdraw", "0.82.0", "--site", str(self.site)]
-        with mock.patch.dict(os.environ, {"SPARKLE_BIN": "", "SPARKLE_PRIVATE_KEY": KEY}), \
+        with mock.patch.dict(os.environ, {"SPARKLE_BIN": "", "SPARKLE_PRIVATE_KEY": KEY,
+                                          "PLUGIN_REGISTRY_ED_PRIVATE_KEY": MANIFEST_KEY}), \
                 redirect_stderr(io.StringIO()) as errors:
             self.assertEqual(feed.main(command), 1)
         self.assertIn("SPARKLE_BIN is not set", errors.getvalue())
@@ -494,6 +649,11 @@ class FeedSiteTests(unittest.TestCase):
                 redirect_stderr(io.StringIO()) as errors:
             self.assertEqual(feed.main(command), 1)
         self.assertIn("SPARKLE_PRIVATE_KEY is not set", errors.getvalue())
+        with mock.patch.dict(os.environ, {"SPARKLE_BIN": str(self.tools), "SPARKLE_PRIVATE_KEY": KEY,
+                                          "PLUGIN_REGISTRY_ED_PRIVATE_KEY": ""}), \
+                redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(feed.main(command), 1)
+        self.assertIn("PLUGIN_REGISTRY_ED_PRIVATE_KEY is not set", errors.getvalue())
 
 
 if __name__ == "__main__":

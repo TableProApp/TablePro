@@ -43,6 +43,29 @@ struct ConnectionFormViewModelIAMTests {
         return state
     }
 
+    @Test("A MongoDB edit tests with the session token and key passphrase the Mac keeps, under the test's own id")
+    func mongoKeychainSecretsReachTheTest() async {
+        let connection = DatabaseConnection(
+            name: "Docs",
+            type: .mongodb,
+            host: "db.example.com",
+            port: 27_017,
+            username: "AKIAEXAMPLE",
+            database: "app",
+            additionalFields: ["mongoAuthMechanism": "MONGODB-AWS"]
+        )
+        let store = MockSecureStore()
+        store.seed(ConnectionSecretKind.mongoAWSSessionToken.account(for: connection.id), "FQoGSESSION")
+        store.seed(ConnectionSecretKind.sslKeyPassphrase.account(for: connection.id), "hunter2")
+        let form = await loadedForm(connection, store: store)
+
+        let tempId = UUID()
+        let secrets = form.testSecrets(for: tempId)
+
+        #expect(secrets[ConnectionSecretKind.mongoAWSSessionToken.account(for: tempId)] == "FQoGSESSION")
+        #expect(secrets[ConnectionSecretKind.sslKeyPassphrase.account(for: tempId)] == "hunter2")
+    }
+
     @Test("An edit with no change tests with the access key it loaded, under the test's own id")
     func unchangedEditTestsWithLoadedAccessKey() async throws {
         let connection = rds(.awsAccessKey, fields: ["awsAccessKeyId": "AKIAEXAMPLE"])

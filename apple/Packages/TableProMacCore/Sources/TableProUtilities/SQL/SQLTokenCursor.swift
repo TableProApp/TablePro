@@ -120,7 +120,7 @@ public struct SQLTokenCursor {
             let start = index
             index = max(span.end, index + 1)
             let delimitsIdentifier = character == SqlLexer.doubleQuote || character == SqlLexer.backtick
-                || character == Self.openBracket
+                || character == Self.openBracket || character == SqlLexer.openAngleQuote
             guard span.kind == .quoted, delimitsIdentifier else { return .literal }
             return .quotedIdentifier(quotedBody(from: start, to: index))
         }

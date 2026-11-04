@@ -52,13 +52,13 @@ nonisolated internal struct MySQLKillLatch {
     }
 
     /// Only the two engines measured to hold an idle kill pay the absorbing round trip. TiDB drops
-    /// the session on `KILL QUERY` instead of flagging it, and Databend and OceanBase are unmeasured,
-    /// so neither gets a statement inserted into its session on a guess.
+    /// the session on `KILL QUERY` instead of flagging it, and Databend, OceanBase and StarRocks are
+    /// unmeasured, so none gets a statement inserted into its session on a guess.
     internal static func absorbsLatchedKill(flavor: MySQLServerFlavor) -> Bool {
         switch flavor {
         case .mysql, .mariadb:
             return true
-        case .tidb, .databend, .oceanbase:
+        case .tidb, .databend, .oceanbase, .starrocks:
             return false
         }
     }

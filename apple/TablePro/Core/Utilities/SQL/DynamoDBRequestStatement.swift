@@ -65,8 +65,8 @@ struct DynamoDBRequestStatement: Sendable, Equatable {
     let body: DynamoDBRequestJSON?
     let trailingText: String
 
-    init?(_ statement: String) {
-        let text = StatementBlank.trimming(SQLLeadingComments.stripping(statement))
+    init?(_ statement: String, grammar: SQLLexicalGrammar) {
+        let text = StatementBlank.trimming(SQLLeadingComments.stripping(statement, grammar: grammar))
         let verb = text.prefix { $0.isLetter }
         guard !verb.isEmpty else { return nil }
         let afterVerb = text[verb.endIndex...].drop { $0.isWhitespace }
@@ -176,7 +176,8 @@ enum DynamoDBReadWindowText {
                 continue
             }
             if remaining.hasPrefix("/*") {
-                guard let close = remaining.range(of: "*/") else { return tokens }
+                // Past the opener: its `*` closes nothing, so `/*/` is still open.
+                guard let close = remaining.dropFirst(2).range(of: "*/", options: .literal) else { return tokens }
                 remaining = remaining[close.upperBound...]
                 continue
             }

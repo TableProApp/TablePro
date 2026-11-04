@@ -1,0 +1,30 @@
+[package]
+name = "tablepro-storage"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablepro-core.workspace = true
+async-trait.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["fs"] }
+uuid.workspace = true
+sqlx = { workspace = true, features = ["migrate", "macros"] }
+chrono.workspace = true
+tempfile.workspace = true
+
+# Linux links the distribution's SQLite, so its security fixes arrive
+# through the distribution; the other targets build the copy sqlx ships.
+[target.'cfg(target_os = "linux")'.dependencies]
+sqlx = { workspace = true, features = ["sqlite-unbundled"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+sqlx = { workspace = true, features = ["sqlite"] }
+
+[lints]
+workspace = true

@@ -66,8 +66,12 @@ struct DeeplinkImportSheet: View {
         return Form {
             Section {
                 HStack(spacing: 10) {
-                    DatabaseType(rawValue: connection.type).iconImage
-                        .frame(width: 28, height: 28)
+                    ConnectionTile(
+                        type: DatabaseType(rawValue: connection.type),
+                        iconName: connection.iconName,
+                        identityColor: Self.displayColor(connection.color),
+                        size: 28
+                    )
                     Text(DatabaseType(rawValue: connection.type).displayName)
                         .font(.headline)
                 }
@@ -188,12 +192,8 @@ struct DeeplinkImportSheet: View {
         if let startupCommands = connection.startupCommands,
            !startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Section {
-                Label(
-                    String(localized: "This connection runs SQL every time it connects, using your credentials."),
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .foregroundStyle(.orange)
-                .font(.callout)
+                NoticeLabel(String(localized: "This connection runs SQL every time it connects, using your credentials."))
+                    .font(.callout)
 
                 CodeWell(startupCommands, font: .system(.caption, design: .monospaced))
             } header: {
@@ -228,9 +228,8 @@ struct DeeplinkImportSheet: View {
             Section {
                 if let color {
                     LabeledContent(String(localized: "Color")) {
-                        Circle()
-                            .fill(color.color)
-                            .frame(width: 12, height: 12)
+                        Text(color.displayName)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 if let customSymbol {
@@ -265,8 +264,7 @@ struct DeeplinkImportSheet: View {
         if !notices.isEmpty {
             Section {
                 ForEach(notices, id: \.self) { notice in
-                    Label(notice, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                    NoticeLabel(notice, severity: libraryError == nil ? .warning : .error)
                         .font(.callout)
                 }
             }

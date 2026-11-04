@@ -11,18 +11,18 @@ struct ProFeatureGateModifier: ViewModifier {
     @ObservedObject private var featureAccess = FeatureAccess.shared
 
     func body(content: Content) -> some View {
-        let access = featureAccess.check(feature)
+        let notice = LicensePresentation.gate(for: feature, state: featureAccess.state, now: Date())
 
         content
-            .disabled(access != .available)
+            .disabled(notice != nil)
             .overlay {
-                if access != .available {
-                    lockedOverlay(access)
+                if let notice {
+                    overlay(notice)
                 }
             }
     }
 
-    private func lockedOverlay(_ access: ProFeatureAccess) -> some View {
+    private func overlay(_ notice: LicenseNotice) -> some View {
         ZStack {
             AccessibleMaterialScrim(material: .ultraThinMaterial)
 
@@ -32,74 +32,37 @@ struct ProFeatureGateModifier: ViewModifier {
                     .imageScale(.large)
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
 
-                switch access {
-                case .available:
-                    EmptyView()
-                case .signedOut:
-                    Text(feature.paidPlanRequirement)
-                        .font(.headline)
-                        .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
-                    Text(feature.featureDescription)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Button(String(localized: "Sign In")) {
-                        SignInWindowController.present()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Link(String(localized: "Purchase License"), destination: SupportLinks.pricing(.featureGate(feature)))
-                        .font(.subheadline)
-                        .countsUpgradeClicks(from: .featureGate(feature))
-                case .notIncluded where featureAccess.isPastDeviceLimit:
-                    Text("Your plan is in use on 3 other devices")
-                        .font(.headline)
-                        .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
-                    Text("Remove one in Settings to use your plan on this Mac.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Button(String(localized: "Open Account Settings…")) {
-                        WindowOpener.shared.openSettings(tab: .account)
-                    }
-                    .buttonStyle(.borderedProminent)
-                case .notIncluded:
-                    Text(feature.paidPlanRequirement)
-                        .font(.headline)
-                        .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
-                    Text(feature.featureDescription)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Link(String(localized: "Upgrade Plan"), destination: SupportLinks.pricing(.featureGate(feature)))
+                Text(notice.title)
+                    .font(.headline)
+
+                Text(notice.message)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let action = notice.action {
+                    LicenseNoticeActionButton(action: action, referrer: .featureGate(feature))
                         .buttonStyle(.borderedProminent)
-                        .countsUpgradeClicks(from: .featureGate(feature))
-                case .expired:
-                    Text("Your license has expired")
-                        .font(.headline)
-                    Text(feature.featureDescription)
+                }
+
+                if let alternative = notice.alternative {
+                    LicenseNoticeActionButton(action: alternative, referrer: .featureGate(feature))
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    // An expired payload from an older build retries its key exchange, not a refresh it has no session for.
-                    Button(String(localized: "Try Again")) {
-                        Task { await AccountServices.shared.checkNow() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    Link(String(localized: "Renew License"), destination: SupportLinks.pricing(.featureGate(feature)))
-                        .font(.subheadline)
-                        .countsUpgradeClicks(from: .featureGate(feature))
-                case .refreshFailed:
-                    Text("License validation failed")
-                        .font(.headline)
-                    Text("Connect to the internet to verify your license.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Button(String(localized: "Retry Validation")) {
-                        Task { await AccountServices.shared.checkNow() }
-                    }
-                    .buttonStyle(.borderedProminent)
+                }
+
+                if notice.action == .retryValidation {
+                    LicenseCheckFailureLine()
                 }
             }
+            .frame(maxWidth: 420)
             .padding()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
         }
-        .onAppear { Telemetry.shared.featureGateShown(feature, access: access) }
+        .onAppear { Telemetry.shared.featureGateShown(feature, access: featureAccess.check(feature)) }
     }
 }
 

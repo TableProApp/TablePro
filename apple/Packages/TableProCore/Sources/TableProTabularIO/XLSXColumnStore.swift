@@ -53,11 +53,21 @@ struct XLSXColumnStore: Sendable {
         hint = slot
         return kinds[slot] == XLSXStoredCell.empty ? nil : slot
     }
+
+    func forEachOccupiedRow(_ body: (Int) -> Void) {
+        for slot in 0..<kinds.count where kinds[slot] != XLSXStoredCell.empty {
+            body(isDense ? firstRow + slot : Int(rows[slot]) - rowOrigin)
+        }
+    }
 }
 
 struct XLSXColumnBuilder {
+    // Gap filling never passes this many slots per stored cell, so a few cells far apart cannot make a column dense.
+    private static let largestDenseSpread = 65
+
     private var firstRow = 0
     private var lastRow = -1
+    private var storedCount = 0
     private var isDense = true
     private var isSorted = true
     private var rows = XLSXChunkedArray<UInt32>()
@@ -66,12 +76,15 @@ struct XLSXColumnBuilder {
 
     var isEmpty: Bool { kinds.isEmpty }
 
+    var lastRowIndex: Int { lastRow }
+
     mutating func append(row: Int, kind: UInt8, payload: UInt64) {
         guard !kinds.isEmpty else {
             firstRow = row
             lastRow = row
             kinds.append(kind)
             payloads.append(payload)
+            storedCount = 1
             return
         }
         if row == lastRow, isSorted {
@@ -85,7 +98,8 @@ struct XLSXColumnBuilder {
         }
         let gap = row - lastRow - 1
         if isDense, gap > 0 {
-            if gap <= max(64, kinds.count / 8) {
+            let spread = kinds.count + gap < Self.largestDenseSpread * (storedCount + 1)
+            if gap <= max(64, kinds.count / 8), spread {
                 kinds.append(XLSXStoredCell.empty, times: gap)
                 payloads.append(0, times: gap)
             } else {
@@ -95,13 +109,13 @@ struct XLSXColumnBuilder {
         if !isDense { rows.append(UInt32(row)) }
         kinds.append(kind)
         payloads.append(payload)
+        storedCount += 1
         lastRow = row
     }
 
-    mutating func clear(rows range: ClosedRange<Int>, keeping kept: Int?) {
+    mutating func clear(where isHidden: (Int) -> Bool) {
         normalize()
-        for slot in slots(in: range) {
-            if let kept, row(at: slot) == kept { continue }
+        for slot in 0..<kinds.count where kinds[slot] != XLSXStoredCell.empty && isHidden(row(at: slot)) {
             kinds[slot] = XLSXStoredCell.empty
         }
     }
@@ -129,23 +143,12 @@ struct XLSXColumnBuilder {
         isDense ? firstRow + slot : Int(rows[slot])
     }
 
-    private func slots(in range: ClosedRange<Int>) -> Range<Int> {
-        guard !kinds.isEmpty else { return 0..<0 }
-        if isDense {
-            let lower = max(0, range.lowerBound - firstRow)
-            let upper = min(kinds.count, range.upperBound - firstRow + 1)
-            return lower < upper ? lower..<upper : 0..<0
-        }
-        let lower = rows.lowerBound(of: UInt32(clamping: range.lowerBound))
-        let upper = rows.lowerBound(of: UInt32(clamping: range.upperBound + 1))
-        return lower..<upper
-    }
-
     private mutating func appendOutOfOrder(row: Int, kind: UInt8, payload: UInt64) {
         if isDense { makeSparse() }
         rows.append(UInt32(row))
         kinds.append(kind)
         payloads.append(payload)
+        storedCount += 1
         isSorted = false
     }
 

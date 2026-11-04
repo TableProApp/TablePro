@@ -22,7 +22,7 @@ struct TableQueryBuilderFilteredQueryTests {
         likeEscapeStyle: .implicit, paginationStyle: .limit
     )
 
-    private let builder = TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect, pagination: .offset)
+    private let builder = TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
 
     @Test("buildFilteredQuery with enabled filter produces WHERE clause")
     func filteredQueryWithEnabledFilter() throws {
@@ -93,7 +93,7 @@ struct TableQueryBuilderFilteredCountTests {
     )
 
     private var builder: TableQueryBuilder {
-        TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect, pagination: .offset)
+        TableQueryBuilder(databaseType: .mysql, dialect: Self.mysqlDialect, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
     }
 
     private func makeFilter(_ column: String, _ value: String, _ op: FilterOperator = .equal) -> TableFilter {
@@ -136,9 +136,28 @@ struct TableQueryBuilderFilteredCountTests {
         #expect(dataQuery.contains(countWhere))
     }
 
+    @Test("buildFilteredCountQuery doubles a quote a combining mark follows", arguments: ["\u{301}", "\u{FF9E}"])
+    func filteredCountDoublesQuoteBeforeCombiningMark(mark: String) throws {
+        let dialect = SQLDialectDescriptor(
+            identifierQuote: "[", keywords: [], functions: [], dataTypes: [],
+            regexSyntax: .unsupported, booleanLiteralStyle: .numeric,
+            likeEscapeStyle: .explicit, paginationStyle: .offsetFetch
+        )
+        let mssql = TableQueryBuilder(
+            databaseType: .mssql, dialect: dialect, pagination: .offset,
+            dialectQuote: quoteIdentifierFromDialect(dialect)
+        )
+        let query = try #require(mssql.buildFilteredCountQuery(
+            tableName: "customers", filters: [makeFilter("code", "x'\(mark): DROP TABLE audit_log --")],
+            columns: ["code"], columnTypes: [.text(rawType: "nvarchar(64)")]
+        ))
+        let expected = "SELECT COUNT(*) FROM [customers] WHERE [code] = N'x''\(mark): DROP TABLE audit_log --'"
+        #expect(Array(query.unicodeScalars) == Array(expected.unicodeScalars))
+    }
+
     @Test("buildFilteredCountQuery returns nil without a dialect")
     func filteredCountNilWithoutDialect() {
-        let noDialect = TableQueryBuilder(databaseType: .mysql, pagination: .offset)
+        let noDialect = TableQueryBuilder(databaseType: .mysql, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
         #expect(noDialect.buildFilteredCountQuery(tableName: "users", filters: [makeFilter("name", "Alice")]) == nil)
     }
 }
@@ -163,7 +182,7 @@ struct TableQueryBuilderPaginationTests {
     )
 
     private func builder(_ dialect: SQLDialectDescriptor) -> TableQueryBuilder {
-        TableQueryBuilder(databaseType: .postgresql, dialect: dialect, pagination: .offset)
+        TableQueryBuilder(databaseType: .postgresql, dialect: dialect, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
     }
 
     private func enabledFilter(_ column: String, _ value: String) -> TableFilter {
@@ -236,7 +255,9 @@ private final class UnfilterableDriver: PluginDriverStub, @unchecked Sendable {
 struct TableQueryBuilderDialectlessTests {
     @Test("An engine with no SQL dialect gets no SQL when its plugin cannot build the filter")
     func noSQLFallbackWithoutDialect() {
-        let builder = TableQueryBuilder(databaseType: .etcd, pluginDriver: UnfilterableDriver(), pagination: .offset)
+        let builder = TableQueryBuilder(
+            databaseType: .etcd, pluginDriver: UnfilterableDriver(), pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier
+        )
         var filter = TableFilter()
         filter.columnName = "Value"
         filter.filterOperator = .contains
@@ -248,7 +269,7 @@ struct TableQueryBuilderDialectlessTests {
 
     @Test("An engine with no SQL dialect and no plugin gets no SQL for a filter")
     func noSQLWithoutPlugin() {
-        let builder = TableQueryBuilder(databaseType: .mongodb, pagination: .offset)
+        let builder = TableQueryBuilder(databaseType: .mongodb, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
         var filter = TableFilter()
         filter.columnName = "name"
         filter.filterOperator = .equal
@@ -256,5 +277,38 @@ struct TableQueryBuilderDialectlessTests {
         filter.isEnabled = true
 
         #expect(builder.buildFilteredQuery(tableName: "collection", filters: [filter]) == nil)
+    }
+}
+
+struct TableQueryBuilderQuotingTests {
+    private static let crafted = "t\"\u{301}; DROP TABLE users; --"
+
+    @Test("The ANSI quoter doubles a quote a combining mark follows")
+    func ansiQuoterDoublesQuoteBeforeMark() {
+        let quoted = SQLEscaping.quoteIdentifier(Self.crafted)
+        #expect(Array(quoted.unicodeScalars) == Array("\"t\"\"\u{301}; DROP TABLE users; --\"".unicodeScalars))
+    }
+
+    @Test("A browse of a crafted table name keeps the name one identifier")
+    func browseKeepsCraftedNameOneIdentifier() {
+        let builder = TableQueryBuilder(databaseType: .postgresql, pagination: .offset, dialectQuote: SQLEscaping.quoteIdentifier)
+        let query = builder.buildBaseQuery(tableName: Self.crafted, schemaName: "app", limit: 100, offset: 0)
+        let expected = "SELECT * FROM \"app\".\"t\"\"\u{301}; DROP TABLE users; --\" LIMIT 100 OFFSET 0"
+        #expect(Array(query.unicodeScalars) == Array(expected.unicodeScalars))
+    }
+
+    @Test("A backtick dialect quotes with backticks, not double quotes")
+    func backtickDialectQuotesWithBackticks() {
+        let dialect = SQLDialectDescriptor(
+            identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+            regexSyntax: .regexp, booleanLiteralStyle: .numeric,
+            likeEscapeStyle: .implicit, paginationStyle: .limit
+        )
+        let builder = TableQueryBuilder(
+            databaseType: .mysql, dialect: dialect, pagination: .offset,
+            dialectQuote: quoteIdentifierFromDialect(dialect)
+        )
+        let query = builder.buildBaseQuery(tableName: "a`\u{301}b", limit: 10, offset: 0)
+        #expect(Array(query.unicodeScalars).starts(with: Array("SELECT * FROM `a``\u{301}b`".unicodeScalars)))
     }
 }

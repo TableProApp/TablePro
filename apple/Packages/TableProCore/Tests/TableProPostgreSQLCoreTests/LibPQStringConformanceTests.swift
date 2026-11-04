@@ -9,6 +9,15 @@ import Testing
 @testable import TableProPostgreSQLCore
 
 struct LibPQStringConformanceTests {
+    @Test("A quote or backslash a combining mark follows is still escaped", arguments: [true, false])
+    func combiningMarkCannotHideAnEscape(standardConformingStrings: Bool) {
+        let value = "thanks'\u{301}); DROP TABLE victims; --\\\u{301}"
+        let escaped = LibPQStringConformance.escape(value, standardConformingStrings: standardConformingStrings)
+        let backslash = standardConformingStrings ? "\\" : "\\\\"
+        let expected = "thanks''\u{301}); DROP TABLE victims; --\(backslash)\u{301}"
+        #expect(Array(escaped.unicodeScalars) == Array(expected.unicodeScalars))
+    }
+
     @Test("Every session turns standard_conforming_strings on")
     func sessionSetupForcesStandardConformingStrings() {
         #expect(LibPQStringConformance.enableStatement == "SET standard_conforming_strings TO on")
@@ -68,6 +77,12 @@ struct LibPQStringConformanceTests {
     func dropsNul() {
         #expect(LibPQStringConformance.escape("a\0b", standardConformingStrings: true) == "ab")
         #expect(LibPQStringConformance.escape("a\0b", standardConformingStrings: false) == "ab")
+    }
+
+    @Test("With the setting off, a line break is written as it is and a NUL never starts an octal escape")
+    func controlCharactersWhenNotConforming() {
+        #expect(LibPQStringConformance.escape("a\nb\\", standardConformingStrings: false) == "a\n" + #"b\\"#)
+        #expect(LibPQStringConformance.escape("\0" + "12", standardConformingStrings: false) == "12")
     }
 
     private static func decodeLegacyLiteralBody(_ body: String) -> String {

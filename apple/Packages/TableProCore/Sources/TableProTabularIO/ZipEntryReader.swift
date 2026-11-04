@@ -1,31 +1,21 @@
 import Compression
 import Foundation
-
-public struct ZipExpansionPolicy: Sendable, Equatable {
-    public let ratioLimit: Int
-    public let grace: Int
-
-    public init(ratioLimit: Int, grace: Int) {
-        self.ratioLimit = ratioLimit
-        self.grace = grace
-    }
-
-    public static let standard = ZipExpansionPolicy(ratioLimit: 250, grace: 64 << 20)
-}
+import TableProWireIO
 
 public struct ZipEntryReader: ~Copyable {
     public let entry: ZipArchive.Entry
-    private let policy: ZipExpansionPolicy
+    private var budget: DecompressionBudget
     private let payload: UnsafeBufferPointer<UInt8>
     private let inflater: UnsafeMutablePointer<compression_stream>?
     private var storedOffset = 0
+    private var recordedConsumed = 0
     private var isFinished: Bool
     public private(set) var bytesProduced = 0
 
-    init(entry: ZipArchive.Entry, payload: UnsafeBufferPointer<UInt8>, policy: ZipExpansionPolicy = .standard) throws {
+    init(entry: ZipArchive.Entry, payload: UnsafeBufferPointer<UInt8>, budget: DecompressionBudget = .standard) throws {
         self.entry = entry
         self.payload = payload
-        self.policy = policy
+        self.budget = budget
         switch entry.compressionMethod {
         case ZipArchive.storedMethod:
             inflater = nil
@@ -69,7 +59,10 @@ public struct ZipEntryReader: ~Copyable {
     public mutating func read(into destination: UnsafeMutableBufferPointer<UInt8>) throws -> Int {
         guard !isFinished, let destinationBase = destination.baseAddress, !destination.isEmpty else { return 0 }
         guard let inflater else {
-            return readStored(into: destinationBase, capacity: destination.count)
+            let copied = readStored(into: destinationBase, capacity: destination.count)
+            bytesProduced += copied
+            try record(copied)
+            return copied
         }
         inflater.pointee.dst_ptr = destinationBase
         inflater.pointee.dst_size = destination.count
@@ -95,12 +88,18 @@ public struct ZipEntryReader: ~Copyable {
             isFinished = true
             throw ZipArchive.Failure.corruptEntry(entry.path)
         }
-        guard bytesProduced > policy.grace else { return }
-        let consumed = max(compressedBytesConsumed, 1)
-        guard bytesProduced / consumed <= policy.ratioLimit else {
+        try record(produced)
+    }
+
+    private mutating func record(_ produced: Int) throws {
+        let consumed = compressedBytesConsumed
+        do {
+            try budget.record(produced: produced, consumed: consumed - recordedConsumed)
+        } catch {
             isFinished = true
             throw ZipArchive.Failure.entryTooLarge(entry.path)
         }
+        recordedConsumed = consumed
     }
 
     private mutating func readStored(into destination: UnsafeMutablePointer<UInt8>, capacity: Int) -> Int {

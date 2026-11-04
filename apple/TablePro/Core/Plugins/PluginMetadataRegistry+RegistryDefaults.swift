@@ -37,6 +37,8 @@ extension PluginMetadataRegistry {
             cassandraDialect, cassandraColumnTypes, cassandraCapabilities, mongoCompletions, mongoColumnTypes,
             etcdCompletions, redisCompletions, redisColumnTypes, d1Dialect, d1ColumnTypes
         ) = registryDefaultIngredients()
+        // libSQL and Turso share this dialect, but only D1 refuses a LIKE pattern past 50 bytes, as its plugin says.
+        let cloudflareD1Dialect = d1Dialect.withLikePatternByteLimit(50)
 
         return [
             ("MongoDB", PluginMetadataSnapshot(
@@ -71,10 +73,13 @@ extension PluginMetadataRegistry {
                     supportsAddIndex: false,
                     supportsDropIndex: false,
                     supportsOpportunisticTLS: false,
+                    supportsClientKeyPassphrase: true,
                     authenticationIsDatabaseScoped: true,
                     columnsAreSampled: true,
                     patternFiltersReadAnyColumn: true,
-                    filtersTypedByReadRows: true
+                    filtersTypedByReadRows: true,
+                    readOnlyEnforcement: .clientGuard,
+                    statementPolicyInDriver: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -105,6 +110,13 @@ extension PluginMetadataRegistry {
                         ),
                         ConnectionField(
                             id: "mongoAuthSource", label: "Auth Database", placeholder: "admin"
+                        ),
+                        ConnectionField(
+                            id: "mongoAWSSessionToken",
+                            label: "AWS Session Token",
+                            fieldType: .secure,
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "mongoAuthMechanism", values: ["MONGODB-AWS"])
                         ),
                         ConnectionField(
                             id: "mongoReadPreference",
@@ -168,7 +180,8 @@ extension PluginMetadataRegistry {
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsOpportunisticTLS: false,
-                    supportsColumnSort: false
+                    supportsColumnSort: false,
+                    readOnlyEnforcement: .clientGuard
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -588,7 +601,8 @@ extension PluginMetadataRegistry {
                     supportsModifyPrimaryKey: false,
                     supportsOpportunisticTLS: false,
                     tlsImpliedPorts: [8_443, 443],
-                    verifiesServerWithSystemTrust: true
+                    verifiesServerWithSystemTrust: true,
+                    readOnlyEnforcement: .engineEnforced
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -737,7 +751,7 @@ extension PluginMetadataRegistry {
                     columnTypesByCategory: cassandraColumnTypes
                 ),
                 connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [
+                    additionalConnectionFields: AWSAuthFields.standard() + [
                         ConnectionField(
                             id: "sslCaCertPath",
                             label: "CA Certificate",
@@ -923,7 +937,7 @@ extension PluginMetadataRegistry {
                     structureColumnFields: [.name, .type, .nullable, .defaultValue]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
-                    sqlDialect: d1Dialect,
+                    sqlDialect: cloudflareD1Dialect,
                     statementCompletions: [],
                     columnTypesByCategory: d1ColumnTypes
                 ),
@@ -1038,9 +1052,37 @@ extension PluginMetadataRegistry {
             + cloudPluginDefaults() + elasticsearchPluginDefaults() + surrealDBPluginDefaults()
             + kafkaPluginDefaults() + typesensePluginDefaults() + r2SQLPluginDefaults()
             + weaviatePluginDefaults() + hanaPluginDefaults() + firebasePluginDefaults() + bigtablePluginDefaults()
-            + trinoPluginDefaults()
+            + neo4jPluginDefaults()
+            + trinoPluginDefaults() + memcachedPluginDefaults() + qdrantPluginDefaults() + influxDBPluginDefaults()
     }
     // swiftlint:enable function_body_length
+}
+
+private extension SQLDialectDescriptor {
+    func withLikePatternByteLimit(_ limit: Int) -> SQLDialectDescriptor {
+        SQLDialectDescriptor(
+            identifierQuote: identifierQuote,
+            keywords: keywords,
+            functions: functions,
+            dataTypes: dataTypes,
+            tableOptions: tableOptions,
+            regexSyntax: regexSyntax,
+            booleanLiteralStyle: booleanLiteralStyle,
+            likeEscapeStyle: likeEscapeStyle,
+            paginationStyle: paginationStyle,
+            offsetFetchOrderBy: offsetFetchOrderBy,
+            requiresBackslashEscaping: requiresBackslashEscaping,
+            autoLimitStyle: autoLimitStyle,
+            caseSensitivityStyle: caseSensitivityStyle,
+            caseFoldFunction: caseFoldFunction,
+            operators: operators,
+            textCastTypeName: textCastTypeName,
+            functionNamesAreCaseInsensitive: functionNamesAreCaseInsensitive,
+            lexicalFeatures: lexicalFeatures,
+            typeNamesAreCaseInsensitive: typeNamesAreCaseInsensitive,
+            likePatternByteLimit: limit
+        )
+    }
 }
 
 // Kept identical to CassandraConsistency.connectionFields in the plugin. ScyllaDB's form shows this list even once the

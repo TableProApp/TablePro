@@ -64,6 +64,7 @@ public struct SQLEngineVocabulary: Sendable, Hashable {
         "TiDB": mySQL,
         "Databend": mySQL,
         "OceanBase": mySQL,
+        "StarRocks": mySQL,
         "PostgreSQL": postgreSQL,
         "CockroachDB": postgreSQL,
         "PGlite": postgreSQL,

@@ -2,6 +2,7 @@ import Foundation
 import os
 import Security
 import TableProDatabase
+import TableProLogRedaction
 import TableProPluginKit
 
 // Keyed by start URL, as the AWS CLI cache is, so every connection on one Identity Center shares a sign-in.
@@ -33,7 +34,7 @@ nonisolated struct AWSSSOTokenStore: Sendable {
         do {
             stored = try items.retrieve(forKey: Self.account(forStartUrl: startUrl))
         } catch {
-            Self.logger.error("Reading the IAM Identity Center token failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Reading the IAM Identity Center token failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
             return nil
         }
         guard let stored, let token = try? JSONDecoder().decode(StoredToken.self, from: Data(stored.utf8)) else {
@@ -51,7 +52,7 @@ nonisolated struct AWSSSOTokenStore: Sendable {
         do {
             try items.delete(forKey: Self.account(forStartUrl: startUrl))
         } catch {
-            Self.logger.error("Clearing the IAM Identity Center token failed: \(error.localizedDescription, privacy: .public)")
+            Self.logger.error("Clearing the IAM Identity Center token failed: \(LogRedaction.publicDescription(of: error), privacy: .public) \(error.localizedDescription, privacy: .private)")
         }
     }
 }

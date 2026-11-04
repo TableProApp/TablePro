@@ -119,6 +119,34 @@ class DetectChangedPathsTests(unittest.TestCase):
         self.commit(["linux/docs/testing.md", "linux/crates/app/src/main.rs"])
         self.assertEqual(self.detect("linux", self.seed), (0, "true"))
 
+    def test_linux_runs_on_the_shared_core(self):
+        for path in [
+            "core/crates/core/src/lib.rs",
+            "core/crates/drivers/postgres/Cargo.toml",
+            ".github/workflows/core.yml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "true")
+                self.assertEqual(self.verdict_after("linux-docs", path), "true")
+                self.assertEqual(self.verdict_after("macos", path), "false")
+        self.assertEqual(self.verdict_after("linux", "core/AGENTS.md"), "false")
+        self.assertEqual(self.verdict_after("linux-docs", "core/docs/decisions/0001-shared-core.md"), "true")
+
+    def test_linux_runs_on_the_workspace_files_at_the_top(self):
+        for path in [
+            "Cargo.toml",
+            "Cargo.lock",
+            "rust-toolchain.toml",
+            "rustfmt.toml",
+            "clippy.toml",
+            "deny.toml",
+            ".config/nextest.toml",
+        ]:
+            with self.subTest(path=path):
+                self.assertEqual(self.verdict_after("linux", path), "true")
+                self.assertEqual(self.verdict_after("macos", path), "false")
+        self.assertEqual(self.verdict_after("linux", "apple/Packages/TableProCore/Package.toml"), "false")
+
     def test_linux_docs_runs_on_every_linux_path(self):
         for path in ["linux/crates/app/src/main.rs", ".github/workflows/build-linux.yml"]:
             with self.subTest(path=path):
@@ -170,6 +198,8 @@ class DetectChangedPathsTests(unittest.TestCase):
             ".github/plugin-registry.json",
             "apple/scripts/release/build.sh",
             "apple/scripts/release/package.sh",
+            "apple/scripts/release/dmg.sh",
+            "apple/scripts/release/dmg.DS_Store",
             "apple/scripts/release/registry.py",
             "apple/scripts/release/notes.py",
             "apple/scripts/release/version.py",
@@ -219,6 +249,18 @@ class DetectChangedPathsTests(unittest.TestCase):
             with self.subTest(suite=suite):
                 self.assertEqual(self.verdict_after(suite, "apple/scripts/localization.py"), "true")
                 self.assertEqual(self.verdict_after(suite, "apple/scripts/test_localization.py"), "false")
+
+    def test_ios_and_linux_run_on_the_function_names_both_apps_share(self):
+        spec = self.repo / "apple/TableProMobile/project.yml"
+        spec.parent.mkdir(parents=True)
+        spec.write_text("sources:\n  - path: ../Packages/TableProCore\n", encoding="utf-8")
+        self.seed = self.commit([])
+        shared = "core/crates/core/tests/fixtures/state_changing_functions.json"
+        for suite in ["ios", "linux"]:
+            with self.subTest(suite=suite):
+                self.assertEqual(self.verdict_after(suite, shared), "true")
+        self.assertEqual(self.verdict_after("ios", "core/crates/core/tests/fixtures/other.json"), "false")
+        self.assertEqual(self.verdict_after("macos", shared), "false")
 
     def test_macos_runs_on_the_build_setup_action(self):
         self.assertEqual(self.verdict_after("macos", ".github/actions/prepare-build/action.yml"), "true")

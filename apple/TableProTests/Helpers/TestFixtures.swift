@@ -11,6 +11,24 @@ import Testing
 @testable import TablePro
 
 enum TestFixtures {
+    static func viewTarget(
+        base: PluginViewBaseTable = PluginViewBaseTable(name: "t"),
+        keys: [String],
+        readOnly: Set<String> = [],
+        operations: PluginViewWriteOperations = .all,
+        baseColumnNames: [String: String] = [:],
+        baseColumns: [String: PluginViewBaseColumn] = [:]
+    ) -> PluginViewWriteTarget {
+        PluginViewWriteTarget(
+            baseTable: base,
+            keyColumns: keys,
+            readOnlyColumns: readOnly,
+            operations: operations,
+            baseColumnNames: baseColumnNames,
+            baseColumns: baseColumns
+        )
+    }
+
     // MARK: - Database Types
 
     static let allDatabaseTypes: [DatabaseType] = [

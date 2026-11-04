@@ -93,8 +93,8 @@ case "$ENGINE" in
         READY=(clickhouse-client --password "$PASSWORD_DEFAULT" --query "SELECT 1")
         ;;
     duckdb)
-        FOLDER=DuckDBDriverPlugin CLASS=DuckDBPlugin C_MODULE=CDuckDB PRODUCTS=""
-        LINK="$ROOT/Libs/libduckdb.a -lc++"
+        FOLDER=DuckDBDriverPlugin CLASS=DuckDBPlugin C_MODULE=CDuckDB PRODUCTS="TableProSQLVocabulary"
+        LINK="-Xlinker -force_load -Xlinker $ROOT/Libs/libduckdb.a -lc++"
         ;;
     mssql)
         FOLDER=MSSQLDriverPlugin CLASS=MSSQLPlugin C_MODULE=CFreeTDS

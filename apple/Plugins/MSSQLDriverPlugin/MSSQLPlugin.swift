@@ -9,6 +9,7 @@ import TableProCoreTypes
 import TableProKerberos
 import TableProMSSQLCore
 import TableProPluginKit
+import TableProSQLQuoting
 import TableProSQLVocabulary
 
 // MARK: - Core ↔ Plugin Bridges
@@ -142,6 +143,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let databaseDisplayName = "SQL Server"
     static let iconName = "mssql-icon"
     static let defaultPort = 1_433
+    // FreeTDS checks the hostname only against the host it dials, so Verify Identity cannot pass through a forward.
+    static let sslModesThroughTunnel: [SSLMode] = [.disabled, .preferred, .required, .verifyCa]
     static let additionalConnectionFields: [ConnectionField] = [
         ConnectionField(
             id: MSSQLConnectionOptions.AdditionalFieldKey.authMethod,
@@ -323,7 +326,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func quoteIdentifier(_ name: String) -> String {
-        "[\(MSSQLSchemaQueries.escapeBracket(name))]"
+        SQLQuoting.identifier(name, quote: .bracket)
     }
 
     // MARK: - View Templates
@@ -389,12 +392,12 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 database: config.database,
                 schema: currentSchemaName,
                 encryptionLevel: MSSQLSSLMapping.encryptionLevel(for: config.ssl.mode),
+                certificateVerification: MSSQLSSLMapping.certificateVerification(for: config.ssl.mode),
                 loginTimeoutSeconds: max(1, (remainingMilliseconds + 999) / 1_000),
                 authMethod: authMethod,
                 kerberosCachePath: kerberosCachePath,
                 kerberosServicePrincipal: kerberosServicePrincipal
             )
-            options.certificateVerification = MSSQLSSLMapping.certificateVerification(for: config.ssl.mode)
             options.caCertificatePath = config.ssl.caCertificatePath
             options.fedAuthToken = fedAuthToken
             conn = FreeTDSConnection(options: options, connectTimeoutMilliseconds: remainingMilliseconds)
@@ -419,7 +422,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
            !serverSchema.isEmpty {
             currentSchemaName = serverSchema
         } else {
-            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self.currentSchemaName, privacy: .public)")
+            Self.logger.warning("SELECT SCHEMA_NAME() returned no value; keeping \(self.currentSchemaName, privacy: .private(mask: .hash))")
         }
 
         let formSchema = config.additionalFields["mssqlSchema"]
@@ -438,7 +441,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         deadline: MSSQLConnectDeadline
     ) async throws -> String? {
         guard authMethod == .windows else { return nil }
-        let tunneledHost = config.additionalFields["preTunnelHost"].flatMap { $0.isEmpty ? nil : $0 }
+        let tunneledHost = config.tunneledServerName
         let host = tunneledHost ?? config.host
         let port = tunneledHost == nil
             ? config.port
@@ -958,6 +961,12 @@ enum MSSQLPluginError: Error {
     case connectionFailed(String)
     case notConnected
     case queryFailed(String)
+}
+
+extension MSSQLPluginError {
+    init(_ refusal: MSSQLDefinitionRefusal) {
+        self = .queryFailed(refusal.reason)
+    }
 }
 
 extension MSSQLPluginError: PluginDriverError {

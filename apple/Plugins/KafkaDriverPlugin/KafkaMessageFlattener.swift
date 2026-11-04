@@ -1,4 +1,5 @@
 import Foundation
+import TableProKafkaCore
 import TableProPluginKit
 
 /// Turns Kafka messages into grid rows.
@@ -95,11 +96,9 @@ enum KafkaMessageFlattener {
         return .text("{\(pairs.joined(separator: ","))}")
     }
 
-    /// A column is text only if every non-null payload on the page decodes as UTF-8. One
-    /// binary value is enough to make the whole column binary, because rendering a binary
-    /// payload through a text column is the lossier of the two mistakes.
+    // Bytes shown as text is the lossier mistake, and a Schema Registry value's leading zero can sit in valid UTF-8.
     private static func allDecodeAsText<S: Sequence>(_ payloads: S) -> Bool where S.Element == Data? {
-        for case let payload? in payloads where String(data: payload, encoding: .utf8) == nil {
+        for case let payload? in payloads where payload.first == 0 || String(data: payload, encoding: .utf8) == nil {
             return false
         }
         return true

@@ -317,6 +317,47 @@ struct CascadeDeletePlanTests {
         #expect(root(editing: ["name"]).editsKeyColumns(of: keys, tableNames: names) == false)
         #expect(root(editing: []).editsKeyColumns(of: keys, tableNames: names) == false)
     }
+
+    @Test("Rows deleted through a view cascade from its table, under the table's column names")
+    func viewDeleteStartsAtTheBaseTable() {
+        let viewRoot = CascadeDeleteRoot(
+            table: "v_customers",
+            columns: ["customer_id", "label", "total"],
+            primaryKeyColumns: ["customer_id"],
+            rows: [[.text("1"), .text("a"), .text("3")]],
+            editedColumns: ["label"]
+        )
+        let target = TestFixtures.viewTarget(
+            base: PluginViewBaseTable(schema: "public", name: "customers"),
+            keys: ["customer_id"],
+            readOnly: ["total"],
+            baseColumnNames: ["customer_id": "id", "label": "name"]
+        )
+
+        let root = viewRoot.onBaseTable(of: target)
+
+        #expect(root.table == "customers")
+        #expect(root.columns == ["id", "name"])
+        #expect(root.rows == [[.text("1"), .text("a")]])
+        #expect(root.primaryKeyColumns == ["id"])
+        #expect(root.editedColumns == ["name"])
+        #expect(root.primaryKeyRows == .keyed(table: "customers", columns: ["id"], values: [["1"]]))
+    }
+
+    @Test("A view's table in another database cannot be previewed, one in another schema can")
+    func viewCascadeScope() {
+        let scope = DatabaseScope(connectionId: UUID(), database: "shop", schema: "reporting")
+        func plan(_ base: PluginViewBaseTable?) -> DataWritePlan {
+            var plan = DataWritePlan(scope: scope, databaseType: .postgresql, steps: [])
+            plan.viewTarget = base.map { TestFixtures.viewTarget(base: $0, keys: ["id"]) }
+            return plan
+        }
+
+        #expect(plan(nil).cascadeScope == scope)
+        #expect(plan(PluginViewBaseTable(schema: "public", name: "t")).cascadeScope?.schema == "public")
+        #expect(plan(PluginViewBaseTable(database: "shop", name: "t")).cascadeScope == scope)
+        #expect(plan(PluginViewBaseTable(database: "archive", name: "t")).cascadeScope == nil)
+    }
 }
 
 struct ReferencingKeyTests {

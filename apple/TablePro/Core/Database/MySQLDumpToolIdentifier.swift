@@ -55,11 +55,28 @@ enum MySQLDumpToolIdentifier {
     /// alone makes a 5.7 client look newer than an 8.4 one, which is the wrong way round for every
     /// question worth asking of it.
     static func majorVersion(fromVersionText versionText: String?) -> Int? {
+        release(fromVersionText: versionText, markers: [#"\bDistrib\s+"#, #"\bVer\s+"#])?.major
+    }
+
+    // MariaDB 11 and later print `mariadb from 11.4.2-MariaDB, client 15.2 for ...`, with no `Ver`.
+    static func release(fromVersionText versionText: String?) -> NativeDumpToolRelease? {
+        release(fromVersionText: versionText, markers: [#"\bDistrib\s+"#, #"\bfrom\s+"#, #"\bVer\s+"#])
+    }
+
+    private static func release(fromVersionText versionText: String?, markers: [String]) -> NativeDumpToolRelease? {
         guard let versionText else { return nil }
-        for pattern in [#"\bDistrib\s+"#, #"\bVer\s+"#] {
+        for pattern in markers {
             guard let marker = versionText.range(of: pattern, options: .regularExpression) else { continue }
-            let digits = versionText[marker.upperBound...].prefix { $0.isNumber }
-            if let major = Int(digits) { return major }
+            let numbers = versionText[marker.upperBound...]
+                .prefix { $0.isASCII && ($0.isNumber || $0 == ".") }
+                .split(separator: ".")
+                .compactMap { Int($0) }
+            guard let major = numbers.first else { continue }
+            return NativeDumpToolRelease(
+                major: major,
+                minor: numbers.count > 1 ? numbers[1] : 0,
+                patch: numbers.count > 2 ? numbers[2] : 0
+            )
         }
         return nil
     }

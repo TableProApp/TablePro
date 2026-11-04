@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 import TableProSQLGrammar
 import TableProUtilities
 
@@ -19,16 +20,9 @@ internal enum ExternalStatementGateError: LocalizedError, Equatable {
     }
 }
 
-/// What every caller outside the app's own windows has to clear before a statement reaches a driver.
-///
-/// MCP and AppleScript ask the same four questions of a statement and then hand it to the same
-/// `ExecutionGate`. They used to be one method inside `MCPStatementGate`, which meant a second
-/// transport could only get the policy by copying it, and a copied policy is a policy that drifts.
-///
-/// It is two entry points rather than one because the order matters. `classify` refuses a statement
-/// on the connection's own terms and prompts nobody; `authorizeExecution` is where safe mode may put
-/// a dialog in front of a person. A transport with a consent step of its own (MCP's elicitation)
-/// runs it between the two, so nobody is ever asked to approve a statement that was already refused.
+// What MCP, the assistant, AppleScript and Shortcuts clear before a statement reaches a driver. `classify` refuses
+// on the connection's own terms and connects nothing; `approve` asks Safe Mode about the operation as it will run.
+// The caller resolves the scope and builds the statements between the two.
 internal enum ExternalStatementGate {
     internal struct Statement: Sendable {
         internal let sql: String
@@ -66,6 +60,10 @@ internal enum ExternalStatementGate {
     /// The refusals a connection's own settings make, before anyone is prompted about anything.
     @discardableResult
     internal static func classify(_ statement: Statement) throws -> QueryClassification {
+        if let refusal = privateRequestRefusal(sql: statement.sql) {
+            throw ExternalStatementGateError.denied(refusal)
+        }
+
         let classification = QueryClassifier.classify(statement.sql, databaseType: statement.databaseType)
 
         guard !classification.reachesFilesystemOrExecutesCode else {
@@ -155,29 +153,51 @@ internal enum ExternalStatementGate {
         )
     }
 
-    /// Safe Mode, and the confirmation or biometric prompt it asks for.
-    internal static func authorizeExecution(
-        sql: String,
-        connectionId: UUID,
-        databaseType: DatabaseType,
-        caller: OperationCaller,
-        capabilities: CallerCapabilities,
-        operationDescription: String,
-        kind: OperationKind? = nil,
-        gate: any ExecutionGate = ExecutionGateProvider.shared
-    ) async throws {
+    // Drivers decode these from any caller, some through a lexer of their own, so a UTF-16 match anywhere counts.
+    internal static func privateRequestRefusal(sql: String) -> String? {
+        guard driverRequestMarkers.contains(where: { sql.range(of: $0, options: .literal) != nil }) else { return nil }
+        return String(
+            localized: """
+            TablePro builds this request for its own grid, so it cannot be sent from outside the app. \
+            Send the statement it stands for instead.
+            """
+        )
+    }
+
+    private static let driverRequestMarkers = [
+        "BIGQUERY_BROWSE:", "BIGQUERY_COMBINED:", "BIGQUERY_FILTER:", "BIGQUERY_SEARCH:",
+        "BIGTABLE_BROWSE:",
+        "ELASTICSEARCH_EXPORT:", "ELASTICSEARCH_SEARCH:", "ELASTICSEARCH_WRITE:",
+        "ETCD_COUNT:", "ETCD_RANGE:", "ETCD_REFUSAL:",
+        "FIREBASE_BROWSE:",
+        "MEMCACHED_BROWSE:", "MEMCACHED_REFUSAL:",
+        "QDRANT_BROWSE:", "QDRANT_EXPORT:", "QDRANT_INSERT_CHECK:",
+        "SPANNER_BROWSE:",
+        "TYPESENSE_EXPORT:", "TYPESENSE_SEARCH:", "TYPESENSE_WRITE:",
+        "WEAVIATE_EXPORT:", "WEAVIATE_SEARCH:", "WEAVIATE_WRITE:",
+        "/* TablePro browse ",
+    ]
+
+    // Safe Mode and the prompt it asks for, on the operation exactly as it will run. The answer is the only way to
+    // get an `ApprovedOperation`, which is what `DatabaseAccessBridge` takes from an external caller.
+    internal static func approve(_ pending: PendingOperation, gate: any ExecutionGate) async throws -> ApprovedOperation {
         let decision = await gate.authorize(
             OperationRequest(
-                connectionId: connectionId,
-                databaseType: databaseType,
-                sql: sql,
-                kind: kind ?? OperationKind.from(QueryClassifier.classifyTier(sql, databaseType: databaseType)),
-                caller: caller,
-                capabilities: capabilities,
-                operationDescription: operationDescription
+                connectionId: pending.scope.connectionId,
+                databaseType: pending.databaseType,
+                sql: pending.gradedSQL,
+                kind: pending.kind,
+                caller: pending.caller,
+                capabilities: pending.capabilities,
+                operationDescription: pending.operationDescription,
+                scope: pending.scope,
+                statements: pending.displayStatements
             )
         )
-        if case .denied(let reason, _) = decision {
+        switch decision {
+        case .authorized(let receipt):
+            return ApprovedOperation(pending, receipt: receipt)
+        case .denied(let reason, _):
             throw ExternalStatementGateError.denied(reason)
         }
     }
@@ -193,5 +213,137 @@ internal enum ExternalStatementGate {
         if QueryClassifier.isDangerousQuery(sql, databaseType: databaseType) { return true }
         guard safeModeLevel.requiresConfirmation else { return false }
         return classification.tier != .safe || safeModeLevel.appliesToAllQueries
+    }
+
+    // For an operation that may have no text of its own: a count, a database the driver creates, a transaction.
+    internal static func requiresUserConsent(
+        kind: OperationKind,
+        sql: String?,
+        databaseType: DatabaseType,
+        safeModeLevel: SafeModeLevel
+    ) -> Bool {
+        if kind.declaresDestructive { return true }
+        if let sql,
+           requiresUserConsent(
+               classification: QueryClassifier.classify(sql, databaseType: databaseType),
+               sql: sql,
+               databaseType: databaseType,
+               safeModeLevel: safeModeLevel
+           ) {
+            return true
+        }
+        guard safeModeLevel.requiresConfirmation else { return false }
+        return kind.declaresWrite || safeModeLevel.appliesToAllQueries
+    }
+}
+
+internal struct OperationStatement: Sendable, Equatable {
+    internal let sql: String
+    internal let parameters: [PluginCellValue]
+
+    internal init(sql: String, parameters: [PluginCellValue] = []) {
+        self.sql = sql
+        self.parameters = parameters
+    }
+
+    internal init(bound statement: ParameterizedStatement) {
+        self.init(sql: statement.sql, parameters: statement.parameters.map(PluginDriverAdapter.cellValue(for:)))
+    }
+
+    // As `DatabaseDriver` takes them; the adapter turns each back into the same cell.
+    internal var boundValues: [Any?] {
+        parameters.map { cell -> Any? in
+            switch cell {
+            case .null: return nil
+            case .text(let text): return text
+            case .bytes(let data): return data
+            }
+        }
+    }
+}
+
+internal enum OperationUnit: Sendable, Equatable {
+    case statement
+    // A SQL Server script, run batch by batch at its GO lines.
+    case script
+}
+
+// What a caller asks `ExternalStatementGate.approve` to let run: the statements in their scope, before anyone said yes.
+internal struct PendingOperation: Sendable {
+    internal let scope: DatabaseScope
+    internal let databaseType: DatabaseType
+    internal let statements: [OperationStatement]
+    internal let kind: OperationKind
+    internal let unit: OperationUnit
+    internal var caller: OperationCaller
+    internal var capabilities: CallerCapabilities
+    internal let operationDescription: String
+    // The text Safe Mode grades. Nil for an operation the driver builds itself, or rows of one statement shape.
+    internal let gradedSQL: String?
+    // Each statement with its values written in, as the person approving it reads it.
+    internal let displayStatements: [String]
+
+    internal init(
+        scope: DatabaseScope,
+        databaseType: DatabaseType,
+        statements: [OperationStatement],
+        kind: OperationKind,
+        unit: OperationUnit = .statement,
+        caller: OperationCaller,
+        capabilities: CallerCapabilities,
+        operationDescription: String,
+        gradedSQL: String? = nil,
+        displayStatements: [String]? = nil
+    ) {
+        self.scope = scope
+        self.databaseType = databaseType
+        self.statements = statements
+        self.kind = kind
+        self.unit = unit
+        self.caller = caller
+        self.capabilities = capabilities
+        self.operationDescription = operationDescription
+        self.gradedSQL = gradedSQL ?? (statements.count == 1 ? statements.first?.sql : nil)
+        self.displayStatements = displayStatements
+            ?? statements.map { SQLParameterInliner.inline($0, databaseType: databaseType) }
+    }
+}
+
+// An operation Safe Mode approved, exactly as it runs. Only `ExternalStatementGate.approve` makes one.
+internal struct ApprovedOperation: Sendable {
+    internal let scope: DatabaseScope
+    internal let databaseType: DatabaseType
+    internal let statements: [OperationStatement]
+    internal let kind: OperationKind
+    internal let unit: OperationUnit
+    internal let caller: OperationCaller
+    internal let receipt: OperationReceipt
+    internal let context: PluginStatementContext
+
+    fileprivate init(_ pending: PendingOperation, receipt: OperationReceipt) {
+        scope = pending.scope
+        databaseType = pending.databaseType
+        statements = pending.statements
+        kind = pending.kind
+        unit = pending.unit
+        caller = pending.caller
+        self.receipt = receipt
+        context = Self.context(for: pending)
+    }
+
+    private static func context(for pending: PendingOperation) -> PluginStatementContext {
+        let graded = pending.gradedSQL.map { [$0] } ?? pending.statements.map(\.sql)
+        let tiers = graded.map { QueryClassifier.classifyTier($0, databaseType: pending.databaseType) }
+        let approvedAsDestructive = pending.kind.declaresDestructive
+            || tiers.contains(.destructive)
+            || graded.contains { QueryClassifier.isDangerousQuery($0, databaseType: pending.databaseType) }
+        var context = PluginStatementContext()
+        context.origin = .external
+        context.hostSplit = true
+        // An approval as a read is enforced as one, whatever the text grades.
+        context.readOnly = !pending.kind.declaresWrite
+        context.allowsDestructive = approvedAsDestructive && pending.capabilities.contains(.mayRunDestructive)
+        context.allowsServerCode = false
+        return context
     }
 }

@@ -21,6 +21,7 @@ public enum PluginDriverUnsupportedOperation: Error, LocalizedError, Sendable {
     case renameSchema
     case writeDocument
     case explainPlan
+    case importExportedDatabase
 
     public var errorDescription: String? {
         switch self {
@@ -34,6 +35,8 @@ public enum PluginDriverUnsupportedOperation: Error, LocalizedError, Sendable {
             return String(localized: "This database does not store whole documents")
         case .explainPlan:
             return String(localized: "This driver cannot explain a statement")
+        case .importExportedDatabase:
+            return String(localized: "This driver cannot restore an exported folder. Update it in Settings > Extensions.")
         }
     }
 }

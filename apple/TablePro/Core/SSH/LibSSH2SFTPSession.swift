@@ -232,7 +232,7 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
             }
 
             attempt.finish()
-            Self.logger.info("SFTP subsystem open on \(config.host, privacy: .public)")
+            Self.logger.info("SFTP subsystem open on \(config.host, privacy: .private(mask: .hash))")
             return LibSSH2SFTPSession(
                 chain: chain,
                 sftp: sftp,
@@ -252,7 +252,7 @@ final class LibSSH2SFTPSession: @unchecked Sendable {
             LibSSH2TunnelFactory.cleanupChain(chain, reason: "SFTP session closed")
         }
         guard closed else { return }
-        Self.logger.info("SFTP session closed for \(self.host, privacy: .public)")
+        Self.logger.info("SFTP session closed for \(self.host, privacy: .private(mask: .hash))")
     }
 
     func interruptCurrentOperation() {

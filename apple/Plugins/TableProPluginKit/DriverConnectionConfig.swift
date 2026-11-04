@@ -64,3 +64,13 @@ public struct DriverConnectionConfig: Sendable {
         return try await refreshPassword()
     }
 }
+
+public extension DriverConnectionConfig {
+    // A tunnel's forward is dialed on this Mac, so the certificate names the server behind it. Any other dial is
+    // checked against its own host, whatever a stored or imported field says.
+    var tunneledServerName: String? {
+        guard ["127.0.0.1", "::1", "localhost"].contains(host.lowercased()) else { return nil }
+        let name = additionalFields["preTunnelHost"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
+    }
+}

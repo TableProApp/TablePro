@@ -1,5 +1,6 @@
 import Foundation
 import TableProPluginKit
+import TableProSQLGrammar
 import TableProTeradataCore
 
 extension TeradataPluginDriver {
@@ -11,7 +12,38 @@ extension TeradataPluginDriver {
         TeradataSchemaQueries.quoteIdentifier(name)
     }
 
+    func schemaOperationRefusal(_ operation: PluginSchemaOperation) -> String? {
+        switch operation {
+        case .addColumn(let column):
+            return Self.refusal(for: column)
+        case .modifyColumn(let old, let new) where old.name == new.name:
+            return Self.refusal(for: new)
+        default:
+            return nil
+        }
+    }
+
+    // A copy or a sync takes the type and the default from the source's catalog, and a request runs every statement in it.
+    static func refusal(for column: PluginColumnDefinition) -> String? {
+        if !SQLExpressionFragment.isSingleType(column.dataType, databaseTypeId: "Teradata") {
+            return String(
+                format: String(localized: "The type of column %@ does not read as one type: %@"),
+                column.name,
+                column.dataType
+            )
+        }
+        if let value = column.defaultValue, !value.isEmpty,
+           !SQLExpressionFragment.isSingleExpression(value, databaseTypeId: "Teradata") {
+            return String(
+                format: String(localized: "The default of column %@ is not one SQL expression, so it cannot be written."),
+                column.name
+            )
+        }
+        return nil
+    }
+
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
+        guard Self.refusal(for: column) == nil else { return nil }
         var parts = ["\(identifier(column.name)) \(column.dataType)"]
         if column.autoIncrement {
             parts.append("GENERATED ALWAYS AS IDENTITY")
@@ -39,7 +71,11 @@ extension TeradataPluginDriver {
     }
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
-        var columnDefinitions = definition.columns.compactMap { generateColumnDefinitionSQL(column: $0) }
+        var columnDefinitions: [String] = []
+        for column in definition.columns {
+            guard let sql = generateColumnDefinitionSQL(column: column) else { return nil }
+            columnDefinitions.append(sql)
+        }
         guard !columnDefinitions.isEmpty else { return nil }
         columnDefinitions.append(contentsOf: definition.foreignKeys.map(foreignKeyDefinition))
         var sql = "CREATE MULTISET TABLE \(qualified(definition.tableName)) (\n"

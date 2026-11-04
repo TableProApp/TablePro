@@ -184,10 +184,10 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
     ) -> String? {
         let sorts = sortSpecs(from: sortColumns, columns: columns)
         Self.logger.debug("""
-        buildBrowseQuery table=\(table, privacy: .public) limit=\(limit) offset=\(offset) \
-        columns=[\(columns.joined(separator: ","), privacy: .public)] \
+        buildBrowseQuery table=\(table, privacy: .private(mask: .hash)) limit=\(limit) offset=\(offset) \
+        columns=[\(columns.joined(separator: ","), privacy: .private(mask: .hash))] \
         sortColumns=\(sortColumns.map { "[\($0.columnIndex)]=\($0.ascending ? "asc" : "desc")" }.joined(separator: " "), privacy: .public) \
-        resolvedSorts=\(sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .public)
+        resolvedSorts=\(sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .private(mask: .hash))
         """)
         return ElasticsearchQueryBuilder().buildBrowseQuery(index: table, sorts: sorts, limit: limit, offset: offset)
     }
@@ -205,11 +205,11 @@ internal final class ElasticsearchPluginDriver: PluginDatabaseDriver, @unchecked
     ) -> String? {
         let sorts = sortSpecs(from: sortColumns, columns: columns)
         Self.logger.debug("""
-        buildFilteredQuery table=\(table, privacy: .public) logic=\(logicMode, privacy: .public) limit=\(limit) offset=\(offset) \
-        columns=[\(columns.joined(separator: ","), privacy: .public)] \
+        buildFilteredQuery table=\(table, privacy: .private(mask: .hash)) logic=\(logicMode, privacy: .public) limit=\(limit) offset=\(offset) \
+        columns=[\(columns.joined(separator: ","), privacy: .private(mask: .hash))] \
         filters=\(filters.map { "\($0.column) \($0.op) '\($0.value)'" }.joined(separator: " | "), privacy: .private) \
         sortColumns=\(sortColumns.map { "[\($0.columnIndex)]=\($0.ascending ? "asc" : "desc")" }.joined(separator: " "), privacy: .public) \
-        resolvedSorts=\(sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .public)
+        resolvedSorts=\(sorts.map { "\($0.column) \($0.ascending ? "asc" : "desc")" }.joined(separator: " | "), privacy: .private(mask: .hash))
         """)
         return ElasticsearchQueryBuilder().buildFilteredQuery(
             index: table, filters: filters, logicMode: logicMode, sorts: sorts, limit: limit, offset: offset

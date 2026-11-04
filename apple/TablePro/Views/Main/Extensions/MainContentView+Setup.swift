@@ -30,7 +30,7 @@ extension MainContentView {
 
         if let payload {
             MainContentView.lifecycleLogger.info(
-                "[open] initializeAndRestoreTabs intent=\(String(describing: payload.intent), privacy: .public) windowId=\(windowId, privacy: .public) skipAutoExecute=\(payload.skipAutoExecute)"
+                "[open] initializeAndRestoreTabs intent=\(payload.intent.rawValue, privacy: .public) windowId=\(windowId, privacy: .public) skipAutoExecute=\(payload.skipAutoExecute)"
             )
             if payload.intent == .openContent {
                 await prepareFoundingContent(skipAutoExecute: payload.skipAutoExecute)

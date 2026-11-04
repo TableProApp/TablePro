@@ -51,7 +51,8 @@ struct ConnectionFormEditsCoverageTests {
         "isSample",
         "isFavorite",
         "passwordSource",
-        "sshRoute"
+        "sshRoute",
+        "origin"
     ]
 
     private static func storedPropertyNames() -> Set<String> {
@@ -109,6 +110,7 @@ struct ConnectionFormEditsCoverageTests {
         original.aiAlwaysAllowedTools = ["run_query"]
         original.passwordSource = .env(variable: "PGPASSWORD")
         original.iconName = "server.rack"
+        original.origin = .imported
 
         let result = ConnectionFormEdits(
             name: original.name,

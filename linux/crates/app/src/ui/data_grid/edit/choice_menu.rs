@@ -196,7 +196,7 @@ fn item_label(label: &str) -> String {
 /// The cell's value as text, `None` for NULL or DEFAULT.
 fn chosen(column: &GridColumn, input: &CellInput) -> Option<String> {
     match input {
-        CellInput::Default | CellInput::Value(Value::Null) => None,
+        CellInput::Default | CellInput::Expression(_) | CellInput::Value(Value::Null) => None,
         CellInput::Value(value) => match edit_text(value, column.value_type()) {
             EditText::Editable(text) => Some(text),
             EditText::ReadOnly(_) => None,

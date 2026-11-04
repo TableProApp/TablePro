@@ -1,13 +1,12 @@
 # Architecture
 
-TablePro Linux is a layered Rust workspace with strict, one-directional dependencies. The shape is chosen so that adding a database engine touches one crate, replacing the GUI framework would touch one crate, and the domain layer never imports either.
+TablePro for Linux is the GTK app over the shared Rust core. This document covers the app; `../core/ARCHITECTURE.md` covers the core's crates, their dependency graph and the driver layer. The shape is chosen so that adding a database engine touches one crate, replacing the GUI framework would touch one crate, and the domain layer never imports either.
 
 ## Crate layout
 
 ```
 linux/
 ├── meson.build                    build entry point; owns install and the build-time config
-├── Cargo.toml                     workspace manifest
 ├── about.toml                     cargo-about settings for the third-party license notices
 ├── data/                          desktop entry, D-Bus service, AppStream metainfo and screenshots, GSettings schema, man page, icons, GResource, licenses
 ├── build-aux/flatpak/             Devel Flatpak manifest, lint exceptions and krb5.conf
@@ -16,57 +15,18 @@ linux/
 ├── build-aux/about/               templates that turn Cargo.lock into data/licenses
 ├── po/                            translation catalogue
 └── crates/
-    ├── ai/                        the AI assistant's providers, prompts and replies, no GUI deps
     ├── app/                       binary, the GTK application, its windows and views
-    ├── core/                      domain types and the driver contract, no GUI deps
-    ├── mcp/                       the MCP server: transport, token and tools, no GUI deps
-    ├── net/                       direct TCP transport and rustls client configs
-    ├── ssh/                       system OpenSSH transport and the askpass helper
-    ├── session/                   connect, sessions, health monitor, operation runner
-    ├── storage/                   secrets, settings, file persistence
-    ├── test-fixtures/             dev-only container fixtures with a generated PKI
-    ├── test-support/              dev-only fakes and the conformance suites
-    └── drivers/
-        ├── postgres/              tokio-postgres
-        ├── mysql/                 sqlx-mysql, MySQL and MariaDB
-        ├── sqlite/                sqlx-sqlite
-        ├── duckdb/                duckdb, with DuckDB compiled in
-        ├── mssql/                 tiberius
-        ├── clickhouse/            clickhouse over hyper
-        ├── cassandra/             scylla, Cassandra and ScyllaDB
-        ├── redis/                 redis-rs
-        └── mongodb/               the mongodb crate
+    └── platform/                  GSettings, the Secret Service through oo7, GLib's XDG directories
 ```
 
-## Dependency graph
+The Cargo workspace, its `Cargo.toml` and `Cargo.lock`, is the top of the repository.
 
-| Crate | Depends on |
-|---|---|
-| `core` | no workspace crate |
-| `net`, `ssh`, `storage` | `core` |
-| `drivers/postgres`, `drivers/mysql`, `drivers/mssql`, `drivers/clickhouse`, `drivers/cassandra`, `drivers/redis`, `drivers/mongodb` | `core`, `net` |
-| `drivers/sqlite`, `drivers/duckdb` | `core` |
-| `session` | `core`, `net`, `ssh`, `storage` |
-| `mcp` | `core`, `session`, `storage` |
-| `ai` | `core`, `net`, `storage` |
-| `app` | every crate above |
+## Crates
 
-Rules, enforced by review:
+The app's crates are `crates/app` and `crates/platform`; every other crate is the shared core's, under `core/crates` at the top of the repository. `../core/ARCHITECTURE.md` has their layout, the dependency graph and the rules it follows.
 
-- `core` depends on **no other workspace crate**. It holds the domain types and the driver contract, and no I/O beyond the traits.
-- `net`, `ssh` and `storage` depend on `core` only.
-- Each `drivers/<engine>` crate depends on `core`, and on `net` when it speaks TLS or dials TCP. **Drivers never depend on each other, on `session` or on `ssh`.**
-- `session` depends on `core`, `net`, `ssh` and `storage`, and on no driver outside its tests: it reaches drivers through `DriverRegistry`. Its Docker tests take `tablepro-driver-postgres`, `tablepro-driver-redis` and `tablepro-driver-mongodb` as dev-dependencies.
-- `mcp` depends on `core`, `session` and `storage`, and on no driver outside its tests. It reaches the windows and the user through the `McpHost` trait the app implements.
-- `ai` depends on `core`, `net` and `storage`. It speaks the providers' protocols and builds the prompts from what the app hands it; the app decides what a prompt may carry.
-- `app` depends on all of them. It is the only crate that names every driver.
-- `test-support` and `test-fixtures` are dev-dependencies, with one exception: `session` takes `test-support` as an optional dependency behind its `fakes` feature, which only `app`'s dev-dependencies turn on.
-
-Consequences:
-
-- Adding a driver does not touch `core`, `session`, `storage` or any other driver, unless it is the first engine of its data model ([ADR 0021](docs/decisions/0021-engines-without-sql.md)).
-- Replacing the GUI framework would require rewriting only `app`.
-- Drivers are tested against `core` traits without pulling GTK.
+- `app` depends on every core crate and on `platform`. It is the only crate that names every driver, and replacing the GUI framework would rewrite it alone.
+- `platform` (`tablepro-linux-platform`) holds what the core leaves to each platform: GSettings, the Secret Service through oo7 and GLib's XDG directories. It depends on `core` and `storage`.
 
 ## Composition root
 
@@ -129,7 +89,7 @@ Each window is a `SessionWindow` (`crates/app/src/ui/session_window/`) for its c
 - When a run, a save or an export ends in a tab the user is not looking at, the window's `WorkNotifier` sends a desktop notification through `GApplication`: one per tab, with no time threshold, as GNOME Console does. A tab counts as looked at while the window is active and the tab is in front. The notification names the tab and the connection only, since it can show on the lock screen, so an editor tab goes by its number rather than its script. Clicking it runs `app.focus-tab`, which brings the tab forward in its window. It is withdrawn once the tab is in front of an active window, when the tab closes, and when the session goes. A save that settles while a close prompt covering its tab decides is not notified: the prompt waited for it in front of the user, and then closes the tab or asks about it again.
 - The window's content is the page itself, never a wrapper, and is at least 360 by 294 pixels. Each page has its own header bars and its own `AdwToastOverlay`, and the window's toasts go to the page on screen. The main menu comes from `data/resources/gtk/menus.ui`, which `GtkApplication` loads at startup.
 
-The `WorkspaceShell` (`crates/app/src/ui/workspace/workspace_shell.rs`) is what a window has once: the connection tree in the sidebar, the one tab view every session's tabs share, the header bars, the assistant's column and the toasts. Its `front` property is the session of the tab in front, or with no tab the newest session or the one last shown, and the session in front speaks for the window: the header bars, the window title, its banners, its assistant pane and the window's actions read it through bindings. The `Workspace` (`crates/app/src/ui/workspace/`) is one session: its sidebar model, which the tree shows as one list per schema and a search as one flat list of what it found, its tabs, its banners and its assistant pane, and the `title`, `subtitle`, `window-title` and `icon-name` properties the shell binds. The shell's template puts the `AdwTabOverview` at the root, as libadwaita expects, around an `AdwBreakpointBin` with an `AdwOverlaySplitView`: the sidebar and the tabs each have their own header bar. Below 600sp the sidebar collapses into an overlay, and below 450sp an `AdwTabButton` takes the tab bar's place. The `show-sidebar` window action and F9 show and hide the sidebar. The shell adds the window's workspace actions once, each sent to the session in front, and removes them when it shuts down. A workspace follows its session's health and object list through `WatchForwarder`s and tells the window what it holds through its `dirty-changed`, `saves-in-flight-changed`, `work-completed` and `tabs-changed` signals. Its `WorkspaceHandle` runs the saves and tells the close prompts what closing any part of it would lose. Its `ExportLedger` writes exports off the GTK thread: the rows are encoded on the runtime and GIO writes them. An export takes the rows a grid holds, or every row of a table or an editor statement, streamed through `Connection::stream_read` on a read-only connection of its own with no deadline. `ReplaceFileWriter` removes a file the export made when it stops or fails. An existing regular file gets a temporary file beside it, renamed over it at the end, so a stopped export leaves it as it was. GLib truncates a symbolic link's target, a hard-linked file or a file in a folder that refuses the temporary file when the export opens it, and a stopped export then says that file is incomplete. [Workspace tab system](#workspace-tab-system) covers its tabs, and [Sessions and health](#sessions-and-health) the `Session` itself.
+The `WorkspaceShell` (`crates/app/src/ui/workspace/workspace_shell.rs`) is what a window has once: the connection tree in the sidebar, the one tab view every session's tabs share, the header bars, the assistant's column and the toasts. Its `front` property is the session of the tab in front, or with no tab the newest session or the one last shown, and the session in front speaks for the window: the header bars, the window title, its banners, its assistant pane and the window's actions read it through bindings. The `Workspace` (`crates/app/src/ui/workspace/`) is one session: its sidebar model, which the tree shows as one list per schema and a search as one flat list of what it found, its tabs, its banners and its assistant pane, and the `title`, `subtitle`, `window-title` and `icon-name` properties the shell binds. The shell's template puts the `AdwTabOverview` at the root, as libadwaita expects, around an `AdwBreakpointBin` with an `AdwOverlaySplitView`: the sidebar and the tabs each have their own header bar. Below 600sp the sidebar collapses into an overlay, and below 450sp an `AdwTabButton` takes the tab bar's place. The `show-sidebar` window action and F9 show and hide the sidebar. The shell adds the window's workspace actions once, each sent to the session in front, and removes them when it shuts down. A workspace follows its session's health and object list through `WatchForwarder`s and tells the window what it holds through its `dirty-changed`, `saves-in-flight-changed`, `work-completed` and `tabs-changed` signals. Its `WorkspaceHandle` runs the saves and tells the close prompts what closing any part of it would lose. Its `ExportLedger` writes exports off the GTK thread: the rows are encoded on the runtime and GIO writes them. An export takes the rows a grid holds, or every row of a table or an editor statement, streamed through `Connection::stream_read` on a read-only connection of its own with no deadline. `ReplaceFileWriter` removes a file the export made when it stops or fails. An existing regular file gets a temporary file beside it, renamed over it at the end, so a stopped export leaves it as it was. GLib truncates a symbolic link's target, a hard-linked file or a file in a folder that refuses the temporary file when the export opens it, and a stopped export then says that file is incomplete. [Workspace tab system](#workspace-tab-system) covers its tabs, and `../core/ARCHITECTURE.md`, Sessions and health, the `Session` itself.
 
 ## UI architecture
 
@@ -161,102 +121,11 @@ Every surface that shows rows, the table tab, the SQL editor's results and the k
 
 ## Driver layer
 
-How the app reaches a database: the contract in `tablepro-core`, a transport that carries the bytes, TLS each driver builds from the connection's trust settings, and a session that watches the link.
-
-### The contract
-
-`DatabaseDriver` describes an engine before any connection exists, through `DriverCapabilities`, and opens a `Connection`. The `Connection` serves the workspace from a pool; every call takes `CallOptions` (a deadline and a cancel token) and runs on a task the connection owns (`OwnedCalls`), so a stop reaches the server instead of leaving the statement running. Saves report what they left in the database through a `WriteLedger`. Each editor tab gets an `EditorSession` of its own that streams results into a `ResultSink`. [docs/adding-drivers.md](docs/adding-drivers.md) is the full contract, [ADR 0016](docs/decisions/0016-driver-contract-v2.md) the reasons for it, and the engine pages say how each driver meets it: [PostgreSQL](docs/drivers/postgresql.md), [MySQL and MariaDB](docs/drivers/mysql.md), [SQLite](docs/drivers/sqlite.md), [DuckDB](docs/drivers/duckdb.md), [SQL Server](docs/drivers/sql-server.md), [ClickHouse](docs/drivers/clickhouse.md), [Cassandra and ScyllaDB](docs/drivers/cassandra.md), [Redis](docs/drivers/redis.md), [MongoDB](docs/drivers/mongodb.md). An engine without SQL says so through `DriverCapabilities::data_model`: the workspace lists a key-value engine's keys and opens them in key tabs ([ADR 0021](docs/decisions/0021-engines-without-sql.md)), and opens a document engine's collections in table tabs whose statements are the engine's shell calls ([ADR 0026](docs/decisions/0026-documents-in-the-table-tab.md)).
-
-### SQL scripts
-
-`tablepro_core::sql_syntax::script` reads a script the way the engine's own client does. `ScriptPlan::build(text, grammar, settings)` lexes the text once and returns its tokens, its statements, its batches, and a `ScriptDiagnostic` for a string, quoted name, comment or dollar quote left open. Ranges are in bytes; `text_offsets` maps them to the characters GTK counts.
-
-A driver names its grammar through `SqlDialect::grammar`. The rules for each `SqlGrammar` are one table in core (`crates/core/src/sql_syntax/script/script_rules.rs`), so the editor's runs, completion and formatting, the drivers' own splitting and read-only guards, and the history's credential check all read a script the same way. `LexicalSettings` holds what a session can change: whether a backslash escapes in a plain string.
-
-| Grammar | Splits at | Kept whole across `;` | Beyond standard quotes and comments |
-|---|---|---|---|
-| PostgreSQL | `;` | dollar-quoted bodies, the `BEGIN ... END` body of a `CREATE FUNCTION` or `PROCEDURE`, parentheses | `E'...'` escapes, nested block comments, backslash escapes only with `standard_conforming_strings` off |
-| MySQL, MariaDB | `;`, or the delimiter a `DELIMITER` line sets | nothing | backtick names, `"` strings, `#` comments, `--` only before whitespace, a control character or the end of the text, backslash escapes |
-| SQLite | `;` | a `CREATE TRIGGER` body, as `sqlite3_complete` reads it | `[name]` and backtick names |
-| DuckDB | `;` | `$tag$ ... $tag$` strings | `E'...'` escapes, nested block comments |
-| SQL Server | a `GO` line, with an optional count | the whole batch, whatever `;` it holds | `[name]` with `]]` inside, nested block comments |
-| ClickHouse | `;` | heredocs, `$tag$ ... $tag$` | backslash escapes in every quote, `//`, `# ` and `#!` comments, nested block comments |
-| CQL | `;` | `BEGIN ... APPLY BATCH`, as cqlsh keeps it, and `$$ ... $$` function bodies | `''` inside a string and no backslash escapes, `//` comments, a line comment that also ends at a carriage return |
-
-A failed statement stops the rest of a script, except on SQL Server, where each `GO` batch runs on its own as in sqlcmd (`BatchErrorPolicy::ContinueNextBatch`). The editor sends one statement, or one `GO` batch, per run; [docs/state-management.md](docs/state-management.md#the-sql-editor) has the run.
-
-**MySQL stored programs need `DELIMITER`.** The mysql client splits at every `;` outside a quote or a comment, `BEGIN ... END` included, and the plan does the same: `CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END` is three statements, and the server refuses the first. A trigger, procedure, function or event whose body holds a `;` goes between `DELIMITER` lines, as in the mysql client:
-
-```sql
-DELIMITER //
-CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END//
-DELIMITER ;
-```
-
-A `DELIMITER` or `\d` line that starts a line outside a statement is a directive and is never sent. The MySQL driver honours the same lines when a whole script reaches it, and sends text without them as one multi-statement batch, which the server parses itself.
-
-### Connecting
-
-`DriverConnector` in `tablepro-session` turns a saved connection into a connected one:
-
-1. It checks the request against the driver's capabilities: the auth mode, the TLS settings for the route, a required database name.
-2. It builds the transport: `SshSession::connect` and then `SshSession::forward` for an SSH connection, or a `DirectTcpTransport`.
-3. It calls `DatabaseDriver::connect` with `ConnectOptions`: the `NetworkTarget` (transport, credentials, database, TLS settings) or the `FileEndpoint`, the `WorkspaceSettings`, the `LivenessPolicy` and the app's version.
-4. It reads the first catalogue, the schemas and the default schema's objects, under the metadata deadline.
-
-The cancel token is checked between stages, and a stage that finishes after a cancel closes what it built, because a driver blocked in a login cannot always be interrupted.
-
-### Transports
-
-`Transport` (`crates/core/src/transport.rs`) is how a driver reaches a server without knowing whether the route is direct or through SSH:
-
-- `service_endpoint()`: the host and port the user typed, which TLS verifies and Kerberos names.
-- `kind()` and `route()`: `DirectTcp` with a TCP endpoint, or `SshForward` with the Unix socket the forward listens on.
-- `open()`: a new byte stream to the server.
-- `reroute(endpoint)`: the same kind of route to another endpoint, for SQL Server's login routing.
-- `explain_closed_stream()`: why a stream closed, when the transport knows better than "connection lost", as when the SSH master exited.
-
-| | `DirectTcpTransport` (`tablepro-net`) | `SshForwardTransport` (`tablepro-ssh`) |
-|---|---|---|
-| `open` | Resolves the name, then tries each address in turn under the connect timeout | Connects to the forward's Unix socket under the connect timeout |
-| Socket options | `TCP_NODELAY`; keepalive after 30 s idle, every 10 s, 3 probes; `TCP_USER_TIMEOUT` 45 s | OpenSSH's own: `ServerAliveInterval=15`, `ServerAliveCountMax=3` |
-| `reroute` | A new direct transport | A new forward on the same master |
-| `explain_closed_stream` | Nothing to add | The master's exit, or the "open failed" line ssh printed |
-
-PostgreSQL, SQL Server and ClickHouse open every stream through `open()`. sqlx dials its own sockets, so the MySQL driver passes it the route instead: host and port, or the forward's socket path. Nothing relays bytes between the two. scylla dials only a TCP address, so each Cassandra session dials a relay on `127.0.0.1` that serves only this user and carries every connection it accepts over `open()` ([ADR 0023](docs/decisions/0023-loopback-relay-for-cql.md)). The mongodb crate dials its own sockets as well, and gets the host and port on a direct route; it does no TLS over a Unix socket, so through SSH the MongoDB driver listens on a private Unix socket of its own and relays each connection the crate opens there to a stream from `open()`, with its own TLS around it. The socket options above apply only to streams `open()` makes, so a direct MySQL or MongoDB connection has no keepalive and finds a dead peer through the probe and its deadlines.
-
-SSH runs the system OpenSSH client ([ADR 0013](docs/decisions/0013-openssh-client-transport.md)): one ControlMaster (`ssh -M -N -T`) per connection, with the user's `~/.ssh/config` applied, and one `ssh -O forward` Unix socket per server it reaches. The sockets live under `$XDG_RUNTIME_DIR/app/<app id>/ssh/` in directories only the user can open, with mode 0600. Only Flatpak creates `app/<app id>`, so a host install makes the missing levels with mode 0700, each opened without following a symlink and checked to be the user's; with `XDG_RUNTIME_DIR` unset, GLib puts the same layout under the cache directory. Every prompt (host key, password, passphrase, keyboard-interactive) reaches the app through the `tablepro-askpass` helper, and the 20 s handshake timeout pauses while a prompt is open. Under Flatpak, `ssh` comes from the GNOME runtime, and a `ProxyCommand` or `Match exec` that runs a host program, the host's `/etc/ssh` and FIDO keys kept in files do not work.
+The contract, the transports, the trust each engine builds, the liveness bounds and the session's health are the core's: `../core/ARCHITECTURE.md`, Driver layer. What the Linux app adds follows.
 
 ### Trust
 
-A connection's `TlsConfig` holds the `TlsMode`, an optional CA file, an optional client certificate and key, and an optional server name:
-
-- `Disable`: no TLS.
-- `Require`: encrypted, and the certificate is not checked.
-- `VerifyFull`: the certificate must chain to a trusted root and carry the server name.
-
-A CA file goes only with `VerifyFull`, the one mode that checks the certificate. libpq and the mysql client verify against a CA file given with their require mode, so taking one with `Require` and ignoring it would leave a user who expects a check with none. `validate` refuses the pair, the connect dialog shows the CA row only for Verify full, and a saved or imported connection that holds the pair, from a build that allowed it, loads as `VerifyFull` with its CA file: a server the file does not vouch for then fails to connect instead of connecting unchecked.
-
-The name checked is `NetworkTarget::tls_server_name()`: the override when one is set, otherwise the host the user typed, never the address of a local SSH forward. `TlsConfig::validate` refuses a mode, file or override the driver cannot use on that route, and the connect dialog reads the chosen files up front, so a file with no certificate is named before anything connects. A CA, certificate or key file is read only when it is a regular file of at most 1 MiB, and drivers read it on the blocking pool, so a device or a pipe named in an imported connection can neither fill memory nor hold a connect.
-
-Each engine's TLS stack takes trust in its own form, so the driver builds it:
-
-| Engine | `VerifyFull` trusts | Client certificate | A failure is classified from |
-|---|---|---|---|
-| PostgreSQL | The system store (rustls-platform-verifier), plus the CA file | Yes | The rustls error |
-| ClickHouse | The system store (rustls-platform-verifier), plus the CA file | Yes, as the login, with no password sent | The rustls error |
-| MySQL, MariaDB | The system store and the CA file as one PEM bundle (`tablepro_net::tls::ca_bundle_pem`), plus the Mozilla roots compiled into sqlx | Yes | The rustls error |
-| Redis | The system store (rustls-platform-verifier), plus the CA file | Yes | The rustls error |
-| MongoDB, direct | The system store and the CA file as one PEM bundle (`ca_bundle_pem`), written to a private file the mongodb crate reads once as its only roots | Yes | The rustls error |
-| MongoDB, through SSH | The system store (rustls-platform-verifier), plus the CA file | Yes | The rustls error |
-| SQL Server | The system store (loaded by tiberius), plus the CA file | No | rustls's message text, because tiberius keeps nothing else |
-| Cassandra, ScyllaDB | The system store (rustls-platform-verifier), plus the CA file, checked against the server name and not the relay's address (`FixedNameVerifier`) | Yes, with the password login | The rustls error |
-| SQLite | No TLS | | |
-| DuckDB | No TLS | | |
-
-PostgreSQL, ClickHouse, Redis and MongoDB through SSH get their rustls `ClientConfig` from `tablepro_net::tls::build_client_config`, and Cassandra from `build_client_config_checking`, which checks a name it is given in place of the one the client dials. Every engine uses the aws-lc-rs provider ([ADR 0009](docs/decisions/0009-crypto-provider-and-sources.md)). A CA file is added to the engine's roots, never in place of them. `docs/error-handling.md` lists [what each TLS failure means and what the app offers](docs/error-handling.md#tlsfailure-and-its-remedies).
-
-On Linux the system store is the distribution's CA bundle. Under Flatpak it is the runtime's bundle: a CA added on the host with `update-ca-certificates` or `update-ca-trust` is not visible in the sandbox (freedesktop-sdk issue 1905).
+Each engine builds its trust as `../core/ARCHITECTURE.md`, Trust, says. On Linux the system store is the distribution's CA bundle. Under Flatpak it is the runtime's bundle: a CA added on the host with `update-ca-certificates` or `update-ca-trust` is not visible in the sandbox (freedesktop-sdk issue 1905).
 
 #### Choosing a CA file under Flatpak
 
@@ -265,33 +134,11 @@ On Linux the system store is the distribution's CA bundle. Under Flatpak it is t
 - A file chosen from anywhere else comes back from the file chooser portal as a path under `/run/user/<uid>/doc/`. It works for as long as the portal keeps the grant. If it goes, the connect fails naming the CA file, and choosing the file again fixes it. Keeping a copy of the CA in your home folder avoids this.
 - The file is read at every connect, so a replaced CA applies on the next connect.
 
-### Liveness and deadlines
+### Sessions on the desktop
 
-`LivenessPolicy::DESKTOP` bounds every phase of a connection:
+The app tells each session what its connection cannot see, as `../core/ARCHITECTURE.md`, Sessions and health, describes: `GNetworkMonitor` reports a change in the network, and while a session is open a 5 s timer compares `CLOCK_BOOTTIME` with `CLOCK_MONOTONIC` to notice a suspend. A session parked on an SSH host key shows the fingerprint in its banner's Review Key. When the review cannot accept the key, because ssh's configuration takes keys only from known_hosts or the key is revoked, its dialog offers Retry for after the user fixes the key outside TablePro.
 
-| Bound | Value |
-|---|---|
-| TCP connect, per address | 10 s |
-| Login, including TLS | 15 s |
-| TCP keepalive | after 30 s idle, every 10 s, 3 probes |
-| `TCP_USER_TIMEOUT` | 45 s |
-| Probe | 5 s |
-| Wait for a pool slot | 5 s |
-| Cancel grace, after a stop | 5 s |
-| SSH handshake, paused while a prompt is open | 20 s |
-| SSH forward request | 10 s |
-| SSH keepalive | every 15 s, 3 missed |
-| Close | 10 s |
-
-`DefaultDeadlines` in `tablepro-session` sets each operation's deadline: metadata 15 s, a page or a count 60 s, row changes 120 s, schema changes none. A call returns within its deadline plus the cancel grace.
-
-### Sessions and health
-
-A window holds one `Session`. Every use of its connection goes through the `OperationRunner`, which adds no timer of its own: the deadline travels in `CallOptions` so the driver stops the statement on the server. The session's monitor probes every 30 s, retries an unanswered probe after 10 s, and calls the connection lost after three unanswered probes in a row, when a probe finds the link gone, or as soon as `Connection::lost()` fires, which a driver resolves only when the link is gone, never for one dead backend in its pool. It then reconnects on a backoff from 5 s to 60 s. A failure that a retry cannot fix (authentication, TLS, configuration, a host key to review) parks the session until the user acts. A read that failed because its connection was lost runs once more on the replacement link, as does one stopped when the reconnect closed the connection it ran on; a save never does.
-
-The application tells each session what its connection cannot see. When `GNetworkMonitor` reports a change, and when a window adopts a session, it asks whether that session's server, or its first SSH hop, is reachable; a file, a socket and a loopback server are never asked about. A session that loses a server the network cannot reach waits offline, checking every 60 s, and reconnects as soon as the server is reachable again. While a session is open, a 5 s timer compares `CLOCK_BOOTTIME` with `CLOCK_MONOTONIC`, and after a suspend each server is checked again and a session that slept more than 30 s probes its connection. A session parked on an SSH host key keeps the error that parked it, and its banner's Review Key shows the fingerprint. Trusting it retries with ssh's question about that one key answered yes, so ssh still checks the key and writes known_hosts; a changed key is first removed with `ssh-keygen -R`, since ssh never accepts one. When the review cannot accept the key, because ssh's configuration takes keys only from known_hosts or the key is revoked, its dialog offers Retry for after the user fixes the key outside TablePro.
-
-The session's `SchemaCatalog` holds what the window knows about the database: the schemas, each scope's objects and each table's columns. Callers that ask for the same thing at once share one fetch, a fetch runs as its own task so a view that closes does not stop it, and a failed refresh keeps the list it had. A reconnect commits the catalog the new connection read and marks the rest stale; `invalidate_table` does the same for one table after a schema change. The sidebar's tree lists an open connection's schemas, the default one first and the engine's own last, and each schema's tables and views, with one menu whose items carry the table they act on. Its rows come from a `SidebarIndex`, sorted by collation key and given its search keys on a blocking thread, behind a `GListModel` that makes a row's object only when asked for it; `GtkTreeListModel` asks for every table of a schema it opens. Each search, and each new list, picks the rows it keeps on a blocking thread too. What a search finds is a flat `GtkListView`, a section per schema in a `GtkFlattenListModel` that reads only the rows on screen, and it takes a search's rows in one removal and one addition unless a newer search or list overtook them. It follows every schema's list through a watch the window drops before the session closes, and reads that list again when a reconnect commits the default schema's; a refresh that fails keeps the list and says so in a toast. The editor's completion reads the catalog when it opens: the default schema's objects, a named schema's objects after `schema.`, and the columns of the tables the statement names. Its candidates are built with that read on the runtime, and its `ProposalList` ranks them for the typed word and makes a proposal only for a row GtkSourceView shows. Either list thus costs the GTK thread the rows on screen, not the catalog, which the large-catalog case checks with 50,000 tables ([testing.md](docs/testing.md#large-catalog-case)).
+The sidebar's tree lists an open connection's schemas, the default one first and the engine's own last, and each schema's tables and views, with one menu whose items carry the table they act on. Its rows come from a `SidebarIndex`, sorted by collation key and given its search keys on a blocking thread, behind a `GListModel` that makes a row's object only when asked for it; `GtkTreeListModel` asks for every table of a schema it opens. Each search, and each new list, picks the rows it keeps on a blocking thread too. What a search finds is a flat `GtkListView`, a section per schema in a `GtkFlattenListModel` that reads only the rows on screen, and it takes a search's rows in one removal and one addition unless a newer search or list overtook them. It follows every schema's list through a watch the window drops before the session closes, and reads that list again when a reconnect commits the default schema's; a refresh that fails keeps the list and says so in a toast. The editor's completion reads the catalog when it opens: the default schema's objects, a named schema's objects after `schema.`, and the columns of the tables the statement names. Its candidates are built with that read on the runtime, and its `ProposalList` ranks them for the typed word and makes a proposal only for a row GtkSourceView shows. Either list thus costs the GTK thread the rows on screen, not the catalog, which the large-catalog case checks with 50,000 tables ([testing.md](docs/testing.md#large-catalog-case)).
 
 ## Workspace tab system
 
@@ -366,5 +213,5 @@ The platform floor is GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform
 
 - **Plugin system**. Drivers are static. The macOS plugin model does not transfer.
 - **In-process scripting**. No embedded JavaScript / Python / Lua. SQL is enough.
-- **Cross-platform builds**. Linux only. macOS / iOS have their own targets.
+- **Other platforms**. This app is Linux only. The shared core builds for Windows and macOS, whose apps have UIs of their own (`../core/docs/decisions/0001-shared-core.md`).
 - **Hot reload**. Compile-time only. Use `cargo watch` during development.

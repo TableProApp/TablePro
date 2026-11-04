@@ -7,24 +7,21 @@ import Foundation
 import os
 import TableProPostgreSQLCore
 
-/// The type names one connection has learned and the PostGIS types its probe found. They are read and
-/// written both on the connection's queue and off it, so they carry a lock of their own. A learned
-/// name wins over the built-in table, and an oid neither knows is
-/// `PostgreSQLCatalogTypeNames.unresolved`. An oid learned as unresolved counts as learned, so the
-/// catalog is asked about it once.
+// Read and written both on the connection's queue and off it, so it carries a lock of its own. An oid learned as
+// unresolved counts as learned, so the catalog is not asked about it again.
 final class LibPQTypeNameRegistry: Sendable {
     private struct State {
         var learnedNames: [UInt32: String] = [:]
-        var postgisTypes: [UInt32: PostGISType] = [:]
+        var postgisTypes: [UInt32: String] = [:]
     }
 
     private let state = OSAllocatedUnfairLock(initialState: State())
 
-    var postgisTypes: [UInt32: PostGISType] {
+    var postgisTypes: [UInt32: String] {
         state.withLock { $0.postgisTypes }
     }
 
-    func setPostgisTypes(_ types: [UInt32: PostGISType]) {
+    func setPostgisTypes(_ types: [UInt32: String]) {
         state.withLock { $0.postgisTypes = types }
     }
 

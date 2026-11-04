@@ -54,11 +54,15 @@ internal extension MySQLPluginDriver {
             let columnsByTable = try await informationSchemaColumns(schema: schema, table: table)
             return columnsByTable[table] ?? (columnsByTable.count == 1 ? columnsByTable.values.first ?? [] : [])
         }
+        guard !flavor.isStarRocks else {
+            return try await starrocksColumns(database: effectiveSchema(schema), table: table)[table] ?? []
+        }
         let result = try await execute(query: "SHOW FULL COLUMNS FROM \(qualifiedName(table, schema: schema))")
         let catalogDetails = try await fetchCatalogColumnDetails(table: table, schema: schema)
         let createTableDefaults = try await createTableDefaults(
             table: table, schema: schema, showRows: result.rows, catalogDetails: catalogDetails
         )
+        let identity = serverIdentity
 
         let columns = result.rows.compactMap { row -> PluginColumnInfo? in
             guard let name = row[safe: 0]?.asText,
@@ -89,7 +93,9 @@ internal extension MySQLPluginDriver {
                 column: name,
                 extra: extra,
                 dataType: normalizedType,
-                isNullable: isNullable
+                isNullable: isNullable,
+                banner: identity.banner,
+                flavor: identity.flavor
             )
 
             return PluginColumnInfo(
@@ -323,7 +329,8 @@ internal extension MySQLPluginDriver {
         }
     }
 
-    var providesBulkColumnFetch: Bool { true }
+    // StarRocks answers the bulk read by loading every table's schema from the lake behind an external catalog.
+    var providesBulkColumnFetch: Bool { !flavor.isStarRocks }
 
     /// `GENERATION_EXPRESSION` is projected here rather than looked up per table, because a caller
     /// that takes the bulk list has to receive what `fetchColumns` would have given it. Without the
@@ -332,6 +339,7 @@ internal extension MySQLPluginDriver {
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         guard !flavor.isDatabend else { return try await databendAllColumns(schema: schema) }
         let database = effectiveSchema(schema)
+        guard !flavor.isStarRocks else { return try await starrocksColumns(database: database, table: nil) }
         return try await catalogOrShow(
             database: database,
             catalogExists: serverHasInformationSchema,

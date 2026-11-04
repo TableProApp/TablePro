@@ -41,17 +41,14 @@ final class BlobFormattingService {
         return format(value, for: context)
     }
 
-    /// Parse an edited hex string back to a raw binary string.
-    /// Accepts space-separated hex bytes (e.g., "48 65 6C 6C 6F") or continuous hex (e.g., "48656C6C6F").
-    /// Returns nil if the hex string is invalid.
     func parseHex(_ hexString: String) -> String? {
         var cleaned = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleaned.hasPrefix("0x") || cleaned.hasPrefix("0X") {
             cleaned = String(cleaned.dropFirst(2))
         }
-        cleaned = cleaned.replacingOccurrences(of: " ", with: "")
-        cleaned = cleaned.replacingOccurrences(of: "\n", with: "")
-        cleaned = cleaned.replacingOccurrences(of: "\t", with: "")
+        cleaned = cleaned.replacingOccurrences(of: " ", with: "", options: .literal)
+        cleaned = cleaned.replacingOccurrences(of: "\n", with: "", options: .literal)
+        cleaned = cleaned.replacingOccurrences(of: "\t", with: "", options: .literal)
 
         guard !cleaned.isEmpty, cleaned.count % 2 == 0 else { return nil }
 

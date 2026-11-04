@@ -8,21 +8,13 @@ enum ConnectionSignInKind: String, Equatable, CaseIterable {
     case vaultOIDC
 }
 
-/// A driver credential that a person can renew by signing in again.
-///
-/// Connect failures are otherwise terminal: the user reads an error and has nothing to click. A
-/// provider says which failures it recognises and what to run to recover, so both the connection
-/// form and the real connect path can offer the same recovery without either knowing which driver
-/// is involved.
+// The form and the real connect path share one recovery without knowing which driver failed.
 struct ConnectionSignInProvider: Sendable {
     let kind: ConnectionSignInKind
-
-    /// Whether this provider recognises the failure. Kept free of UI so it stays testable.
+    // Free of UI so it stays testable.
     let claims: @Sendable (Error, [String: String]) -> Bool
-
     let title: String
     let message: @Sendable ([String: String]) -> String
-    let signedInMessage: String
     let failureTitle: String
     // Gets the failure it claimed, which can carry what to sign in to.
     let signIn: @MainActor @Sendable (Error, [String: String], NSWindow?) async throws -> Void
@@ -76,7 +68,6 @@ extension ConnectionSignInProvider {
                 AWSSSOLoginService.signInProfileName(from: fields)
             )
         },
-        signedInMessage: String(localized: "AWS SSO sign-in finished. Test the connection again."),
         failureTitle: String(localized: "AWS SSO Sign-In Failed"),
         signIn: { _, fields, _ in
             try await AWSSSOLoginService.signIn(profileName: AWSSSOLoginService.signInProfileName(from: fields))
@@ -88,7 +79,6 @@ extension ConnectionSignInProvider {
         claims: { error, _ in EntraSignInService.needsSignIn(error) },
         title: String(localized: "Microsoft Entra ID Sign-In Required"),
         message: { _ in String(localized: "Sign in to Microsoft Entra ID with your browser?") },
-        signedInMessage: String(localized: "Microsoft Entra ID sign-in finished. Test the connection again."),
         failureTitle: String(localized: "Microsoft Entra ID Sign-In Failed"),
         signIn: { _, fields, window in
             try await EntraSignInService.signIn(fields: fields, window: window)
@@ -100,7 +90,6 @@ extension ConnectionSignInProvider {
         claims: { error, fields in GoogleSignInService.claims(error, fields: fields) },
         title: String(localized: "Google Sign-In Required"),
         message: { _ in String(localized: "Sign in to Google with your browser?") },
-        signedInMessage: String(localized: "Google sign-in finished. Test the connection again."),
         failureTitle: String(localized: "Google Sign-In Failed"),
         signIn: { _, fields, _ in
             try await GoogleSignInService.signIn(fields: fields)
@@ -112,7 +101,6 @@ extension ConnectionSignInProvider {
         claims: { error, _ in (error as? VaultError)?.oidcLogin != nil },
         title: String(localized: "Vault Sign-In Required"),
         message: { _ in String(localized: "Sign in to Vault with your browser?") },
-        signedInMessage: String(localized: "Vault sign-in finished. Test the connection again."),
         failureTitle: String(localized: "Vault Sign-In Failed"),
         signIn: { error, _, _ in
             guard let login = (error as? VaultError)?.oidcLogin else { return }

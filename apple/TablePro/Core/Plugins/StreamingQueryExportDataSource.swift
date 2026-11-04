@@ -13,6 +13,7 @@ import TableProPluginKit
 
 final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked Sendable {
     let databaseTypeId: String
+    let lexicalFeatures: SQLLexicalFeatures
 
     private let query: String
     private let driver: DatabaseDriver
@@ -25,6 +26,7 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
         self.driver = driver
         self.dbType = databaseType
         self.databaseTypeId = databaseType.rawValue
+        self.lexicalFeatures = SQLLexicalResolver.executionFeatures(for: databaseType, session: driver.sessionLexicalState)
     }
 
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
