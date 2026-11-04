@@ -238,6 +238,50 @@ struct StarRocksLiteralTests {
         #expect(StarRocksLiteral.quoted("a\u{0}71") == "'a\\071'")
         #expect(try StarRocksLiteral.inline("SELECT ?", parameters: [.text("x")]) == "SELECT 'x'")
     }
+
+    @Test("A form feed stays a raw character, since StarRocks reads backslash-f as f")
+    func formFeedStaysRaw() {
+        #expect(StarRocksLiteral.quoted("a\u{0C}b") == "'a\u{0C}b'")
+        #expect(starRocksStringValue(of: StarRocksLiteral.quoted("a\u{0C}b")) == "a\u{0C}b")
+    }
+
+    @Test("StarRocks reads every written literal back as the value, as one token")
+    func literalRoundTrip() throws {
+        for value in databendHostileValues(count: 600, seed: 0x57A2_0C45) {
+            let sql = try StarRocksLiteral.inline("SELECT ?", parameters: [.text(value)])
+            let literal = String(sql.dropFirst("SELECT ".count))
+            #expect(starRocksStringValue(of: literal) == value, "\(literal.debugDescription)")
+        }
+    }
+
+    // Measured on StarRocks 4.1.7: `a$$`, `$$x$$`, `1e5$$` and `.5$$` are names, and `$$ x $$` after `1.5` an attachment.
+    @Test("A `$$` in a name or a number opens nothing, and one alone opens an attachment only where it closes")
+    func dollarsFollowStarRocksTokens() throws {
+        let quoted = try StarRocksLiteral.inline("SELECT 1 AS a$$, '$$ --\r? -- ', ?", parameters: [.text("v")])
+        #expect(quoted == "SELECT 1 AS a$$, '$$ --\r? -- ', 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT 1 AS $$x$$, ?", parameters: [.text("v")]) == "SELECT 1 AS $$x$$, 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT 1.5$$ ? $$, ?", parameters: [.text("v")]) == "SELECT 1.5$$ ? $$, 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT 1e5$$, ?", parameters: [.text("v")]) == "SELECT 1e5$$, 'v'")
+        #expect(try StarRocksLiteral.inline("SELECT .5$$ ?", parameters: [.text("v")]) == "SELECT .5$$ 'v'")
+    }
+
+    @Test("Nothing after a `$$` the statement leaves open is bound, since a value holding `$$` would close it")
+    func openAttachmentBindsNothingAfterIt() {
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try StarRocksLiteral.inline("SELECT 1 AS $$, ?", parameters: [.text("$$, (SELECT 2) -- ")])
+        }
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try StarRocksLiteral.inline("SELECT 1 AS $$x, ?", parameters: [.text("$$")])
+        }
+    }
+
+    @Test("A carriage return ends a line comment, so the placeholder after it is bound")
+    func carriageReturnEndsLineComment() throws {
+        let sql = try StarRocksLiteral.inline("SELECT 1 -- x\r, ?", parameters: [.text("v")])
+        #expect(sql == "SELECT 1 -- x\r, 'v'")
+        let crlf = try StarRocksLiteral.inline("SELECT 1 -- ?\r\n, ?", parameters: [.text("v")])
+        #expect(crlf == "SELECT 1 -- ?\r\n, 'v'")
+    }
 }
 
 private struct SplitMix64: RandomNumberGenerator {
@@ -325,3 +369,49 @@ private func databendStringValue(of literal: String) -> String? {
     return nil
 }
 
+// What StarRocks reads from a whole single-quoted literal, or nil when it is not exactly one string token:
+// SINGLE_QUOTED_TEXT in StarRocksLex.g4, then AstBuilder.visitString, which folds `''` before escapeBackSlash.
+private func starRocksStringValue(of literal: String) -> String? {
+    let scalars = Array(literal.unicodeScalars)
+    guard scalars.count >= 2, scalars.first == "'" else { return nil }
+    var index = 1
+    var closed = false
+    while index < scalars.count {
+        switch scalars[index] {
+        case "\\" where index + 1 < scalars.count:
+            index += 2
+        case "'" where index + 1 < scalars.count && scalars[index + 1] == "'":
+            index += 2
+        case "'":
+            closed = index == scalars.count - 1
+            index = scalars.count
+        default:
+            index += 1
+        }
+    }
+    guard closed else { return nil }
+    let body = String(String.UnicodeScalarView(scalars[1..<(scalars.count - 1)]))
+        .replacingOccurrences(of: "''", with: "'", options: .literal)
+    let units = Array(body.utf16)
+    var value: [UInt16] = []
+    var cursor = 0
+    while cursor < units.count {
+        guard units[cursor] == 0x5C, cursor + 1 < units.count else {
+            value.append(units[cursor])
+            cursor += 1
+            continue
+        }
+        switch Unicode.Scalar(units[cursor + 1]).map(Character.init) {
+        case "n": value.append(0x0A)
+        case "t": value.append(0x09)
+        case "r": value.append(0x0D)
+        case "b": value.append(0x08)
+        case "0": value.append(0x00)
+        case "Z": value.append(0x1A)
+        case "_", "%": value += [0x5C, units[cursor + 1]]
+        default: value.append(units[cursor + 1])
+        }
+        cursor += 2
+    }
+    return String(utf16CodeUnits: value, count: value.count)
+}

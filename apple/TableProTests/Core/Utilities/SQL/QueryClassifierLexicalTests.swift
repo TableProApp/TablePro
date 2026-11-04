@@ -189,6 +189,15 @@ struct QueryClassifierLexicalTests {
         #expect(QueryClassifier.classifyTier(sql, databaseType: .databend) == .destructive)
     }
 
+    // Measured on Databend 1.2.880 and 1.2.958: both dropped the table.
+    @Test("A quote inside a Databend hint the server skips hides no DROP from Safe Mode")
+    func databendSkippedHintDoesNotHideADrop() {
+        let sql = "/*+ ' */ SELECT 1 -- ' */ DROP TABLE customers"
+        #expect(QueryClassifier.classifyTier(sql, databaseType: .databend) == .destructive)
+        #expect(QueryClassifier.isWriteQuery(sql, databaseType: .databend))
+        #expect(QueryClassifier.classifyTier("SELECT /*+ SET_VAR(max_threads=1) */ 1", databaseType: .databend) == .safe)
+    }
+
     @Test("A nested comment in front of a statement ends where PostgreSQL ends it")
     func leadingNestedCommentDoesNotHideADrop() {
         let sql = "/* a /* b */ SELECT 1 */ DROP TABLE users"
