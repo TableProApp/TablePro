@@ -386,23 +386,78 @@ fn writes(part: &[Code<'_>], grammar: SqlGrammar) -> bool {
                     // `NEXT VALUE FOR` takes a number from a sequence.
                     || (is(token.text, &["VALUE"]) && follows(index, &["NEXT"]))
                     || calls_mutator(part, index, grammar)
-                    || names_pragma_optimize(token, grammar))
+                    || names_pragma_optimize(part, index, grammar))
         }
-        Kind::Quoted => calls_mutator(part, index, grammar) || names_pragma_optimize(token, grammar),
-        Kind::Literal => names_pragma_optimize(token, grammar),
+        Kind::Quoted => calls_mutator(part, index, grammar) || names_pragma_optimize(part, index, grammar),
+        Kind::Literal => names_pragma_optimize(part, index, grammar),
         _ => false,
     })
 }
 
 /// SQLite runs ANALYZE wherever `pragma_optimize` names a table, called
 /// or not, and takes a quoted name or a string for a table name there.
-fn names_pragma_optimize(token: &Code<'_>, grammar: SqlGrammar) -> bool {
-    let text = token.text;
-    let name = match token.kind {
+/// Where an expression stands it is a value, a column or an alias.
+fn names_pragma_optimize(part: &[Code<'_>], index: usize, grammar: SqlGrammar) -> bool {
+    let text = part[index].text;
+    let name = match part[index].kind {
         Kind::Literal => text.get(1..text.len().saturating_sub(1)).unwrap_or_default(),
         _ => text,
     };
-    grammar == SqlGrammar::Sqlite && name.eq_ignore_ascii_case("pragma_optimize")
+    grammar == SqlGrammar::Sqlite && name.eq_ignore_ascii_case("pragma_optimize") && !in_expression(part, index)
+}
+
+/// Words after which SQLite reads an expression or an alias, never a
+/// table. FROM, JOIN, IN and a schema's `.` lead to a table instead.
+const EXPRESSION_LEADS: [&str; 26] = [
+    "SELECT",
+    "DISTINCT",
+    "ALL",
+    "WHERE",
+    "AND",
+    "OR",
+    "NOT",
+    "ON",
+    "HAVING",
+    "CASE",
+    "WHEN",
+    "THEN",
+    "ELSE",
+    "LIKE",
+    "GLOB",
+    "REGEXP",
+    "MATCH",
+    "IS",
+    "BETWEEN",
+    "ESCAPE",
+    "BY",
+    "AS",
+    "RETURNING",
+    "SET",
+    "LIMIT",
+    "OFFSET",
+];
+
+/// Whether `part[index]` stands where an expression does: after an
+/// operator, a word in `EXPRESSION_LEADS`, or the `(` of a call or of a
+/// list. A `,` or a `(` that may belong to a FROM list counts as a table.
+fn in_expression(part: &[Code<'_>], index: usize) -> bool {
+    let Some(before) = index.checked_sub(1).and_then(|at| part.get(at)) else {
+        return false;
+    };
+    match before.kind {
+        Kind::Equals => true,
+        Kind::Other => before.text != ".",
+        Kind::Word => is(before.text, &EXPRESSION_LEADS),
+        Kind::Open => index
+            .checked_sub(2)
+            .and_then(|at| part.get(at))
+            .is_some_and(|opener| match opener.kind {
+                Kind::Word => !opener.is_word(&["FROM", "JOIN"]),
+                Kind::Comma | Kind::Open => false,
+                _ => true,
+            }),
+        _ => false,
+    }
 }
 
 /// A call of a built-in that changes state, its name quoted or not.
@@ -1669,5 +1724,31 @@ mod tests {
             access("SELECT * FROM pragma_table_info('orders')", SqlGrammar::Sqlite),
             StatementAccess::Read
         );
+    }
+
+    #[test]
+    fn a_pragma_name_as_a_value_column_or_alias_reads_on_sqlite() {
+        for sql in [
+            "SELECT 'pragma_optimize'",
+            "SELECT name FROM sqlite_schema WHERE name = 'pragma_optimize'",
+            "SELECT name FROM sqlite_schema WHERE name IN ('pragma_optimize', 'x')",
+            "SELECT name FROM sqlite_schema WHERE name LIKE 'pragma_optimize'",
+            "SELECT pragma_optimize FROM settings",
+            "SELECT 1 AS pragma_optimize",
+            "SELECT lower('pragma_optimize')",
+            "SELECT 'a' || 'pragma_optimize'",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Read, "{sql}");
+        }
+        for sql in [
+            "SELECT * FROM (pragma_optimize)",
+            "SELECT * FROM orders JOIN 'pragma_optimize'",
+            "SELECT * FROM orders AS o, pragma_optimize",
+            "SELECT 1 WHERE 1 IN pragma_optimize",
+            "SELECT * FROM main.'pragma_optimize'",
+            "SELECT * FROM orders WHERE id IN (SELECT arg FROM pragma_optimize)",
+        ] {
+            assert_eq!(access(sql, SqlGrammar::Sqlite), StatementAccess::Write, "{sql}");
+        }
     }
 }

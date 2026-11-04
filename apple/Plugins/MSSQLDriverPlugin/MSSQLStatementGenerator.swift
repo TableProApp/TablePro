@@ -169,10 +169,19 @@ struct MSSQLStatementGenerator {
             } else {
                 parameters.append(value)
                 conditions.append("\(compared) = ?")
+                if value.asBytes == nil, MSSQLRowMatch.comparesText(typeName: typeName(of: column)) {
+                    parameters.append(value)
+                    conditions.append(MSSQLRowMatch.exactText(Self.quote(column), equals: "?"))
+                }
             }
         }
         guard !conditions.isEmpty else { return nil }
         return (sql: conditions.joined(separator: " AND "), parameters: parameters)
+    }
+
+    private func typeName(of column: String) -> String? {
+        context.columnTypeNames[column]
+            ?? context.columnTypeNames.first { $0.key.caseInsensitiveCompare(column) == .orderedSame }?.value
     }
 
     /// SQL Server refuses `=` on `ntext`, `text`, `image` and `xml` (Msg 402), `sql_variant` (206) and the spatial

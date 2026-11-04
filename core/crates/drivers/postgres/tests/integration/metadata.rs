@@ -1332,3 +1332,56 @@ async fn an_unqualified_user_table_keeps_its_identity_when_it_shares_a_catalog_n
         assert_eq!(columns.len(), 2);
     }
 }
+
+/// With `public` searched ahead of `pg_catalog`, a lookalike in `public`
+/// shares a built-in type's name. A save casts to the column's own type.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_save_casts_to_the_built_in_type_a_lookalike_shares_a_name_with() {
+    let fixture = start().await;
+    let initial = connect(&fixture, false).await;
+    let inet_check = trap("inet_check", "text", "boolean");
+    setup(
+        initial.as_ref(),
+        &[
+            "CREATE TABLE hosts (id int PRIMARY KEY, addr pg_catalog.inet)",
+            "INSERT INTO hosts VALUES (1, '10.0.0.1')",
+            inet_check.as_str(),
+            "CREATE DOMAIN public.inet AS pg_catalog.text CHECK (public.inet_check(VALUE))",
+            "ALTER ROLE CURRENT_USER SET search_path = public, pg_catalog",
+        ],
+    )
+    .await;
+    initial.close().await.unwrap();
+
+    let connection = connect(&fixture, false).await;
+    let target = table("hosts");
+    let columns = connection.fetch_columns(&target, within(CALL)).await.unwrap();
+    let addr = columns.iter().find(|column| column.name == "addr").expect("a column");
+    assert_eq!(
+        addr.column_type
+            .catalog
+            .as_ref()
+            .map(|catalog| catalog.cast_target.as_sql()),
+        Some("pg_catalog.inet")
+    );
+    let identity = connection.row_identity(&target, within(CALL)).await.unwrap();
+    let changes = ChangeSet {
+        changes: vec![RowChange::Update(RowUpdate {
+            key: vec![Value::Int(1)],
+            assignments: vec![(1, CellInput::Value(Value::Text("10.0.0.2".to_owned())))],
+        })],
+    };
+    let dialect = connection.dialect();
+    let plan = plan_save(dialect.as_ref(), &target, &columns, &identity, &changes).expect("a plan");
+
+    connection
+        .write_batch(&plan.batch, within(CALL))
+        .await
+        .expect("the save");
+
+    assert_eq!(
+        text(&scalar(connection.as_ref(), "SELECT pg_catalog.host(addr) FROM hosts").await),
+        "10.0.0.2"
+    );
+}

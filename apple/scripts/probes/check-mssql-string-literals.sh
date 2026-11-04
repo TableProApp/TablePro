@@ -101,6 +101,35 @@ struct Check {
             }
             print("PASS: \(newline.debugDescription) values, row targeting, nested names and LIKE")
         }
+        // Under a SQL collation a varchar key holds both spellings, which compare equal against nvarchar text. A query
+        // that reads the key through a cast to nvarchar reports that type instead.
+        for (keyed, reported) in [(true, "varchar"), (false, "varchar"), (true, "nvarchar")] {
+            _ = try await driver.execute(query: "CREATE TABLE #narrow (k varchar(20) COLLATE SQL_Latin1_General_CP1_CI_AS"
+                + (keyed ? " PRIMARY KEY" : "") + ", v int); INSERT #narrow VALUES (N'Wessels', 0), (N'Weßels', 0)")
+            var context = PluginRowWriteContext()
+            context.columnTypeNames = ["k": reported, "v": "int"]
+            let row: [PluginCellValue] = [.text("Weßels"), .text("0")]
+            let changes = [
+                PluginRowChange(rowIndex: 0, type: .update, cellChanges: [
+                    (columnIndex: 1, columnName: "v", oldValue: .text("0"), newValue: .text("1"))
+                ], originalRow: row),
+                PluginRowChange(rowIndex: 0, type: .delete, cellChanges: [], originalRow: [.text("Weßels"), .text("1")]),
+            ]
+            for change in changes {
+                let writes = try driver.generateRowWrites(
+                    table: "#narrow", schema: nil, columns: ["k", "v"], primaryKeyColumns: keyed ? ["k"] : [],
+                    changes: [change], insertedRowData: [:], deletedRowIndices: [0], insertedRowIndices: [],
+                    context: context
+                ) ?? []
+                for write in writes {
+                    _ = try await driver.executeParameterized(query: write.statement, parameters: write.parameters)
+                }
+                try await expect("SELECT CONVERT(varchar(10), v) FROM #narrow WHERE k = 'Wessels'", "0")
+            }
+            try await expect("SELECT CONVERT(varchar(10), COUNT(*)) FROM #narrow", "1")
+            _ = try await driver.execute(query: "DROP TABLE #narrow")
+        }
+        print("PASS: varchar keys edit only the row with the exact stored text")
         print("PASS: \(checks) SQL Server checks through the shipped driver")
     }
 }
