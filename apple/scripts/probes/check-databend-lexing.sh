@@ -99,6 +99,9 @@ if [ "$BUILD" -ge 884 ]; then paired=kept; else paired=dropped; fi
 report "comment ending in **/ before a DROP" "$(dropped '/** x **/ SELECT 1 /* */ DROP TABLE tp_victim')" "$paired"
 report "empty comment /**/ before a DROP" "$(dropped '/**/ SELECT 1 /* */ DROP TABLE tp_victim')" "$paired"
 report "carriage return in a line comment" "$(dropped "$(printf 'SELECT 1 -- x\rDROP TABLE tp_victim')")" kept
+ask 'CREATE TABLE tp_rows (v INT)' > /dev/null
+ask "INSERT INTO tp_rows SELECT 1 \$\$" > /dev/null
+report "INSERT before text the tokenizer refuses" "$(ask 'SELECT count(*) FROM tp_rows')" 1
 if [ "$BUILD" -ge 652 ]; then wrapped=dropped; else wrapped=kept; fi
 report "DROP under SETTINGS" "$(dropped 'SETTINGS (max_threads=1) DROP TABLE tp_victim')" "$wrapped"
 report "DROP under SETTINGS with no list" "$(dropped 'SETTINGS DROP TABLE tp_victim')" "$wrapped"

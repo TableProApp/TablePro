@@ -141,7 +141,7 @@ private struct Reader {
         case "'", "\"":
             return stringEnd(at: index, quote: scalar).map { ($0, .quoted) }
         case "`":
-            return scalars[(index + 1)...].firstIndex(of: "`").map { ($0 + 1, .quoted) }
+            return backtickNameEnd(at: index).map { ($0, .quoted) }
         case "$":
             return dollarToken(at: index)
         case "@":
@@ -212,6 +212,21 @@ private struct Reader {
             default:
                 cursor += 1
             }
+        }
+        return nil
+    }
+
+    // `` `([^`]|``)*` `` from 1.2.945. An older release ends the name at the doubled backtick and starts another right
+    // after it, which moves no placeholder, hint or keyword, so one reading serves both.
+    private func backtickNameEnd(at index: Int) -> Int? {
+        var cursor = index + 1
+        while cursor < scalars.count {
+            guard scalars[cursor] == "`" else {
+                cursor += 1
+                continue
+            }
+            guard peek(cursor + 1) == "`" else { return cursor + 1 }
+            cursor += 2
         }
         return nil
     }

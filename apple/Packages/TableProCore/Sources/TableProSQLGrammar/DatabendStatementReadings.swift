@@ -14,9 +14,12 @@ enum DatabendStatementReadings {
         var seen: Set<String> = [text]
         var texts: [String] = []
         for rules in DatabendTokenizer.Rules.readings(of: scalars) {
-            var candidates = [code(of: scalars, rules: rules)]
+            var candidates: [String] = []
+            if let whole = code(of: scalars, rules: rules) {
+                candidates.append(whole)
+            }
             if statements.count > 1 {
-                let pieces = statements.map { code(of: Array($0.sql.unicodeScalars), rules: rules) }
+                let pieces = statements.compactMap { code(of: Array($0.sql.unicodeScalars), rules: rules) }
                 candidates.append(pieces.joined(separator: " ;\n"))
             }
             for candidate in candidates where seen.insert(candidate).inserted {
@@ -26,9 +29,12 @@ enum DatabendStatementReadings {
         return texts
     }
 
-    // A hint the parser takes holds settings, never a statement, so it is dropped with the rest.
-    static func code(of scalars: [Unicode.Scalar], rules: DatabendTokenizer.Rules) -> String {
-        let tokens = DatabendTokenizer.read(scalars, rules: rules).tokens
+    // Nil when the server refuses the text before it parses anything. A hint the parser takes holds settings, never a
+    // statement, so it is dropped with the rest.
+    static func code(of scalars: [Unicode.Scalar], rules: DatabendTokenizer.Rules) -> String? {
+        let reading = DatabendTokenizer.read(scalars, rules: rules)
+        let tokens = reading.tokens
+        guard reading.isComplete || parsesWhatItRead(tokens, scalars: scalars) else { return nil }
         var words: [String] = []
         var insideHint = false
         var statementStart = true
@@ -64,6 +70,22 @@ enum DatabendStatementReadings {
             }
         }
         return words.joined(separator: " ")
+    }
+
+    // Planner::parse_sql_inner parses an INSERT, other than INSERT ALL or FIRST, and a REPLACE from the tokens before
+    // the point the tokenizer stopped, and refuses any other statement it cannot tokenize whole.
+    private static func parsesWhatItRead(_ tokens: [DatabendTokenizer.Token], scalars: [Unicode.Scalar]) -> Bool {
+        let words = tokens.prefix(3).map { token in
+            token.kind == .name ? String(String.UnicodeScalarView(scalars[token.range])).uppercased() : ""
+        }
+        switch words.first {
+        case "REPLACE":
+            return true
+        case "INSERT":
+            return !words.contains("ALL") && !words.contains("FIRST")
+        default:
+            return false
+        }
     }
 
     // Past the `( ... )` that may follow `SETTINGS`, whose tokens start at `index`.

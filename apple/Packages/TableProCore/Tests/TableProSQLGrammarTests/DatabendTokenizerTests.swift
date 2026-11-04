@@ -79,6 +79,11 @@ struct DatabendTokenizerTests {
         #expect(Self.kinds("SELECT $1, $a, $") == [.name, .variable, .symbol, .variable, .symbol, .symbol])
     }
 
+    @Test("A doubled backtick stays inside a name")
+    func doubledBacktickStaysInAName() {
+        #expect(Self.spellings("SELECT `a``b`, ?") == ["SELECT", "`a``b`", ",", "?"])
+    }
+
     @Test("A form feed ends a line comment and a carriage return does not")
     func lineCommentEnds() {
         #expect(Self.spellings("SELECT 1 --x\u{0C}, 2") == ["SELECT", "1", ",", "2"])

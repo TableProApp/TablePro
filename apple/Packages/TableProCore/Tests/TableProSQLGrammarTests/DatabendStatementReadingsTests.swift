@@ -58,6 +58,18 @@ struct DatabendStatementReadingsTests {
         #expect(!Self.deletesEveryRow("SETTINGS (max_threads=1) DELETE FROM customers WHERE id = 1"))
     }
 
+    // Measured on 1.2.880 and 1.2.958: the INSERT ran although the server could not tokenize the text after it.
+    @Test("An INSERT before text the server cannot tokenize is still a write")
+    func insertBeforeUntokenizableText() {
+        #expect(Self.tier("/*+ ' */ SELECT 1 -- ' */ INSERT INTO customers SELECT 4 'x") == .write)
+    }
+
+    @Test("A statement one release refuses to tokenize is read only as the releases that run it read it")
+    func refusedReadingAddsNothing() {
+        #expect(!Self.deletesEveryRow("DELETE FROM customers /**/ WHERE id = 1"))
+        #expect(Self.tier("WITH `a``b` AS (SELECT 1) SELECT * FROM `a``b`") == .safe)
+    }
+
     @Test("A DELETE behind a skipped hint deletes every row")
     func deleteBehindASkippedHint() {
         #expect(Self.deletesEveryRow("/*+ ' */ SELECT 1 -- ' */ DELETE FROM customers"))
