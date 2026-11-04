@@ -166,9 +166,9 @@ struct SQLParameterInliner {
         case let doubleVal as Double:
             return String(doubleVal)
         case let stringVal as String:
-            return SQLQuoting.stringLiteral(stringVal, escapes: escapes)
+            return (escapes == .sqlServer ? "N" : "") + SQLQuoting.stringLiteral(stringVal, escapes: escapes)
         default:
-            return SQLQuoting.stringLiteral(String(describing: value), escapes: escapes)
+            return (escapes == .sqlServer ? "N" : "") + SQLQuoting.stringLiteral(String(describing: value), escapes: escapes)
         }
     }
 }
