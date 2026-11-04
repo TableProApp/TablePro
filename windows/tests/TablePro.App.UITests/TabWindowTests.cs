@@ -68,6 +68,26 @@ public sealed partial class ShellTests
 
     [Theory]
     [MemberData(nameof(Themes))]
+    public void ThePrimaryKeepsADropTargetWhenItsOnlyTabMovesOut(string theme)
+    {
+        using var app = AppSession.Relaunch(AppSession.NewDataFolder(theme), theme, maximize: false);
+        app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+        app.TypeInto("Query 1", "SELECT 42;");
+        app.Click(app.Find("FileMenu"), () => app.TryFindMenuItem("Move tab to new window") is not null);
+        app.FindMenuItem("Move tab to new window").Patterns.Invoke.Pattern.Invoke();
+        var child = app.WaitForWindow(SampleWindow);
+        Assert.Equal(string.Empty, AppSession.EditorText(app.FindEditor("Query 1")).Trim());
+        var tab = Tab(app.Find("Tabs", child), "Query 1")!;
+        var strip = AddTabButton(app.Find("Tabs"));
+        app.Drag(child, () => Center(tab.BoundingRectangle), () => Center(strip.BoundingRectangle),
+            () => !app.HasWindow(SampleWindow));
+        app.WaitForClose(SampleWindow);
+        Assert.Equal("SELECT 42;", AppSession.EditorText(app.FindEditor("Query 1")).Trim());
+        app.Screenshot("36-last-tab-returned");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
     public void ADraggedTabTearsOutAndItsWindowClosesWithItsLastTab(string theme)
     {
         using var app = AppSession.Relaunch(AppSession.NewDataFolder(theme), theme, maximize: false);
@@ -180,7 +200,6 @@ public sealed partial class ShellTests
         app.Screenshot("35-window-close-transaction", torn);
         app.Find("PrimaryButton", torn).AsButton().Invoke();
         app.WaitForClose(SampleWindow);
-        app.Chord(() => app.TryFind("SqlEditor") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
         app.TypeInto("Query 1", "SELECT COUNT(*) FROM Track WHERE TrackId = 1 AND Name = 'Pending';");
         app.Chord(() => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
             VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);

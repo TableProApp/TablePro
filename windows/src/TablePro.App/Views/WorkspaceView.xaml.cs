@@ -473,6 +473,12 @@ public sealed partial class WorkspaceView : UserControl
         }
 
         Tabs.TabItems.Remove(item);
+        // Native tear-out cannot drop back into an empty primary strip.
+        if (Tabs.TabItems.Count == 0 && Host is { IsPrimary: true })
+        {
+            NewQueryTab();
+        }
+
         UpdateElsewhereBar();
         CommandsChanged?.Invoke(this, EventArgs.Empty);
     }
