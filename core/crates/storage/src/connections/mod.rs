@@ -15,11 +15,13 @@ use crate::error::StorageError;
 use crate::{ConnectionGroup, ConnectionTag, ConnectionTagName, GroupTree};
 
 mod additions;
+mod cloud;
 mod legacy_groups;
 mod library;
 mod placement;
 
 pub use additions::ImportedConnection;
+pub(crate) use placement::cyclic;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SavedConnection {

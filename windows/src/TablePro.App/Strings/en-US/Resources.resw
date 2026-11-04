@@ -1263,6 +1263,81 @@
   <data name="StatusPageOf" xml:space="preserve">
     <value>{0:N0}-{1:N0} of {2:N0} rows · {3:N0} ms</value>
   </data>
+  <data name="MenuMoveTab.Text" xml:space="preserve">
+    <value>Move tab to new window</value>
+  </data>
+  <data name="MenuMoveTab.AccessKey" xml:space="preserve">
+    <value>M</value>
+  </data>
+  <data name="MenuMoveToNewWindow" xml:space="preserve">
+    <value>Move to new window</value>
+  </data>
+  <data name="MenuCloseThisTab" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="TabWindowTitle" xml:space="preserve">
+    <value>{0} - TablePro</value>
+  </data>
+  <data name="PageSizeButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>Rows per page</value>
+  </data>
+  <data name="GoToPageButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>Go to page</value>
+  </data>
+  <data name="PageSizeLabel" xml:space="preserve">
+    <value>{0:N0} rows</value>
+  </data>
+  <data name="PageSizeOption" xml:space="preserve">
+    <value>{0:N0} rows</value>
+  </data>
+  <data name="PageSizeAll" xml:space="preserve">
+    <value>All rows...</value>
+  </data>
+  <data name="PageSizeCustom" xml:space="preserve">
+    <value>Custom...</value>
+  </data>
+  <data name="PageSizeCaption" xml:space="preserve">
+    <value>Rows per page</value>
+  </data>
+  <data name="PageSizeApply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="AllRowsTitle" xml:space="preserve">
+    <value>Show all rows</value>
+  </data>
+  <data name="AllRowsMessage" xml:space="preserve">
+    <value>This loads all {0:N0} rows on one page. A large table uses a lot of memory.</value>
+  </data>
+  <data name="AllRowsButton" xml:space="preserve">
+    <value>Show all</value>
+  </data>
+  <data name="PageOf" xml:space="preserve">
+    <value>Page {0:N0} of {1:N0}</value>
+  </data>
+  <data name="PageNumber" xml:space="preserve">
+    <value>Page {0:N0}</value>
+  </data>
+  <data name="GoToPageCaption" xml:space="preserve">
+    <value>Go to page</value>
+  </data>
+  <data name="GoToPageAction" xml:space="preserve">
+    <value>Go</value>
+  </data>
+  <data name="NumberRange" xml:space="preserve">
+    <value>Between {0:N0} and {1:N0}</value>
+  </data>
+  <data name="PaginationHeader.Text" xml:space="preserve">
+    <value>Pagination</value>
+  </data>
+  <data name="PageSizeCard.Header" xml:space="preserve">
+    <value>Default page size</value>
+  </data>
+  <data name="PageSizeCard.Description" xml:space="preserve">
+    <value>Rows a new table tab shows on each page</value>
+  </data>
+  <data name="PageSizeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Default page size</value>
+  </data>
   <data name="SshTrustTitle" xml:space="preserve">
     <value>Trust this SSH server?</value>
   </data>

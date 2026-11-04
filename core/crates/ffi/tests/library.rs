@@ -1,3 +1,4 @@
+#![cfg(feature = "engines")]
 #![expect(
     clippy::unwrap_used,
     reason = "the setup helpers fail a test the way the test functions themselves do"

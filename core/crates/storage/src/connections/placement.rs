@@ -106,7 +106,7 @@ pub(super) fn unique(ids: &[Uuid]) -> Vec<Uuid> {
     ids.iter().copied().filter(|id| seen.insert(*id)).collect()
 }
 
-fn cyclic(groups: &[ConnectionGroup]) -> HashSet<Uuid> {
+pub(crate) fn cyclic(groups: &[ConnectionGroup]) -> HashSet<Uuid> {
     let parents: HashMap<Uuid, Option<Uuid>> = groups.iter().map(|group| (group.id, group.parent_id)).collect();
     let mut cyclic = HashSet::new();
     let mut settled = HashSet::new();

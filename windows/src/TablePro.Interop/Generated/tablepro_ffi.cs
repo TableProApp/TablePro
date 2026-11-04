@@ -1013,6 +1013,10 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
@@ -1263,6 +1267,28 @@ static class _UniFFILib {
     public static extern
 #endif
      void uniffi_tablepro_ffi_fn_free_connectionlibrary(ulong @handle,ref UniffiRustCallStatus _uniffi_out_err
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_apply_cloud_pull(ulong @ptr,RustBuffer @pull
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_connectionlibrary_cloud_edits(ulong @ptr,RustBuffer @base
     );
 
     #if NET8_0_OR_GREATER
@@ -2571,6 +2597,28 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_apply_cloud_pull(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_cloud_edits(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_connectionlibrary_add_favorites(
     );
 
@@ -3283,6 +3331,18 @@ static class _UniFFILib {
             }
         }
         {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_apply_cloud_pull();
+            if (checksum != 50423) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_apply_cloud_pull` checksum `50423`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_cloud_edits();
+            if (checksum != 43420) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_cloud_edits` checksum `43420`, library returned `{checksum}`");
+            }
+        }
+        {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_connectionlibrary_add_favorites();
             if (checksum != 46605) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_connectionlibrary_add_favorites` checksum `46605`, library returned `{checksum}`");
@@ -3976,6 +4036,10 @@ class FfiConverterTypeCancelToken: FfiConverter<CancelToken, ulong> {
 
 internal interface IConnectionLibrary {
     /// <exception cref="CoreException"></exception>
+    Task ApplyCloudPull(CloudLibraryPull @pull);
+    /// <exception cref="CoreException"></exception>
+    Task<CloudLibraryRecords> CloudEdits(CloudLibraryRecords @base);
+    /// <exception cref="CoreException"></exception>
     Task AddFavorites(string[] @ids, string? @before);
     /// <exception cref="CoreException"></exception>
     Task<GroupRecord> CreateGroup(string @name, string? @parentId);
@@ -4098,6 +4162,46 @@ internal class ConnectionLibrary : IConnectionLibrary, IDisposable {
         }
     }
 
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task ApplyCloudPull(CloudLibraryPull @pull) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_apply_cloud_pull(thisPtr, FfiConverterTypeCloudLibraryPull.INSTANCE.Lower(@pull));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task<CloudLibraryRecords> CloudEdits(CloudLibraryRecords @base) {
+    return await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_connectionlibrary_cloud_edits(thisPtr, FfiConverterTypeCloudLibraryRecords.INSTANCE.Lower(@base));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_rust_buffer(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {
+            return _UniFFILib.ffi_tablepro_ffi_rust_future_complete_rust_buffer(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_rust_buffer(future),
+        // Lift
+        (result) => FfiConverterTypeCloudLibraryRecords.INSTANCE.Lift(result),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
     
     /// <exception cref="CoreException"></exception>
     public async Task AddFavorites(string[] @ids, string? @before) {await _UniFFIAsync.UniffiRustCallAsync(
@@ -5688,6 +5792,174 @@ class FfiConverterTypeResultSet: FfiConverter<ResultSet, ulong> {
 
     public override void Write(ResultSet value, BigEndianStream stream) {
         stream.WriteULong(Lower(value));
+    }
+}
+
+
+
+internal record CloudConnectionFields (
+    string ConnectionId, 
+    string? Name, 
+    string? GroupId, 
+    long? SortOrder, 
+    long? IsFavorite
+) {
+}
+
+class FfiConverterTypeCloudConnectionFields: FfiConverterRustBuffer<CloudConnectionFields> {
+    public static FfiConverterTypeCloudConnectionFields INSTANCE = new FfiConverterTypeCloudConnectionFields();
+
+    public override CloudConnectionFields Read(BigEndianStream stream) {
+        return new CloudConnectionFields(
+            ConnectionId: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterOptionalString.INSTANCE.Read(stream),
+            GroupId: FfiConverterOptionalString.INSTANCE.Read(stream),
+            SortOrder: FfiConverterOptionalInt64.INSTANCE.Read(stream),
+            IsFavorite: FfiConverterOptionalInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudConnectionFields value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.ConnectionId)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.GroupId)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.SortOrder)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.IsFavorite);
+    }
+
+    public override void Write(CloudConnectionFields value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.ConnectionId, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.GroupId, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.SortOrder, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.IsFavorite, stream);
+    }
+}
+
+
+
+internal record CloudGroupFields (
+    string GroupId, 
+    string? Name, 
+    string? Color, 
+    string? IconName, 
+    string? ParentId, 
+    long? SortOrder
+) {
+}
+
+class FfiConverterTypeCloudGroupFields: FfiConverterRustBuffer<CloudGroupFields> {
+    public static FfiConverterTypeCloudGroupFields INSTANCE = new FfiConverterTypeCloudGroupFields();
+
+    public override CloudGroupFields Read(BigEndianStream stream) {
+        return new CloudGroupFields(
+            GroupId: FfiConverterString.INSTANCE.Read(stream),
+            Name: FfiConverterOptionalString.INSTANCE.Read(stream),
+            Color: FfiConverterOptionalString.INSTANCE.Read(stream),
+            IconName: FfiConverterOptionalString.INSTANCE.Read(stream),
+            ParentId: FfiConverterOptionalString.INSTANCE.Read(stream),
+            SortOrder: FfiConverterOptionalInt64.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudGroupFields value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.GroupId)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Name)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Color)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.IconName)
+            + FfiConverterOptionalString.INSTANCE.AllocationSize(value.ParentId)
+            + FfiConverterOptionalInt64.INSTANCE.AllocationSize(value.SortOrder);
+    }
+
+    public override void Write(CloudGroupFields value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.GroupId, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Name, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.Color, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.IconName, stream);
+            FfiConverterOptionalString.INSTANCE.Write(value.ParentId, stream);
+            FfiConverterOptionalInt64.INSTANCE.Write(value.SortOrder, stream);
+    }
+}
+
+
+
+internal record CloudLibraryPull (
+    CloudLibraryRecords Base, 
+    CloudLibraryRecords Changed, 
+    string[] DeletedGroupIds, 
+    string[] DeletedConnectionIds, 
+    string[] DeletedHereGroupIds, 
+    string[] DeletedHereConnectionIds, 
+    string[]? FavoritesOrder
+) {
+}
+
+class FfiConverterTypeCloudLibraryPull: FfiConverterRustBuffer<CloudLibraryPull> {
+    public static FfiConverterTypeCloudLibraryPull INSTANCE = new FfiConverterTypeCloudLibraryPull();
+
+    public override CloudLibraryPull Read(BigEndianStream stream) {
+        return new CloudLibraryPull(
+            Base: FfiConverterTypeCloudLibraryRecords.INSTANCE.Read(stream),
+            Changed: FfiConverterTypeCloudLibraryRecords.INSTANCE.Read(stream),
+            DeletedGroupIds: FfiConverterSequenceString.INSTANCE.Read(stream),
+            DeletedConnectionIds: FfiConverterSequenceString.INSTANCE.Read(stream),
+            DeletedHereGroupIds: FfiConverterSequenceString.INSTANCE.Read(stream),
+            DeletedHereConnectionIds: FfiConverterSequenceString.INSTANCE.Read(stream),
+            FavoritesOrder: FfiConverterOptionalSequenceString.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudLibraryPull value) {
+        return 0
+            + FfiConverterTypeCloudLibraryRecords.INSTANCE.AllocationSize(value.Base)
+            + FfiConverterTypeCloudLibraryRecords.INSTANCE.AllocationSize(value.Changed)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.DeletedGroupIds)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.DeletedConnectionIds)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.DeletedHereGroupIds)
+            + FfiConverterSequenceString.INSTANCE.AllocationSize(value.DeletedHereConnectionIds)
+            + FfiConverterOptionalSequenceString.INSTANCE.AllocationSize(value.FavoritesOrder);
+    }
+
+    public override void Write(CloudLibraryPull value, BigEndianStream stream) {
+            FfiConverterTypeCloudLibraryRecords.INSTANCE.Write(value.Base, stream);
+            FfiConverterTypeCloudLibraryRecords.INSTANCE.Write(value.Changed, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.DeletedGroupIds, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.DeletedConnectionIds, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.DeletedHereGroupIds, stream);
+            FfiConverterSequenceString.INSTANCE.Write(value.DeletedHereConnectionIds, stream);
+            FfiConverterOptionalSequenceString.INSTANCE.Write(value.FavoritesOrder, stream);
+    }
+}
+
+
+
+internal record CloudLibraryRecords (
+    CloudGroupFields[] Groups, 
+    CloudConnectionFields[] Connections
+) {
+}
+
+class FfiConverterTypeCloudLibraryRecords: FfiConverterRustBuffer<CloudLibraryRecords> {
+    public static FfiConverterTypeCloudLibraryRecords INSTANCE = new FfiConverterTypeCloudLibraryRecords();
+
+    public override CloudLibraryRecords Read(BigEndianStream stream) {
+        return new CloudLibraryRecords(
+            Groups: FfiConverterSequenceTypeCloudGroupFields.INSTANCE.Read(stream),
+            Connections: FfiConverterSequenceTypeCloudConnectionFields.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(CloudLibraryRecords value) {
+        return 0
+            + FfiConverterSequenceTypeCloudGroupFields.INSTANCE.AllocationSize(value.Groups)
+            + FfiConverterSequenceTypeCloudConnectionFields.INSTANCE.AllocationSize(value.Connections);
+    }
+
+    public override void Write(CloudLibraryRecords value, BigEndianStream stream) {
+            FfiConverterSequenceTypeCloudGroupFields.INSTANCE.Write(value.Groups, stream);
+            FfiConverterSequenceTypeCloudConnectionFields.INSTANCE.Write(value.Connections, stream);
     }
 }
 
@@ -9682,6 +9954,37 @@ class FfiConverterOptionalTypeHostPrompter: FfiConverterRustBuffer<HostPrompter?
 
 
 
+class FfiConverterOptionalSequenceString: FfiConverterRustBuffer<string[]?> {
+    public static FfiConverterOptionalSequenceString INSTANCE = new FfiConverterOptionalSequenceString();
+
+    public override string[]? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterSequenceString.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(string[]? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterSequenceString.INSTANCE.AllocationSize((string[])value);
+        }
+    }
+
+    public override void Write(string[]? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterSequenceString.INSTANCE.Write((string[])value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalTypeBoxedErrorInfo: FfiConverterRustBuffer<BoxedErrorInfo?> {
     public static FfiConverterOptionalTypeBoxedErrorInfo INSTANCE = new FfiConverterOptionalTypeBoxedErrorInfo();
 
@@ -9752,6 +10055,98 @@ class FfiConverterSequenceString: FfiConverterRustBuffer<string[]> {
 
         stream.WriteInt(value.Length);
         var writerFn = FfiConverterString.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeCloudConnectionFields: FfiConverterRustBuffer<CloudConnectionFields[]> {
+    public static FfiConverterSequenceTypeCloudConnectionFields INSTANCE = new FfiConverterSequenceTypeCloudConnectionFields();
+
+    public override CloudConnectionFields[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new CloudConnectionFields[length];
+        var readFn = FfiConverterTypeCloudConnectionFields.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(CloudConnectionFields[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeCloudConnectionFields.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(CloudConnectionFields[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeCloudConnectionFields.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
+class FfiConverterSequenceTypeCloudGroupFields: FfiConverterRustBuffer<CloudGroupFields[]> {
+    public static FfiConverterSequenceTypeCloudGroupFields INSTANCE = new FfiConverterSequenceTypeCloudGroupFields();
+
+    public override CloudGroupFields[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new CloudGroupFields[length];
+        var readFn = FfiConverterTypeCloudGroupFields.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(CloudGroupFields[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypeCloudGroupFields.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(CloudGroupFields[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypeCloudGroupFields.INSTANCE.Write;
         value.ForEach(item => writerFn(item, stream));
     }
 }

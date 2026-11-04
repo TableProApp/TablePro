@@ -27,6 +27,10 @@ internal static partial class PointerInput
 
     public static void Button(bool down) => Send(new MouseInput { Flags = down ? LeftDown : LeftUp });
 
+    public static bool Exists(IntPtr window) => IsWindow(window) != 0;
+
+    public static bool IsVisible(IntPtr window) => IsWindowVisible(window) != 0;
+
     private static void Send(MouseInput mouse)
     {
         Input[] inputs = [new Input { Type = InputMouse, Mouse = mouse }];
@@ -41,6 +45,12 @@ internal static partial class PointerInput
 
     [LibraryImport("user32.dll")]
     private static partial int GetSystemMetrics(int index);
+
+    [LibraryImport("user32.dll")]
+    private static partial int IsWindow(IntPtr window);
+
+    [LibraryImport("user32.dll")]
+    private static partial int IsWindowVisible(IntPtr window);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Input

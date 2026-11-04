@@ -17,6 +17,11 @@ public sealed record SessionTab
     public string? Schema { get; set; }
 
     public string? Table { get; set; }
+
+    // A table tab's own rows per page, when one was picked, and the first row of the page it shows.
+    public int? PageSize { get; set; }
+
+    public long? Offset { get; set; }
 }
 
 // A saved connection is reopened by id, a file opened without saving by its path.
@@ -53,6 +58,14 @@ public sealed record WindowPlacement
     public bool IsUsable => Width > 0 && Height > 0;
 }
 
+// A window a tab was moved into: one connection, its own tabs and its own place on the screen.
+public sealed record TabWindowState
+{
+    public SessionConnection Connection { get; set; } = new();
+
+    public WindowPlacement? Placement { get; set; }
+}
+
 public sealed record SessionState
 {
     public IReadOnlyList<SessionConnection> Connections { get; set; } = [];
@@ -66,7 +79,11 @@ public sealed record SessionState
     // In effective pixels; every workspace shares it.
     public double? ObjectPaneWidth { get; set; }
 
+    public IReadOnlyList<TabWindowState> TabWindows { get; set; } = [];
+
     public static SessionState Empty { get; } = new();
+
+    private static WindowPlacement? Usable(WindowPlacement? placement) => placement is { IsUsable: true } ? placement : null;
 
     public SessionState Restorable()
     {
@@ -76,8 +93,12 @@ public sealed record SessionState
         {
             Connections = kept,
             Front = front < 0 && kept.Count > 0 ? 0 : front,
-            Window = Window is { IsUsable: true } ? Window : null,
+            Window = Usable(Window),
             ObjectPaneWidth = ObjectPaneWidth is { } width ? ObjectPane.Clamp(width) : null,
+            // A window comes back only with a connection to reopen and a tab to show.
+            TabWindows = [.. TabWindows
+                .Where(window => window.Connection is { IsRestorable: true, Tabs.Count: > 0 })
+                .Select(window => window with { Placement = Usable(window.Placement) })],
         };
     }
 }

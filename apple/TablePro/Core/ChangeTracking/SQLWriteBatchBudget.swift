@@ -95,7 +95,7 @@ internal struct SQLWriteBatchBudget: Sendable, Equatable {
             case .null:
                 total += Self.valueOverheadBytes
             case .text(let text):
-                total += Self.valueOverheadBytes + charged(text.utf8.count)
+                total += Self.valueOverheadBytes + charged(text)
             case .bytes(let data):
                 total += Self.valueOverheadBytes + charged(data.count)
             }
@@ -104,9 +104,16 @@ internal struct SQLWriteBatchBudget: Sendable, Equatable {
     }
 
     /// A driver that inlines is charged double, which is exactly what hex costs a binary value and
-    /// the worst case for escaping a text one.
+    /// the worst case for escaping a text one, but for NUL: Databend writes it as the four bytes `\x00`.
     private func charged(_ bytes: Int) -> Int {
         rendersValuesAsLiterals ? bytes * 2 : bytes
+    }
+
+    private func charged(_ text: String) -> Int {
+        guard rendersValuesAsLiterals else { return text.utf8.count }
+        return text.utf8.reduce(into: text.utf8.count * 2) { total, byte in
+            if byte == 0 { total += 2 }
+        }
     }
 
     private static let valueOverheadBytes = 12

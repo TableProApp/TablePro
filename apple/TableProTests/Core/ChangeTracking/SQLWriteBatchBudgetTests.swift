@@ -127,6 +127,18 @@ struct SQLWriteBatchBudgetTests {
             "two of these exceed a mebibyte of rendered SQL, so the second must close the batch")
     }
 
+    @Test
+    func aNulIsChargedTheFourBytesDatabendWritesForIt() throws {
+        let databend = try SQLWriteBatchBudget(columnCount: 1, generator: generator(.databend))
+        let mysql = try SQLWriteBatchBudget(columnCount: 1, generator: generator(.mysql))
+        let value = [PluginCellValue.text(String(repeating: "\u{0}", count: 200_000))]
+
+        #expect(databend.byteCount(of: value) == 800_012)
+        #expect(mysql.byteCount(of: value) == 200_012)
+        #expect(!(databend.hasRoom(for: databend.byteCount(of: value), inBatchOf: 1,
+                             bytes: databend.byteCount(of: value))))
+    }
+
     // #3777: 800 rows of an id and 1,100 bytes of text fit the parameter rate, and went out as a 1.2 MB URL.
     @Test
     func clickHouseIsChargedForTheLiteralsItWrites() throws {

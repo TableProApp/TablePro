@@ -148,7 +148,18 @@ impl ConnectionLibrary {
         Self { store, secrets, tasks }
     }
 
-    async fn blocking<T, F>(&self, work: F) -> Result<T, CoreError>
+    pub(crate) async fn delete_secrets(&self, ids: Vec<Uuid>) -> Result<(), CoreError> {
+        let vault = self.secrets.clone();
+        on_runtime(&self.tasks, async move {
+            for id in ids {
+                vault.delete_connection(id).await.map_err(secret_error)?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    pub(crate) async fn blocking<T, F>(&self, work: F) -> Result<T, CoreError>
     where
         T: Send + 'static,
         F: FnOnce(&ConnectionStore) -> Result<T, CoreError> + Send + 'static,
@@ -260,11 +271,7 @@ impl ConnectionLibrary {
             Ok(())
         })
         .await?;
-        let vault = self.secrets.clone();
-        on_runtime(&self.tasks, async move {
-            vault.delete_connection(id).await.map_err(secret_error)
-        })
-        .await
+        self.delete_secrets(vec![id]).await
     }
 
     pub async fn set_favorite(&self, id: String, favorite: bool) -> Result<(), CoreError> {

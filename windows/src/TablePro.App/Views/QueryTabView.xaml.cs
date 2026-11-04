@@ -14,21 +14,24 @@ namespace TablePro.App.Views;
 public sealed partial class QueryTabView : UserControl, ITabContent
 {
     private readonly Workbench _workbench;
+    private readonly SessionShare _share;
     private readonly DatabaseSession _session;
     private QueryEditor? _editor;
+    private Task? _closing;
     private QueryRun? _run;
     private string? _statement;
     private GridSort _sort = GridSort.None;
     private bool _sorting;
 
-    internal QueryTabView(Workbench workbench, DatabaseSession session, string title, string? sql)
+    internal QueryTabView(Workbench workbench, SessionShare share, string title, string? sql)
     {
         _workbench = workbench;
-        _session = session;
+        _share = share.Hold();
+        _session = share.Session;
         Title = title;
         InitializeComponent();
         SqlText.Text = sql ?? string.Empty;
-        SqlText.Lexer = new CoreSqlLexer(Grammars.For(session.EngineId));
+        SqlText.Lexer = new CoreSqlLexer(Grammars.For(_session.EngineId));
         SqlText.EditorFontSize = (float)workbench.Settings.EditorFontSize;
         AutomationProperties.SetName(SqlText, Strings.Format("EditorName", title));
         Results.StatusChanged += (_, status) => StatusText.Text = status;
@@ -59,7 +62,10 @@ public sealed partial class QueryTabView : UserControl, ITabContent
 
     public SessionTab Snapshot() => new() { Kind = TabKind.Query, Title = Title, Sql = SqlText.Text };
 
-    public async Task CloseAsync()
+    // Once only, however often it is asked for: the tab lets go of its session exactly once.
+    public Task CloseAsync() => _closing ??= CloseOnceAsync();
+
+    private async Task CloseOnceAsync()
     {
         _run?.Dispose();
         _run = null;
@@ -71,6 +77,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
         }
 
         SqlText.Dispose();
+        await _share.ReleaseAsync().ConfigureAwait(true);
     }
 
     private async Task RunAsync()
@@ -195,7 +202,7 @@ public sealed partial class QueryTabView : UserControl, ITabContent
             CloseButtonText = Strings.Get("Cancel"),
             DefaultButton = ContentDialogButton.Close,
         };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary)
         {
             await EndTransactionAsync(commit: false).ConfigureAwait(true);
         }

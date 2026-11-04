@@ -1,0 +1,17 @@
+[package]
+name = "tablepro-bindgen"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The generator lives apart from the FFI crate: uniffi's cli feature in the library itself makes the app's static library tens of MB larger.
+[[bin]]
+name = "uniffi-bindgen-swift"
+path = "src/main.rs"
+
+[dependencies]
+uniffi = { workspace = true, features = ["cli", "cargo-metadata"] }
+
+[lints]
+workspace = true

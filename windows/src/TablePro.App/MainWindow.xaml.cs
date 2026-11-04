@@ -1,3 +1,4 @@
+using Microsoft.UI;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -14,43 +15,36 @@ using Windows.System;
 
 namespace TablePro.App;
 
-public sealed partial class MainWindow : Window, IShell
+// The primary window holds the rail; a tab window holds one connection's tabs moved out of it, and hands the
+// shell's own commands (the Connections page, Settings, the connection form) back to the primary.
+public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
 {
     private readonly Workbench _workbench;
-    private readonly HomeView _home;
+    private readonly MainWindow _primary;
+    private readonly HomeView? _home;
     private readonly List<OpenConnection> _open = [];
     private readonly Dictionary<string, ConnectionFormWindow> _forms = [];
+    private readonly List<MainWindow> _tabWindows = [];
+    // Native AOT trims OverlappedPresenter's wrapper, so AppWindow.Presenter reads back as its base type.
+    private readonly OverlappedPresenter _presenter = OverlappedPresenter.Create();
+    private readonly bool _restoreMaximized;
+    private readonly IReadOnlyList<TabWindowState> _restoreWindows = [];
     private SettingsView? _settings;
     private OpenConnection? _front;
-    private readonly bool _restoreMaximized;
+
+    // A tab window that has not taken a tab yet, kept hidden for the next drag out of a strip.
+    private MainWindow? _spare;
+    private bool _isSpare;
+    private bool _closing;
+    private bool _checkingClose;
 
     internal MainWindow(Workbench workbench)
     {
         _workbench = workbench;
+        _primary = this;
         InitializeComponent();
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(AppTitleBar);
+        Prepare();
         Title = "TablePro";
-        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
-        if (MicaController.IsSupported())
-        {
-            SystemBackdrop = new MicaBackdrop();
-        }
-
-        var scale = WindowInterop.Scale(this);
-        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-        var width = Math.Min((int)(1280 * scale), area.Width);
-        var height = Math.Min((int)(820 * scale), area.Height);
-        AppWindow.MoveAndResize(new RectInt32(
-            area.X + ((area.Width - width) / 2),
-            area.Y + ((area.Height - height) / 2),
-            width,
-            height));
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.PreferredMinimumWidth = (int)(720 * scale);
-            presenter.PreferredMinimumHeight = (int)(480 * scale);
-        }
 
         // Where the window stood last time, whether or not its connections come back.
         var session = workbench.Sessions.Load();
@@ -63,30 +57,77 @@ public sealed partial class MainWindow : Window, IShell
         _home = new HomeView(workbench, this);
         Rail.Content = _home;
         Rail.SelectedItem = HomeItem;
-        Themes.Apply(this, workbench.Settings.Theme);
-        workbench.SettingsChanged += (_, _) => Themes.Apply(this, workbench.Settings.Theme);
-        workbench.LibraryChanged += async (_, _) => await RefreshMarksAsync();
-        AppWindow.Closing += OnClosing;
         Closed += (_, _) => _home.WindowClosed();
         UpdateRail();
         if (workbench.Settings.ReopenSession)
         {
             Restore(session);
+            _restoreWindows = session.TabWindows;
             _ = RefreshMarksAsync();
         }
     }
+
+    private MainWindow(
+        Workbench workbench, MainWindow primary, OpenConnection connection, WindowPlacement? placement, bool spare)
+    {
+        _workbench = workbench;
+        _primary = primary;
+        _isSpare = spare;
+        InitializeComponent();
+        Prepare();
+        if (placement is not null && WindowInterop.Restore(this, placement))
+        {
+            _restoreMaximized = placement.Maximized;
+        }
+
+        // Shown and hidden again by TabView on every press on a tab (microsoft/microsoft-ui-xaml#10154, #10155).
+        if (spare)
+        {
+            AppWindow.IsShownInSwitchers = false;
+            WindowInterop.Cloak(this, true);
+        }
+
+        AppTitleBar.IsPaneToggleButtonVisible = false;
+        Add(connection);
+        Show(connection);
+    }
+
+    public bool IsPrimary => ReferenceEquals(_primary, this);
+
+    public bool CanMoveTabs => !_primary._checkingClose && !_closing;
+
+    public bool AcceptsTabs => !_isSpare && !_primary._checkingClose && AppWindow.IsVisible;
+
+    private WorkspaceView? Workspace => (Rail.Content as WorkspaceView) is { IsConnected: true } view ? view : null;
+
+    private IEnumerable<MainWindow> AllWindows =>
+        _spare is null ? [this, .. _tabWindows] : [this, .. _tabWindows, _spare];
 
     // A maximized window is maximized once shown, over the bounds it restores to.
     public void ActivateRestored()
     {
         Activate();
-        if (_restoreMaximized && AppWindow.Presenter is OverlappedPresenter presenter)
+        if (_restoreMaximized)
         {
-            presenter.Maximize();
+            _presenter.Maximize();
+        }
+
+        foreach (var saved in _restoreWindows)
+        {
+            OpenTabWindow(new OpenConnection(_workbench, saved.Connection), saved.Placement).ActivateRestored();
         }
     }
 
-    public void NewConnection() => ShowForm(null);
+    public void NewConnection()
+    {
+        if (!IsPrimary)
+        {
+            _primary.NewConnection();
+            return;
+        }
+
+        ShowForm(null);
+    }
 
     public void EditConnection(SavedConnection connection)
     {
@@ -97,6 +138,13 @@ public sealed partial class MainWindow : Window, IShell
     public void Connect(SavedConnection connection)
     {
         ArgumentNullException.ThrowIfNull(connection);
+        if (!IsPrimary)
+        {
+            _primary.Activate();
+            _primary.Connect(connection);
+            return;
+        }
+
         var open = Open(new SessionConnection
         {
             ConnectionId = connection.Id,
@@ -108,6 +156,12 @@ public sealed partial class MainWindow : Window, IShell
 
     public async Task OpenFileAsync()
     {
+        if (!IsPrimary)
+        {
+            await _primary.OpenFileAsync();
+            return;
+        }
+
         var picker = new FileOpenPicker(AppWindow.Id) { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
         foreach (var suffix in _workbench.Engines.SelectMany(engine => engine.FileSuffixes).Distinct())
         {
@@ -124,6 +178,13 @@ public sealed partial class MainWindow : Window, IShell
 
     public async Task ImportAsync()
     {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.ImportAsync();
+            return;
+        }
+
         var picker = new FileOpenPicker(AppWindow.Id);
         picker.FileTypeFilter.Add(".json");
         var result = await picker.PickSingleFileAsync();
@@ -147,6 +208,13 @@ public sealed partial class MainWindow : Window, IShell
 
     public async Task OpenSampleAsync()
     {
+        if (_home is null)
+        {
+            _primary.Activate();
+            await _primary.OpenSampleAsync();
+            return;
+        }
+
         try
         {
             Connect(await _workbench.InstallSampleAsync());
@@ -160,6 +228,13 @@ public sealed partial class MainWindow : Window, IShell
 
     public void ShowSettings()
     {
+        if (!IsPrimary)
+        {
+            _primary.Activate();
+            _primary.ShowSettings();
+            return;
+        }
+
         if (Rail.IsPaneVisible)
         {
             Rail.SelectedItem = Rail.SettingsItem;
@@ -170,9 +245,147 @@ public sealed partial class MainWindow : Window, IShell
         }
     }
 
+    WindowId IWorkspaceHost.TearOutWindow(OpenConnection connection) => _primary.SpareFor(connection);
+
+    void IWorkspaceHost.TearOut(TabViewItem tab, WindowId window) => _primary.Receive(tab, window);
+
+    void IWorkspaceHost.MoveToNewWindow(TabViewItem tab) => _primary.MoveOut(tab);
+
     internal void OpenFile(string path)
     {
         Open(new SessionConnection { FilePath = path, Name = Path.GetFileName(path) });
+    }
+
+    // Each press on a tab asks for a window before any drag, so one is kept hidden for the same connection.
+    private WindowId SpareFor(OpenConnection connection)
+    {
+        if (_spare is { } spare && spare._front?.Session == connection.Session)
+        {
+            return spare.AppWindow.Id;
+        }
+
+        DropSpare();
+        _spare = new MainWindow(_workbench, this, connection.Adopt(), placement: null, spare: true);
+        return _spare.AppWindow.Id;
+    }
+
+    private void Receive(TabViewItem tab, WindowId window)
+    {
+        var target = AllWindows.FirstOrDefault(each => each.AppWindow.Id.Value == window.Value);
+        if (target?.Workspace is not { } workspace)
+        {
+            return;
+        }
+
+        var promoted = ReferenceEquals(target, _spare);
+        if (promoted)
+        {
+            _spare = null;
+            target.Promote();
+            _tabWindows.Add(target);
+        }
+
+        WorkspaceView.HolderOf(tab)?.Release(tab);
+        workspace.Take(tab);
+        if (promoted)
+        {
+            workspace.Start();
+        }
+    }
+
+    private void MoveOut(TabViewItem tab)
+    {
+        if (!CanMoveTabs)
+        {
+            return;
+        }
+
+        var source = WorkspaceView.HolderOf(tab);
+        var from = AllWindows.FirstOrDefault(window => window._open.Any(open => open.View == source));
+        if (source is null || from?._open.First(open => open.View == source) is not { } connection)
+        {
+            return;
+        }
+
+        // Cascaded from the window the tab leaves, at the size that window has when restored.
+        var placement = WindowInterop.Placement(from) is { } bounds
+            ? bounds with
+            {
+                X = bounds.X + (int)(32 * WindowInterop.Scale(from)),
+                Y = bounds.Y + (int)(32 * WindowInterop.Scale(from)),
+                Maximized = false,
+            }
+            : null;
+        var window = OpenTabWindow(connection.Adopt(), placement);
+        source.Release(tab);
+        window.Workspace?.Take(tab);
+        window.Workspace?.Start();
+        window.Activate();
+    }
+
+    private void Prepare()
+    {
+        var scale = WindowInterop.Scale(this);
+        _presenter.PreferredMinimumWidth = (int)(720 * scale);
+        _presenter.PreferredMinimumHeight = (int)(480 * scale);
+        AppWindow.SetPresenter(_presenter);
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        var tabContextMenu = new WindowContextMenu(this, point => Workspace?.ShowTabContextMenu(point) == true);
+        Closed += (_, _) => tabContextMenu.Dispose();
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
+        if (MicaController.IsSupported())
+        {
+            SystemBackdrop = new MicaBackdrop();
+        }
+
+        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var width = Math.Min((int)(1280 * scale), area.Width);
+        var height = Math.Min((int)(820 * scale), area.Height);
+        AppWindow.MoveAndResize(new RectInt32(
+            area.X + ((area.Width - width) / 2),
+            area.Y + ((area.Height - height) / 2),
+            width,
+            height));
+        Themes.Apply(this, _workbench.Settings.Theme);
+        _workbench.SettingsChanged += OnSettingsChanged;
+        _workbench.LibraryChanged += OnLibraryChanged;
+        AppWindow.Closing += OnClosing;
+        Closed += OnClosed;
+    }
+
+    private MainWindow OpenTabWindow(OpenConnection connection, WindowPlacement? placement)
+    {
+        var window = new MainWindow(_workbench, this, connection, placement, spare: false);
+        _tabWindows.Add(window);
+        return window;
+    }
+
+    // The spare took a tab: it now shows as a window of its own.
+    private void Promote()
+    {
+        _isSpare = false;
+        WindowInterop.Cloak(this, false);
+        AppWindow.IsShownInSwitchers = true;
+        if (_front is { } open)
+        {
+            ShowName(open);
+        }
+    }
+
+    private void DropSpare()
+    {
+        if (_spare is { } spare)
+        {
+            _spare = null;
+            spare.CloseForGood();
+        }
+    }
+
+    private void CloseForGood()
+    {
+        _closing = true;
+        Close();
     }
 
     private SettingsView Settings() => _settings ??= new SettingsView(_workbench);
@@ -202,6 +415,10 @@ public sealed partial class MainWindow : Window, IShell
         return open;
     }
 
+    private async void OnLibraryChanged(object? sender, EventArgs e) => await RefreshMarksAsync();
+
+    private void OnSettingsChanged(object? sender, EventArgs e) => Themes.Apply(this, _workbench.Settings.Theme);
+
     private async Task RefreshMarksAsync()
     {
         if (!_open.Any(open => open.ConnectionId is not null))
@@ -222,7 +439,7 @@ public sealed partial class MainWindow : Window, IShell
                         open.Rename(saved.Name);
                         if (ReferenceEquals(_front, open))
                         {
-                            AppTitleBar.Subtitle = saved.Name;
+                            ShowName(open);
                         }
                     }
                 }
@@ -234,17 +451,27 @@ public sealed partial class MainWindow : Window, IShell
         }
     }
 
-    private OpenConnection Add(SessionConnection origin)
+    private OpenConnection Add(SessionConnection origin) => Add(new OpenConnection(_workbench, origin));
+
+    private OpenConnection Add(OpenConnection open)
     {
-        var open = new OpenConnection(_workbench, origin);
         open.StateChanged += (_, _) => UpdateCommands();
         open.Cancelled += async (_, _) => await CloseConnectionAsync(open);
         open.View.CommandsChanged += (_, _) => UpdateCommands();
         open.View.EditRequested += async (_, _) => await EditAsync(open);
+        open.View.Host = this;
         _open.Add(open);
-        var index = Rail.MenuItems.IndexOf(RailSeparator) + _open.Count;
-        Rail.MenuItems.Insert(index, open.RailItem);
-        UpdateRail();
+        if (IsPrimary)
+        {
+            var index = Rail.MenuItems.IndexOf(RailSeparator) + _open.Count;
+            Rail.MenuItems.Insert(index, open.RailItem);
+            UpdateRail();
+        }
+        else
+        {
+            open.View.Emptied += (_, _) => Close();
+        }
+
         return open;
     }
 
@@ -264,8 +491,8 @@ public sealed partial class MainWindow : Window, IShell
     {
         _front = open;
         open.View.ApplyPaneWidth();
-        Rail.Content = open.View;
-        AppTitleBar.Subtitle = open.Name;
+        SetContent(open.View);
+        ShowName(open);
         AppTitleBar.IsBackButtonVisible = false;
         if (open.State == ConnectionState.NotConnected)
         {
@@ -277,15 +504,42 @@ public sealed partial class MainWindow : Window, IShell
 
     private void Show(UIElement page)
     {
-        Rail.Content = page;
+        SetContent(page);
         AppTitleBar.Subtitle = string.Empty;
         // While the rail is hidden, Settings is reached from the Connections page, so the title bar leads back.
         AppTitleBar.IsBackButtonVisible = !Rail.IsPaneVisible && ReferenceEquals(page, _settings);
         UpdateCommands();
     }
 
+    private void SetContent(UIElement page)
+    {
+        if (Rail.Content is WorkspaceView shown && !ReferenceEquals(shown, page))
+        {
+            shown.Leave();
+        }
+
+        Rail.Content = page;
+    }
+
+    // A tab window is named for its connection in the taskbar and in Alt+Tab, once it shows.
+    private void ShowName(OpenConnection open)
+    {
+        AppTitleBar.Subtitle = IsPrimary || _isSpare ? open.Name : string.Empty;
+        if (!IsPrimary && !_isSpare)
+        {
+            AppTitleBar.Title = Strings.Format("TabWindowTitle", open.Name);
+        }
+    }
+
     private void ShowHome()
     {
+        if (_home is null)
+        {
+            _primary.Activate();
+            _primary.ShowHome();
+            return;
+        }
+
         if (Rail.IsPaneVisible)
         {
             Rail.SelectedItem = HomeItem;
@@ -298,6 +552,11 @@ public sealed partial class MainWindow : Window, IShell
 
     private void UpdateRail()
     {
+        if (_home is null)
+        {
+            return;
+        }
+
         var visible = _open.Count > 0;
         Rail.IsPaneVisible = visible;
         AppTitleBar.IsPaneToggleButtonVisible = visible;
@@ -310,7 +569,19 @@ public sealed partial class MainWindow : Window, IShell
 
     private async Task CloseConnectionAsync(OpenConnection open)
     {
+        if (!IsPrimary)
+        {
+            await RequestCloseAsync();
+            return;
+        }
+
+        DropSpare();
         var wasShown = ReferenceEquals(Rail.Content, open.View);
+        if (wasShown)
+        {
+            open.View.Leave();
+        }
+
         await open.DisconnectAsync();
         _open.Remove(open);
         Rail.MenuItems.Remove(open.RailItem);
@@ -349,6 +620,12 @@ public sealed partial class MainWindow : Window, IShell
 
     private void ShowForm(SavedConnection? existing)
     {
+        if (!IsPrimary)
+        {
+            _primary.ShowForm(existing);
+            return;
+        }
+
         var key = ConnectionFormWindow.Keys(existing?.Id);
         if (_forms.TryGetValue(key, out var shown))
         {
@@ -387,6 +664,11 @@ public sealed partial class MainWindow : Window, IShell
 
     private void OnRailSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
+        if (_home is null)
+        {
+            return;
+        }
+
         if (args.IsSettingsSelected)
         {
             Show(Settings());
@@ -401,12 +683,108 @@ public sealed partial class MainWindow : Window, IShell
         }
     }
 
-    private void OnBackRequested(TitleBar sender, object args) => Show(_home);
+    private void OnBackRequested(TitleBar sender, object args)
+    {
+        if (_home is not null)
+        {
+            Show(_home);
+        }
+    }
 
     private void OnPaneToggleRequested(TitleBar sender, object args) => Rail.IsPaneOpen = !Rail.IsPaneOpen;
 
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        if (_closing)
+        {
+            return;
+        }
+
+        args.Cancel = true;
+        if (!_isSpare)
+        {
+            DispatcherQueue.TryEnqueue(async () => await RequestCloseAsync());
+        }
+    }
+
+    private async Task RequestCloseAsync()
+    {
+        if (_primary._checkingClose || _closing)
+        {
+            return;
+        }
+
+        var windows = IsPrimary ? AllWindows.ToList() : [this];
+        if (windows.Any(window => WindowDialogs.IsOpen(window.Content.XamlRoot)))
+        {
+            return;
+        }
+
+        _primary._checkingClose = true;
+        RefreshTabTransfers();
+        try
+        {
+            var confirmed = new HashSet<ITabContent>();
+            while (windows.SelectMany(window => window._open).Any(open => open.View.HasUnconfirmedTransactions(confirmed)))
+            {
+                foreach (var window in windows)
+                {
+                    foreach (var open in window._open.Where(open => open.View.HasUnconfirmedTransactions(confirmed)).ToList())
+                    {
+                        window.Activate();
+                        if (window.IsPrimary)
+                        {
+                            window.Select(open);
+                        }
+                        else
+                        {
+                            window.Show(open);
+                        }
+
+                        if (!await open.View.ConfirmCloseAsync(confirmed))
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if (IsPrimary)
+            {
+                ShutDown();
+            }
+
+            CloseForGood();
+        }
+        finally
+        {
+            _primary._checkingClose = false;
+            RefreshTabTransfers();
+        }
+    }
+
+    private void RefreshTabTransfers()
+    {
+        foreach (var window in _primary.AllWindows.Where(window => !window._closing))
+        {
+            foreach (var open in window._open)
+            {
+                open.View.UpdateTearOut();
+            }
+
+            window.UpdateCommands();
+        }
+    }
+
+    // Window.Close raises no AppWindow.Closing, so Exit runs this itself before it closes the primary.
+    private void ShutDown()
+    {
+        if (_closing)
+        {
+            return;
+        }
+
+        _closing = true;
         foreach (var form in _forms.Values.ToList())
         {
             form.Close();
@@ -417,12 +795,48 @@ public sealed partial class MainWindow : Window, IShell
         {
             open.CancelConnect();
         }
+
+        DropSpare();
+        foreach (var window in _tabWindows.ToList())
+        {
+            window.CloseForGood();
+        }
+    }
+
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        _workbench.SettingsChanged -= OnSettingsChanged;
+        _workbench.LibraryChanged -= OnLibraryChanged;
+        if (IsPrimary)
+        {
+            return;
+        }
+
+        _primary._tabWindows.Remove(this);
+        if (ReferenceEquals(_primary._spare, this))
+        {
+            _primary._spare = null;
+        }
+
+        foreach (var open in _open)
+        {
+            _ = open.DisconnectAsync();
+        }
     }
 
     private void SaveSession()
     {
         var connections = _open.Select(open => open.Snapshot()).ToList();
         var front = _front is null ? (connections.Count > 0 ? 0 : -1) : _open.IndexOf(_front);
+        var windows = _tabWindows
+            .Where(window => window._front is not null)
+            .Select(window => new TabWindowState
+            {
+                Connection = window._front!.Snapshot(),
+                Placement = WindowInterop.Placement(window),
+            })
+            .Where(window => window.Connection.Tabs.Count > 0)
+            .ToList();
         try
         {
             _workbench.Sessions.Save(new SessionState
@@ -431,6 +845,7 @@ public sealed partial class MainWindow : Window, IShell
                 Front = front,
                 Window = WindowInterop.Placement(this),
                 ObjectPaneWidth = _workbench.ObjectPaneWidth,
+                TabWindows = windows,
             });
         }
         catch (IOException)
@@ -438,8 +853,6 @@ public sealed partial class MainWindow : Window, IShell
             // A session that cannot be written only means the next launch starts on the Connections page.
         }
     }
-
-    private WorkspaceView? Workspace => (Rail.Content as WorkspaceView) is { IsConnected: true } view ? view : null;
 
     private void UpdateCommands()
     {
@@ -449,6 +862,7 @@ public sealed partial class MainWindow : Window, IShell
         MenuNewQueryTab.IsEnabled = workspace is not null;
         MenuCloseTab.IsEnabled = tab is not null;
         MenuReopenTab.IsEnabled = workspace?.CanReopenTab ?? false;
+        MenuMoveTab.IsEnabled = workspace?.CanMoveActiveTab ?? false;
         MenuShowObjects.IsEnabled = workspace is not null;
         MenuShowObjects.IsChecked = workspace?.ObjectsVisible ?? true;
         MenuFilterObjects.IsEnabled = workspace is not null;
@@ -480,9 +894,12 @@ public sealed partial class MainWindow : Window, IShell
 
     private void OnReopenTab(object sender, RoutedEventArgs e) => Workspace?.ReopenClosedTab();
 
+    private void OnMoveTab(object sender, RoutedEventArgs e) => Workspace?.MoveActiveTabToNewWindow();
+
     private void OnShowSettings(object sender, RoutedEventArgs e) => ShowSettings();
 
-    private void OnExit(object sender, RoutedEventArgs e) => Close();
+    // Exit ends the app from any window; the primary saves every window as it closes.
+    private async void OnExit(object sender, RoutedEventArgs e) => await _primary.RequestCloseAsync();
 
     private void OnUndo(object sender, RoutedEventArgs e) => EditorKey(VirtualKey.Z);
 
@@ -539,6 +956,13 @@ public sealed partial class MainWindow : Window, IShell
 
     private void OnShowConnections(object sender, RoutedEventArgs e)
     {
+        if (_home is null)
+        {
+            _primary.Activate();
+            _primary.OnShowConnections(sender, e);
+            return;
+        }
+
         ShowHome();
         _home.FocusSearch();
     }
@@ -571,6 +995,7 @@ public sealed partial class MainWindow : Window, IShell
     {
         if (_front is { } open)
         {
+            _primary.DropSpare();
             await open.DisconnectAsync();
             await open.ConnectAsync();
         }
@@ -599,6 +1024,6 @@ public sealed partial class MainWindow : Window, IShell
     private void OnAbout(object sender, RoutedEventArgs e)
     {
         ShowSettings();
-        Settings().ShowAbout();
+        _primary.Settings().ShowAbout();
     }
 }

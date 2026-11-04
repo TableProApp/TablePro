@@ -55,6 +55,7 @@ PACKAGES = {
     "Kit": '.testTarget(name: "KitTests", dependencies: ["Kit"])\n// .testTarget(name: "RetiredTests")',
     "TableProCore": '.testTarget(\n    name: "CoreTypesTests"\n)',
     "TableProOracle": '.testTarget(name: "OracleCoreTests")',
+    "TableProFFI": '.testTarget(name: "TableProFFITests")',
 }
 
 UNIT = [
