@@ -58,8 +58,7 @@ nonisolated enum SQLBuilder {
     }
 
     // Every pair of a composite key is matched: one column alone can return another tenant's row. A foreign key's
-    // value finds its parent by the column's collation, so `abc` finds `ABC`; on SQL Server the parent holding the
-    // exact text comes first, since read as Unicode `Weßels` also equals a `Wessels` key.
+    // value finds its parent by the column's own rules, so `abc` finds `ABC`.
     static func buildSingleRowLookup(
         table: String,
         schema: String?,
@@ -70,29 +69,9 @@ nonisolated enum SQLBuilder {
     ) -> String {
         let quotedTable = qualifiedIdentifier(table: table, schema: schema, for: type)
         let predicate = key.isEmpty
-            ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver, exactText: false)
-        let exact = type == .mssql ? exactTextMatches(key, columns: columns, type: type, driver: driver) : []
-        let order = exact.isEmpty ? "" : "ORDER BY CASE WHEN \(exact.joined(separator: " AND ")) THEN 0 ELSE 1 END"
-        let pagination = paginationClause(orderBy: order, limit: 1, offset: 0, for: type)
+            ? "1 = 0" : keyPredicate(key, columns: columns, type: type, driver: driver, reference: true)
+        let pagination = paginationClause(orderBy: "", limit: 1, offset: 0, for: type)
         return "SELECT * FROM \(quotedTable) WHERE \(predicate) \(pagination)"
-    }
-
-    // SQL Server reads a char or varchar key against N'…' text by Unicode rules, where `ß` equals `ss`, so a key
-    // there also has to hold the exact text for an edit to stay on its own row.
-    private static func exactTextMatches(
-        _ key: [(column: String, value: String)],
-        columns: [ColumnInfo],
-        type: DatabaseType,
-        driver: any DatabaseDriver
-    ) -> [String] {
-        key.compactMap { pair in
-            let info = FilterColumnKind.column(named: pair.column, in: columns)
-            guard MSSQLRowMatch.comparesNarrowText(typeName: info?.typeName),
-                  case .text(let value) = FilterColumnKind.keyLiteral(pair.value, column: info, databaseType: type)
-            else { return nil }
-            let column = quoteIdentifier(pair.column, for: type)
-            return MSSQLRowMatch.exactText(column, equals: stringLiteral(value, for: type, driver: driver))
-        }
     }
 
     // The literal rule the table browser's filter uses, so a row the lookup finds is the row Open Table lists.
@@ -105,25 +84,28 @@ nonisolated enum SQLBuilder {
         type: DatabaseType,
         driver: any DatabaseDriver,
         uniqueIn quotedTable: String? = nil,
-        exactText: Bool = true
+        reference: Bool = false
     ) -> String {
-        var conditions = key.map { pair in
+        let predicate = key.map { pair in
             let column = quoteIdentifier(pair.column, for: type)
             let info = FilterColumnKind.column(named: pair.column, in: columns)
             switch FilterColumnKind.keyLiteral(pair.value, column: info, databaseType: type) {
             case .number(let value):
                 return "\(column) = \(value)"
             case .text(let value):
-                return "\(column) = \(stringLiteral(value, for: type, driver: driver))"
+                let literal = stringLiteral(value, for: type, driver: driver)
+                guard type == .mssql, MSSQLRowMatch.comparesNarrowText(typeName: info?.typeName) else {
+                    return "\(column) = \(literal)"
+                }
+                // A row's own key holds the exact text; a reference matches by the column's rules.
+                return reference
+                    ? MSSQLRowMatch.columnRules(column, equals: literal)
+                    : "\(column) = \(literal) AND \(MSSQLRowMatch.exactText(column, equals: literal))"
             case .numberOrText(let value):
                 // CAST is the text the grid read, so a REAL another spelling of the same number parses to stays out.
                 return "\(column) IN (\(value), '\(value)') AND CAST(\(column) AS TEXT) = '\(value)'"
             }
-        }
-        if exactText, type == .mssql {
-            conditions += exactTextMatches(key, columns: columns, type: type, driver: driver)
-        }
-        let predicate = conditions.joined(separator: " AND ")
+        }.joined(separator: " AND ")
         guard let quotedTable, keyMatchesEitherWay(key, columns: columns, type: type) else { return predicate }
         return "\(predicate) AND (SELECT COUNT(*) FROM \(quotedTable) WHERE \(predicate)) = 1"
     }

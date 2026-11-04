@@ -29,4 +29,12 @@ struct MSSQLRowMatchTests {
         #expect(MSSQLRowMatch.exactText("[k]", equals: "N'Weßels'")
             == "CAST([k] AS NVARCHAR(MAX)) COLLATE Latin1_General_100_BIN2 = N'Weßels'")
     }
+
+    @Test("A reference compares as varchar, and as Unicode when the code page loses a character")
+    func columnRules() {
+        let narrow = "CAST(N'x' AS VARCHAR(MAX))"
+        let lossless = "CAST(\(narrow) AS NVARCHAR(MAX)) COLLATE Latin1_General_100_BIN2 = N'x'"
+        #expect(MSSQLRowMatch.columnRules("[k]", equals: "N'x'")
+            == "(([k] = \(narrow) AND \(lossless)) OR ([k] = N'x' AND NOT \(lossless)))")
+    }
 }
