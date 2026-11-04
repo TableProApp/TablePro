@@ -5,9 +5,8 @@ Native database clients with a native UI per platform: `apple/` holds the macOS 
 ## Repository map
 
 - `apple/`, `linux/`: each app with its scripts and changelog.
-- `windows/`: the Windows app's .NET solution. Today it holds the interop library over the core's FFI crate, `core/crates/ffi`, and its tests.
+- `windows/`: the Windows app, its interop library over the core's FFI crate `core/crates/ffi`, its tests, decisions and scripts, and `RELEASING.md`.
 - `core/`: the shared Rust core's crates, its architecture and its cross-platform decisions. `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `deny.toml` and `.config/nextest.toml` at the top are its Cargo workspace, which also holds the Linux app's crates.
-- `windows/`: the Windows app's decisions and its toolchain install script. The app is not in the tree yet.
 - `.github/`: workflows, actions, the PR template and `plugin-registry.json`.
 - `.claude/`: the path-scoped rules and the `fix-issue` and `release` skills, which Codex sees through `.agents/skills/`.
 - `scripts/`: `banned-words.txt` with `check-banned-words.sh`, the PR title and changed-path checks in `scripts/ci`, and the towncrier pin in `scripts/release`.

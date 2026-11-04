@@ -74,12 +74,18 @@
                     ValueChanged="OnTimeoutChanged" />
             </toolkit:SettingsCard>
 
+            <TextBlock x:Uid="PaginationHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
+            <toolkit:SettingsCard x:Uid="PageSizeCard" x:Name="PageSizeCard">
+                <toolkit:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8FD;" /></toolkit:SettingsCard.HeaderIcon>
+                <ComboBox x:Name="PageSizeBox" x:Uid="PageSizeBox" AutomationProperties.AutomationId="PageSizeBox" MinWidth="200" SelectionChanged="OnPageSizeChanged" />
+            </toolkit:SettingsCard>
+
             <TextBlock x:Uid="AboutHeader" AutomationProperties.HeadingLevel="Level2" Style="{StaticResource SettingsSectionHeaderStyle}" />
             <toolkit:SettingsExpander x:Name="AboutExpander" x:Uid="AboutExpander" AutomationProperties.AutomationId="AboutExpander">
                 <toolkit:SettingsExpander.HeaderIcon>
                     <ImageIcon Source="ms-appx:///Assets/AppIcon.png" />
                 </toolkit:SettingsExpander.HeaderIcon>
-                <TextBlock x:Name="VersionText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextSelectionEnabled="True" />
+                <TextBlock x:Name="VersionText" AutomationProperties.AutomationId="VersionText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" IsTextSelectionEnabled="True" />
                 <toolkit:SettingsExpander.Items>
                     <toolkit:SettingsCard x:Uid="DocumentationCard" IsClickEnabled="True" Click="OnDocumentation">
                         <toolkit:SettingsCard.ActionIcon><SymbolIcon Symbol="Globe" /></toolkit:SettingsCard.ActionIcon>

@@ -170,6 +170,9 @@ class DetectChangedPathsTests(unittest.TestCase):
             "core/crates/ffi/src/lib.rs",
             "core/crates/ffi/uniffi.toml",
             ".github/workflows/windows.yml",
+            ".github/workflows/release-windows.yml",
+            ".github/workflows/windows-grid-gate.yml",
+            "windows/ci/winget-manifest.py",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("windows", path), "true")
@@ -194,6 +197,7 @@ class DetectChangedPathsTests(unittest.TestCase):
             "linux/Cargo.toml",
             "apple/TablePro/App.swift",
             "windows/AGENTS.md",
+            "windows/RELEASING.md",
             "core/AGENTS.md",
             "core/docs/decisions/0001-shared-core.md",
             "rustfmt.toml",

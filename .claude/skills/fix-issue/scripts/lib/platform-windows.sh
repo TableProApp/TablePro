@@ -7,7 +7,7 @@
 #   verify.sh [options] test [project] [filter...]     # the solution's tests, or one project's under windows/tests
 #   verify.sh [options] core [package] [filter]        # cargo test, of tablepro-ffi unless a package is named
 #   verify.sh [options] bindings                       # regenerate src/TablePro.Interop/Generated, fail when it changed
-#   verify.sh [options] app [win-x64|win-arm64]        # the WinUI app, for the SDK's own platform by default; Windows only
+#   verify.sh [options] app [win-x64|win-arm64]        # the app's Native AOT publish, for the SDK's platform by default; Windows only
 #   verify.sh [options] ui [filter...]                 # the UI tests against the app step's build; Windows only
 #
 # A project is a folder under windows/tests, with or without its TablePro. prefix. A filter is part of a test's name,
@@ -23,6 +23,8 @@
 
 WINDOWS_DIR="$REPO_ROOT/windows"
 GENERATED_DIR="$WINDOWS_DIR/src/TablePro.Interop/Generated"
+# CoreRustFlags in src/TablePro.Interop/TablePro.Interop.csproj, the hybrid CRT the Windows core is linked with.
+WINDOWS_CORE_RUSTFLAGS='-C target-feature=+crt-static -C link-arg=/NODEFAULTLIB:libucrt.lib -C link-arg=/DEFAULTLIB:ucrt.lib'
 CARGO_ERROR_PATTERN='^error(\[E[0-9]+\])?: '
 DOTNET_ERROR_PATTERN=': error [A-Z]+[0-9]+: '
 
@@ -384,8 +386,12 @@ platform_step() {
             triple="$(host_triple)"
             [ -n "$triple" ] || { STATUS=INCONCLUSIVE; note "cause: rustc printed no host triple. Nothing was run."; emit "" 2; }
             log="$(new_log "core-$package")"
-            # The csproj builds the core with --target; the same flag here reuses that build instead of a second one.
-            (cd "$REPO_ROOT" && cargo test --locked --no-fail-fast --target "$triple" -p "$package" ${filter[@]+"${filter[@]}"}) > "$log" 2>&1
+            # The csproj builds the core with --target, and with CoreRustFlags on Windows; the same here reuses that build.
+            local rustflags="$RUSTFLAGS"
+            case "$triple" in
+                *-windows-msvc) rustflags="$rustflags $WINDOWS_CORE_RUSTFLAGS" ;;
+            esac
+            (cd "$REPO_ROOT" && RUSTFLAGS="$rustflags" cargo test --locked --no-fail-fast --target "$triple" -p "$package" ${filter[@]+"${filter[@]}"}) > "$log" 2>&1
             code=$?
             if grep -q "package ID specification .* did not match any packages" "$log" 2> /dev/null; then
                 echo "no such package: $package (the names are in each Cargo.toml under core/crates)" >&2
@@ -471,11 +477,13 @@ platform_step() {
             esac
             STEP_DETAIL="$rid"
             log="$(new_log "app-$rid")"
-            (cd "$WINDOWS_DIR" && dotnet build src/TablePro.App -r "$rid" -p:Platform="$platform" -nologo -tl:off) > "$log" 2>&1
+            # The Native AOT build windows.yml runs the UI tests on, over the debug core the other steps share.
+            (cd "$WINDOWS_DIR" && dotnet publish src/TablePro.App -c Release -r "$rid" -p:Platform="$platform" \
+                -p:CargoProfile=dev -nologo -tl:off) > "$log" 2>&1
             code=$?
             if [ $code -eq 0 ]; then
                 STATUS=PASS
-                note "app: $(find "$WINDOWS_DIR/src/TablePro.App/bin/$platform" -path "*/$rid/TablePro.exe" 2> /dev/null | head -1)"
+                note "app: $(find "$WINDOWS_DIR/src/TablePro.App/bin/$platform" -path "*/$rid/publish/TablePro.exe" 2> /dev/null | head -1)"
             elif diagnose_environment "$log"; then
                 STATUS=INCONCLUSIVE
             else
@@ -490,7 +498,7 @@ platform_step() {
             require_windows "TablePro.App.UITests"
             prepare
             local exe filtered=0 shots
-            exe="$(find "$WINDOWS_DIR/src/TablePro.App/bin" -path "*/$(sdk_rid)/TablePro.exe" 2> /dev/null | head -1)"
+            exe="$(find "$WINDOWS_DIR/src/TablePro.App/bin" -path "*/$(sdk_rid)/publish/TablePro.exe" 2> /dev/null | head -1)"
             if [ -z "$exe" ]; then
                 STATUS=INCONCLUSIVE
                 note "cause: no TablePro.exe for $(sdk_rid) in this tree. Run the app step first. Nothing was run."

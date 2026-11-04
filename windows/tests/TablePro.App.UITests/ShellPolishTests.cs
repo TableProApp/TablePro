@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
@@ -116,8 +117,16 @@ public sealed partial class ShellTests
             Assert.InRange(bounds.Height, placed.Height - 2, placed.Height + 2);
             app.Screenshot("17-window-restored", screen: true);
             app.Window.Patterns.Window.Pattern.SetWindowVisualState(WindowVisualState.Maximized);
+            // UI Automation posts SC_MAXIMIZE, so closing must wait until the window processes it.
+            Assert.True(Retry.WhileFalse(
+                () => app.Window.Patterns.Window.Pattern.WindowVisualState.Value == WindowVisualState.Maximized,
+                AppSession.Wait,
+                throwOnTimeout: false).Success);
             app.Close();
         }
+
+        using var session = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "session.json")));
+        Assert.True(session.RootElement.GetProperty("window").GetProperty("maximized").GetBoolean());
 
         using var maximized = AppSession.Relaunch(folder, theme, maximize: false);
         var state = WindowVisualState.Normal;
@@ -224,10 +233,9 @@ public sealed partial class ShellTests
 
     [Theory]
     [MemberData(nameof(Themes))]
-    public void ATablePagesPastTheRowLimitAndCountsToItsLastPage(string theme)
+    public void ATablePagesByTheDefaultPageSizeAndCountsToItsLastPage(string theme)
     {
-        var folder = AppSession.NewDataFolder(theme, rowLimit: 1000);
-        using var app = AppSession.Relaunch(folder, theme);
+        using var app = AppSession.Launch(theme);
 
         app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
         var track = app.FindByName("Track", app.Find("ObjectTree"));
@@ -236,6 +244,7 @@ public sealed partial class ShellTests
         Assert.Matches(
             PagedStatus("1-1,000"),
             AppSession.WaitForText(status, text => text.Contains(" of 3,503", StringComparison.Ordinal)));
+        Assert.Equal("1,000 rows", app.Find("PageSizeButton").Name);
         app.Screenshot("23-table-paged");
 
         app.Find("NextPageButton").AsButton().Invoke();
@@ -257,6 +266,58 @@ public sealed partial class ShellTests
             PagedStatus("1-1,000"),
             AppSession.WaitForText(status, text => text.StartsWith("1-1,000 ", StringComparison.Ordinal)));
         Assert.False(app.Find("PreviousPageButton").IsEnabled);
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
+    public void ATableKeepsItsPageSizeAndGoesToAPageInsideItsCount(string theme)
+    {
+        var folder = AppSession.NewDataFolder(theme);
+        using (var app = AppSession.Relaunch(folder, theme))
+        {
+            app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
+            var track = app.FindByName("Track", app.Find("ObjectTree"));
+            app.Click(track, () => app.TryFind("NextPageButton") is { IsOffscreen: false });
+            var status = app.Find("TableStatus");
+            AppSession.WaitForText(status, text => text.Contains(" of 3,503", StringComparison.Ordinal));
+
+            app.Click(app.Find("PageSizeButton"), () => app.TryFindMenuItem("100 rows") is not null);
+            app.Screenshot("29-page-size-menu");
+            app.Click(app.FindMenuItem("100 rows"), () => status.Name.StartsWith("1-100 ", StringComparison.Ordinal));
+            Assert.Matches(PagedStatus("1-100"), status.Name);
+            Assert.Equal("100 rows", app.Find("PageSizeButton").Name);
+            var goTo = app.Find("GoToPageButton");
+            Assert.Equal("Page 1 of 36", AppSession.WaitForText(goTo, text => text == "Page 1 of 36"));
+
+            app.Click(goTo, () => app.TryFind("GoToPageBox") is not null);
+            var box = app.Find("GoToPageBox");
+            box.Patterns.RangeValue.Pattern.SetValue(3);
+            app.Screenshot("30-go-to-page");
+            app.Find("GoToPageGo").AsButton().Invoke();
+            Assert.Matches(
+                PagedStatus("201-300"),
+                AppSession.WaitForText(status, text => text.StartsWith("201-", StringComparison.Ordinal)));
+            Assert.Equal("201", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "201"));
+
+            // The count bounds the page asked for: one past the last goes to the last.
+            app.Click(app.Find("GoToPageButton"), () => app.TryFind("GoToPageBox") is not null);
+            app.Find("GoToPageBox").Patterns.RangeValue.Pattern.SetValue(99);
+            Assert.Equal(36, app.Find("GoToPageBox").Patterns.RangeValue.Pattern.Value.Value);
+            app.Find("GoToPageGo").AsButton().Invoke();
+            Assert.Matches(
+                PagedStatus("3,501-3,503"),
+                AppSession.WaitForText(status, text => text.StartsWith("3,501-", StringComparison.Ordinal)));
+            app.Close();
+        }
+
+        // The tab comes back with the size it was given and the page it showed.
+        using var again = AppSession.Relaunch(folder, theme);
+        var restored = again.Find("TableStatus");
+        Assert.Matches(
+            PagedStatus("3,501-3,503"),
+            AppSession.WaitForText(restored, text => text.StartsWith("3,501-", StringComparison.Ordinal)));
+        Assert.Equal("100 rows", again.Find("PageSizeButton").Name);
+        again.Screenshot("31-page-restored");
     }
 
     [Theory]

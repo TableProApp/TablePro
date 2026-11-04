@@ -192,6 +192,7 @@
                 </InfoBar>
 
                 <!-- TabView's style sets VerticalAlignment to Top, which sizes a tab's content to its smallest. -->
+                <!-- CanTearOutTabs is set once the strip is on screen and cleared before it leaves (WorkspaceView.Leave). -->
                 <TabView
                     x:Name="Tabs"
                     x:Uid="Tabs"
@@ -200,9 +201,13 @@
                     AutomationProperties.AutomationId="Tabs"
                     CanDragTabs="False"
                     CanReorderTabs="True"
+                    ExternalTornOutTabsDropped="OnExternalTornOutTabsDropped"
+                    ExternalTornOutTabsDropping="OnExternalTornOutTabsDropping"
                     IsAddTabButtonVisible="True"
                     SelectionChanged="OnTabSelectionChanged"
                     TabCloseRequested="OnTabCloseRequested"
+                    TabTearOutRequested="OnTabTearOutRequested"
+                    TabTearOutWindowRequested="OnTabTearOutWindowRequested"
                     TabWidthMode="Equal"
                     VerticalAlignment="Stretch" />
             </Grid>

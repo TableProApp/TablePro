@@ -15,7 +15,7 @@ namespace TablePro.App.ConnectionForm;
 
 internal sealed record FormResult(SavedConnection Saved, bool Connect);
 
-// Not a ContentDialog: only one opens per thread, and a dialog elsewhere in the app must still open.
+// A separate window lets the form stay open while the workspace remains usable.
 public sealed partial class ConnectionFormWindow : Window
 {
     private static readonly string[] Colors = ["", "blue", "teal", "green", "yellow", "orange", "red", "pink", "purple", "slate"];
@@ -97,7 +97,7 @@ public sealed partial class ConnectionFormWindow : Window
         EngineSource.Source = EngineCatalog.Sections(_workbench.Engines, query)
             .Select(section => new EngineGroup(
                 Strings.Get("EngineGroup_" + section.Category),
-                [.. section.Engines.Select(Choice)]))
+                section.Engines.Select(Choice).ToList()))
             .ToList();
     }
 
@@ -582,7 +582,7 @@ public sealed partial class ConnectionFormWindow : Window
         };
         if (suffixes.Count > 0)
         {
-            picker.FileTypeChoices.Add(_engine!.DisplayName, [.. suffixes.Select(suffix => "." + suffix)]);
+            picker.FileTypeChoices.Add(_engine!.DisplayName, suffixes.Select(suffix => "." + suffix).ToList());
         }
 
         var result = await picker.PickSaveFileAsync();

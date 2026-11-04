@@ -28,15 +28,22 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}" />
             </CommandBar.Content>
+            <!-- Labels are set as the page changes; the menus and the flyout are built each time they open. -->
+            <AppBarButton x:Uid="PageSizeButton" x:Name="PageSizeButton" AutomationProperties.AutomationId="PageSizeButton" Click="OnPageSize">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE8FD;" /></AppBarButton.Icon>
+            </AppBarButton>
             <AppBarButton x:Uid="FirstPageButton" x:Name="FirstPageButton" AutomationProperties.AutomationId="FirstPageButton" Icon="Previous" Click="OnFirstPage" Visibility="Collapsed" />
             <AppBarButton x:Uid="PreviousPageButton" x:Name="PreviousPageButton" AutomationProperties.AutomationId="PreviousPageButton" Click="OnPreviousPage" Visibility="Collapsed">
                 <AppBarButton.Icon><FontIcon Glyph="&#xE76B;" /></AppBarButton.Icon>
+            </AppBarButton>
+            <AppBarButton x:Uid="GoToPageButton" x:Name="GoToPageButton" AutomationProperties.AutomationId="GoToPageButton" Click="OnGoToPage" Visibility="Collapsed">
+                <AppBarButton.Icon><FontIcon Glyph="&#xE7C3;" /></AppBarButton.Icon>
             </AppBarButton>
             <AppBarButton x:Uid="NextPageButton" x:Name="NextPageButton" AutomationProperties.AutomationId="NextPageButton" Click="OnNextPage" Visibility="Collapsed">
                 <AppBarButton.Icon><FontIcon Glyph="&#xE76C;" /></AppBarButton.Icon>
             </AppBarButton>
             <AppBarButton x:Uid="LastPageButton" x:Name="LastPageButton" AutomationProperties.AutomationId="LastPageButton" Icon="Next" Click="OnLastPage" Visibility="Collapsed" />
-            <AppBarSeparator x:Name="PageSeparator" Visibility="Collapsed" />
+            <AppBarSeparator />
             <AppBarButton x:Uid="RefreshTableButton" x:Name="RefreshButton" AutomationProperties.AutomationId="RefreshTableButton" Icon="Refresh" Click="OnRefresh" />
             <AppBarButton x:Uid="StopButton" x:Name="StopButton" AutomationProperties.AutomationId="StopTableButton" Icon="Stop" IsEnabled="False" Click="OnStop" />
         </CommandBar>

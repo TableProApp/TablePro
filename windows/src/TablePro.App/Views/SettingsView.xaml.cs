@@ -44,6 +44,16 @@ public sealed partial class SettingsView : UserControl
         FontSizeBox.Value = settings.EditorFontSize;
         RowLimitBox.Value = settings.RowLimit;
         TimeoutBox.Value = settings.QueryTimeoutSeconds;
+        // A size the file holds that the list does not offer is shown too, so the box never reads empty.
+        PageSizeBox.Items.Clear();
+        foreach (var size in AppSettings.PageSizeChoices.Append(settings.PageSize).Distinct().Order())
+        {
+            PageSizeBox.Items.Add(new ComboBoxItem { Content = Strings.Format("PageSizeOption", size), Tag = size });
+        }
+
+        PageSizeBox.SelectedItem = PageSizeBox.Items
+            .OfType<ComboBoxItem>()
+            .First(item => item.Tag is int size && size == settings.PageSize);
         _loading = false;
     }
 
@@ -80,6 +90,14 @@ public sealed partial class SettingsView : UserControl
         if (!_loading && !double.IsNaN(args.NewValue))
         {
             _workbench.UpdateSettings(settings => settings with { RowLimit = (int)args.NewValue });
+        }
+    }
+
+    private void OnPageSizeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loading && PageSizeBox.SelectedItem is ComboBoxItem { Tag: int size })
+        {
+            _workbench.UpdateSettings(settings => settings with { PageSize = size });
         }
     }
 
