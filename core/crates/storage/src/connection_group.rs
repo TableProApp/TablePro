@@ -1,12 +1,14 @@
-use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+
+use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
 use crate::{ConnectionColor, ConnectionGroupName, GroupIcon};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "StoredGroup")]
 pub struct ConnectionGroup {
     pub id: Uuid,
-    #[serde(deserialize_with = "crate::connection_group_name::deserialize_required")]
     pub name: ConnectionGroupName,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_id: Option<Uuid>,
@@ -17,6 +19,66 @@ pub struct ConnectionGroup {
     pub color: Option<ConnectionColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<GroupIcon>,
+}
+
+#[derive(Deserialize)]
+struct StoredGroup {
+    id: Uuid,
+    name: String,
+    #[serde(default)]
+    parent_id: Option<Uuid>,
+    #[serde(default)]
+    order: u32,
+    #[serde(default)]
+    color: Option<ConnectionColor>,
+    #[serde(default)]
+    icon: Option<GroupIcon>,
+}
+
+impl TryFrom<StoredGroup> for ConnectionGroup {
+    type Error = crate::GroupNameError;
+
+    fn try_from(stored: StoredGroup) -> Result<Self, Self::Error> {
+        Ok(Self {
+            id: stored.id,
+            name: ConnectionGroupName::from_stored(&stored.name).ok_or(crate::GroupNameError::Empty)?,
+            parent_id: stored.parent_id,
+            order: stored.order,
+            color: stored.color,
+            icon: stored.icon,
+        })
+    }
+}
+
+pub(crate) fn deserialize_list<'de, D>(deserializer: D) -> Result<Vec<ConnectionGroup>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let stored = Vec::<StoredGroup>::deserialize(deserializer)?;
+    let mut recovered = Vec::new();
+    let mut held: HashMap<Option<Uuid>, HashSet<String>> = HashMap::new();
+    let mut groups = Vec::with_capacity(stored.len());
+    for (index, raw) in stored.into_iter().enumerate() {
+        let recover = crate::name_rules::shown(&raw.name).is_empty();
+        let group = ConnectionGroup::try_from(raw).map_err(serde::de::Error::custom)?;
+        if recover {
+            recovered.push(index);
+        } else {
+            held.entry(group.parent_id)
+                .or_default()
+                .insert(group.name.as_str().to_lowercase());
+        }
+        groups.push(group);
+    }
+    // A recovered sibling must not match a visible group during import.
+    recovered.sort_unstable_by_key(|&index| groups[index].id);
+    for index in recovered {
+        let group = &mut groups[index];
+        let name =
+            crate::name_rules::claim_recovered(group.name.as_str(), None, held.entry(group.parent_id).or_default());
+        group.name = ConnectionGroupName::new(&name).map_err(serde::de::Error::custom)?;
+    }
+    Ok(groups)
 }
 
 impl ConnectionGroup {

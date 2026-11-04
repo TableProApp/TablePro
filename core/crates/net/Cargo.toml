@@ -14,16 +14,22 @@ rustls-native-certs.workspace = true
 rustls-pki-types.workspace = true
 rustls-platform-verifier.workspace = true
 socket2.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["net", "rt"] }
 tracing.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, features = ["fs", "process"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
 
 [dev-dependencies]
 http.workspace = true
 hyper-rustls.workspace = true
 hyper-util.workspace = true
 rcgen.workspace = true
-tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
 tokio-rustls.workspace = true
 tower-service.workspace = true

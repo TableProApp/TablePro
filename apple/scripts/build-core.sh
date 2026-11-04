@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the shared Rust core as the static library the Apple apps link, and its Swift bindings from that same
-# library, into Packages/TableProFFI (core/docs/decisions/0009-macos-on-the-core.md). Neither is in git.
+# library, into Packages/TableProFFI (core/docs/decisions/0010-macos-on-the-core.md). Neither is in git.
 #
 # Usage: build-core.sh [arm64|x86_64|both]    both, the default, is the universal slice the app ships
 set -euo pipefail

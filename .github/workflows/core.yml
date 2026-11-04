@@ -37,6 +37,8 @@ jobs:
       # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks;
       # its prebuilt objects stand in.
       AWS_LC_SYS_PREBUILT_NASM: "1"
+      # The SSH transport the Windows app runs (core ADR 0009).
+      IN_PROCESS_SSH: tablepro-ssh/in-process,tablepro-session/in-process-ssh
     defaults:
       run:
         shell: bash
@@ -58,7 +60,7 @@ jobs:
       # on Linux alone.
       - name: Check the core crates
         run: |
-          cargo check --locked --target "$TARGET" --features "$FEATURES" \
+          cargo check --locked --target "$TARGET" --features "$FEATURES" --features "$IN_PROCESS_SSH" \
             -p tablepro-core -p tablepro-net -p tablepro-storage -p tablepro-ssh -p tablepro-session \
             -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-test-support -p tablepro-test-fixtures \
             -p tablepro-driver-cassandra -p tablepro-driver-clickhouse -p tablepro-driver-duckdb \
@@ -67,6 +69,28 @@ jobs:
       # The SQL Server driver's own: integrated login differs on every platform.
       - name: Core unit tests
         run: cargo test --locked --target "$TARGET" --features "$FEATURES" -p tablepro-core -p tablepro-driver-mssql --lib
+      # The transports and the drivers' relays each have a split per platform.
+      - name: Transport unit tests
+        run: |
+          cargo test --locked --target "$TARGET" -p tablepro-driver-mysql -p tablepro-driver-mongodb \
+            -p tablepro-driver-cassandra --lib
+          # The rest of net's tests read how Linux handles a full listen backlog.
+          cargo test --locked --target "$TARGET" -p tablepro-net --lib -- loopback private_
+          cargo test --locked --target "$TARGET" --features tablepro-ssh/in-process -p tablepro-ssh --lib in_process
+      - name: Start Windows' OpenSSH Server
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts/ci/start-windows-sshd.ps1 -Out (Join-Path $env:RUNNER_TEMP 'tablepro-ssh')
+      - name: SSH tunnels through Windows' OpenSSH Server
+        if: runner.os == 'Windows'
+        # One login at a time: the Arm64 runner is slow to start each session's process.
+        run: cargo test --locked --target "$TARGET" --features tablepro-ssh/in-process -p tablepro-ssh --test in_process_windows -- --ignored --test-threads=1
+      - name: The OpenSSH Server's log
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-Content (Join-Path $env:ProgramData 'ssh\sshd_config') | Where-Object { $_ -notmatch '^\s*(#|$)' }
+          Get-Content (Join-Path $env:ProgramData 'ssh\logs\sshd.log') -Tail 300 -ErrorAction Continue
       # Each importer reads its app's files from this platform's own places.
       - name: Importers from other apps
         run: cargo test --locked --target "$TARGET" -p tablepro-foreign-import
@@ -112,7 +136,7 @@ jobs:
   swift:
     name: Core (Swift bindings)
     runs-on: macos-15
-    # Release with fat LTO, without the engines (core/docs/decisions/0009-macos-on-the-core.md).
+    # Release with fat LTO, without the engines (core/docs/decisions/0010-macos-on-the-core.md).
     timeout-minutes: 90
     env:
       RUSTFLAGS: -D warnings

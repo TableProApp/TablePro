@@ -1,23 +1,21 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
 use secrecy::{ExposeSecret, SecretString};
-use tablepro_core::credentials::{CredentialInteraction, SecretItems, SecretKind, SecretVault};
+use tablepro_core::credentials::{CredentialInteraction, CredentialPrompter, SecretItems, SecretKind, SecretVault};
 use tablepro_core::{
     ConnectEnvironment, Credentials, DatabaseDriver, DriverError, DriverRegistry, FileEndpoint, LivenessPolicy,
-    SafeModeLevel, SshFailure, TransportError, WorkspaceSettings,
+    SafeModeLevel, WorkspaceSettings,
 };
-use tablepro_session::connect::{SshTunnel, SshTunnels};
 use tablepro_session::runtime::Tasks;
 use tablepro_session::{
     ConnectError, ConnectRequest, ConnectServices, ConnectionMetadata, Connector, CredentialSource, DefaultDeadlines,
     DriverConnector, NoStoredCredentials, RefreshedRequest, RequestTarget, Session, SessionDeps, resolve_saved,
 };
-use tablepro_ssh::{SshAuth, SshConfig};
+use tablepro_ssh::{InProcessSsh, SshAuth};
 use tablepro_storage::{ConnectionStore, CredentialDemand, KeyringCredentials, SavedConnection, StoragePaths};
-use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::cancel_token::{CancelToken, token};
@@ -25,6 +23,7 @@ use crate::drivers::{self, DriverInfo};
 use crate::error::CoreError;
 use crate::host::{HostConfig, HostSecretStore, HostSecrets};
 use crate::library::{ConnectionLibrary, ConnectionRecord, ConnectionSecrets, apply, blank, parse_id};
+use crate::prompter::{HostPrompter, HostPrompterBridge};
 use crate::runtime::{self, on_runtime};
 use crate::session::DatabaseSession;
 
@@ -38,7 +37,8 @@ pub struct Core {
     vault: Arc<dyn SecretVault>,
     items: Arc<dyn SecretItems>,
     store: Option<ConnectionStore>,
-    tasks: Tasks,
+    pub(crate) tasks: Tasks,
+    pub(crate) ssh: Arc<InProcessSsh>,
 }
 
 /// A database file to open.
@@ -144,11 +144,12 @@ impl Core {
         .await
     }
 
-    // Secrets typed now come first; Credential Manager supplies the rest.
+    // Typed secrets come first, then Credential Manager; with no prompter an SSH login fails where it would ask.
     pub async fn connect_saved(
         &self,
         id: String,
         secrets: ConnectionSecrets,
+        prompter: Option<Box<dyn HostPrompter>>,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<Arc<DatabaseSession>, CoreError> {
         let id = parse_id(&id)?;
@@ -158,6 +159,7 @@ impl Core {
         let deadlines = self.deadlines.clone();
         let vault = self.vault.clone();
         let tasks = self.tasks.clone();
+        let prompter = self.prompter(prompter);
         let cancel = token(cancel);
         on_runtime(&self.tasks, async move {
             let reader = store.clone();
@@ -180,7 +182,7 @@ impl Core {
             )
             .await?;
             let pending = connector
-                .establish(refreshed.request, CredentialInteraction::Unattended, cancel.clone())
+                .establish(refreshed.request, interaction(prompter.as_ref()), cancel.clone())
                 .await?;
             if cancel.is_cancelled() {
                 let report = pending.discard().await;
@@ -197,7 +199,7 @@ impl Core {
                     credentials,
                     deadlines,
                     tasks: tasks.clone(),
-                    prompter: None,
+                    prompter,
                 },
             );
             let stamped = tasks
@@ -215,6 +217,7 @@ impl Core {
         &self,
         record: ConnectionRecord,
         secrets: ConnectionSecrets,
+        prompter: Option<Box<dyn HostPrompter>>,
         cancel: Option<Arc<CancelToken>>,
     ) -> Result<(), CoreError> {
         let id = match record.id.trim() {
@@ -227,6 +230,7 @@ impl Core {
         let registry = self.registry.clone();
         let connector = self.connector.clone();
         let vault = self.vault.clone();
+        let prompter = self.prompter(prompter);
         let cancel = token(cancel);
         on_runtime(&self.tasks, async move {
             let credentials = Prefilled::new(&saved, vault, &secrets);
@@ -239,7 +243,7 @@ impl Core {
             )
             .await?;
             let pending = connector
-                .establish(refreshed.request, CredentialInteraction::Unattended, cancel)
+                .establish(refreshed.request, interaction(prompter.as_ref()), cancel)
                 .await?;
             let report = pending.discard().await;
             tracing::debug!(?report, "closed the test connection");
@@ -253,9 +257,10 @@ impl Core {
     fn build(config: HostConfig, vault: Arc<dyn SecretVault>, items: Arc<dyn SecretItems>, tasks: Tasks) -> Arc<Self> {
         let liveness = LivenessPolicy::DESKTOP;
         let deadlines = Arc::new(DefaultDeadlines::new(liveness));
+        let ssh = Arc::new(InProcessSsh::system());
         let services = ConnectServices {
             environment: ConnectEnvironment::new(config.client_version),
-            ssh: Arc::new(NoSshTransport),
+            ssh: ssh.clone(),
             liveness,
         };
         let store = config
@@ -270,7 +275,12 @@ impl Core {
             items,
             store,
             tasks,
+            ssh,
         })
+    }
+
+    fn prompter(&self, host: Option<Box<dyn HostPrompter>>) -> Option<Arc<dyn CredentialPrompter>> {
+        host.map(|host| Arc::new(HostPrompterBridge::new(host, self.tasks.clone())) as Arc<dyn CredentialPrompter>)
     }
 
     pub fn secret_vault(&self) -> Arc<dyn SecretVault> {
@@ -326,17 +336,16 @@ fn system_secrets(_tasks: &Tasks) -> Result<SystemSecrets, CoreError> {
 
 // Secrets the form or a prompt holds go into the request first; the rest come from the vault.
 struct Prefilled {
-    typed: Vec<(SecretKind, SecretString)>,
+    typed: Arc<Mutex<Vec<(SecretKind, SecretString)>>>,
     keyring: KeyringCredentials,
 }
 
 impl Prefilled {
     fn new(saved: &SavedConnection, vault: Arc<dyn SecretVault>, secrets: &ConnectionSecrets) -> Self {
         let typed = secrets.typed();
-        let kinds: Vec<SecretKind> = typed.iter().map(|(kind, _)| *kind).collect();
         Self {
-            typed,
-            keyring: KeyringCredentials::for_saved(vault, saved).keeping_session_secrets(&kinds),
+            typed: Arc::new(Mutex::new(typed)),
+            keyring: KeyringCredentials::for_saved(vault, saved),
         }
     }
 }
@@ -348,14 +357,29 @@ impl CredentialSource for Prefilled {
         interaction: CredentialInteraction,
         demand: CredentialDemand,
     ) -> BoxFuture<'static, Result<RefreshedRequest, ConnectError>> {
-        let mut request = request;
-        fill(&mut request, &self.typed);
-        let typed: Vec<SecretKind> = self.typed.iter().map(|(kind, _)| *kind).collect();
-        // A typed secret may be empty, for a server that takes none, which the keyring would read as missing.
-        if needed(&request).iter().all(|kind| typed.contains(kind)) {
-            return Box::pin(async move { Ok(RefreshedRequest::unchanged(request)) });
-        }
-        self.keyring.refresh(request, interaction, demand)
+        let typed = self.typed.clone();
+        let keyring = self.keyring.clone();
+        Box::pin(async move {
+            let mut request = request;
+            let kinds = {
+                let held = typed.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                fill(&mut request, &held);
+                held.iter().map(|(kind, _)| *kind).collect::<Vec<_>>()
+            };
+            let refreshed = keyring
+                .keeping_session_secrets(&kinds)
+                .refresh(request, interaction, demand)
+                .await?;
+            // The session's reconnect and editor requests are snapshots, so keep later prompt answers here.
+            let mut held = typed.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            for kind in &refreshed.typed {
+                if let Some(secret) = request_secret(&refreshed.request, *kind) {
+                    held.retain(|(existing, _)| existing != kind);
+                    held.push((*kind, secret.clone()));
+                }
+            }
+            Ok(refreshed)
+        })
     }
 
     fn remember(
@@ -363,6 +387,18 @@ impl CredentialSource for Prefilled {
         saves: Vec<tablepro_core::credentials::SecretSave>,
     ) -> BoxFuture<'static, Vec<(SecretKind, tablepro_core::credentials::SecretError)>> {
         self.keyring.remember(saves)
+    }
+}
+
+fn request_secret(request: &ConnectRequest, kind: SecretKind) -> Option<&SecretString> {
+    let RequestTarget::Network { credentials, ssh, .. } = &request.target else {
+        return None;
+    };
+    match (kind, credentials, ssh.as_ref().map(|ssh| &ssh.auth)) {
+        (SecretKind::DatabasePassword, Credentials::Password { password, .. }, _) => Some(password),
+        (SecretKind::SshPassword, _, Some(SshAuth::Password { password })) => Some(password),
+        (SecretKind::SshPassphrase, _, Some(SshAuth::PrivateKey { passphrase, .. })) => passphrase.as_ref(),
+        _ => None,
     }
 }
 
@@ -381,22 +417,6 @@ fn fill(request: &mut ConnectRequest, typed: &[(SecretKind, SecretString)]) {
             _ => {}
         }
     }
-}
-
-fn needed(request: &ConnectRequest) -> Vec<SecretKind> {
-    let RequestTarget::Network { credentials, ssh, .. } = &request.target else {
-        return Vec::new();
-    };
-    let mut kinds = Vec::new();
-    if matches!(credentials, Credentials::Password { .. }) {
-        kinds.push(SecretKind::DatabasePassword);
-    }
-    match ssh.as_ref().map(|ssh| &ssh.auth) {
-        Some(SshAuth::Password { .. }) => kinds.push(SecretKind::SshPassword),
-        Some(SshAuth::PrivateKey { .. }) => kinds.push(SecretKind::SshPassphrase),
-        _ => {}
-    }
-    kinds
 }
 
 // A missing file is no error here: it fails only once it is opened.
@@ -438,6 +458,13 @@ fn file_error(path: &Path, kind: std::io::ErrorKind) -> CoreError {
     })
 }
 
+// The saved secrets resolve before the login unattended, as the app asks for a missing one itself.
+fn interaction(prompter: Option<&Arc<dyn CredentialPrompter>>) -> CredentialInteraction {
+    prompter.map_or(CredentialInteraction::Unattended, |prompter| {
+        CredentialInteraction::Attended(prompter.clone())
+    })
+}
+
 fn file_name(path: &Path) -> String {
     path.file_name().map_or_else(
         || path.display().to_string(),
@@ -445,22 +472,218 @@ fn file_name(path: &Path) -> String {
     )
 }
 
-// No SSH transport is wired in yet, so SSH fails as it would with no client installed.
-#[derive(Debug)]
-struct NoSshTransport;
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
 
-impl SshTunnels for NoSshTransport {
-    fn open(
-        &self,
-        _config: &SshConfig,
-        _liveness: LivenessPolicy,
-        _interaction: CredentialInteraction,
-        _cancel: CancellationToken,
-    ) -> BoxFuture<'static, Result<Arc<dyn SshTunnel>, TransportError>> {
-        Box::pin(async {
-            Err(TransportError::Ssh(SshFailure::OpenSshClientMissing {
-                program: PathBuf::from("ssh"),
-            }))
-        })
+    use async_trait::async_trait;
+    use tablepro_core::credentials::{
+        CredentialPrompt, PromptPurpose, PromptReason, PromptReply, SecretError, SecretLookup,
+    };
+    use tablepro_storage::{SavedSshAuth, SavedSshConfig};
+
+    use super::*;
+
+    #[derive(Default)]
+    struct Vault(Mutex<HashMap<(Uuid, SecretKind), SecretString>>);
+
+    #[async_trait]
+    impl SecretVault for Vault {
+        async fn store(&self, id: Uuid, kind: SecretKind, secret: &SecretString, _: &str) -> Result<(), SecretError> {
+            self.0.lock().unwrap().insert((id, kind), secret.clone());
+            Ok(())
+        }
+
+        async fn load(&self, id: Uuid, kind: SecretKind) -> Result<SecretLookup, SecretError> {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .get(&(id, kind))
+                .cloned()
+                .map_or(SecretLookup::NotStored, SecretLookup::Found))
+        }
+
+        async fn relabel(&self, _: Uuid, _: SecretKind, _: &str) -> Result<(), SecretError> {
+            Ok(())
+        }
+
+        async fn delete_kind(&self, id: Uuid, kind: SecretKind) -> Result<(), SecretError> {
+            self.0.lock().unwrap().remove(&(id, kind));
+            Ok(())
+        }
+
+        async fn delete_connection(&self, id: Uuid) -> Result<(), SecretError> {
+            self.0.lock().unwrap().retain(|(connection, _), _| *connection != id);
+            Ok(())
+        }
+    }
+
+    struct Answer {
+        value: &'static str,
+        asked: Mutex<Vec<CredentialPrompt>>,
+    }
+
+    impl CredentialPrompter for Answer {
+        fn prompt(&self, prompt: CredentialPrompt) -> BoxFuture<'static, PromptReply> {
+            self.asked.lock().unwrap().push(prompt);
+            let value = self.value;
+            Box::pin(async move {
+                PromptReply::Submitted {
+                    values: vec![SecretString::from(value)],
+                    remember: false,
+                }
+            })
+        }
+    }
+
+    fn saved(kind: SecretKind) -> SavedConnection {
+        let mut saved = blank(Uuid::new_v4());
+        saved.driver_id = "postgres".to_owned();
+        saved.host = "db.internal".to_owned();
+        saved.port = 5432;
+        saved.database = "shop".to_owned();
+        saved.username = "app".to_owned();
+        saved.ssh = Some(SavedSshConfig {
+            host: "bastion.internal".to_owned(),
+            port: Some(22),
+            username: Some("deploy".to_owned()),
+            jump_hosts: Vec::new(),
+            auth: match kind {
+                SecretKind::SshPassphrase => SavedSshAuth::PrivateKey {
+                    path: Some(PathBuf::from("/keys/id_ed25519")),
+                    has_passphrase: true,
+                },
+                _ => SavedSshAuth::Password,
+            },
+        });
+        saved
+    }
+
+    fn secrets(value: &str) -> ConnectionSecrets {
+        ConnectionSecrets {
+            database_password: Some(value.to_owned()),
+            ssh_password: Some(value.to_owned()),
+            ssh_passphrase: Some(value.to_owned()),
+        }
+    }
+
+    fn value(request: &ConnectRequest, kind: SecretKind) -> &str {
+        let RequestTarget::Network {
+            credentials: Credentials::Password { password, .. },
+            ssh: Some(ssh),
+            ..
+        } = &request.target
+        else {
+            panic!("expected a password connection through SSH");
+        };
+        match (kind, &ssh.auth) {
+            (SecretKind::DatabasePassword, _) => password.expose_secret(),
+            (SecretKind::SshPassword, SshAuth::Password { password }) => password.expose_secret(),
+            (
+                SecretKind::SshPassphrase,
+                SshAuth::PrivateKey {
+                    passphrase: Some(passphrase),
+                    ..
+                },
+            ) => passphrase.expose_secret(),
+            _ => panic!("secret kind does not match the SSH method"),
+        }
+    }
+
+    #[tokio::test]
+    async fn explicitly_empty_form_secrets_survive_initial_resolution_and_reconnect() {
+        for kind in SecretKind::ALL {
+            let saved = saved(kind);
+            let vault = Arc::new(Vault::default());
+            vault
+                .store(saved.id, kind, &SecretString::from("stored before"), "saved")
+                .await
+                .unwrap();
+            let credentials = Prefilled::new(&saved, vault, &secrets(""));
+            let first = resolve_saved(
+                &saved,
+                &drivers::registry(),
+                &credentials,
+                CredentialInteraction::Unattended,
+                CredentialDemand::default(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(value(&first.request, kind), "");
+
+            let reconnect = credentials
+                .refresh(
+                    first.request.for_reconnect(),
+                    CredentialInteraction::Unattended,
+                    CredentialDemand::default(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(value(&reconnect.request, kind), "");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_reentered_secret_replaces_the_form_value_in_later_refreshes() {
+        for kind in SecretKind::ALL {
+            for replacement in ["corrected", ""] {
+                let saved = saved(kind);
+                let credentials = Prefilled::new(&saved, Arc::new(Vault::default()), &secrets("original"));
+                let first = resolve_saved(
+                    &saved,
+                    &drivers::registry(),
+                    &credentials,
+                    CredentialInteraction::Unattended,
+                    CredentialDemand::default(),
+                )
+                .await
+                .unwrap();
+                assert_eq!(value(&first.request, kind), "original");
+                let answer = Arc::new(Answer {
+                    value: replacement,
+                    asked: Mutex::new(Vec::new()),
+                });
+
+                let corrected = credentials
+                    .refresh(
+                        first.request.for_reconnect(),
+                        CredentialInteraction::Attended(answer.clone()),
+                        CredentialDemand::reenter(kind),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(value(&corrected.request, kind), replacement);
+                assert_eq!(corrected.typed, [kind]);
+                assert!(corrected.remember.is_empty());
+                {
+                    let asked = answer.asked.lock().unwrap();
+                    assert_eq!(asked.len(), 1);
+                    assert!(matches!(
+                        asked[0].purpose,
+                        PromptPurpose::DatabasePassword {
+                            reason: PromptReason::Rejected
+                        } | PromptPurpose::SshPassword {
+                            reason: PromptReason::Rejected
+                        } | PromptPurpose::SshPassphrase {
+                            reason: PromptReason::Rejected,
+                            ..
+                        }
+                    ));
+                }
+
+                let reconnect = credentials
+                    .refresh(
+                        first.request.for_reconnect(),
+                        CredentialInteraction::Unattended,
+                        CredentialDemand::default(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(value(&reconnect.request, kind), replacement);
+                assert_eq!(answer.asked.lock().unwrap().len(), 1);
+            }
+        }
     }
 }

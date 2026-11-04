@@ -4,7 +4,7 @@ use uuid::Uuid;
 use crate::error::CoreError;
 use crate::library::{ConnectionLibrary, parse_id};
 
-// Only existing CloudKit fields cross this boundary; ADR 0009 defines their mapping.
+// Only existing CloudKit fields cross this boundary; ADR 0010 defines their mapping.
 #[derive(Debug, Clone, Default, PartialEq, Eq, uniffi::Record)]
 pub struct CloudGroupFields {
     pub group_id: String,

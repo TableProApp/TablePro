@@ -1,3 +1,4 @@
+import TableProMSSQLCore
 import Foundation
 import TableProDatabase
 import TableProModels
@@ -211,6 +212,7 @@ nonisolated enum ClipboardExporter {
         let vals = columns.indices.map { i in
             let value = i < row.count ? row[i] : nil
             guard let value else { return "NULL" }
+            if databaseType == .mssql { return MSSQLStringLiteral.quoted(value) }
             return "'\(escapeLiteral(value, databaseType: databaseType, driver: driver))'"
         }.joined(separator: ", ")
         return "INSERT INTO \(quotedTable) (\(cols)) VALUES (\(vals));"

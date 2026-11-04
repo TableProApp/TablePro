@@ -1,10 +1,10 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::group_name_error::GroupNameError;
 use crate::name_rules::{self, NameFault};
 
-/// The group a saved connection is filed under, as the user typed it
-/// without the spaces around it.
+/// The group a saved connection is filed under, its name in the form a
+/// connection's name takes.
 ///
 /// A name read from disk passes the same check as one from the dialog,
 /// after `from_stored` cleans it, so a name a menu or a section title
@@ -17,7 +17,7 @@ impl ConnectionGroupName {
     // No length limit: a macOS group name has none and has to read back unchanged.
     pub fn new(value: &str) -> Result<Self, GroupNameError> {
         match name_rules::checked(value) {
-            Ok(name) => Ok(Self(name.to_owned())),
+            Ok(name) => Ok(Self(name)),
             Err(NameFault::Empty) => Err(GroupNameError::Empty),
             Err(NameFault::ControlCharacter) => Err(GroupNameError::ControlCharacter),
         }
@@ -36,16 +36,6 @@ impl ConnectionGroupName {
     pub fn same_name(&self, other: &ConnectionGroupName) -> bool {
         self.0.to_lowercase() == other.0.to_lowercase()
     }
-}
-
-/// Reads a group's `name` through `from_stored`. A blank one is refused:
-/// a group nobody can see cannot be told apart.
-pub(crate) fn deserialize_required<'de, D>(deserializer: D) -> Result<ConnectionGroupName, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let stored = String::deserialize(deserializer)?;
-    ConnectionGroupName::from_stored(&stored).ok_or_else(|| serde::de::Error::custom(GroupNameError::Empty))
 }
 
 impl TryFrom<String> for ConnectionGroupName {
@@ -76,6 +66,7 @@ mod tests {
     fn group_name_rejects_blank_and_control_characters() {
         assert_eq!(ConnectionGroupName::new(""), Err(GroupNameError::Empty));
         assert_eq!(ConnectionGroupName::new(" \t "), Err(GroupNameError::Empty));
+        assert_eq!(ConnectionGroupName::new("\u{200b}"), Err(GroupNameError::Empty));
         assert_eq!(
             ConnectionGroupName::new("Work\nHome"),
             Err(GroupNameError::ControlCharacter)
@@ -100,8 +91,16 @@ mod tests {
             ConnectionGroupName::from_stored("Work\tHome\n").map(String::from),
             Some(String::from("Work Home"))
         );
+        assert_eq!(
+            ConnectionGroupName::from_stored("Wo\u{200b}rk\u{feff}").map(String::from),
+            Some(String::from("Work"))
+        );
         assert_eq!(ConnectionGroupName::from_stored(" \t "), None);
         assert_eq!(ConnectionGroupName::from_stored(""), None);
+        assert_eq!(
+            ConnectionGroupName::from_stored("\u{200b}").map(String::from),
+            Some(String::from("\\u{200b}"))
+        );
     }
 
     #[test]
@@ -110,5 +109,13 @@ mod tests {
 
         assert_eq!(name.as_str(), "Prod");
         assert_eq!(String::from(name), "Prod");
+    }
+
+    #[test]
+    fn names_that_read_alike_are_the_same_group() {
+        let work = ConnectionGroupName::new("Work").expect("a name");
+
+        assert!(work.same_name(&ConnectionGroupName::new("wo\u{200b}rk").expect("a name")));
+        assert!(!work.same_name(&ConnectionGroupName::new("Home").expect("a name")));
     }
 }

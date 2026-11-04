@@ -499,13 +499,15 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "sysmail_add_account_sp",
         "sysmail_update_account_sp",
         // Replication and log shipping: the distributor_admin, Publisher,
-        // Subscriber, agent job and monitor passwords, as arguments or as
-        // a property value.
+        // Subscriber, agent job, snapshot FTP and monitor passwords, as
+        // arguments or as a property value.
         "sp_adddistributor",
         "sp_changedistributor_password",
         "sp_adddistributiondb",
         "sp_adddistpublisher",
         "sp_changedistpublisher",
+        "sp_changepublication",
+        "sp_changemergepublication",
         "sp_addsubscriber",
         "sp_changesubscriber",
         "sp_addlogreader_agent",
@@ -534,7 +536,7 @@ const CREDENTIAL_RULES: CredentialRules = CredentialRules {
         "sp_add_log_shipping_secondary_database",
         "sp_change_log_shipping_secondary_database",
     ],
-    secret_parameters: &["PASSWORD", "PWD"],
+    secret_parameters: &["PASSWORD", "PASSWD", "PWD"],
 };
 
 #[cfg(test)]
@@ -868,6 +870,10 @@ mod tests {
             "EXEC('CREATE LOGIN l WITH PASSWORD = ''p''')",
             "EXEC sp_executesql N'CREATE USER u WITH PASSWORD = ''p'''",
             "DECLARE @s nvarchar(99) = N'CREATE LOGIN l WITH PASSWORD = ''p'''; EXEC (@s)",
+            "DECLARE @s nvarchar(max) = N'CREATE LOGIN app WITH PASSWORD = ''Hunter2!'''",
+            "EXEC sp_changepublication @publication = N'pub', @property = N'ftp_password', @value = N'Hunter2!', @force_invalidate_snapshot = 1",
+            "EXEC sp_changemergepublication N'pub', N'ftp_password', N'Hunter2!'",
+            "EXEC dbo.add_app_login @login = N'app', @passwd = N'Hunter2!'",
         ] {
             assert_eq!(
                 dialect().history_recording(sql),
@@ -888,6 +894,7 @@ mod tests {
             "INSERT INTO [OPENROWSET] (c) VALUES (1)",
             "SELECT 1\nPRINT sp_addlogin",
             "CREATE NONCLUSTERED INDEX ix ON dbo.sp_password (id)",
+            "SELECT passwd FROM dbo.users",
         ] {
             assert_eq!(dialect().history_recording(sql), HistoryRecording::Record, "{sql}");
         }

@@ -82,7 +82,7 @@ impl KeyringCredentials {
             return self.ask(prompter, kind, PromptReason::Rejected, true).await.map(Some);
         }
         if self.session_only.contains(&kind)
-            && let Some(secret) = in_use.filter(|secret| !secret.expose_secret().is_empty())
+            && let Some(secret) = in_use
         {
             return Ok(Some(ResolvedSecret::known(secret.clone())));
         }
@@ -596,6 +596,25 @@ mod tests {
 
         assert_eq!(resolved.secret.expose_secret(), "typed");
         assert!(vault.loads().is_empty(), "the stored copy was read");
+    }
+
+    #[tokio::test]
+    async fn an_explicit_empty_session_secret_wins_over_the_stored_copy() {
+        let (credentials, vault) = credentials(Vault::holding(SecretKind::DatabasePassword, "old"), None);
+        let credentials = credentials.keeping_session_secrets(&[SecretKind::DatabasePassword]);
+        let empty = SecretString::from("");
+        let resolved = credentials
+            .resolve(
+                SecretKind::DatabasePassword,
+                Some(&empty),
+                &CredentialInteraction::Unattended,
+                CredentialDemand::default(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(resolved.secret.expose_secret().is_empty());
+        assert!(vault.loads().is_empty());
     }
 
     #[tokio::test]

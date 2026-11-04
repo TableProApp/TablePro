@@ -6,10 +6,12 @@ namespace TablePro.Interop;
 public sealed class DatabaseSession : IAsyncDisposable
 {
     private readonly Native.DatabaseSession _session;
+    private readonly CredentialPrompterAdapter? _prompter;
 
-    internal DatabaseSession(Native.DatabaseSession session)
+    internal DatabaseSession(Native.DatabaseSession session, CredentialPrompterAdapter? prompter = null)
     {
         _session = session;
+        _prompter = prompter;
         Id = Guid.Parse(session.Id());
         Name = session.Name();
         EngineId = session.DriverId();
@@ -132,6 +134,7 @@ public sealed class DatabaseSession : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _prompter?.Cancel();
         try
         {
             await CoreCall.RunAsync(() => _session.Close()).ConfigureAwait(false);
@@ -139,6 +142,7 @@ public sealed class DatabaseSession : IAsyncDisposable
         finally
         {
             _session.Dispose();
+            _prompter?.Dispose();
         }
     }
 }

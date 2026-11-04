@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -44,6 +44,7 @@ struct FiledById {
 /// listed them in.
 pub(super) fn group_names_to_groups(document: Value) -> Result<Value, String> {
     let list: FiledByNameList = serde_json::from_value(document).map_err(|error| error.to_string())?;
+    let recovered = recovered_group_names(&list.connections)?;
     let mut groups: Vec<ConnectionGroup> = Vec::new();
     let mut named: HashMap<String, Uuid> = HashMap::new();
     let mut connections: Vec<FiledById> = Vec::with_capacity(list.connections.len());
@@ -51,7 +52,14 @@ pub(super) fn group_names_to_groups(document: Value) -> Result<Value, String> {
         let group_id = connection
             .group
             .as_deref()
-            .and_then(ConnectionGroupName::from_stored)
+            .and_then(|raw| {
+                let name = ConnectionGroupName::from_stored(raw)?;
+                if crate::name_rules::shown(raw).is_empty() {
+                    recovered.get(name.as_str()).cloned()
+                } else {
+                    Some(name)
+                }
+            })
             .map(|name| match named.entry(name.as_str().to_owned()) {
                 Entry::Occupied(held) => *held.get(),
                 Entry::Vacant(free) => {
@@ -77,6 +85,32 @@ pub(super) fn group_names_to_groups(document: Value) -> Result<Value, String> {
         rest: list.rest,
     })
     .map_err(|error| error.to_string())
+}
+
+// Reserve visible names before recovery, so an old invisible name cannot
+// merge its connections into a group named with literal escapes.
+fn recovered_group_names(connections: &[FiledByName]) -> Result<HashMap<String, ConnectionGroupName>, String> {
+    let mut held = HashSet::new();
+    let mut recover = BTreeSet::new();
+    for raw in connections.iter().filter_map(|connection| connection.group.as_deref()) {
+        let Some(name) = ConnectionGroupName::from_stored(raw) else {
+            continue;
+        };
+        if crate::name_rules::shown(raw).is_empty() {
+            recover.insert(name.as_str().to_owned());
+        } else {
+            held.insert(name.as_str().to_lowercase());
+        }
+    }
+    recover
+        .into_iter()
+        .map(|old| {
+            let name = crate::name_rules::claim_recovered(&old, None, &mut held);
+            ConnectionGroupName::new(&name)
+                .map(|name| (old, name))
+                .map_err(|error| error.to_string())
+        })
+        .collect()
 }
 
 fn number_connections(connections: &mut [FiledById]) {

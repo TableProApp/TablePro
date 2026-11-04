@@ -1,4 +1,4 @@
-# 0009: The macOS app moves to the core in slices, starting with the connection library
+# 0010: The macOS app moves to the core in slices, starting with the connection library
 
 - **Status**: Accepted
 - **Date**: 2026-11-04

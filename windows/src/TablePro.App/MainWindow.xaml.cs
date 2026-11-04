@@ -413,6 +413,10 @@ public sealed partial class MainWindow : Window, IShell
         }
 
         SaveSession();
+        foreach (var open in _open)
+        {
+            open.CancelConnect();
+        }
     }
 
     private void SaveSession()

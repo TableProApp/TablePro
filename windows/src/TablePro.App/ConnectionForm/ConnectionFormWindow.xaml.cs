@@ -304,13 +304,13 @@ public sealed partial class ConnectionFormWindow : Window
     };
 
     // The reason sits under the field, where the guidance for input errors puts it.
-    private static void SetError(Control field, string message)
+    private void SetError(Control field, string message)
     {
         var text = new TextBlock
         {
             Text = message,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
+            Style = (Style)Root.Resources["FormErrorTextStyle"],
         };
         switch (field)
         {
@@ -340,12 +340,12 @@ public sealed partial class ConnectionFormWindow : Window
     {
         ChangeEncryptionButton.Visibility = Visibility.Collapsed;
         StatusText.Text = text;
-        StatusText.Foreground = success switch
+        StatusText.Style = (Style)Root.Resources[success switch
         {
-            true => (Brush)Application.Current.Resources["SystemFillColorSuccessBrush"],
-            false => (Brush)Application.Current.Resources["SystemFillColorCriticalBrush"],
-            null => (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-        };
+            true => "FormSuccessTextStyle",
+            false => "FormErrorTextStyle",
+            null => "FormNeutralTextStyle",
+        }];
         ToolTipService.SetToolTip(StatusText, string.IsNullOrEmpty(text) ? null : text);
     }
 
@@ -640,7 +640,26 @@ public sealed partial class ConnectionFormWindow : Window
         SetStatus(Strings.Get("Testing"), null);
         try
         {
-            await _workbench.Core.TestConnectionAsync(draft.ToConnection(), draft.Secrets(), testing.Token).ConfigureAwait(true);
+            var prompter = new CredentialDialogs(Root);
+            var record = draft.ToConnection();
+            var replaced = new HashSet<string>(StringComparer.Ordinal);
+            while (true)
+            {
+                try
+                {
+                    await _workbench.Core.TestConnectionAsync(record, draft.Secrets(), prompter, testing.Token).ConfigureAwait(true);
+                    break;
+                }
+                catch (TableProException exception) when (exception.Error.HostKey is { TrustAllowed: true } key && replaced.Add(key.Host))
+                {
+                    if (!await prompter.RecoverHostKeyAsync(
+                        _workbench.Core, record, exception.Error.HostKey!, testing.Token).ConfigureAwait(true))
+                    {
+                        throw;
+                    }
+                }
+            }
+
             SetStatus(Strings.Get("TestSucceeded"), true);
         }
         catch (TableProException exception)

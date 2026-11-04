@@ -7,10 +7,19 @@ public sealed record CoreError(
     string Message,
     ServerMessage? Server,
     string? Path,
-    SecretKind? Secret = null)
+    SecretKind? Secret = null,
+    HostKeyFailure? HostKey = null)
 {
     public TlsFailure? TlsFailure { get; init; }
 }
+
+public sealed record HostKeyFailure(
+    string Host,
+    string Algorithm,
+    string Fingerprint,
+    string KnownHosts,
+    ulong Line,
+    bool TrustAllowed);
 
 // What the server said, which the app shows as it came.
 public sealed record ServerMessage(

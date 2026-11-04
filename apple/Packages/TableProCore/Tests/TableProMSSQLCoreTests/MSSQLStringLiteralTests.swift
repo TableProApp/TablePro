@@ -77,4 +77,24 @@ struct MSSQLStringLiteralTests {
         #expect(MSSQLStringLiteral.escapeForLike("5%\u{301}") == "5\\%\u{301}")
         #expect(MSSQLStringLiteral.escapeForLike("a_\u{200D}[\u{301}") == "a\\_\u{200D}\\[\u{301}")
     }
+
+    @Test("Backslash line endings remain part of the value", arguments: ["\n", "\r\n", "\r"])
+    func backslashLineEndings(_ newline: String) {
+        let value = "日本'\\" + newline
+        let body = "日本''\\\\" + newline + (newline == "\r" ? "" : newline)
+        #expect(MSSQLStringLiteral.escaped(value) == body)
+        #expect(MSSQLStringLiteral.quoted(value) == "N'" + body + "'")
+    }
+
+    @Test("Ordinary backslashes and line breaks keep their spelling")
+    func ordinaryBackslashes() {
+        let value = "C:\\logs\\file\nnext\r\nline\r"
+        #expect(MSSQLStringLiteral.quoted(value) == "N'" + value + "'")
+    }
+
+    @Test("LIKE escapes its backslash before protecting the literal's line ending")
+    func likeLineEnding() {
+        #expect(MSSQLStringLiteral.likePattern("x\\\n", prefixWildcard: true, suffixWildcard: false)
+            == "N'%x\\\\\\\n\n' ESCAPE '\\'")
+    }
 }

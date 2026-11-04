@@ -220,6 +220,8 @@ impl DdlDialect for PgDialect {
 /// the USING result, refuses a value that is too long, as an INSERT
 /// would. A bit string takes the cast to `varbit` only from another bit
 /// string: an integer has a cast to `bit(n)` and none to `varbit`.
+/// `varchar` is a keyword the grammar always reads as the built-in, while
+/// `bpchar` and `varbit` are names the search_path would resolve.
 fn unlimited_cast(original: &ColumnKind, target: &ColumnKind) -> Option<String> {
     match (original, target) {
         (
@@ -227,14 +229,14 @@ fn unlimited_cast(original: &ColumnKind, target: &ColumnKind) -> Option<String> 
             ColumnKind::Text {
                 length: TextLength::Fixed(_),
             },
-        ) => Some("bpchar".to_owned()),
+        ) => Some("pg_catalog.bpchar".to_owned()),
         (
             _,
             ColumnKind::Text {
                 length: TextLength::Varying(_),
             },
         ) => Some("varchar".to_owned()),
-        (ColumnKind::BitString { .. }, ColumnKind::BitString { .. }) => Some("varbit".to_owned()),
+        (ColumnKind::BitString { .. }, ColumnKind::BitString { .. }) => Some("pg_catalog.varbit".to_owned()),
         (ColumnKind::Array { element: original }, ColumnKind::Array { element: target }) => {
             unlimited_cast(original, target).map(|element| format!("{element}[]"))
         }
@@ -862,8 +864,8 @@ mod tests {
         let using = |from: &str, to: &str| unlimited_cast(&kind(from), &kind(to));
 
         assert_eq!(using("varchar(255)", "varchar(10)").as_deref(), Some("varchar"));
-        assert_eq!(using("text", "character(5)").as_deref(), Some("bpchar"));
-        assert_eq!(using("bit(8)", "bit(4)").as_deref(), Some("varbit"));
+        assert_eq!(using("text", "character(5)").as_deref(), Some("pg_catalog.bpchar"));
+        assert_eq!(using("bit(8)", "bit(4)").as_deref(), Some("pg_catalog.varbit"));
         assert_eq!(using("varchar(20)[]", "varchar(5)[]").as_deref(), Some("varchar[]"));
         assert_eq!(using("integer", "bit(4)"), None, "an integer has no cast to varbit");
         assert_eq!(using("text", "integer"), None);

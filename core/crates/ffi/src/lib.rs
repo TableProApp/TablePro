@@ -11,7 +11,9 @@ mod drivers;
 mod editor;
 mod error;
 mod host;
+mod host_key;
 mod library;
+mod prompter;
 mod results;
 mod run;
 mod runtime;
@@ -26,12 +28,13 @@ pub use connection_url::{ParsedConnectionUrl, parse_connection_url};
 pub use core_handle::{Core, FileOpenRequest};
 pub use drivers::{DataModelTag, DriverInfo, EndpointInfo, EngineCategoryTag};
 pub use editor::{QueryEditor, RunSettings};
-pub use error::{CoreError, ErrorInfo, ServerMessage, TlsFailureTag};
+pub use error::{BoxedErrorInfo, CoreError, ErrorInfo, HostKeyFailure, ServerMessage, TlsFailureTag};
 pub use host::{HostConfig, HostSecretError, HostSecretStore, HostSecrets, SecretItemTag, SecretKindTag};
 pub use library::{
     ConnectionLibrary, ConnectionRecord, ConnectionSecrets, GroupRecord, ImportSummary, LibrarySnapshot, SafeModeTag,
     SshAuthTag, SshSettings, TagRecord, TlsModeTag, TlsSettings,
 };
+pub use prompter::{HostPrompter, PromptAnswer, PromptFieldInfo, PromptPurposeTag, PromptReasonTag, PromptRequest};
 pub use results::{ResultColumnInfo, ResultSet, ValueKind};
 pub use run::{QueryRun, RunEvent, RunListener, RunOutcome, TransactionStateTag, TruncationTag};
 pub use session::{ColumnSort, DatabaseSession, FailureCauseTag, SessionHealthTag, TableQuery};

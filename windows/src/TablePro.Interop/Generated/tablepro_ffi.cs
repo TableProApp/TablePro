@@ -19,6 +19,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 namespace TablePro.Interop.Native;
+using BoxedErrorInfo = ErrorInfo;
+using FfiConverterTypeBoxedErrorInfo = FfiConverterTypeErrorInfo;
 
 
 
@@ -778,6 +780,10 @@ static class _UniFFILib {
         ulong @uniffiHandle,RustBuffer @item,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void UniffiCallbackInterfaceHostPrompterMethod0(
+        ulong @uniffiHandle,RustBuffer @prompt,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
+    );
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void UniffiCallbackInterfaceRunListenerMethod0(
         ulong @uniffiHandle,IntPtr @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err
     );
@@ -794,6 +800,13 @@ static class _UniFFILib {
         public IntPtr @loadItem;
         public IntPtr @storeItem;
         public IntPtr @deleteItem;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct UniffiVTableCallbackInterfaceHostPrompter
+    {
+        public IntPtr @uniffiFree;
+        public IntPtr @uniffiClone;
+        public IntPtr @prompt;
     }
     [StructLayout(LayoutKind.Sequential)]
     public struct UniffiVTableCallbackInterfaceRunListener
@@ -1000,11 +1013,16 @@ static class _UniFFILib {
     
     
     
+    
+    
+    
+    
 
     static _UniFFILib() {
         _UniFFILib.uniffiCheckContractApiVersion();
         _UniFFILib.uniffiCheckApiChecksums();
         
+        UniffiCallbackInterfaceHostPrompter.Register();
         UniffiCallbackInterfaceHostSecrets.Register();
         UniffiCallbackInterfaceRunListener.Register();
         }
@@ -1116,7 +1134,7 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_core_connect_saved(ulong @ptr,RustBuffer @id,RustBuffer @secrets,RustBuffer @cancel
+     ulong uniffi_tablepro_ffi_fn_method_core_connect_saved(ulong @ptr,RustBuffer @id,RustBuffer @secrets,RustBuffer @prompter,RustBuffer @cancel
     );
 
     #if NET8_0_OR_GREATER
@@ -1160,7 +1178,18 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
-     ulong uniffi_tablepro_ffi_fn_method_core_test_connection(ulong @ptr,RustBuffer @record,RustBuffer @secrets,RustBuffer @cancel
+     ulong uniffi_tablepro_ffi_fn_method_core_test_connection(ulong @ptr,RustBuffer @record,RustBuffer @secrets,RustBuffer @prompter,RustBuffer @cancel
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     ulong uniffi_tablepro_ffi_fn_method_core_forget_changed_host_key(ulong @ptr,RustBuffer @record,RustBuffer @host,RustBuffer @knownHosts
     );
 
     #if NET8_0_OR_GREATER
@@ -1821,6 +1850,17 @@ static class _UniFFILib {
     public static extern
 #endif
      void uniffi_tablepro_ffi_fn_init_callback_vtable_hostsecrets(IntPtr /*_UniFFILib.UniffiVTableCallbackInterfaceHostSecrets*/ @vtable
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
+     void uniffi_tablepro_ffi_fn_init_callback_vtable_hostprompter(IntPtr /*_UniFFILib.UniffiVTableCallbackInterfaceHostPrompter*/ @vtable
     );
 
     #if NET8_0_OR_GREATER
@@ -2513,6 +2553,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_core_forget_changed_host_key(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_queryeditor_close(
     );
 
@@ -3173,6 +3224,17 @@ static class _UniFFILib {
     [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
     public static extern
 #endif
+     ushort uniffi_tablepro_ffi_checksum_method_hostprompter_prompt(
+    );
+
+    #if NET8_0_OR_GREATER
+    [LibraryImport("tablepro_ffi")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(CallConvCdecl) })]
+    public static partial
+#else
+    [DllImport("tablepro_ffi", CallingConvention = CallingConvention.Cdecl)]
+    public static extern
+#endif
      ushort uniffi_tablepro_ffi_checksum_method_runlistener_events_pending(
     );
 
@@ -3216,8 +3278,8 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_connect_saved();
-            if (checksum != 45375) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_connect_saved` checksum `45375`, library returned `{checksum}`");
+            if (checksum != 10354) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_connect_saved` checksum `10354`, library returned `{checksum}`");
             }
         }
         {
@@ -3240,8 +3302,14 @@ static class _UniFFILib {
         }
         {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_test_connection();
-            if (checksum != 55711) {
-                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_test_connection` checksum `55711`, library returned `{checksum}`");
+            if (checksum != 24848) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_test_connection` checksum `24848`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_core_forget_changed_host_key();
+            if (checksum != 14861) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_core_forget_changed_host_key` checksum `14861`, library returned `{checksum}`");
             }
         }
         {
@@ -3602,6 +3670,12 @@ static class _UniFFILib {
             var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_item();
             if (checksum != 58541) {
                 throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostsecrets_delete_item` checksum `58541`, library returned `{checksum}`");
+            }
+        }
+        {
+            var checksum = _UniFFILib.uniffi_tablepro_ffi_checksum_method_hostprompter_prompt();
+            if (checksum != 46308) {
+                throw new UniffiContractChecksumException($"TablePro.Interop.Native: uniffi bindings expected function `uniffi_tablepro_ffi_checksum_method_hostprompter_prompt` checksum `46308`, library returned `{checksum}`");
             }
         }
         {
@@ -4491,7 +4565,7 @@ class FfiConverterTypeConnectionLibrary: FfiConverter<ConnectionLibrary, ulong> 
 /// </summary>
 internal interface ICore {
     /// <exception cref="CoreException"></exception>
-    Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, CancelToken? @cancel);
+    Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, HostPrompter? @prompter, CancelToken? @cancel);
     /// <summary>
     /// Every engine linked in, by name.
     /// </summary>
@@ -4501,7 +4575,9 @@ internal interface ICore {
     /// <exception cref="CoreException"></exception>
     Task<DatabaseSession> OpenFile(FileOpenRequest @request, CancelToken? @cancel);
     /// <exception cref="CoreException"></exception>
-    Task TestConnection(ConnectionRecord @record, ConnectionSecrets @secrets, CancelToken? @cancel);
+    Task TestConnection(ConnectionRecord @record, ConnectionSecrets @secrets, HostPrompter? @prompter, CancelToken? @cancel);
+    /// <exception cref="CoreException"></exception>
+    Task ForgetChangedHostKey(ConnectionRecord @record, string @host, string @knownHosts);
 }
 /// <summary>
 /// The library's root: the linked engines, the runtime and what the app
@@ -4602,11 +4678,11 @@ internal class Core : ICore, IDisposable {
 
     
     /// <exception cref="CoreException"></exception>
-    public async Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, CancelToken? @cancel) {
+    public async Task<DatabaseSession> ConnectSaved(string @id, ConnectionSecrets @secrets, HostPrompter? @prompter, CancelToken? @cancel) {
     return await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_connect_saved(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@secrets), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_connect_saved(thisPtr, FfiConverterString.INSTANCE.Lower(@id), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@secrets), FfiConverterOptionalTypeHostPrompter.INSTANCE.Lower(@prompter), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_u64(future, continuation, data),
@@ -4666,10 +4742,28 @@ internal class Core : ICore, IDisposable {
     }
     
     /// <exception cref="CoreException"></exception>
-    public async Task TestConnection(ConnectionRecord @record, ConnectionSecrets @secrets, CancelToken? @cancel) {await _UniFFIAsync.UniffiRustCallAsync(
+    public async Task TestConnection(ConnectionRecord @record, ConnectionSecrets @secrets, HostPrompter? @prompter, CancelToken? @cancel) {await _UniFFIAsync.UniffiRustCallAsync(
         // Get rust future
         CallWithPointer(thisPtr => {
-            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_test_connection(thisPtr, FfiConverterTypeConnectionRecord.INSTANCE.Lower(@record), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@secrets), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_test_connection(thisPtr, FfiConverterTypeConnectionRecord.INSTANCE.Lower(@record), FfiConverterTypeConnectionSecrets.INSTANCE.Lower(@secrets), FfiConverterOptionalTypeHostPrompter.INSTANCE.Lower(@prompter), FfiConverterOptionalTypeCancelToken.INSTANCE.Lower(@cancel));
+        }),
+        // Poll
+        (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
+        // Complete
+        (ulong future, ref UniffiRustCallStatus status) => {_UniFFILib.ffi_tablepro_ffi_rust_future_complete_void(future, ref status);
+        },
+        // Free
+        (ulong future) => _UniFFILib.ffi_tablepro_ffi_rust_future_free_void(future),
+        // Error
+        FfiConverterTypeCoreError.INSTANCE
+    );
+    }
+    
+    /// <exception cref="CoreException"></exception>
+    public async Task ForgetChangedHostKey(ConnectionRecord @record, string @host, string @knownHosts) {await _UniFFIAsync.UniffiRustCallAsync(
+        // Get rust future
+        CallWithPointer(thisPtr => {
+            return _UniFFILib.uniffi_tablepro_ffi_fn_method_core_forget_changed_host_key(thisPtr, FfiConverterTypeConnectionRecord.INSTANCE.Lower(@record), FfiConverterString.INSTANCE.Lower(@host), FfiConverterString.INSTANCE.Lower(@knownHosts));
         }),
         // Poll
         (ulong future, IntPtr continuation, ulong data) => _UniFFILib.ffi_tablepro_ffi_rust_future_poll_void(future, continuation, data),
@@ -6170,6 +6264,7 @@ internal record ErrorInfo (
     /// The secret a keyring error is about, so the app can ask for it.
     /// </summary>
     SecretKindTag? Secret, 
+    HostKeyFailure? HostKey, 
     TlsFailureTag? TlsFailure
 ) {
 }
@@ -6185,6 +6280,7 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             Server: FfiConverterOptionalTypeServerMessage.INSTANCE.Read(stream),
             Path: FfiConverterOptionalString.INSTANCE.Read(stream),
             Secret: FfiConverterOptionalTypeSecretKindTag.INSTANCE.Read(stream),
+            HostKey: FfiConverterOptionalTypeHostKeyFailure.INSTANCE.Read(stream),
             TlsFailure: FfiConverterOptionalTypeTlsFailureTag.INSTANCE.Read(stream)
         );
     }
@@ -6197,6 +6293,7 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             + FfiConverterOptionalTypeServerMessage.INSTANCE.AllocationSize(value.Server)
             + FfiConverterOptionalString.INSTANCE.AllocationSize(value.Path)
             + FfiConverterOptionalTypeSecretKindTag.INSTANCE.AllocationSize(value.Secret)
+            + FfiConverterOptionalTypeHostKeyFailure.INSTANCE.AllocationSize(value.HostKey)
             + FfiConverterOptionalTypeTlsFailureTag.INSTANCE.AllocationSize(value.TlsFailure);
     }
 
@@ -6207,6 +6304,7 @@ class FfiConverterTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo> {
             FfiConverterOptionalTypeServerMessage.INSTANCE.Write(value.Server, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.Path, stream);
             FfiConverterOptionalTypeSecretKindTag.INSTANCE.Write(value.Secret, stream);
+            FfiConverterOptionalTypeHostKeyFailure.INSTANCE.Write(value.HostKey, stream);
             FfiConverterOptionalTypeTlsFailureTag.INSTANCE.Write(value.TlsFailure, stream);
     }
 }
@@ -6350,6 +6448,52 @@ class FfiConverterTypeHostConfig: FfiConverterRustBuffer<HostConfig> {
     public override void Write(HostConfig value, BigEndianStream stream) {
             FfiConverterString.INSTANCE.Write(value.ClientVersion, stream);
             FfiConverterOptionalString.INSTANCE.Write(value.StorageDir, stream);
+    }
+}
+
+
+
+internal record HostKeyFailure (
+    string Host, 
+    string Algorithm, 
+    string Fingerprint, 
+    string KnownHosts, 
+    ulong Line, 
+    bool TrustAllowed
+) {
+}
+
+class FfiConverterTypeHostKeyFailure: FfiConverterRustBuffer<HostKeyFailure> {
+    public static FfiConverterTypeHostKeyFailure INSTANCE = new FfiConverterTypeHostKeyFailure();
+
+    public override HostKeyFailure Read(BigEndianStream stream) {
+        return new HostKeyFailure(
+            Host: FfiConverterString.INSTANCE.Read(stream),
+            Algorithm: FfiConverterString.INSTANCE.Read(stream),
+            Fingerprint: FfiConverterString.INSTANCE.Read(stream),
+            KnownHosts: FfiConverterString.INSTANCE.Read(stream),
+            Line: FfiConverterUInt64.INSTANCE.Read(stream),
+            TrustAllowed: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(HostKeyFailure value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Host)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Algorithm)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Fingerprint)
+            + FfiConverterString.INSTANCE.AllocationSize(value.KnownHosts)
+            + FfiConverterUInt64.INSTANCE.AllocationSize(value.Line)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.TrustAllowed);
+    }
+
+    public override void Write(HostKeyFailure value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Host, stream);
+            FfiConverterString.INSTANCE.Write(value.Algorithm, stream);
+            FfiConverterString.INSTANCE.Write(value.Fingerprint, stream);
+            FfiConverterString.INSTANCE.Write(value.KnownHosts, stream);
+            FfiConverterUInt64.INSTANCE.Write(value.Line, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.TrustAllowed, stream);
     }
 }
 
@@ -6516,6 +6660,74 @@ class FfiConverterTypeParsedConnectionUrl: FfiConverterRustBuffer<ParsedConnecti
             FfiConverterOptionalString.INSTANCE.Write(value.Password, stream);
             FfiConverterString.INSTANCE.Write(value.Database, stream);
             FfiConverterOptionalTypeTlsModeTag.INSTANCE.Write(value.TlsMode, stream);
+    }
+}
+
+
+
+internal record PromptFieldInfo (
+    string Label, 
+    bool Secret
+) {
+}
+
+class FfiConverterTypePromptFieldInfo: FfiConverterRustBuffer<PromptFieldInfo> {
+    public static FfiConverterTypePromptFieldInfo INSTANCE = new FfiConverterTypePromptFieldInfo();
+
+    public override PromptFieldInfo Read(BigEndianStream stream) {
+        return new PromptFieldInfo(
+            Label: FfiConverterString.INSTANCE.Read(stream),
+            Secret: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(PromptFieldInfo value) {
+        return 0
+            + FfiConverterString.INSTANCE.AllocationSize(value.Label)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.Secret);
+    }
+
+    public override void Write(PromptFieldInfo value, BigEndianStream stream) {
+            FfiConverterString.INSTANCE.Write(value.Label, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.Secret, stream);
+    }
+}
+
+
+
+internal record PromptRequest (
+    PromptPurposeTag Purpose, 
+    string Target, 
+    PromptFieldInfo[] Fields, 
+    bool OfferRemember
+) {
+}
+
+class FfiConverterTypePromptRequest: FfiConverterRustBuffer<PromptRequest> {
+    public static FfiConverterTypePromptRequest INSTANCE = new FfiConverterTypePromptRequest();
+
+    public override PromptRequest Read(BigEndianStream stream) {
+        return new PromptRequest(
+            Purpose: FfiConverterTypePromptPurposeTag.INSTANCE.Read(stream),
+            Target: FfiConverterString.INSTANCE.Read(stream),
+            Fields: FfiConverterSequenceTypePromptFieldInfo.INSTANCE.Read(stream),
+            OfferRemember: FfiConverterBoolean.INSTANCE.Read(stream)
+        );
+    }
+
+    public override int AllocationSize(PromptRequest value) {
+        return 0
+            + FfiConverterTypePromptPurposeTag.INSTANCE.AllocationSize(value.Purpose)
+            + FfiConverterString.INSTANCE.AllocationSize(value.Target)
+            + FfiConverterSequenceTypePromptFieldInfo.INSTANCE.AllocationSize(value.Fields)
+            + FfiConverterBoolean.INSTANCE.AllocationSize(value.OfferRemember);
+    }
+
+    public override void Write(PromptRequest value, BigEndianStream stream) {
+            FfiConverterTypePromptPurposeTag.INSTANCE.Write(value.Purpose, stream);
+            FfiConverterString.INSTANCE.Write(value.Target, stream);
+            FfiConverterSequenceTypePromptFieldInfo.INSTANCE.Write(value.Fields, stream);
+            FfiConverterBoolean.INSTANCE.Write(value.OfferRemember, stream);
     }
 }
 
@@ -6875,11 +7087,11 @@ internal class CoreException: UniffiException {
     
     public class Failed : CoreException {
         // Members
-        public ErrorInfo @info;
+        public BoxedErrorInfo @info;
 
         // Constructor
         public Failed(
-                ErrorInfo @info) : base(
+                BoxedErrorInfo @info) : base(
                 "@info" + "=" + @info) {
 
             this.@info = @info;
@@ -6900,7 +7112,7 @@ class FfiConverterTypeCoreError : FfiConverterRustBuffer<CoreException>, CallSta
                 return new CoreException.Cancelled();
             case 2:
                 return new CoreException.Failed(
-                    FfiConverterTypeErrorInfo.INSTANCE.Read(stream));
+                    FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream));
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCoreError.Read()", value));
         }
@@ -6914,7 +7126,7 @@ class FfiConverterTypeCoreError : FfiConverterRustBuffer<CoreException>, CallSta
 
             case CoreException.Failed variant_value:
                 return 4
-                    + FfiConverterTypeErrorInfo.INSTANCE.AllocationSize(variant_value.@info);
+                    + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.@info);
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCoreError.AllocationSize()", value));
         }
@@ -6927,7 +7139,7 @@ class FfiConverterTypeCoreError : FfiConverterRustBuffer<CoreException>, CallSta
                 break;
             case CoreException.Failed variant_value:
                 stream.WriteInt(2);
-                FfiConverterTypeErrorInfo.INSTANCE.Write(variant_value.@info, stream);
+                FfiConverterTypeBoxedErrorInfo.INSTANCE.Write(variant_value.@info, stream);
                 break;
             default:
                 throw new InternalException(String.Format("invalid error value '{0}' in FfiConverterTypeCoreError.Write()", value));
@@ -7404,6 +7616,304 @@ class FfiConverterTypeObjectScopeArg : FfiConverterRustBuffer<ObjectScopeArg>{
 
 
 
+internal record PromptAnswer {
+    
+    public record Submitted (
+        string[] Values,
+        bool Remember
+    ) : PromptAnswer {}
+    
+    public record Cancelled: PromptAnswer {}
+    
+    
+
+    
+}
+
+class FfiConverterTypePromptAnswer : FfiConverterRustBuffer<PromptAnswer>{
+    public static FfiConverterRustBuffer<PromptAnswer> INSTANCE = new FfiConverterTypePromptAnswer();
+
+    public override PromptAnswer Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new PromptAnswer.Submitted(
+                    FfiConverterSequenceString.INSTANCE.Read(stream),
+                    FfiConverterBoolean.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new PromptAnswer.Cancelled(
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePromptAnswer.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(PromptAnswer value) {
+        switch (value) {
+            case PromptAnswer.Submitted variant_value:
+                return 4
+                    + FfiConverterSequenceString.INSTANCE.AllocationSize(variant_value.Values)
+                    + FfiConverterBoolean.INSTANCE.AllocationSize(variant_value.Remember);
+            case PromptAnswer.Cancelled variant_value:
+                return 4;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePromptAnswer.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(PromptAnswer value, BigEndianStream stream) {
+        switch (value) {
+            case PromptAnswer.Submitted variant_value:
+                stream.WriteInt(1);
+                FfiConverterSequenceString.INSTANCE.Write(variant_value.Values, stream);
+                FfiConverterBoolean.INSTANCE.Write(variant_value.Remember, stream);
+                break;
+            case PromptAnswer.Cancelled variant_value:
+                stream.WriteInt(2);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePromptAnswer.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record PromptPurposeTag {
+    
+    public record DatabasePassword (
+        PromptReasonTag Reason
+    ) : PromptPurposeTag {}
+    
+    public record SshPassword (
+        PromptReasonTag Reason
+    ) : PromptPurposeTag {}
+    
+    public record SshPassphrase (
+        string Path,
+        PromptReasonTag Reason
+    ) : PromptPurposeTag {}
+    
+    public record SshKeyboardInteractive (
+        string Name,
+        string Instructions
+    ) : PromptPurposeTag {}
+    
+    public record SshHostKey (
+        string Host,
+        string Algorithm,
+        string Fingerprint
+    ) : PromptPurposeTag {}
+    
+    public record SshConfirmation (
+        string Text
+    ) : PromptPurposeTag {}
+    
+
+    
+}
+
+class FfiConverterTypePromptPurposeTag : FfiConverterRustBuffer<PromptPurposeTag>{
+    public static FfiConverterRustBuffer<PromptPurposeTag> INSTANCE = new FfiConverterTypePromptPurposeTag();
+
+    public override PromptPurposeTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new PromptPurposeTag.DatabasePassword(
+                    FfiConverterTypePromptReasonTag.INSTANCE.Read(stream)
+                );
+            case 2:
+                return new PromptPurposeTag.SshPassword(
+                    FfiConverterTypePromptReasonTag.INSTANCE.Read(stream)
+                );
+            case 3:
+                return new PromptPurposeTag.SshPassphrase(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterTypePromptReasonTag.INSTANCE.Read(stream)
+                );
+            case 4:
+                return new PromptPurposeTag.SshKeyboardInteractive(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 5:
+                return new PromptPurposeTag.SshHostKey(
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream),
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 6:
+                return new PromptPurposeTag.SshConfirmation(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePromptPurposeTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(PromptPurposeTag value) {
+        switch (value) {
+            case PromptPurposeTag.DatabasePassword variant_value:
+                return 4
+                    + FfiConverterTypePromptReasonTag.INSTANCE.AllocationSize(variant_value.Reason);
+            case PromptPurposeTag.SshPassword variant_value:
+                return 4
+                    + FfiConverterTypePromptReasonTag.INSTANCE.AllocationSize(variant_value.Reason);
+            case PromptPurposeTag.SshPassphrase variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Path)
+                    + FfiConverterTypePromptReasonTag.INSTANCE.AllocationSize(variant_value.Reason);
+            case PromptPurposeTag.SshKeyboardInteractive variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Name)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Instructions);
+            case PromptPurposeTag.SshHostKey variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Host)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Algorithm)
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Fingerprint);
+            case PromptPurposeTag.SshConfirmation variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Text);
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePromptPurposeTag.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(PromptPurposeTag value, BigEndianStream stream) {
+        switch (value) {
+            case PromptPurposeTag.DatabasePassword variant_value:
+                stream.WriteInt(1);
+                FfiConverterTypePromptReasonTag.INSTANCE.Write(variant_value.Reason, stream);
+                break;
+            case PromptPurposeTag.SshPassword variant_value:
+                stream.WriteInt(2);
+                FfiConverterTypePromptReasonTag.INSTANCE.Write(variant_value.Reason, stream);
+                break;
+            case PromptPurposeTag.SshPassphrase variant_value:
+                stream.WriteInt(3);
+                FfiConverterString.INSTANCE.Write(variant_value.Path, stream);
+                FfiConverterTypePromptReasonTag.INSTANCE.Write(variant_value.Reason, stream);
+                break;
+            case PromptPurposeTag.SshKeyboardInteractive variant_value:
+                stream.WriteInt(4);
+                FfiConverterString.INSTANCE.Write(variant_value.Name, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Instructions, stream);
+                break;
+            case PromptPurposeTag.SshHostKey variant_value:
+                stream.WriteInt(5);
+                FfiConverterString.INSTANCE.Write(variant_value.Host, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Algorithm, stream);
+                FfiConverterString.INSTANCE.Write(variant_value.Fingerprint, stream);
+                break;
+            case PromptPurposeTag.SshConfirmation variant_value:
+                stream.WriteInt(6);
+                FfiConverterString.INSTANCE.Write(variant_value.Text, stream);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePromptPurposeTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
+internal record PromptReasonTag {
+    
+    public record NotStored: PromptReasonTag {}
+    
+    
+    public record KeyringLocked: PromptReasonTag {}
+    
+    
+    public record KeyringUnavailable (
+        string Detail
+    ) : PromptReasonTag {}
+    
+    public record Rejected: PromptReasonTag {}
+    
+    
+
+    
+}
+
+class FfiConverterTypePromptReasonTag : FfiConverterRustBuffer<PromptReasonTag>{
+    public static FfiConverterRustBuffer<PromptReasonTag> INSTANCE = new FfiConverterTypePromptReasonTag();
+
+    public override PromptReasonTag Read(BigEndianStream stream) {
+        var value = stream.ReadInt();
+        switch (value) {
+            case 1:
+                return new PromptReasonTag.NotStored(
+                );
+            case 2:
+                return new PromptReasonTag.KeyringLocked(
+                );
+            case 3:
+                return new PromptReasonTag.KeyringUnavailable(
+                    FfiConverterString.INSTANCE.Read(stream)
+                );
+            case 4:
+                return new PromptReasonTag.Rejected(
+                );
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePromptReasonTag.Read()", value));
+        }
+    }
+
+    public override int AllocationSize(PromptReasonTag value) {
+        switch (value) {
+            case PromptReasonTag.NotStored variant_value:
+                return 4;
+            case PromptReasonTag.KeyringLocked variant_value:
+                return 4;
+            case PromptReasonTag.KeyringUnavailable variant_value:
+                return 4
+                    + FfiConverterString.INSTANCE.AllocationSize(variant_value.Detail);
+            case PromptReasonTag.Rejected variant_value:
+                return 4;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePromptReasonTag.AllocationSize()", value));
+        }
+    }
+
+    public override void Write(PromptReasonTag value, BigEndianStream stream) {
+        switch (value) {
+            case PromptReasonTag.NotStored variant_value:
+                stream.WriteInt(1);
+                break;
+            case PromptReasonTag.KeyringLocked variant_value:
+                stream.WriteInt(2);
+                break;
+            case PromptReasonTag.KeyringUnavailable variant_value:
+                stream.WriteInt(3);
+                FfiConverterString.INSTANCE.Write(variant_value.Detail, stream);
+                break;
+            case PromptReasonTag.Rejected variant_value:
+                stream.WriteInt(4);
+                break;
+            default:
+                throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypePromptReasonTag.Write()", value));
+        }
+    }
+}
+
+
+
+
+
+
+
 /// <summary>
 /// One thing that happened in a run, in the order it happened. Rows that
 /// arrive between two drains come as one `RowsAppended` with the set's
@@ -7629,7 +8139,7 @@ internal record RunOutcome {
     ) : RunOutcome {}
     
     public record Failed (
-        ErrorInfo Info
+        BoxedErrorInfo Info
     ) : RunOutcome {}
     
     public record Cancelled: RunOutcome {}
@@ -7655,7 +8165,7 @@ class FfiConverterTypeRunOutcome : FfiConverterRustBuffer<RunOutcome>{
                 );
             case 2:
                 return new RunOutcome.Failed(
-                    FfiConverterTypeErrorInfo.INSTANCE.Read(stream)
+                    FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream)
                 );
             case 3:
                 return new RunOutcome.Cancelled(
@@ -7676,7 +8186,7 @@ class FfiConverterTypeRunOutcome : FfiConverterRustBuffer<RunOutcome>{
                     + FfiConverterUInt64.INSTANCE.AllocationSize(variant_value.ElapsedMs);
             case RunOutcome.Failed variant_value:
                 return 4
-                    + FfiConverterTypeErrorInfo.INSTANCE.AllocationSize(variant_value.Info);
+                    + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.Info);
             case RunOutcome.Cancelled variant_value:
                 return 4;
             case RunOutcome.TimedOut variant_value:
@@ -7695,7 +8205,7 @@ class FfiConverterTypeRunOutcome : FfiConverterRustBuffer<RunOutcome>{
                 break;
             case RunOutcome.Failed variant_value:
                 stream.WriteInt(2);
-                FfiConverterTypeErrorInfo.INSTANCE.Write(variant_value.Info, stream);
+                FfiConverterTypeBoxedErrorInfo.INSTANCE.Write(variant_value.Info, stream);
                 break;
             case RunOutcome.Cancelled variant_value:
                 stream.WriteInt(3);
@@ -7850,7 +8360,7 @@ internal record SessionHealthTag {
     
     public record Failed (
         FailureCauseTag Cause,
-        ErrorInfo? Reason
+        BoxedErrorInfo? Reason
     ) : SessionHealthTag {}
     
 
@@ -7876,7 +8386,7 @@ class FfiConverterTypeSessionHealthTag : FfiConverterRustBuffer<SessionHealthTag
             case 4:
                 return new SessionHealthTag.Failed(
                     FfiConverterTypeFailureCauseTag.INSTANCE.Read(stream),
-                    FfiConverterOptionalTypeErrorInfo.INSTANCE.Read(stream)
+                    FfiConverterOptionalTypeBoxedErrorInfo.INSTANCE.Read(stream)
                 );
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSessionHealthTag.Read()", value));
@@ -7895,7 +8405,7 @@ class FfiConverterTypeSessionHealthTag : FfiConverterRustBuffer<SessionHealthTag
             case SessionHealthTag.Failed variant_value:
                 return 4
                     + FfiConverterTypeFailureCauseTag.INSTANCE.AllocationSize(variant_value.Cause)
-                    + FfiConverterOptionalTypeErrorInfo.INSTANCE.AllocationSize(variant_value.Reason);
+                    + FfiConverterOptionalTypeBoxedErrorInfo.INSTANCE.AllocationSize(variant_value.Reason);
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSessionHealthTag.AllocationSize()", value));
         }
@@ -7916,7 +8426,7 @@ class FfiConverterTypeSessionHealthTag : FfiConverterRustBuffer<SessionHealthTag
             case SessionHealthTag.Failed variant_value:
                 stream.WriteInt(4);
                 FfiConverterTypeFailureCauseTag.INSTANCE.Write(variant_value.Cause, stream);
-                FfiConverterOptionalTypeErrorInfo.INSTANCE.Write(variant_value.Reason, stream);
+                FfiConverterOptionalTypeBoxedErrorInfo.INSTANCE.Write(variant_value.Reason, stream);
                 break;
             default:
                 throw new InternalException(String.Format("invalid enum value '{0}' in FfiConverterTypeSessionHealthTag.Write()", value));
@@ -8380,6 +8890,150 @@ class FfiConverterTypeValueKind: FfiConverterRustBuffer<ValueKind> {
 
 
 
+internal interface HostPrompter {
+    PromptAnswer Prompt(PromptRequest @prompt);
+}
+
+class UniffiCallbackInterfaceHostPrompter {
+    static void Prompt(ulong @uniffiHandle,RustBuffer @prompt,IntPtr /*RustBuffer*/ @uniffiOutReturn,ref UniffiRustCallStatus _uniffi_out_err) {
+        var handle = @uniffiHandle;
+        try {
+            if (!FfiConverterTypeHostPrompter.INSTANCE.handleMap.TryGet(handle, out var uniffiObject)) {
+                throw new InternalException($"No callback in handlemap '{handle}'");
+            }
+            var result =
+            uniffiObject.Prompt(
+                FfiConverterTypePromptRequest.INSTANCE.Lift(@prompt));
+            unsafe {
+                *(RustBuffer*)uniffiOutReturn = FfiConverterTypePromptAnswer.INSTANCE.Lower(result);
+            }
+
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.SUCCESS;
+        }
+        catch (System.Exception e){
+            _uniffi_out_err.code = UniffiCallbackResponseStatus.UNEXPECTED_ERROR;
+            try {
+                _uniffi_out_err.error_buf = FfiConverterString.INSTANCE.Lower(e.Message);
+            }
+            catch {
+            }
+        }
+    }
+
+    static void UniffiFree(ulong @handle) {
+        FfiConverterTypeHostPrompter.INSTANCE.handleMap.Remove(@handle);
+    }
+
+    static ulong UniffiClone(ulong @handle) {
+        try {
+            if (!FfiConverterTypeHostPrompter.INSTANCE.handleMap.TryGet(@handle, out var obj)) {
+                throw new InternalException($"No callback in handlemap '{@handle}'");
+            }
+            return FfiConverterTypeHostPrompter.INSTANCE.handleMap.Insert(obj);
+        } catch (System.Exception) {
+            return 0; // 0 is never a valid handle; ConcurrentHandleMap starts at 1
+        }
+    }
+    static _UniFFILib.UniffiCallbackInterfaceHostPrompterMethod0 _m0 = new _UniFFILib.UniffiCallbackInterfaceHostPrompterMethod0(Prompt);
+    static _UniFFILib.UniffiCallbackInterfaceFree _callback_interface_free = new _UniFFILib.UniffiCallbackInterfaceFree(UniffiFree);
+    static _UniFFILib.UniffiCallbackInterfaceClone _callback_interface_clone = new _UniFFILib.UniffiCallbackInterfaceClone(UniffiClone);
+
+    private static GCHandle? _vtablePin;
+
+    public static void Register() {
+        if (_vtablePin.HasValue) return;
+        _UniFFILib.UniffiVTableCallbackInterfaceHostPrompter _vtable = new _UniFFILib.UniffiVTableCallbackInterfaceHostPrompter {
+            @prompt = Marshal.GetFunctionPointerForDelegate(_m0),
+            @uniffiFree = Marshal.GetFunctionPointerForDelegate(_callback_interface_free),
+            @uniffiClone = Marshal.GetFunctionPointerForDelegate(_callback_interface_clone),
+        };
+
+        // Pin the vtable so the GC never moves it. The GCHandle is intentionally never freed —
+        // this pin must remain valid for the process lifetime.
+        _vtablePin = GCHandle.Alloc(_vtable, GCHandleType.Pinned);
+        _UniFFILib.uniffi_tablepro_ffi_fn_init_callback_vtable_hostprompter(_vtablePin.Value.AddrOfPinnedObject());
+    }
+}
+
+
+
+class ConcurrentHandleMap<T> where T: notnull {
+    readonly ConcurrentDictionary<ulong, T> _map = new();
+
+    // Handles are odd numbers (1, 3, 5, ...) — the lowest bit must always be set.
+    // Rust uses (handle & 1) to distinguish foreign-language handles from Rust Arc
+    // pointers, which are always even due to memory alignment. See uniffi_core/src/ffi/handle.rs.
+    const long HANDLE_INITIAL = 1;
+    const long HANDLE_DELTA = 2;
+    long _currentHandle = HANDLE_INITIAL - HANDLE_DELTA;
+
+    public ulong Insert(T obj) {
+        var handle = (ulong)Interlocked.Add(ref _currentHandle, HANDLE_DELTA);
+        if (!_map.TryAdd(handle, obj)) {
+            throw new InternalException("ConcurrentHandleMap: Duplicate handle");
+        }
+        return handle;
+    }
+
+    public bool TryGet(ulong handle, [NotNullWhen(true)] out T? result) {
+        return _map.TryGetValue(handle, out result);
+    }
+
+    public T Get(ulong handle) {
+        if (_map.TryGetValue(handle, out var result)) {
+            return result;
+        } else {
+            throw new InternalException("ConcurrentHandleMap: Invalid handle");
+        }
+    }
+
+    public bool Remove(ulong handle) {
+        return _map.TryRemove(handle, out _);
+    }
+
+    public bool Remove(ulong handle, [NotNullWhen(true)] out T? result) {
+        return _map.TryRemove(handle, out result);
+    }
+}
+static class UniffiCallbackResponseStatus {
+    public static sbyte SUCCESS = 0;
+    public static sbyte ERROR = 1;
+    public static sbyte UNEXPECTED_ERROR = 2;
+}
+
+// The ffiConverter which transforms the Callbacks in to Handles to pass to Rust.
+class FfiConverterTypeHostPrompter: FfiConverter<HostPrompter, ulong> {
+    public static FfiConverterTypeHostPrompter INSTANCE = new FfiConverterTypeHostPrompter();
+
+    public ConcurrentHandleMap<HostPrompter> handleMap = new ConcurrentHandleMap<HostPrompter>();
+
+    public override ulong Lower(HostPrompter value) {
+        return handleMap.Insert(value);
+    }
+
+    public override HostPrompter Lift(ulong value) {
+        if (handleMap.TryGet(value, out var uniffiCallback)) {
+            return uniffiCallback;
+        } else {
+            throw new InternalException($"No callback in handlemap '{value}'");
+        }
+    }
+
+    public override HostPrompter Read(BigEndianStream stream) {
+        return Lift(stream.ReadULong());
+    }
+
+    public override int AllocationSize(HostPrompter value) {
+        return 8;
+    }
+
+    public override void Write(HostPrompter value, BigEndianStream stream) {
+        stream.WriteULong(Lower(value));
+    }
+}
+
+
+
 /// <summary>
 /// The platform's secret store, which the app implements: the Windows
 /// Credential Manager, the macOS keychain. Each call may block, so the
@@ -8700,49 +9354,6 @@ class UniffiCallbackInterfaceHostSecrets {
 
 
 
-class ConcurrentHandleMap<T> where T: notnull {
-    readonly ConcurrentDictionary<ulong, T> _map = new();
-
-    // Handles are odd numbers (1, 3, 5, ...) — the lowest bit must always be set.
-    // Rust uses (handle & 1) to distinguish foreign-language handles from Rust Arc
-    // pointers, which are always even due to memory alignment. See uniffi_core/src/ffi/handle.rs.
-    const long HANDLE_INITIAL = 1;
-    const long HANDLE_DELTA = 2;
-    long _currentHandle = HANDLE_INITIAL - HANDLE_DELTA;
-
-    public ulong Insert(T obj) {
-        var handle = (ulong)Interlocked.Add(ref _currentHandle, HANDLE_DELTA);
-        if (!_map.TryAdd(handle, obj)) {
-            throw new InternalException("ConcurrentHandleMap: Duplicate handle");
-        }
-        return handle;
-    }
-
-    public bool TryGet(ulong handle, [NotNullWhen(true)] out T? result) {
-        return _map.TryGetValue(handle, out result);
-    }
-
-    public T Get(ulong handle) {
-        if (_map.TryGetValue(handle, out var result)) {
-            return result;
-        } else {
-            throw new InternalException("ConcurrentHandleMap: Invalid handle");
-        }
-    }
-
-    public bool Remove(ulong handle) {
-        return _map.TryRemove(handle, out _);
-    }
-
-    public bool Remove(ulong handle, [NotNullWhen(true)] out T? result) {
-        return _map.TryRemove(handle, out result);
-    }
-}
-static class UniffiCallbackResponseStatus {
-    public static sbyte SUCCESS = 0;
-    public static sbyte ERROR = 1;
-    public static sbyte UNEXPECTED_ERROR = 2;
-}
 
 // The ffiConverter which transforms the Callbacks in to Handles to pass to Rust.
 class FfiConverterTypeHostSecrets: FfiConverter<HostSecrets, ulong> {
@@ -9126,30 +9737,30 @@ class FfiConverterOptionalTypeColumnSort: FfiConverterRustBuffer<ColumnSort?> {
 
 
 
-class FfiConverterOptionalTypeErrorInfo: FfiConverterRustBuffer<ErrorInfo?> {
-    public static FfiConverterOptionalTypeErrorInfo INSTANCE = new FfiConverterOptionalTypeErrorInfo();
+class FfiConverterOptionalTypeHostKeyFailure: FfiConverterRustBuffer<HostKeyFailure?> {
+    public static FfiConverterOptionalTypeHostKeyFailure INSTANCE = new FfiConverterOptionalTypeHostKeyFailure();
 
-    public override ErrorInfo? Read(BigEndianStream stream) {
+    public override HostKeyFailure? Read(BigEndianStream stream) {
         if (stream.ReadByte() == 0) {
             return null;
         }
-        return FfiConverterTypeErrorInfo.INSTANCE.Read(stream);
+        return FfiConverterTypeHostKeyFailure.INSTANCE.Read(stream);
     }
 
-    public override int AllocationSize(ErrorInfo? value) {
+    public override int AllocationSize(HostKeyFailure? value) {
         if (value == null) {
             return 1;
         } else {
-            return 1 + FfiConverterTypeErrorInfo.INSTANCE.AllocationSize((ErrorInfo)value);
+            return 1 + FfiConverterTypeHostKeyFailure.INSTANCE.AllocationSize((HostKeyFailure)value);
         }
     }
 
-    public override void Write(ErrorInfo? value, BigEndianStream stream) {
+    public override void Write(HostKeyFailure? value, BigEndianStream stream) {
         if (value == null) {
             stream.WriteByte(0);
         } else {
             stream.WriteByte(1);
-            FfiConverterTypeErrorInfo.INSTANCE.Write((ErrorInfo)value, stream);
+            FfiConverterTypeHostKeyFailure.INSTANCE.Write((HostKeyFailure)value, stream);
         }
     }
 }
@@ -9312,6 +9923,37 @@ class FfiConverterOptionalTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag?> {
 
 
 
+class FfiConverterOptionalTypeHostPrompter: FfiConverterRustBuffer<HostPrompter?> {
+    public static FfiConverterOptionalTypeHostPrompter INSTANCE = new FfiConverterOptionalTypeHostPrompter();
+
+    public override HostPrompter? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeHostPrompter.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(HostPrompter? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeHostPrompter.INSTANCE.AllocationSize((HostPrompter)value);
+        }
+    }
+
+    public override void Write(HostPrompter? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeHostPrompter.INSTANCE.Write((HostPrompter)value, stream);
+        }
+    }
+}
+
+
+
+
 class FfiConverterOptionalSequenceString: FfiConverterRustBuffer<string[]?> {
     public static FfiConverterOptionalSequenceString INSTANCE = new FfiConverterOptionalSequenceString();
 
@@ -9336,6 +9978,37 @@ class FfiConverterOptionalSequenceString: FfiConverterRustBuffer<string[]?> {
         } else {
             stream.WriteByte(1);
             FfiConverterSequenceString.INSTANCE.Write((string[])value, stream);
+        }
+    }
+}
+
+
+
+
+class FfiConverterOptionalTypeBoxedErrorInfo: FfiConverterRustBuffer<BoxedErrorInfo?> {
+    public static FfiConverterOptionalTypeBoxedErrorInfo INSTANCE = new FfiConverterOptionalTypeBoxedErrorInfo();
+
+    public override BoxedErrorInfo? Read(BigEndianStream stream) {
+        if (stream.ReadByte() == 0) {
+            return null;
+        }
+        return FfiConverterTypeBoxedErrorInfo.INSTANCE.Read(stream);
+    }
+
+    public override int AllocationSize(BoxedErrorInfo? value) {
+        if (value == null) {
+            return 1;
+        } else {
+            return 1 + FfiConverterTypeBoxedErrorInfo.INSTANCE.AllocationSize((BoxedErrorInfo)value);
+        }
+    }
+
+    public override void Write(BoxedErrorInfo? value, BigEndianStream stream) {
+        if (value == null) {
+            stream.WriteByte(0);
+        } else {
+            stream.WriteByte(1);
+            FfiConverterTypeBoxedErrorInfo.INSTANCE.Write((BoxedErrorInfo)value, stream);
         }
     }
 }
@@ -9711,6 +10384,52 @@ class FfiConverterSequenceTypeObjectEntry: FfiConverterRustBuffer<ObjectEntry[]>
 
 
 
+class FfiConverterSequenceTypePromptFieldInfo: FfiConverterRustBuffer<PromptFieldInfo[]> {
+    public static FfiConverterSequenceTypePromptFieldInfo INSTANCE = new FfiConverterSequenceTypePromptFieldInfo();
+
+    public override PromptFieldInfo[]  Read(BigEndianStream stream) {
+        var length = stream.ReadInt();
+        if (length == 0) {
+            return [];
+        }
+
+        var result = new PromptFieldInfo[length];
+        var readFn = FfiConverterTypePromptFieldInfo.INSTANCE.Read;
+        for (int i = 0; i < length; i++) {
+            result[i] = readFn(stream);
+        }
+        return result;
+    }
+
+    public override int AllocationSize(PromptFieldInfo[]  value) {
+        var sizeForLength = 4;
+
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            return sizeForLength;
+        }
+
+        var allocationSizeFn = FfiConverterTypePromptFieldInfo.INSTANCE.AllocationSize;
+        var sizeForItems = value.Sum(item => allocationSizeFn(item));
+        return sizeForLength + sizeForItems;
+    }
+
+    public override void Write(PromptFieldInfo[] value, BigEndianStream stream) {
+        // details/1-empty-list-as-default-method-parameter.md
+        if (value == null) {
+            stream.WriteInt(0);
+            return;
+        }
+
+        stream.WriteInt(value.Length);
+        var writerFn = FfiConverterTypePromptFieldInfo.INSTANCE.Write;
+        value.ForEach(item => writerFn(item, stream));
+    }
+}
+
+
+
+
 class FfiConverterSequenceTypeResultColumnInfo: FfiConverterRustBuffer<ResultColumnInfo[]> {
     public static FfiConverterSequenceTypeResultColumnInfo INSTANCE = new FfiConverterSequenceTypeResultColumnInfo();
 
@@ -9937,6 +10656,16 @@ class FfiConverterSequenceTypeTlsModeTag: FfiConverterRustBuffer<TlsModeTag[]> {
         value.ForEach(item => writerFn(item, stream));
     }
 }
+
+
+
+/**
+ * Typealias from the type name used in the UDL file to the builtin type.  This
+ * is needed because the UDL type name is used in function/method signatures.
+ * It's also what we have an external type that references a custom type.
+ */
+
+
 
 
 

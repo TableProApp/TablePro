@@ -1,6 +1,6 @@
 # TablePro shared core
 
-The Rust crates every platform's app builds on: the domain types and the driver contract, one crate per database engine, the network and SSH transports, sessions, storage, the MCP server and the AI client. None has a GUI. The Linux app (`linux/`) uses them directly, the Windows app through `crates/ffi`, and the macOS app through the same crate one slice at a time ([ADR 0001](docs/decisions/0001-shared-core.md), [ADR 0009](docs/decisions/0009-macos-on-the-core.md)).
+The Rust crates every platform's app builds on: the domain types and the driver contract, one crate per database engine, the network and SSH transports, sessions, storage, the MCP server and the AI client. None has a GUI. The Linux app (`linux/`) uses them directly, the Windows app through `crates/ffi`, and the macOS app through the same crate one slice at a time ([ADR 0001](docs/decisions/0001-shared-core.md), [ADR 0010](docs/decisions/0010-macos-on-the-core.md)).
 
 This is the guide for work under `core/`. The root `AGENTS.md` holds the rules every app shares. Claude Code loads this file through `core/CLAUDE.md` once a file under `core/` is read; Codex reads it when started in `core/`, so otherwise read it yourself.
 

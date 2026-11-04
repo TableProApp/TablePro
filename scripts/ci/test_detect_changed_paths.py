@@ -78,6 +78,7 @@ class DetectChangedPathsTests(unittest.TestCase):
             ".github/workflows/build-linux.yml",
             ".github/workflows/linux-packages.yml",
             ".github/workflows/release-linux.yml",
+            "scripts/ci/start-windows-sshd.ps1",
         ]:
             with self.subTest(path=path):
                 self.assertEqual(self.verdict_after("linux", path), "true")

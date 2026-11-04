@@ -50,7 +50,9 @@ func escapeStringLiteralFromDialect(
     databaseType: DatabaseType? = nil
 ) -> @Sendable (String) -> String {
     let escapes: SQLStringEscapes
-    if !dialect.requiresBackslashEscaping {
+    if databaseType == .mssql {
+        escapes = .sqlServer
+    } else if !dialect.requiresBackslashEscaping {
         escapes = .standard
     } else if let databaseType, SqlDialect.from(databaseTypeId: databaseType.rawValue) != .mysql {
         escapes = .backslash

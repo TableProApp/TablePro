@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="../Shared/SshTestEnvironment.cs" Link="SshTestEnvironment.cs" />
   </ItemGroup>
 
 </Project>

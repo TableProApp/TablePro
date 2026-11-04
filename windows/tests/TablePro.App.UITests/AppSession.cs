@@ -386,7 +386,8 @@ internal sealed class AppSession : IDisposable
         Retry.WhileFalse(
             () =>
             {
-                text = element.Name;
+                // A status may have no UIA Name until its asynchronous result arrives.
+                text = element.Properties.Name.ValueOrDefault ?? string.Empty;
                 return done(text);
             },
             Wait,
