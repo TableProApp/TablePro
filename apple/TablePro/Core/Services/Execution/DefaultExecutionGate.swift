@@ -52,8 +52,8 @@ internal actor DefaultExecutionGate: ExecutionGate {
         let caps = request.capabilities
 
         let tier = request.sql.map { QueryClassifier.classifyTier($0, databaseType: request.databaseType) }
-        let isDangerous = request.sql.map { QueryClassifier.isDangerousQuery($0, databaseType: request.databaseType) } ?? false
-        let isDestructive = request.kind.declaresDestructive || tier == .destructive || isDangerous
+        let isDestructive = request.kind.declaresDestructive
+            || request.sql.map { ExternalStatementGate.isDestructive($0, databaseType: request.databaseType) } == true
         let isMultiStatement = request.sql.map {
             QueryClassifier.isMultiStatement($0, databaseType: request.databaseType)
         } ?? false

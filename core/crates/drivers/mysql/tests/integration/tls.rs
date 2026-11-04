@@ -34,10 +34,24 @@ pub struct MySqlTlsEngine<S> {
     fixture: MysqlFixture,
     ca: PathBuf,
     unrelated_ca: PathBuf,
+    server_certificate: PathBuf,
     server: PhantomData<S>,
 }
 
 impl<S: Server> MySqlTlsEngine<S> {
+    fn from_fixture(fixture: MysqlFixture) -> Self {
+        let ca = fixture.pki().path(PkiFile::Ca);
+        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
+        let server_certificate = fixture.pki().path(PkiFile::ServerCertificate);
+        Self {
+            fixture,
+            ca,
+            unrelated_ca,
+            server_certificate,
+            server: PhantomData,
+        }
+    }
+
     fn options_to(&self, host: &str, credentials: tablepro_core::Credentials, tls: TlsConfig) -> ConnectOptions {
         let liveness = test_liveness();
         options_over(
@@ -58,17 +72,17 @@ impl<S: Server> TlsConformanceEngine for MySqlTlsEngine<S> {
     }
 
     async fn start() -> Result<Self, ConformanceFailure> {
-        let fixture = MysqlFixture::start(S::FLAVOUR)
+        MysqlFixture::start(S::FLAVOUR)
             .await
-            .map_err(ConformanceFailure::setup)?;
-        let ca = fixture.pki().path(PkiFile::Ca);
-        let unrelated_ca = fixture.pki().path(PkiFile::UnrelatedCa);
-        Ok(Self {
-            fixture,
-            ca,
-            unrelated_ca,
-            server: PhantomData,
-        })
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
+    }
+
+    async fn start_self_signed() -> Result<Self, ConformanceFailure> {
+        MysqlFixture::start_self_signed(S::FLAVOUR)
+            .await
+            .map(Self::from_fixture)
+            .map_err(ConformanceFailure::setup)
     }
 
     fn connect_options(&self, tls: TlsConfig) -> ConnectOptions {
@@ -82,6 +96,10 @@ impl<S: Server> TlsConformanceEngine for MySqlTlsEngine<S> {
 
     fn unrelated_ca_file(&self) -> &Path {
         &self.unrelated_ca
+    }
+
+    fn server_certificate_file(&self) -> &Path {
+        &self.server_certificate
     }
 
     fn served_name(&self) -> &str {

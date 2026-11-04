@@ -17,6 +17,7 @@ struct ConnectionListView: View {
     @Environment(AppLockState.self) private var lockState
     @Environment(ConnectionCoordinatorStore.self) private var coordinatorStore
     @Environment(ScenePresenter.self) private var presenter
+    @Environment(SceneMenuState.self) private var menuState: SceneMenuState?
     @SceneStorage("lastConnectionId") private var selectedConnectionIdString: String?
 
     @State private var searchText = ""
@@ -131,6 +132,10 @@ struct ConnectionListView: View {
         ]
     }
 
+    private var sceneObjects: SceneObjects {
+        SceneObjects(appState: appState, coordinatorStore: coordinatorStore, presenter: presenter, menuState: menuState)
+    }
+
     var body: some View {
         @Bindable var presenter = presenter
         NavigationStack {
@@ -173,9 +178,9 @@ struct ConnectionListView: View {
                 }
         }
         .fullScreenCover(item: openConnection, onDismiss: connectionCoverDidDismiss) { connection in
-            ConnectedView(connection: connection)
-                .id(connection.id)
-                .onAppear { isConnectionCoverOnScreen = true }
+            ConnectionCover(connection: connection, objects: sceneObjects) {
+                isConnectionCoverOnScreen = true
+            }
         }
         .sheet(item: $presenter.sheet, onDismiss: sheetDidDismiss) { sheet in
             sheetContent(sheet)
@@ -691,11 +696,11 @@ struct ConnectionListView: View {
         case .whatsNew(let version):
             WhatsNewSheet(version: version)
         case .addConnection:
-            ConnectionFormView { _ in
+            ConnectionFormSheet(connection: nil, objects: sceneObjects) { _ in
                 presenter.sheet = nil
             }
         case .editConnection(let connection):
-            ConnectionFormView(editing: connection) { _ in
+            ConnectionFormSheet(connection: connection, objects: sceneObjects) { _ in
                 presenter.sheet = nil
             }
         case .moveConnections(let ids):

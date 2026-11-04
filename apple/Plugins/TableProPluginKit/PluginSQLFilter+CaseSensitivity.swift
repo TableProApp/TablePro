@@ -36,6 +36,7 @@ public extension PluginSQLFilter {
         escapeTypedValue: (_ value: String, _ kind: PluginColumnKind?) -> String,
         regexCondition: (_ quotedColumn: String, _ pattern: String, _ ignoresCase: Bool) -> String?
     ) -> String? {
+        if filter.column == rawConditionColumn { return rawCondition(filter.value) }
         let folding = PluginSQLCaseFolding.resolve(
             style: caseSensitivityStyle,
             foldFunction: caseFoldFunction,

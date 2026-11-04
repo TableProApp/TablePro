@@ -333,69 +333,59 @@ struct MongoDBHostListTests {
     }
 }
 
-struct MongoDBAmbiguousIdentityTests {
-    private func generator(idKinds: Set<BsonValueKind>) -> MongoDBStatementGenerator {
-        MongoDBStatementGenerator(collectionName: "users", columns: ["_id", "name"], identityKinds: idKinds)
-    }
-
-    private func update(id: String) -> PluginRowChange {
-        PluginRowChange(
-            rowIndex: 0,
-            type: .update,
-            cellChanges: [(1, "name", .text("old"), .text("new"))],
-            originalRow: [.text(id), .text("old")]
-        )
+// An update or a delete names its document by the row's locator. Only a new document's typed `_id` is read from text.
+struct MongoDBNewDocumentIdentityTests {
+    private func insert(id: String, idKinds: Set<BsonValueKind>?) throws -> [PluginRowWrite] {
+        try MongoDBStatementGenerator(collectionName: "users", columns: ["_id", "name"], identityKinds: idKinds)
+            .generateRowWrites(
+                from: [PluginRowChange(
+                    rowIndex: 0,
+                    type: .insert,
+                    cellChanges: [(0, "_id", .null, .text(id)), (1, "name", .null, .text("new"))],
+                    originalRow: nil
+                )],
+                insertedRowData: [0: [.text(id), .text("new")]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
     }
 
     @Test("An _id held both as an ObjectId and as text with the same hex is refused, never guessed")
     func ambiguousIdentityIsRefused() {
-        let hex = "64b7f0c2a1b2c3d4e5f60718"
         #expect(throws: PluginRowWriteRefusal.self) {
-            try generator(idKinds: [.objectId, .string]).generateRowWrites(
-                from: [update(id: hex)], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-            )
+            try insert(id: "64b7f0c2a1b2c3d4e5f60718", idKinds: [.objectId, .string])
         }
     }
 
     @Test("An _id held as a number and as text with the same digits is refused too")
     func numberAndTextIdentityIsRefused() {
         #expect(throws: PluginRowWriteRefusal.self) {
-            try generator(idKinds: [.int32, .string]).generateRowWrites(
-                from: [update(id: "1")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-            )
+            try insert(id: "1", idKinds: [.int32, .string])
         }
     }
 
     @Test("Mixed _id kinds type the text as the one kind it can be: text, or a number of any width")
     func mixedKindsTypeTheText() throws {
-        let text = try #require(try generator(idKinds: [.objectId, .string]).generateRowWrites(
-            from: [update(id: "5")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        ).first)
-        let number = try #require(try generator(idKinds: [.int32, .int64]).generateRowWrites(
-            from: [update(id: "5")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        ).first)
+        let text = try #require(try insert(id: "5", idKinds: [.objectId, .string]).first)
+        let number = try #require(try insert(id: "5", idKinds: [.int32, .int64]).first)
 
-        #expect(text.statement.contains(#"{"_id": "5"}"#))
+        #expect(text.statement.contains(#""_id": "5""#))
         #expect(!number.statement.contains(#""5""#))
     }
 
     @Test("Document text held both as an embedded document _id and as a string _id is refused")
     func documentAndTextIdentityIsRefused() {
         #expect(throws: PluginRowWriteRefusal.self) {
-            try generator(idKinds: [.document, .string]).generateRowWrites(
-                from: [update(id: #"{"a": 1}"#)], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-            )
+            try insert(id: #"{"a": 1}"#, idKinds: [.document, .string])
         }
     }
 
     @Test("A number past 2^53 names the integer, never the double it rounds to")
     func largeIntegerKeepsItsValue() throws {
         for idKinds: Set<BsonValueKind> in [[.int32, .double], [.int64, .double]] {
-            let write = try #require(try generator(idKinds: idKinds).generateRowWrites(
-                from: [update(id: "9007199254740993")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-            ).first)
+            let write = try #require(try insert(id: "9007199254740993", idKinds: idKinds).first)
 
-            #expect(write.statement.contains(#"{"_id": {"$numberLong": "9007199254740993"}}"#))
+            #expect(write.statement.contains(#""_id": {"$numberLong": "9007199254740993"}"#))
             #expect(!write.statement.contains("$numberDouble"))
         }
     }
@@ -403,30 +393,41 @@ struct MongoDBAmbiguousIdentityTests {
     @Test("A fraction held as a double and as a decimal names two values, so it is refused")
     func doubleAndDecimalFractionIsRefused() {
         #expect(throws: PluginRowWriteRefusal.self) {
-            try generator(idKinds: [.double, .decimal128]).generateRowWrites(
-                from: [update(id: "0.1")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-            )
+            try insert(id: "0.1", idKinds: [.double, .decimal128])
         }
     }
 
     @Test("An integer held as a double and as a decimal is one value")
     func doubleAndDecimalIntegerWrites() throws {
-        let write = try #require(try generator(idKinds: [.double, .decimal128]).generateRowWrites(
-            from: [update(id: "5")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        ).first)
-        #expect(write.statement.contains(#"{"_id": {"$numberDecimal": "5"}}"#))
+        let write = try #require(try insert(id: "5", idKinds: [.double, .decimal128]).first)
+        #expect(write.statement.contains(#""_id": {"$numberDecimal": "5"}"#))
     }
 
     @Test("Every read holding one _id kind types the text by it, not by its shape")
     func singleHeldKindTypesTheText() throws {
         let hex = "64b7f0c2a1b2c3d4e5f60718"
-        let write = try #require(try generator(idKinds: [.string]).generateRowWrites(
-            from: [update(id: hex)], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        ).first)
-        #expect(write.statement.contains(#"{"_id": "\#(hex)"}"#))
+        let write = try #require(try insert(id: hex, idKinds: [.string]).first)
+        #expect(write.statement.contains(#""_id": "\#(hex)""#))
     }
 
-    @Test("A date _id keeps its milliseconds from the cell to the filter")
+    @Test("Text reading as a UUID is text in a collection of string _ids, and binary in one of UUID _ids")
+    func uuidTextFollowsTheHeldKind() throws {
+        let shown = #"UUID("0f8fad5b-d9cb-469f-a165-70867728950e")"#
+        let binary = #"{"$binary": {"base64": "D4+tW9nLRp+hZXCGdyiVDg==", "subType": "04"}}"#
+
+        let text = try #require(try insert(id: shown, idKinds: [.string]).first)
+        let uuid = try #require(try insert(id: shown, idKinds: [.uuid]).first)
+        let mixed = try #require(try insert(id: shown, idKinds: [.uuid, .int32]).first)
+
+        #expect(text.statement.contains(#""_id": "UUID(\"0f8fad5b-d9cb-469f-a165-70867728950e\")""#))
+        #expect(uuid.statement.contains(#""_id": \#(binary)"#))
+        #expect(mixed.statement.contains(#""_id": \#(binary)"#))
+        #expect(throws: PluginRowWriteRefusal.self) {
+            try insert(id: shown, idKinds: [.uuid, .string])
+        }
+    }
+
+    @Test("A date _id keeps its milliseconds from the cell to the statement")
     func dateIdentityKeepsMilliseconds() throws {
         let stored = Date(timeIntervalSince1970: 1_704_110_400.5)
         let text = try #require(BsonDocumentFlattener.stringValue(for: stored, representation: .unspecified))
@@ -435,10 +436,7 @@ struct MongoDBAmbiguousIdentityTests {
             for: Date(timeIntervalSince1970: 1_704_110_400), representation: .unspecified
         ) == "2024-01-01T12:00:00Z")
 
-        let dated = MongoDBStatementGenerator(collectionName: "events", columns: ["_id", "name"], identityKinds: [.date])
-        let write = try #require(try dated.generateRowWrites(
-            from: [update(id: text)], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        ).first)
+        let write = try #require(try insert(id: text, idKinds: [.date]).first)
         #expect(write.statement.contains(#""$numberLong": "1704110400500""#))
     }
 
@@ -452,14 +450,8 @@ struct MongoDBAmbiguousIdentityTests {
 
     @Test("Text that cannot be an ObjectId, or a collection of one _id kind, still writes")
     func unambiguousIdentityWrites() throws {
-        let mixed = try generator(idKinds: [.objectId, .string]).generateRowWrites(
-            from: [update(id: "user-42")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        )
-        let uniform = try generator(idKinds: [.objectId]).generateRowWrites(
-            from: [update(id: "64b7f0c2a1b2c3d4e5f60718")], insertedRowData: [:], deletedRowIndices: [], insertedRowIndices: []
-        )
-        #expect(mixed.count == 1)
-        #expect(uniform.count == 1)
+        #expect(try insert(id: "user-42", idKinds: [.objectId, .string]).count == 1)
+        #expect(try insert(id: "64b7f0c2a1b2c3d4e5f60718", idKinds: [.objectId]).count == 1)
     }
 }
 

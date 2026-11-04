@@ -1,0 +1,13 @@
+{
+	"connections": {
+		"flatpak": {
+			"provider": "postgresql",
+			"name": "Flatpak PG",
+			"configuration": {
+				"host": "flatpak.example.com",
+				"port": "5432",
+				"database": "app"
+			}
+		}
+	}
+}

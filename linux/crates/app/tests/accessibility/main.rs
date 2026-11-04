@@ -530,10 +530,19 @@ fn shows_text(root: &gtk4::Widget, text: &str) -> bool {
 }
 
 fn has_row(root: &gtk4::Widget, title: &str) -> bool {
-    descendants(root)
-        .iter()
-        .filter_map(|widget| widget.downcast_ref::<adw::PreferencesRow>())
-        .any(|row| row.title() == title)
+    descendants(root).iter().any(|widget| {
+        widget
+            .downcast_ref::<adw::PreferencesRow>()
+            .is_some_and(|row| row.title() == title)
+            || is_named_list_row(widget, title)
+    })
+}
+
+// The test backend records that a list row has a name but not the name, so the row must also show it.
+fn is_named_list_row(widget: &gtk4::Widget, title: &str) -> bool {
+    widget.accessible_role() == gtk4::AccessibleRole::ListItem
+        && gtk4::test_accessible_has_property(widget, gtk4::AccessibleProperty::Label)
+        && shows_text(widget, title)
 }
 
 fn choose_driver(dialog: &adw::Dialog, engine: &str) -> Result<(), String> {

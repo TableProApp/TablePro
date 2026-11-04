@@ -62,5 +62,9 @@ Cargo.lock linguist-generated
 linux/data/licenses/** linguist-generated
 linux/build-aux/debian/copyright linguist-generated
 
+# Other apps' files as those apps write them, binary plists and encrypted blobs included: kept
+# byte for byte, so a Windows checkout does not turn their line endings into CRLF.
+core/crates/foreign-import/tests/fixtures/** -text
+
 # The Windows interop bindings, written by uniffi-bindgen-cs and csbindgen (windows/AGENTS.md, Bindings)
 windows/src/TablePro.Interop/Generated/** linguist-generated eol=lf

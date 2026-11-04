@@ -76,6 +76,10 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                     try await sink.execute(statement: statement, line: lineNumber)
                     executedCount += 1
                     progress.incrementStatement()
+                } catch is PluginImportCancellationError {
+                    throw PluginImportCancellationError()
+                } catch is CancellationError {
+                    throw CancellationError()
                 } catch {
                     switch errorMode {
                     case .stopAndRollback:
@@ -92,14 +96,14 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                                 try await sink.commitTransaction()
                                 didCommit = true
                             } catch {
-                                Self.logger.warning("Failed to commit partial import: \(error.localizedDescription)")
+                                Self.logger.warning("Failed to commit partial import")
                             }
                         }
                         if settings.disableForeignKeyChecks {
                             do {
                                 try await sink.enableForeignKeyChecks()
                             } catch {
-                                Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                                Self.logger.warning("Failed to re-enable foreign key checks")
                             }
                         }
                         throw PluginImportError.statementFailed(
@@ -134,7 +138,7 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 do {
                     try await sink.enableForeignKeyChecks()
                 } catch {
-                    Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                    Self.logger.warning("Failed to re-enable foreign key checks")
                 }
             }
         } catch {
@@ -146,7 +150,7 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                     try await sink.rollbackTransaction()
                 } catch {
                     Self.logger.error(
-                        "Import failed: \(importError.localizedDescription). Rollback also failed: \(error.localizedDescription)"
+                        "The import and its rollback both failed"
                     )
                     rollbackError = error
                 }
@@ -156,7 +160,7 @@ final class SQLImportPlugin: ObservableObject, ImportFormatPlugin, SettablePlugi
                 do {
                     try await sink.enableForeignKeyChecks()
                 } catch {
-                    Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                    Self.logger.warning("Failed to re-enable foreign key checks")
                 }
             }
 

@@ -31,15 +31,42 @@ struct DBeaverImporterTests {
 
     // MARK: - Fixture Helpers
 
-    private func writeDataSources(_ json: [String: Any]) throws {
+    private func writeDataSources(_ json: [String: Any], named fileName: String = "data-sources.json") throws {
         let data = try JSONSerialization.data(withJSONObject: json, options: .prettyPrinted)
-        try data.write(to: projectDir.appendingPathComponent("data-sources.json"))
+        try data.write(to: projectDir.appendingPathComponent(fileName))
     }
 
-    private func writeCredentials(_ credentials: [String: Any]) throws {
+    private func writeCredentials(
+        _ credentials: [String: Any],
+        named fileName: String = "credentials-config.json"
+    ) throws {
         let plaintext = try JSONSerialization.data(withJSONObject: credentials, options: .prettyPrinted)
         let encrypted = encryptWithDBeaverKey(plaintext)
-        try encrypted.write(to: projectDir.appendingPathComponent("credentials-config.json"))
+        try encrypted.write(to: projectDir.appendingPathComponent(fileName))
+    }
+
+    private func urlConnection(
+        _ name: String,
+        provider: String = "postgresql",
+        configuration: [String: Any]
+    ) -> [String: Any] {
+        ["provider": provider, "name": name, "configuration": configuration]
+    }
+
+    private func tlsConnection(
+        _ name: String,
+        provider: String = "postgresql",
+        handler: String,
+        properties: [String: Any]
+    ) -> [String: Any] {
+        urlConnection(name, provider: provider, configuration: [
+            "host": "db.example.com",
+            "handlers": [handler: ["type": "CONFIG", "enabled": true, "properties": properties] as [String: Any]]
+        ])
+    }
+
+    private func collectByName(_ request: ForeignImportRequest = .connectionsOnly) throws -> [String: ExportableConnection] {
+        Dictionary(uniqueKeysWithValues: try importer.collect(request).connections.map { ($0.name, $0) })
     }
 
     private func encryptWithDBeaverKey(_ data: Data) -> Data {
@@ -465,6 +492,94 @@ struct DBeaverImporterTests {
         #expect(result.bundle.credentials.isEmpty)
     }
 
+    // MARK: - Data source files
+
+    @Test("collect reads every data-sources file with its own credentials file and one folder tree")
+    func testCollect_readsEveryDataSourcesFile() throws {
+        try writeDataSources(makeDataSourcesJSON(
+            connections: ["main-1": makeConnection(name: "Main", user: nil)],
+            folders: ["shared": ["description": "Shared Servers"]]
+        ))
+        try writeCredentials(["main-1": ["#connection": ["user": "main-user", "password": "main-pass"]]])
+        try writeDataSources(
+            makeDataSourcesJSON(connections: ["sub-1": makeConnection(name: "Second", user: nil, folder: "shared")]),
+            named: "data-sources-2.json"
+        )
+        try writeCredentials(
+            ["sub-1": ["#connection": ["user": "reporter", "password": "sub-pass"]]],
+            named: "credentials-config-2.json"
+        )
+        try Data("not json".utf8).write(to: projectDir.appendingPathComponent("data-sources-broken.json"))
+
+        #expect(importer.inventory().connections == 2)
+        let result = try importer.collect(.withPasswords)
+        #expect(result.connections.map { $0.name } == ["Main", "Second"])
+        #expect(result.connections.map { $0.username } == ["main-user", "reporter"])
+        #expect(result.bundle.credentials["main-1"]?.password == "main-pass")
+        #expect(result.bundle.credentials["sub-1"]?.password == "sub-pass")
+        #expect(result.groupPath(at: 1) == ["Shared Servers"])
+    }
+
+    @Test("A project with only an extra data-sources file is found")
+    func testCollect_projectWithOnlyAnExtraFile() throws {
+        try writeDataSources(
+            makeDataSourcesJSON(connections: ["team-1": makeConnection(name: "Team")]),
+            named: "data-sources-team.json"
+        )
+
+        #expect(importer.isAvailable())
+        #expect(try importer.collect(.connectionsOnly).connections.map { $0.name } == ["Team"])
+    }
+
+    @Test("The first project by name is read, whatever order the folder lists them in")
+    func testCollect_readsProjectsInNameOrder() throws {
+        let workspace = projectDir.deletingLastPathComponent().deletingLastPathComponent()
+        for project in ["Beta", "Alpha"] {
+            let json = makeDataSourcesJSON(connections: ["\(project)-1": makeConnection(name: "\(project) PG")])
+            let data = try JSONSerialization.data(withJSONObject: json)
+            let metadata = workspace.appendingPathComponent("\(project)/.dbeaver", isDirectory: true)
+            try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: true)
+            try data.write(to: metadata.appendingPathComponent("data-sources.json"))
+        }
+
+        #expect(try importer.collect(.connectionsOnly).connections.map { $0.name } == ["Alpha PG"])
+    }
+
+    // MARK: - Tunnel credentials
+
+    @Test("A tunnel's user and password come from the credentials file's network node")
+    func testCollect_tunnelSecretsFromNetworkNode() throws {
+        try writeDataSources(makeDataSourcesJSON(connections: [
+            "ssh-1": makeConnection(name: "Tunnel", sshEnabled: true, sshHost: "bastion.example.com")
+        ]))
+        try writeCredentials(["ssh-1": ["network/ssh_tunnel": ["user": "tunnel-user", "password": "tunnel-secret"]]])
+
+        #expect(try importer.collect(.connectionsOnly).connections[0].sshConfig?.username == "tunnel-user")
+        let result = try importer.collect(.withPasswords)
+        #expect(result.connections[0].sshConfig?.username == "tunnel-user")
+        #expect(result.bundle.credentials["ssh-1"]?.sshPassword == "tunnel-secret")
+        #expect(result.bundle.credentials["ssh-1"]?.password == nil)
+    }
+
+    @Test("A key tunnel's saved secret imports as the key passphrase, not the SSH password")
+    func testCollect_keyTunnelSecretIsThePassphrase() throws {
+        try writeDataSources(makeDataSourcesJSON(connections: [
+            "key-1": makeConnection(
+                name: "Key tunnel",
+                sshEnabled: true,
+                sshHost: "bastion.example.com",
+                sshUsername: "deploy",
+                sshAuthType: "PUBLIC_KEY",
+                sshKeyPath: "~/.ssh/id_ed25519"
+            )
+        ]))
+        try writeCredentials(["key-1": ["network/ssh_tunnel": ["password": "phrase"]]])
+
+        let credentials = try importer.collect(.withPasswords).bundle.credentials["key-1"]
+        #expect(credentials?.keyPassphrase == "phrase")
+        #expect(credentials?.sshPassword == nil)
+    }
+
     // MARK: - Username (credentials-config.json)
 
     @Test("Username imports from credentials-config.json")
@@ -667,8 +782,8 @@ struct DBeaverImporterTests {
         #expect(ssl?.mode == "Verify Identity")
     }
 
-    @Test("collect SSL enabled with empty mode defaults to Preferred")
-    func testCollect_sslEnabledEmptyModeDefaultsToPreferred() throws {
+    @Test("A plain ssl handler with no mode keeps TLS on, with a mode the review warns about")
+    func testCollect_sslEnabledEmptyModeIsUnread() throws {
         let connections: [String: [String: Any]] = [
             "pg-1": makeConnection(name: "SSL Default", sslEnabled: true, sslMode: "")
         ]
@@ -677,8 +792,199 @@ struct DBeaverImporterTests {
         let result = try importer.collect(.connectionsOnly)
         let ssl = result.connections[0].sslConfig
 
-        #expect(ssl != nil)
-        #expect(ssl?.mode == "Preferred")
+        #expect(ssl?.mode == "ssl")
+        #expect(ssl?.portableMode == nil)
+    }
+
+    @Test("Each engine's TLS handler is read by its own name, with DBeaver's certificate keys")
+    func testCollect_engineTLSHandlers() throws {
+        try writeDataSources(makeDataSourcesJSON(connections: [
+            "pg-require": tlsConnection("PG require", handler: "postgre_ssl", properties: ["sslMode": "require"]),
+            "pg-default": tlsConnection("PG default", handler: "postgre_ssl", properties: [
+                "sslMode": "", "ssl.ca.cert": "", "rootCert": "/root.crt", "clientCert": "/old.crt"
+            ]),
+            "pg-certs": tlsConnection("PG certs", handler: "postgre_ssl", properties: [
+                "sslMode": "verify-ca",
+                "ssl.ca.cert": "/ca.pem",
+                "ssl.client.cert": "/cert.pem",
+                "ssl.client.key": "/key.pem"
+            ]),
+            "pg-off": tlsConnection("PG off", handler: "postgre_ssl", properties: ["sslMode": "disable"]),
+            "mysql-required": tlsConnection("MySQL required", provider: "mysql", handler: "mysql_ssl", properties: [
+                "ssl.require": "true", "ssl.verify.server": "false"
+            ]),
+            "mysql-verified": tlsConnection("MySQL verified", provider: "mysql", handler: "mysql_ssl", properties: [
+                "ssl.verify.server": true, "ssl.ca.cert": "/certs/mysql-ca.pem"
+            ]),
+            "clickhouse": tlsConnection("ClickHouse", provider: "clickhouse", handler: "clickhouse-ssl", properties: [
+                "ssl.mode": "NONE"
+            ])
+        ]))
+
+        let byName = try collectByName()
+        #expect(byName["PG require"]?.sslConfig?.mode == "Required")
+        let pgDefault = byName["PG default"]?.sslConfig
+        #expect(pgDefault?.mode == "Verify Identity")
+        #expect(pgDefault?.caCertificatePath == "/root.crt")
+        #expect(pgDefault?.clientCertificatePath == "/old.crt")
+        let certs = byName["PG certs"]?.sslConfig
+        #expect(certs?.mode == "Verify CA")
+        #expect(certs?.caCertificatePath == "/ca.pem")
+        #expect(certs?.clientCertificatePath == "/cert.pem")
+        #expect(certs?.clientKeyPath == "/key.pem")
+        #expect(byName["PG off"]?.sslConfig == nil)
+        #expect(byName["MySQL required"]?.sslConfig?.mode == "Required")
+        #expect(byName["MySQL verified"]?.sslConfig?.mode == "Verify CA")
+        #expect(byName["MySQL verified"]?.sslConfig?.caCertificatePath == "/certs/mysql-ca.pem")
+        #expect(byName["ClickHouse"]?.sslConfig?.mode == "Required")
+    }
+
+    @Test("A TLS handler whose mode is not read keeps TLS on, with a mode the review warns about")
+    func testCollect_unreadTLSHandler() throws {
+        try writeDataSources(makeDataSourcesJSON(connections: [
+            "mssql": tlsConnection("SQL Server", provider: "sqlserver", handler: "mssql_ssl", properties: [
+                "ssl.method": "KEYSTORE", "ssl.keystore": "/certs/store.jks"
+            ]),
+            "pg-unknown": tlsConnection("PG unknown", handler: "postgre_ssl", properties: ["sslMode": "sometimes"]),
+            "ch-lax": tlsConnection("ClickHouse lax", provider: "clickhouse", handler: "clickhouse-ssl", properties: [
+                "ssl.mode": "LAX"
+            ])
+        ]))
+
+        let byName = try collectByName()
+        #expect(byName["SQL Server"]?.sslConfig?.mode == "mssql_ssl")
+        #expect(byName["PG unknown"]?.sslConfig?.mode == "sometimes")
+        #expect(byName["ClickHouse lax"]?.sslConfig?.mode == "LAX")
+        #expect(byName.values.allSatisfy { $0.sslConfig != nil && $0.sslConfig?.portableMode == nil })
+    }
+
+    @Test("A pgjdbc connection with no TLS handler takes the driver's default, preferred")
+    func testCollect_pgjdbcWithoutHandlerPrefersTLS() throws {
+        func pgjdbc(_ name: String, driver: String = "postgres-jdbc", _ configuration: [String: Any]) -> [String: Any] {
+            ["provider": "postgresql", "driver": driver, "name": name, "configuration": configuration]
+        }
+        try writeDataSources(makeDataSourcesJSON(connections: [
+            "plain": pgjdbc("Plain", ["host": "db.example.com"]),
+            "url-off": pgjdbc("URL off", [
+                "host": "db.example.com", "url": "jdbc:postgresql://db.example.com/app?sslmode=disable"
+            ]),
+            "property": pgjdbc("Property", ["host": "db.example.com", "properties": ["sslmode": "require"]]),
+            "handler-off": pgjdbc("Handler off", [
+                "host": "db.example.com",
+                "handlers": ["postgre_ssl": ["enabled": true, "properties": ["sslMode": "disable"]]]
+            ]),
+            "other-driver": pgjdbc("Other driver", driver: "postgres-other", ["host": "db.example.com"]),
+            "mysql": ["provider": "mysql", "driver": "mysql8", "name": "MySQL", "configuration": ["host": "db.example.com"]]
+        ]))
+
+        let byName = try collectByName()
+        #expect(byName["Plain"]?.sslConfig == ExportableSSLConfig(mode: "Preferred"))
+        #expect(byName["URL off"]?.sslConfig == nil)
+        #expect(byName["Property"]?.sslConfig?.mode == "sslmode")
+        #expect(byName["Property"]?.sslConfig?.portableMode == nil)
+        #expect(byName["Handler off"]?.sslConfig == nil)
+        #expect(byName["Other driver"]?.sslConfig == nil)
+        #expect(byName["MySQL"]?.sslConfig == nil)
+
+        let collected = try importer.collect(.connectionsOnly)
+        #expect(collected.notes(named: "Plain") == ["SSL Preferred is on because DBeaver encrypts this connection by default"])
+        let unnoted = ["URL off", "Property", "Handler off", "Other driver", "MySQL"]
+        #expect(unnoted.allSatisfy { collected.notes(named: $0).isEmpty })
+    }
+
+    // MARK: - URLs
+
+    @Test("A URL-only connection keeps what its URL names, never the URL or its password")
+    func testCollect_urlOnlyConnectionNeverKeepsTheURL() throws {
+        let url = "jdbc:postgresql://admin:hunter2@db.cloud.example:6543/app?password=hunter2&sslmode=require"
+        try writeDataSources(makeDataSourcesJSON(connections: [
+            "cloud": urlConnection("Cloud", configuration: ["url": url])
+        ]))
+
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
+        #expect(connection.host == "db.cloud.example")
+        #expect(connection.port == 6543)
+        #expect(connection.database == "app")
+        #expect(connection.username == "admin")
+        #expect(connection.sslConfig?.mode == "Required")
+        let encoded = String(decoding: try JSONEncoder().encode(connection), as: UTF8.self)
+        #expect(!encoded.contains("hunter2"))
+    }
+
+    @Test("In URL mode the URL names the server over leftover manual fields")
+    func testCollect_urlModeURLWins() throws {
+        try writeDataSources(makeDataSourcesJSON(connections: [
+            "url": urlConnection("URL mode", configuration: [
+                "host": "old.example.com", "port": "6000", "database": "old",
+                "url": "jdbc:postgresql://new.example.com/current", "configurationType": "URL"
+            ]),
+            "manual": urlConnection("Manual mode", configuration: [
+                "host": "manual.example.com", "port": "5433", "database": "manual",
+                "url": "jdbc:postgresql://url.example.com:6543/fromurl", "configurationType": "MANUAL"
+            ]),
+            "unparsed": urlConnection("Unparsed URL", configuration: [
+                "host": "db", "port": "6000", "url": "not a url", "configurationType": "URL"
+            ])
+        ]))
+
+        let byName = try collectByName()
+        let urlMode = try #require(byName["URL mode"])
+        #expect(urlMode.host == "new.example.com")
+        #expect(urlMode.port == 5432)
+        #expect(urlMode.database == "current")
+        let manual = try #require(byName["Manual mode"])
+        #expect(manual.host == "manual.example.com")
+        #expect(manual.port == 5433)
+        #expect(manual.database == "manual")
+        let unparsed = try #require(byName["Unparsed URL"])
+        #expect(unparsed.host == "db")
+        #expect(unparsed.port == 6000)
+    }
+
+    @Test("A connection keeps the TLS its URL asks for and marks any other TLS switch unread")
+    func testCollect_urlTLS() throws {
+        try writeDataSources(makeDataSourcesJSON(connections: [
+            "verified": urlConnection("Verified", configuration: [
+                "url": "jdbc:postgresql://db.example.com/app?sslmode=verify-full"
+            ]),
+            "switch": urlConnection("Switch", configuration: ["url": "jdbc:postgresql://db.example.com/app?ssl=true"]),
+            "https": urlConnection("HTTPS", provider: "clickhouse", configuration: [
+                "url": "jdbc:clickhouse:https://ch.example.com:8443/default"
+            ]),
+            "plain": urlConnection("Plain", configuration: ["url": "jdbc:postgresql://db.example.com/app"])
+        ]))
+
+        let byName = try collectByName()
+        #expect(byName["Verified"]?.sslConfig?.mode == "Verify Identity")
+        #expect(byName["Switch"]?.sslConfig != nil)
+        #expect(byName["Switch"]?.sslConfig?.portableMode == nil)
+        #expect(byName["HTTPS"]?.sslConfig?.mode == "Verify Identity")
+        #expect(byName["HTTPS"]?.host == "ch.example.com")
+        #expect(byName["HTTPS"]?.port == 8443)
+        #expect(byName["Plain"]?.sslConfig == nil)
+    }
+
+    @Test("A MongoDB URL keeps its seed list and auth database as MongoDB fields")
+    func testCollect_mongoURLFields() throws {
+        try writeDataSources(makeDataSourcesJSON(connections: [
+            "atlas": urlConnection("Atlas", provider: "mongodb", configuration: [
+                "url": "mongodb+srv://cluster0.example.net/app"
+            ]),
+            "mongo": urlConnection("Mongo", provider: "mongodb", configuration: [
+                "host": "mongo.example.com", "port": "27017", "database": "shop",
+                "url": "mongodb://mongo.example.com:27017/shop?authSource=admin"
+            ])
+        ]))
+
+        let byName = try collectByName()
+        let atlas = try #require(byName["Atlas"])
+        #expect(atlas.host == "cluster0.example.net")
+        #expect(atlas.database == "app")
+        #expect(atlas.additionalFields?["mongoUseSrv"] == "true")
+        #expect(atlas.sslConfig?.mode == "Verify Identity")
+        let mongo = try #require(byName["Mongo"])
+        #expect(mongo.host == "mongo.example.com")
+        #expect(mongo.additionalFields?["mongoAuthSource"] == "admin")
     }
 
     @Test("collect parses SSL certificate paths")

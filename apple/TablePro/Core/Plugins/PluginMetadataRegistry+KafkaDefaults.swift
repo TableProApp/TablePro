@@ -44,6 +44,7 @@ extension PluginMetadataRegistry {
                     supportsOpportunisticTLS: false,
                     verifiesServerWithSystemTrust: true,
                     supportsColumnSort: false,
+                    supportsRawFilter: false,
                     statementPolicyInDriver: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(

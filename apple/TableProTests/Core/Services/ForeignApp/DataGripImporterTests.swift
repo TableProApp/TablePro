@@ -312,6 +312,233 @@ struct DataGripImporterTests {
         #expect(ssl.clientKeyPath == "\(NSHomeDirectory())/certs/client.key")
     }
 
+    @Test("A URL that asks for TLS keeps it when the data source has no SSL settings")
+    func urlTLSWithoutSSLSettings() throws {
+        try writeDataSources([
+            source(uuid: "1", name: "verified", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://db/app?sslmode=verify-full"),
+            source(uuid: "2", name: "unread", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://db/app?ssl=true"),
+            source(uuid: "3", name: "https", driverRef: "clickhouse", jdbcURL: "jdbc:clickhouse:https://ch.example:8443/default"),
+            source(uuid: "4", name: "plain", driverRef: "clickhouse", jdbcURL: "jdbc:clickhouse://ch.example:8123/default"),
+            source(uuid: "5", name: "off", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://db/app?sslmode=disable")
+        ])
+
+        let connections = Dictionary(
+            uniqueKeysWithValues: try importer.collect(.connectionsOnly).connections.map { ($0.name, $0) }
+        )
+
+        #expect(connections["verified"]?.sslConfig?.portableMode == .verifyIdentity)
+        let unread = try #require(connections["unread"]?.sslConfig)
+        #expect(unread.portableMode == nil)
+        #expect(unread.mode == "ssl")
+        #expect(connections["https"]?.sslConfig?.portableMode == .verifyIdentity)
+        #expect(connections["https"]?.port == 8_443)
+        #expect(connections["plain"]?.sslConfig == nil)
+        #expect(connections["off"]?.sslConfig == nil)
+    }
+
+    @Test("With no SSL settings and no TLS in the URL, the driver's own default decides")
+    func driverDefaultTLS() throws {
+        try writeDataSources([
+            source(uuid: "1", name: "pg", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://db/app"),
+            source(uuid: "2", name: "mysql", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://db:3306/app"),
+            source(uuid: "3", name: "mssql", driverRef: "sqlserver.ms", jdbcURL: "jdbc:sqlserver://db:1433;databaseName=app"),
+            source(uuid: "4", name: "mariadb", driverRef: "mariadb", jdbcURL: "jdbc:mariadb://db:3306/app"),
+            source(uuid: "5", name: "jtds", driverRef: "sqlserver.jtds", jdbcURL: "jdbc:jtds:sqlserver://db:1433/app"),
+            source(
+                uuid: "6", name: "unchecked", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://db/app",
+                extra: "<ssl-config><enabled>false</enabled></ssl-config>"
+            ),
+            source(
+                uuid: "7", name: "trusting", driverRef: "sqlserver.ms",
+                jdbcURL: "jdbc:sqlserver://db:1433;databaseName=app;trustServerCertificate=true"
+            ),
+            source(
+                uuid: "8", name: "property", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://db/app",
+                extra: "<driver-properties><property name=\"sslmode\" value=\"require\"/></driver-properties>"
+            ),
+            source(
+                uuid: "9", name: "other property", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://db/app",
+                extra: "<driver-properties><property name=\"ApplicationName\" value=\"x\"/></driver-properties>"
+            )
+        ])
+
+        let collected = try importer.collect(.connectionsOnly)
+        let connections = Dictionary(uniqueKeysWithValues: collected.connections.map { ($0.name, $0) })
+
+        #expect(connections["pg"]?.sslConfig?.portableMode == .preferred)
+        #expect(connections["mysql"]?.sslConfig?.portableMode == .preferred)
+        #expect(connections["mssql"]?.sslConfig?.portableMode == .verifyIdentity)
+        #expect(connections["mariadb"]?.sslConfig == nil)
+        #expect(connections["jtds"]?.sslConfig == nil)
+        #expect(connections["unchecked"]?.sslConfig?.portableMode == .preferred)
+        let trusting = try #require(connections["trusting"]?.sslConfig)
+        #expect(trusting.portableMode == nil)
+        let property = try #require(connections["property"]?.sslConfig)
+        #expect(property.portableMode == nil)
+        #expect(property.mode == "sslmode")
+        #expect(connections["other property"]?.sslConfig?.portableMode == .preferred)
+
+        let preferred = "SSL Preferred is on because DataGrip encrypts this connection by default"
+        #expect(collected.notes(named: "pg") == [preferred])
+        #expect(collected.notes(named: "mysql") == [preferred])
+        #expect(collected.notes(named: "unchecked") == [preferred])
+        #expect(collected.notes(named: "other property") == [preferred])
+        #expect(collected.notes(named: "mssql") == [
+            "SSL Verify Identity is on because DataGrip encrypts this connection by default"
+        ])
+        #expect(["mariadb", "jtds", "trusting", "property"].allSatisfy { collected.notes(named: $0).isEmpty })
+    }
+
+    @Test("A section the local file disables turns off the shared one, and an absent one keeps it")
+    func localFileDisablesSharedSections() throws {
+        let sections = """
+        <ssh-properties><enabled>true</enabled><ssh-config-id>SSH1</ssh-config-id></ssh-properties>
+        <ssl-config><enabled>true</enabled><mode>REQUIRE</mode></ssl-config>
+        """
+        try writeDataSources([
+            source(uuid: "off", name: "off", driverRef: "mariadb", jdbcURL: "jdbc:mariadb://h:3306/db", extra: sections),
+            source(uuid: "kept", name: "kept", driverRef: "mariadb", jdbcURL: "jdbc:mariadb://h:3306/db", extra: sections)
+        ])
+        try writeLocalDataSources([
+            localSource(uuid: "off", extra: """
+            <ssh-properties><enabled>false</enabled><ssh-config-id>SSH1</ssh-config-id></ssh-properties>
+            <ssl-config><enabled>false</enabled></ssl-config>
+            """),
+            localSource(uuid: "kept", userName: "me")
+        ])
+        try writeSSHConfigs(["<sshConfig host=\"bastion\" id=\"SSH1\" port=\"22\" username=\"u\" authType=\"PASSWORD\"/>"])
+
+        let connections = Dictionary(
+            uniqueKeysWithValues: try importer.collect(.connectionsOnly).connections.map { ($0.name, $0) }
+        )
+
+        #expect(connections["off"]?.sshConfig == nil)
+        #expect(connections["off"]?.sslConfig == nil)
+        #expect(connections["kept"]?.sshConfig?.host == "bastion")
+        #expect(connections["kept"]?.sslConfig?.portableMode == .required)
+    }
+
+    // MARK: - URL Forms
+
+    @Test("A native MongoDB seed list keeps its server, seed list and auth database")
+    func mongoSeedList() throws {
+        try writeDataSources([
+            source(
+                uuid: "1", name: "atlas", driverRef: "mongo",
+                jdbcURL: "mongodb+srv://cluster0.example.net/app?authSource=admin&amp;retryWrites=true"
+            ),
+            source(uuid: "2", name: "direct", driverRef: "mongo", jdbcURL: "mongodb://mongo.example.com:27018/shop")
+        ])
+
+        let connections = Dictionary(
+            uniqueKeysWithValues: try importer.collect(.connectionsOnly).connections.map { ($0.name, $0) }
+        )
+
+        let atlas = try #require(connections["atlas"])
+        #expect(atlas.host == "cluster0.example.net")
+        #expect(atlas.database == "app")
+        #expect(atlas.additionalFields == ["mongoUseSrv": "true", "mongoAuthSource": "admin"])
+        #expect(atlas.sslConfig?.portableMode == .verifyIdentity)
+        let direct = try #require(connections["direct"])
+        #expect(direct.host == "mongo.example.com")
+        #expect(direct.port == 27_018)
+        #expect(direct.additionalFields == nil)
+    }
+
+    @Test("The URL's user fills in a data source without a user name")
+    func urlUser() throws {
+        try writeDataSources([
+            source(uuid: "1", name: "info", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://alice%40corp:pw@h:3306/a"),
+            source(uuid: "2", name: "param", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://h/team%20db?user=Bob"),
+            source(uuid: "3", name: "named", driverRef: "postgresql", jdbcURL: "jdbc:postgresql://h/db?user=Bob", userName: "carol")
+        ])
+
+        let connections = Dictionary(
+            uniqueKeysWithValues: try importer.collect(.connectionsOnly).connections.map { ($0.name, $0) }
+        )
+
+        #expect(connections["info"]?.username == "alice@corp")
+        #expect(connections["param"]?.username == "Bob")
+        #expect(connections["param"]?.database == "team db")
+        #expect(connections["named"]?.username == "carol")
+    }
+
+    @Test("A BigQuery source names its project")
+    func bigQueryProject() throws {
+        try writeDataSources([
+            source(
+                uuid: "1", name: "bq", driverRef: "bigquery",
+                jdbcURL: "jdbc:bigquery://https://www.googleapis.com/bigquery/v2;ProjectId=my-project"
+            )
+        ])
+
+        let connection = try #require(try importer.collect(.connectionsOnly).connections.first)
+        #expect(connection.database == "my-project")
+        #expect(connection.host == "https://www.googleapis.com/bigquery/v2")
+    }
+
+    // MARK: - Files
+
+    @Test("A project whose dataSources.xml links to a device is skipped without reading it")
+    func linkedDeviceIsSkipped() throws {
+        let project = root.appendingPathComponent("linked-project")
+        let idea = project.appendingPathComponent(".idea")
+        try FileManager.default.createDirectory(at: idea, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: idea.appendingPathComponent("dataSources.xml"),
+            withDestinationURL: URL(fileURLWithPath: "/dev/zero")
+        )
+        try ForeignFixture.write(
+            "<application><component><entry key=\"\(project.path)\"/></component></application>",
+            to: optionsDir.appendingPathComponent("recentProjects.xml")
+        )
+        try writeDataSources([
+            source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a")
+        ])
+
+        #expect(importer.inventory() == ForeignAppInventory(connections: 1, savedQueries: 0))
+    }
+
+    @Test("A dataSources.xml past 16 MiB is not read")
+    func oversizedDataSourcesFile() throws {
+        try writeDataSources([
+            source(uuid: "1", name: "A", driverRef: "mysql.8", jdbcURL: "jdbc:mysql://h:3306/a"),
+            "<!--" + String(repeating: " ", count: ForeignAppFile.maximumByteCount) + "-->"
+        ])
+
+        #expect(importer.inventory().connections == 0)
+    }
+
+    @Test("Only a regular file under the cap is read")
+    func foreignAppFileReadsRegularFilesOnly() throws {
+        let regular = root.appendingPathComponent("settings.xml")
+        try Data("<a/>".utf8).write(to: regular)
+        #expect(try ForeignAppFile.read(regular) == Data("<a/>".utf8))
+
+        let missing = root.appendingPathComponent("missing.xml")
+        do {
+            _ = try ForeignAppFile.read(missing)
+            Issue.record("Expected a missing file to throw")
+        } catch {
+            #expect(ForeignAppFile.isMissing(error))
+        }
+
+        let pipe = root.appendingPathComponent("pipe.xml")
+        try #require(mkfifo(pipe.path, 0o600) == 0)
+        #expect(throws: ForeignAppFile.ReadError.notRegularFile) { try ForeignAppFile.read(pipe) }
+
+        let device = root.appendingPathComponent("device.xml")
+        try FileManager.default.createSymbolicLink(at: device, withDestinationURL: URL(fileURLWithPath: "/dev/zero"))
+        #expect(throws: ForeignAppFile.ReadError.notRegularFile) { try ForeignAppFile.read(device) }
+
+        let huge = root.appendingPathComponent("huge.xml")
+        #expect(FileManager.default.createFile(atPath: huge.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: huge)
+        try handle.truncate(atOffset: UInt64(ForeignAppFile.maximumByteCount + 1))
+        try handle.close()
+        #expect(throws: ForeignAppFile.ReadError.tooLarge) { try ForeignAppFile.read(huge) }
+    }
+
     // MARK: - Groups & Dedup
 
     @Test("group-name attribute becomes a group")

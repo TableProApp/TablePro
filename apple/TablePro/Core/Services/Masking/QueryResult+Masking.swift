@@ -9,7 +9,7 @@ import TableProPluginKit
 extension QueryResult {
     func masked(by policy: MaskingPolicy, table: String? = nil) -> QueryResult {
         let masks = policy.columnMasks(table: table, columns: columns, columnTypes: columnTypes)
-        guard !masks.isEmpty else { return self }
+        guard !policy.isEmpty else { return self }
         var masked = QueryResult(
             columns: columns,
             columnTypes: columnTypes,
@@ -24,6 +24,12 @@ extension QueryResult {
         masked.columnMeta = columnMeta
         masked.rowLocators = rowLocators
         masked.serverOutput = serverOutput
+        masked.exportDocuments = exportDocuments?.enumerated().map { index, document in
+            ExportDocumentMasking.document(
+                document, columns: columns, masks: masks, policy: policy, table: table,
+                row: rows.indices.contains(index) ? rows[index] : nil
+            )
+        }
         masked.absentCells = absentCells
         masked.unloadedCells = unloadedCells
         return masked
@@ -33,7 +39,7 @@ extension QueryResult {
 extension PluginQueryResult {
     func masked(by policy: MaskingPolicy, table: String? = nil) -> PluginQueryResult {
         let masks = policy.columnMasks(table: table, columns: columns, typeNames: columnTypeNames)
-        guard !masks.isEmpty else { return self }
+        guard !policy.isEmpty else { return self }
         var masked = PluginQueryResult(
             columns: columns,
             columnTypeNames: columnTypeNames,
@@ -45,6 +51,12 @@ extension PluginQueryResult {
             columnMeta: columnMeta
         )
         masked.rowLocators = rowLocators
+        masked.exportDocuments = exportDocuments?.enumerated().map { index, document in
+            ExportDocumentMasking.document(
+                document, columns: columns, masks: masks, policy: policy, table: table,
+                row: rows.indices.contains(index) ? rows[index] : nil
+            )
+        }
         masked.absentCells = absentCells
         return masked
     }

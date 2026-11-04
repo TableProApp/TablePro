@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::ConnectionGroup;
+use crate::error::StorageError;
 
 /// The walks stop at a group they met before, so a list built by hand
 /// with a cycle cannot hang one; the store never hands out such a list.
@@ -110,6 +111,35 @@ impl<'a> GroupTree<'a> {
         deepest
     }
 
+    pub fn can_place(&self, group: Uuid, parent: Option<Uuid>) -> bool {
+        self.check_place(Some(group), parent).is_ok()
+    }
+
+    pub fn can_create_in(&self, parent: Option<Uuid>) -> bool {
+        self.check_place(None, parent).is_ok()
+    }
+
+    // `group` is `None` for a new group, which has no subgroup yet.
+    pub(crate) fn check_place(&self, group: Option<Uuid>, parent: Option<Uuid>) -> Result<(), StorageError> {
+        if let Some(id) = parent
+            && !self.contains(id)
+        {
+            return Err(StorageError::GroupNotFound { id });
+        }
+        if let (Some(id), Some(target)) = (group, parent)
+            && (target == id || self.descendants(id).contains(&target))
+        {
+            return Err(StorageError::GroupCycle { id });
+        }
+        let height = group.map_or(0, |id| self.height(id));
+        if self.depth(parent) + 1 + height > ConnectionGroup::MAX_DEPTH {
+            return Err(StorageError::GroupTooDeep {
+                max: ConnectionGroup::MAX_DEPTH,
+            });
+        }
+        Ok(())
+    }
+
     /// The order a tree view lists them in: each group before its
     /// children.
     pub fn walk(&self) -> Vec<&'a ConnectionGroup> {
@@ -179,6 +209,59 @@ mod tests {
         expected.sort();
         assert_eq!(below, expected);
         assert_eq!(names(&tree.walk()), ["Home", "Work", "Production", "Staging", "EU"]);
+    }
+
+    #[test]
+    fn a_group_is_placed_only_under_an_existing_parent_outside_itself_within_three_levels() {
+        let work = group("Work", None, 0);
+        let staging = group("Staging", Some(&work), 0);
+        let eu = group("EU", Some(&staging), 0);
+        let home = group("Home", None, 1);
+        let groups = vec![work.clone(), staging.clone(), eu.clone(), home.clone()];
+        let tree = GroupTree::new(&groups);
+
+        assert!(!tree.can_place(home.id, Some(eu.id)), "a leaf went under a third level");
+        assert!(tree.can_place(home.id, Some(staging.id)));
+        assert!(tree.can_place(staging.id, Some(home.id)));
+        assert!(
+            !tree.can_place(work.id, Some(home.id)),
+            "a two-level subtree went under a group"
+        );
+        assert!(tree.can_place(work.id, None));
+        assert!(tree.can_place(eu.id, None));
+        assert!(!tree.can_place(work.id, Some(work.id)));
+        assert!(!tree.can_place(work.id, Some(eu.id)));
+        assert!(!tree.can_place(home.id, Some(Uuid::new_v4())));
+        assert!(matches!(
+            tree.check_place(Some(work.id), Some(staging.id)),
+            Err(StorageError::GroupCycle { id }) if id == work.id
+        ));
+        assert!(matches!(
+            tree.check_place(Some(home.id), Some(eu.id)),
+            Err(StorageError::GroupTooDeep {
+                max: ConnectionGroup::MAX_DEPTH
+            })
+        ));
+    }
+
+    #[test]
+    fn a_new_group_fits_under_the_top_or_a_group_above_the_third_level() {
+        let work = group("Work", None, 0);
+        let staging = group("Staging", Some(&work), 0);
+        let eu = group("EU", Some(&staging), 0);
+        let groups = vec![work.clone(), staging.clone(), eu.clone()];
+        let tree = GroupTree::new(&groups);
+
+        assert!(tree.can_create_in(None));
+        assert!(tree.can_create_in(Some(work.id)));
+        assert!(tree.can_create_in(Some(staging.id)));
+        assert!(!tree.can_create_in(Some(eu.id)));
+        let missing = Uuid::new_v4();
+        assert!(!tree.can_create_in(Some(missing)));
+        assert!(matches!(
+            tree.check_place(None, Some(missing)),
+            Err(StorageError::GroupNotFound { id }) if id == missing
+        ));
     }
 
     #[test]

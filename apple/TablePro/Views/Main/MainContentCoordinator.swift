@@ -260,6 +260,8 @@ final class MainContentCoordinator: ObservableObject {
     @Published var activeSheet: ActiveSheet? {
         didSet { releaseImportFileUnlessImporting() }
     }
+    // Export and transfer started from these sheets stop with `teardown()`, never with the pane.
+    private(set) lazy var sheetWork = SheetWorkScope { [weak self] in self?.windowId }
     // Commands present through this, not a flag: the toolbar view is gone when its item is in overflow or removed.
     var switcherPresenter: ToolbarSwitcherPresenter? {
         splitViewController?.switcherPresenter
@@ -833,6 +835,7 @@ final class MainContentCoordinator: ObservableObject {
         )
         _didTeardown.withLock { $0 = true }
 
+        sheetWork.stopAll()
         unregisterFromPersistence()
         dropMovesAwaitingRestore(reason: "coordinator torn down")
         SessionRecoveryTracker.sync()
@@ -1303,21 +1306,13 @@ final class MainContentCoordinator: ObservableObject {
                         source: source,
                         serverOutput: fetchResult.serverOutput,
                         rowLocators: isTableTab ? fetchResult.rowLocators : nil,
+                        exportDocuments: fetchResult.exportDocuments,
                         absentCells: fetchResult.absentCells,
                         unloadedCells: fetchResult.unloadedCells
                     )
 
                     scheduleTraceCompletion(traceToken, outcome: .completed)
-                    reportQueryOperation(
-                        claim: claim,
-                        trigger: trigger,
-                        outcome: .succeeded(
-                            OperationSummary(
-                                rowsReturned: fetchResult.rows.count,
-                                rowsAffected: fetchResult.rowsAffected
-                            )
-                        )
-                    )
+                    reportFetchedQuery(claim: claim, trigger: trigger, result: fetchResult)
                     return true
                 }
                 // Phase 2 writes onto whatever the tab holds, so only the execution that applied its rows may start it.

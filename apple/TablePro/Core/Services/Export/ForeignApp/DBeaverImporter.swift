@@ -51,57 +51,60 @@ struct DBeaverImporter: ForeignAppImporter {
     }
 
     func isAvailable() -> Bool {
-        installedAppURL() != nil || findDataSourcesFile() != nil
+        installedAppURL() != nil || findProject() != nil
     }
 
     func inventory() -> ForeignAppInventory {
-        guard let url = findDataSourcesFile() else {
+        guard let project = findProject() else {
             return ForeignAppInventory(connections: 0, savedQueries: 0)
         }
-        let connections = loadJSON(from: url)?["connections"] as? [String: Any]
+        let connections = project.configs.reduce(0) { total, config in
+            total + ((loadJSON(from: config.url)?["connections"] as? [String: Any])?.count ?? 0)
+        }
         return ForeignAppInventory(
-            connections: connections?.count ?? 0,
-            savedQueries: DBeaverScriptReader.count(projectURL: Self.projectURL(for: url))
+            connections: connections,
+            savedQueries: DBeaverScriptReader.count(projectURL: project.url)
         )
     }
 
     func collect(_ request: ForeignImportRequest) throws -> CollectedImport {
-        guard let dataSourcesURL = findDataSourcesFile() else {
+        guard let project = findProject() else {
             throw ForeignAppImportError.fileNotFound(displayName)
         }
-
-        guard let json = loadJSON(from: dataSourcesURL) else {
-            throw ForeignAppImportError.parseError("Could not parse data-sources.json")
-        }
-
-        guard let connectionsDict = json["connections"] as? [String: [String: Any]] else {
-            throw ForeignAppImportError.unsupportedFormat("Missing connections key in data-sources.json")
-        }
-
-        let foldersDict = json["folders"] as? [String: [String: Any]] ?? [:]
-
-        let credentialsURL = dataSourcesURL.deletingLastPathComponent()
-            .appendingPathComponent("credentials-config.json")
-        let credentialsMap = loadCredentials(from: credentialsURL)
+        let sources = try readDataSources(project)
+        let folders = Self.folderDescriptions(sources)
 
         var records: [ForeignConnectionRecord] = []
-        for (connId, connDict) in connectionsDict {
-            try Task.checkCancellation()
-            let credentialUsername = (credentialsMap[connId]?["#connection"] as? [String: Any])?["user"] as? String
-            let credentials = request.includePasswords ? credentialsMap[connId].flatMap { extractCredentials(from: $0) } : nil
-            records.append(ForeignConnectionRecord(
-                sourceId: connId,
-                settings: parseConnection(connId, dict: connDict, credentialUsername: credentialUsername),
-                groupPath: Self.groupPath(connDict["folder"] as? String, folders: foldersDict),
-                credentials: credentials
-            ))
+        for source in sources {
+            for (connId, connDict) in source.connections {
+                try Task.checkCancellation()
+                let entry = source.credentials[connId]
+                var notes: [String] = []
+                let settings = parseConnection(
+                    connId,
+                    dict: connDict,
+                    credentialUsername: (entry?["#connection"] as? [String: Any])?["user"] as? String,
+                    tunnelUsername: entry.flatMap { Self.tunnelField($0, "user") },
+                    notes: &notes
+                )
+                let credentials = request.includePasswords
+                    ? entry.flatMap { extractCredentials(from: $0, settings: settings) }
+                    : nil
+                records.append(ForeignConnectionRecord(
+                    sourceId: connId,
+                    settings: settings,
+                    groupPath: Self.groupPath(connDict["folder"] as? String, descriptions: folders),
+                    credentials: credentials,
+                    notes: notes
+                ))
+            }
         }
         // The JSON object has no order once parsed, so sort for a stable review list.
         records.sort { ($0.settings.name, $0.sourceId ?? "") < ($1.settings.name, $1.sourceId ?? "") }
 
         let savedQueries = request.includeSavedQueries
             ? try DBeaverScriptReader.savedQueries(
-                projectURL: Self.projectURL(for: dataSourcesURL),
+                projectURL: project.url,
                 limit: SavedQuerySize.maximumSyncableByteCount
             )
             : []
@@ -116,39 +119,96 @@ struct DBeaverImporter: ForeignAppImporter {
 
     // MARK: - File Discovery
 
-    private static func projectURL(for dataSourcesURL: URL) -> URL {
-        dataSourcesURL.deletingLastPathComponent().deletingLastPathComponent()
+    private struct Project {
+        let url: URL
+        let configs: [ConfigFile]
     }
 
-    // Enumerates `workspace*` so a future `workspace7` keeps working.
-    private func findDataSourcesFile() -> URL? {
+    // DBeaver pairs `data-sources<sub>.json` with `credentials-config<sub>.json`.
+    private struct ConfigFile {
+        let name: String
+        let url: URL
+        let credentialsURL: URL
+        let isDefault: Bool
+    }
+
+    private struct DataSources {
+        let connections: [String: [String: Any]]
+        let folders: [String: [String: Any]]
+        let credentials: [String: [String: Any]]
+    }
+
+    private static let configPrefix = "data-sources"
+    private static let credentialsPrefix = "credentials-config"
+    private static let jsonExtension = ".json"
+
+    // Sorted, so the pick never depends on the order the file system lists folders in.
+    private func findProject() -> Project? {
         let fm = FileManager.default
-        guard let workspaceDirs = try? fm.contentsOfDirectory(
-            at: dbeaverDataRoot,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return nil }
-
-        let workspaces = workspaceDirs
-            .filter { $0.lastPathComponent.hasPrefix("workspace") }
-            .sorted { $0.lastPathComponent > $1.lastPathComponent }
-
-        for workspace in workspaces {
-            guard let projects = try? fm.contentsOfDirectory(atPath: workspace.path) else { continue }
-            for projectName in projects {
-                let candidate = workspace
-                    .appendingPathComponent(projectName)
-                    .appendingPathComponent(".dbeaver/data-sources.json")
-                if fm.fileExists(atPath: candidate.path) {
-                    return candidate
+        guard let workspaceNames = try? fm.contentsOfDirectory(atPath: dbeaverDataRoot.path) else { return nil }
+        for workspaceName in workspaceNames.filter({ $0.hasPrefix("workspace") }).sorted(by: >) {
+            let workspace = dbeaverDataRoot.appendingPathComponent(workspaceName, isDirectory: true)
+            guard let projectNames = try? fm.contentsOfDirectory(atPath: workspace.path) else { continue }
+            for projectName in projectNames.sorted() {
+                let projectURL = workspace.appendingPathComponent(projectName, isDirectory: true)
+                let configs = Self.configFiles(in: projectURL.appendingPathComponent(".dbeaver", isDirectory: true))
+                if !configs.isEmpty {
+                    return Project(url: projectURL, configs: configs)
                 }
             }
         }
         return nil
     }
 
+    private static func configFiles(in metadataFolder: URL) -> [ConfigFile] {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: metadataFolder.path) else { return [] }
+        let configs = names.compactMap { name -> ConfigFile? in
+            guard name.hasPrefix(configPrefix), name.hasSuffix(jsonExtension),
+                  name.count >= configPrefix.count + jsonExtension.count else { return nil }
+            let url = metadataFolder.appendingPathComponent(name)
+            let values = try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey])
+            guard values?.isRegularFile == true else { return nil }
+            let subId = String(name.dropFirst(configPrefix.count).dropLast(jsonExtension.count))
+            return ConfigFile(
+                name: name,
+                url: url,
+                credentialsURL: metadataFolder.appendingPathComponent(credentialsPrefix + subId + jsonExtension),
+                isDefault: subId.isEmpty
+            )
+        }
+        return configs.sorted { ($0.isDefault ? 0 : 1, $0.name) < ($1.isDefault ? 0 : 1, $1.name) }
+    }
+
+    private func readDataSources(_ project: Project) throws -> [DataSources] {
+        var sources: [DataSources] = []
+        for config in project.configs {
+            do {
+                sources.append(try readConfig(config))
+            } catch {
+                // A broken extra file leaves the main file's connections importable.
+                guard !config.isDefault else { throw error }
+                Self.logger.warning("Skipped DBeaver data sources file \(config.name, privacy: .public)")
+            }
+        }
+        return sources
+    }
+
+    private func readConfig(_ config: ConfigFile) throws -> DataSources {
+        guard let json = loadJSON(from: config.url) else {
+            throw ForeignAppImportError.parseError("Could not parse \(config.name)")
+        }
+        guard let connections = json["connections"] as? [String: [String: Any]] else {
+            throw ForeignAppImportError.unsupportedFormat("Missing connections key in \(config.name)")
+        }
+        return DataSources(
+            connections: connections,
+            folders: json["folders"] as? [String: [String: Any]] ?? [:],
+            credentials: loadCredentials(from: config.credentialsURL)
+        )
+    }
+
     private func loadJSON(from url: URL) -> [String: Any]? {
-        guard let data = try? Data(contentsOf: url),
+        guard let data = try? ForeignAppFile.read(url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return json
     }
@@ -158,26 +218,44 @@ struct DBeaverImporter: ForeignAppImporter {
     private func parseConnection(
         _ connId: String,
         dict: [String: Any],
-        credentialUsername: String?
+        credentialUsername: String?,
+        tunnelUsername: String?,
+        notes: inout [String]
     ) -> ExportableConnection {
         let name = dict["name"] as? String ?? connId
         let provider = dict["provider"] as? String ?? ""
         let dbType = mapProvider(provider)
 
         let config = dict["configuration"] as? [String: Any] ?? [:]
-        let host = config["host"] as? String ?? "localhost"
-        let port: Int
-        if let intPort = config["port"] as? Int {
-            port = intPort
-        } else if let strPort = config["port"] as? String, let parsed = Int(strPort) {
-            port = parsed
-        } else {
-            port = ForeignAppDatabaseType.defaultPort(for: dbType)
-        }
-        let database = config["database"] as? String ?? config["url"] as? String ?? ""
-        let username = [credentialUsername, config["user"] as? String]
+        let url = (config["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        // In URL mode DBeaver connects with the URL as written, and the manual fields are leftovers.
+        let urlMode = config["configurationType"] as? String == "URL"
+        let hostIsEmpty = (config["host"] as? String)?.isEmpty ?? true
+        // Only what the URL names is kept, never the URL itself, which can hold a password.
+        let endpoint = (urlMode || hostIsEmpty) ? url.flatMap(Self.endpoint) : nil
+        let fromURL = urlMode && endpoint != nil
+        let manual: (String) -> Any? = { fromURL ? nil : config[$0] }
+
+        let host = (manual("host") as? String).flatMap { $0.isEmpty ? nil : $0 } ?? endpoint?.host ?? "localhost"
+        let database = manual("database") as? String ?? endpoint?.database ?? ""
+        let port = Self.port(manual("port")) ?? endpoint?.port ?? ForeignAppDatabaseType.defaultPort(for: dbType)
+        let username = [credentialUsername, config["user"] as? String, endpoint?.username]
             .compactMap { $0 }
             .first { !$0.isEmpty } ?? ""
+
+        // Read whether or not the host came from the URL: a seed list and an auth database live only there.
+        let additionalFields = url.map(JDBCConnectionString.urlFields) ?? [:]
+        let sslConfig: ExportableSSLConfig?
+        switch Self.handlerTLS(config) {
+        case .on(let ssl):
+            sslConfig = ssl
+        case .unread(let mode):
+            sslConfig = ExportableSSLConfig(mode: mode)
+        case .off:
+            sslConfig = url.flatMap(Self.urlSSL)
+        case .absent:
+            sslConfig = url.flatMap(Self.urlSSL) ?? driverDefaultSSL(dict, configuration: config, url: url, notes: &notes)
+        }
 
         return ExportableConnection(
             name: name,
@@ -186,26 +264,94 @@ struct DBeaverImporter: ForeignAppImporter {
             database: database,
             username: username,
             type: dbType,
-            sshConfig: parseSSHConfig(config),
-            sslConfig: parseSSLConfig(config),
-            color: parseColor(config)
+            sshConfig: parseSSHConfig(config, credentialUsername: tunnelUsername),
+            sslConfig: sslConfig,
+            color: parseColor(config),
+            additionalFields: additionalFields.isEmpty ? nil : additionalFields
         )
     }
 
-    // A folder key is its full path; a folder's description, when set, is the name DBeaver shows.
-    private static func groupPath(_ folder: String?, folders: [String: [String: Any]]) -> [String] {
-        guard let folder, !folder.isEmpty else { return [] }
-        let components = folder.split(separator: "/").map(String.init)
-        return components.indices.map { index in
-            let key = components[...index].joined(separator: "/")
-            if let description = folders[key]?["description"] as? String, !description.isEmpty {
-                return description
-            }
-            return components[index]
+    private static func endpoint(_ url: String) -> JDBCConnectionString.Endpoint? {
+        JDBCConnectionString.parse(url: url, subprotocol: JDBCConnectionString.subprotocol(of: url))
+    }
+
+    // A URL that sets TLS a way this cannot read keeps its own text as the mode, so the review warns.
+    private static func urlSSL(_ url: String) -> ExportableSSLConfig? {
+        switch JDBCConnectionString.tls(of: url) {
+        case .none, .mode(.disabled):
+            return nil
+        case .mode(let mode):
+            return ExportableSSLConfig(mode: mode.rawValue)
+        case .unread(let written):
+            return ExportableSSLConfig(mode: written)
         }
     }
 
-    private func parseSSHConfig(_ config: [String: Any]) -> ExportableSSHConfig? {
+    // The PostgreSQL drivers DBeaver ships as pgjdbc (`org.postgresql.Driver` in its plugin.xml).
+    private static let pgjdbcDrivers: Set<String> = [
+        "postgres-jdbc",
+        "postgresql",
+        "postgres-greenplum-jdbc",
+        "postgres-timescale-jdbc",
+        "postgres-yugabytedb-jdbc",
+        "postgres-cockroach-jdbc",
+        "postgres-materialize-jdbc",
+        "postgres-gcloud-jdbc",
+        "postgres-cratedb-jdbc",
+        "postgres-risingwave-jdbc"
+    ]
+
+    // With no TLS handler DBeaver hands pgjdbc `ssl=false` and no `sslmode`, which pgjdbc reads as
+    // `prefer`. Its MySQL and SQL Server connections turn TLS off outright.
+    private func driverDefaultSSL(
+        _ connection: [String: Any],
+        configuration: [String: Any],
+        url: String?,
+        notes: inout [String]
+    ) -> ExportableSSLConfig? {
+        guard (connection["provider"] as? String)?.lowercased() == "postgresql",
+              let driver = connection["driver"] as? String, Self.pgjdbcDrivers.contains(driver) else { return nil }
+        if let url, JDBCConnectionString.tls(of: url) != JDBCConnectionString.TLS.none {
+            return nil
+        }
+        // A driver property that sets TLS is not read, so its name is the mode the review flags.
+        let properties = configuration["properties"] as? [String: Any] ?? [:]
+        let switches = properties.keys.filter { JDBCConnectionString.isTLSParameter($0) }.sorted()
+        guard switches.isEmpty else { return ExportableSSLConfig(mode: switches.joined(separator: ", ")) }
+        notes.append(ForeignImportNote.tlsFromDriverDefault(.preferred, appName: displayName))
+        return ExportableSSLConfig(mode: SSLMode.preferred.rawValue)
+    }
+
+    private static func port(_ value: Any?) -> Int? {
+        if let number = value as? Int {
+            return number
+        }
+        return (value as? String).flatMap { Int($0) }
+    }
+
+    // A folder defined in one file can hold connections of another, as DBeaver keeps one folder tree.
+    private static func folderDescriptions(_ sources: [DataSources]) -> [String: String] {
+        var descriptions: [String: String] = [:]
+        for source in sources {
+            for (path, folder) in source.folders where descriptions[path] == nil {
+                if let description = folder["description"] as? String, !description.isEmpty {
+                    descriptions[path] = description
+                }
+            }
+        }
+        return descriptions
+    }
+
+    // A folder key is its full path; a folder's description, when set, is the name DBeaver shows.
+    private static func groupPath(_ folder: String?, descriptions: [String: String]) -> [String] {
+        guard let folder, !folder.isEmpty else { return [] }
+        let components = folder.split(separator: "/").map(String.init)
+        return components.indices.map { index in
+            descriptions[components[...index].joined(separator: "/")] ?? components[index]
+        }
+    }
+
+    private func parseSSHConfig(_ config: [String: Any], credentialUsername: String?) -> ExportableSSHConfig? {
         guard let handlers = config["handlers"] as? [String: Any],
               let sshTunnel = handlers["ssh_tunnel"] as? [String: Any] else { return nil }
 
@@ -215,15 +361,10 @@ struct DBeaverImporter: ForeignAppImporter {
         guard enabled else { return nil }
 
         let host = properties["host"] as? String ?? ""
-        let port: Int?
-        if let intPort = properties["port"] as? Int {
-            port = intPort
-        } else if let strPort = properties["port"] as? String, let parsed = Int(strPort) {
-            port = parsed
-        } else {
-            port = nil
-        }
-        let username = properties["username"] as? String ?? ""
+        // DBeaver keeps the tunnel's user with its secrets, or beside its properties in an older file.
+        let username = [properties["username"] as? String, sshTunnel["user"] as? String, credentialUsername]
+            .compactMap { $0 }
+            .first { !$0.isEmpty } ?? ""
         let authType = properties["authType"] as? String ?? "PASSWORD"
         let rawKeyPath = properties["keyPath"] as? String ?? ""
         let keyPath = ForeignAppPathHelper.resolveKeyPath(rawKeyPath)
@@ -238,7 +379,7 @@ struct DBeaverImporter: ForeignAppImporter {
         return ExportableSSHConfig(
             enabled: true,
             host: host,
-            port: port,
+            port: Self.port(properties["port"]),
             username: username,
             authMethod: authMethod,
             privateKeyPath: authType == "PUBLIC_KEY" ? keyPath : "",
@@ -251,32 +392,103 @@ struct DBeaverImporter: ForeignAppImporter {
         )
     }
 
-    private func parseSSLConfig(_ config: [String: Any]) -> ExportableSSLConfig? {
-        guard let handlers = config["handlers"] as? [String: Any],
-              let sslHandler = handlers["ssl"] as? [String: Any] else { return nil }
+    // MARK: - TLS
 
-        let enabled = sslHandler["enabled"] as? Bool ?? false
-        guard enabled else { return nil }
+    private enum HandlerTLS {
+        case absent
+        case off
+        case on(ExportableSSLConfig)
+        case unread(String)
+    }
 
-        let properties = sslHandler["properties"] as? [String: Any] ?? [:]
+    // DBeaver names the TLS handler per engine: `postgre_ssl`, `mysql_ssl`, `mssql_ssl`, `clickhouse-ssl`.
+    private static func isTLSHandler(_ id: String) -> Bool {
+        id == "ssl" || id.hasSuffix("_ssl") || id.hasSuffix("-ssl")
+    }
 
-        let mode: String
-        switch properties["sslMode"] as? String ?? "" {
-        case "require": mode = SSLMode.required.rawValue
-        case "verify-ca": mode = SSLMode.verifyCa.rawValue
-        case "verify-full": mode = SSLMode.verifyIdentity.rawValue
-        default: mode = SSLMode.preferred.rawValue
+    private static func handlerTLS(_ config: [String: Any]) -> HandlerTLS {
+        let handlers = config["handlers"] as? [String: Any] ?? [:]
+        var outcome = HandlerTLS.absent
+        for id in handlers.keys.sorted() where isTLSHandler(id) {
+            guard let handler = handlers[id] as? [String: Any], handler["enabled"] as? Bool == true else { continue }
+            let properties = handler["properties"] as? [String: Any] ?? [:]
+            guard let mode = tlsMode(handler: id, properties: properties) else {
+                outcome = .unread(unreadMode(handler: id, properties: properties))
+                continue
+            }
+            if mode != .disabled {
+                return .on(tlsSettings(mode, properties: properties))
+            }
+            if case .absent = outcome {
+                outcome = .off
+            }
         }
+        return outcome
+    }
 
-        let caCertPath = properties["caCertPath"] as? String
-        let clientCertPath = properties["clientCertPath"] as? String
-        let clientKeyPath = properties["clientKeyPath"] as? String
+    // The mode each engine's handler hands its driver; nil when the handler keeps no mode this can read.
+    private static func tlsMode(handler id: String, properties: [String: Any]) -> SSLMode? {
+        func text(_ key: String) -> String? {
+            (properties[key] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        }
+        func flag(_ key: String) -> Bool {
+            properties[key] as? Bool ?? ((properties[key] as? String)?.lowercased() == "true")
+        }
+        switch id {
+        case "postgre_ssl":
+            // The PostgreSQL driver takes `ssl=true` with no mode as verify-full.
+            guard let mode = text("sslMode") else { return .verifyIdentity }
+            return namedMode(mode)
+        case "mysql_ssl":
+            // Connector/J's legacy switches: checking the certificate is verify-ca.
+            if flag("ssl.verify.server") {
+                return .verifyCa
+            }
+            return flag("ssl.require") ? .required : .preferred
+        case "clickhouse-ssl":
+            // The ClickHouse driver checks the server unless the mode is NONE.
+            switch text("ssl.mode")?.uppercased() {
+            case nil, "STRICT": return .verifyIdentity
+            case "NONE": return .required
+            default: return nil
+            }
+        default:
+            return text("sslMode").flatMap(namedMode)
+        }
+    }
 
+    private static func namedMode(_ mode: String) -> SSLMode? {
+        switch mode.lowercased() {
+        case "disable": return .disabled
+        case "allow", "prefer": return .preferred
+        case "require": return .required
+        case "verify-ca": return .verifyCa
+        case "verify-full": return .verifyIdentity
+        default: return nil
+        }
+    }
+
+    // The handler's own mode text, or its id when that text would read as a mode the review accepts.
+    private static func unreadMode(handler id: String, properties: [String: Any]) -> String {
+        let written = ["sslMode", "ssl.mode"].lazy
+            .compactMap { properties[$0] as? String }
+            .first { !$0.isEmpty }
+        if let written, PortableSSLMode(carrying: written) == nil {
+            return written
+        }
+        return id
+    }
+
+    // DBeaver's own keys first, then the PostgreSQL handler's older ones, then TablePro's earlier guess.
+    private static func tlsSettings(_ mode: SSLMode, properties: [String: Any]) -> ExportableSSLConfig {
+        func path(_ keys: String...) -> String? {
+            keys.lazy.compactMap { properties[$0] as? String }.first { !$0.isEmpty }
+        }
         return ExportableSSLConfig(
-            mode: mode,
-            caCertificatePath: caCertPath,
-            clientCertificatePath: clientCertPath,
-            clientKeyPath: clientKeyPath
+            mode: mode.rawValue,
+            caCertificatePath: path("ssl.ca.cert", "rootCert", "caCertPath"),
+            clientCertificatePath: path("ssl.client.cert", "clientCert", "clientCertPath"),
+            clientKeyPath: path("ssl.client.key", "clientKey", "clientKeyPath")
         )
     }
 
@@ -303,7 +515,7 @@ struct DBeaverImporter: ForeignAppImporter {
     ]
 
     private func loadCredentials(from url: URL) -> [String: [String: Any]] {
-        guard let data = try? Data(contentsOf: url),
+        guard let data = try? ForeignAppFile.read(url),
               let decrypted = decryptCredentials(data) else { return [:] }
 
         guard let json = try? JSONSerialization.jsonObject(with: decrypted) as? [String: Any] else { return [:] }
@@ -341,22 +553,29 @@ struct DBeaverImporter: ForeignAppImporter {
         return Data(decryptedBytes.prefix(decryptedLength))
     }
 
-    private func extractCredentials(from connCreds: [String: Any]) -> ExportableCredentials? {
+    private func extractCredentials(from connCreds: [String: Any], settings: ExportableConnection) -> ExportableCredentials? {
         let connectionBlock = connCreds["#connection"] as? [String: Any] ?? [:]
         let password = connectionBlock["password"] as? String
+        let tunnelSecret = Self.tunnelField(connCreds, "password")
+        guard password != nil || tunnelSecret != nil else { return nil }
 
-        let sshBlock = connCreds["ssh_tunnel"] as? [String: Any] ?? [:]
-        let sshPassword = sshBlock["password"] as? String
-        guard password != nil || sshPassword != nil else { return nil }
-
+        // The tunnel keeps one secret: the password for password sign-in, the key's passphrase for a key.
+        let keyTunnel = settings.sshConfig?.authMethod == "Private Key"
         return ExportableCredentials(
             password: password,
-            sshPassword: sshPassword,
-            keyPassphrase: nil,
+            sshPassword: keyTunnel ? nil : tunnelSecret,
+            keyPassphrase: keyTunnel ? tunnelSecret : nil,
             sslClientKeyPassphrase: nil,
             totpSecret: nil,
             pluginSecureFields: nil
         )
+    }
+
+    // DBeaver keys a network handler's secrets `network/<handler id>`; the bare id is TablePro's earlier guess.
+    private static func tunnelField(_ connCreds: [String: Any], _ field: String) -> String? {
+        ["network/ssh_tunnel", "ssh_tunnel"].lazy
+            .compactMap { (connCreds[$0] as? [String: Any])?[field] as? String }
+            .first
     }
 
     // MARK: - Mapping

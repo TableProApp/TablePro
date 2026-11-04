@@ -224,8 +224,8 @@ extension ConnectionScriptContext {
         self.init(
             connectionId: connection.id,
             connectionName: connection.name,
-            host: connection.preTunnelHost ?? connection.host,
-            port: connection.preTunnelPort ?? connection.port,
+            host: connection.preTunnelHost ?? connection.serverEndpoint.host,
+            port: connection.preTunnelPort ?? connection.serverEndpoint.port,
             user: ConnectionCredentialResolver.resolveUsername(for: connection),
             database: connection.database
         )

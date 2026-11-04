@@ -71,7 +71,8 @@ struct TablePlusImporter: ForeignAppImporter {
     func inventory() -> ForeignAppInventory {
         let prefs = viewSetting
         return ForeignAppInventory(
-            connections: loadEntries(from: connectionsDirectory(viewSetting: prefs))?.count ?? 0,
+            connections: loadEntries(from: connectionsDirectory(viewSetting: prefs))?
+                .count(where: { Self.connectionName($0) != nil }) ?? 0,
             savedQueries: TablePlusFavoriteReader.count(in: favoriteRoots(viewSetting: prefs))
         )
     }
@@ -103,7 +104,8 @@ struct TablePlusImporter: ForeignAppImporter {
         for entry in entries {
             try Task.checkCancellation()
             do {
-                let settings = try parseConnection(entry)
+                var notes: [String] = []
+                let settings = try parseConnection(entry, notes: &notes)
                 let connectionId = entry["ID"] as? String
                 var credentials: ExportableCredentials?
                 if request.includePasswords, !credentialsAborted, let connectionId {
@@ -119,7 +121,8 @@ struct TablePlusImporter: ForeignAppImporter {
                     sourceId: connectionId,
                     settings: settings,
                     groupPath: groupName.map { [$0] } ?? [],
-                    credentials: credentials
+                    credentials: credentials,
+                    notes: notes
                 ))
             } catch {
                 Self.logger.warning("Skipping a TablePlus connection that could not be read")
@@ -191,8 +194,13 @@ struct TablePlusImporter: ForeignAppImporter {
         return map
     }
 
-    private func parseConnection(_ entry: [String: Any]) throws -> ExportableConnection {
-        guard let name = entry["ConnectionName"] as? String else {
+    // An entry without a name is never imported, so the inventory skips it too.
+    private static func connectionName(_ entry: [String: Any]) -> String? {
+        entry["ConnectionName"] as? String
+    }
+
+    private func parseConnection(_ entry: [String: Any], notes: inout [String]) throws -> ExportableConnection {
+        guard let name = Self.connectionName(entry) else {
             throw ForeignAppImportError.parseError("Missing ConnectionName")
         }
 
@@ -239,7 +247,7 @@ struct TablePlusImporter: ForeignAppImporter {
             username: username,
             type: dbType,
             sshConfig: parseSSHConfig(entry),
-            sslConfig: parseSSLConfig(entry, driver: driver),
+            sslConfig: parseSSLConfig(entry, driver: driver, notes: &notes),
             color: mapEnvironmentColor(entry["Enviroment"] as? String),
             additionalFields: additionalFields.isEmpty ? nil : additionalFields
         )
@@ -277,19 +285,25 @@ struct TablePlusImporter: ForeignAppImporter {
         return keyFileExists(PathPortability.expandHome(resolved)) ? resolved : ""
     }
 
-    private func parseSSLConfig(_ entry: [String: Any], driver: String) -> ExportableSSLConfig? {
+    private func parseSSLConfig(_ entry: [String: Any], driver: String, notes: inout [String]) -> ExportableSSLConfig? {
         guard entry.keys.contains("tLSMode") else { return nil }
         let tlsMode = entry["tLSMode"] as? Int ?? 0
         let form = TablePlusTLSVocabulary.form(forDriver: driver)
-        guard tlsMode >= 0, tlsMode < form.modes.count else { return nil }
+        // A mode outside the form's list is TLS this cannot read, not TLS off.
+        guard tlsMode >= 0, tlsMode < form.modes.count else { return ExportableSSLConfig(mode: String(tlsMode)) }
 
         let paths = entry["TlsKeyPaths"] as? [String] ?? []
         func certPath(_ slot: Int?) -> String? {
             guard let slot, slot < paths.count, !paths[slot].isEmpty else { return nil }
             return paths[slot]
         }
+        let mode = form.modes[tlsMode]
+        // The SQL Server form has no TLS picker, and TablePlus's FreeTDS asks for TLS whenever the server offers it.
+        if driver == "MicrosoftSQLServer" {
+            notes.append(ForeignImportNote.tlsFromDriverDefault(mode, appName: displayName))
+        }
         return ExportableSSLConfig(
-            mode: form.modes[tlsMode].rawValue,
+            mode: mode.rawValue,
             caCertificatePath: certPath(form.slots.certificateAuthority),
             clientCertificatePath: certPath(form.slots.clientCertificate),
             clientKeyPath: certPath(form.slots.clientKey)

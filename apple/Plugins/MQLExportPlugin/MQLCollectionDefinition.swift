@@ -103,6 +103,17 @@ enum MQLCollectionDefinition {
             _ = reader.consume(",")
         }
         guard reader.consume(")") else { return nil }
+        if arguments.contains(where: { $0.containsOrderedMap }) {
+            var options: [MQLScriptMember] = []
+            if arguments.count > 1, case .object(let members) = arguments[1] { options = members }
+            if !options.contains(where: { $0.key == "name" }) {
+                let name = keys.map { "\($0.key)_\($0.value.compactText)" }.joined(separator: "_")
+                options.append(MQLScriptMember(key: "name", value: .string(name)))
+            }
+            let index = MQLScriptValue.object([MQLScriptMember(key: "key", value: .object(keys))] + options)
+            let command = "{createIndexes: \(JavaScriptText.stringLiteral(collection)), indexes: [\(index.compactText)]}"
+            return MQLExportHelpers.checkedCommand(command)
+        }
         let accessor = MQLExportHelpers.collectionAccessor(for: collection)
         return "\(accessor).createIndex(\(arguments.map(\.compactText).joined(separator: ", ")));"
     }
@@ -116,7 +127,7 @@ enum MQLCollectionDefinition {
             return nil
         }
         let rebuilt = MQLScriptValue.object([MQLScriptMember(key: "collMod", value: .string(collection)), command[1]])
-        return "db.runCommand(\(rebuilt.indentedText(depth: 0)));"
+        return MQLExportHelpers.checkedCommand(rebuilt.indentedText(depth: 0))
     }
 
     /// `db.<name>`, `db["<name>"]` or `db.getCollection("<name>")`, the three spellings a driver

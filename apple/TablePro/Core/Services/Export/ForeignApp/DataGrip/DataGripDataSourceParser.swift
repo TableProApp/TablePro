@@ -14,12 +14,28 @@ struct DataGripDataSource {
     let groupName: String?
     let ssh: DataGripSSHReference?
     let ssl: DataGripSSLProperties?
+    let driverPropertyNames: [String]
 }
 
-/// A single `<data-source>` element. DataGrip splits one logical data source
-/// across the shared `dataSources.xml` (driver, jdbc-url, group) and the
-/// machine-local `dataSources.local.xml` (user name, ssh-properties,
-/// ssl-properties). Fragments from both files merge by uuid before resolving.
+// The local file can turn off a section the shared file turns on; a file without the section leaves it.
+enum DataGripSection<Value> {
+    case absent
+    case disabled
+    case enabled(Value)
+
+    var value: Value? {
+        if case .enabled(let value) = self { return value }
+        return nil
+    }
+
+    var isAbsent: Bool {
+        if case .absent = self { return true }
+        return false
+    }
+}
+
+// DataGrip splits one data source across the shared `dataSources.xml` (driver, URL, group) and the
+// machine-local `dataSources.local.xml` (user name, SSH, SSL); fragments of both merge by uuid.
 struct DataGripDataSourceFragment {
     let uuid: String
     var name: String?
@@ -27,8 +43,9 @@ struct DataGripDataSourceFragment {
     var jdbcURL: String?
     var username: String?
     var groupName: String?
-    var ssh: DataGripSSHReference?
-    var ssl: DataGripSSLProperties?
+    var driverPropertyNames: [String]?
+    var ssh: DataGripSection<DataGripSSHReference> = .absent
+    var ssl: DataGripSection<DataGripSSLProperties> = .absent
 
     mutating func merge(_ other: DataGripDataSourceFragment) {
         name = other.name ?? name
@@ -36,8 +53,11 @@ struct DataGripDataSourceFragment {
         jdbcURL = other.jdbcURL ?? jdbcURL
         username = other.username ?? username
         groupName = other.groupName ?? groupName
-        ssh = other.ssh ?? ssh
-        ssl = other.ssl ?? ssl
+        if let names = other.driverPropertyNames {
+            driverPropertyNames = (driverPropertyNames ?? []) + names
+        }
+        if !other.ssh.isAbsent { ssh = other.ssh }
+        if !other.ssl.isAbsent { ssl = other.ssl }
     }
 
     func resolved() -> DataGripDataSource? {
@@ -50,14 +70,14 @@ struct DataGripDataSourceFragment {
             jdbcURL: jdbcURL,
             username: username ?? "",
             groupName: groupName,
-            ssh: ssh,
-            ssl: ssl
+            ssh: ssh.value,
+            ssl: ssl.value,
+            driverPropertyNames: driverPropertyNames ?? []
         )
     }
 }
 
 struct DataGripSSHReference {
-    let enabled: Bool
     let configId: String?
     let inlineHost: String?
     let inlinePort: Int?
@@ -121,37 +141,37 @@ enum DataGripDataSourceParser {
         fragment.jdbcURL = element.childText("jdbc-url").flatMap { $0.isEmpty ? nil : $0 }
         fragment.username = element.childText("user-name").flatMap { $0.isEmpty ? nil : $0 }
         fragment.groupName = element.attr("group-name").flatMap { $0.isEmpty ? nil : $0 }
+        fragment.driverPropertyNames = element.elements(forName: "driver-properties").first.map { properties in
+            properties.elements(forName: "property").compactMap { $0.attr("name") }
+        }
         fragment.ssh = parseSSHReference(element)
         fragment.ssl = parseSSLProperties(element)
         return fragment
     }
 
-    private static func parseSSHReference(_ element: XMLElement) -> DataGripSSHReference? {
-        guard let ssh = element.elements(forName: "ssh-properties").first else { return nil }
-
-        let enabled = (ssh.childText("enabled") ?? ssh.attr("enabled")) == "true"
-        guard enabled else { return nil }
+    private static func parseSSHReference(_ element: XMLElement) -> DataGripSection<DataGripSSHReference> {
+        guard let ssh = element.elements(forName: "ssh-properties").first else { return .absent }
+        guard (ssh.childText("enabled") ?? ssh.attr("enabled")) == "true" else { return .disabled }
 
         let configId = ssh.childText("ssh-config-id") ?? ssh.attr("ssh-config-id")
-        return DataGripSSHReference(
-            enabled: true,
+        return .enabled(DataGripSSHReference(
             configId: configId.flatMap { $0.isEmpty ? nil : $0 },
             inlineHost: ssh.attr("host"),
             inlinePort: ssh.attr("port").flatMap { Int($0) },
             inlineUser: ssh.attr("user") ?? ssh.attr("username")
-        )
+        ))
     }
 
-    private static func parseSSLProperties(_ element: XMLElement) -> DataGripSSLProperties? {
-        guard let ssl = element.elements(forName: "ssl-config").first,
-              ssl.childText("enabled") == "true" else { return nil }
+    private static func parseSSLProperties(_ element: XMLElement) -> DataGripSection<DataGripSSLProperties> {
+        guard let ssl = element.elements(forName: "ssl-config").first else { return .absent }
+        guard ssl.childText("enabled") == "true" else { return .disabled }
 
-        return DataGripSSLProperties(
+        return .enabled(DataGripSSLProperties(
             mode: ssl.childText("mode"),
             caCertPath: ssl.certPath("ca-cert"),
             clientCertPath: ssl.certPath("client-cert"),
             clientKeyPath: ssl.certPath("client-key")
-        )
+        ))
     }
 }
 

@@ -378,6 +378,31 @@ struct ConnectionImportAnalyzerTests {
         #expect(row.isSelectedByDefault)
     }
 
+    @Test("A connection's notes follow its own warnings, on that row only")
+    func connectionNotesFollowWarnings() throws {
+        var settings = Fixtures.settings()
+        settings.sslConfig = ExportableSSLConfig(mode: "sometimes")
+        let collected = CollectedImport(
+            bundle: try Fixtures.makeBundle(connections: [
+                BundleConnection(ref: "c1", settings: settings),
+                BundleConnection(ref: "c2", settings: Fixtures.settings(host: "other"))
+            ]),
+            source: .foreignApp(name: "Sample App"),
+            connectionNotes: ["c1": ["SSL is on by default"]]
+        )
+
+        let preview = ConnectionImportAnalyzer.analyze(
+            collected,
+            library: ImportLibrarySnapshot(),
+            environment: Fixtures.makeEnvironment()
+        )
+
+        #expect(preview.connections[0].warnings.count == 2)
+        #expect(preview.connections[0].warnings.last == "SSL is on by default")
+        #expect(preview.connections[0].isSelectedByDefault)
+        #expect(preview.connections[1].warnings.isEmpty)
+    }
+
     @Test("An iOS SSL spelling is recognized and does not warn")
     func iOSSpellingDoesNotWarn() throws {
         var settings = Fixtures.settings()

@@ -22,93 +22,92 @@ enum MQLExportHelpers {
         JavaScriptText.lineComment("\(label): \(name)")
     }
 
-    static func documentLiteral(_ fields: [(name: String, value: String)]) -> String {
-        let members = fields.map { "\(JavaScriptText.stringLiteral($0.name)): \($0.value)" }
-        return "  {\(members.joined(separator: ", "))}"
+    static func documentLiteral(_ document: PluginExportDocument) throws -> String {
+        var names = Set<Data>()
+        let fields = try document.fields.map { field in
+            guard names.insert(Data(field.name.utf8)).inserted else { throw PluginExportError.encodingFailed }
+            let value = try canonicalValue(field.canonicalJSON)
+            return "[\(JavaScriptText.stringLiteral(field.name)), \(value)]"
+        }
+        return "  new Map([\(fields.joined(separator: ", "))])"
     }
 
-    static func mqlBinaryValue(for data: Data, subtype: UInt8) -> String {
-        MongoDBUuidCodec.binaryText(for: MongoDBBinaryValue(data: data, subtype: subtype))
+    static func canonicalValue(_ json: String) throws -> String {
+        guard (try? JSONSerialization.jsonObject(with: Data(json.utf8), options: [.fragmentsAllowed])) != nil else {
+            throw PluginExportError.encodingFailed
+        }
+        let escaped = json.unicodeScalars.map { scalar -> String in
+            if scalar == "\n" || scalar == "\r" || scalar == "\t" { return String(scalar) }
+            return JavaScriptText.lineBreakingEscape(scalar) ?? String(scalar)
+        }.joined()
+        var reader = MQLScriptReader(tokens: MQLScriptLexer.lexemes(in: escaped).map(\.token))
+        guard let value = reader.value(), reader.current == nil else { throw PluginExportError.encodingFailed }
+        return try value.canonicalExpression()
     }
 
-    /// A mongosh script inserts a string wherever it sees one, so a typed scalar has to be
-    /// written as its constructor. The column type is the only surviving record of the type.
-    static func mqlTextValue(for value: String, columnTypeName: String) -> String {
-        switch columnTypeName {
-        case "ObjectId":
-            let objectId = MongoDBObjectId(hex: value)
-            guard objectId.isValid else { break }
-            return "ObjectId(\(JavaScriptText.stringLiteral(value)))"
-        case "TIMESTAMP":
-            guard isIso8601(value) else { break }
-            return "ISODate(\(JavaScriptText.stringLiteral(value)))"
-        case "DECIMAL":
-            guard NumberText.isJSONNumberLiteral(value) else { break }
-            return "NumberDecimal(\(JavaScriptText.stringLiteral(value)))"
-        case "BIGINT":
-            guard Int64(value) != nil else { break }
-            return "NumberLong(\(JavaScriptText.stringLiteral(value)))"
-        case "FLOAT":
-            guard NumberText.isJSONNumber(value), let number = Double(value), readsBackAsInteger(number) else { break }
-            return "Double(\(value))"
-        default:
-            break
-        }
-        return mqlJsonValue(for: value)
+    static func insertCommand(collection: String, documents: [String]) -> String {
+        let name = JavaScriptText.stringLiteral(collection)
+        return checkedCommand("{insert: \(name), documents: [\n\(documents.joined(separator: ",\n"))\n], ordered: true}") + "\n"
     }
 
-    private static let largestExactInteger: Double = 9_007_199_254_740_991
-
-    private static func readsBackAsInteger(_ number: Double) -> Bool {
-        number.rounded(.towardZero) == number && abs(number) <= largestExactInteger
+    static func createCollectionCommand(_ collection: String) -> String {
+        let create = checkedCommand("{create: \(JavaScriptText.stringLiteral(collection))}", allowingNamespaceExists: true)
+        return """
+        {
+          try \(create) catch (error) {
+            if (!error || error.code !== 48) { throw error; }
+          }
+        }
+        """
     }
 
-    private static func isIso8601(_ value: String) -> Bool {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if formatter.date(from: value) != nil { return true }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: value) != nil
+    static func checkedCommand(_ command: String, allowingNamespaceExists: Bool = false) -> String {
+        let failed = allowingNamespaceExists ? "(!result.ok && result.code !== 48)" : "!result.ok"
+        return """
+        {
+          const result = db.runCommand(\(command));
+          if (\(failed) || (result.writeErrors && result.writeErrors.length) || result.writeConcernError) {
+            throw new Error("Document import failed: " + EJSON.stringify(result));
+          }
+        }
+        """
+    }
+}
+
+// A command has a BSON size limit too; reserving space keeps its array keys and metadata outside the document budget.
+struct MQLDocumentBatch {
+    static let documentByteLimit = 15 * 1_024 * 1_024
+
+    private let countLimit: Int
+    private var documents: [String] = []
+    private var byteCount = 0
+
+    init(countLimit: Int) {
+        self.countLimit = min(100_000, max(1, countLimit))
     }
 
-    static func mqlJsonValue(for value: String) -> String {
-        if value == "true" || value == "false" {
-            return value
+    mutating func append(_ literal: String, bsonSizeUpperBound: Int?) -> [[String]] {
+        var ready: [[String]] = []
+        guard let size = bsonSizeUpperBound, size > 0, size <= Self.documentByteLimit else {
+            if !documents.isEmpty { ready.append(finish()) }
+            ready.append([literal])
+            return ready
         }
-        if value == "null" {
-            return "null"
+        var entrySize = size + String(documents.count).utf8.count + 2
+        if byteCount > Self.documentByteLimit - entrySize {
+            if !documents.isEmpty { ready.append(finish()) }
+            entrySize = size + 3
         }
-        if NumberText.isJSONNumber(value) {
-            return value
-        }
-        if let binary = MongoDBUuidCodec.parseWrapper(value) {
-            return MongoDBUuidCodec.binaryText(for: binary)
-        }
-        if (value.hasPrefix("{") && value.hasSuffix("}")) ||
-            (value.hasPrefix("[") && value.hasSuffix("]")) {
-            if let data = value.data(using: .utf8),
-               (try? JSONSerialization.jsonObject(with: data)) != nil {
-                return escapingLineBreaks(inJSON: value)
-            }
-        }
-        return JavaScriptText.stringLiteral(value)
+        documents.append(literal)
+        byteCount += entrySize
+        if documents.count >= countLimit { ready.append(finish()) }
+        return ready
     }
 
-    /// `JSONSerialization` accepts U+2028, U+2029, DEL and the C1 controls raw inside a string,
-    /// and refuses every other character `lineBreakingEscape` answers for outside the whitespace
-    /// between tokens. So in JSON it accepted, each such character stands inside a string, where
-    /// its escape reads back as the same value.
-    private static func escapingLineBreaks(inJSON json: String) -> String {
-        var escaped = String.UnicodeScalarView()
-        for scalar in json.unicodeScalars {
-            if scalar == "\n" || scalar == "\r" || scalar == "\t" {
-                escaped.append(scalar)
-            } else if let escape = JavaScriptText.lineBreakingEscape(scalar) {
-                escaped.append(contentsOf: escape.unicodeScalars)
-            } else {
-                escaped.append(scalar)
-            }
-        }
-        return String(escaped)
+    mutating func finish() -> [String] {
+        let ready = documents
+        documents.removeAll(keepingCapacity: true)
+        byteCount = 0
+        return ready
     }
 }

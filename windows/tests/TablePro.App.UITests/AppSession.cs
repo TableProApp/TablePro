@@ -105,16 +105,44 @@ internal sealed class AppSession : IDisposable
     public void Chord(Func<bool> landed, params VirtualKeyShort[] keys) =>
         Again(() => Keyboard.TypeSimultaneously(keys), landed, string.Join("+", keys));
 
-    public void TypeInto(AutomationElement editor, string text) =>
+    public void TypeInto(string title, string text) =>
         Again(
             () =>
             {
-                Click(editor);
+                var editor = FindEditor(title);
+                editor.Focus();
+                if (!Retry.WhileFalse(
+                        () => editor.Properties.HasKeyboardFocus.ValueOrDefault,
+                        Wait,
+                        throwOnTimeout: false).Success)
+                {
+                    throw Failure($"The {title} editor did not take keyboard focus.", screen: true);
+                }
+
                 Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
                 Keyboard.Type(text);
             },
-            () => EditorText(editor).TrimEnd('\r', '\n') == text,
+            () => EditorText(FindEditor(title)).TrimEnd('\r', '\n') == text,
             $"Typing {text}");
+
+    public AutomationElement FindEditor(string title) =>
+        Retry.WhileNull(
+                () =>
+                {
+                    // A tab header appears before its selected editor has finished layout.
+                    var editor = Window.FindFirstDescendant(condition =>
+                        condition.ByAutomationId("SqlEditor").And(condition.ByName($"SQL editor, {title}")));
+                    if (editor is null || !editor.IsEnabled || editor.IsOffscreen)
+                    {
+                        return null;
+                    }
+
+                    var bounds = editor.BoundingRectangle;
+                    return bounds.Width > 0 && bounds.Height > 0 ? editor : null;
+                },
+                Wait,
+                throwOnTimeout: false).Result
+            ?? throw Failure($"The {title} editor did not become ready.", screen: true);
 
     private void Again(Action act, Func<bool> landed, string what)
     {

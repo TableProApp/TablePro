@@ -20,6 +20,20 @@ struct ExportFormatRowScopeTests {
             rows(limit: object.rowScope.rowLimit)
         }
 
+        func streamExportRows(for object: PluginExportTable) -> AsyncThrowingStream<PluginExportStreamElement, Error> {
+            let kept = values.prefix(object.rowScope.rowLimit ?? values.count)
+            return AsyncThrowingStream { continuation in
+                continuation.yield(.header(PluginStreamHeader(columns: ["name"], columnTypeNames: ["TEXT"])))
+                let documents = kept.map {
+                    PluginExportDocument(fields: [PluginExportField(
+                        name: "name", canonicalJSON: "\"\($0)\"", typeName: "VARCHAR", cellValue: .text($0)
+                    )])
+                }
+                continuation.yield(.rows(kept.map { [.text($0)] }, documents: documents))
+                continuation.finish()
+            }
+        }
+
         private func rows(limit: Int?) -> AsyncThrowingStream<PluginStreamElement, Error> {
             let kept = values.prefix(limit ?? values.count)
             return AsyncThrowingStream { continuation in

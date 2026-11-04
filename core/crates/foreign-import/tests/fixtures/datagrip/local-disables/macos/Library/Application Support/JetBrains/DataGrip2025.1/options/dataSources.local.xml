@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="dataSourceStorageLocal" created-in="DB-251.23774.16">
+    <data-source name="turned_off" uuid="d1">
+      <secret-storage>master_key</secret-storage>
+      <user-name>app</user-name>
+      <schema-mapping />
+      <ssh-properties>
+        <enabled>false</enabled>
+        <ssh-config-id>SSH1</ssh-config-id>
+      </ssh-properties>
+      <ssl-config>
+        <enabled>false</enabled>
+      </ssl-config>
+    </data-source>
+    <data-source name="left_on" uuid="d2">
+      <secret-storage>master_key</secret-storage>
+      <user-name>app</user-name>
+      <schema-mapping />
+    </data-source>
+  </component>
+</project>

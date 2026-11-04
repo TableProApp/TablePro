@@ -89,4 +89,18 @@ struct TableFilterTests {
         #expect(decoded.value == original.value)
         #expect(decoded.isEnabled == original.isEnabled)
     }
+
+    @Test("An operator change returns Match Case to the new operator's usual setting")
+    func selectingOperatorResetsCase() {
+        var filter = TableFilter(columnName: "name", filterOperator: .equal, value: "ana")
+        #expect(filter.isCaseSensitive)
+
+        let contains = filter.selectingOperator(.contains)
+        #expect(contains.filterOperator == .contains)
+        #expect(!contains.isCaseSensitive)
+        #expect(contains.value == "ana")
+
+        filter.isCaseSensitive = false
+        #expect(!filter.selectingOperator(.equal).isCaseSensitive, "the same operator changes nothing")
+    }
 }

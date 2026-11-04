@@ -28,11 +28,26 @@ impl MssqlFixture {
     pub const TLS_DIR: &'static str = "/var/opt/mssql/tls";
 
     pub async fn start() -> Result<Self, FixtureError> {
-        let pki = TestPki::generate()?;
+        Self::launch(TestPki::generate()?, false).await
+    }
+
+    /// A server whose certificate is self-signed, which a client accepts
+    /// only by trusting that certificate itself.
+    pub async fn start_self_signed() -> Result<Self, FixtureError> {
+        Self::launch(TestPki::generate_self_signed()?, false).await
+    }
+
+    /// A server that takes only strict (TDS 8.0) connections. Needs SQL
+    /// Server 2025 or later.
+    pub async fn start_force_strict() -> Result<Self, FixtureError> {
+        Self::launch(TestPki::generate()?, true).await
+    }
+
+    async fn launch(pki: TestPki, force_strict: bool) -> Result<Self, FixtureError> {
         let password = format!("Tp1!{}", Uuid::new_v4().simple());
         let version = MssqlVersion::selected()?;
         let image = version.image();
-        let files = Self::files(&pki)?;
+        let files = Self::files(&pki, force_strict)?;
         let container = start_container(|| {
             let request = MssqlServer::default()
                 .with_accept_eula()
@@ -58,15 +73,18 @@ impl MssqlFixture {
         })
     }
 
-    pub fn files(pki: &TestPki) -> Result<Vec<ContainerFile>, FixtureError> {
+    pub fn files(pki: &TestPki, force_strict: bool) -> Result<Vec<ContainerFile>, FixtureError> {
         let tls = Self::TLS_DIR;
-        let configuration = format!(
+        let mut configuration = format!(
             "[network]\n\
              tlscert = {tls}/server.pem\n\
              tlskey = {tls}/server.key\n\
              tlsprotocols = 1.2\n\
              forceencryption = 1\n"
         );
+        if force_strict {
+            configuration.push_str("forcestrict = 1\n");
+        }
         Ok(vec![
             ContainerFile::readable("/var/opt/mssql/mssql.conf", configuration),
             ContainerFile::readable(format!("{tls}/server.pem"), pki.read(PkiFile::ServerCertificate)?),
@@ -100,5 +118,29 @@ impl MssqlFixture {
 
     pub async fn exec(&self, command: &[&str]) -> Result<ExecOutput, FixtureError> {
         ExecOutput::run(&self.container, command).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn configuration(force_strict: bool) -> String {
+        let pki = TestPki::generate().unwrap();
+        let files = MssqlFixture::files(&pki, force_strict).unwrap();
+        let file = files
+            .iter()
+            .find(|file| file.target() == "/var/opt/mssql/mssql.conf")
+            .unwrap();
+        String::from_utf8_lossy(file.contents()).into_owned()
+    }
+
+    #[test]
+    fn only_the_force_strict_server_enforces_strict_encryption() {
+        let strict = configuration(true);
+
+        assert!(strict.starts_with("[network]\n"), "{strict}");
+        assert!(strict.contains("\nforceencryption = 1\nforcestrict = 1\n"), "{strict}");
+        assert!(!configuration(false).contains("forcestrict"));
     }
 }

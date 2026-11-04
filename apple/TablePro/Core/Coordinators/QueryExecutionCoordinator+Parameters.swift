@@ -751,6 +751,7 @@ extension QueryExecutionCoordinator {
                 viewport: install.viewport,
                 source: install.source,
                 serverOutput: fetchResult.serverOutput,
+                exportDocuments: fetchResult.exportDocuments,
                 absentCells: fetchResult.absentCells
             )
 

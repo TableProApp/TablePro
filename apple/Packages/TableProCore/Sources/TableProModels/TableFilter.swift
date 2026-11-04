@@ -70,6 +70,18 @@ public struct TableFilter: Identifiable, Codable, Sendable {
     }
 }
 
+public extension TableFilter {
+    /// Match Case returns to the new operator's usual setting, so a pattern row ignores case
+    /// unless the reader turns it on for that operator.
+    func selectingOperator(_ newOperator: FilterOperator) -> TableFilter {
+        guard newOperator != filterOperator else { return self }
+        var updated = self
+        updated.filterOperator = newOperator
+        updated.isCaseSensitive = newOperator.defaultIsCaseSensitive
+        return updated
+    }
+}
+
 public enum FilterOperator: String, Codable, Sendable, CaseIterable {
     case equal
     case notEqual

@@ -106,6 +106,8 @@ fn tls_mode(scheme: &str, parsed: &Url) -> Option<TlsModeTag> {
             }
             "ssl" | "tls" | "encrypt" => {
                 mode = match value.as_str() {
+                    // SQL Server's Encrypt=strict, TDS 8.0.
+                    "strict" if key.eq_ignore_ascii_case("encrypt") => Some(TlsModeTag::Strict),
                     "true" | "1" | "yes" | "strict" => Some(TlsModeTag::VerifyFull),
                     "false" | "0" | "no" => Some(TlsModeTag::Disable),
                     _ => mode,
@@ -151,6 +153,18 @@ mod tests {
     #[test]
     fn an_ipv6_host_loses_its_brackets() {
         assert_eq!(parse("redis://[::1]:6380/2").host, "::1");
+    }
+
+    #[test]
+    fn sql_servers_encrypt_strict_is_strict_tls() {
+        assert_eq!(
+            parse("sqlserver://db.example.com/sales?encrypt=strict").tls_mode,
+            Some(TlsModeTag::Strict)
+        );
+        assert_eq!(
+            parse("sqlserver://db.example.com/sales?encrypt=true").tls_mode,
+            Some(TlsModeTag::VerifyFull)
+        );
     }
 
     #[test]

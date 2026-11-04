@@ -1,0 +1,13 @@
+{
+	"connections": {
+		"old-install": {
+			"provider": "postgresql",
+			"name": "Old install PG",
+			"configuration": {
+				"host": "old-install.example.com",
+				"port": "5432",
+				"database": "app"
+			}
+		}
+	}
+}

@@ -23,6 +23,11 @@ use crate::link::EstablishedConnection;
 pub enum FakeEstablish {
     Connect(ConnectionScript),
     Fail(ConnectError),
+    // Concurrent tests must finish their setup before a failure can change the visible state.
+    FailAfterRelease {
+        release: CancellationToken,
+        error: ConnectError,
+    },
     /// Connects after `after` whatever the cancel token says, the way a
     /// driver blocked in a C call does.
     Late {
@@ -192,6 +197,12 @@ impl Connector for FakeConnector {
             match reply {
                 Some(FakeEstablish::Connect(script)) => Ok(connector.adopt(request, script)),
                 Some(FakeEstablish::Fail(error)) => Err(error),
+                Some(FakeEstablish::FailAfterRelease { release, error }) => {
+                    tokio::select! {
+                        () = release.cancelled() => Err(error),
+                        () = cancel.cancelled() => Err(ConnectError::Cancelled),
+                    }
+                }
                 Some(FakeEstablish::Late { after, script }) => {
                     tokio::time::sleep(after).await;
                     Ok(connector.adopt(request, script))

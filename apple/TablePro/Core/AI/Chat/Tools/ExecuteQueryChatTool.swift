@@ -13,7 +13,8 @@ struct ExecuteQueryChatTool: ChatTool {
         Execute a SQL query against a connection. The connection's safe mode policy applies.\
          Multi-statement queries are rejected, except on SQL Server, where a whole script runs batch by batch\
          at its GO lines and result_sets lists every result set when there is more than one. Destructive\
-         operations (DROP, TRUNCATE, ALTER...DROP) are blocked here; use confirm_destructive_operation instead.
+         statements, such as DROP, TRUNCATE, ALTER...DROP or a DELETE with no WHERE, are blocked here; use\
+         confirm_destructive_operation instead.
         """)
     let inputSchema: JsonValue = ChatToolSchemaBuilder.object(
         properties: [
@@ -74,7 +75,7 @@ struct ExecuteQueryChatTool: ChatTool {
                     allowsDestructive: false,
                     allowsMultiStatement: capabilities.contains(.mayRunMultiStatement),
                     destructiveAlternative: String(
-                        localized: "Use confirm_destructive_operation with the explicit confirmation phrase."
+                        localized: "In Agent mode, use confirm_destructive_operation with the explicit confirmation phrase."
                     )
                 )
             )

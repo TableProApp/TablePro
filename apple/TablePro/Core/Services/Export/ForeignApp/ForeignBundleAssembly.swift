@@ -20,12 +20,16 @@ enum ForeignBundleAssembly {
         var builder = ConnectionBundleBuilder(appVersion: "\(appName) Import")
         var refsBySourceId: [String: BundleRef] = [:]
         var usedRefs: Set<String> = []
+        var connectionNotes: [BundleRef: [String]] = [:]
 
         for (index, record) in connections.enumerated() {
             let sourceId = record.sourceId.flatMap { $0.isEmpty ? nil : $0 }
             let ref = uniqueRef(base: sourceId ?? "row-\(index)", index: index, used: &usedRefs)
             if let sourceId, refsBySourceId[sourceId] == nil {
                 refsBySourceId[sourceId] = ref
+            }
+            if !record.notes.isEmpty {
+                connectionNotes[ref] = record.notes
             }
             builder.addConnection(
                 record.settings,
@@ -74,7 +78,8 @@ enum ForeignBundleAssembly {
             source: .foreignApp(name: appName),
             unsuggestedQueries: unsuggestedQueries,
             oversizedQueries: oversizedQueries,
-            credentialsAborted: credentialsAborted
+            credentialsAborted: credentialsAborted,
+            connectionNotes: connectionNotes
         )
     }
 

@@ -44,6 +44,7 @@ pub use self::form_errors::FormErrors;
 pub use self::form_field::FormField;
 use self::pem_validation::{PemState, PemValidation};
 pub use self::row_problem::show_problem;
+pub(crate) use self::tls_section::mode_label as tls_mode_label;
 use crate::services::saved_connection_editor::SavedConnectionEditor;
 use crate::services::secret_changes::SecretChanges;
 use crate::services::session_context::CredentialSourceFactory;
@@ -999,6 +1000,7 @@ pub fn remedy_field(remedy: TlsRemedy) -> FormField {
     match remedy {
         TlsRemedy::ChooseCaCertificate => FormField::CaFile,
         TlsRemedy::SetServerName => FormField::ServerName,
+        TlsRemedy::ChangeEncryption => FormField::Encryption,
     }
 }
 

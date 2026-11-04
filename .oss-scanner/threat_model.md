@@ -24,7 +24,7 @@ The user is trusted: the SQL they type, the connections they create, the plugins
 1. Code in this repository that parses server responses:
    - Swift: `apple/Plugins/*DriverPlugin`, the HTTP and REST engines (Trino, ClickHouse, Etcd, Google REST, DynamoDB, Snowflake, Elasticsearch and others), Teradata's TD2 protocol, Kafka with its Snappy decoder, and the C interop that reads cells out of libpq, libmariadb, FreeTDS, libmongoc, hiredis and libcassandra.
    - Rust: `core/crates/drivers/*`, `core/crates/net`.
-2. File parsers: `apple/Packages/TableProCore/Sources/TableProTabularIO` (its own ZIP reader, XLSX XML, delimited text), `TableProImport` (`.tablepro` bundles, PBKDF2 and AES-GCM), `apple/TablePro/Core/Services/Export/ForeignApp/` (other apps' files, the Navicat cipher, a KDBX reader), `apple/TablePro/Core/Services/ProjectImport/`, `core/crates/core/src/import`.
+2. File parsers: `apple/Packages/TableProCore/Sources/TableProTabularIO` (its own ZIP reader, XLSX XML, delimited text), `TableProImport` (`.tablepro` bundles, PBKDF2 and AES-GCM), `apple/TablePro/Core/Services/Export/ForeignApp/` and `core/crates/foreign-import` (other apps' files, the Navicat cipher, a KDBX reader), `apple/TablePro/Core/Services/ProjectImport/`, `core/crates/core/src/import`.
 3. Deep links: `apple/TablePro/Core/Services/Infrastructure/DeeplinkParser.swift`, `ExternalConnectionGate.swift`, `apple/TablePro/Core/Utilities/Connection/ConnectionURLParser.swift`.
 4. MCP server: `apple/TablePro/Core/MCP/` and `apple/Packages/TableProMacCore/Sources/TableProMCP/` (a hand-written HTTP parser, bearer tokens, PKCE pairing, Origin and Host checks, `MCPStatementGate`).
 5. AI tools that run SQL: `apple/TablePro/Core/AI/Chat/Tools/`, `ToolApprovalCenter.swift`.
