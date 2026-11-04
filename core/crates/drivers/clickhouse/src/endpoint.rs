@@ -13,7 +13,9 @@ use crate::result_reader::drain;
 /// How long the server keeps an editor session's state between runs.
 const SESSION_TIMEOUT: Duration = Duration::from_secs(3600);
 
-const IDENTITY_SQL: &str = "SELECT version(), currentDatabase(), toUInt8(getSetting('readonly'))";
+// The level goes out as text, which every JSON output setting writes as a string; a login at a readonly level of
+// its own cannot change those settings for this query.
+const IDENTITY_SQL: &str = "SELECT version(), currentDatabase(), toString(toUInt8(getSetting('readonly')))";
 
 /// The login's answer is two short strings and a byte. A longer body is
 /// not a ClickHouse server's, and is never held in memory whole.
@@ -202,8 +204,14 @@ fn identity_of(body: Option<Vec<u8>>) -> Result<(String, String, u8), DriverErro
             IDENTITY_LIMIT >> 10
         ))
     })?;
-    serde_json::from_slice(&body)
-        .map_err(|error| DriverError::Protocol(format!("the server's answer to the login could not be read: {error}")))
+    let unreadable =
+        |detail: String| DriverError::Protocol(format!("the server's answer to the login could not be read: {detail}"));
+    let (version, database, readonly): (String, String, String) =
+        serde_json::from_slice(&body).map_err(|error| unreadable(error.to_string()))?;
+    let readonly = readonly
+        .parse()
+        .map_err(|_| unreadable(format!("readonly level {readonly:?}")))?;
+    Ok((version, database, readonly))
 }
 
 /// `24.8.4.13` is major 24, minor 8.
@@ -319,7 +327,7 @@ mod tests {
     #[test]
     fn a_login_answer_reads_as_the_version_the_database_and_the_readonly_level() {
         let (info, database, readonly) =
-            identify_against(b"[\"24.8.4.13\",\"tablepro\",2]\n".to_vec()).expect("a login");
+            identify_against(b"[\"24.8.4.13\",\"tablepro\",\"2\"]\n".to_vec()).expect("a login");
 
         assert_eq!((info.major, info.minor, info.patch), (24, 8, 4));
         assert_eq!(database, "tablepro");
