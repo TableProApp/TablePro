@@ -139,6 +139,28 @@ public sealed partial class ShellTests
 
     [Theory]
     [MemberData(nameof(Themes))]
+    public void WindowsKeepTheirMinimumSizeAndTheFormDoesNotMinimize(string theme)
+    {
+        using var app = AppSession.Relaunch(AppSession.NewDataFolder(theme), theme, maximize: false);
+        var window = app.Window;
+        var wide = window.BoundingRectangle.Width;
+        window.Patterns.Transform.Pattern.Resize(400, 300);
+        Retry.WhileTrue(() => window.BoundingRectangle.Width == wide, AppSession.Wait, throwOnTimeout: false);
+        var bounds = window.BoundingRectangle;
+        Assert.True(bounds.Width >= 720 && bounds.Height >= 480, $"The window shrank to {bounds.Width}x{bounds.Height}.");
+
+        app.Click(app.Find("NewConnectionCard"), () => app.HasWindow("New connection"));
+        var form = app.WaitForWindow("New connection");
+        Assert.False(form.Patterns.Window.Pattern.CanMinimize.Value);
+        wide = form.BoundingRectangle.Width;
+        form.Patterns.Transform.Pattern.Resize(300, 300);
+        Retry.WhileTrue(() => form.BoundingRectangle.Width == wide, AppSession.Wait, throwOnTimeout: false);
+        bounds = form.BoundingRectangle;
+        Assert.True(bounds.Width >= 560 && bounds.Height >= 480, $"The form shrank to {bounds.Width}x{bounds.Height}.");
+    }
+
+    [Theory]
+    [MemberData(nameof(Themes))]
     public void APasswordIsAskedForWhenNoneIsSaved(string theme)
     {
         using var app = AppSession.Launch(theme);
