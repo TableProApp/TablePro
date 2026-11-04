@@ -203,11 +203,23 @@ struct SQLBuilderSingleRowLookupTests {
             table: "t", schema: "dbo", type: .mssql, driver: sqlDriver,
             changes: [("v", "x")], primaryKeys: [("k", "Weßels")], columns: narrow
         ) == "UPDATE [dbo].[t] SET [v] = N'x' WHERE " + exact)
-        #expect(lookup([("k", "Weßels")], columns: narrow, type: .mssql).contains("WHERE " + exact + " "))
+        #expect(SQLBuilder.keyPredicate([("k", "Weßels")], columns: narrow, type: .mssql, driver: sqlDriver) == exact)
         let unicode = [ColumnInfo(name: "k", typeName: "nvarchar(20)")]
         #expect(SQLBuilder.buildDelete(
             table: "t", schema: "dbo", type: .mssql, driver: sqlDriver, primaryKeys: [("k", "Weßels")], columns: unicode
         ) == "DELETE FROM [dbo].[t] WHERE [k] = N'Weßels'")
+    }
+
+    // A foreign key's `abc` refers to a parent `ABC` under a case-insensitive collation, so the lookup matches by the
+    // column's rules and only prefers the parent holding the exact text.
+    @Test("A SQL Server foreign key lookup keeps the collation match and prefers the exact text")
+    func sqlServerLookupPrefersExactText() {
+        let narrow = [ColumnInfo(name: "k", typeName: "varchar(20)")]
+        #expect(lookup([("k", "abc")], columns: narrow, type: .mssql)
+            == "SELECT * FROM [parent] WHERE [k] = N'abc' ORDER BY CASE WHEN CAST([k] AS NVARCHAR(MAX)) "
+            + "COLLATE Latin1_General_100_BIN2 = N'abc' THEN 0 ELSE 1 END OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY")
+        #expect(lookup([("k", "abc")], columns: [ColumnInfo(name: "k", typeName: "nvarchar(20)")], type: .mssql)
+            == "SELECT * FROM [parent] WHERE [k] = N'abc' ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY")
     }
 }
 
