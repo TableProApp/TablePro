@@ -196,9 +196,17 @@ pub enum SavedSshAuth {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct ConnectionsDocument {
     connections: Vec<SavedConnection>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "crate::connection_group::deserialize_list"
+    )]
     groups: Vec<ConnectionGroup>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "crate::connection_tag::deserialize_list"
+    )]
     tags: Vec<ConnectionTag>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     favorites: Vec<Uuid>,
@@ -1177,6 +1185,154 @@ mod tests {
         assert_eq!(reread.connections.as_ref(), &[connection]);
         assert_eq!(reread.groups, list.groups);
         assert_eq!(reread.tags, list.tags);
+    }
+
+    #[test]
+    fn recovered_names_do_not_take_visible_names_in_either_file_order() {
+        let tag_ids = [Uuid::new_v4(), Uuid::new_v4()];
+        let group_ids = [Uuid::new_v4(), Uuid::new_v4()];
+        let connections: Vec<SavedConnection> = (0..2)
+            .map(|index| SavedConnection {
+                group_id: Some(group_ids[index]),
+                tags: vec![tag_ids[index]],
+                ..sample_connection()
+            })
+            .collect();
+        for reverse in [false, true] {
+            let root = TempDir::new().expect("tempdir");
+            let mut tags = vec![
+                serde_json::json!({"id": tag_ids[0], "name": "\\u{200b}", "color": "blue"}),
+                serde_json::json!({"id": tag_ids[1], "name": "\u{200b}", "color": "red"}),
+            ];
+            let mut groups = vec![
+                serde_json::json!({"id": group_ids[0], "name": "\\u{200b}", "color": "blue"}),
+                serde_json::json!({"id": group_ids[1], "name": "\u{200b}", "color": "red"}),
+            ];
+            if reverse {
+                tags.reverse();
+                groups.reverse();
+            }
+            seed(
+                &root,
+                &serde_json::json!({"version": 3, "connections": connections, "tags": tags, "groups": groups})
+                    .to_string(),
+            );
+            let opened = store(&root);
+            let list = opened.list_blocking().expect("read the old library");
+            assert_eq!(list.tags.len(), 2);
+            assert_eq!(list.groups.len(), 2);
+            for (index, color, name) in [
+                (0, crate::ConnectionColor::Blue, "\\u{200b}"),
+                (1, crate::ConnectionColor::Red, "\\u{200b} (2)"),
+            ] {
+                let tag = list.tags.iter().find(|tag| tag.id == tag_ids[index]).expect("tag kept");
+                assert_eq!(tag.name.as_str(), name);
+                assert_eq!(tag.color, color);
+                let group = list
+                    .groups
+                    .iter()
+                    .find(|group| group.id == group_ids[index])
+                    .expect("group kept");
+                assert_eq!(group.name.as_str(), name);
+                assert_eq!(group.color, Some(color));
+                let connection = list
+                    .connections
+                    .iter()
+                    .find(|connection| connection.id == connections[index].id)
+                    .expect("connection kept");
+                assert_eq!(connection.group_id, Some(group_ids[index]));
+                assert_eq!(connection.tags, [tag_ids[index]]);
+            }
+            opened.upsert_blocking(list.connections[0].clone()).expect("rewrite");
+            let reread = store(&root).list_blocking().expect("read the saved library");
+            assert_eq!(reread.tags, list.tags);
+            assert_eq!(reread.groups, list.groups);
+            let imported_root = TempDir::new().expect("tempdir");
+            let imported = store(&imported_root);
+            imported
+                .import_blocking(
+                    Path::new("/tmp/library.json"),
+                    &opened.export_blocking().expect("export"),
+                )
+                .expect("import");
+            let imported = imported.list_blocking().expect("read imported library");
+            assert_eq!(imported.tags.len(), 2);
+            assert_eq!(imported.groups.len(), 2);
+            for connection in connections.iter() {
+                let saved = imported
+                    .connections
+                    .iter()
+                    .find(|saved| saved.id == connection.id)
+                    .expect("imported connection");
+                assert_eq!(saved.group_id, connection.group_id);
+                assert_eq!(saved.tags, connection.tags);
+            }
+        }
+    }
+
+    #[test]
+    fn older_group_name_upgrade_keeps_literal_escapes_separate_from_invisible_names() {
+        let connections = [sample_connection(), sample_connection()];
+        let mut expected_groups = None;
+        for reverse in [false, true] {
+            let root = TempDir::new().expect("tempdir");
+            let mut entries: Vec<serde_json::Value> = connections
+                .iter()
+                .zip(["\\u{200b}", "\u{200b}"])
+                .map(|(connection, group)| {
+                    let mut entry = serde_json::to_value(connection).expect("connection");
+                    entry["group"] = serde_json::Value::String(group.to_owned());
+                    entry
+                })
+                .collect();
+            if reverse {
+                entries.reverse();
+            }
+            seed(
+                &root,
+                &serde_json::json!({"version": 2, "connections": entries}).to_string(),
+            );
+            let opened = store(&root);
+            let list = opened.list_blocking().expect("upgrade the library");
+            assert_eq!(list.groups.len(), 2);
+            let group_ids: Vec<_> = connections
+                .iter()
+                .zip(["\\u{200b}", "\\u{200b} (2)"])
+                .map(|(connection, name)| {
+                    let entry = list
+                        .connections
+                        .iter()
+                        .find(|entry| entry.id == connection.id)
+                        .expect("connection kept");
+                    let group = list
+                        .groups
+                        .iter()
+                        .find(|group| Some(group.id) == entry.group_id)
+                        .expect("group kept");
+                    assert_eq!(group.name.as_str(), name);
+                    group.id
+                })
+                .collect();
+            if let Some(expected) = &expected_groups {
+                assert_eq!(&group_ids, expected);
+            } else {
+                expected_groups = Some(group_ids);
+            }
+            opened.upsert_blocking(list.connections[0].clone()).expect("rewrite");
+            let reread = store(&root).list_blocking().expect("read the saved library");
+            assert_eq!(reread.groups, list.groups);
+            for entry in list.connections.iter() {
+                assert_eq!(
+                    reread
+                        .connections
+                        .iter()
+                        .find(|saved| saved.id == entry.id)
+                        .expect("saved connection")
+                        .group_id,
+                    entry.group_id
+                );
+            }
+        }
     }
 
     #[test]

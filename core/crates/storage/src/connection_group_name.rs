@@ -1,4 +1,4 @@
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::group_name_error::GroupNameError;
 use crate::name_rules::{self, NameFault};
@@ -36,16 +36,6 @@ impl ConnectionGroupName {
     pub fn same_name(&self, other: &ConnectionGroupName) -> bool {
         self.0.to_lowercase() == other.0.to_lowercase()
     }
-}
-
-/// Reads a group's `name` through `from_stored`. A blank one is refused:
-/// a group nobody can see cannot be told apart.
-pub(crate) fn deserialize_required<'de, D>(deserializer: D) -> Result<ConnectionGroupName, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let stored = String::deserialize(deserializer)?;
-    ConnectionGroupName::from_stored(&stored).ok_or_else(|| serde::de::Error::custom(GroupNameError::Empty))
 }
 
 impl TryFrom<String> for ConnectionGroupName {

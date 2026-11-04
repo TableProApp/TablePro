@@ -1,6 +1,8 @@
 //! The rules a connection's, a group's and a tag's name follow, shared so
 //! they cannot drift apart.
 
+use std::collections::HashSet;
+
 use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +35,22 @@ pub(crate) fn cleaned(value: &str) -> String {
     // Keep the library readable and give those names something to show.
     let old: String = value.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
     old.trim().chars().flat_map(char::escape_default).collect()
+}
+
+// Recovery must not take a visible name and make the library merge its owner.
+pub(crate) fn claim_recovered(value: &str, max: Option<usize>, held: &mut HashSet<String>) -> String {
+    let mut name = value.to_owned();
+    let mut suffix = 2_usize;
+    while !held.insert(name.to_lowercase()) {
+        let tail = format!(" ({suffix})");
+        let head: String = value
+            .chars()
+            .take(max.map_or(usize::MAX, |max| max.saturating_sub(tail.len())))
+            .collect();
+        name = format!("{head}{tail}");
+        suffix += 1;
+    }
+    name
 }
 
 /// A name as the list shows it: characters that show as nothing dropped,
