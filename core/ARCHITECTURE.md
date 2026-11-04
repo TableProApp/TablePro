@@ -83,7 +83,7 @@ A `cfg` split inside a crate:
 | `TCP_USER_TIMEOUT` (`tablepro-net`) | set | not set | not set |
 | SQLite | the distribution's | bundled | bundled |
 | DuckDB's file lock while a file is replaced | fcntl | fcntl | LockFileEx |
-| SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | the `kerberos` feature, which CI does not build | SSPI |
+| SQL Server integrated login | MIT Kerberos, behind the `kerberos` feature | the system's GSS framework, behind the `kerberos` feature | SSPI, NTLM only (winauth) |
 | `ffi`'s system secret store | none | none | Credential Manager, generic credentials named `TablePro/connection/<id>/<kind>` |
 | OpenSSH transport, askpass helper | yes | yes | not built |
 | MongoDB's relay for an SSH route | yes | yes | not built |
@@ -178,8 +178,9 @@ A connection's `TlsConfig` holds the `TlsMode`, an optional CA file, an optional
 - `Disable`: no TLS.
 - `Require`: encrypted, and the certificate is not checked.
 - `VerifyFull`: the certificate must chain to a trusted root and carry the server name.
+- `Strict`: TLS before the first protocol byte, checked as `VerifyFull`. Only SQL Server offers it (TDS 8.0); Microsoft's drivers refuse to combine strict encryption with an unchecked certificate, so there is no unchecked variant.
 
-A CA file goes only with `VerifyFull`, the one mode that checks the certificate. libpq and the mysql client verify against a CA file given with their require mode, so taking one with `Require` and ignoring it would leave a user who expects a check with none. `validate` refuses the pair, the connect dialog shows the CA row only for Verify full, and a saved or imported connection that holds the pair, from a build that allowed it, loads as `VerifyFull` with its CA file: a server the file does not vouch for then fails to connect instead of connecting unchecked.
+A CA file goes only with the modes that check the certificate, `VerifyFull` and `Strict`. libpq and the mysql client verify against a CA file given with their require mode, so taking one with `Require` and ignoring it would leave a user who expects a check with none. `validate` refuses the pair, the connect dialog shows the CA row only for the modes that check, and a saved or imported connection that holds the pair, from a build that allowed it, loads as `VerifyFull` with its CA file: a server the file does not vouch for then fails to connect instead of connecting unchecked.
 
 The name checked is `NetworkTarget::tls_server_name()`: the override when one is set, otherwise the host the user typed, never the address of a local SSH forward. `TlsConfig::validate` refuses a mode, file or override the driver cannot use on that route, and the connect dialog reads the chosen files up front, so a file with no certificate is named before anything connects. A CA, certificate or key file is read only when it is a regular file of at most 1 MiB, and drivers read it on the blocking pool, so a device or a pipe named in an imported connection can neither fill memory nor hold a connect.
 

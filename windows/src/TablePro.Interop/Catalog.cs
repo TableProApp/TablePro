@@ -24,7 +24,14 @@ public sealed record DatabaseEngine(
     DataModel DataModel,
     int? DefaultPort,
     IReadOnlyList<string> FileSuffixes,
-    EngineCategory Category = EngineCategory.Relational);
+    EngineCategory Category = EngineCategory.Relational)
+{
+    public IReadOnlyList<TlsMode> SupportedTlsModes { get; init; } = [];
+
+    public bool SupportsIntegratedAuth { get; init; }
+
+    public bool SupportsClientIdentity { get; init; }
+}
 
 public sealed record SchemaEntry(string Name, bool IsDefault, bool IsSystem);
 

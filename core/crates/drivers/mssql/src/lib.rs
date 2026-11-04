@@ -28,6 +28,7 @@ mod metadata;
 mod mssql_manager;
 mod mssql_pooled;
 mod physical;
+mod probe;
 mod read_only_guard;
 mod standalone;
 mod stream_read;

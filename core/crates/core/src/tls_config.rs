@@ -39,12 +39,12 @@ impl TlsConfig {
         if !caps.modes.contains(&self.mode) {
             return Err(ConfigError::UnsupportedTlsMode);
         }
-        let encrypted = self.mode != TlsMode::Disable;
+        let encrypted = self.mode.encrypts();
         if let Some(ca_file) = &self.ca_file {
             // Require checks no certificate, so a CA file there would be
             // taken and never read, where libpq and the mysql client
             // verify against it.
-            if !(caps.ca_file && self.mode == TlsMode::VerifyFull) {
+            if !(caps.ca_file && self.mode.verifies_certificate()) {
                 return Err(ConfigError::CaFileUnsupported);
             }
             require_absolute(ca_file)?;
@@ -130,6 +130,7 @@ mod tests {
     use super::*;
 
     const ALL_MODES: &[TlsMode] = &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull];
+    const MSSQL_MODES: &[TlsMode] = &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull, TlsMode::Strict];
     const ROUTES: [TransportClass; 2] = [TransportClass::DirectTcp, TransportClass::SshForward];
 
     const POSTGRES: TlsCapabilities = TlsCapabilities {
@@ -143,6 +144,7 @@ mod tests {
         ..POSTGRES
     };
     const MSSQL: TlsCapabilities = TlsCapabilities {
+        modes: MSSQL_MODES,
         client_identity: false,
         ..POSTGRES
     };
@@ -191,7 +193,7 @@ mod tests {
     #[test]
     fn every_mode_an_engine_offers_validates_on_every_route() {
         for caps in [POSTGRES, MYSQL, MSSQL] {
-            for mode in ALL_MODES {
+            for mode in caps.modes {
                 for route in ROUTES {
                     let config = TlsConfig {
                         mode: *mode,
@@ -347,7 +349,28 @@ mod tests {
                 TransportClass::SshForward,
                 Ok(()),
             ),
+            (
+                "ca file with strict, which checks the certificate",
+                with_ca_file(TlsMode::Strict, "/etc/tls/ca.pem"),
+                MSSQL,
+                TransportClass::DirectTcp,
+                Ok(()),
+            ),
         ]);
+    }
+
+    #[test]
+    fn strict_is_refused_by_an_engine_that_does_not_offer_it() {
+        let strict = TlsConfig {
+            mode: TlsMode::Strict,
+            ..TlsConfig::disabled()
+        };
+
+        assert_eq!(
+            strict.validate(&POSTGRES, TransportClass::DirectTcp),
+            Err(ConfigError::UnsupportedTlsMode)
+        );
+        assert_eq!(strict.validate(&MSSQL, TransportClass::SshForward), Ok(()));
     }
 
     #[test]

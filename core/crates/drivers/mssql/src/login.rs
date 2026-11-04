@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use secrecy::{ExposeSecret, SecretString};
 use tablepro_core::{
-    APPLICATION_NAME, Credentials, DriverError, LivenessPolicy, NetworkEndpoint, NetworkTarget, TimeoutPhase,
-    Transport, TransportError,
+    APPLICATION_NAME, Credentials, DriverError, LivenessPolicy, LossPhase, NetworkEndpoint, NetworkTarget,
+    TimeoutPhase, TlsMode, Transport, TransportError,
 };
 use tiberius::error::Error;
 use tiberius::{AuthMethod, Client, Config};
@@ -13,7 +13,8 @@ use tokio_util::compat::TokioAsyncWriteCompatExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::physical::{MssqlClient, MssqlLink, MssqlStream};
-use crate::tls_config::TlsPlan;
+use crate::probe;
+use crate::tls_config::{TlsPlan, hung_up};
 use crate::transport_io::{ReadTally, TransportIo};
 
 /// Who the login says it is.
@@ -109,12 +110,54 @@ impl LoginPlan {
         }
     }
 
+    fn login_error(&self, error: Error) -> DriverError {
+        #[cfg(windows)]
+        if self.integrated()
+            && let Some(detail) = sspi_failure(&error)
+        {
+            return DriverError::IntegratedAuth(detail);
+        }
+        self.tls.login_error(error)
+    }
+
+    /// Whether a server that hung up on the login without a byte refuses
+    /// that way to begin one and answers the other, each asked on a
+    /// stream of its own with no credential sent. A transient drop of a
+    /// login the server takes leaves the first answered.
+    async fn refuses_the_opening(&self, transport: &dyn Transport) -> bool {
+        let host = server_host(transport.service_endpoint().host());
+        let (prelogin, strict) = tokio::join!(
+            probe::answers_prelogin(transport, self.login_timeout),
+            probe::answers_strict_hello(transport, self.tls.server_name(host), self.login_timeout),
+        );
+        match self.tls.mode() {
+            TlsMode::Strict => prelogin && !strict,
+            TlsMode::Disable | TlsMode::Require | TlsMode::VerifyFull => strict && !prelogin,
+        }
+    }
+
     fn integrated(&self) -> bool {
         match &self.credentials {
             LoginCredentials::Password { .. } => false,
             #[cfg(any(all(unix, feature = "kerberos"), windows))]
             LoginCredentials::Integrated => true,
         }
+    }
+}
+
+/// winauth hands SSPI's failures to tiberius as I/O errors: its own as
+/// `Other`, and SSPI's `SECURITY_STATUS`, a negative HRESULT, as a raw OS
+/// error. Windows' own error codes are positive.
+#[cfg(windows)]
+fn sspi_failure(error: &Error) -> Option<String> {
+    use tiberius::error::IoErrorKind;
+
+    match error {
+        Error::Io { kind, message } if *kind == IoErrorKind::Other || message.contains("(os error -") => {
+            Some(message.clone())
+        }
+        Error::Protocol(text) if text.contains("NTLM") => Some(text.to_string()),
+        _ => None,
     }
 }
 
@@ -196,7 +239,15 @@ async fn attempt(plan: &LoginPlan, config: Config, transport: Arc<dyn Transport>
     match tokio::time::timeout(plan.login_timeout, connecting).await {
         Ok(Ok(client)) => Ok(MssqlLink::new(client, tally)),
         Ok(Err(Error::Routing { host, port })) => Err(Attempted::Routed { host, port }),
-        Ok(Err(error)) => Err(Attempted::Failed(plan.tls.login_error(error))),
+        Ok(Err(error)) => match hung_up(&error).filter(|_| tally.bytes() == 0) {
+            Some(detail) if plan.refuses_the_opening(transport.as_ref()).await => {
+                Err(Attempted::Failed(plan.tls.opening_refused(detail.to_owned())))
+            }
+            Some(_) => Err(Attempted::Failed(DriverError::ConnectionLost {
+                during: LossPhase::Connect,
+            })),
+            None => Err(Attempted::Failed(plan.login_error(error))),
+        },
         Err(_) => Err(Attempted::Failed(DriverError::Timeout {
             phase: TimeoutPhase::Login,
             server_cancelled: false,
@@ -226,7 +277,7 @@ async fn connect_off_worker(config: Config, io: MssqlStream) -> Result<MssqlClie
     let handle = tokio::runtime::Handle::current();
     match tokio::task::spawn_blocking(move || handle.block_on(Client::connect(config, io))).await {
         Ok(connected) => connected,
-        Err(ended) => Err(Error::Protocol(format!("the Kerberos login stopped: {ended}").into())),
+        Err(ended) => Err(Error::Protocol(format!("the integrated login stopped: {ended}").into())),
     }
 }
 
@@ -392,7 +443,7 @@ mod tests {
         assert!(format!("{:?}", plan.config("db.example", 1433)).contains("database: None"));
     }
 
-    #[cfg(not(feature = "kerberos"))]
+    #[cfg(not(any(all(unix, feature = "kerberos"), windows)))]
     #[test]
     fn kerberos_is_refused_when_built_without_the_feature() {
         let (mut target, _) = target("db.example");
@@ -404,7 +455,7 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "kerberos")]
+    #[cfg(any(all(unix, feature = "kerberos"), windows))]
     #[test]
     fn kerberos_authenticates_from_the_ticket_cache() {
         let (mut target, _) = target("db.example");
@@ -413,5 +464,43 @@ mod tests {
 
         assert!(plan.integrated());
         assert!(format!("{:?}", plan.config("db.example", 1433)).contains("auth: Integrated"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_sspi_status_fails_the_integrated_login_not_the_connection() {
+        use tiberius::error::IoErrorKind;
+
+        let (password_target, _) = target("db.example");
+        let mut integrated_target = password_target.clone();
+        integrated_target.credentials = Credentials::Integrated;
+        let plan = LoginPlan::new(&integrated_target, &LivenessPolicy::DESKTOP).unwrap();
+        let io = |kind| Error::Io {
+            kind,
+            message: "The logon attempt failed (os error -2146893044)".to_owned(),
+        };
+
+        assert!(matches!(
+            plan.login_error(io(IoErrorKind::Other)),
+            DriverError::IntegratedAuth(_)
+        ));
+        // SEC_E_LOGON_DENIED, as winauth returns it.
+        let status = Error::from(std::io::Error::from_raw_os_error(-2146893044));
+        assert!(matches!(plan.login_error(status), DriverError::IntegratedAuth(_)));
+        let store = Error::Io {
+            kind: IoErrorKind::NotFound,
+            message: "no platform certificates and no extra CA".to_owned(),
+        };
+        assert!(!matches!(plan.login_error(store), DriverError::IntegratedAuth(_)));
+        let reset = Error::Io {
+            kind: IoErrorKind::ConnectionReset,
+            message: "An existing connection was forcibly closed by the remote host. (os error 10054)".to_owned(),
+        };
+        assert!(matches!(plan.login_error(reset), DriverError::ConnectionLost { .. }));
+        let password_plan = LoginPlan::new(&password_target, &LivenessPolicy::DESKTOP).unwrap();
+        assert!(!matches!(
+            password_plan.login_error(io(IoErrorKind::Other)),
+            DriverError::IntegratedAuth(_)
+        ));
     }
 }

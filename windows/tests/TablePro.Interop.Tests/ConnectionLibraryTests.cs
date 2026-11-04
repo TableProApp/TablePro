@@ -21,6 +21,19 @@ public sealed class ConnectionLibraryTests : IDisposable
         new(null, name, "postgres", "db.example.com", 5432, "shop", "app", TlsSettings.Disabled);
 
     [Fact]
+    public void EngineChoicesCarryTheCoreCapabilities()
+    {
+        var sqlServer = Assert.Single(_core.Engines, engine => engine.Id == "mssql");
+        Assert.Contains(TlsMode.Strict, sqlServer.SupportedTlsModes);
+        Assert.All(_core.Engines.Where(engine => engine.Id != "mssql"),
+            engine => Assert.DoesNotContain(TlsMode.Strict, engine.SupportedTlsModes));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.True(sqlServer.SupportsIntegratedAuth);
+        }
+    }
+
+    [Fact]
     public async Task AConnectionComesBackInItsNestedGroupAndAmongTheFavorites()
     {
         var library = _core.Library;
@@ -154,6 +167,7 @@ public sealed class ConnectionLibraryTests : IDisposable
         Assert.Equal("p@ss", parsed.Password);
         Assert.Equal("shop", parsed.Database);
         Assert.Equal(TlsMode.Require, parsed.TlsMode);
+        Assert.Equal(TlsMode.Strict, TableProCore.ParseConnectionUrl("sqlserver://db.example.com/sales?encrypt=strict").TlsMode);
         Assert.Equal(
             "url.unknown_scheme",
             Assert.Throws<TableProException>(() => TableProCore.ParseConnectionUrl("ftp://example.com")).Code);

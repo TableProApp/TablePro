@@ -15,12 +15,20 @@ pub trait TlsConformanceEngine: Send + Sync + Sized + 'static {
     /// Start a TLS-only server from the test fixtures.
     async fn start() -> Result<Self, ConformanceFailure>;
 
+    /// The same server with a self-signed certificate, which nothing
+    /// vouches for until the client trusts that certificate.
+    async fn start_self_signed() -> Result<Self, ConformanceFailure>;
+
     /// Options for the password principal on the server's mapped port.
     fn connect_options(&self, tls: TlsConfig) -> ConnectOptions;
 
     fn ca_file(&self) -> &Path;
 
     fn unrelated_ca_file(&self) -> &Path;
+
+    /// The server's own certificate, which a client trusts to accept a
+    /// self-signed one.
+    fn server_certificate_file(&self) -> &Path;
 
     /// A name on the server certificate, sent as the TLS server name
     /// where the driver lets one be set on a direct route.

@@ -83,21 +83,26 @@ impl MongoFixture {
     pub const NETWORK_ROLE: &'static str = "mongodb";
 
     pub async fn start() -> Result<Self, FixtureError> {
-        Self::launch(None, Listening::Plain).await
+        Self::launch(TestPki::generate()?, None, Listening::Plain).await
     }
 
     pub async fn start_in(network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(Some(network), Listening::Plain).await
+        Self::launch(TestPki::generate()?, Some(network), Listening::Plain).await
     }
 
     /// A replica set that takes only TLS, with a server beside it that
     /// takes only clients that present a certificate the CA issued.
     pub async fn start_tls() -> Result<Self, FixtureError> {
-        Self::launch(None, Listening::Tls).await
+        Self::launch(TestPki::generate()?, None, Listening::Tls).await
     }
 
-    async fn launch(network: Option<&TestNetwork>, listening: Listening) -> Result<Self, FixtureError> {
-        let pki = TestPki::generate()?;
+    /// `start_tls` with a self-signed server certificate, which a client
+    /// accepts only by trusting that certificate itself.
+    pub async fn start_tls_self_signed() -> Result<Self, FixtureError> {
+        Self::launch(TestPki::generate_self_signed()?, None, Listening::Tls).await
+    }
+
+    async fn launch(pki: TestPki, network: Option<&TestNetwork>, listening: Listening) -> Result<Self, FixtureError> {
         let password = FixtureCredentials::generate_password();
         let version = MongoVersion::selected()?;
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));

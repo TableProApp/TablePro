@@ -61,7 +61,7 @@ impl MysqlEndpoint {
         let mut options = MySqlConnectOptions::new()
             .username(username)
             .password(password.expose_secret())
-            .ssl_mode(ssl_mode(target.tls.mode))
+            .ssl_mode(ssl_mode(target.tls.mode)?)
             // Each of these would send a session statement of sqlx's own
             // at login, and the session must be the server's default.
             .pipes_as_concat(false)
@@ -243,11 +243,12 @@ fn tls_setup_failed(error: tablepro_net::tls::TlsSetupError, failure: tablepro_c
     }
 }
 
-fn ssl_mode(mode: TlsMode) -> MySqlSslMode {
+fn ssl_mode(mode: TlsMode) -> Result<MySqlSslMode, DriverError> {
     match mode {
-        TlsMode::Disable => MySqlSslMode::Disabled,
-        TlsMode::Require => MySqlSslMode::Required,
-        TlsMode::VerifyFull => MySqlSslMode::VerifyIdentity,
+        TlsMode::Disable => Ok(MySqlSslMode::Disabled),
+        TlsMode::Require => Ok(MySqlSslMode::Required),
+        TlsMode::VerifyFull => Ok(MySqlSslMode::VerifyIdentity),
+        TlsMode::Strict => Err(DriverError::Config(ConfigError::UnsupportedTlsMode)),
     }
 }
 
