@@ -9,6 +9,10 @@
         <attribute name="action">win.new-connection</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">New _Group…</attribute>
+        <attribute name="action">win.new-group</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">New _Window</attribute>
         <attribute name="action">app.new-window</attribute>
       </item>

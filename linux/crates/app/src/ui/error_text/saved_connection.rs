@@ -17,6 +17,24 @@ pub fn saved_connection_error_message(error: &SavedConnectionError) -> String {
         SavedConnectionError::Storage(StorageError::GroupNotFound { .. }) => {
             crate::i18n::gettext("The group was deleted.")
         }
+        SavedConnectionError::Storage(StorageError::GroupNameTaken { name }) => {
+            crate::i18n::gettext_f("A group named “{name}” is already there.", &[("name", name.as_str())])
+        }
+        SavedConnectionError::Storage(StorageError::GroupCycle { .. }) => {
+            crate::i18n::gettext("A group cannot move into one of its own subgroups.")
+        }
+        SavedConnectionError::Storage(StorageError::GroupTooDeep { max }) => crate::i18n::ngettext_f(
+            "Groups can be nested only {max} level deep.",
+            "Groups can be nested only {max} levels deep.",
+            u32::try_from(*max).unwrap_or(u32::MAX),
+            &[("max", &max.to_string())],
+        ),
+        SavedConnectionError::Storage(StorageError::GroupExists { .. }) => {
+            crate::i18n::gettext("That group already exists.")
+        }
+        SavedConnectionError::Storage(StorageError::ConnectionNotFound { .. }) => {
+            crate::i18n::gettext("The connection was deleted.")
+        }
         SavedConnectionError::Storage(StorageError::DocumentUnavailable(_)) => {
             crate::i18n::gettext("The saved connections could not be read, so nothing was changed.")
         }
@@ -69,6 +87,38 @@ mod tests {
                 id: Uuid::nil()
             })),
             "The group was deleted."
+        );
+    }
+
+    #[test]
+    fn each_library_failure_says_what_happened() {
+        let storage = |error: StorageError| saved_connection_error_message(&SavedConnectionError::Storage(error));
+
+        assert_eq!(
+            storage(StorageError::GroupNameTaken {
+                name: "Work".to_owned()
+            }),
+            "A group named “Work” is already there."
+        );
+        assert_eq!(
+            storage(StorageError::GroupCycle { id: Uuid::nil() }),
+            "A group cannot move into one of its own subgroups."
+        );
+        assert_eq!(
+            storage(StorageError::GroupTooDeep { max: 3 }),
+            "Groups can be nested only 3 levels deep."
+        );
+        assert_eq!(
+            storage(StorageError::GroupTooDeep { max: 1 }),
+            "Groups can be nested only 1 level deep."
+        );
+        assert_eq!(
+            storage(StorageError::GroupExists { id: Uuid::nil() }),
+            "That group already exists."
+        );
+        assert_eq!(
+            storage(StorageError::ConnectionNotFound { id: Uuid::nil() }),
+            "The connection was deleted."
         );
     }
 }

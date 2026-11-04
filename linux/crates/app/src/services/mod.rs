@@ -17,6 +17,7 @@ pub mod grid;
 pub mod history_availability;
 pub mod history_preferences;
 pub mod history_service;
+pub(crate) mod library_outline;
 pub mod mcp_service;
 pub mod mcp_status;
 pub mod pending_structure;
