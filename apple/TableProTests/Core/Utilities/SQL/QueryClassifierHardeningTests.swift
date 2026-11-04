@@ -681,11 +681,9 @@ struct QueryClassifierNonSqlTests {
         let destructive = [
             "lease revoke 7b",
             "LEASE REVOKE 0x7b",
-            "\"lease\" 'revoke' 7b",
             "user delete alice",
             "role delete readers",
             "auth disable",
-            "\"del\" /keys --prefix",
             "delete /keys",
             "compaction 5 --physical"
         ]
@@ -706,14 +704,24 @@ struct QueryClassifierNonSqlTests {
             "endpoint status",
             "endpoint health",
             "user list",
-            "role list",
-            "'get' /keys --prefix"
+            "role list"
         ]
         for statement in reads {
             #expect(
                 QueryClassifier.classifyTier(statement, databaseType: .etcd) == .safe,
                 "\(statement) must be safe"
             )
+        }
+    }
+
+    @Test("etcd quoted verbs stay unknown", arguments: [
+        #""lease" 'revoke' 7b"#, #""del" /keys --prefix"#, #"'get' /keys --prefix"#,
+    ])
+    func etcdQuotedVerbs(statement: String) throws {
+        #expect(QueryClassifier.classifyTier(statement, databaseType: .etcd) == .write)
+        guard case .unknown = try EtcdCommandParser.parse(statement) else {
+            Issue.record("Quoted verbs must not execute")
+            return
         }
     }
 

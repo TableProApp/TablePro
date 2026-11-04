@@ -200320,6 +200320,10 @@
         }
       }
     },
+    "This row has no key, so it cannot be addressed from the grid." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "This row has no point id, so Qdrant cannot tell which point to change." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
