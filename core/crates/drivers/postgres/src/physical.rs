@@ -162,7 +162,9 @@ impl PgEndpoint {
 /// What the server says it is, read once at connect.
 pub(crate) async fn server_info(client: &Client) -> Result<ServerInfo, DriverError> {
     let messages = client
-        .simple_query("SELECT current_setting('server_version_num'), current_setting('server_version')")
+        .simple_query(
+            "SELECT pg_catalog.current_setting('server_version_num'), pg_catalog.current_setting('server_version')",
+        )
         .await
         .map_err(|error| map_error(&error))?;
     let row = messages.iter().find_map(|message| match message {

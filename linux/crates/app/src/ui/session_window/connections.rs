@@ -1244,16 +1244,24 @@ mod tests {
         );
     }
 
-    /// A file whose entry takes a saved connection's name but opens
-    /// another file: the dialog shows where it goes and the suffixed name
-    /// before anything is written, and only Import writes it.
+    /// A file whose entry takes a saved connection's name but connects
+    /// to another host without TLS: the dialog shows where it goes, that
+    /// it skips TLS, and the suffixed name before anything is written,
+    /// and only Import writes it.
     #[gtk4::test]
     fn an_import_shows_where_each_connection_goes_before_writing() {
-        let test = TestWindow::picker("ImportPreview");
+        let test = TestWindow::with_script(
+            "ImportPreview",
+            crate::ui::session_window::tests::Script {
+                network: true,
+                ..Default::default()
+            },
+        );
         wait_for_list(&test.window);
         let lookalike = SavedConnection {
             id: Uuid::new_v4(),
-            database: "/srv/elsewhere.sqlite3".to_owned(),
+            host: "db.elsewhere.example".to_owned(),
+            tls: tablepro_core::TlsConfig::disabled(),
             ..test.saved.clone()
         };
         let entry = serde_json::to_string(&lookalike).expect("the entry");
@@ -1277,13 +1285,9 @@ mod tests {
         .expect("the rows");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].title(), format!("{} (imported)", test.saved.name));
-        assert!(
-            rows[0]
-                .subtitle()
-                .is_some_and(|subtitle| subtitle.contains("elsewhere.sqlite3")),
-            "{:?}",
-            rows[0].subtitle()
-        );
+        let subtitle = rows[0].subtitle().unwrap_or_default();
+        assert!(subtitle.contains("app@db.elsewhere.example"), "{subtitle}");
+        assert!(subtitle.contains("Connects without TLS"), "{subtitle}");
         assert!(!listed(&test, lookalike.id), "the preview wrote the list");
 
         respond(&alert, crate::ui::import_preview::IMPORT);

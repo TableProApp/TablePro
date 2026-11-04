@@ -15,7 +15,7 @@ futures-util.workspace = true
 secrecy.workspace = true
 sqlx = { workspace = true, features = ["mysql", "mysql-rsa", "tls-rustls-aws-lc-rs"] }
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["io-util", "rt"] }
 tokio-util.workspace = true
 tracing.workspace = true
 

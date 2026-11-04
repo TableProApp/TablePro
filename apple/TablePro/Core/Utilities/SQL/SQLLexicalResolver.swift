@@ -72,6 +72,7 @@ enum SQLLexicalResolver {
 
     // MySQL's own set, as its driver and mysqldump write it.
     static func driverEscapes(_ escapes: SQLStringEscapes, for databaseType: DatabaseType) -> SQLStringEscapes {
+        if databaseType == .mssql { return .sqlServer }
         guard escapes == .backslash, SqlDialect.from(databaseTypeId: databaseType.rawValue) == .mysql else {
             return escapes
         }

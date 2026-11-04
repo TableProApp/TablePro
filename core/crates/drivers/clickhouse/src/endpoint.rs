@@ -181,6 +181,7 @@ impl ClickHouseEndpoint {
     }
 }
 
+// Read as RowBinary, which carries no names, so the fields keep the order the login query selects them in.
 #[derive(Debug, serde::Deserialize, clickhouse::Row)]
 struct Identity {
     version: String,
@@ -197,12 +198,112 @@ fn version_numbers(version: &str) -> (u32, u32, u32) {
 
 #[cfg(test)]
 mod tests {
+    use secrecy::SecretString;
+    use tablepro_core::{Credentials, NetworkEndpoint, TlsConfig};
+    use tablepro_net::DirectTcpTransport;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
     use super::*;
+
+    /// Answers every request with HTTP 200 and `body`, and keeps the socket
+    /// open, so the client reads the body to its stated length.
+    async fn answer_every_request(listener: TcpListener, body: Vec<u8>) {
+        let mut held = Vec::new();
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let mut request = Vec::new();
+            let mut chunk = [0; 4096];
+            while !request.windows(4).any(|end| end == b"\r\n\r\n") {
+                match socket.read(&mut chunk).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => request.extend_from_slice(&chunk[..read]),
+                }
+            }
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+            if socket.write_all(head.as_bytes()).await.is_ok() && socket.write_all(&body).await.is_ok() {
+                held.push(socket);
+            }
+        }
+    }
+
+    /// The login against a loopback server whose every answer is `body`,
+    /// run where a runtime worker would run it, on a 2 MiB stack.
+    fn identify_against(body: Vec<u8>) -> Result<(), DriverError> {
+        let worker = std::thread::Builder::new().stack_size(2 << 20);
+        let handle = worker
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("a runtime");
+                runtime.block_on(async move {
+                    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a listener");
+                    let port = listener.local_addr().expect("an address").port();
+                    let answering = tokio::spawn(answer_every_request(listener, body));
+                    let liveness = LivenessPolicy::DESKTOP;
+                    let address = NetworkEndpoint::new("127.0.0.1", port).expect("an endpoint");
+                    let target = NetworkTarget {
+                        transport: Arc::new(DirectTcpTransport::new(address, &liveness)),
+                        credentials: Credentials::Password {
+                            username: "default".to_owned(),
+                            password: SecretString::from(String::new()),
+                        },
+                        database: None,
+                        tls: TlsConfig::disabled(),
+                        options: Default::default(),
+                    };
+                    let mut endpoint =
+                        ClickHouseEndpoint::new(&target, liveness, &ConnectEnvironment::new("test"), false)
+                            .expect("an endpoint");
+                    let identity = endpoint.identify().await.map(|_| ());
+                    answering.abort();
+                    identity
+                })
+            })
+            .expect("a worker");
+        handle.join().expect("the login ran to an outcome")
+    }
+
+    /// RowBinaryWithNamesAndTypes header: the column count, the names,
+    /// then the types, each string after its LEB128 length.
+    fn header(name: &str, type_name: &str) -> Vec<u8> {
+        let mut body = vec![1];
+        for text in [name, type_name] {
+            let mut length = text.len();
+            while length >= 0x80 {
+                body.push((length & 0x7f) as u8 | 0x80);
+                length >>= 7;
+            }
+            body.push(length as u8);
+            body.extend_from_slice(text.as_bytes());
+        }
+        body
+    }
 
     #[test]
     fn a_version_splits_into_major_minor_and_patch() {
         assert_eq!(version_numbers("24.8.4.13"), (24, 8, 4));
         assert_eq!(version_numbers("25.10.1.1"), (25, 10, 1));
         assert_eq!(version_numbers("not a version"), (0, 0, 0));
+    }
+
+    #[test]
+    fn a_login_answer_naming_a_type_nested_100000_deep_fails_the_login() {
+        let nested = format!("{}UInt8{}", "Array(".repeat(100_000), ")".repeat(100_000));
+
+        let outcome = identify_against(header("version", &nested));
+
+        assert!(outcome.is_err(), "{outcome:?}");
+    }
+
+    #[test]
+    fn a_login_answer_counting_2_to_the_62_columns_fails_the_login() {
+        let mut body = vec![0x80; 8];
+        body.push(0x40);
+        body.extend_from_slice(b"\x07version");
+
+        let outcome = identify_against(body);
+
+        assert!(outcome.is_err(), "{outcome:?}");
     }
 }

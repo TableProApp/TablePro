@@ -117,6 +117,12 @@ public sealed partial class TableTabView : UserControl, ITabContent
         SetRunning(true);
         try
         {
+            if (_editor is { IsLost: true } lost)
+            {
+                _editor = null;
+                await lost.DisposeAsync().ConfigureAwait(true);
+            }
+
             _editor ??= await _session.OpenEditorAsync().ConfigureAwait(true);
             var page = _page.At(offset);
             // A default changed in Settings applies from the page holding the first row shown.

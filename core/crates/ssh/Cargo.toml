@@ -5,11 +5,20 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# The transport that runs SSH in process (core ADR 0009), which the Windows
+# app turns on. Off by default, so the Linux app links no russh.
+in-process = ["dep:aws-lc-rs", "dep:russh", "dep:tablepro-net", "dep:tempfile", "dep:windows-sys"]
+
 [dependencies]
 tablepro-core.workspace = true
+tablepro-net = { workspace = true, optional = true }
 async-trait.workspace = true
+aws-lc-rs = { workspace = true, optional = true }
 futures.workspace = true
+russh = { workspace = true, optional = true }
 secrecy.workspace = true
+tempfile = { workspace = true, optional = true }
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "fs"] }
 tokio-util.workspace = true
@@ -21,12 +30,28 @@ zeroize.workspace = true
 # mkdirat and openat with O_NOFOLLOW, and the effective uid, none of which std has.
 rustix = { workspace = true, features = ["fs", "process"] }
 
+[target.'cfg(windows)'.dependencies]
+# Who owns the agent's named pipe.
+windows-sys = { workspace = true, optional = true, features = ["Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading"] }
+
 [dev-dependencies]
 tablepro-test-fixtures.workspace = true
 tablepro-test-support.workspace = true
 tempfile.workspace = true
 testcontainers.workspace = true
 tokio = { workspace = true, features = ["rt", "test-util"] }
+
+[[test]]
+name = "in_process_matrix"
+required-features = ["in-process"]
+
+[[test]]
+name = "in_process_session"
+required-features = ["in-process"]
+
+[[test]]
+name = "in_process_windows"
+required-features = ["in-process"]
 
 [lints]
 workspace = true

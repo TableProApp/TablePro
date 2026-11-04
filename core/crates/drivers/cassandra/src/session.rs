@@ -99,7 +99,7 @@ impl CqlEndpoint {
         cancel: &CancellationToken,
     ) -> Result<CqlLink, DriverError> {
         let until = Instant::now() + self.liveness.login_timeout;
-        let relay = Relay::start(self.transport.clone()).await?;
+        let relay = Relay::start(self.transport.clone())?;
         let pin = Arc::new(ContactPin::new(relay.address()));
         let profile = ExecutionProfile::builder()
             .request_timeout(None)

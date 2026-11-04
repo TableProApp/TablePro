@@ -275,16 +275,20 @@ impl<'a> Lexer<'a> {
         None
     }
 
-    /// An `E'...'` string, with every `'...'` that continues it: the
-    /// server reads those by the rules of the first piece, so a backslash
-    /// escapes in them whatever `standard_conforming_strings` says.
+    /// An `E'...'` string, and on PostgreSQL every `'...'` that continues
+    /// it: the server reads those by the rules of the first piece, so a
+    /// backslash escapes in them whatever `standard_conforming_strings` says.
     fn escape_string(&self, start: usize) -> LexedToken {
         let mut from = start + 2;
         loop {
             let Some(end) = self.quote_end(from, b'\'', true) else {
                 return self.unterminated(start, OpenConstruct::StringLiteral);
             };
-            match self.continuing_quote(end) {
+            let continued = match self.syntax.escape_string_continues {
+                true => self.continuing_quote(end),
+                false => None,
+            };
+            match continued {
                 Some(quote) => from = quote + 1,
                 None => return self.plain(ScriptTokenKind::StringLiteral, end),
             }
@@ -293,8 +297,8 @@ impl<'a> Lexer<'a> {
 
     /// The quote that carries on the string that closed just before
     /// `from`, as PostgreSQL's `quotecontinue` rule finds it: only blanks
-    /// and `--` comments in between, a line break among them. Before the
-    /// first line break only a space, tab or form feed counts as a blank.
+    /// and `--` comments in between, a line break among them. PostgreSQL
+    /// 16 takes a vertical tab for a blank; older servers refuse the text.
     fn continuing_quote(&self, from: usize) -> Option<usize> {
         let mut index = from;
         let mut line_broke = false;
@@ -304,8 +308,7 @@ impl<'a> Lexer<'a> {
                     line_broke = true;
                     index += 1;
                 }
-                b' ' | b'\t' | 0x0c => index += 1,
-                0x0b if line_broke => index += 1,
+                b' ' | b'\t' | 0x0b | 0x0c => index += 1,
                 b'-' if self.bytes.get(index + 1) == Some(&b'-') => {
                     index += self.bytes[index..].iter().position(|&b| b == b'\n' || b == b'\r')?;
                 }

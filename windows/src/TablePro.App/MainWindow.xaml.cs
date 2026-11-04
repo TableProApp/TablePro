@@ -792,6 +792,11 @@ public sealed partial class MainWindow : Window, IShell, IWorkspaceHost
         }
 
         SaveSession();
+        foreach (var open in _open)
+        {
+            open.CancelConnect();
+        }
+
         DropSpare();
         foreach (var window in _tabWindows.ToList())
         {

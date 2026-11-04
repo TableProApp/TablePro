@@ -32,6 +32,8 @@ public sealed partial class WorkspaceView : UserControl
     private CancellationTokenSource? _watching;
     private Windows.Foundation.Point _stripOrigin;
     private WindowId _tearOutWindow;
+    private CancellationTokenSource? _recoveringHostKey;
+    private HostKeyFailure? _hostKeyFailure;
 
     internal WorkspaceView(Workbench workbench, OpenConnection connection)
     {
@@ -93,50 +95,19 @@ public sealed partial class WorkspaceView : UserControl
         }
     }
 
-    // Asked when the core has no secret saved for the connection. Null when the dialog is closed.
-    internal async Task<SecretAnswer?> AskSecretAsync(SecretKind kind)
-    {
-        if (XamlRoot is null)
-        {
-            var loaded = new TaskCompletionSource();
-            void OnLoaded(object sender, RoutedEventArgs e) => loaded.TrySetResult();
-            Loaded += OnLoaded;
-            await loaded.Task.ConfigureAwait(true);
-            Loaded -= OnLoaded;
-        }
+    internal CredentialDialogs CredentialPrompter => new CredentialDialogs(this);
 
-        var label = Strings.Get("Secret_" + kind);
-        var box = new PasswordBox { Header = label };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(box, "SecretBox");
-        var save = new CheckBox { Content = Strings.Get("SaveSecret") };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(save, "SaveSecretBox");
-        var message = new TextBlock
+    internal async Task<SecretAnswer?> AskSecretAsync(SecretKind kind, CancellationToken cancellationToken)
+    {
+        PromptPurpose purpose = kind switch
         {
-            Text = Strings.Format("SecretRequiredMessage", _connection.Name),
-            TextWrapping = TextWrapping.Wrap,
+            SecretKind.SshPassword => new PromptPurpose.SshPassword(PromptReason.NotStored),
+            SecretKind.SshPassphrase => new PromptPurpose.SshPassphrase(string.Empty, PromptReason.NotStored),
+            _ => new PromptPurpose.DatabasePassword(PromptReason.NotStored),
         };
-        var dialog = new ContentDialog
-        {
-            XamlRoot = XamlRoot,
-            RequestedTheme = ActualTheme,
-            Title = Strings.Get("SecretRequiredTitle"),
-            Content = new StackPanel { Spacing = 12, Children = { message, box, save } },
-            PrimaryButtonText = Strings.Get("ConnectButtonText"),
-            CloseButtonText = Strings.Get("Cancel"),
-            DefaultButton = ContentDialogButton.Primary,
-        };
-        box.Loaded += (_, _) => box.Focus(FocusState.Programmatic);
-        try
-        {
-            return await WindowDialogs.ShowAsync(dialog, this) == ContentDialogResult.Primary
-                ? new SecretAnswer(box.Password, save.IsChecked == true)
-                : null;
-        }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-            // A dialog whose window closed cancels the connection.
-            return null;
-        }
+        var answer = await CredentialPrompter.PromptAsync(new CredentialPrompt(
+            purpose, _connection.Name, [new PromptField(string.Empty, true)], true), cancellationToken).ConfigureAwait(true);
+        return answer is { Values.Count: 1 } ? new SecretAnswer(answer.Values[0], answer.Remember) : null;
     }
 
     public void Rename(string name)
@@ -270,6 +241,8 @@ public sealed partial class WorkspaceView : UserControl
 
     public async Task CloseTabsAsync()
     {
+        CancelRecovery();
+        _hostKeyFailure = null;
         // A pending individual close must not create a replacement while disconnect is awaiting it.
         _share = null;
         _session = null;
@@ -730,6 +703,11 @@ public sealed partial class WorkspaceView : UserControl
             while (!watching.IsCancellationRequested)
             {
                 health = await session.WaitForHealthChangeAsync(health, watching.Token).ConfigureAwait(true);
+                if (!ReferenceEquals(_session, session) || watching.IsCancellationRequested)
+                {
+                    break;
+                }
+
                 ShowHealth(health);
             }
         }
@@ -748,6 +726,14 @@ public sealed partial class WorkspaceView : UserControl
 
     private void ShowHealth(SessionHealth health)
     {
+        var hostKey = health is SessionHealth.Failed { Reason.HostKey: { TrustAllowed: true } failure }
+            ? failure : null;
+        if (hostKey != _hostKeyFailure)
+        {
+            CancelRecovery();
+            _hostKeyFailure = hostKey;
+        }
+
         if (WorkspaceNotices.For(health) is not { } notice)
         {
             HealthBar.IsOpen = false;
@@ -768,7 +754,62 @@ public sealed partial class WorkspaceView : UserControl
         HealthBar.IsOpen = true;
     }
 
-    private void OnReconnect(object sender, RoutedEventArgs e) => _session?.Reconnect();
+    internal void CancelRecovery() => _recoveringHostKey?.Cancel();
+
+    private async void OnReconnect(object sender, RoutedEventArgs e)
+    {
+        var session = _session;
+        if (session is null || _recoveringHostKey is not null)
+        {
+            return;
+        }
+
+        if (_hostKeyFailure is not { } failure || _connection.ConnectionId is not { } id)
+        {
+            session.Reconnect();
+            return;
+        }
+
+        using var recovering = new CancellationTokenSource();
+        _recoveringHostKey = recovering;
+        ReconnectButton.IsEnabled = false;
+        try
+        {
+            var snapshot = await _workbench.Library.GetSnapshotAsync().ConfigureAwait(true);
+            recovering.Token.ThrowIfCancellationRequested();
+            var saved = snapshot.Connections.FirstOrDefault(connection => connection.Id == id);
+            if (saved is null || !await CredentialPrompter.RecoverHostKeyAsync(
+                _workbench.Core, saved, failure, recovering.Token).ConfigureAwait(true))
+            {
+                return;
+            }
+
+            recovering.Token.ThrowIfCancellationRequested();
+            if (ReferenceEquals(_session, session) && _hostKeyFailure == failure)
+            {
+                session.Reconnect();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Closing the workspace or a new health state ends this recovery attempt.
+        }
+        catch (TableProException exception)
+        {
+            if (ReferenceEquals(_session, session) && !recovering.IsCancellationRequested)
+            {
+                HealthBar.Message = Strings.Error(exception.Error);
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_recoveringHostKey, recovering))
+            {
+                _recoveringHostKey = null;
+                ReconnectButton.IsEnabled = true;
+            }
+        }
+    }
 
     private void OnObjectsPaneSizeChanged(object sender, SizeChangedEventArgs e)
     {

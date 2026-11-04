@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use bson::Bson;
+use bson::{Bson, Document};
 use chrono::{DateTime, Datelike};
 
 /// A BSON value as extended JSON a person can read and edit: relaxed,
@@ -27,18 +27,7 @@ fn write_value(value: &Bson, out: &mut String) {
         Bson::String(text) => write_string(text, out),
         Bson::Boolean(flag) => out.push_str(if *flag { "true" } else { "false" }),
         Bson::Null => out.push_str("null"),
-        Bson::Document(document) => {
-            out.push('{');
-            for (index, (key, item)) in document.iter().enumerate() {
-                if index > 0 {
-                    out.push_str(", ");
-                }
-                write_string(key, out);
-                out.push_str(": ");
-                write_value(item, out);
-            }
-            out.push('}');
-        }
+        Bson::Document(document) => write_document(document, out),
         Bson::Array(items) => {
             out.push('[');
             for (index, item) in items.iter().enumerate() {
@@ -75,7 +64,7 @@ fn write_value(value: &Bson, out: &mut String) {
             out.push_str("{\"$code\": ");
             write_string(&code.code, out);
             out.push_str(", \"$scope\": ");
-            write_value(&Bson::Document(code.scope.clone()), out);
+            write_document(&code.scope, out);
             out.push('}');
         }
         Bson::Symbol(symbol) => wrapped(out, "$symbol", |out| write_string(symbol, out)),
@@ -84,6 +73,19 @@ fn write_value(value: &Bson, out: &mut String) {
         Bson::MaxKey => out.push_str("{\"$maxKey\": 1}"),
         Bson::DbPointer(_) => out.push_str(&value.clone().into_canonical_extjson().to_string()),
     }
+}
+
+fn write_document(document: &Document, out: &mut String) {
+    out.push('{');
+    for (index, (key, item)) in document.iter().enumerate() {
+        if index > 0 {
+            out.push_str(", ");
+        }
+        write_string(key, out);
+        out.push_str(": ");
+        write_value(item, out);
+    }
+    out.push('}');
 }
 
 fn wrapped(out: &mut String, key: &str, inner: impl FnOnce(&mut String)) {
@@ -133,7 +135,7 @@ fn write_date(millis: i64, out: &mut String) {
 mod tests {
     use bson::oid::ObjectId;
     use bson::spec::BinarySubtype;
-    use bson::{Binary, Decimal128, Timestamp, doc};
+    use bson::{Binary, Decimal128, JavaScriptCodeWithScope, Timestamp, doc};
 
     use super::*;
 
@@ -157,6 +159,26 @@ mod tests {
                 r#"{"z": 1, "a": {"$numberLong": "2"}, "d": 2.0, "e": 1.5e20, "id": {"$oid": "5f1d7a0c9b1e8b2a3c4d5e6f"}, "#,
                 r#""when": {"$date": "2023-11-14T22:13:20.123Z"}, "dec": {"$numberDecimal": "12.50"}, "#,
                 r#""nested": {"list": [true, null, "x\"y"]}}"#
+            )
+        );
+    }
+
+    #[test]
+    fn nested_javascript_scopes_keep_field_order_and_value_types() {
+        let inner = Bson::JavaScriptCodeWithScope(JavaScriptCodeWithScope {
+            code: "return \"x\"".to_owned(),
+            scope: doc! { "z": 2_i64, "a": [true, null] },
+        });
+        let outer = Bson::JavaScriptCodeWithScope(JavaScriptCodeWithScope {
+            code: "return inner".to_owned(),
+            scope: doc! { "z": 1_i32, "inner": inner, "a": "last" },
+        });
+
+        assert_eq!(
+            extended_json(&outer),
+            concat!(
+                r#"{"$code": "return inner", "$scope": {"z": 1, "inner": {"$code": "return \"x\"", "#,
+                r#""$scope": {"z": {"$numberLong": "2"}, "a": [true, null]}}, "a": "last"}}"#
             )
         );
     }

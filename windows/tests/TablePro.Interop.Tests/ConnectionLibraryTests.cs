@@ -82,7 +82,7 @@ public sealed class ConnectionLibraryTests : IDisposable
             new SavedConnection(null, "app", "sqlite", string.Empty, 0, database.Path, string.Empty, TlsSettings.Disabled),
             ConnectionSecrets.None);
 
-        await _core.TestConnectionAsync(saved, ConnectionSecrets.None, cancellationToken);
+        await _core.TestConnectionAsync(saved, ConnectionSecrets.None, cancellationToken: cancellationToken);
         await using var session = await _core.ConnectAsync(saved.Id!.Value, cancellationToken: cancellationToken);
         var objects = await session.GetObjectsAsync(ObjectScope.DefaultSchema, cancellationToken);
         var browse = await session.GetTableQueryAsync(new TableName(null, "people"), null, 100, cancellationToken: cancellationToken);

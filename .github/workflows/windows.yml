@@ -65,6 +65,14 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.x
+      - name: Start Windows' OpenSSH Server
+        if: matrix.name == 'x64'
+        shell: pwsh
+        run: scripts/ci/start-windows-sshd.ps1 -Out (Join-Path $env:RUNNER_TEMP 'tablepro-ssh')
+      - name: Prepare PostgreSQL for the SSH connection tests
+        if: matrix.name == 'x64'
+        shell: pwsh
+        run: windows/ci/ssh-postgres.ps1
       - name: Test the interop library
         # The test build runs cargo for the core first (windows/AGENTS.md, Commands).
         working-directory: windows
@@ -100,6 +108,10 @@ jobs:
           name: windows-screenshots-${{ matrix.name }}
           path: screenshots
           if-no-files-found: ignore
+      - name: The OpenSSH Server's log
+        if: failure() && matrix.name == 'x64'
+        shell: pwsh
+        run: Get-Content (Join-Path $env:ProgramData 'ssh\logs\sshd.log') -Tail 300 -ErrorAction Continue
 
       - name: Restore uniffi-bindgen-cs
         if: matrix.bindings

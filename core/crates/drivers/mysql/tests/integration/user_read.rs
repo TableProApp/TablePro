@@ -2,7 +2,7 @@
 
 use tablepro_core::{Connection, DriverError, ReadStatement, StreamSummary, UserSql};
 
-use crate::support::{CALL, EventSink, Events, FLAVOURS, connect, setup, start, within};
+use crate::support::{CALL, EventSink, Events, FLAVOURS, connect, count, setup, start, statement, within};
 
 async fn read(connection: &dyn Connection, sql: &str) -> (Result<StreamSummary, DriverError>, Events) {
     let events = Events::default();
@@ -42,5 +42,38 @@ async fn a_read_runs_one_statement_and_takes_any_kind_the_server_parses() {
             assert!(outcome.is_ok(), "{flavour:?}: {sql}: {outcome:?}");
             assert!(!events.rows().is_empty(), "{flavour:?}: {sql}");
         }
+    }
+}
+
+/// The server ends the read's read-only transaction before DDL, so the
+/// session itself is read-only too. The statement goes below the check
+/// of user SQL, as a read the app built.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_read_on_a_writable_connection_creates_no_table() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let connection = connect(&fixture, false).await;
+        let events = Events::default();
+
+        let outcome = connection
+            .stream_read(
+                &ReadStatement::Generated(statement("CREATE TABLE made_by_a_read (a int)")),
+                Box::new(EventSink::new(&events)),
+                within(CALL),
+            )
+            .await;
+
+        assert!(outcome.is_err(), "{flavour:?}: {outcome:?}");
+        assert_eq!(
+            count(
+                connection.as_ref(),
+                "SELECT COUNT(*) FROM information_schema.TABLES \
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'made_by_a_read'"
+            )
+            .await,
+            0,
+            "{flavour:?}"
+        );
     }
 }

@@ -10,10 +10,10 @@ use tablepro_core::meta::{
     EditorRefusal, EngineRowId, IndexKey, ObjectInfo, ObjectKind, ObjectScope, RowCountEstimate, RowIdentity, TableRef,
 };
 use tablepro_core::save::{ChangeSet, RowChange, RowUpdate, plan_save};
-use tablepro_core::{DriverError, Value};
+use tablepro_core::{Connection, DriverError, Value, WriteKind};
 use tablepro_test_fixtures::{HbaMode, PostgresFixture, PostgresVersion};
 
-use crate::support::{CALL, connect, rows, run_ok, scalar, session, setup, start, text, within};
+use crate::support::{CALL, apply, connect, rows, run_ok, scalar, session, setup, start, text, within};
 
 fn table(name: &str) -> TableRef {
     TableRef::new(Some("public".to_owned()), name)
@@ -1013,6 +1013,14 @@ async fn alter_add_column_then_query_bound_on_all_four_pooled_connections() {
     }
 }
 
+/// A function in `public` that fails the statement that runs it.
+fn trap(name: &str, arguments: &str, returns: &str) -> String {
+    format!(
+        "CREATE FUNCTION public.{name}({arguments}) RETURNS {returns} LANGUAGE plpgsql AS \
+         $$ BEGIN RAISE EXCEPTION 'public.{name} ran as %', current_user; END $$"
+    )
+}
+
 /// Another user's functions and operators in `public` whose signatures
 /// match the catalog reads' arguments better than the built-ins do. A
 /// catalog read never runs one, and a table named without its schema is
@@ -1022,12 +1030,6 @@ async fn alter_add_column_then_query_bound_on_all_four_pooled_connections() {
 async fn lookalikes_in_public_never_run_in_a_catalog_read() {
     let fixture = start().await;
     let connection = connect(&fixture, false).await;
-    let trap = |name: &str, arguments: &str, returns: &str| {
-        format!(
-            "CREATE FUNCTION public.{name}({arguments}) RETURNS {returns} LANGUAGE plpgsql AS \
-             $$ BEGIN RAISE EXCEPTION 'public.{name} ran as %', current_user; END $$"
-        )
-    };
     let statements = [
         "CREATE TYPE mood AS ENUM ('sad', 'ok')".to_owned(),
         "CREATE TABLE accounts (id int PRIMARY KEY, state mood)".to_owned(),
@@ -1090,4 +1092,243 @@ async fn lookalikes_in_public_never_run_in_a_catalog_read() {
             .await
             .is_err()
     );
+}
+
+/// Exact copies, in `public`, of built-ins the driver's statements use,
+/// each failing the statement that runs it, and a login whose sessions
+/// from now on search `public` ahead of `pg_catalog`.
+fn exact_lookalikes() -> Vec<String> {
+    let mut statements = Vec::new();
+    for (function, operand) in [
+        ("oid_equals", "oid"),
+        ("name_equals", "name"),
+        ("char_equals", "\"char\""),
+        ("int2_equals", "int2"),
+        ("text_equals", "text"),
+    ] {
+        statements.push(trap(function, &format!("{operand}, {operand}"), "boolean"));
+        statements.push(format!(
+            "CREATE OPERATOR public.= (LEFTARG = {operand}, RIGHTARG = {operand}, FUNCTION = public.{function})"
+        ));
+    }
+    statements.extend([
+        trap("current_database", "", "name"),
+        trap("current_setting", "text", "text"),
+        trap("pg_current_xact_id", "", "xid8"),
+        trap("text_check", "text", "boolean"),
+        "CREATE DOMAIN public.text AS pg_catalog.text CHECK (public.text_check(VALUE))".to_owned(),
+        trap("oid_check", "oid", "boolean"),
+        "CREATE DOMAIN public.oid AS pg_catalog.oid CHECK (public.oid_check(VALUE))".to_owned(),
+        "ALTER ROLE CURRENT_USER SET search_path = public, pg_catalog".to_owned(),
+    ]);
+    statements
+}
+
+/// Every catalog read of one table.
+async fn read_table_catalog(connection: &dyn Connection, target: &TableRef) {
+    connection.fetch_columns(target, within(CALL)).await.expect("columns");
+    connection.fetch_indexes(target, within(CALL)).await.expect("indexes");
+    connection
+        .fetch_foreign_keys(target, within(CALL))
+        .await
+        .expect("foreign keys");
+    connection
+        .fetch_outbound_foreign_keys(target, within(CALL))
+        .await
+        .expect("outbound foreign keys");
+    connection
+        .fetch_inbound_foreign_keys(target, within(CALL))
+        .await
+        .expect("inbound foreign keys");
+    connection
+        .fetch_table_definition(target, within(CALL))
+        .await
+        .expect("table definition");
+    connection
+        .row_identity(target, within(CALL))
+        .await
+        .expect("row identity");
+    connection
+        .table_estimate(target, within(CALL))
+        .await
+        .expect("row estimate");
+}
+
+/// The login's own search_path puts exact copies of built-ins ahead of
+/// `pg_catalog`. The connect, every catalog read and a save never run
+/// one, and names still print as the session prints them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn exact_lookalikes_ahead_of_pg_catalog_never_run() {
+    let fixture = start().await;
+    let first = connect(&fixture, false).await;
+    setup(
+        first.as_ref(),
+        &[
+            "CREATE TYPE mood AS ENUM ('sad', 'ok')",
+            "CREATE TABLE accounts (id serial PRIMARY KEY, state mood)",
+            "ALTER TABLE accounts ADD COLUMN next_id int8 DEFAULT 1 + nextval('accounts_id_seq')",
+            "CREATE TABLE orders (id int PRIMARY KEY, account int REFERENCES accounts (id))",
+            "CREATE INDEX orders_account ON orders (account)",
+            "CREATE FUNCTION stamp() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+            "CREATE TRIGGER audit BEFORE INSERT ON orders FOR EACH ROW EXECUTE FUNCTION stamp()",
+        ],
+    )
+    .await;
+    let lookalikes = exact_lookalikes();
+    let lookalikes: Vec<&str> = lookalikes.iter().map(String::as_str).collect();
+    setup(first.as_ref(), &lookalikes).await;
+    first.close().await.unwrap();
+
+    let connection = connect(&fixture, false).await;
+    let schemas = connection.list_schemas(within(CALL)).await.unwrap();
+    assert!(
+        schemas
+            .iter()
+            .any(|schema| schema.name == "public" && schema.is_default),
+        "{schemas:?}"
+    );
+    let databases = connection.list_databases(within(CALL)).await.unwrap();
+    assert!(
+        databases
+            .iter()
+            .any(|database| database.name == fixture.database() && database.is_default),
+        "{databases:?}"
+    );
+    let objects = connection
+        .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+        .await
+        .unwrap();
+    connection
+        .list_objects(&ObjectScope::AllSchemas, within(CALL))
+        .await
+        .unwrap();
+    for name in ["accounts_id_seq", "stamp", "audit"] {
+        let object = objects
+            .iter()
+            .find(|object| object.name == name)
+            .expect("a listed object");
+        let definition = connection.fetch_object_definition(object, within(CALL)).await.unwrap();
+        assert!(definition.is_some(), "{name}");
+    }
+    for name in ["orders", "accounts"] {
+        read_table_catalog(connection.as_ref(), &table(name)).await;
+        read_table_catalog(connection.as_ref(), &TableRef::new(None, name)).await;
+    }
+
+    let columns = connection
+        .fetch_columns(&TableRef::new(None, "accounts"), within(CALL))
+        .await
+        .unwrap();
+    let column = |name: &str| columns.iter().find(|column| column.name == name).expect("a column");
+    let state = &column("state").column_type;
+    assert_eq!(state.name, "mood");
+    assert_eq!(
+        state.catalog.as_ref().map(|catalog| catalog.cast_target.as_sql()),
+        Some("mood")
+    );
+    // A serial's own default reads as auto increment, so the sequence's
+    // name shows in another column's default.
+    let next_id = &column("next_id").default;
+    assert!(
+        matches!(next_id, ColumnDefault::Expression(expression)
+            if expression.as_sql().contains("nextval('accounts_id_seq'::regclass)")),
+        "{next_id:?}"
+    );
+
+    let saved = apply(
+        connection.as_ref(),
+        WriteKind::RowChanges,
+        &["INSERT INTO accounts (state) VALUES ('ok')"],
+    )
+    .await
+    .unwrap();
+    assert_eq!(saved.rows_affected, [Some(1)]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn catalog_defaults_keep_the_sessions_schema_with_an_explicit_or_empty_path() {
+    let fixture = start().await;
+    let initial = connect(&fixture, false).await;
+    setup(initial.as_ref(), &["CREATE TABLE public.accounts (id int PRIMARY KEY)"]).await;
+    initial.close().await.unwrap();
+
+    for (setting, expected_default) in [
+        ("pg_catalog, public", Some("pg_catalog")),
+        ("pg_catalog", Some("pg_catalog")),
+        ("''", None),
+        ("'   '", None),
+    ] {
+        let admin = connect(&fixture, false).await;
+        setup(
+            admin.as_ref(),
+            &[&format!("ALTER ROLE CURRENT_USER SET search_path = {setting}")],
+        )
+        .await;
+        admin.close().await.unwrap();
+
+        let connection = connect(&fixture, false).await;
+        let schemas = connection.list_schemas(within(CALL)).await.unwrap();
+        let defaults: Vec<&str> = schemas
+            .iter()
+            .filter(|schema| schema.is_default)
+            .map(|schema| schema.name.as_str())
+            .collect();
+        assert_eq!(defaults, expected_default.into_iter().collect::<Vec<_>>(), "{setting}");
+        let objects = connection
+            .list_objects(&ObjectScope::DefaultSchema, within(CALL))
+            .await
+            .unwrap();
+        match expected_default {
+            Some(schema) => {
+                assert!(!objects.is_empty(), "{setting}");
+                assert!(objects.iter().all(|object| object.schema.as_deref() == Some(schema)));
+            }
+            None => assert!(objects.is_empty(), "{setting}"),
+        }
+        let columns = connection
+            .fetch_columns(&table("accounts"), within(CALL))
+            .await
+            .unwrap();
+        assert_eq!(columns.len(), 1, "{setting}");
+        assert_eq!(columns[0].name, "id", "{setting}");
+        connection.close().await.unwrap();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn an_unqualified_user_table_keeps_its_identity_when_it_shares_a_catalog_name() {
+    let fixture = start().await;
+    let initial = connect(&fixture, false).await;
+    setup(
+        initial.as_ref(),
+        &[
+            "CREATE TABLE public.pg_class (id int PRIMARY KEY, user_value text)",
+            "ALTER ROLE CURRENT_USER SET search_path = public, pg_catalog",
+        ],
+    )
+    .await;
+    initial.close().await.unwrap();
+
+    let connection = connect(&fixture, false).await;
+    let target = TableRef::new(None, "pg_class");
+    let columns = connection.fetch_columns(&target, within(CALL)).await.unwrap();
+    let names: Vec<&str> = columns.iter().map(|column| column.name.as_str()).collect();
+    assert_eq!(names, ["id", "user_value"]);
+    read_table_catalog(connection.as_ref(), &target).await;
+    let indexes = connection.fetch_indexes(&target, within(CALL)).await.unwrap();
+    assert!(indexes.iter().any(|index| index.name == "pg_class_pkey"));
+
+    for _ in 0..5 {
+        assert!(
+            connection
+                .fetch_columns(&TableRef::new(None, "absent_table"), within(CALL))
+                .await
+                .is_err()
+        );
+        let columns = connection.fetch_columns(&target, within(CALL)).await.unwrap();
+        assert_eq!(columns.len(), 2);
+    }
 }

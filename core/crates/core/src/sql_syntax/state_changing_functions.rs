@@ -1,9 +1,13 @@
 //! Built-in functions that change state from inside a SELECT, by family.
 //!
 //! A read-only transaction stops none of them on PostgreSQL 15 and
-//! earlier: they signal other sessions, take locks, run SQL text on
-//! another connection or write large objects. A function the user wrote
-//! is beyond what the words show.
+//! earlier: they signal other sessions, take locks, run SQL text, or
+//! write large objects, files or catalog rows. A function the user wrote
+//! is beyond what the words show. The Apple apps list the same families,
+//! and `tests/fixtures/state_changing_functions.json` holds them for both
+//! test suites.
+
+use std::borrow::Cow;
 
 const SERVER_SIGNALS: &[&str] = &[
     "pg_cancel_backend",
@@ -87,6 +91,7 @@ const SETTINGS_AND_STATISTICS: &[&str] = &[
     "pg_stat_reset_replication_slot",
     "pg_stat_reset_subscription_stats",
     "pg_stat_statements_reset",
+    "pg_stat_reset_backend_stats",
     "pg_restore_relation_stats",
     "pg_restore_attribute_stats",
     "pg_clear_relation_stats",
@@ -102,8 +107,24 @@ const LARGE_OBJECTS: &[&str] = &[
     "lowrite",
     "lo_truncate",
     "lo_truncate64",
+];
+
+const FILES_AND_EXTENSIONS: &[&str] = &[
     "lo_import",
     "lo_export",
+    "pg_file_write",
+    "pg_file_rename",
+    "pg_file_unlink",
+    "writefile",
+    "load_extension",
+];
+
+/// Writes to the catalog, or straight to a table's pages.
+const CATALOG_AND_STORAGE: &[&str] = &[
+    "pg_import_system_collations",
+    "heap_force_kill",
+    "heap_force_freeze",
+    "pg_truncate_visibility_map",
 ];
 
 const INDEX_MAINTENANCE: &[&str] = &[
@@ -111,9 +132,13 @@ const INDEX_MAINTENANCE: &[&str] = &[
     "brin_summarize_range",
     "brin_desummarize_range",
     "gin_clean_pending_list",
+    // SQLite's table function runs ANALYZE.
+    "pragma_optimize",
 ];
 
 /// Functions that run SQL text: what that text does is not in the words.
+/// crosstab, connectby and xpath_table paste their text arguments into
+/// the SQL they run.
 const SQL_TEXT_RUNNERS: &[&str] = &[
     "query_to_xml",
     "query_to_xml_and_xmlschema",
@@ -123,35 +148,49 @@ const SQL_TEXT_RUNNERS: &[&str] = &[
     "dblink_exec",
     "dblink_send_query",
     "dblink_open",
+    "openquery",
+    "openrowset",
+    "crosstab",
+    "crosstab2",
+    "crosstab3",
+    "crosstab4",
+    "connectby",
+    "xpath_table",
 ];
 
-const EXTENSIONS: &[&str] = &["load_extension"];
-
-const FAMILIES: [&[&str]; 11] = [
-    SERVER_SIGNALS,
-    SESSION_CONTROL,
-    RECOVERY_AND_BACKUP,
-    REPLICATION,
-    SEQUENCES,
-    ADVISORY_LOCKS,
-    SETTINGS_AND_STATISTICS,
-    LARGE_OBJECTS,
-    INDEX_MAINTENANCE,
-    SQL_TEXT_RUNNERS,
-    EXTENSIONS,
+const FAMILIES: [(&str, &[&str]); 12] = [
+    ("server_signals", SERVER_SIGNALS),
+    ("session_control", SESSION_CONTROL),
+    ("recovery_and_backup", RECOVERY_AND_BACKUP),
+    ("replication", REPLICATION),
+    ("sequences", SEQUENCES),
+    ("advisory_locks", ADVISORY_LOCKS),
+    ("settings_and_statistics", SETTINGS_AND_STATISTICS),
+    ("large_objects", LARGE_OBJECTS),
+    ("files_and_extensions", FILES_AND_EXTENSIONS),
+    ("catalog_and_storage", CATALOG_AND_STORAGE),
+    ("index_maintenance", INDEX_MAINTENANCE),
+    ("sql_text_runners", SQL_TEXT_RUNNERS),
 ];
 
 /// Whether a call of `name` can change state, compared without regard
-/// to case.
+/// to case. MariaDB looks `releaſe_lock` up as `RELEASE_LOCK`, so a
+/// name is compared upper-cased.
 pub(crate) fn changes_state(name: &str) -> bool {
+    let folded = match name.is_ascii() {
+        true => Cow::Borrowed(name),
+        false => Cow::Owned(name.to_uppercase()),
+    };
     FAMILIES
         .iter()
-        .flat_map(|family| family.iter())
-        .any(|known| name.eq_ignore_ascii_case(known))
+        .flat_map(|(_, names)| names.iter())
+        .any(|known| folded.eq_ignore_ascii_case(known))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     #[test]
@@ -171,6 +210,12 @@ mod tests {
             "pg_replication_origin_create",
             "gin_clean_pending_list",
             "load_extension",
+            "PG_FILE_WRITE",
+            "heap_force_kill",
+            "CROSSTAB",
+            "pragma_optimize",
+            "relea\u{17f}e_lock",
+            "RELEA\u{17f}E_ALL_LOCK\u{17f}",
         ] {
             assert!(changes_state(name), "{name}");
         }
@@ -180,6 +225,8 @@ mod tests {
             "lo_get",
             "count",
             "dblink_build_sql_insert",
+            "query_to_xmlschema",
+            "query",
         ] {
             assert!(!changes_state(name), "{name}");
         }
@@ -189,12 +236,27 @@ mod tests {
     fn no_name_is_listed_twice() {
         let mut names: Vec<String> = FAMILIES
             .iter()
-            .flat_map(|family| family.iter())
+            .flat_map(|(_, family)| family.iter())
             .map(|name| name.to_ascii_lowercase())
             .collect();
         let listed = names.len();
         names.sort();
         names.dedup();
         assert_eq!(names.len(), listed);
+    }
+
+    #[test]
+    fn the_names_are_the_ones_both_apps_share() {
+        let shared: BTreeMap<String, Vec<String>> =
+            serde_json::from_str(include_str!("../../tests/fixtures/state_changing_functions.json")).unwrap();
+        let listed: BTreeMap<String, Vec<String>> = FAMILIES
+            .iter()
+            .map(|(family, names)| {
+                let mut names: Vec<String> = names.iter().map(|name| name.to_string()).collect();
+                names.sort();
+                (family.to_string(), names)
+            })
+            .collect();
+        assert_eq!(listed, shared);
     }
 }
