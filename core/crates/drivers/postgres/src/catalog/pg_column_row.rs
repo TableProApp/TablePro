@@ -23,7 +23,7 @@ macro_rules! columns_sql {
 WITH RECURSIVE resolved AS (
     SELECT a.attnum, a.atttypid AS type_oid, a.atttypmod AS typmod, 0 AS depth
     FROM pg_catalog.pg_attribute a
-    WHERE a.attrelid = $1::text::regclass::oid AND a.attnum > 0 AND NOT a.attisdropped
+    WHERE a.attrelid = $1::text::oid AND a.attnum > 0 AND NOT a.attisdropped
   UNION ALL
     SELECT r.attnum, t.typbasetype,
            CASE WHEN r.typmod = -1 THEN t.typtypmod ELSE r.typmod END,
@@ -74,7 +74,7 @@ LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attn
 LEFT JOIN pg_catalog.pg_constraint pk ON pk.conrelid = a.attrelid AND pk.contype = 'p'
 LEFT JOIN pg_catalog.pg_collation co ON co.oid = a.attcollation
 LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid = co.collnamespace
-WHERE a.attrelid = $1::text::regclass::oid AND a.attnum > 0 AND NOT a.attisdropped
+WHERE a.attrelid = $1::text::oid AND a.attnum > 0 AND NOT a.attisdropped
 ORDER BY a.attnum"
         )
     };

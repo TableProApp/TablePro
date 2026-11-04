@@ -13,7 +13,7 @@ SELECT c.conname::text,
                JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
               ORDER BY k.ord)
 FROM pg_catalog.pg_constraint c
-WHERE c.conrelid = $1::text::regclass::oid AND c.contype = 'p'";
+WHERE c.conrelid = $1::text::oid AND c.contype = 'p'";
 
 /// Foreign keys on other tables that point at this one. A partition of
 /// a partitioned table that points here holds a clone of its parent's
@@ -35,7 +35,7 @@ SELECT c.conname::text,
 FROM pg_catalog.pg_constraint c
 JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
 JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-WHERE c.confrelid = $1::text::regclass::oid AND c.contype = 'f'
+WHERE c.confrelid = $1::text::oid AND c.contype = 'f'
   AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint p
                    WHERE p.oid = c.conparentid AND p.confrelid = c.confrelid)
 ORDER BY n.nspname, t.relname, c.conname";
