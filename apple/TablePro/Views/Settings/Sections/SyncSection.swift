@@ -7,12 +7,12 @@ import SwiftUI
 import TableProSyncTransport
 
 struct SyncSection: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @ObservedObject private var syncCoordinator = SyncCoordinator.shared
 
     private var isProAvailable: Bool {
-        licenseManager.isFeatureAvailable(.iCloudSync)
+        featureAccess.isAvailable(.iCloudSync)
     }
 
     var body: some View {

@@ -8,7 +8,7 @@ import TableProImport
 import UniformTypeIdentifiers
 
 struct ConnectionExportOptionsSheet: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     let connections: [DatabaseConnection]
 
     @Environment(\.dismiss) private var dismiss
@@ -25,7 +25,7 @@ struct ConnectionExportOptionsSheet: View {
     @State private var includeGlobalSavedQueries = false
 
     private var isProAvailable: Bool {
-        licenseManager.isFeatureAvailable(.encryptedExport)
+        featureAccess.isAvailable(.encryptedExport)
     }
 
     private var passphraseState: ConnectionExportPassphraseState {

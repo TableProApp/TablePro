@@ -22,6 +22,7 @@ internal struct WelcomePresentations: ViewModifier {
             .sheet(isPresented: $vm.presentsWelcomeSheet, onDismiss: {
                 vm.welcomeSheetDidDismiss()
                 onSheetDismiss()
+                SignInPrompt.live.presentIfNeeded()
             }) {
                 WelcomeSheetView { vm.presentsWelcomeSheet = false }
             }
@@ -88,8 +89,6 @@ internal struct WelcomePresentations: ViewModifier {
             GroupEditorSheet(mode: .edit(group), groups: vm.groups) { draft in
                 try vm.saveGroup(id: group.id, from: ConnectionGroupFields(group), to: draft)
             }
-        case .activation:
-            LicenseActivationSheet()
         case .importFile(let url):
             ConnectionImportSheet(fileURL: url) { vm.finishImport($0) }
         case .exportConnections(let conns):
@@ -112,6 +111,8 @@ internal struct WelcomePresentations: ViewModifier {
             )
         case .deeplinkImport(let bundle):
             DeeplinkImportSheet(bundle: bundle) { vm.finishImport($0) }
+        case .teamLibraryConflicts:
+            TeamLibraryConflictSheet(sync: .shared)
         }
     }
 }

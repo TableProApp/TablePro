@@ -124,6 +124,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ShortcutsParameterRefresher.shared.start()
         }
 
+        // Before any intent routes: a launch with `open -g` reaches the gates and may never activate.
+        AccountServices.shared.loadStoredState()
+
         LaunchTracer.shared.mark(.didFinishLaunchingEnded)
         AppLaunchCoordinator.shared.didFinishLaunching()
     }
@@ -132,6 +135,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         runPostLaunchActivationIfNeeded()
         guard !AppStorageEnvironment.shared.isIsolated else { return }
         SyncCoordinator.shared.syncIfNeeded()
+        AccountServices.shared.applicationDidBecomeActive()
     }
 
     private func runPostLaunchActivationIfNeeded() {
@@ -147,15 +151,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ConnectionStorage.shared.moveMongoURISecretsToKeychain()
         FavoriteTablesStorage.shared.migrateSyncIdentityIfNeeded()
         SoftwareUpdater.shared.start()
-        AnalyticsService.shared.startPeriodicHeartbeat()
+        // Before the account starts, so a stored key's migration reaches it as a sign-in.
+        Telemetry.shared.start(
+            sharesUsageData: AppSettingsManager.shared.$general.map(\.shareAnalytics).eraseToAnyPublisher(),
+            account: AccountServices.shared
+        )
+        AccountServices.shared.start()
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
-        TeamLibrarySyncCoordinator.shared.start()
+        TeamLibrarySync.shared.start()
         SupportAskCoordinator.shared.start()
-
-        Task {
-            LicenseManager.shared.startPeriodicValidation()
-        }
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {

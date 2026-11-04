@@ -16,6 +16,8 @@ enum PreferenceKeys {
     static let lastSeenAppBuild = DefaultsKey<Int>("com.TablePro.welcome.lastSeenAppBuild")
     /// What a build before `lastSeenAppBuild` recorded instead, read once to carry it over.
     static let lastSeenAppVersion = DefaultsKey<String>("com.TablePro.welcome.lastSeenAppVersion")
+    /// Device-local: the sign-in window shows once per Mac, whatever another Mac has seen.
+    static let signInPromptShown = DefaultsKey<Bool>("com.TablePro.account.signInPromptShown")
     static let connectionListSortMode = DefaultsKey<String>("com.TablePro.connectionList.sortMode")
     static let connectionListFavoritesOrder = DefaultsKey<[String]>("com.TablePro.connectionList.favoritesOrder")
     static let connectionListShowsRecent = DefaultsKey<Bool>("com.TablePro.connectionList.showsRecent")
@@ -43,6 +45,7 @@ enum PreferenceKeys {
         lastBackupDirectory.name,
         lastSeenAppBuild.name,
         lastSeenAppVersion.name,
+        signInPromptShown.name,
         receivesBetaUpdates.name,
         reopenSessionAfterRelaunch.name,
         pluginRegistrySerial.name,

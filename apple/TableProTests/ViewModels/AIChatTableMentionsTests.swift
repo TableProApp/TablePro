@@ -133,7 +133,7 @@ struct AIChatSchemaFixture {
             tagStorage: live.tagStorage,
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
-            licenseManager: live.licenseManager,
+            featureAccess: live.featureAccess,
             syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
@@ -142,7 +142,8 @@ struct AIChatSchemaFixture {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: live.syncTracker,
-            welcomeRouter: live.welcomeRouter
+            welcomeRouter: live.welcomeRouter,
+            telemetry: live.telemetry
         )
     }
 }

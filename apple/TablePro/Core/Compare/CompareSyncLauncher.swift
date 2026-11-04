@@ -12,7 +12,7 @@ import Foundation
 @MainActor
 internal enum CompareSyncLauncher {
     internal static func open(prefillSource connectionId: UUID? = nil) {
-        guard LicenseManager.shared.isFeatureAvailable(.compareSync) else {
+        guard FeatureAccess.shared.isAvailable(.compareSync) else {
             LicenseGateAlert.present(for: .compareSync, in: NSApp.keyWindow)
             return
         }

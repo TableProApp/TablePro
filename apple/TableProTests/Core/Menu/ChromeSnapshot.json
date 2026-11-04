@@ -368,6 +368,6 @@
     {"id": "mcp", "title": "MCP"},
     {"id": "plugins", "title": "Plugins"},
     {"id": "sync", "title": "Sync"},
-    {"id": "account", "title": "License"}
+    {"id": "account", "title": "Account"}
   ]
 }

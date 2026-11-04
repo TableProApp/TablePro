@@ -2,10 +2,10 @@ import SwiftUI
 import TableProSyncTransport
 
 struct WelcomeActionsPanel: View {
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var updates = UpdateCenter.shared
     @ObservedObject private var syncCoordinator = SyncCoordinator.shared
-    let onActivateLicense: () -> Void
+    let onSignIn: () -> Void
     let onNewConnection: () -> Void
     let onOpenFile: () -> Void
     let onImportFromURL: () -> Void
@@ -72,7 +72,7 @@ struct WelcomeActionsPanel: View {
             VStack(spacing: 4) {
                 licenseLine
                 syncLine
-                if licenseManager.supportAudience == .prospect {
+                if featureAccess.supportAudience == .prospect {
                     prospectLinks
                 }
             }
@@ -132,13 +132,13 @@ struct WelcomeActionsPanel: View {
         showsWhatsNew = WhatsNewNotice(bundle: .main, defaults: AppStorageEnvironment.shared.defaults).recordLaunch()
     }
 
+    // Only a state that needs the person: a working plan says nothing, and neither does a free account.
     @ViewBuilder
     private var licenseLine: some View {
         if let line = LicensePresentation.welcomeLine(
-            status: licenseManager.status,
-            daysUntilExpiry: licenseManager.daysUntilExpiry,
-            isExpired: licenseManager.license?.isExpired ?? false,
-            hasLicense: licenseManager.license != nil
+            state: featureAccess.state,
+            configuration: AccountServices.shared.configuration,
+            now: Date()
         ) {
             Button(line.title) {
                 perform(line.action)
@@ -149,11 +149,11 @@ struct WelcomeActionsPanel: View {
         }
     }
 
-    // A state without an action, and a check whose outcome needs room, open the License pane.
+    // A state without an action, and a check whose outcome needs room, open Settings > Account.
     private func perform(_ action: LicenseNoticeAction?) {
         switch action {
-        case .activate:
-            onActivateLicense()
+        case .signIn:
+            onSignIn()
         case .some(let action):
             action.perform(referrer: .welcome)
         case nil:

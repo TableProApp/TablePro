@@ -194,7 +194,7 @@ private struct SettingsPaneContent: View {
         case .sync:
             SyncSettingsView()
         case .account:
-            LicenseSettingsView()
+            AccountSettingsView(model: AccountSettingsModel(services: .shared))
         }
     }
 }

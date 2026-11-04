@@ -112,7 +112,7 @@ private extension AppServices {
             tagStorage: tagStorage,
             sshProfileStorage: sshProfileStorage,
             credentialProfileStorage: credentialProfileStorage,
-            licenseManager: licenseManager,
+            featureAccess: featureAccess,
             syncMetadataStorage: syncMetadataStorage,
             favoritesExpansionState: favoritesExpansionState,
             linkedFolderWatcher: linkedFolderWatcher,
@@ -121,7 +121,8 @@ private extension AppServices {
             copilotService: copilotService,
             mcpServerManager: mcpServerManager,
             syncTracker: syncTracker,
-            welcomeRouter: welcomeRouter
+            welcomeRouter: welcomeRouter,
+            telemetry: telemetry
         )
     }
 }

@@ -762,6 +762,9 @@
     "“%@” Changed on Disk" : {
 
     },
+    "“%@” changed since you last synced" : {
+
+    },
     "“%@” holds no file to import." : {
 
     },
@@ -2283,6 +2286,16 @@
         }
       }
     },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
     "%@ (%@@%@)" : {
       "localizations" : {
         "en" : {
@@ -3293,6 +3306,9 @@
         }
       }
     },
+    "%@ does not renew." : {
+
+    },
     "%@ does not report structure metadata that can be compared." : {
       "localizations" : {
         "fr" : {
@@ -3426,6 +3442,16 @@
     "%@ during the Bolt handshake. If the server requires TLS, turn on SSL." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "%@ ends on %@ and does not renew." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ ends on %2$@ and does not renew."
+          }
+        }
+      }
     },
     "%@ failed" : {
       "comment" : "Failure count, %@ is a count",
@@ -4524,6 +4550,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "%@ needs a paid plan" : {
+
+    },
     "%@ needs a row key." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -5484,6 +5513,12 @@
         }
       }
     },
+    "%@ TablePro publishes your changes once the team library answers again." : {
+
+    },
+    "%@ TablePro tries again shortly." : {
+
+    },
     "%@ tables could not be searched." : {
 
     },
@@ -6248,6 +6283,9 @@
           }
         }
       }
+    },
+    "%@…" : {
+
     },
     "%@/s" : {
       "localizations" : {
@@ -8831,6 +8869,12 @@
       }
     },
     "%d Columns Selected" : {
+
+    },
+    "%d Conflicts" : {
+
+    },
+    "%d conflicts left" : {
 
     },
     "%d connected" : {
@@ -13265,6 +13309,9 @@
     "1 character" : {
 
     },
+    "1 Conflict" : {
+
+    },
     "1 connection" : {
       "localizations" : {
         "fr" : {
@@ -16460,6 +16507,9 @@
       "generatesSymbol" : false
     },
     "A publish to the team library is still running. Try again when it finishes." : {
+
+    },
+    "A plan works on up to 3 devices at a time. Removing one signs TablePro out there." : {
 
     },
     "a query" : {
@@ -24856,6 +24906,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "An older version of TablePro saved this key on this Mac. It is deleted once it is used." : {
+
+    },
     "an open transaction" : {
 
     },
@@ -31640,6 +31693,9 @@
         }
       }
     },
+    "Billing…" : {
+
+    },
     "Binary content" : {
       "localizations" : {
         "fr" : {
@@ -33949,6 +34005,9 @@
         }
       }
     },
+    "Canceling" : {
+
+    },
     "Cancelled" : {
       "localizations" : {
         "fr" : {
@@ -36159,6 +36218,9 @@
         }
       }
     },
+    "Changed By" : {
+
+    },
     "Changed Files" : {
 
     },
@@ -37309,6 +37371,9 @@
         }
       }
     },
+    "Check the license key and try again." : {
+
+    },
     "Check the principal spelling and realm, for example user@REALM.COM with the realm in uppercase." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -37506,6 +37571,9 @@
         }
       }
     },
+    "Checking the license key" : {
+
+    },
     "Checking your credentials" : {
       "localizations" : {
         "fr" : {
@@ -37545,6 +37613,9 @@
           }
         }
       }
+    },
+    "Checking your plan" : {
+
     },
     "Checking…" : {
       "localizations" : {
@@ -37841,6 +37912,9 @@
     "Choose a database or bucket first." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Choose a Device…" : {
+
     },
     "Choose a folder containing .sql files" : {
       "localizations" : {
@@ -39151,6 +39225,9 @@
           }
         }
       }
+    },
+    "Choose which version the team library keeps" : {
+
     },
     "Choose your client and follow the steps to connect it to TablePro." : {
       "localizations" : {
@@ -50001,6 +50078,9 @@
         }
       }
     },
+    "Continue Without Account" : {
+
+    },
     "Control Background" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -51517,6 +51597,9 @@
       }
     },
     "Copy Link" : {
+
+    },
+    "Copy Machine ID" : {
 
     },
     "Copy Maximum" : {
@@ -53551,6 +53634,9 @@
         }
       }
     },
+    "Could not import the offline file" : {
+
+    },
     "Could not initialize SQL projection" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -53626,6 +53712,12 @@
       }
     },
     "Could Not Load Value" : {
+
+    },
+    "Could not load your devices." : {
+
+    },
+    "Could not load your teams." : {
 
     },
     "Could not make another value for (%@) that does not repeat. Widen its range or generate fewer rows." : {
@@ -54319,6 +54411,9 @@
         }
       }
     },
+    "Could not remove “%@”" : {
+
+    },
     "Could not remove %@." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -54566,6 +54661,9 @@
           }
         }
       }
+    },
+    "Could not use this license key." : {
+
     },
     "Could not write %@." : {
       "extractionState" : "stale",
@@ -60834,6 +60932,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Decide Later" : {
+
+    },
     "Decimal" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -63572,6 +63673,9 @@
         }
       }
     },
+    "Deleted from the team library" : {
+
+    },
     "Deleted Text" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -64638,6 +64742,9 @@
     "Device" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Device limit reached" : {
+
     },
     "Devices" : {
       "localizations" : {
@@ -72059,6 +72166,9 @@
         }
       }
     },
+    "Ends on %@" : {
+
+    },
     "ends with" : {
       "localizations" : {
         "fr" : {
@@ -74922,6 +75032,9 @@
         }
       }
     },
+    "Everyone on your team will see the host, port, user, database and SSH settings. Publishing again updates the team's copy. Passwords are not included." : {
+
+    },
     "Everyone on your team will see the host, port, user, database and SSH settings. This replaces the connections and saved queries you published before. Passwords are not included." : {
       "localizations" : {
         "fr" : {
@@ -76516,6 +76629,9 @@
           }
         }
       }
+    },
+    "Expired on %@" : {
+
     },
     "Expires" : {
       "localizations" : {
@@ -81274,6 +81390,9 @@
         }
       }
     },
+    "Features" : {
+
+    },
     "Fetch All" : {
       "localizations" : {
         "fr" : {
@@ -84657,6 +84776,9 @@
         }
       }
     },
+    "For a Mac that never reaches the internet, create an offline file for this machine ID in your account, then import it here." : {
+
+    },
     "For a metered path on Anthropic's commercial terms, add the Claude provider with an API key instead." : {
       "localizations" : {
         "fr" : {
@@ -85545,6 +85667,9 @@
         }
       }
     },
+    "Free" : {
+
+    },
     "FreeTDS could not set up the login." : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -85605,6 +85730,9 @@
           }
         }
       }
+    },
+    "From an offline file" : {
+
     },
     "FROM needs NEWEST, OLDEST, OFFSET, TIME, ANCHOR or TAIL." : {
       "extractionState" : "manual",
@@ -92525,6 +92653,9 @@
         }
       }
     },
+    "Import Offline File…" : {
+
+    },
     "Import rows into a table" : {
       "localizations" : {
         "fr" : {
@@ -97649,6 +97780,12 @@
         }
       }
     },
+    "It expired on %@. Create a new one in your account and import it." : {
+
+    },
+    "It expires on %@. Create a new one in your account and import it." : {
+
+    },
     "It stays on this Mac and never syncs, because it can name a command to run." : {
 
     },
@@ -98564,6 +98701,9 @@
         }
       }
     },
+    "Keep Mine" : {
+
+    },
     "Keep My Changes" : {
       "localizations" : {
         "fr" : {
@@ -98763,6 +98903,9 @@
           }
         }
       }
+    },
+    "Keep Theirs" : {
+
     },
     "Keep Theme" : {
 
@@ -100750,6 +100893,9 @@
         }
       }
     },
+    "Last seen %@" : {
+
+    },
     "Last Synced" : {
       "localizations" : {
         "fr" : {
@@ -101303,6 +101449,9 @@
           }
         }
       }
+    },
+    "Leaves the team's version as it is" : {
+
     },
     "Ledger" : {
       "extractionState" : "manual",
@@ -105357,6 +105506,9 @@
         }
       }
     },
+    "Loading devices" : {
+
+    },
     "Loading devices…" : {
       "localizations" : {
         "fr" : {
@@ -105579,6 +105731,9 @@
           }
         }
       }
+    },
+    "Loading teams" : {
+
     },
     "Loading users and roles…" : {
       "localizations" : {
@@ -106586,6 +106741,12 @@
         }
       }
     },
+    "Machine ID" : {
+
+    },
+    "macOS %@" : {
+
+    },
     "macOS blocks a library downloaded from the internet. If you trust it, run: xattr -d com.apple.quarantine %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -106883,6 +107044,9 @@
         }
       }
     },
+    "Manage %@" : {
+
+    },
     "Manage Account" : {
       "localizations" : {
         "fr" : {
@@ -106892,6 +107056,9 @@
           }
         }
       }
+    },
+    "Manage Account…" : {
+
     },
     "Manage Billing" : {
       "extractionState" : "stale",
@@ -107014,6 +107181,9 @@
         }
       }
     },
+    "Manage Devices…" : {
+
+    },
     "Manage Macs" : {
       "localizations" : {
         "fr" : {
@@ -107077,6 +107247,9 @@
           }
         }
       }
+    },
+    "Manage…" : {
+
     },
     "Manual" : {
       "localizations" : {
@@ -111218,6 +111391,9 @@
           }
         }
       }
+    },
+    "Monthly" : {
+
     },
     "Moon" : {
       "extractionState" : "manual",
@@ -118063,6 +118239,9 @@
         }
       }
     },
+    "No longer in the team library" : {
+
+    },
     "No matches" : {
       "localizations" : {
         "fr" : {
@@ -120335,6 +120514,9 @@
       }
     },
     "No searched column holds this value." : {
+
+    },
+    "No seat" : {
 
     },
     "No selection" : {
@@ -123061,6 +123243,9 @@
         }
       }
     },
+    "Not published yet" : {
+
+    },
     "Not readable" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -123544,6 +123729,9 @@
       }
     },
     "Not validated" : {
+
+    },
+    "Not verified yet" : {
 
     },
     "Not visible" : {
@@ -125596,6 +125784,15 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Offline file expired on %@" : {
+
+    },
+    "Offline file until %@" : {
+
+    },
+    "Offline file, valid until %@" : {
+
+    },
     "Offset" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -126833,6 +127030,9 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "Only the team's owner and admins publish to its library." : {
+
+    },
     "Only use the bootstrap address" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -127297,6 +127497,9 @@
           }
         }
       }
+    },
+    "Open Account Settings…" : {
+
     },
     "Open AI settings to change the tool call limit." : {
       "localizations" : {
@@ -131260,6 +131463,12 @@
         }
       }
     },
+    "Paid plan" : {
+
+    },
+    "Paid plans add the features below." : {
+
+    },
     "Paintbrush" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -133259,6 +133468,9 @@
     "Payload" : {
 
     },
+    "Payment problem" : {
+
+    },
     "Pending approval for" : {
       "localizations" : {
         "fr" : {
@@ -133735,6 +133947,9 @@
     "Person" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "Personal" : {
+
     },
     "Phone" : {
       "extractionState" : "manual",
@@ -139383,6 +139598,9 @@
         }
       }
     },
+    "Publish %d Connections to Team Library" : {
+
+    },
     "Publish %d Connections to Team Library…" : {
       "localizations" : {
         "fr" : {
@@ -139472,6 +139690,9 @@
           }
         }
       }
+    },
+    "Publish Saved Queries to Team" : {
+
     },
     "Publish Saved Queries to Team…" : {
       "comment" : "Text for a menu item that publishes saved queries to the user's team.",
@@ -139594,6 +139815,9 @@
           }
         }
       }
+    },
+    "Publish to Team Library" : {
+
     },
     "Publish to Team Library…" : {
       "localizations" : {
@@ -147585,6 +147809,12 @@
         }
       }
     },
+    "Remove one in Settings to use your plan on this Mac." : {
+
+    },
+    "Remove one to use your plan on this Mac. Until then, TablePro works on the Free plan here." : {
+
+    },
     "Remove Provider" : {
       "localizations" : {
         "fr" : {
@@ -147880,6 +148110,12 @@
           }
         }
       }
+    },
+    "Removed from the team library" : {
+
+    },
+    "Removing" : {
+
     },
     "Rename" : {
       "localizations" : {
@@ -148408,6 +148644,9 @@
         }
       }
     },
+    "Renews on %@" : {
+
+    },
     "Reopen Closed Tab" : {
       "localizations" : {
         "fr" : {
@@ -148793,6 +149032,9 @@
           }
         }
       }
+    },
+    "Replaces the team's version with yours" : {
+
     },
     "Replacing the whole database is not offered. Write its children one at a time." : {
       "extractionState" : "manual",
@@ -149857,6 +150099,9 @@
       }
     },
     "Resident Memory" : {
+
+    },
+    "Resolve Team Library Conflicts…" : {
 
     },
     "Resolve the conflict in a Git client before committing this file." : {
@@ -157602,6 +157847,9 @@
         }
       }
     },
+    "Saving your choice" : {
+
+    },
     "Scale" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -160154,6 +160402,9 @@
         }
       }
     },
+    "Seat" : {
+
+    },
     "Seats on a team license are managed on tablepro.app." : {
       "localizations" : {
         "fr" : {
@@ -162182,6 +162433,9 @@
           }
         }
       }
+    },
+    "Sent to PostHog: app and macOS versions, Mac model, screen size, architecture, language, time zone, database types, connection count, first connection and query, plan prompts, sign-in and sign-out, and your account ID once you sign in. Never hostnames, credentials, queries, or rows." : {
+
     },
     "Sent: %@" : {
       "localizations" : {
@@ -167614,6 +167868,9 @@
         }
       }
     },
+    "Sign in again to sync the team library." : {
+
+    },
     "Sign in to Google with your browser?" : {
       "localizations" : {
         "fr" : {
@@ -167757,6 +168014,9 @@
           }
         }
       }
+    },
+    "Sign in to TablePro" : {
+
     },
     "Sign in to use your ChatGPT subscription" : {
       "localizations" : {
@@ -168409,6 +168669,12 @@
     "Signing in with credentials from this Mac was not approved." : {
 
     },
+    "Signing in" : {
+
+    },
+    "Signing in by email? Type the 6-digit code from the email in the sign-in sheet. The link in the email opens your browser instead." : {
+
+    },
     "Signing in…" : {
       "localizations" : {
         "fr" : {
@@ -168448,6 +168714,9 @@
           }
         }
       }
+    },
+    "Signing out" : {
+
     },
     "Signing the service account token failed." : {
       "extractionState" : "manual",
@@ -170003,6 +170272,9 @@
           }
         }
       }
+    },
+    "Someone in %@ changed this item after TablePro last downloaded the team library. Choose the version the team library keeps." : {
+
     },
     "Something went wrong (error %d). Try again in a moment." : {
       "localizations" : {
@@ -177957,6 +178229,12 @@
         }
       }
     },
+    "Syncing the team library" : {
+
+    },
+    "Syncing the team library…" : {
+
+    },
     "Syncing with iCloud…" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -180628,6 +180906,9 @@
         }
       }
     },
+    "TablePro could not verify your license with the server. Connect to the internet, then check again." : {
+
+    },
     "TablePro could not write the CA bundle DuckDB reads: %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -180680,6 +180961,9 @@
       }
     },
     "TablePro couldn't reach the plugin registry to update this plugin. Check your connection and try again." : {
+
+    },
+    "TablePro couldn't reach the team library." : {
 
     },
     "TablePro Data Was Removed from iCloud" : {
@@ -181056,6 +181340,9 @@
         }
       }
     },
+    "TablePro has not reached the server for a while. Connect to the internet before %@ to keep your paid features." : {
+
+    },
     "TablePro includes these open source libraries. Pick one to read its license." : {
       "localizations" : {
         "fr" : {
@@ -181228,6 +181515,12 @@
       "extractionState" : "manual",
       "generatesSymbol" : false
     },
+    "TablePro on that device signs out the next time it checks your account, and this Mac takes its place." : {
+
+    },
+    "TablePro on that device signs out the next time it checks your account. Its paid features keep working until its last check expires." : {
+
+    },
     "TablePro only notifies when the result is not already on screen." : {
       "localizations" : {
         "fr" : {
@@ -181341,6 +181634,12 @@
     "TablePro signs RSA keys with rsa-sha2-256 or rsa-sha2-512, not with ssh-rsa, which uses SHA-1." : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "TablePro signs this Mac in to the account the key belongs to. Keys from older versions of TablePro work here." : {
+
+    },
+    "TablePro signs you in with your license key the next time it reaches the server." : {
+
     },
     "TablePro supports Oracle Database 11.1 and later. This server reports an older release (10g or earlier)." : {
       "extractionState" : "manual",
@@ -182772,6 +183071,15 @@
           }
         }
       }
+    },
+    "Team library updated %@" : {
+
+    },
+    "Team's Version" : {
+
+    },
+    "Teams" : {
+
     },
     "Template" : {
       "extractionState" : "stale",
@@ -188664,6 +188972,22 @@
         }
       }
     },
+    "The last check expired on %@. Connect to the internet and refresh." : {
+
+    },
+    "The last payment for %@ (%@) failed. The team's owner can update the payment method." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The last payment for %1$@ (%2$@) failed. The team's owner can update the payment method."
+          }
+        }
+      }
+    },
+    "The last payment for %@ failed. Update your payment method to keep your plan." : {
+
+    },
     "The left result stopped at the row cap and is compared on the %@ rows it holds. A row past the cap can show as only on the right." : {
 
     },
@@ -192057,6 +192381,9 @@
         }
       }
     },
+    "The server is busy. Try again in a few minutes." : {
+
+    },
     "The server is rate limiting TablePro. Try again shortly." : {
       "localizations" : {
         "fr" : {
@@ -194251,6 +194578,21 @@
       }
     },
     "The text at byte %lld is not valid UTF-8." : {
+
+    },
+    "The team library asked TablePro to download it again." : {
+
+    },
+    "The team library had a problem on its side." : {
+
+    },
+    "The team library is busy right now." : {
+
+    },
+    "The team library refused “%@”. It may be too large or hold a field the library never stores." : {
+
+    },
+    "The team library refused the change. It may be too large or hold a field the library never stores." : {
 
     },
     "The text could not be parsed as JSON." : {
@@ -197570,6 +197912,12 @@
         }
       }
     },
+    "This device has a valid offline file, so it keeps its license slot until the file expires." : {
+
+    },
+    "This device was already removed." : {
+
+    },
     "This diagram is not bound to a database" : {
       "localizations" : {
         "fr" : {
@@ -198401,6 +198749,9 @@
       }
     },
     "This file is not a socket." : {
+
+    },
+    "This file is not a TablePro offline file, or it is damaged." : {
 
     },
     "This file is not a TablePro theme or a VS Code color theme." : {
@@ -199466,6 +199817,9 @@
         }
       }
     },
+    "This license key is not valid, or its license was revoked." : {
+
+    },
     "This license was activated on a different Mac. Activate it here to use paid features." : {
       "localizations" : {
         "fr" : {
@@ -199861,6 +200215,15 @@
     "This Memcached server requires a username and password" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
+    },
+    "This offline file has expired. Create a new one in your account." : {
+
+    },
+    "This offline file is not valid yet. Check this Mac's date and time." : {
+
+    },
+    "This offline file was made for another machine. Create one for this Mac's machine ID." : {
+
     },
     "This operation is not supported" : {
       "localizations" : {
@@ -200421,6 +200784,9 @@
           }
         }
       }
+    },
+    "This replaces %@ on this Mac." : {
+
     },
     "This replaces the original statement in the editor with the AI-generated SQL. If the statement has changed since, the SQL opens in a new query instead. Nothing runs until you execute it." : {
       "localizations" : {
@@ -208947,6 +209313,9 @@
         }
       }
     },
+    "Update Payment Method…" : {
+
+    },
     "Update Required" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -209479,6 +209848,9 @@
         }
       }
     },
+    "Upgrade…" : {
+
+    },
     "Upload Again" : {
       "extractionState" : "manual",
       "generatesSymbol" : false
@@ -209886,6 +210258,9 @@
         }
       }
     },
+    "Use a license key" : {
+
+    },
     "Use as Active %@" : {
       "localizations" : {
         "fr" : {
@@ -210154,6 +210529,12 @@
           }
         }
       }
+    },
+    "Use Key" : {
+
+    },
+    "Use License Key…" : {
+
     },
     "Use Required for Amazon Keyspaces and other hosted Cassandra deployments." : {
       "localizations" : {
@@ -212399,6 +212780,16 @@
         }
       }
     },
+    "Verified %@, valid until %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Verified %1$@, valid until %2$@"
+          }
+        }
+      }
+    },
     "Verify CA" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -212636,6 +213027,9 @@
           }
         }
       }
+    },
+    "Verify your plan soon" : {
+
     },
     "Verify:" : {
       "localizations" : {
@@ -217142,6 +217536,9 @@
         }
       }
     },
+    "Yearly" : {
+
+    },
     "Yellow" : {
       "localizations" : {
         "fr" : {
@@ -217423,6 +217820,15 @@
         }
       }
     },
+    "You were signed out. Sign in again." : {
+
+    },
+    "You're on Free" : {
+
+    },
+    "You're signed in" : {
+
+    },
     "Your account is not allowed to read the source of %@" : {
       "extractionState" : "manual",
       "generatesSymbol" : false,
@@ -217434,6 +217840,15 @@
           }
         }
       }
+    },
+    "Your account no longer has a seat in this team's library." : {
+
+    },
+    "Your account unlocks the features your plan includes on this Mac. Everything else works without an account." : {
+
+    },
+    "Your account unlocks the features your plan includes, on up to 3 devices. Everything else works without an account." : {
+
     },
     "Your API key is sent unencrypted over http to this host." : {
       "localizations" : {
@@ -217713,6 +218128,12 @@
         }
       }
     },
+    "Your offline file expires soon" : {
+
+    },
+    "Your offline file has expired" : {
+
+    },
     "Your organization requires Safe Mode to be at least %@ on every connection." : {
       "localizations" : {
         "fr" : {
@@ -217722,6 +218143,18 @@
           }
         }
       }
+    },
+    "Your plan could not be verified" : {
+
+    },
+    "Your plan is canceling" : {
+
+    },
+    "Your plan is in use on 3 other devices" : {
+
+    },
+    "Your plan is in use on 3 other devices. Remove one to use it on this Mac. Until then, TablePro works on the Free plan here." : {
+
     },
     "Your prompts, schema, and query text reach Anthropic under your consumer plan and its privacy settings, not the API's commercial terms." : {
       "localizations" : {
@@ -217803,6 +218236,9 @@
         }
       }
     },
+    "your team" : {
+
+    },
     "Your team can now see %d shared connections. Passwords were not included." : {
       "localizations" : {
         "fr" : {
@@ -217843,6 +218279,9 @@
         }
       }
     },
+    "Your team will see the names and SQL of %d saved queries. Queries you published from this Mac and deleted since are removed from the team library." : {
+
+    },
     "Your team will see the names and SQL of %d saved queries. This replaces what you previously published." : {
       "localizations" : {
         "fr" : {
@@ -217882,6 +218321,9 @@
           }
         }
       }
+    },
+    "Your Version" : {
+
     },
     "Zoom" : {
       "localizations" : {

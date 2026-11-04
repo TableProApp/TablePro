@@ -8,10 +8,10 @@ import SwiftUI
 struct ProFeatureGateModifier: ViewModifier {
     let feature: ProFeature
 
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
 
     func body(content: Content) -> some View {
-        let notice = LicensePresentation.gate(for: feature, access: licenseManager.checkFeature(feature))
+        let notice = LicensePresentation.gate(for: feature, state: featureAccess.state, now: Date())
 
         content
             .disabled(notice != nil)
@@ -48,6 +48,11 @@ struct ProFeatureGateModifier: ViewModifier {
                         .buttonStyle(.borderedProminent)
                 }
 
+                if let alternative = notice.alternative {
+                    LicenseNoticeActionButton(action: alternative, referrer: .featureGate(feature))
+                        .font(.subheadline)
+                }
+
                 if notice.action == .retryValidation {
                     LicenseCheckFailureLine()
                 }
@@ -57,6 +62,7 @@ struct ProFeatureGateModifier: ViewModifier {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("pro-feature-gate-\(feature.rawValue)")
         }
+        .onAppear { Telemetry.shared.featureGateShown(feature, access: featureAccess.check(feature)) }
     }
 }
 

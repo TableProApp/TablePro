@@ -29,6 +29,7 @@ internal enum PostLaunchWork {
 
         Task { await PluginManager.shared.sweepPluginSignatures() }
         Task { await QueryHistoryManager.shared.performStartupCleanup() }
+        SignInPrompt.live.presentIfNeeded()
 
         guard !AppStorageEnvironment.shared.isIsolated else { return }
 

@@ -59,7 +59,7 @@ paths:
   - "apple/TablePro/Models/Highlight/HighlightRule.swift"
   - "apple/TablePro/Models/ServerDashboard/DashboardTile.swift"
   - "apple/TablePro/Models/Sidebar/TableFolder.swift"
-  - "apple/TablePro/Models/TeamLibrary/TeamLibraryModels.swift"
+  - "apple/TablePro/Core/Services/TeamLibrary/TeamLibraryItem.swift"
   - "apple/TablePro/Models/Workspace/WorkspaceID.swift"
   - "apple/TablePro/Core/AI/Chat/ChatTurn.swift"
   - "apple/TablePro/Core/AI/ChatGPTCodex/ChatGPTCodexModels.swift"
@@ -79,14 +79,15 @@ paths:
   - "apple/TablePro/Core/SSH/HostKeyStore.swift"
   - "apple/TablePro/Core/Services/Export/ImportColumnMatcher.swift"
   - "apple/TablePro/Core/Services/Formatting/ValueDisplayFormat.swift"
-  - "apple/TablePro/Core/Services/TeamLibrary/TeamLibraryStore.swift"
+  - "apple/TablePro/Core/Services/TeamLibrary/TeamLibraryState.swift"
+  - "apple/TablePro/Core/Services/Account/*Store.swift"
   - "apple/TablePro/Core/VersionHistory/VersionHistoryModels.swift"
   - "apple/TablePro/Core/UsersRoles/PrivilegeExpansionStore.swift"
   - "apple/TablePro/Core/Cloudflare/CloudflareTunnelManager.swift"
   - "apple/TablePro/Core/TunnelCommand/TunnelCommandManager.swift"
   - "apple/TablePro/Core/CloudSQL/CloudSQLProxyManager.swift"
   - "apple/TablePro/Core/Services/Infrastructure/MainWindowToolbar.swift"
-  - "apple/TablePro/Core/Services/Infrastructure/MacAnalyticsProvider.swift"
+  - "apple/TablePro/Core/Services/Telemetry/Telemetry.swift"
   - "apple/TablePro/Core/Services/Infrastructure/UpdateChannel.swift"
   - "apple/TablePro/Core/Services/Infrastructure/SparkleUpdatePreferences.swift"
   - "apple/TablePro/Core/Services/Infrastructure/SampleDatabaseService.swift"
@@ -165,6 +166,7 @@ This path holds user data. A silent wrong answer here looks exactly like an empt
 | Generate Rows settings per table | UserDefaults, device-local | `RowGenerationSettingsStore` |
 | Row inspector field heights, per column name | UserDefaults, device-local | `InspectorFieldHeightStore` |
 | Favorite tables (iCloud-synced) | UserDefaults | `FavoriteTablesStorage` |
+| Team library, per team: pull cursor, items, unpushed edits, conflicts (synced with tablepro-cloud's `/v2`, never iCloud) | JSON, one file per team | `TeamLibraryStateStore` through `TeamLibrarySync` |
 | Sidebar database and schema filters, recent tables | UserDefaults, device-local | `DatabaseTreeFilterStorage`, `RecentTablesStore` |
 | History drawer state | UserDefaults, device-local | `HistoryPanelPreferencesStorage` |
 | Server Dashboard tiles, per connection | UserDefaults, device-local | `ServerDashboardTileStorage` |

@@ -75,7 +75,7 @@ struct ConnectionStorageImportTests {
             tagStorage: live.tagStorage,
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
-            licenseManager: live.licenseManager,
+            featureAccess: live.featureAccess,
             syncMetadataStorage: metadata,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
@@ -84,7 +84,8 @@ struct ConnectionStorageImportTests {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: SyncChangeTracker(metadataStorage: metadata),
-            welcomeRouter: live.welcomeRouter
+            welcomeRouter: live.welcomeRouter,
+            telemetry: live.telemetry
         )
     }
 

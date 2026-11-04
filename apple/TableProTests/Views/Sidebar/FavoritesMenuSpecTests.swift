@@ -13,16 +13,21 @@ struct FavoritesMenuSpecTests {
     private func context(
         clicked: FavoritesOutlineNode.Kind?,
         allFolders: [SQLFavoriteFolder] = [],
-        teamLibraryAvailable: Bool = false,
+        teamLibraryTeams: [TeamLibraryTeam] = [],
+        hasTeamLibraryConflicts: Bool = false,
         activeDatabase: String? = "shop"
     ) -> FavoritesMenuContext {
         FavoritesMenuContext(
             clicked: clicked,
             allFolders: allFolders,
-            teamLibraryAvailable: teamLibraryAvailable,
+            teamLibraryTeams: teamLibraryTeams,
+            hasTeamLibraryConflicts: hasTeamLibraryConflicts,
             activeDatabase: activeDatabase
         )
     }
+
+    private static let acme = TeamLibraryTeam(id: "team_acme", name: "Acme")
+    private static let globex = TeamLibraryTeam(id: "team_globex", name: "Globex")
 
     private func commands(_ sections: [FavoritesMenuSection]) -> [FavoritesMenuCommand] {
         commands(sections.flatMap(\.items))
@@ -97,7 +102,7 @@ struct FavoritesMenuSpecTests {
             .databaseEnvironment(FavoriteDatabaseGroup(environment: .development, entries: [database()])),
             .database(database()),
             .table(table()),
-            .teamQuery(id: "1", name: "Shared", publishedBy: "Sam"),
+            .teamQuery(id: "1", name: "Shared", detail: "Sam"),
             .query(.favorite(favorite())),
             .query(.folder(folder, children: [])),
             .query(.linkedFolder(linked, children: [])),
@@ -182,10 +187,10 @@ struct FavoritesMenuSpecTests {
     @Test("The add button's list is the empty area's first two groups, without Publish")
     func addButtonMatchesTheEmptyArea() {
         let creation = FavoritesMenuSpec.creationSections()
-        for teamLibraryAvailable in [false, true] {
+        for teams in [[], [Self.acme]] {
             let background = FavoritesMenuSpec.sections(for: context(
                 clicked: nil,
-                teamLibraryAvailable: teamLibraryAvailable
+                teamLibraryTeams: teams
             ))
             #expect(Array(background.prefix(2)) == creation)
         }
@@ -197,16 +202,32 @@ struct FavoritesMenuSpecTests {
             .newFolder(parentId: nil),
             .addLinkedFolder
         ])
-        #expect(!commands(creation).contains(.publishSavedQueriesToTeam))
+        #expect(!commands(creation).contains(.publishSavedQueriesToTeam(teamID: Self.acme.id)))
     }
 
-    @Test("Publishing to the team appears only when the licence allows it")
+    @Test("Publishing to the team appears only for a team this account writes to, one item per team")
     func teamPublishIsGated() {
-        let with = commands(FavoritesMenuSpec.sections(for: context(clicked: nil, teamLibraryAvailable: true)))
-        let without = commands(FavoritesMenuSpec.sections(for: context(clicked: nil, teamLibraryAvailable: false)))
+        let one = commands(FavoritesMenuSpec.sections(for: context(clicked: nil, teamLibraryTeams: [Self.acme])))
+        let two = commands(FavoritesMenuSpec.sections(for: context(clicked: nil, teamLibraryTeams: [Self.acme, Self.globex])))
+        let none = commands(FavoritesMenuSpec.sections(for: context(clicked: nil)))
 
-        #expect(with.contains(.publishSavedQueriesToTeam))
-        #expect(!without.contains(.publishSavedQueriesToTeam))
+        #expect(one.filter { if case .publishSavedQueriesToTeam = $0 { true } else { false } } == [
+            .publishSavedQueriesToTeam(teamID: Self.acme.id)
+        ])
+        #expect(two.filter { if case .publishSavedQueriesToTeam = $0 { true } else { false } } == [
+            .publishSavedQueriesToTeam(teamID: Self.acme.id),
+            .publishSavedQueriesToTeam(teamID: Self.globex.id)
+        ])
+        #expect(!none.contains { if case .publishSavedQueriesToTeam = $0 { true } else { false } })
+    }
+
+    @Test("Open conflicts add Resolve Team Library Conflicts to the empty area's menu")
+    func conflictsOfferResolve() {
+        let with = commands(FavoritesMenuSpec.sections(for: context(clicked: nil, hasTeamLibraryConflicts: true)))
+        let without = commands(FavoritesMenuSpec.sections(for: context(clicked: nil)))
+
+        #expect(with.contains(.resolveTeamLibraryConflicts))
+        #expect(!without.contains(.resolveTeamLibraryConflicts))
     }
 
     @Test("A database favorite can switch, change environment, or be removed")

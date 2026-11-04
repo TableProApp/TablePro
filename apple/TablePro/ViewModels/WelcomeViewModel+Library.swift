@@ -408,8 +408,9 @@ extension WelcomeViewModel {
             disconnectableConnectionIds: disconnectable,
             reconnectableConnectionIds: reconnectable,
             isSyncEnabled: services.appSettings.sync.enabled,
-            canPublishToTeamCatalog: services.licenseManager.isFeatureAvailable(.teamCatalog),
-            canPublishToTeamLibrary: services.licenseManager.isFeatureAvailable(.teamLibrary)
+            canPublishToTeamCatalog: services.featureAccess.isAvailable(.teamCatalog),
+            teamLibraryTeams: services.featureAccess.isAvailable(.teamLibrary) ? TeamLibrarySync.shared.writableTeams : [],
+            hasTeamLibraryConflicts: !TeamLibrarySync.shared.conflicts.isEmpty
         )
     }
 
@@ -450,8 +451,10 @@ extension WelcomeViewModel {
             exportConnections(ids.compactMap { connectionsById[$0] })
         case .publishToTeamCatalog(let ids):
             publishToTeamCatalog(ids.compactMap { connectionsById[$0] })
-        case .publishToTeamLibrary(let ids):
-            publishConnectionsToTeamLibrary(ids.compactMap { connectionsById[$0] })
+        case .publishToTeamLibrary(let ids, let teamID):
+            publishConnectionsToTeamLibrary(ids.compactMap { connectionsById[$0] }, teamID: teamID)
+        case .resolveTeamLibraryConflicts:
+            presentTeamLibraryConflicts()
         case .moveToGroup(let ids, let groupId):
             moveConnections(ids, toGroup: groupId, before: nil, undoManager: undoManager)
         case .moveToNewGroup(let ids):

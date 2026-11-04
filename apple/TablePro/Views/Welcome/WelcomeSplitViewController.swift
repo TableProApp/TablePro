@@ -56,7 +56,7 @@ internal struct WelcomeSidebarPane: View {
 
     var body: some View {
         WelcomeActionsPanel(
-            onActivateLicense: { viewModel.activeSheet = .activation },
+            onSignIn: { SignInWindowController.present() },
             onNewConnection: { WindowOpener.shared.openConnectionForm() },
             onOpenFile: { NSApp.sendAction(#selector(AppDelegate.openFile(_:)), to: nil, from: nil) },
             onImportFromURL: { viewModel.urlImportPresented = true },

@@ -4,8 +4,8 @@ import TableProPluginKit
 import TableProUtilities
 
 internal struct FavoritesTabView: View {
-    @ObservedObject private var teamLibrarySync = TeamLibrarySyncCoordinator.shared
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var teamLibrarySync = TeamLibrarySync.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var settingsManager = AppSettingsManager.shared
     @ObservedObject private var gitStatusStore = LinkedFolderGitStatusStore.shared
     @ObservedObject private var gitActions = LinkedFolderGitActions.shared
@@ -25,6 +25,7 @@ internal struct FavoritesTabView: View {
     @State private var showRemoveLinkedFolderAlert = false
     @State private var commitTarget: LinkedFolderCommitTarget?
     @State private var tableOpenTask: Task<Void, Never>?
+    @State private var showsTeamLibraryConflicts = false
     let connectionId: UUID
     let databaseType: DatabaseType
     @ObservedObject private var sharedSidebarState: SharedSidebarState
@@ -190,6 +191,9 @@ internal struct FavoritesTabView: View {
         .sheet(item: $commitTarget) { target in
             LinkedFolderCommitSheet(target: target)
         }
+        .sheet(isPresented: $showsTeamLibraryConflicts) {
+            TeamLibraryConflictSheet(sync: teamLibrarySync)
+        }
         .sheet(item: $linkedMetadataTarget) { file in
             LinkedFavoriteMetadataDialog(
                 favorite: file,
@@ -251,12 +255,12 @@ internal struct FavoritesTabView: View {
     /// Every team query this license can see, before the filter field has had a word to say about
     /// it. The empty state asks whether the user owns anything, and the filtered list cannot answer
     /// that question.
-    private var allTeamLibraryQueries: [TeamLibraryPullResponse.Query] {
-        guard licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
-        return teamLibrarySync.library.queries
+    private var allTeamLibraryQueries: [TeamLibraryQuery] {
+        guard featureAccess.isAvailable(.teamLibrary) else { return [] }
+        return teamLibrarySync.content.queries
     }
 
-    private var teamLibraryQueries: [TeamLibraryPullResponse.Query] {
+    private var teamLibraryQueries: [TeamLibraryQuery] {
         let all = allTeamLibraryQueries
         guard !searchText.isEmpty else { return all }
         return all.filter {
@@ -264,7 +268,7 @@ internal struct FavoritesTabView: View {
         }
     }
 
-    private func teamFavorite(from query: TeamLibraryPullResponse.Query) -> SQLFavorite {
+    private func teamFavorite(from query: TeamLibraryQuery) -> SQLFavorite {
         SQLFavorite(
             id: UUID(),
             name: query.name,
@@ -278,7 +282,7 @@ internal struct FavoritesTabView: View {
         )
     }
 
-    private func publishSavedQueriesToTeam() {
+    private func publishSavedQueriesToTeam(teamID: String) {
         Task { @MainActor in
             let favorites = await SQLFavoriteManager.shared.fetchFavorites()
             let folders = await SQLFavoriteManager.shared.fetchFolders()
@@ -287,23 +291,29 @@ internal struct FavoritesTabView: View {
                 return
             }
             guard await confirmPublishSavedQueries(count: favorites.count) else { return }
-            do {
-                try await TeamLibrarySyncCoordinator.shared.publish(connections: [], favorites: favorites, folders: folders)
+            let outcome: TeamLibraryPublishOutcome
+            do throws(TeamLibraryPublishError) {
+                outcome = .finished(try await teamLibrarySync.publishSavedQueries(
+                    favorites: favorites,
+                    folders: folders,
+                    to: teamID
+                ))
             } catch {
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Couldn't publish to the team library"),
-                    message: error.localizedDescription,
-                    window: nil
-                )
+                outcome = .failed(error)
+            }
+            TeamLibraryPublishing.present(outcome) {
+                showsTeamLibraryConflicts = true
             }
         }
     }
 
     private func confirmPublishSavedQueries(count: Int) async -> Bool {
-        await AlertHelper.confirmDestructive(
+        await AlertHelper.confirm(
             title: String(localized: "Publish saved queries to your team?"),
             message: String(
-                format: String(localized: "Your team will see the names and SQL of %d saved queries. This replaces what you previously published."),
+                format: String(
+                    localized: "Your team will see the names and SQL of %d saved queries. Queries you published from this Mac and deleted since are removed from the team library."
+                ),
                 count
             ),
             confirmButton: String(localized: "Publish"),
@@ -339,12 +349,11 @@ internal struct FavoritesTabView: View {
                     || sharedSidebarState.favoriteDatabaseEnvironmentFilter != .all,
                 tables: filteredTables,
                 queryNodes: items,
-                teamQueries: teamLibraryQueries.map {
-                    FavoritesOutlineTeamQuery(id: $0.id, name: $0.name, publishedBy: $0.publishedBy)
-                },
+                teamQueries: teamLibraryQueries.map(FavoritesOutlineTeamQuery.init),
                 renamingFolderId: viewModel.renamingFolderId,
                 allFolders: viewModel.nodes.collectFolders(),
-                teamLibraryAvailable: licenseManager.isFeatureAvailable(.teamLibrary),
+                teamLibraryTeams: featureAccess.isAvailable(.teamLibrary) ? teamLibrarySync.writableTeams : [],
+                hasTeamLibraryConflicts: !teamLibrarySync.conflicts.isEmpty,
                 linkedFileGitStates: gitStatusStore.states(for: Self.linkedFavorites(in: items)),
                 linkedFolderGitStates: linkedFolderGitStates
             ),
@@ -387,6 +396,10 @@ internal struct FavoritesTabView: View {
     @ViewBuilder
     private func rowContent(_ node: FavoritesOutlineNode) -> some View {
         switch node.kind {
+        case .header(let title) where node.id == FavoritesOutlineNode.teamHeaderId:
+            TeamLibraryHeader(title: title, font: .caption.weight(.semibold)) {
+                showsTeamLibraryConflicts = true
+            }
         case .header(let title):
             Text(title)
                 .font(.caption.weight(.semibold))
@@ -399,8 +412,8 @@ internal struct FavoritesTabView: View {
             favoriteTableRow(row)
         case .query(let favoriteNode):
             favoriteQueryRow(favoriteNode)
-        case .teamQuery(_, let name, let publishedBy):
-            teamQueryRow(name: name, publishedBy: publishedBy)
+        case .teamQuery(_, let name, let detail):
+            teamQueryRow(name: name, detail: detail)
         }
     }
 
@@ -463,13 +476,13 @@ internal struct FavoritesTabView: View {
 
     /// One line, not two. The outline draws a uniform 24pt row, and the stacked publisher caption
     /// the SwiftUI list used would be clipped.
-    private func teamQueryRow(name: String, publishedBy: String?) -> some View {
+    private func teamQueryRow(name: String, detail: String?) -> some View {
         Label {
             HStack(spacing: 6) {
                 Text(name)
                     .lineLimit(1)
-                if let publishedBy {
-                    Text(publishedBy)
+                if let detail {
+                    Text(detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -554,7 +567,7 @@ internal struct FavoritesTabView: View {
                 break
             }
         case .teamQuery(let id, _, _):
-            guard let query = teamLibrarySync.library.queries.first(where: { $0.id == id })
+            guard let query = teamLibrarySync.content.queries.first(where: { $0.id == id })
             else { return }
             coordinator?.runFavoriteInNewTab(teamFavorite(from: query))
         }
@@ -681,8 +694,10 @@ internal struct FavoritesTabView: View {
             showDeleteFolderAlert = true
         case .newQuery:
             coordinator?.commandActions?.newTab()
-        case .publishSavedQueriesToTeam:
-            publishSavedQueriesToTeam()
+        case .publishSavedQueriesToTeam(let teamID):
+            publishSavedQueriesToTeam(teamID: teamID)
+        case .resolveTeamLibraryConflicts:
+            showsTeamLibraryConflicts = true
         }
     }
 

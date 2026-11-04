@@ -2,8 +2,6 @@
 //  LicenseTests.swift
 //  TablePro
 //
-//  Tests for License models and related types
-//
 
 import Foundation
 @testable import TablePro
@@ -46,132 +44,6 @@ struct LicenseTests {
         )
     }
 
-    private static func isoString(daysAgo: Int) throws -> String {
-        let date = try #require(Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date()))
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.string(from: date)
-    }
-
-    // MARK: - LicenseStatus.isValid Tests
-
-    @Test("LicenseStatus.isValid returns true for active status")
-    func licenseStatusActiveIsValid() {
-        #expect(LicenseStatus.active.isValid == true)
-    }
-
-    @Test("LicenseStatus.isValid returns false for unlicensed status")
-    func licenseStatusUnlicensedIsNotValid() {
-        #expect(LicenseStatus.unlicensed.isValid == false)
-    }
-
-    @Test("LicenseStatus.isValid returns false for non-active statuses")
-    func licenseStatusNonActiveIsNotValid() {
-        #expect(LicenseStatus.expired.isValid == false)
-        #expect(LicenseStatus.suspended.isValid == false)
-        #expect(LicenseStatus.deactivated.isValid == false)
-        #expect(LicenseStatus.validationFailed.isValid == false)
-    }
-
-    // MARK: - License.isExpired Tests
-
-    @Test("isExpired returns false when the signed payload has no expiry")
-    func isExpiredNilExpiresAt() {
-        #expect(Self.license(Self.payload()).isExpired == false)
-    }
-
-    @Test("isExpired returns false when the signed expiry is in the future")
-    func isExpiredFutureDate() throws {
-        let license = Self.license(Self.payload(expiresAt: try Self.isoString(daysAgo: -30)))
-        #expect(license.isExpired == false)
-    }
-
-    @Test("isExpired returns true when the signed expiry is in the past")
-    func isExpiredPastDate() throws {
-        let license = Self.license(Self.payload(expiresAt: try Self.isoString(daysAgo: 30)))
-        #expect(license.isExpired == true)
-    }
-
-    // MARK: - License.daysSinceLastValidation Tests
-
-    @Test("daysSinceLastValidation returns 0 when the payload was issued today")
-    func daysSinceLastValidationToday() throws {
-        let license = Self.license(Self.payload(issuedAt: try Self.isoString(daysAgo: 0)))
-        #expect(license.daysSinceLastValidation == 0)
-    }
-
-    @Test("daysSinceLastValidation counts from the signed issue date, not from local state")
-    func daysSinceLastValidationFiveDaysAgo() throws {
-        let license = Self.license(Self.payload(issuedAt: try Self.isoString(daysAgo: 5)))
-        #expect(license.daysSinceLastValidation == 5)
-    }
-
-    @Test("daysSinceLastValidation reads a payload issued in the future as 0, not as negative")
-    func daysSinceLastValidationClampsFutureIssueDate() throws {
-        let license = Self.license(Self.payload(issuedAt: try Self.isoString(daysAgo: -10)))
-        #expect(license.daysSinceLastValidation == 0)
-    }
-
-    @Test("daysSinceLastValidation is nil when the signed issue date cannot be read")
-    func daysSinceLastValidationUnparseableIssueDate() {
-        let license = Self.license(Self.payload(issuedAt: "not-a-date"))
-        #expect(license.daysSinceLastValidation == nil)
-    }
-
-    // MARK: - Status Mapping Tests
-
-    @Test("License maps the signed active status")
-    func licenseMapsActiveStatus() {
-        #expect(Self.license(Self.payload(status: "active")).status == .active)
-    }
-
-    @Test("License maps the signed expired status")
-    func licenseMapsExpiredStatus() {
-        #expect(Self.license(Self.payload(status: "expired")).status == .expired)
-    }
-
-    @Test("License maps the signed suspended status")
-    func licenseMapsSuspendedStatus() {
-        #expect(Self.license(Self.payload(status: "suspended")).status == .suspended)
-    }
-
-    @Test("License maps an unknown signed status to validationFailed")
-    func licenseMapsUnknownStatusToValidationFailed() {
-        #expect(Self.license(Self.payload(status: "unknown")).status == .validationFailed)
-    }
-
-    // MARK: - Team Identity
-
-    /// Whether a license has other people on it decides whether releasing somebody else's seat is
-    /// offered, so it is read from the signed payload rather than from the tier string, which the
-    /// envelope could otherwise claim.
-    @Test("A signed team id marks the license as a team one, and carries the member's role")
-    func teamPayloadExposesTeamIdentity() {
-        let license = Self.license(Self.payload(tier: "team", teamId: "01JXYZ", role: "member"))
-
-        #expect(license.isTeamLicense)
-        #expect(license.teamId == "01JXYZ")
-        #expect(license.teamRole == .member)
-    }
-
-    @Test("A license with nobody else on it carries no team id and no role")
-    func soloPayloadHasNoTeamIdentity() {
-        let license = Self.license(Self.payload(tier: "starter"))
-
-        #expect(license.isTeamLicense == false)
-        #expect(license.teamId == nil)
-        #expect(license.teamRole == nil)
-    }
-
-    @Test("A role the server adds later survives instead of being dropped")
-    func unknownRoleSurvives() {
-        let license = Self.license(Self.payload(tier: "team", teamId: "01JXYZ", role: "auditor"))
-
-        #expect(license.teamRole == .unknown("auditor"))
-    }
-
-    // MARK: - Gating Reads Only the Signed Payload
-
     @Test("A cached blob whose outer fields claim Team over a signed Starter payload stays Starter")
     func forgedOuterFieldsAreIgnored() throws {
         let signed = Self.payload(status: "active", tier: "starter", expiresAt: "2024-01-01T00:00:00Z")
@@ -195,12 +67,8 @@ struct LicenseTests {
         let data = try #require(forged.data(using: .utf8))
         let decoded = try JSONDecoder().decode(License.self, from: data)
 
-        #expect(decoded.tier == "starter")
-        #expect(decoded.key == "test-key")
-        #expect(decoded.email == "test@test.com")
-        #expect(decoded.expiresAt != nil)
-        #expect(decoded.isExpired == true)
-        #expect(LicenseTier(rawValue: decoded.tier) == .starter)
+        #expect(decoded.signedPayload.data == signed)
+        #expect(LegacyEntitlement(payload: decoded.signedPayload.data)?.features == LegacyEntitlement.starterFeatures)
     }
 
     @Test("A blob written by an older build still decodes and derives its values from the payload")
@@ -226,10 +94,8 @@ struct LicenseTests {
         let decoded = try JSONDecoder().decode(License.self, from: data)
 
         #expect(decoded.cachedOnMachineId == Self.machineId)
-        #expect(decoded.tier == "team")
-        #expect(decoded.billingCycle == "yearly")
-        #expect(decoded.status == .active)
-        #expect(decoded.boundMachineId == nil)
+        #expect(decoded.signedPayload.data == signed)
+        #expect(decoded.signedPayload.data.machineId == nil)
     }
 
     @Test("A saved envelope round-trips through the same two keys an older blob used")

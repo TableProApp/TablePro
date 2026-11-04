@@ -97,7 +97,7 @@ final class WelcomeViewModelTests {
             tagStorage: live.tagStorage,
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
-            licenseManager: live.licenseManager,
+            featureAccess: live.featureAccess,
             syncMetadataStorage: live.syncMetadataStorage,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
@@ -106,7 +106,8 @@ final class WelcomeViewModelTests {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: live.syncTracker,
-            welcomeRouter: welcomeRouter
+            welcomeRouter: welcomeRouter,
+            telemetry: live.telemetry
         )
     }
 
@@ -408,7 +409,7 @@ final class WelcomeViewModelTests {
     @Test func testTheHelpMenuRequestLeavesAnOpenSheetAlone() {
         AppSettingsStorage(userDefaults: defaults).markWelcomeSheetSeen()
         viewModel.setUp()
-        viewModel.activeSheet = .activation
+        viewModel.activeSheet = .importFromApp
 
         viewModel.handle(.showWelcomeSheet)
 

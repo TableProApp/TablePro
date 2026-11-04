@@ -27,13 +27,13 @@ enum WelcomeActiveSheet: Identifiable {
     /// Carries the group as it was when the sheet opened, so a sync that deletes it meanwhile
     /// leaves the sheet open with an error on Save rather than empty.
     case editGroup(ConnectionGroup)
-    case activation
     case importFile(URL)
     case exportConnections([DatabaseConnection])
     case importFromApp
     case importFromAWS
     case projectFolderScan(URL)
     case deeplinkImport(ConnectionBundle)
+    case teamLibraryConflicts
 
     var id: String {
         switch self {
@@ -41,7 +41,6 @@ enum WelcomeActiveSheet: Identifiable {
             "newGroup-\(request.parentId?.uuidString ?? "root")-"
                 + request.movingConnectionIds.map(\.uuidString).joined(separator: ",")
         case .editGroup(let group): "editGroup-\(group.id.uuidString)"
-        case .activation: "activation"
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
         case .importFromApp: "importFromApp"
@@ -51,6 +50,7 @@ enum WelcomeActiveSheet: Identifiable {
             "deeplinkImport-" + bundle.connections
                 .map { "\($0.settings.type)-\($0.settings.name)-\($0.settings.host)-\($0.settings.port)" }
                 .joined(separator: ",")
+        case .teamLibraryConflicts: "teamLibraryConflicts"
         }
     }
 }
@@ -222,12 +222,12 @@ final class WelcomeViewModel: ObservableObject {
     }
 
     var presentableLinkedConnections: [LinkedConnection] {
-        guard services.licenseManager.isFeatureAvailable(.linkedFolders) else { return [] }
+        guard services.featureAccess.isAvailable(.linkedFolders) else { return [] }
         return linkedConnections
     }
 
     var presentableTeamLibraryConnections: [LinkedConnection] {
-        guard services.licenseManager.isFeatureAvailable(.teamLibrary) else { return [] }
+        guard services.featureAccess.isAvailable(.teamLibrary) else { return [] }
         return teamLibraryConnections
     }
 
@@ -592,15 +592,15 @@ final class WelcomeViewModel: ObservableObject {
     }
 
     private static func buildTeamLibraryConnections() -> [LinkedConnection] {
-        guard LicenseManager.shared.isFeatureAvailable(.teamLibrary) else { return [] }
+        guard FeatureAccess.shared.isAvailable(.teamLibrary) else { return [] }
         let placeholderURL = URL(fileURLWithPath: "/")
         var seen: Set<UUID> = []
-        return TeamLibrarySyncCoordinator.shared.library.connections.compactMap { connection in
+        return TeamLibrarySync.shared.content.connections.compactMap { connection in
             let id = LinkedFolderWatcher.stableId(namespace: teamLibraryNamespace, key: connection.id)
             guard seen.insert(id).inserted else { return nil }
             return LinkedConnection(
                 id: id,
-                connection: connection.payload,
+                connection: connection.settings,
                 folderId: teamLibraryNamespace,
                 sourceFileURL: placeholderURL
             )

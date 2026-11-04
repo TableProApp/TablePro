@@ -54,7 +54,7 @@ internal final class EnvVarReferenceConsent {
     internal init(
         approvals: ConnectionApprovalStore = .envVarReferences,
         isFeatureAvailable: @escaping @MainActor () -> Bool = {
-            LicenseManager.shared.isFeatureAvailable(.envVarReferences)
+            FeatureAccess.shared.isAvailable(.envVarReferences)
         },
         ask: @escaping Ask = EnvVarReferencePrompt.ask
     ) {

@@ -49,7 +49,7 @@ final class LinkedFolderWatcher: ObservableObject {
 
     init(
         loadFolders: @escaping @MainActor () -> [LinkedFolder] = { LinkedFolderStorage.shared.loadFolders() },
-        isFeatureAvailable: @escaping @MainActor () -> Bool = { LicenseManager.shared.isFeatureAvailable(.linkedFolders) },
+        isFeatureAvailable: @escaping @MainActor () -> Bool = { FeatureAccess.shared.isAvailable(.linkedFolders) },
         scan: @escaping @MainActor ([LinkedFolder]) async -> LinkedFolderScan = { folders in
             await Task.detached(priority: .utility) { LinkedFolderWatcher.scanFolders(folders) }.value
         }

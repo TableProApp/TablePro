@@ -45,7 +45,7 @@ extension MainContentCoordinator {
     }
 
     private var isDataRewindLicensed: Bool {
-        services.licenseManager.isFeatureAvailable(.dataRewind)
+        services.featureAccess.isAvailable(.dataRewind)
     }
 
     func rewindLastSave() {
@@ -109,7 +109,7 @@ extension MainContentCoordinator {
     // The control is reachable without a license on purpose, so this is where the gate explains itself.
     private func presentUpsellUnlessLicensed() -> Bool {
         guard !isDataRewindLicensed else { return true }
-        LicenseGateAlert.present(for: .dataRewind, in: contentWindow)
+        LicenseGateAlert.present(for: .dataRewind, in: contentWindow, access: services.featureAccess)
         return false
     }
 

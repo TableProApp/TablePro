@@ -17,7 +17,9 @@ struct WelcomeMenuSpecTests {
         disconnectable: Set<UUID> = [],
         reconnectable: Set<UUID> = [],
         linkedFolders: Set<UUID> = [],
-        isSyncEnabled: Bool = false
+        isSyncEnabled: Bool = false,
+        teamLibraryTeams: [TeamLibraryTeam] = [],
+        hasTeamLibraryConflicts: Bool = false
     ) -> WelcomeMenuContext {
         var resolved = WelcomeResolvedRows()
         let byId = Dictionary(uniqueKeysWithValues: connections.map { ($0.id, $0) })
@@ -47,7 +49,8 @@ struct WelcomeMenuSpecTests {
             reconnectableConnectionIds: reconnectable,
             isSyncEnabled: isSyncEnabled,
             canPublishToTeamCatalog: false,
-            canPublishToTeamLibrary: false
+            teamLibraryTeams: teamLibraryTeams,
+            hasTeamLibraryConflicts: hasTeamLibraryConflicts
         )
     }
 
@@ -283,5 +286,49 @@ struct WelcomeMenuSpecTests {
         ))
 
         #expect(titles(sections) == [["Connect"], ["Show in Finder"]])
+    }
+
+    @Test("A Team Library connection offers Resolve Team Library Conflicts only while one is open")
+    func teamLibraryConflicts() {
+        let row = LibraryRowID.connection(UUID(), section: .teamLibrary)
+
+        #expect(titles(WelcomeMenuSpec.sections(for: context(rows: [row]))) == [["Connect"]])
+        #expect(titles(WelcomeMenuSpec.sections(for: context(rows: [row], hasTeamLibraryConflicts: true))) == [
+            ["Connect"], ["Resolve Team Library Conflicts…"]
+        ])
+    }
+
+    @Test("Publish to Team Library names the one team, or lists each team this account writes to")
+    func publishNamesTheTeam() {
+        let connection = DatabaseConnection(name: "Prod")
+        let acme = TeamLibraryTeam(id: "team_acme", name: "Acme")
+        let globex = TeamLibraryTeam(id: "team_globex", name: "Globex")
+        func publishItems(_ teams: [TeamLibraryTeam]) -> [WelcomeMenuItem] {
+            let sections = WelcomeMenuSpec.sections(for: context(
+                rows: [.connection(connection.id, section: .connections)],
+                connections: [connection],
+                teamLibraryTeams: teams
+            ))
+            return sections.flatMap(\.items).flatMap { item -> [WelcomeMenuItem] in
+                guard case .submenu(let title, let nested) = item, title == "Share" else { return [] }
+                return nested.flatMap(\.items).filter { self.title(of: $0).hasPrefix("Publish to Team Library") }
+            }
+        }
+
+        let one = publishItems([acme])
+        #expect(one.map { title(of: $0) } == ["Publish to Team Library…"])
+        guard case .command(let entry) = one.first else {
+            Issue.record("Expected a command, got \(one)")
+            return
+        }
+        #expect(entry.command == .publishToTeamLibrary([connection.id], teamID: "team_acme"))
+
+        let two = publishItems([acme, globex])
+        guard case .submenu(_, let nested) = two.first else {
+            Issue.record("Expected a submenu, got \(two)")
+            return
+        }
+        #expect(nested.flatMap(\.items).map { title(of: $0) } == ["Acme…", "Globex…"])
+        #expect(publishItems([]).isEmpty)
     }
 }

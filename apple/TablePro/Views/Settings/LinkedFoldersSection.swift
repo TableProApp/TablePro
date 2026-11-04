@@ -13,12 +13,12 @@ import TableProImport
 struct LinkedFoldersSection: View {
     static var title: String { String(localized: "Linked Folders") }
 
-    @ObservedObject private var licenseManager = LicenseManager.shared
+    @ObservedObject private var featureAccess = FeatureAccess.shared
     @ObservedObject private var watcher = LinkedFolderWatcher.shared
     @State private var folders: [LinkedFolder] = LinkedFolderStorage.shared.loadFolders()
 
     private var isLicensed: Bool {
-        licenseManager.isFeatureAvailable(.linkedFolders)
+        featureAccess.isAvailable(.linkedFolders)
     }
 
     var body: some View {

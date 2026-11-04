@@ -58,6 +58,10 @@ packages:
   Yams:
     url: https://github.com/jpsim/Yams
     majorVersion: 5.1.0
+  # Usage data (clients.md, macOS Telemetry). A build sends it only with POSTHOG_PROJECT_KEY set.
+  PostHog:
+    url: https://github.com/PostHog/posthog-ios
+    exactVersion: 3.92.7
   # Already in the graph through Packages/TableProOracle. Declared here so the Kafka plugin
   # can link them directly: Kafka is a length-prefixed binary protocol over TCP, and NIOSSL
   # reads the PEM paths SSLConfiguration already carries.
@@ -406,10 +410,11 @@ targets:
       - package: TableProGrammars
       - package: Sparkle
       - package: Yams
+      - package: PostHog
       - package: TableProCore
-        products: [TableProAnalytics, TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
+        products: [TableProAutocomplete, TableProConnectionLibrary, TableProCoreTypes, TableProEtcdCore, TableProFirebaseCore, TableProGeometry, TableProGoogleCloud, TableProGzip, TableProHTTP, TableProImport, TableProInfluxDBCore, TableProLogRedaction, TableProNumberFormatting, TableProProcess, TableProQdrantCore, TableProRedisCore, TableProSQLGrammar, TableProSQLQuoting, TableProSQLVocabulary, TableProSSHTransport, TableProSyncTransport, TableProTabular, TableProTabularIO, TableProTheme, TableProWeaviateCore]
       - package: TableProMacCore
-        products: [TableProMCP, TableProSSHConfig, TableProUtilities]
+        products: [TableProCloudAPI, TableProMCP, TableProSSHConfig, TableProUtilities]
     # Writes nothing for a version CHANGELOG.md has no section for, so a 0.0.0-dev build ships no notes.
     postCompileScripts:
       - name: Write WhatsNew.md

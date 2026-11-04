@@ -14,7 +14,8 @@ internal struct LinkedFolderGitMenuState: Equatable {
 internal struct FavoritesMenuContext {
     internal let clicked: FavoritesOutlineNode.Kind?
     internal let allFolders: [SQLFavoriteFolder]
-    internal let teamLibraryAvailable: Bool
+    internal let teamLibraryTeams: [TeamLibraryTeam]
+    internal let hasTeamLibraryConflicts: Bool
     internal let databaseEntityName: String
     internal let activeDatabase: String?
     internal let linkedFileGitStates: [UUID: LinkedFileGitState]
@@ -23,7 +24,8 @@ internal struct FavoritesMenuContext {
     internal init(
         clicked: FavoritesOutlineNode.Kind?,
         allFolders: [SQLFavoriteFolder] = [],
-        teamLibraryAvailable: Bool = false,
+        teamLibraryTeams: [TeamLibraryTeam] = [],
+        hasTeamLibraryConflicts: Bool = false,
         databaseEntityName: String = "Database",
         activeDatabase: String? = nil,
         linkedFileGitStates: [UUID: LinkedFileGitState] = [:],
@@ -31,7 +33,8 @@ internal struct FavoritesMenuContext {
     ) {
         self.clicked = clicked
         self.allFolders = allFolders
-        self.teamLibraryAvailable = teamLibraryAvailable
+        self.teamLibraryTeams = teamLibraryTeams
+        self.hasTeamLibraryConflicts = hasTeamLibraryConflicts
         self.databaseEntityName = databaseEntityName
         self.activeDatabase = activeDatabase
         self.linkedFileGitStates = linkedFileGitStates
@@ -319,10 +322,23 @@ internal enum FavoritesMenuSpec {
     /// The empty area below the last row, a header, and a Team Library row all land here.
     internal static func backgroundSections(_ context: FavoritesMenuContext) -> [FavoritesMenuSection] {
         var team: [FavoritesMenuItem] = []
-        if context.teamLibraryAvailable {
+        if context.teamLibraryTeams.count == 1, let only = context.teamLibraryTeams.first {
             team.append(.command(
                 String(localized: "Publish Saved Queries to Team…"),
-                .publishSavedQueriesToTeam
+                .publishSavedQueriesToTeam(teamID: only.id)
+            ))
+        } else if context.teamLibraryTeams.count > 1 {
+            team.append(.submenu(
+                title: String(localized: "Publish Saved Queries to Team"),
+                items: context.teamLibraryTeams.map { each in
+                    .command(String(format: String(localized: "%@…"), each.name), .publishSavedQueriesToTeam(teamID: each.id))
+                }
+            ))
+        }
+        if context.hasTeamLibraryConflicts {
+            team.append(.command(
+                String(localized: "Resolve Team Library Conflicts…"),
+                .resolveTeamLibraryConflicts
             ))
         }
         return creationSections() + [FavoritesMenuSection(team)]

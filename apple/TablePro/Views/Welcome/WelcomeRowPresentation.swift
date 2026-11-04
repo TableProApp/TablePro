@@ -9,6 +9,7 @@ import TableProImport
 
 internal enum WelcomeRowModel: Equatable {
     case section(title: String)
+    case teamLibrarySection(title: String)
     case group(WelcomeGroupRowModel)
     case connection(WelcomeConnectionRowModel)
     case empty

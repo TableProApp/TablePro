@@ -170,7 +170,7 @@ struct SyncCoordinatorSQLFavoritePullTests {
             tagStorage: live.tagStorage,
             sshProfileStorage: live.sshProfileStorage,
             credentialProfileStorage: live.credentialProfileStorage,
-            licenseManager: live.licenseManager,
+            featureAccess: live.featureAccess,
             syncMetadataStorage: metadata,
             favoritesExpansionState: live.favoritesExpansionState,
             linkedFolderWatcher: live.linkedFolderWatcher,
@@ -179,7 +179,8 @@ struct SyncCoordinatorSQLFavoritePullTests {
             copilotService: live.copilotService,
             mcpServerManager: live.mcpServerManager,
             syncTracker: tracker,
-            welcomeRouter: live.welcomeRouter
+            welcomeRouter: live.welcomeRouter,
+            telemetry: live.telemetry
         )
         return SyncCoordinator(services: services, recordCache: recordCache)
     }
