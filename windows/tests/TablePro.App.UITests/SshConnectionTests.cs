@@ -43,8 +43,12 @@ public sealed partial class ShellTests
         app.WaitForClose("New connection");
 
         app.FindByName("ssh_proof", app.Find("ObjectTree"));
-        app.Chord(() => app.TryFind("SqlEditor") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
-        app.TypeInto(app.Find("SqlEditor"), "SELECT answer FROM ssh_proof");
+        var tabs = app.Find("Tabs");
+        app.Chord(
+            () => tabs.FindFirstDescendant(condition => condition.ByName("Query 2")) is not null,
+            VirtualKeyShort.CONTROL,
+            VirtualKeyShort.KEY_T);
+        app.TypeInto("Query 2", "SELECT answer FROM ssh_proof");
         app.Chord(
             () => app.Find("QueryStatus").Properties.Name.ValueOrDefault?.StartsWith("Rows: 1", StringComparison.Ordinal) == true,
             VirtualKeyShort.CONTROL,
@@ -69,7 +73,7 @@ public sealed partial class ShellTests
             app.Screenshot("30-ssh-changed-key");
             app.CloseDialog();
 
-            Assert.Equal("SELECT answer FROM ssh_proof", AppSession.EditorText(app.Find("SqlEditor")).Trim());
+            Assert.Equal("SELECT answer FROM ssh_proof", AppSession.EditorText(app.FindEditor("Query 2")).Trim());
             Assert.True(Retry.WhileFalse(() => reconnect.IsEnabled, AppSession.Wait, throwOnTimeout: false).Success);
             reconnect.AsButton().Invoke();
             app.Find("CredentialPromptMessage");
@@ -81,7 +85,7 @@ public sealed partial class ShellTests
                 AppSession.Wait, throwOnTimeout: false).Success);
 
             // The same editor tab survives the reconnect; a different value proves the new run replaced its old result.
-            app.TypeInto(app.Find("SqlEditor"), "SELECT answer + 1 FROM ssh_proof");
+            app.TypeInto("Query 2", "SELECT answer + 1 FROM ssh_proof");
             app.Find("RunButton").AsButton().Invoke();
             Assert.Equal("43", app.WaitForCell(app.Find("ResultsGrid"), 0, 0, value => value == "43"));
             app.Screenshot("32-ssh-reconnected");
