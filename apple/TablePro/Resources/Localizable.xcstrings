@@ -180650,6 +180650,10 @@
     "TablePro does not have Local Network access, so it cannot reach the SSH server at %@." : {
 
     },
+    "TablePro does not have this row's stored _id, so it cannot tell which document it is." : {
+      "extractionState" : "manual",
+      "generatesSymbol" : false
+    },
     "TablePro does not know what %@ holds. Reload the collection, then save again." : {
       "extractionState" : "manual",
       "generatesSymbol" : false

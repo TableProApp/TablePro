@@ -350,6 +350,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// this driver produced. Throws, with a message for the user, when the document cannot be
     /// edited as text.
     func fetchDocument(table: String, schema: String?, locator: String) async throws -> String?
+
+    // A read of the rows these `PluginQueryResult.rowLocators` entries name, each carrying its locator again, or nil when
+    // the driver cannot build one. The host then finds those rows by locator rather than by their key's display text.
+    func buildLocatorQuery(table: String, schema: String?, locators: [String], columns: [String]) -> String?
     func executeParameterized(query: String, parameters: [PluginCellValue]) async throws -> PluginQueryResult
 
     /// The same statement with what the host decided about it. This is what the host calls; the default forwards to
@@ -415,6 +419,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     /// row index, the columns that row had no field for, which must stay missing rather than come
     /// back as null. The default ignores them and asks the requirement above.
     func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]], absentCells: [Int: Set<Int>]) -> [(statement: String, parameters: [PluginCellValue])]?
+
+    // What the host calls. `context.rowLocators` is keyed by the index in `rows`. The default ignores the context.
+    func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]], absentCells: [Int: Set<Int>], context: PluginRowWriteContext) -> [(statement: String, parameters: [PluginCellValue])]?
 
     // Database switching (SQL Server USE, ClickHouse database switch, etc.)
     func switchDatabase(to database: String) async throws
@@ -1162,6 +1169,8 @@ public extension PluginDatabaseDriver {
         throw PluginDriverUnsupportedOperation.writeDocument
     }
 
+    func buildLocatorQuery(table: String, schema: String?, locators: [String], columns: [String]) -> String? { nil }
+
     func dropDatabase(name: String) async throws {
         throw NSError(domain: "PluginDatabaseDriver", code: -1,
                       userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
@@ -1267,6 +1276,12 @@ public extension PluginDatabaseDriver {
     func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]], absentCells: [Int: Set<Int>]) -> [(statement: String, parameters: [PluginCellValue])]? {
         generateIdentityPreservingInsert(
             table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, rows: rows
+        )
+    }
+    func generateIdentityPreservingInsert(table: String, schema: String?, columns: [String], primaryKeyColumns: [String], rows: [[PluginCellValue]], absentCells: [Int: Set<Int>], context: PluginRowWriteContext) -> [(statement: String, parameters: [PluginCellValue])]? {
+        generateIdentityPreservingInsert(
+            table: table, schema: schema, columns: columns, primaryKeyColumns: primaryKeyColumns, rows: rows,
+            absentCells: absentCells
         )
     }
 

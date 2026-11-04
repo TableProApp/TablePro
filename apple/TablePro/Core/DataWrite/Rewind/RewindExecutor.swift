@@ -150,7 +150,8 @@ struct RewindExecutor {
                 writtenColumns: source.writtenColumns,
                 refusal: throughView ? .identityNotPreservable : nil,
                 preImageAbsentColumns: source.postImageAbsentColumns,
-                postImageAbsentColumns: source.preImageAbsentColumns
+                postImageAbsentColumns: source.preImageAbsentColumns,
+                rowLocator: source.rowLocator
             )
         }
     }

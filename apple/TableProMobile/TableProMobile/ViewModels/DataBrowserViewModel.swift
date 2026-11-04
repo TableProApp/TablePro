@@ -524,7 +524,10 @@ final class DataBrowserViewModel {
             // A ClickHouse mutation reports no count, so the row is looked for by every value it held.
             var isGone = deleted > 0
             if !isGone, let keys = locator.keyValues, !keys.isEmpty {
-                isGone = try await !rowExists(table: table.name, schema: schema, primaryKey: keys, driver: session.driver)
+                isGone = try await !rowExists(
+                    table: table.name, schema: schema, primaryKey: keys, locator: locator.documentLocator,
+                    driver: session.driver
+                )
             } else if !isGone, let writer {
                 isGone = try await writer.matchingRowCount(
                     table: table.name, schema: schema, columns: locator.columnNames(of: columns), row: locator.row
@@ -564,7 +567,8 @@ final class DataBrowserViewModel {
         let rows = window.rows
         guard rows.indices.contains(index) else { return nil }
         return RowLocator.locate(
-            cells: rows[index].cells, columns: columns, columnDetails: columnDetails, identity: rowIdentity
+            cells: rows[index].cells, columns: columns, columnDetails: columnDetails, identity: rowIdentity,
+            documentLocator: rows[index].locator
         )
     }
 
@@ -574,10 +578,11 @@ final class DataBrowserViewModel {
         table: String,
         schema: String?,
         primaryKey: [(column: String, value: String)],
+        locator: String?,
         driver: any DatabaseDriver
     ) async throws -> Bool {
         let components = primaryKey.map { PrimaryKeyComponent(column: $0.column, value: $0.value) }
-        let ref = CellRef(table: table, column: components[0].column, primaryKey: components)
+        let ref = CellRef(table: table, column: components[0].column, primaryKey: components, locator: locator)
         do {
             _ = try await readValue(driver: driver, ref: ref, databaseType: databaseType, schema: schema, ofOneRow: false)
             return true
@@ -600,7 +605,8 @@ final class DataBrowserViewModel {
                 table: ref.table,
                 schema: schema,
                 column: ref.column,
-                key: ref.primaryKey.map { (column: $0.column, value: $0.value) }
+                key: ref.primaryKey.map { (column: $0.column, value: $0.value) },
+                locator: ref.locator
             )
         }
         let table = SQLBuilder.qualifiedIdentifier(table: ref.table, schema: schema, for: databaseType)
