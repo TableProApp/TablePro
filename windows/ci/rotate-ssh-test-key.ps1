@@ -13,8 +13,17 @@ if ($Action -eq 'Rotate') {
     Remove-Item $key, "$key.pub" -ErrorAction SilentlyContinue
     & $keygen -q -t ed25519 -N '' -f $key
     if ($LASTEXITCODE -ne 0) { throw 'Generating the replacement SSH host key failed.' }
-    & icacls.exe $key /setowner SYSTEM /inheritance:r /grant 'SYSTEM:F' /grant 'BUILTIN\Administrators:F' | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Setting the SSH host key permissions failed.' }
+    & icacls.exe $key /setowner SYSTEM | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Setting the SSH host key owner failed.' }
+    # ssh-keygen grants its creator explicitly; sshd must see only SYSTEM and Administrators on a host key.
+    $permissions = [System.Security.AccessControl.FileSecurity]::new()
+    $permissions.SetAccessRuleProtection($true, $false)
+    foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
+        $principal = [System.Security.Principal.SecurityIdentifier]::new($sid)
+        $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($principal, 'FullControl', 'Allow')
+        $permissions.AddAccessRule($rule)
+    }
+    [System.IO.FileSystemAclExtensions]::SetAccessControl([System.IO.FileInfo]::new($key), $permissions)
     $lines = Get-Content $config | Where-Object { $_ -notmatch '^\s*HostKey\s' }
     Set-Content -Encoding ascii $config (@("HostKey `"$($key.Replace('\', '/'))`"") + $lines)
 }
