@@ -400,7 +400,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TableProFirebaseCoreTests",
-            dependencies: ["TableProFirebaseCore"],
+            dependencies: ["TableProFirebaseCore", "TableProGoogleCloud"],
             path: "Tests/TableProFirebaseCoreTests"
         ),
         .testTarget(

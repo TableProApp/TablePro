@@ -129,7 +129,7 @@ extension FirebasePluginDriver {
                 }
                 return FirebaseRequest(method: .post, path: target.collectionPath, body: body)
             }
-            if !target.isGroup, let name, name.contains("/") {
+            if !target.isGroup, let name, name.unicodeScalars.contains("/") {
                 throw FirebaseError.configuration(String(localized: "__name__ is the document's ID in this collection, such as alice."))
             }
             guard FirestorePath.isDocument(path) else {
@@ -311,7 +311,7 @@ extension FirebasePluginDriver {
             case .insert(let text):
                 let parsed = try Self.splitDocument(text)
                 let target = try FirestoreCollectionTarget(table: write.table)
-                if let path = parsed.path, path.contains("/") {
+                if let path = parsed.path, path.unicodeScalars.contains("/") {
                     let split = FirestorePath.split(collectionPath: path)
                     return FirebaseRequest(method: .post, path: split.parent,
                                            query: [URLQueryItem(name: "documentId", value: split.collectionId)], body: parsed.body)

@@ -159,8 +159,8 @@ public final class RealtimeDatabaseClient: @unchecked Sendable {
         guard var components = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
             throw FirebaseError.configuration(String(localized: "The Database URL is not valid."))
         }
-        let segments = RealtimeDatabasePath.normalized(path).split(separator: "/").map { segment in
-            String(segment).addingPercentEncoding(withAllowedCharacters: Self.segmentAllowed) ?? String(segment)
+        let segments = FirebaseScalars.split(path, separator: "/").map { segment in
+            segment.addingPercentEncoding(withAllowedCharacters: Self.segmentAllowed) ?? segment
         }
         let basePath = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let joined = ([basePath].filter { !$0.isEmpty } + segments).joined(separator: "/")

