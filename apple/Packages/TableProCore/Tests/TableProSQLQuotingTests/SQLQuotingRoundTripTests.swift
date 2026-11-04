@@ -141,7 +141,7 @@ struct SQLQuotingRoundTripTests {
     }
     @Test("SQL Server keeps continuation bytes and only removes NUL")
     func sqlServerLineEndings() {
-        for newline in ["\n", "\r\n", "\r"] {
+        for newline in ["\n", "\r\n", "\r", "\r\r\n", "\r\\\n", "\n\r"] {
             for count in 1...4 {
                 let value = "日本'\u{301}" + String(repeating: "\\", count: count) + newline + "'; SELECT 1; --"
                 let literal = SQLQuoting.stringLiteral(value, escapes: .sqlServer)
@@ -154,6 +154,6 @@ struct SQLQuotingRoundTripTests {
         #expect(SQLQuoting.decodedStringLiteral(literal, escapes: .sqlServer) == "x\\\n")
         #expect(SQLQuoting.decodedStringLiteral("'a\\\nb'", escapes: .sqlServer) == "ab")
         #expect(SQLQuoting.decodedStringLiteral("'a\\\r\nb'", escapes: .sqlServer) == "ab")
-        #expect(SQLQuoting.decodedStringLiteral("'a\\\rb'", escapes: .sqlServer) == "a\\\rb")
+        #expect(SQLQuoting.decodedStringLiteral("'a\\\rb'", escapes: .sqlServer) == "a\rb")
     }
 }

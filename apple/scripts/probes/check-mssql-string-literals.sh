@@ -68,7 +68,7 @@ struct Check {
             }
             checks += 1
         }
-        for newline in ["\n", "\r\n", "\r"] {
+        for newline in ["\n", "\r\n", "\r", "\r\r\n", "\r\\\n", "\n\r"] {
             // A binary seed avoids using the formatter under test to construct expected values.
             let key = "admin\\" + newline
             let expected = hex(key)

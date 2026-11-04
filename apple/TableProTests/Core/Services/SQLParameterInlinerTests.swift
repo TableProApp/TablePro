@@ -318,7 +318,7 @@ struct SQLParameterInlinerTests {
     @Test("Copied SQL Server previews keep exact text keys", arguments: ["\n", "\r\n", "\r"])
     func sqlServerPreviewLineEndings(_ newline: String) {
         let value = "日本'\\" + newline
-        let body = newline == "\r" ? "日本''\\\r" : "日本''\\\\" + newline + newline
+        let body = "日本''\\\\" + newline + (newline == "\r" ? "" : newline)
         let statement = ParameterizedStatement(sql: "DELETE FROM [t] WHERE [k] = ?", parameters: [value])
         let sessions: [PluginSessionLexicalState?] = [nil, .init(determined: [], enabled: [])]
         for session in sessions {

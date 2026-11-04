@@ -171,7 +171,7 @@ struct SQLBuilderSingleRowLookupTests {
     @Test("SQL Server inserts and row edits keep exact text keys", arguments: ["\n", "\r\n", "\r"])
     func sqlServerWrites(_ newline: String) {
         let value = "日本\\" + newline
-        let body = newline == "\r" ? value : "日本\\\\" + newline + newline
+        let body = "日本\\\\" + newline + (newline == "\r" ? "" : newline)
         let literal = "N'" + body + "'"
         let connection = DatabaseConnection(name: "test", type: .mssql)
         let sqlDriver = MSSQLDriver(connection: connection, password: nil)

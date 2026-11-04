@@ -300,7 +300,7 @@ struct MSSQLParameterBatchTests {
     @Test("Row keys keep backslash line endings in both binding paths", arguments: ["\n", "\r\n", "\r"])
     func rowKeyLineEndings(_ newline: String) throws {
         let key = "admin\\" + newline
-        let body = newline == "\r" ? key : "admin\\\\" + newline + newline
+        let body = "admin\\\\" + newline + (newline == "\r" ? "" : newline)
         for verb in ["DELETE FROM", "UPDATE"] {
             let query = verb == "UPDATE" ? "UPDATE [t] SET [v] = 1 WHERE [k] = ?" : "DELETE FROM [t] WHERE [k] = ?"
             let statement = MSSQLParameterBatch.spExecuteSql(query: query, parameters: [.text(key)])
