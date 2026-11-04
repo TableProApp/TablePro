@@ -54,5 +54,6 @@ report "carriage return ends a line comment" "$(ask "$(printf 'SELECT 1 -- x\r, 
 report "\$\$ continues a name" "$(ask "SELECT 1 AS a\$\$, '\$\$ ? ', 2")" $'1\t$$ ? \t2'
 report "\$\$x\$\$ is a name" "$(ask 'SELECT 1 AS $$x$$')" 1
 report "\$\$ after a decimal opens an attachment" "$(refused "$(ask 'SELECT 1 AS x, 1.5$$ y $$')")" refused
+report "a later \$\$ closes one left open" "$(refused "$(ask "SELECT 1 AS \$\$, '\$\$'")")" refused
 
 exit "$STATUS"

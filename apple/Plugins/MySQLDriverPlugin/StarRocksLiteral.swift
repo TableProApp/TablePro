@@ -103,12 +103,12 @@ internal enum StarRocksLiteral {
         }
 
         // `$` is a letter to StarRocksLex.g4, so a name or a number runs on through `$$`. A `$$` opens an attachment only
-        // where that token is the longer one, and a tie goes to the name, the rule the grammar lists first.
+        // where that token is the longer one, and a tie goes to the name, the rule the grammar lists first. One left
+        // open could be closed by a `$$` in a bound value, so nothing after it is bound.
         func copyWordOrAttachment() -> Bool {
             var end = Self.wordEnd(in: scalars, at: index) ?? index
-            if scalars[index] == "$", peek(1) == "$", let attachment = Self.attachmentEnd(in: scalars, at: index),
-               attachment > end {
-                end = attachment
+            if scalars[index] == "$", peek(1) == "$" {
+                end = max(end, Self.attachmentEnd(in: scalars, at: index) ?? scalars.count)
             }
             guard end > index else { return false }
             output.append(contentsOf: scalars[index..<end])

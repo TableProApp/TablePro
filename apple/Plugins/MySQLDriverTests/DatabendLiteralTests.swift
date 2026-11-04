@@ -263,7 +263,16 @@ struct StarRocksLiteralTests {
         #expect(try StarRocksLiteral.inline("SELECT 1.5$$ ? $$, ?", parameters: [.text("v")]) == "SELECT 1.5$$ ? $$, 'v'")
         #expect(try StarRocksLiteral.inline("SELECT 1e5$$, ?", parameters: [.text("v")]) == "SELECT 1e5$$, 'v'")
         #expect(try StarRocksLiteral.inline("SELECT .5$$ ?", parameters: [.text("v")]) == "SELECT .5$$ 'v'")
-        #expect(try StarRocksLiteral.inline("SELECT $$ ?", parameters: [.text("v")]) == "SELECT $$ 'v'")
+    }
+
+    @Test("Nothing after a `$$` the statement leaves open is bound, since a value holding `$$` would close it")
+    func openAttachmentBindsNothingAfterIt() {
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try StarRocksLiteral.inline("SELECT 1 AS $$, ?", parameters: [.text("$$, (SELECT 2) -- ")])
+        }
+        #expect(throws: DatabendLiteralError.parameterCountMismatch(placeholders: 0, values: 1)) {
+            try StarRocksLiteral.inline("SELECT 1 AS $$x, ?", parameters: [.text("$$")])
+        }
     }
 
     @Test("A carriage return ends a line comment, so the placeholder after it is bound")
