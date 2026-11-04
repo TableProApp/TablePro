@@ -8,7 +8,10 @@ public sealed record CoreError(
     ServerMessage? Server,
     string? Path,
     SecretKind? Secret = null,
-    HostKeyFailure? HostKey = null);
+    HostKeyFailure? HostKey = null)
+{
+    public TlsFailure? TlsFailure { get; init; }
+}
 
 public sealed record HostKeyFailure(
     string Host,
@@ -38,4 +41,21 @@ public sealed class TableProException : Exception
     public CoreError Error { get; }
 
     public string Code => Error.Code;
+}
+
+public enum TlsFailure
+{
+    UnknownIssuer,
+    NameMismatch,
+    Expired,
+    NotYetValid,
+    Revoked,
+    ServerRefusedTls,
+    ServerRequiresTls,
+    ServerRefusedStrict,
+    ServerRequiresStrict,
+    HandshakeRejected,
+    CaFileInvalid,
+    ClientIdentityInvalid,
+    Other,
 }

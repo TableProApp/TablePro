@@ -1,0 +1,1 @@
+{"resources":{"Scripts/Script.sql":{"default-datasource":"pg-1"},"Scripts/Reports/Daily users.sql":{"default-datasource":"pg-1","default-schema":"public"},"Scripts/Elsewhere.sql":{"default-datasource":"postgres-in-another-project"},"Scripts/Unbound.sql":{"default-datasource":""}}}

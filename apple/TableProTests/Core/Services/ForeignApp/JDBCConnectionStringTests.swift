@@ -5,6 +5,8 @@
 
 import Foundation
 @testable import TablePro
+import TableProImport
+import TableProPluginKit
 import Testing
 
 struct JDBCConnectionStringTests {
@@ -160,5 +162,118 @@ struct JDBCConnectionStringTests {
     @Test("Non-jdbc url returns nil")
     func notJdbc() {
         #expect(JDBCConnectionString.parse(url: "mysql://x/y", subprotocol: "mysql") == nil)
+    }
+
+    @Test("A BigQuery URL names the API host and the project")
+    func bigQuery() {
+        let endpoint = JDBCConnectionString.parse(
+            url: "jdbc:bigquery://https://www.googleapis.com/bigquery/v2;ProjectId=my-project;OAuthType=3",
+            subprotocol: "bigquery"
+        )
+        #expect(endpoint?.host == "https://www.googleapis.com/bigquery/v2")
+        #expect(endpoint?.port == nil)
+        #expect(endpoint?.database == "my-project")
+    }
+
+    @Test("A native MongoDB URL names its first host and database")
+    func nativeMongo() {
+        let endpoint = JDBCConnectionString.parse(
+            url: "mongodb://app:secret@mongo1.example:27018,mongo2.example/shop?replicaSet=rs0",
+            subprotocol: ""
+        )
+        #expect(endpoint?.host == "mongo1.example")
+        #expect(endpoint?.port == 27_018)
+        #expect(endpoint?.database == "shop")
+        #expect(endpoint?.username == "app")
+
+        let seeded = JDBCConnectionString.parse(url: "mongodb+srv://cluster0.example.net/app", subprotocol: "")
+        #expect(seeded?.host == "cluster0.example.net")
+        #expect(seeded?.port == nil)
+    }
+
+    @Test("A MongoDB URL keeps its seed list and its auth database as driver fields")
+    func mongoURLFields() {
+        let fields = JDBCConnectionString.urlFields("mongodb+srv://cluster0.example.net/app?authSource=admin&retryWrites=true")
+        #expect(fields == ["mongoUseSrv": "true", "mongoAuthSource": "admin"])
+        #expect(JDBCConnectionString.urlFields("jdbc:mongodb://h/app?authSource=ops") == ["mongoAuthSource": "ops"])
+        #expect(JDBCConnectionString.urlFields("jdbc:postgresql://db/app?authSource=admin").isEmpty)
+    }
+
+    @Test("A URL names its user, decoded, but never its password")
+    func urlUser() {
+        let endpoint = JDBCConnectionString.parse(url: "mongodb://alice%40corp:s3cret@db.example/shop", subprotocol: "")
+        #expect(endpoint?.username == "alice@corp")
+        #expect(endpoint?.host == "db.example")
+        #expect(JDBCConnectionString.parse(url: "jdbc:postgresql://db/app", subprotocol: "postgresql")?.username == nil)
+    }
+
+    @Test("A user parameter names the user in its own case")
+    func userParameter() {
+        let endpoint = JDBCConnectionString.parse(
+            url: "jdbc:postgresql://db/app?user=Alice&sslmode=require",
+            subprotocol: "postgresql"
+        )
+        #expect(endpoint?.username == "Alice")
+        let server = JDBCConnectionString.parse(
+            url: "jdbc:sqlserver://db:1433;databaseName=app;user=Sales",
+            subprotocol: "sqlserver"
+        )
+        #expect(server?.username == "Sales")
+    }
+
+    @Test("A SQL Server instance keeps the port named after it")
+    func sqlServerInstancePort() {
+        let endpoint = JDBCConnectionString.parse(url: "jdbc:sqlserver://db\\SALES:1444;databaseName=app", subprotocol: "sqlserver")
+        #expect(endpoint?.host == "db")
+        #expect(endpoint?.port == 1_444)
+        #expect(endpoint?.database == "app")
+        let bare = JDBCConnectionString.parse(url: "jdbc:sqlserver://db\\SALES;databaseName=app", subprotocol: "sqlserver")
+        #expect(bare?.host == "db")
+        #expect(bare?.port == nil)
+    }
+
+    @Test("An escaped database name is decoded")
+    func escapedDatabase() {
+        let endpoint = JDBCConnectionString.parse(url: "jdbc:postgresql://db/team%20db?ssl=true", subprotocol: "postgresql")
+        #expect(endpoint?.database == "team db")
+        #expect(JDBCConnectionString.percentDecoded("100%zz%4") == "100%zz%4")
+    }
+
+    @Test("Only sslmode, a secure scheme and a seed list are read; every other TLS switch is unread")
+    func urlTLS() {
+        #expect(JDBCConnectionString.tls(of: "jdbc:postgresql://db/app?sslmode=verify-full") == .mode(.verifyIdentity))
+        #expect(JDBCConnectionString.tls(of: "jdbc:postgresql://db/app?sslmode=require") == .mode(.required))
+        #expect(JDBCConnectionString.tls(of: "jdbc:mariadb://db/app?sslMode=trust") == .mode(.required))
+        #expect(JDBCConnectionString.tls(of: "jdbc:mysql://db/app?sslMode=VERIFY_IDENTITY") == .mode(.verifyIdentity))
+        #expect(JDBCConnectionString.tls(of: "jdbc:postgresql://db/app?sslmode=disable") == .mode(.disabled))
+        #expect(JDBCConnectionString.tls(of: "mongodb+srv://cluster.example/app") == .mode(.verifyIdentity))
+        #expect(JDBCConnectionString.tls(of: "jdbc:clickhouse:https://db.example:8443/default") == .mode(.verifyIdentity))
+        #expect(JDBCConnectionString.tls(of: "jdbc:clickhouse:http://db.example:8123/default") == JDBCConnectionString.TLS.none)
+        #expect(JDBCConnectionString.tls(of: "jdbc:postgresql://db/app") == JDBCConnectionString.TLS.none)
+        #expect(JDBCConnectionString.tls(of: "mongodb://db/app") == JDBCConnectionString.TLS.none)
+        let unread = [
+            "jdbc:postgresql://db/app?ssl=true",
+            "jdbc:postgresql://db/app?sslmode=verify-full&sslrootcert=/ca.pem",
+            "jdbc:mysql://db/app?useSSL=true&requireSSL=false",
+            "jdbc:sqlserver://db:1433;databaseName=app;encrypt=true",
+            "mongodb+srv://cluster.example/app?tls=false",
+            "jdbc:postgresql://db/app?sslmode=sometimes",
+            "jdbc:postgresql://db/app?sslmode=require&sslpassword=hunter2"
+        ]
+        for url in unread {
+            guard case .unread(let written) = JDBCConnectionString.tls(of: url) else {
+                Issue.record("Expected \(url) to be unread")
+                continue
+            }
+            #expect(PortableSSLMode(carrying: written) == nil, "\(url)")
+            #expect(!written.contains("hunter2"), "\(url)")
+        }
+    }
+
+    @Test("A secure scheme still names its host and port")
+    func secureSchemeEndpoint() {
+        let endpoint = JDBCConnectionString.parse(url: "jdbc:clickhouse:https://db.example:8443/default", subprotocol: "clickhouse")
+        #expect(endpoint?.host == "db.example")
+        #expect(endpoint?.port == 8_443)
     }
 }

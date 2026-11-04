@@ -15,7 +15,7 @@ version = 2
 yanked = "deny"
 unmaintained = "workspace"
 ignore = [
-    { id = "RUSTSEC-2023-0071", reason = "rsa is reached through sqlx-mysql, which encrypts the MySQL password with the server's public key, and through russh and ssh-key, which sign one login with an RSA identity file in the in-process SSH transport, off in the Linux app's build. Neither decrypts in process. The rsa ban below holds that scope. See linux/docs/decisions/0009-crypto-provider-and-sources.md and core/docs/decisions/0008-in-process-ssh-on-windows.md." },
+    { id = "RUSTSEC-2023-0071", reason = "rsa is reached through sqlx-mysql, which encrypts the MySQL password with the server's public key, and through russh and ssh-key, which sign one login with an RSA identity file in the in-process SSH transport, off in the Linux app's build. Neither decrypts in process. The rsa ban below holds that scope. See linux/docs/decisions/0009-crypto-provider-and-sources.md and core/docs/decisions/0009-in-process-ssh-on-windows.md." },
 ]
 
 [licenses]
@@ -58,7 +58,7 @@ deny = [
     { crate = "rust_decimal", reason = "decimals use tablepro_core::value::SqlDecimal; rust_decimal stops at 28 digits and has no NaN or infinity" },
     { crate = "backoff", reason = "unmaintained" },
     { crate = "instant", reason = "unmaintained" },
-    { crate = "rsa", wrappers = ["sqlx-mysql", "russh", "ssh-key"], reason = "RUSTSEC-2023-0071 is accepted for sqlx-mysql's public-key encryption and the in-process SSH transport's RSA signatures (core ADR 0008); any other user of rsa needs a new decision" },
+    { crate = "rsa", wrappers = ["sqlx-mysql", "russh", "ssh-key"], reason = "RUSTSEC-2023-0071 is accepted for sqlx-mysql's public-key encryption and the in-process SSH transport's RSA signatures (core ADR 0009); any other user of rsa needs a new decision" },
     { crate = "tablepro-test-fixtures", wrappers = ["tablepro", "tablepro-driver-cassandra", "tablepro-driver-clickhouse", "tablepro-driver-mongodb", "tablepro-driver-mssql", "tablepro-driver-mysql", "tablepro-driver-postgres", "tablepro-driver-redis", "tablepro-session", "tablepro-ssh"], reason = "container fixtures are a dev-only leaf; extend the wrappers with each new dependent" },
     { crate = "libsqlite3-sys", deny-multiple-versions = true, reason = "two SQLite builds in one binary conflict" },
 ]

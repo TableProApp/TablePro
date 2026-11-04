@@ -11,7 +11,7 @@ const DEFAULT_IDENTITIES: [&str; 3] = ["id_rsa", "id_ecdsa", "id_ed25519"];
 #[cfg(windows)]
 const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
 
-// SSH in this process, where OpenSSH cannot run a ControlMaster (core ADR 0008).
+// SSH in this process, where OpenSSH cannot run a ControlMaster (core ADR 0009).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InProcessSsh {
     // Read first, and where a key the user trusts is written.

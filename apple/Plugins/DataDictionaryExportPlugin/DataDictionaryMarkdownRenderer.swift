@@ -110,25 +110,28 @@ enum DataDictionaryMarkdownRenderer {
     static func code(_ value: String, inTable: Bool = false) -> String {
         var content = flattened(value)
         guard !content.isEmpty else { return "" }
-        if inTable { content = content.replacingOccurrences(of: "|", with: "\\|") }
+        if inTable { content = content.replacingOccurrences(of: "|", with: "\\|", options: .literal) }
         var longestRun = 0
         var run = 0
-        for character in content {
-            run = character == "`" ? run + 1 : 0
+        for scalar in content.unicodeScalars {
+            run = scalar == "`" ? run + 1 : 0
             longestRun = max(longestRun, run)
         }
         let fence = String(repeating: "`", count: longestRun + 1)
-        let padded = content.hasPrefix("`") || content.hasSuffix("`") ? " \(content) " : content
+        let scalars = content.unicodeScalars
+        let hasEdgeBacktick = scalars.first == "`" || scalars.last == "`"
+        let hasEdgeSpaces = scalars.first == " " && scalars.last == " " && scalars.contains { $0 != " " }
+        let padded = hasEdgeBacktick || hasEdgeSpaces ? " \(content) " : content
         return fence + padded + fence
     }
 
     static func text(_ value: String, inTable: Bool = false) -> String {
         var escaped = ""
-        for character in flattened(value) {
-            if "\\`*_[]<>#&".contains(character) || (inTable && character == "|") {
+        for scalar in flattened(value).unicodeScalars {
+            if "\\`*_[]<>#&".unicodeScalars.contains(scalar) || (inTable && scalar == "|") {
                 escaped.append("\\")
             }
-            escaped.append(character)
+            escaped.unicodeScalars.append(scalar)
         }
         return escaped
     }

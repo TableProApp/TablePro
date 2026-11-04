@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="dataSourceStorageLocal" created-in="DB-262.1234.5">
+    <data-source name="pg_ssl_off" uuid="cccccccc-0000-4000-8000-000000000008">
+      <secret-storage>master_key</secret-storage>
+      <user-name>app</user-name>
+      <schema-mapping />
+      <ssl-config>
+        <enabled>false</enabled>
+        <mode>VERIFY_FULL</mode>
+      </ssl-config>
+    </data-source>
+  </component>
+</project>

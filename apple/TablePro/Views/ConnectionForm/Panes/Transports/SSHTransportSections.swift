@@ -17,7 +17,9 @@ struct SSHTransportSections: View {
 
     var body: some View {
         SSHServerSections(sshState: $coordinator.ssh.state)
-        forwardTargetSection
+        if DatabaseConnection.socketForwardApplies(to: coordinator.network.type) {
+            forwardTargetSection
+        }
     }
 
     /// A tunnel normally forwards to Host and Port; a database that only listens on a unix socket

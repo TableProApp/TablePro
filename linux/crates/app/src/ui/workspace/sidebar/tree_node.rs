@@ -5,6 +5,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use tablepro_session::SessionKey;
+use uuid::Uuid;
 
 use super::sidebar_list::SidebarList;
 
@@ -31,6 +32,7 @@ mod imp {
     pub struct TreeNode {
         pub(super) kind: Cell<NodeKind>,
         pub(super) key: RefCell<Option<SessionKey>>,
+        pub(super) group_id: Cell<Option<Uuid>>,
         /// The schema a schema row lists. `None` for the objects an
         /// engine lists with no schema.
         pub(super) schema: RefCell<Option<String>>,
@@ -79,11 +81,11 @@ impl TreeNode {
         node
     }
 
-    pub(crate) fn group(title: &str) -> Self {
+    pub(crate) fn group(id: Uuid, title: &str) -> Self {
         let node = Self::of(NodeKind::Group, title);
-        node.imp()
-            .children
-            .replace(Some(gio::ListStore::new::<TreeNode>().upcast()));
+        let imp = node.imp();
+        imp.group_id.set(Some(id));
+        imp.children.replace(Some(gio::ListStore::new::<TreeNode>().upcast()));
         node
     }
 
@@ -114,6 +116,10 @@ impl TreeNode {
 
     pub(crate) fn key(&self) -> Option<SessionKey> {
         self.imp().key.borrow().clone()
+    }
+
+    pub(crate) fn group_id(&self) -> Option<Uuid> {
+        self.imp().group_id.get()
     }
 
     pub(crate) fn schema_name(&self) -> Option<String> {

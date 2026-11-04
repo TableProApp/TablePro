@@ -43,21 +43,27 @@ impl ClickHouseFixture {
     pub const HTTPS_PORT: u16 = 8443;
 
     pub async fn start() -> Result<Self, FixtureError> {
-        Self::launch(None, Vec::new(), READY_TIMEOUT).await
+        Self::launch(TestPki::generate()?, None, Vec::new(), READY_TIMEOUT).await
     }
 
     pub async fn start_in(network: &TestNetwork) -> Result<Self, FixtureError> {
-        Self::launch(Some(network), Vec::new(), READY_TIMEOUT).await
+        Self::launch(TestPki::generate()?, Some(network), Vec::new(), READY_TIMEOUT).await
+    }
+
+    /// A server whose HTTPS certificate is self-signed, which a client
+    /// accepts only by trusting that certificate itself.
+    pub async fn start_self_signed() -> Result<Self, FixtureError> {
+        Self::launch(TestPki::generate_self_signed()?, None, Vec::new(), READY_TIMEOUT).await
     }
 
     // No CLICKHOUSE_DB: the image would start, stop and restart the server
     // to create it. One HTTP CREATE DATABASE is both that and the readiness check.
     async fn launch(
+        pki: TestPki,
         network: Option<&TestNetwork>,
         extra_files: Vec<ContainerFile>,
         ready_timeout: Duration,
     ) -> Result<Self, FixtureError> {
-        let pki = TestPki::generate()?;
         let password = FixtureCredentials::generate_password();
         let version = ClickHouseVersion::selected()?;
         let network_alias = network.map(|network| network.container_name(Self::NETWORK_ROLE));
@@ -350,9 +356,10 @@ mod tests {
     #[ignore = "requires docker"]
     async fn a_server_that_exits_is_reported_at_once_with_its_state_and_logs() {
         let broken = config_file("zz-broken.xml", "<timezone>Nowhere/Invalid</timezone>");
+        let pki = TestPki::generate().unwrap();
         let started = Instant::now();
 
-        let error = ClickHouseFixture::launch(None, vec![broken], READY_TIMEOUT)
+        let error = ClickHouseFixture::launch(pki, None, vec![broken], READY_TIMEOUT)
             .await
             .err()
             .unwrap();
@@ -373,8 +380,9 @@ mod tests {
     #[ignore = "requires docker"]
     async fn a_server_that_never_answers_is_reported_with_its_state_and_logs() {
         let elsewhere = config_file("zz-elsewhere.xml", "<http_port>8124</http_port>");
+        let pki = TestPki::generate().unwrap();
 
-        let error = ClickHouseFixture::launch(None, vec![elsewhere], Duration::from_secs(8))
+        let error = ClickHouseFixture::launch(pki, None, vec![elsewhere], Duration::from_secs(8))
             .await
             .err()
             .unwrap();

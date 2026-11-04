@@ -33,17 +33,24 @@ extension PluginMetadataRegistry {
                     supportsSchemaSwitching: true,
                     supportsImport: true,
                     supportsExport: true,
-                    supportsSSH: false,
+                    // Remote mode dials a TCP server, so a forward can carry it. TLS is Quack's own model, set in
+                    // the Remote fields, so the built-in SSL section never applies.
+                    supportsSSH: true,
                     supportsSSL: false,
                     supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: true,
+                    supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
                     supportsDropDatabase: false,
                     supportsRenameColumn: true,
+                    // httpfs checks a server against the system CA bundle when no CA is given, so a URL asking
+                    // for TLS with no mode means a verified connection, never Required's unchecked one.
+                    verifiesServerWithSystemTrust: true,
                     supportsConnectionPooling: false,
                     localFilePathField: .additionalField("duckdbFilePath"),
+                    serverEndpointFields: ServerEndpointFields(hostFieldId: "duckdbHost", portFieldId: "duckdbPort"),
+                    fieldsRequiringDriverSupport: ["duckdbSSLMode"],
                     newDatabaseFileExtensions: ["duckdb", "ddb"],
                     readOnlyEnforcement: .sessionDefault
                 ),

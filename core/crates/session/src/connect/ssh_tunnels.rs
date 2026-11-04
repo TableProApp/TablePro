@@ -10,7 +10,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 /// How a connect reaches a server through SSH. The app passes in its
 /// platform's transport, as it passes a `ProcessHold`: on Linux
 /// `tablepro_ssh::SshServices`, the system OpenSSH client, and on Windows
-/// `tablepro_ssh::InProcessSsh` (core ADR 0008).
+/// `tablepro_ssh::InProcessSsh` (core ADR 0009).
 pub trait SshTunnels: fmt::Debug + Send + Sync {
     fn open(
         &self,

@@ -11,9 +11,9 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | Capability | Detail |
 |---|---|
 | Saved connections | Create and edit (the name included), duplicate with the secrets carried to the copy, delete with or without the connection's history |
-| Groups and colours | From the connection row's menu; each group is a section of the connection list |
+| Groups, favourites and colours | Groups nest 3 levels deep and show as a tree in the library's order, empty ones too. New Group, New Subgroup, Rename and Delete from the menus; a delete asks first. A connection or a group moves by drag and drop or from its menu (Move to Group, Move Group To, Move Up, Move Down). Favourites and the 5 connections opened last lead the picker; favourites reorder the same way |
 | Tags and icons | Several named tags per connection, each with a colour, from the row's menu or the connect dialog, shown after the name and read with the row's description; Manage Tags renames, recolours and deletes them. An icon from a fixed set shows in the row and beside the window title |
-| Search | The connection list's search (Ctrl+F, or start typing) matches the name, host, database, user, driver, group and tag names |
+| Search | The connection list's search (Ctrl+F, or start typing) matches the name, host, database, user, driver, the names on the group's path and tag names |
 | Import and export | A JSON file with no secrets in it, tags and icons included. On import, an entry with the same id and the same settings updates its name, colour, group, tags and icon; any other is added as a new connection. Tags are matched by id, then by name, so a second import adds none |
 | Test before saving | Test connects once and reports, then disconnects |
 | Passwords | Kept in the Secret Service; a prompt asks when one is missing or refused, with Remember Password |

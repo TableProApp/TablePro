@@ -6,7 +6,6 @@
 import Foundation
 import TableProPluginKit
 
-/// One file of a run that imports several, with the table and mapping it was given.
 internal struct RowImportRunItem: Sendable, Equatable {
     internal let url: URL
     internal let sourceName: String
@@ -16,8 +15,6 @@ internal struct RowImportRunItem: Sendable, Equatable {
     internal let sourceFields: Set<String>
 }
 
-/// What a run of several files does when one of them fails. Every file shares it, because they share one
-/// transaction.
 internal struct RowImportBatchPolicy: Sendable, Equatable {
     internal let errorHandling: ImportErrorHandling
     internal let wrapInTransaction: Bool
@@ -31,21 +28,20 @@ internal struct RowImportBatchPolicy: Sendable, Equatable {
         self.init(errorHandling: configuration.errorHandling, wrapInTransaction: configuration.wrapInTransaction)
     }
 
-    /// Skip and Continue keeps every row that went in, so it opens no transaction, as one file's import does not.
     internal var usesTransaction: Bool {
         wrapInTransaction && errorHandling != .skipAndContinue
     }
 }
 
-internal struct RowImportBatchReport {
-    internal enum FileOutcome {
+internal struct RowImportBatchReport: Sendable {
+    internal enum FileOutcome: Sendable {
         case imported(PluginImportResult)
         case failed(any Error, rowsBefore: Int)
         case stopped(rowsBefore: Int)
         case notRun
     }
 
-    internal enum Ending: Equatable {
+    internal enum Ending: Equatable, Sendable {
         case completed
         case failed(file: Int)
         case stopped(file: Int)
@@ -56,9 +52,8 @@ internal struct RowImportBatchReport {
     internal let ending: Ending
     internal let transaction: ImportTransactionOutcome
     internal let executionTime: TimeInterval
+    internal var stopResult: ImportStopResult?
 
-    /// Whether the rows the run wrote are still there. A rollback takes back every file, the ones that finished
-    /// included.
     internal var rowsKept: Bool {
         switch transaction {
         case .rolledBack, .endedByServer:
@@ -80,7 +75,6 @@ internal struct RowImportBatchReport {
         return error
     }
 
-    /// A row or a whole file that Skip and Continue left out.
     internal var hasFailures: Bool {
         outcomes.contains { outcome in
             if case .imported(let result) = outcome { return result.skippedStatements > 0 }

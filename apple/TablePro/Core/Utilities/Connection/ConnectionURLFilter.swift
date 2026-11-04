@@ -25,7 +25,7 @@ internal enum ConnectionURLFilter: Equatable, Sendable {
     private var tableFilter: TableFilter {
         switch self {
         case .condition(let sql):
-            return TableFilter(columnName: TableFilter.rawSQLColumn, rawSQL: sql)
+            return TableFilter.rawCondition(sql)
         case .column(let name, let operation, let value):
             return TableFilter(
                 columnName: name,

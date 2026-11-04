@@ -1,0 +1,13 @@
+{
+	"connections": {
+		"windows": {
+			"provider": "postgresql",
+			"name": "Windows PG",
+			"configuration": {
+				"host": "windows.example.com",
+				"port": "5432",
+				"database": "app"
+			}
+		}
+	}
+}

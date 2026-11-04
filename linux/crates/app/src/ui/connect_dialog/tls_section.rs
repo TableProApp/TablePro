@@ -246,21 +246,25 @@ impl TlsSection {
         }
     }
 
-    /// Open the certificate rows and put the focus on `field`, for a
-    /// toast button that names the setting that fixes a failure.
+    /// Put the focus on `field`, for a toast button that names the
+    /// setting that fixes a failure. A certificate or server name field
+    /// opens the certificate rows first.
     pub fn reveal(&self, field: FormField) {
         let imp = self.imp();
-        if self.mode() == TlsMode::Disable {
-            return;
-        }
-        imp.certificates_row.set_expanded(true);
         let target: gtk4::Widget = match field {
             FormField::CaFile => imp.ca_choose_button.get().upcast(),
             FormField::ClientCertificate => imp.certificate_choose_button.get().upcast(),
             FormField::ClientKey => imp.key_choose_button.get().upcast(),
             FormField::ServerName => imp.server_name_row.get().upcast(),
-            _ => imp.encryption_row.get().upcast(),
+            _ => {
+                imp.encryption_row.grab_focus();
+                return;
+            }
         };
+        if !imp.certificates_row.is_visible() {
+            return;
+        }
+        imp.certificates_row.set_expanded(true);
         target.grab_focus();
     }
 
@@ -342,9 +346,9 @@ impl TlsSection {
         };
         let mode = self.mode();
         imp.encryption_row.set_subtitle(&mode_description(mode));
-        imp.certificates_row.set_visible(mode != TlsMode::Disable);
-        // Only Verify full checks the certificate, so only it reads a CA.
-        imp.ca_row.set_visible(caps.ca_file && mode == TlsMode::VerifyFull);
+        imp.certificates_row.set_visible(mode.encrypts());
+        // Require checks no certificate, so a CA file there would never be read.
+        imp.ca_row.set_visible(caps.ca_file && mode.verifies_certificate());
         imp.certificate_row.set_visible(caps.client_identity);
         imp.key_row.set_visible(caps.client_identity);
         let route = imp.route.get().unwrap_or(TransportClass::DirectTcp);
@@ -378,6 +382,7 @@ pub fn mode_label(mode: TlsMode) -> String {
         TlsMode::Disable => crate::i18n::gettext("Disable"),
         TlsMode::Require => crate::i18n::gettext("Require"),
         TlsMode::VerifyFull => crate::i18n::gettext("Verify full"),
+        TlsMode::Strict => crate::i18n::gettext("Strict"),
     }
 }
 
@@ -389,6 +394,9 @@ pub fn mode_description(mode: TlsMode) -> String {
         ),
         TlsMode::Require => crate::i18n::gettext("Encrypted. The server certificate is not checked."),
         TlsMode::VerifyFull => crate::i18n::gettext("Encrypted. The certificate must be valid for the server name."),
+        TlsMode::Strict => crate::i18n::gettext(
+            "Encrypted from the first byte (TDS 8.0). The certificate must be valid for the server name.",
+        ),
     }
 }
 

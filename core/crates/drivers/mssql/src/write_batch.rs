@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use futures_util::TryStreamExt;
 use tablepro_core::statement::{RowGuard, Statement};
 use tablepro_core::{DriverError, ReadOnlyRefusal, SessionFate, StopRequest, WriteBatch, WriteLedger, WriteReport};
-use tiberius::Command;
+use tiberius::{Command, CommandItem};
 use tokio::time::Instant;
 
 use crate::cancel::{MssqlStop, StopProgress, acknowledged_stop, unconfirmed_stop};
@@ -133,8 +134,15 @@ impl Write<'_> {
         let running = async move {
             let mut command = Command::new("sp_executesql");
             command.bind_param("@stmt", sql);
-            let done = command.exec(client).await?.into_command_result().await?;
-            Ok(done.rows_affected().iter().sum())
+            let mut stream = command.exec(client).await?;
+            let mut affected = 0;
+            // Triggers can return rows; a save needs their counts without retaining their results.
+            while let Some(item) = stream.try_next().await? {
+                if let CommandItem::RowsAffected(rows) = item {
+                    affected += rows;
+                }
+            }
+            Ok(affected)
         };
         self.watch.finish(running).await
     }

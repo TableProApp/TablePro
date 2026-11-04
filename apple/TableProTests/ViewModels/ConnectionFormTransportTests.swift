@@ -181,6 +181,89 @@ struct ConnectionFormTransportTests {
         }
     }
 
+    private func duckdb(mode: String) -> ConnectionFormCoordinator {
+        let coordinator = coordinator(type: .duckdb)
+        coordinator.auth.additionalFieldValues["duckdbMode"] = mode
+        coordinator.auth.additionalFieldValues["duckdbHost"] = "quack.internal"
+        return coordinator
+    }
+
+    @Test("DuckDB in Local File offers no transport and no Network tab")
+    func duckdbLocalHasNoNetworkTab() {
+        let coordinator = duckdb(mode: "local")
+
+        #expect(coordinator.availableTransports == [nil])
+        #expect(!coordinator.supportsSSL)
+        #expect(!coordinator.visibleTabs.contains(.network))
+    }
+
+    @Test("DuckDB in Remote offers the SSH tunnel and every other transport that forwards a port, and no SSL section")
+    func duckdbRemoteOffersPortForwards() {
+        let coordinator = duckdb(mode: "remote")
+
+        #expect(coordinator.availableTransports == [nil, .ssh, .cloudflare, .socksProxy, .tunnelCommand])
+        #expect(coordinator.visibleTabs.contains(.network))
+        #expect(!coordinator.showsSSL)
+    }
+
+    @Test("switching DuckDB to Local File drops the transport it had in Remote")
+    func duckdbLocalDropsTheRemoteTransport() {
+        let coordinator = duckdb(mode: "remote")
+        coordinator.transport = .ssh
+        coordinator.ssh.state.host = "bastion.example.com"
+
+        coordinator.auth.additionalFieldValues["duckdbMode"] = "local"
+        coordinator.normalizeTransport()
+
+        #expect(coordinator.transport == nil)
+        #expect(enabledFlags(coordinator).isEmpty)
+        #expect(coordinator.ssh.state.host == "bastion.example.com", "The server itself is kept for switching back")
+    }
+
+    @Test("a quack+ssh URL opens DuckDB in Remote on the SSH tunnel, with the SSL Mode it names")
+    func quackSSHURLOpensRemoteOverSSH() throws {
+        let url = "quack+ssh://deploy@bastion.example.com/quack.internal:9500/remotedb?sslmode=require"
+        guard case .success(let parsed) = ConnectionURLParser.parse(url) else {
+            Issue.record("\(url) should parse")
+            return
+        }
+
+        let coordinator = ConnectionFormCoordinator(connectionId: nil, initialParsedURL: parsed)
+        coordinator.start()
+
+        #expect(coordinator.transport == .ssh, "start() must not drop a tunnel the Remote fields can use")
+        #expect(coordinator.ssh.state.host == "bastion.example.com")
+        let fields = coordinator.allAdditionalFieldValues
+        #expect(fields["duckdbMode"] == "remote")
+        #expect(fields["duckdbHost"] == "quack.internal")
+        #expect(fields["duckdbPort"] == "9500")
+        #expect(fields["duckdbSSLMode"] == "required")
+    }
+
+    @Test("a DuckDB Remote tunnel command forwards to the server the General tab names")
+    func duckdbTunnelCommandPreviewNamesTheServer() {
+        let coordinator = duckdb(mode: "remote")
+        coordinator.auth.additionalFieldValues["duckdbPort"] = "9500"
+
+        let endpoint = coordinator.buildEdits().applied(to: DatabaseConnection(name: "")).tunnelForwardEndpoint
+
+        #expect(endpoint.host == "quack.internal")
+        #expect(endpoint.port == 9_500)
+    }
+
+    /// Only a driver that dials no host loses a transport to the server-field rule, so a network
+    /// type offers exactly what its capabilities say, whatever its fields hold.
+    @Test("a type that dials its host offers a port forward wherever it supports SSH")
+    func networkTypesKeepTheirTransports() {
+        let manager = PluginManager.shared
+        for type in DatabaseType.allKnownTypes
+        where manager.connectionMode(for: type) == .network && !manager.supportsRemoteDatabaseFile(for: type) {
+            let available = coordinator(type: type).availableTransports
+            #expect(available.contains(.ssh) == manager.supportsSSH(for: type), "\(type.rawValue)")
+            #expect(available.contains(.socksProxy) == manager.supportsSOCKSProxy(for: type), "\(type.rawValue)")
+        }
+    }
+
     @Test("changing the database type returns the connection to direct")
     func typeChangeResetsTransport() {
         let coordinator = coordinator()

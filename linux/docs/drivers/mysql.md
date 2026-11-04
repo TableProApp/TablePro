@@ -21,7 +21,7 @@ sqlx dials its own sockets and takes no stream, so the driver passes it the tran
 
 - A direct route is the host and port, dialled by sqlx.
 - An SSH forward is the Unix socket OpenSSH listens on. sqlx connects to the socket, and its `host` carries the name TLS checks: the service's own, or the override.
-- An in-process SSH channel has no address ([core ADR 0008](../../../core/docs/decisions/0008-in-process-ssh-on-windows.md)), so the driver relays it through a `tablepro_net::PrivateListener` that carries each connection over `Transport::open`. On Unix that is a Unix socket, dialled as above. On Windows it is a loopback port that serves only this process, and sqlx checks the certificate against `127.0.0.1`, so Verify full through it is refused with `ServerNameOverrideUnsupported`.
+- An in-process SSH channel has no address ([core ADR 0009](../../../core/docs/decisions/0009-in-process-ssh-on-windows.md)), so the driver relays it through a `tablepro_net::PrivateListener` that carries each connection over `Transport::open`. On Unix that is a Unix socket, dialled as above. On Windows it is a loopback port that serves only this process, and sqlx checks the certificate against `127.0.0.1`, so Verify full through it is refused with `ServerNameOverrideUnsupported`.
 
 On the other routes nothing relays bytes in between. The whole login, dial included, is bounded by the connect and login timeouts together (25 s). sqlx 0.9 sets no `TCP_NODELAY` and no keepalive on its own dial, so on a direct route a dead peer is found by the probe and by each call's deadline, not by the kernel.
 

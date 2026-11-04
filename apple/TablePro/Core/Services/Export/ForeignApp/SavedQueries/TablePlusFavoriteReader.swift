@@ -66,7 +66,10 @@ enum TablePlusFavoriteReader {
     static func keyword(for entry: ForeignSQLFileTree.Entry) -> String? {
         let tagURL = entry.url.deletingLastPathComponent()
             .appendingPathComponent(entry.fileName + keywordFileSuffix)
-        guard let handle = try? FileHandle(forReadingFrom: tagURL) else { return nil }
+        // A link or a pipe beside a favorite is never opened: a pipe would block the import.
+        guard let values = try? tagURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
+              values.isSymbolicLink != true, values.isRegularFile == true,
+              let handle = try? FileHandle(forReadingFrom: tagURL) else { return nil }
         defer { try? handle.close() }
         guard let data = try? handle.read(upToCount: maximumKeywordFileByteCount),
               let list = String(data: data, encoding: .utf8) else { return nil }

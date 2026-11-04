@@ -1,6 +1,6 @@
 // Two transports: the system OpenSSH client over Unix sockets and an
 // askpass helper, on Unix, and one in process on russh behind the
-// `in-process` feature, on every target (core ADR 0008).
+// `in-process` feature, on every target (core ADR 0009).
 
 mod config;
 mod destination;

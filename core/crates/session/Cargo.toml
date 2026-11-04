@@ -9,7 +9,7 @@ publish.workspace = true
 # FakeConnector and FakeCredentialSource for the tests of crates that
 # start sessions. Never on in a release build.
 fakes = ["dep:tablepro-test-support"]
-# InProcessSsh as an SshTunnels, for an app that tunnels in process (core ADR 0008).
+# InProcessSsh as an SshTunnels, for an app that tunnels in process (core ADR 0009).
 in-process-ssh = ["tablepro-ssh/in-process"]
 
 [dependencies]

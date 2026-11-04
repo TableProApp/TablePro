@@ -29,6 +29,7 @@ extension DataFileController {
 
     func addFilter(_ filter: TableFilter) {
         filterState = TabFilterState.cellFilterState(filterState, adding: filter)
+        filterState.adoptAppliedFiltersAsRunning()
         runQuery()
     }
 

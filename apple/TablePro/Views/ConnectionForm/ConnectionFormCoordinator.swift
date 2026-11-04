@@ -429,6 +429,9 @@ final class ConnectionFormCoordinator: ObservableObject {
         }
         let finalId = connectionId ?? UUID()
 
+        /// A field value can take the transports away in the same edit, as DuckDB's Connection Type
+        /// does, and a hidden one would still be saved, named in the connection list and synced.
+        normalizeTransport()
         var edits = buildEdits()
         edits.additionalFields["promptForPassword"] = auth.effectivePromptForPassword ? "true" : nil
 
@@ -1021,7 +1024,7 @@ final class ConnectionFormCoordinator: ObservableObject {
             customization.tagIds.append(resolved)
         }
         if parsed.type.pluginTypeId == "libSQL", !parsed.host.isEmpty {
-            var urlString = "https://\(parsed.host)"
+            var urlString = "https://\(HostListEndpoint.urlHost(parsed.host))"
             if let port = parsed.port {
                 urlString += ":\(port)"
             }

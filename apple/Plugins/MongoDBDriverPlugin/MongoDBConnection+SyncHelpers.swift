@@ -417,67 +417,66 @@ nonisolated extension MongoDBConnection {
 
     func iterateCursorStreaming(
         cursor: OpaquePointer,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation,
         streamState: MongoStreamState,
         census: () throws -> MongoFieldCensus?
     ) {
-        var docPtr: OpaquePointer?
-        var sample: [[String: Any]] = []
-        var projection: MongoStreamProjection?
-        var emitted = 0
-        var unannounced = Set<String>()
-
-        while mongoc_cursor_next(cursor, &docPtr) {
-            if Task.isCancelled {
-                cleanup(streamState)
-                continuation.finish(throwing: CancellationError())
-                return
-            }
-
-            guard let doc = docPtr else { continue }
-            let dict = bsonToDict(doc)
-
-            if projection == nil, sample.count >= MongoStreamProjection.sampleSize {
-                do {
-                    projection = openStream(sample: sample, census: try census(), continuation: continuation)
-                } catch {
-                    cleanup(streamState)
-                    continuation.finish(throwing: error)
-                    return
+        defer { cleanup(streamState) }
+        do {
+            var docPtr: OpaquePointer?
+            var sample: [[String: Any]] = []
+            var sampleTexts: [String] = []
+            var projection: MongoStreamProjection?
+            var emitted = 0
+            var unannounced = Set<String>()
+            while mongoc_cursor_next(cursor, &docPtr) {
+                if streamState.lock.withLock({ streamState.cancelled }) { throw CancellationError() }
+                try checkCancelled()
+                guard let doc = docPtr else { continue }
+                let text = try canonicalText(of: doc)
+                guard let raw = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
+                      let dict = Self.unwrapExtendedJson(raw) as? [String: Any] else {
+                    throw PluginExportError.exportFailed(String(localized: "A document could not be read", bundle: .main))
                 }
-                emitted += sample.count
-                sample = []
+                if projection == nil, sample.count >= MongoStreamProjection.sampleSize {
+                    projection = try openStream(
+                        sample: sample, texts: sampleTexts, census: try census(), continuation: continuation
+                    )
+                    emitted += sample.count
+                    sample = []
+                    sampleTexts = []
+                }
+                guard let projection else {
+                    sample.append(dict)
+                    sampleTexts.append(text)
+                    continue
+                }
+                let document = try MongoExportDocument.read(
+                    canonicalJSON: text, dictionary: dict, representation: uuidRepresentation,
+                    bsonSizeUpperBound: MongoLibbsonCodec.size(of: doc)
+                )
+                let row = BsonDocumentFlattener.flatten(
+                    documents: [dict], columns: projection.columns, kinds: projection.kinds,
+                    representation: uuidRepresentation, storedTexts: [text]
+                )[0]
+                continuation.yield(.rows([row], documents: [document]))
+                unannounced.formUnion(projection.unannouncedFields(in: dict))
+                emitted += 1
+                if emitted >= PluginRowLimits.emergencyMax {
+                    logger.warning("Streamed result truncated at \(PluginRowLimits.emergencyMax) documents")
+                    break
+                }
             }
-
-            guard let projection else {
-                sample.append(dict)
-                continue
+            logUnannouncedFields(unannounced)
+            var error = bson_error_t()
+            if mongoc_cursor_error(cursor, &error) { throw makeError(error) }
+            if projection == nil {
+                _ = try openStream(sample: sample, texts: sampleTexts, census: nil, continuation: continuation)
             }
-
-            continuation.yield(.rows([projection.row(for: dict, convert: streamCellValue)]))
-            unannounced.formUnion(projection.unannouncedFields(in: dict))
-            emitted += 1
-            if emitted >= PluginRowLimits.emergencyMax {
-                logger.warning("Streamed result truncated at \(PluginRowLimits.emergencyMax) documents")
-                break
-            }
+            continuation.finish()
+        } catch {
+            continuation.finish(throwing: error)
         }
-
-        logUnannouncedFields(unannounced)
-
-        var error = bson_error_t()
-        if mongoc_cursor_error(cursor, &error) {
-            cleanup(streamState)
-            continuation.finish(throwing: makeError(error))
-            return
-        }
-
-        if projection == nil {
-            _ = openStream(sample: sample, census: nil, continuation: continuation)
-        }
-
-        cleanup(streamState)
-        continuation.finish()
     }
 
     func fieldCensus(
@@ -511,22 +510,23 @@ nonisolated extension MongoDBConnection {
 
     private func openStream(
         sample: [[String: Any]],
+        texts: [String],
         census: MongoFieldCensus?,
-        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
-    ) -> MongoStreamProjection {
+        continuation: AsyncThrowingStream<PluginExportStreamElement, Error>.Continuation
+    ) throws -> MongoStreamProjection {
         let projection = MongoStreamProjection(sample: sample, census: census, representation: uuidRepresentation)
-
+        let documents = try MongoExportDocument.read(
+            MongoReadDocuments(dictionaries: sample, texts: texts), representation: uuidRepresentation
+        )
         continuation.yield(.header(projection.header))
-
         if !sample.isEmpty {
-            continuation.yield(.rows(sample.map { projection.row(for: $0, convert: streamCellValue) }))
+            let rows = BsonDocumentFlattener.flatten(
+                documents: sample, columns: projection.columns, kinds: projection.kinds,
+                representation: uuidRepresentation, storedTexts: texts
+            )
+            continuation.yield(.rows(rows, documents: documents))
         }
-
         return projection
-    }
-
-    private func streamCellValue(_ value: Any, kind: BsonValueKind) -> PluginCellValue {
-        BsonDocumentFlattener.cellValue(for: value, kind: kind, representation: uuidRepresentation)
     }
 
     private func cleanup(_ state: MongoStreamState) {

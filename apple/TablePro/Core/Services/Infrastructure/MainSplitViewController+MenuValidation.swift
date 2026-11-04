@@ -138,6 +138,8 @@ struct MenuValidationContext: Equatable {
     // Filled only when a Debug menu item is validated; the menu exists only while the module is on.
     var routineDebug = RoutineDebugMenuState()
     var canOpenLiveMessages = false
+    var canDisconnect = false
+    var isPresentingSheet = false
 
     // The validation and the window's handler both read it, so a lit Use Selection for Find never lands on an editor with no selection.
     var usesGridSelectionForFind: Bool {
@@ -149,6 +151,7 @@ extension MainSplitViewController: NSMenuItemValidation {
     // Nil: not this window's call. An unhandled selector stays lit (Clear Selection did); MenuValidationCoverageTests catches it.
     static func resolvedEnablement(_ selector: Selector, context: MenuValidationContext) -> Bool? {
         guard let answer = ownEnablement(selector, context: context) else { return nil }
+        if context.isPresentingSheet, sheetCommandSelectors.contains(selector) { return false }
         guard context.isAgentMode else { return answer }
         return answer && agentModeSelectors.contains(selector)
     }
@@ -202,6 +205,8 @@ extension MainSplitViewController: NSMenuItemValidation {
             return context.isConnected
         case #selector(closeConnection(_:)):
             return context.hasSelectedWorkspace
+        case #selector(requestDisconnect):
+            return context.canDisconnect
         // Not `isConnected`: the switcher needs nothing from the session and is how the user leaves a connection that stopped working.
         case #selector(switchConnection(_:)):
             return context.hasSelectedWorkspace
@@ -461,6 +466,7 @@ extension MainSplitViewController: NSMenuItemValidation {
     static let agentModeSelectors: Set<Selector> = [
         #selector(switchConnection(_:)),
         #selector(closeConnection(_:)),
+        #selector(requestDisconnect),
         #selector(setSafeModeLevel(_:)),
         #selector(releaseFileLock(_:)),
         #selector(openContainerSwitcher(_:)),
@@ -487,6 +493,49 @@ extension MainSplitViewController: NSMenuItemValidation {
         #selector(switchToLeastRecentTab(_:)),
         #selector(undo(_:)),
         #selector(redo(_:)),
+    ]
+
+    // Each presents a sheet on this window; a window with a sheet attached takes no second one.
+    static let sheetCommandSelectors: Set<Selector> = [
+        #selector(saveDocument(_:)),
+        #selector(saveDocumentAs(_:)),
+        #selector(discardChanges(_:)),
+        #selector(exportTables(_:)),
+        #selector(exportQueryResults(_:)),
+        #selector(exportDataDictionary(_:)),
+        #selector(importData(_:)),
+        #selector(importDataFormat(_:)),
+        #selector(backupDatabase(_:)),
+        #selector(restoreDatabase(_:)),
+        #selector(restorePreviousValues(_:)),
+        #selector(insertDocument(_:)),
+        #selector(editDocument(_:)),
+        #selector(previewSQL(_:)),
+        #selector(saveAsFavorite(_:)),
+        #selector(createNewDatabase(_:)),
+        #selector(createSchema(_:)),
+        #selector(editCurrentSchema(_:)),
+        #selector(copyObjectsToDatabase(_:)),
+        #selector(duplicateCurrentDatabase(_:)),
+        #selector(searchDatabase(_:)),
+        #selector(editObjectComment(_:)),
+        #selector(setSequenceNextValue(_:)),
+        #selector(editSequence(_:)),
+        #selector(runMaintenanceOperation(_:)),
+        #selector(buildJoinQuery(_:)),
+        #selector(chooseRoutineToDebug(_:)),
+        #selector(refreshMaterializedView(_:)),
+        #selector(releaseFileLock(_:)),
+        #selector(truncateTable(_:)),
+        #selector(delete(_:)),
+        #selector(closeConnection(_:)),
+        #selector(requestDisconnect),
+        #selector(closeOtherTabs(_:)),
+        #selector(closeTabsForOtherContainers(_:)),
+        #selector(closeAllTabs(_:)),
+        #selector(closeAgentSession(_:)),
+        #selector(deleteAgentSession(_:)),
+        #selector(clearAIConversations(_:)),
     ]
 
     // A command this window does not own stays enabled, which keeps `performClose:` and the system's own items working.
@@ -597,7 +646,9 @@ extension MainSplitViewController: NSMenuItemValidation {
                 canFocusAssistant: canFocusAssistant,
                 canMoveTabToConnection: canMoveSelectedTabToConnection,
                 hasOtherWindowTabs: hasOtherWindowTabs,
-                canToggleWorkspaceRail: canToggleWorkspaceRail
+                canToggleWorkspaceRail: canToggleWorkspaceRail,
+                canDisconnect: canDisconnect,
+                isPresentingSheet: isViewLoaded && view.window?.attachedSheet != nil
             )
         }
         return MenuValidationContext(
@@ -701,7 +752,9 @@ extension MainSplitViewController: NSMenuItemValidation {
             canFavoriteActiveDatabase: actions.canFavoriteActiveDatabase,
             hasDatabaseFilter: actions.hasDatabaseFilter,
             canFilterSchemas: actions.canFilterSchemas,
-            hasSchemaFilter: actions.hasSchemaFilter
+            hasSchemaFilter: actions.hasSchemaFilter,
+            canDisconnect: canDisconnect,
+            isPresentingSheet: actions.coordinator?.isPresentingSheet ?? false
         )
     }
 
@@ -714,7 +767,6 @@ extension MainSplitViewController: NSMenuItemValidation {
         if action == #selector(toggleAssistant(_:)) { return canToggleAssistant }
         if action == #selector(setResultView(_:)) { return canShowResultView(menuItem) }
         if action == #selector(setSafeModeLevel(_:)) { return canChooseSafeModeLevel(menuItem) }
-        if action == #selector(requestDisconnect) { return canDisconnect }
         if action == #selector(retryConnection) { return canReconnect }
         if let zoom = FontSizeZoom.editor.enablement(action, typography: AppSettingsManager.shared.typography) {
             return zoom

@@ -1,6 +1,6 @@
 # SQL Server
 
-Driver id `mssql`, crate `core/crates/drivers/mssql`. It runs on tiberius 0.13.0 from crates.io (`tds73`, `rustls`, `chrono`, `integrated-auth-gssapi` behind the crate's `kerberos` feature, and `winauth` on Windows) with a deadpool 0.13 pool. The integration suite runs against SQL Server 2022, and CI runs it again on 2017, 2019 and 2025 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
+Driver id `mssql`, crate `core/crates/drivers/mssql`. It runs on tiberius 0.13.0 from crates.io (`tds80`, `rustls`, `chrono`, `integrated-auth-gssapi` behind the crate's `kerberos` feature, and `winauth` on Windows) with a deadpool 0.13 pool. The integration suite runs against SQL Server 2022, and CI runs it again on 2017, 2019 and 2025 ([supported servers](../../README.md#supported-servers)). The contract it implements is in [adding-drivers.md](../adding-drivers.md).
 
 The driver needs SQL Server 2016 or later: every column read joins `sys.masked_columns`, and dropping a table uses `DROP TABLE IF EXISTS`.
 
@@ -24,15 +24,19 @@ An Azure SQL gateway or an availability group listener can answer a login with a
 
 ## TLS
 
-TLS is negotiated inside the TDS pre-login exchange, after the server has said what encryption it supports.
+Up to `VerifyFull`, TLS is negotiated inside the TDS 7.4 pre-login exchange, after the server has said what encryption it supports. `Strict` is TDS 8.0: the TLS handshake comes first, with the ALPN protocol `tds/8.0`, and the pre-login and everything after it run inside it.
 
 | `TlsMode` | tiberius setting | Certificate check |
 |---|---|---|
 | `Disable` | `EncryptionLevel::NotSupported` | None. A server that requires encryption is reported as `ServerRequiresTls`. |
 | `Require` | `EncryptionLevel::Required` with `trust_cert` | None |
 | `VerifyFull` | `EncryptionLevel::Required` | The system's CA store, loaded by tiberius, plus the connection's CA file (`trust_cert_ca`). The name is the host, or the override (`hostname_in_certificate`). |
+| `Strict` | `EncryptionLevel::Strict` | As `VerifyFull`. Microsoft's drivers refuse `TrustServerCertificate` with strict encryption, so there is no unchecked strict mode. |
 
+- `Strict` needs a server that speaks TDS 8.0 with a certificate configured. SQL Server on Windows takes it from 2022, and can require it with Force Strict Encryption. SQL Server on Linux takes it and can require it (`network.forcestrict`) from 2025; 2022 CU14 on Linux closes a strict login, which the integration suite checks. A server that generated its own certificate does not take it either.
+- SQL Server 2022 RTM (16.0.1000.6) has a server-side Strict RPC defect, so a login can succeed while workspace reads and saves fail with TDS errors. Upgrade to SQL Server 2022 CU1 (16.0.4003.1) or later before using Strict. Microsoft records the fix as [KB5022375, bug 2042238](https://learn.microsoft.com/en-us/troubleshoot/sql/releases/sqlserver-2022/cumulativeupdate1#2042238). `VerifyFull` remains available for an RTM server that does not require Strict; it still checks the certificate and host.
 - A server that will not encrypt when asked to is reported as `ServerRefusedTls`.
+- A server that closes the connection before sending a single byte may have refused how the login began, or the connection dropped. The driver counts what it read to know the server sent nothing, then asks again on streams of its own, sending no credential: a TDS 7 pre-login and a strict TLS hello. When the opening the login used goes unanswered again and the other is answered, the server refused the mode: `ServerRequiresStrict` (it allows only strict encryption) or `ServerRefusedStrict` (it does not speak TDS 8.0, or has no certificate for it). Anything else is `ConnectionLost`, which the transport may still explain, as for an SSH forward whose target refused.
 - No client certificate: SQL Server logins are not authenticated by one, so a TLS setting that carries one is refused.
 - tiberius takes no rustls `ClientConfig` and keeps only the text of a rustls error, so the driver classifies TLS failures from that text (`UnknownIssuer`, `NameMismatch`, `Expired` and so on). This is coarser than the other engines, which read the rustls error itself, and a phrase rustls changes in a later release falls back to `TlsFailure::Other`.
 - The CA file is checked before the login, because tiberius reads it during the handshake and would report a bad file as an I/O error.
@@ -40,7 +44,9 @@ TLS is negotiated inside the TDS pre-login exchange, after the server has said w
 ## Authentication
 
 - **Password**: a SQL Server login.
-- **Windows (Kerberos)**: only in a build with the `kerberos` feature, which links MIT Kerberos. The driver sends no username or password and uses the ticket the user already holds from `kinit`, for the SPN `MSSQLSvc/<host>:<port>` built from the host and port the user typed, never from a local SSH forward. The Kerberos calls block, so the login runs on Tokio's blocking pool and the login timeout ends it. The README's [SQL Server section](../../README.md#sql-server-with-windows-integrated-auth) has the realm and SPN rules.
+- **Integrated (`AuthMode::Kerberos`)**: the driver sends no username or password. The calls block, so the login runs on Tokio's blocking pool and the login timeout ends it.
+  - Linux and macOS: only in a build with the `kerberos` feature, which links GSSAPI: MIT Kerberos (`libgssapi_krb5`) on Linux, the system's GSS framework on macOS. It uses the ticket the user already holds, for the SPN `MSSQLSvc/<host>:<port>` built from the host and port the user typed, never from a local SSH forward. The README's [SQL Server section](../../README.md#sql-server-with-windows-integrated-auth) has the realm and SPN rules.
+  - Windows: always, through SSPI and winauth 0.0.5, as the signed-in account. winauth asks SSPI for the NTLM package, so the login is NTLM even in a domain, and a domain that refuses NTLM refuses it. Kerberos on Windows is the next step of [core ADR 0005](../../../core/docs/decisions/0005-sql-server-transport.md). An SSPI failure reaches the driver as an I/O error with no I/O kind, and is reported as `IntegratedAuth`.
 
 ### Kerberos inside Flatpak
 
@@ -89,7 +95,9 @@ SQL Server has no session statement timeout. A workspace call's deadline is the 
 | 3906 | `ReadOnly(ServerRejected)` |
 | 18456, 18452, 18486, 18487, 18488 | `Auth` |
 | 17809 | `Busy(NoFreeConnection)` |
-| A GSSAPI failure | `IntegratedAuth` |
+| A GSSAPI or SSPI failure | `IntegratedAuth` |
+| The server closed a strict login before any byte, and answers a TDS 7 pre-login but not a strict TLS hello | `Tls { failure: ServerRefusedStrict }` |
+| The server closed a TDS 7.4 login before any byte, and answers a strict TLS hello but not a TDS 7 pre-login | `Tls { failure: ServerRequiresStrict }` |
 
 ## Writes
 

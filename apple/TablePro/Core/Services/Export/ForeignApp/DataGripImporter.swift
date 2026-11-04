@@ -79,11 +79,14 @@ struct DataGripImporter: ForeignAppImporter {
                 credentialsAborted = collected.aborted
             }
 
+            var notes: [String] = []
+            let settings = makeConnection(scanned.source, sshConfigs: sshConfigs, notes: &notes)
             records.append(ForeignConnectionRecord(
                 sourceId: scanned.source.uuid,
-                settings: makeConnection(scanned.source, sshConfigs: sshConfigs),
+                settings: settings,
                 groupPath: scanned.source.groupName.map { [$0] } ?? [],
-                credentials: credentials
+                credentials: credentials,
+                notes: notes
             ))
         }
 
@@ -139,7 +142,8 @@ struct DataGripImporter: ForeignAppImporter {
     private func isMongo(driverRef: String?, jdbcURL: String?) -> Bool {
         let url = jdbcURL ?? ""
         if url.lowercased().hasPrefix("mongodb") { return true }
-        return mapDriverRef(driverRef ?? "", subprotocol: jdbcSubprotocol(url)) == DatabaseType.mongodb.rawValue
+        return mapDriverRef(driverRef ?? "", subprotocol: JDBCConnectionString.subprotocol(of: url))
+            == DatabaseType.mongodb.rawValue
     }
 
     // MARK: - Credentials
@@ -248,7 +252,7 @@ struct DataGripImporter: ForeignAppImporter {
 
     private func recentProjectPaths(configDir: URL) -> [String] {
         let url = configDir.appendingPathComponent("options/recentProjects.xml")
-        guard let data = try? Data(contentsOf: url),
+        guard let data = try? ForeignAppFile.read(url),
               let document = try? XMLDocument(data: data, options: [.nodeLoadExternalEntitiesNever]),
               let nodes = try? document.nodes(forXPath: "//entry/@key") else { return [] }
 
@@ -259,18 +263,18 @@ struct DataGripImporter: ForeignAppImporter {
 
     private func loadSSHConfigs(configDir: URL) -> [String: DataGripSSHConfig] {
         let url = configDir.appendingPathComponent("options/sshConfigs.xml")
-        guard let data = try? Data(contentsOf: url) else { return [:] }
+        guard let data = try? ForeignAppFile.read(url) else { return [:] }
         return DataGripDataSourceParser.parseSSHConfigs(data)
     }
 
-    // The shared `dataSources.xml` carries the driver and JDBC URL, the machine-local
-    // `dataSources.local.xml` the user name, SSH and SSL; the local file wins per field.
+    // The shared file carries the driver and JDBC URL, the local file the user name, SSH and SSL; per field,
+    // and per SSH or SSL section it names, the local file wins.
     private func fragments(at location: Location) -> [DataGripDataSourceFragment] {
         var fragments: [String: DataGripDataSourceFragment] = [:]
         var order: [String] = []
 
         for url in [location.dataSourcesURL, location.localURL].compactMap({ $0 }) {
-            guard let data = try? Data(contentsOf: url) else { continue }
+            guard let data = try? ForeignAppFile.read(url) else { continue }
             for fragment in DataGripDataSourceParser.parseFragments(data) {
                 if fragments[fragment.uuid] == nil {
                     order.append(fragment.uuid)
@@ -287,25 +291,28 @@ struct DataGripImporter: ForeignAppImporter {
 
     private func makeConnection(
         _ source: DataGripDataSource,
-        sshConfigs: [String: DataGripSSHConfig]
+        sshConfigs: [String: DataGripSSHConfig],
+        notes: inout [String]
     ) -> ExportableConnection {
-        let subprotocol = jdbcSubprotocol(source.jdbcURL)
+        let subprotocol = JDBCConnectionString.subprotocol(of: source.jdbcURL)
         let type = mapDriverRef(source.driverRef, subprotocol: subprotocol)
         let endpoint = JDBCConnectionString.parse(url: source.jdbcURL, subprotocol: subprotocol)
 
         let host = endpoint?.host ?? "localhost"
         let database = endpoint?.database ?? ""
         let port = endpoint?.port ?? ForeignAppDatabaseType.defaultPort(for: type)
+        let fields = JDBCConnectionString.urlFields(source.jdbcURL)
 
         return ExportableConnection(
             name: source.name,
             host: host,
             port: port,
             database: database,
-            username: source.username,
+            username: source.username.isEmpty ? endpoint?.username ?? "" : source.username,
             type: type,
             sshConfig: makeSSHConfig(source.ssh, sshConfigs: sshConfigs),
-            sslConfig: makeSSLConfig(source.ssl)
+            sslConfig: makeSSLConfig(source, type: type, subprotocol: subprotocol, notes: &notes),
+            additionalFields: fields.isEmpty ? nil : fields
         )
     }
 
@@ -313,7 +320,7 @@ struct DataGripImporter: ForeignAppImporter {
         _ reference: DataGripSSHReference?,
         sshConfigs: [String: DataGripSSHConfig]
     ) -> ExportableSSHConfig? {
-        guard let reference, reference.enabled else { return nil }
+        guard let reference else { return nil }
 
         let config = reference.configId.flatMap { sshConfigs[$0] }
         let host = config?.host ?? reference.inlineHost ?? ""
@@ -338,8 +345,7 @@ struct DataGripImporter: ForeignAppImporter {
         )
     }
 
-    /// DataGrip omits `authType` when the connection relies on the OpenSSH
-    /// config, so a present key path is the reliable signal for key auth.
+    // DataGrip omits `authType` when the connection relies on the OpenSSH config, so a key path is the signal.
     private func usesKeyAuthentication(authType: String?, keyPath: String) -> Bool {
         switch (authType ?? "").uppercased() {
         case "KEY_PAIR", "PUBLIC_KEY", "OPEN_SSH":
@@ -351,9 +357,7 @@ struct DataGripImporter: ForeignAppImporter {
         }
     }
 
-    private func makeSSLConfig(_ ssl: DataGripSSLProperties?) -> ExportableSSLConfig? {
-        guard let ssl else { return nil }
-
+    private func makeSSLConfig(_ ssl: DataGripSSLProperties) -> ExportableSSLConfig {
         let mode: String
         switch (ssl.mode ?? "").lowercased() {
         case "require", "required": mode = SSLMode.required.rawValue
@@ -370,14 +374,42 @@ struct DataGripImporter: ForeignAppImporter {
         )
     }
 
-    private func jdbcSubprotocol(_ url: String) -> String {
-        guard url.lowercased().hasPrefix("jdbc:") else { return "" }
-        var subprotocol = ""
-        for character in url.dropFirst("jdbc:".count) {
-            if character == ":" || character == "/" { break }
-            subprotocol.append(character)
+    // Without SSL settings the URL, then the driver's own default, decides. TLS set in a way this cannot read
+    // keeps the switch names as the mode, which the import flags and connects with SSL required.
+    private func makeSSLConfig(
+        _ source: DataGripDataSource,
+        type: String,
+        subprotocol: String,
+        notes: inout [String]
+    ) -> ExportableSSLConfig? {
+        if let ssl = source.ssl {
+            return makeSSLConfig(ssl)
         }
-        return subprotocol
+        let propertySwitches = source.driverPropertyNames.filter { JDBCConnectionString.isTLSParameter($0) }
+        guard propertySwitches.isEmpty else {
+            return ExportableSSLConfig(mode: propertySwitches.joined(separator: ", "))
+        }
+        switch JDBCConnectionString.tls(of: source.jdbcURL) {
+        case .mode(.disabled): return nil
+        case .mode(let mode): return ExportableSSLConfig(mode: mode.rawValue)
+        case .unread(let written): return ExportableSSLConfig(mode: written)
+        case .none:
+            guard let mode = driverDefaultSSLMode(type: type, subprotocol: subprotocol) else { return nil }
+            notes.append(ForeignImportNote.tlsFromDriverDefault(mode, appName: displayName))
+            return ExportableSSLConfig(mode: mode.rawValue)
+        }
+    }
+
+    // DataGrip passes no TLS setting when "Use SSL" is off, so the driver's default applies: pgjdbc and
+    // Connector/J prefer TLS without checking the certificate, mssql-jdbc encrypts and checks it. MariaDB
+    // Connector/J and jTDS connect in the clear.
+    private func driverDefaultSSLMode(type: String, subprotocol: String) -> SSLMode? {
+        switch subprotocol.lowercased() {
+        case "postgresql": return .preferred
+        case "mysql": return type == "MySQL" ? .preferred : nil
+        case "sqlserver": return .verifyIdentity
+        default: return nil
+        }
     }
 
     private func mapDriverRef(_ driverRef: String, subprotocol: String) -> String {

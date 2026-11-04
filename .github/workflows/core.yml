@@ -25,16 +25,19 @@ jobs:
           - name: macOS
             runner: macos-15
             target: aarch64-apple-darwin
+            # GSSAPI from the system's GSS framework, as the macOS app links it.
+            features: tablepro-driver-mssql/kerberos
     runs-on: ${{ matrix.runner }}
     # DuckDB's C++ takes most of it, and MSVC builds it slowly.
     timeout-minutes: 150
     env:
       TARGET: ${{ matrix.target }}
+      FEATURES: ${{ matrix.features }}
       RUSTFLAGS: -D warnings
       # aws-lc-sys assembles x64 with NASM, which the Windows runner lacks;
       # its prebuilt objects stand in.
       AWS_LC_SYS_PREBUILT_NASM: "1"
-      # The SSH transport the Windows app runs (core ADR 0008).
+      # The SSH transport the Windows app runs (core ADR 0009).
       IN_PROCESS_SSH: tablepro-ssh/in-process,tablepro-session/in-process-ssh
     defaults:
       run:
@@ -57,14 +60,15 @@ jobs:
       # on Linux alone.
       - name: Check the core crates
         run: |
-          cargo check --locked --target "$TARGET" --features "$IN_PROCESS_SSH" \
+          cargo check --locked --target "$TARGET" --features "$FEATURES" --features "$IN_PROCESS_SSH" \
             -p tablepro-core -p tablepro-net -p tablepro-storage -p tablepro-ssh -p tablepro-session \
-            -p tablepro-ai -p tablepro-mcp -p tablepro-test-support -p tablepro-test-fixtures \
+            -p tablepro-foreign-import -p tablepro-ai -p tablepro-mcp -p tablepro-test-support -p tablepro-test-fixtures \
             -p tablepro-driver-cassandra -p tablepro-driver-clickhouse -p tablepro-driver-duckdb \
             -p tablepro-driver-mongodb -p tablepro-driver-mssql -p tablepro-driver-mysql \
             -p tablepro-driver-postgres -p tablepro-driver-redis -p tablepro-driver-sqlite
+      # The SQL Server driver's own: integrated login differs on every platform.
       - name: Core unit tests
-        run: cargo test --locked --target "$TARGET" -p tablepro-core --lib
+        run: cargo test --locked --target "$TARGET" --features "$FEATURES" -p tablepro-core -p tablepro-driver-mssql --lib
       # The transports and the drivers' relays each have a split per platform.
       - name: Transport unit tests
         run: |
@@ -87,3 +91,44 @@ jobs:
         run: |
           Get-Content (Join-Path $env:ProgramData 'ssh\sshd_config') | Where-Object { $_ -notmatch '^\s*(#|$)' }
           Get-Content (Join-Path $env:ProgramData 'ssh\logs\sshd.log') -Tail 300 -ErrorAction Continue
+      # Each importer reads its app's files from this platform's own places.
+      - name: Importers from other apps
+        run: cargo test --locked --target "$TARGET" -p tablepro-foreign-import
+
+  sql-server-windows:
+    name: SQL Server integrated login (Windows x64)
+    # SQL Server installs on x64 Windows only, and a runner is in no domain, so SSPI signs in with NTLM.
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      AWS_LC_SYS_PREBUILT_NASM: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: sql-server-windows
+      - name: Build the SQL Server tests
+        run: cargo test --locked -p tablepro-driver-mssql --test integration --no-run
+      - name: Install SQL Server 2022 Express
+        shell: pwsh
+        run: core/crates/drivers/mssql/tests/windows/sql-server.ps1 -Install
+      # A filter that matches nothing passes, so each run checks its count.
+      - name: Integrated login over TDS 7.4 and strict TLS
+        run: |
+          cargo test --locked -p tablepro-driver-mssql --test integration -- --ignored windows_server::sspi:: 2>&1 | tee sspi.log
+          grep "test result: ok. 2 passed" sspi.log
+      - name: Turn on Force Strict Encryption
+        shell: pwsh
+        run: core/crates/drivers/mssql/tests/windows/sql-server.ps1 -ForceStrict
+      - name: Integrated login under Force Strict Encryption
+        run: |
+          cargo test --locked -p tablepro-driver-mssql --test integration -- --ignored windows_server::force_strict:: 2>&1 | tee force-strict.log
+          grep "test result: ok. 1 passed" force-strict.log

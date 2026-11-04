@@ -179,12 +179,12 @@ public sealed partial class ShellTests
         var tabs = app.Find("Tabs");
         bool Open() => tabs.FindFirstDescendant(condition => condition.ByName("Query 2")) is not null;
         app.Chord(Open, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
-        app.TypeInto(app.Find("SqlEditor"), "SELECT 42 AS answer");
+        app.TypeInto("Query 2", "SELECT 42 AS answer");
         app.Chord(() => !Open(), VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_W);
         app.Chord(Open, VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT, VirtualKeyShort.KEY_T);
         var text = string.Empty;
         Retry.WhileFalse(
-            () => (text = AppSession.EditorText(app.Find("SqlEditor"))).Contains("SELECT 42", StringComparison.Ordinal),
+            () => (text = AppSession.EditorText(app.FindEditor("Query 2"))).Contains("SELECT 42", StringComparison.Ordinal),
             AppSession.Wait,
             throwOnTimeout: false);
         Assert.Contains("SELECT 42 AS answer", text, StringComparison.Ordinal);
@@ -199,7 +199,7 @@ public sealed partial class ShellTests
 
         app.Click(app.Find("SampleCard"), () => app.TryFind("Rail_Chinook (Sample)") is not null);
         app.FindByName("Track", app.Find("ObjectTree"));
-        app.TypeInto(app.Find("SqlEditor"), "BEGIN");
+        app.TypeInto("Query 1", "BEGIN");
         app.Chord(() => app.TryFind("CommitButton") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.ENTER);
 
         // A closed InfoBar stays in the tree with its content folded away, so its buttons say whether it shows.

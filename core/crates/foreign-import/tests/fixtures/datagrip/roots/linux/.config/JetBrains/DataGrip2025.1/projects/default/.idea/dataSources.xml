@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="default_project" uuid="eeeeeeee-0000-4000-8000-000000000005">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <jdbc-url>jdbc:sqlite:/home/me/default.db</jdbc-url>
+    </data-source>
+  </component>
+</application>

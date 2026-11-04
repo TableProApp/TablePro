@@ -33,6 +33,10 @@ struct ConnectedView: View {
         appState.isConnectionRemoved(connection.id)
     }
 
+    private var sceneObjects: SceneObjects {
+        SceneObjects(appState: appState, coordinatorStore: coordinatorStore, presenter: presenter, menuState: menuState)
+    }
+
     private var connectionEditorPresented: Binding<Bool> {
         Binding(
             get: { presenter.isEditingConnection(connection.id) },
@@ -60,7 +64,7 @@ struct ConnectedView: View {
             Text("This connection no longer exists. It may have been removed from another device.")
         }
         .sheet(isPresented: connectionEditorPresented) {
-            ConnectionFormView(editing: liveRecord ?? connection) { _ in
+            ConnectionFormSheet(connection: liveRecord ?? connection, objects: sceneObjects) { _ in
                 presenter.dismissConnectionEditor()
             }
         }

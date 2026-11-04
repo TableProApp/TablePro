@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<application>
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="dg_sample_escape" uuid="../escape">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <jdbc-url>jdbc:sqlite:/tmp/dg_sample_escape.sqlite</jdbc-url>
+    </data-source>
+  </component>
+</application>

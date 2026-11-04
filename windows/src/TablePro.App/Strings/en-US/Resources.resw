@@ -561,14 +561,17 @@
   <data name="TlsModeBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Encryption</value>
   </data>
-  <data name="TlsDisable.Content" xml:space="preserve">
+  <data name="TlsMode_Disable" xml:space="preserve">
     <value>Off</value>
   </data>
-  <data name="TlsRequire.Content" xml:space="preserve">
+  <data name="TlsMode_Require" xml:space="preserve">
     <value>Required, any certificate</value>
   </data>
-  <data name="TlsVerifyFull.Content" xml:space="preserve">
+  <data name="TlsMode_VerifyFull" xml:space="preserve">
     <value>Required, verify the certificate and host</value>
+  </data>
+  <data name="TlsMode_Strict" xml:space="preserve">
+    <value>Strict (TDS 8.0), verify the certificate and host</value>
   </data>
   <data name="CaFileCard.Header" xml:space="preserve">
     <value>CA certificate</value>
@@ -1349,5 +1352,65 @@ New fingerprint: {2}</value>
   </data>
   <data name="Error_config_server_name_override_unsupported" xml:space="preserve">
     <value>This driver cannot verify the database server name through this connection route. Use a direct connection for full TLS verification.</value>
+  </data>
+  <data name="AuthBox.Header" xml:space="preserve">
+    <value>Authentication</value>
+  </data>
+  <data name="AuthBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Authentication</value>
+  </data>
+  <data name="AuthPassword.Content" xml:space="preserve">
+    <value>User name and password</value>
+  </data>
+  <data name="AuthIntegrated.Content" xml:space="preserve">
+    <value>Windows authentication</value>
+  </data>
+  <data name="ServerNameCard.Header" xml:space="preserve">
+    <value>Certificate host name</value>
+  </data>
+  <data name="ServerNameCard.Description" xml:space="preserve">
+    <value>Leave blank to verify the connection host.</value>
+  </data>
+  <data name="ServerNameBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Certificate host name</value>
+  </data>
+  <data name="ChangeEncryptionButton.Content" xml:space="preserve">
+    <value>Change encryption</value>
+  </data>
+  <data name="TlsFailure_ServerRequiresStrict" xml:space="preserve">
+    <value>This server requires Strict encryption. Choose Strict to connect.</value>
+  </data>
+  <data name="TlsFailure_ServerRefusedStrict" xml:space="preserve">
+    <value>This server refused Strict encryption. Check its certificate or choose another encryption mode.</value>
+  </data>
+  <data name="TlsFailure_ServerRequiresTls" xml:space="preserve">
+    <value>This server requires encryption. Choose an encryption mode to connect.</value>
+  </data>
+  <data name="TlsFailure_UnknownIssuer" xml:space="preserve">
+    <value>The server certificate is not trusted. Choose its CA certificate.</value>
+  </data>
+  <data name="TlsFailure_NameMismatch" xml:space="preserve">
+    <value>The server certificate does not match the host name. Check the host and certificate host name.</value>
+  </data>
+  <data name="TlsFailure_Expired" xml:space="preserve">
+    <value>The server certificate has expired. Ask the server administrator to renew it.</value>
+  </data>
+  <data name="TlsFailure_NotYetValid" xml:space="preserve">
+    <value>The server certificate is not valid yet. Check the system clock.</value>
+  </data>
+  <data name="TlsFailure_Revoked" xml:space="preserve">
+    <value>The server certificate has been revoked. Ask the server administrator to replace it.</value>
+  </data>
+  <data name="TlsFailure_ServerRefusedTls" xml:space="preserve">
+    <value>This server refused encryption. Check its TLS configuration.</value>
+  </data>
+  <data name="TlsFailure_HandshakeRejected" xml:space="preserve">
+    <value>The server rejected the TLS handshake. Check its TLS configuration and client certificate.</value>
+  </data>
+  <data name="TlsFailure_CaFileInvalid" xml:space="preserve">
+    <value>The CA certificate file could not be read. Choose a valid certificate file.</value>
+  </data>
+  <data name="TlsFailure_ClientIdentityInvalid" xml:space="preserve">
+    <value>The client certificate or key could not be read. Check both files.</value>
   </data>
 </root>

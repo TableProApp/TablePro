@@ -71,6 +71,9 @@ struct RowChangeStatementFactory {
     /// rather than leaving to the server. Nil when the source never said, as a record saved before it was kept.
     let identityColumns: Set<String>?
     var holdsKeyedWritesToOneRow = false
+    // From the result each row was read in; a driver that keeps none leaves it empty.
+    var rowLocators: [RowID: String] = [:]
+    var database: String?
 
     init(
         tableName: String,
@@ -322,12 +325,14 @@ struct RowChangeStatementFactory {
 
     private static let defaultMarker = PluginCellValue.text("__DEFAULT__")
 
-    private var rowWriteContext: PluginRowWriteContext {
+    private func rowWriteContext(for keyed: PluginKeyedChanges) -> PluginRowWriteContext {
         var context = PluginRowWriteContext()
         context.serverOwnedColumns = generatedColumns
         context.rowMatchExcludedColumns = rowMatchPolicy.excludedColumns
         context.rowMatchTextColumns = rowMatchPolicy.textColumns
         context.columnTypeNames = columnTypeNames
+        context.rowLocators = keyed.locators(rowLocators)
+        context.database = database
         return context
     }
 
@@ -378,7 +383,8 @@ struct RowChangeStatementFactory {
                 rows: rows.map { row in restorable.map { row.indices.contains($0) ? row[$0] : .null } },
                 absentCells: absentCells.mapValues { absent in
                     Set(restorable.indices.filter { absent.contains(restorable[$0]) })
-                }
+                },
+                context: restoreContext(rowCount: rows.count)
             ) {
                 try refuseUnfilteredWrites(restored.map { $0.statement })
                 return RestoreStatements(statements: restored.map {
@@ -419,6 +425,16 @@ struct RowChangeStatementFactory {
         guard style == .identityInsertSession else { return RestoreStatements(statements: statements) }
         let session = ExplicitIdentityInsert.sessionStatements(for: generator.qualifiedTableName)
         return RestoreStatements(statements: statements, prologue: [session.open], epilogue: [session.close])
+    }
+
+    // A rewind keys the row it puts back as `.existing(index)` of `rows`.
+    private func restoreContext(rowCount: Int) -> PluginRowWriteContext {
+        var context = PluginRowWriteContext()
+        context.database = database
+        for index in 0..<rowCount {
+            context.rowLocators[index] = rowLocators[.existing(index)]
+        }
+        return context
     }
 
     /// The columns a restored row is written with: every one but those the server computes, which refuse a value and
@@ -490,7 +506,7 @@ struct RowChangeStatementFactory {
                 insertedRowData: keyed.insertedRowData,
                 deletedRowIndices: keyed.deletedRowIndices,
                 insertedRowIndices: keyed.insertedRowIndices,
-                context: rowWriteContext
+                context: rowWriteContext(for: keyed)
             )
             // A driver that writes its own rows never hands one back to the host, whose statements are not its engine's.
             if let generated {
@@ -629,6 +645,14 @@ struct PluginKeyedChanges {
         )
         self.deletedRowIndices = Set(deletedRowIDs.compactMap { keys[$0] })
         self.insertedRowIndices = Set(insertedRowIDs.compactMap { keys[$0] })
+    }
+
+    func locators(_ byRow: [RowID: String]) -> [Int: String] {
+        var keyed: [Int: String] = [:]
+        for (index, rowID) in rowIDs.enumerated() {
+            keyed[index] = byRow[rowID]
+        }
+        return keyed
     }
 
     /// The row a driver's `rowIndex` names, or nil when it names none of these changes.

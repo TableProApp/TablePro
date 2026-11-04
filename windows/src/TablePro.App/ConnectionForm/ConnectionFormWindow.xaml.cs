@@ -189,8 +189,11 @@ public sealed partial class ConnectionFormWindow : Window
         SshAuthBox.SelectedIndex = (int)draft.SshAuth;
         SshKeyBox.Text = draft.SshKeyPath;
         SshPasswordInput.Password = string.Empty;
-        TlsModeBox.SelectedIndex = (int)draft.TlsMode;
+        AuthBox.Visibility = engine.SupportsIntegratedAuth ? Visibility.Visible : Visibility.Collapsed;
+        AuthBox.SelectedIndex = draft.IntegratedAuth ? 1 : 0;
+        FillTlsModes(engine, draft.TlsMode);
         CaFileBox.Text = draft.CaFile;
+        ServerNameBox.Text = draft.ServerName;
         ClientCertificateBox.Text = draft.ClientCertificate;
         ClientKeyBox.Text = draft.ClientKey;
         SafeModeBox.SelectedIndex = (int)draft.SafeMode;
@@ -200,6 +203,8 @@ public sealed partial class ConnectionFormWindow : Window
         ClearErrors();
         SetStatus(string.Empty, null);
         UpdateSsh();
+        UpdateAuthentication();
+        UpdateTls();
         UpdateSummaries();
         (draft.IsFileEngine ? (Control)FileBox : HostBox).Focus(FocusState.Programmatic);
     }
@@ -217,6 +222,7 @@ public sealed partial class ConnectionFormWindow : Window
             draft.Host = HostBox.Text;
             draft.Port = PortBox.Text;
             draft.UserName = UserBox.Text;
+            draft.IntegratedAuth = AuthBox.SelectedIndex == 1;
             draft.Password = PasswordInput.Password;
             draft.Database = DatabaseBox.Text;
             draft.UseSsh = SshSwitch.IsOn;
@@ -226,8 +232,9 @@ public sealed partial class ConnectionFormWindow : Window
             draft.SshAuth = (SshAuthMethod)Math.Max(0, SshAuthBox.SelectedIndex);
             draft.SshKeyPath = SshKeyBox.Text;
             draft.SshPassword = SshPasswordInput.Password;
-            draft.TlsMode = (TlsMode)Math.Max(0, TlsModeBox.SelectedIndex);
+            draft.TlsMode = SelectedTlsMode;
             draft.CaFile = CaFileBox.Text;
+            draft.ServerName = ServerNameBox.Text;
             draft.ClientCertificate = ClientCertificateBox.Text;
             draft.ClientKey = ClientKeyBox.Text;
         }
@@ -331,6 +338,7 @@ public sealed partial class ConnectionFormWindow : Window
 
     private void SetStatus(string text, bool? success)
     {
+        ChangeEncryptionButton.Visibility = Visibility.Collapsed;
         StatusText.Text = text;
         StatusText.Style = (Style)Root.Resources[success switch
         {
@@ -341,6 +349,26 @@ public sealed partial class ConnectionFormWindow : Window
         ToolTipService.SetToolTip(StatusText, string.IsNullOrEmpty(text) ? null : text);
     }
 
+    private void SetFailure(CoreError error)
+    {
+        var message = error.TlsFailure is { } failure
+            ? Strings.Get("TlsFailure_" + failure)
+            : string.Empty;
+        SetStatus(string.IsNullOrEmpty(message) ? Strings.Error(error) : message, false);
+        ChangeEncryptionButton.Visibility = error.TlsFailure is TlsFailure.ServerRequiresStrict
+            or TlsFailure.ServerRefusedStrict or TlsFailure.ServerRequiresTls
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void OnChangeEncryption(object sender, RoutedEventArgs e)
+    {
+        TlsExpander.IsExpanded = true;
+        TlsModeBox.StartBringIntoView();
+        TlsModeBox.Focus(FocusState.Programmatic);
+        TlsModeBox.IsDropDownOpen = true;
+    }
+
     private void SetBusy(bool busy)
     {
         _busy = busy;
@@ -348,6 +376,57 @@ public sealed partial class ConnectionFormWindow : Window
         ConnectButton.IsEnabled = !busy;
         SaveButton.IsEnabled = !busy;
         TestRing.IsActive = busy;
+    }
+
+    private TlsMode SelectedTlsMode => TlsModeBox.SelectedItem is ComboBoxItem { Tag: TlsMode mode }
+        ? mode
+        : TlsMode.Disable;
+
+    private void FillTlsModes(DatabaseEngine engine, TlsMode selected)
+    {
+        TlsModeBox.Items.Clear();
+        foreach (var mode in engine.SupportedTlsModes)
+        {
+            var item = new ComboBoxItem { Content = Strings.Get("TlsMode_" + mode), Tag = mode };
+            TlsModeBox.Items.Add(item);
+            if (mode == selected)
+            {
+                TlsModeBox.SelectedItem = item;
+            }
+        }
+
+        if (TlsModeBox.SelectedItem is null && TlsModeBox.Items.Count > 0)
+        {
+            TlsModeBox.SelectedIndex = 0;
+        }
+    }
+
+    private void UpdateAuthentication()
+    {
+        var visibility = AuthBox.SelectedIndex == 1 ? Visibility.Collapsed : Visibility.Visible;
+        UserBox.Visibility = visibility;
+        PasswordInput.Visibility = visibility;
+    }
+
+    private void UpdateTls()
+    {
+        var verifies = SelectedTlsMode is TlsMode.VerifyFull or TlsMode.Strict;
+        CaFileCard.Visibility = verifies ? Visibility.Visible : Visibility.Collapsed;
+        ServerNameCard.Visibility = verifies ? Visibility.Visible : Visibility.Collapsed;
+        var clientIdentity = _engine?.SupportsClientIdentity == true && SelectedTlsMode != TlsMode.Disable;
+        ClientCertificateCard.Visibility = clientIdentity ? Visibility.Visible : Visibility.Collapsed;
+        ClientKeyCard.Visibility = clientIdentity ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void OnAuthChanged(object sender, SelectionChangedEventArgs e) => UpdateAuthentication();
+
+    private void OnTlsChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_draft is not null)
+        {
+            UpdateTls();
+            UpdateSummaries();
+        }
     }
 
     private void UpdateSsh()
@@ -585,7 +664,7 @@ public sealed partial class ConnectionFormWindow : Window
         }
         catch (TableProException exception)
         {
-            SetStatus(Strings.Error(exception.Error), false);
+            SetFailure(exception.Error);
         }
         catch (OperationCanceledException)
         {
@@ -625,7 +704,7 @@ public sealed partial class ConnectionFormWindow : Window
         }
         catch (TableProException exception)
         {
-            SetStatus(Strings.Error(exception.Error), false);
+            SetFailure(exception.Error);
             SetBusy(false);
         }
     }

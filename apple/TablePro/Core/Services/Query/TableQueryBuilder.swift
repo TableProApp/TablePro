@@ -124,7 +124,17 @@ struct TableQueryBuilder {
         limit: Int = 200,
         offset: Int = 0
     ) -> String? {
-        if let pluginDriver {
+        // A driver that writes its own SQL takes a raw condition as given, so the boundary check the
+        // host's generator applies has to run before the driver is asked.
+        if dialect != nil, filters.contains(where: {
+            $0.isEnabled && FilterSQLGenerator.refusesRawCondition($0, databaseType: databaseType)
+        }) {
+            return nil
+        }
+        // A driver reads a column named like the raw row as a raw condition, so a comparison on such a
+        // column is written by the host's generator, or by no one.
+        let reachesDriver = !filters.contains { $0.isEnabled && $0.namesRawConditionColumn }
+        if let pluginDriver, reachesDriver {
             let targetColumns = selectColumns ?? columns
             let sortCols = SortColumnResolver.resolvedIndices(
                 for: sortState, displayColumns: columns, targetColumns: targetColumns
@@ -152,7 +162,10 @@ struct TableQueryBuilder {
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType,
             stringEscapes: stringEscapes
         )
-        let whereClause = filterGen.generateWhereClause(from: filters.filter { $0.isEnabled }, logicMode: logicMode)
+        guard let whereClause = filterGen.generateWhereClause(
+            from: filters.filter { $0.isEnabled },
+            logicMode: logicMode
+        ) else { return nil }
         if !whereClause.isEmpty {
             query += " \(whereClause)"
         }
@@ -217,8 +230,9 @@ struct TableQueryBuilder {
             stringLiteralPrefix: SQLStringLiteralPrefix.forDatabaseType(databaseType), databaseType: databaseType,
             stringEscapes: stringEscapes
         )
-        let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
-
+        guard let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode) else {
+            return nil
+        }
         guard !whereClause.isEmpty else {
             return "SELECT COUNT(*) FROM \(quotedTable)"
         }

@@ -354,9 +354,20 @@ struct DatabaseConnection: Identifiable, Hashable {
         }
     }
 
+    /// A socket path stands in for the built-in Host and Port, so only a `.network` driver can be
+    /// reached through one. A server named in plugin fields, like DuckDB's Quack, listens on TCP
+    /// alone, and a path stored for it would send the tunnel somewhere nothing answers.
     var sshForwardUnixSocketPath: String? {
-        get { additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey]?.nilIfEmpty }
+        get {
+            guard Self.socketForwardApplies(to: type) else { return nil }
+            return additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey]?.nilIfEmpty
+        }
         set { additionalFields[DatabaseConnection.sshForwardUnixSocketPathKey] = newValue ?? "" }
+    }
+
+    static func socketForwardApplies(to type: DatabaseType) -> Bool {
+        guard let snapshot = PluginMetadataRegistry.shared.snapshot(for: type) else { return true }
+        return snapshot.connectionMode == .network
     }
 
     init(

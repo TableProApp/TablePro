@@ -1,0 +1,7 @@
+<application>
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig host="bastion.example.com" id="SSH1" port="22" username="deploy" authType="PASSWORD" />
+    </configs>
+  </component>
+</application>

@@ -120,7 +120,7 @@ The shipped drivers:
 | `endpoint` | 5432 | 3306 | `File` | `File` | 1433 | 8123 | 9042 | 6379 | 27017 |
 | `auth_modes` | Password | Password | none | none | Password, Kerberos | Password | Password | Password | Password |
 | `username_required` | yes | yes | | | yes | yes | no | no | no |
-| TLS modes | all three | all three | none | none | all three | all three | all three | all three | all three |
+| TLS modes | all three | all three | none | none | all three and `Strict` | all three | all three | all three | all three |
 | CA file | yes | yes | | | yes | yes | yes | yes | yes |
 | Client certificate | yes | yes | | | no | yes | yes | yes | yes |
 | Server name override | `AnyRoute` | `SshForwardOnly` | | | `AnyRoute` | `AnyRoute` | `AnyRoute` | `AnyRoute` | `SshForwardOnly` |
@@ -133,7 +133,7 @@ The shipped drivers:
 | `database_required` | no | yes | no | no | no | no | no | no | no |
 | `statement_stop` | `Server` | `Server` | `Server` | `Server` | `Server` | `Server` | `Abandon` | `Server` | `Server` |
 
-SQL Server offers Kerberos only when built with the `kerberos` feature. MySQL's `dml_writes` is what InnoDB gives; the driver reads each table's storage engine before a save and writes statement by statement on one that cannot roll back.
+SQL Server offers Kerberos on Linux and macOS only when built with the `kerberos` feature, and always on Windows, where it signs in through SSPI. MySQL's `dml_writes` is what InnoDB gives; the driver reads each table's storage engine before a save and writes statement by statement on one that cannot roll back.
 
 ### Connecting
 

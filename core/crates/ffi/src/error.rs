@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tablepro_core::{DriverError, ServerDiagnostics, SshFailure, TransportError};
+use tablepro_core::{DriverError, ServerDiagnostics, SshFailure, TlsFailure, TransportError};
 use tablepro_session::{ConnectError, OperationError};
 
 use crate::host::SecretKindTag;
@@ -32,6 +32,7 @@ pub struct ErrorInfo {
     /// The secret a keyring error is about, so the app can ask for it.
     pub secret: Option<SecretKindTag>,
     pub host_key: Option<HostKeyFailure>,
+    pub tls_failure: Option<TlsFailureTag>,
 }
 
 // Error details stay off the stack while bindings keep the same record values.
@@ -50,6 +51,43 @@ pub struct HostKeyFailure {
     pub known_hosts: String,
     pub line: u64,
     pub trust_allowed: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum TlsFailureTag {
+    UnknownIssuer,
+    NameMismatch,
+    Expired,
+    NotYetValid,
+    Revoked,
+    ServerRefusedTls,
+    ServerRequiresTls,
+    ServerRefusedStrict,
+    ServerRequiresStrict,
+    HandshakeRejected,
+    CaFileInvalid,
+    ClientIdentityInvalid,
+    Other,
+}
+
+impl From<TlsFailure> for TlsFailureTag {
+    fn from(failure: TlsFailure) -> Self {
+        match failure {
+            TlsFailure::UnknownIssuer => Self::UnknownIssuer,
+            TlsFailure::NameMismatch => Self::NameMismatch,
+            TlsFailure::Expired => Self::Expired,
+            TlsFailure::NotYetValid => Self::NotYetValid,
+            TlsFailure::Revoked => Self::Revoked,
+            TlsFailure::ServerRefusedTls => Self::ServerRefusedTls,
+            TlsFailure::ServerRequiresTls => Self::ServerRequiresTls,
+            TlsFailure::ServerRefusedStrict => Self::ServerRefusedStrict,
+            TlsFailure::ServerRequiresStrict => Self::ServerRequiresStrict,
+            TlsFailure::HandshakeRejected => Self::HandshakeRejected,
+            TlsFailure::CaFileInvalid => Self::CaFileInvalid,
+            TlsFailure::ClientIdentityInvalid => Self::ClientIdentityInvalid,
+            TlsFailure::Other => Self::Other,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -73,6 +111,7 @@ impl CoreError {
                 path: None,
                 secret: None,
                 host_key: None,
+                tls_failure: None,
             }),
         }
     }
@@ -102,6 +141,10 @@ impl ErrorInfo {
             path: file_path(cause).map(|path| path.display().to_string()),
             secret: None,
             host_key: host_key_failure(cause),
+            tls_failure: match cause {
+                DriverError::Tls { failure, .. } => Some((*failure).into()),
+                _ => None,
+            },
         }
     }
 
@@ -114,6 +157,7 @@ impl ErrorInfo {
             path: None,
             secret: None,
             host_key: None,
+            tls_failure: None,
         }
     }
 }
@@ -271,6 +315,25 @@ mod tests {
             info.path.as_deref(),
             Some(Path::new("/srv/app.db").display().to_string().as_str())
         );
+    }
+
+    #[test]
+    fn tls_failures_remain_typed_across_the_connection_boundary() {
+        for failure in [
+            TlsFailure::ServerRequiresStrict,
+            TlsFailure::ServerRefusedStrict,
+            TlsFailure::NameMismatch,
+        ] {
+            let info = info(
+                ConnectError::Driver(DriverError::Tls {
+                    failure,
+                    detail: String::new(),
+                })
+                .into(),
+            );
+            assert_eq!(info.code, "driver.tls");
+            assert_eq!(info.tls_failure, Some(failure.into()));
+        }
     }
 
     #[test]

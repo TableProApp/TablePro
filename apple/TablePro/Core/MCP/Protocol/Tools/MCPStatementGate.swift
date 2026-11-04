@@ -12,6 +12,7 @@ enum MCPStatementGate {
         allowsDestructive: Bool,
         allowsMultiStatement: Bool = false,
         readOnly: Bool = false,
+        destructiveAlternative: String = confirmToolAlternative,
         context: MCPRequestContext
     ) throws -> QueryClassification {
         // The caller lowering its own reach, so its refusal names the request rather than the connection.
@@ -29,9 +30,7 @@ enum MCPStatementGate {
                     loadsExtensions: meta.loadsExtensions,
                     allowsDestructive: allowsDestructive,
                     allowsMultiStatement: allowsMultiStatement,
-                    destructiveAlternative: String(
-                        localized: "Use confirm_destructive_operation for it."
-                    )
+                    destructiveAlternative: destructiveAlternative
                 )
             )
         }
@@ -52,13 +51,17 @@ enum MCPStatementGate {
         guard kind.declaresWrite else { return }
         try translating { try ExternalStatementGate.refuseWrite(externalAccess: meta.externalAccess) }
         if kind.declaresDestructive, !allowsDestructive {
-            throw MCPToolExecutionError.denied(
-                "\(String(localized: "This statement drops or truncates data.")) "
-                    + String(localized: "Use confirm_destructive_operation for it.")
-            )
+            throw MCPToolExecutionError.denied("\(ExternalStatementGate.destructiveRefusal) \(confirmToolAlternative)")
         }
         try requireWriteScope(context: context)
     }
+
+    // confirm_destructive_operation runs only what `classify` refuses to every other tool.
+    static func requireDestructive(sql: String, meta: ToolConnectionMetadata) throws {
+        try translating { try ExternalStatementGate.requireDestructive(sql, databaseType: meta.databaseType) }
+    }
+
+    static let confirmToolAlternative = String(localized: "Use confirm_destructive_operation for it.")
 
     // Elicitation, then Safe Mode, on the statements as they will run in `scope`.
     static func approve(

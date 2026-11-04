@@ -51,14 +51,19 @@ extension ConnectionFormCoordinator {
     /// `.ssh` and `.remoteFile` are the same SSH server carrying different cargo, and both are
     /// stored in `ssh.state`, so only one of them can be offered: the getter decides which by
     /// capability, and offering both would let the picker select `.ssh` and read back `.remoteFile`.
+    ///
+    /// A port forward is offered only where the driver dials it, the rule `enabledTunnelKinds`
+    /// applies at connect: DuckDB offers one in Remote and none in Local File.
     var availableTransports: [ConnectionTunnelKind?] {
         guard !network.usesLocalSocket else { return [nil] }
         var transports: [ConnectionTunnelKind?] = [nil]
+        let forwards = dialsForwardedEndpoint
         if supportsRemoteDatabaseFile {
             transports.append(.remoteFile)
-        } else if services.pluginManager.supportsSSH(for: network.type) {
+        } else if forwards, services.pluginManager.supportsSSH(for: network.type) {
             transports.append(.ssh)
         }
+        guard forwards else { return transports }
         if services.pluginManager.supportsCloudflareTunnel(for: network.type) {
             transports.append(.cloudflare)
         }
@@ -82,6 +87,11 @@ extension ConnectionFormCoordinator {
             transport = nil
         }
         testResult = nil
+    }
+
+    private var dialsForwardedEndpoint: Bool {
+        PluginMetadataRegistry.shared.snapshot(for: network.type)?
+            .dialsForwardedEndpoint(forValues: allAdditionalFieldValues) ?? true
     }
 
     var supportsRemoteDatabaseFile: Bool {

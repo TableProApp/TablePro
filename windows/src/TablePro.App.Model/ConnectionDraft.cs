@@ -36,6 +36,8 @@ public sealed class ConnectionDraft
 
     public bool IsFileEngine { get; set; }
 
+    public bool SupportsClientIdentity { get; set; }
+
     public string Name { get; set; } = string.Empty;
 
     public string Host { get; set; } = string.Empty;
@@ -45,6 +47,8 @@ public sealed class ConnectionDraft
     public string Database { get; set; } = string.Empty;
 
     public string UserName { get; set; } = string.Empty;
+
+    public bool IntegratedAuth { get; set; }
 
     // Left empty while editing, the stored password stays.
     public string Password { get; set; } = string.Empty;
@@ -67,6 +71,8 @@ public sealed class ConnectionDraft
 
     public string CaFile { get; set; } = string.Empty;
 
+    public string ServerName { get; set; } = string.Empty;
+
     public string ClientCertificate { get; set; } = string.Empty;
 
     public string ClientKey { get; set; } = string.Empty;
@@ -83,6 +89,10 @@ public sealed class ConnectionDraft
 
     public bool IsNew => Id is null;
 
+    public bool VerifiesCertificate => TlsMode is TlsMode.VerifyFull or TlsMode.Strict;
+
+    public bool UsesClientIdentity => SupportsClientIdentity && TlsMode != TlsMode.Disable;
+
     public static ConnectionDraft New(DatabaseEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
@@ -90,6 +100,7 @@ public sealed class ConnectionDraft
         {
             EngineId = engine.Id,
             IsFileEngine = engine.DefaultPort is null,
+            SupportsClientIdentity = engine.SupportsClientIdentity,
             Host = engine.DefaultPort is null ? string.Empty : "localhost",
             Port = engine.DefaultPort?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
         };
@@ -105,11 +116,13 @@ public sealed class ConnectionDraft
             Id = connection.Id,
             EngineId = connection.EngineId,
             IsFileEngine = engine.DefaultPort is null,
+            SupportsClientIdentity = engine.SupportsClientIdentity,
             Name = connection.Name,
             Host = connection.Host,
             Port = connection.Port > 0 ? connection.Port.ToString(CultureInfo.InvariantCulture) : string.Empty,
             Database = connection.Database,
             UserName = connection.UserName,
+            IntegratedAuth = connection.IntegratedAuth,
             UseSsh = connection.Ssh is not null,
             SshHost = connection.Ssh?.Host ?? string.Empty,
             SshPort = connection.Ssh?.Port?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
@@ -118,6 +131,7 @@ public sealed class ConnectionDraft
             SshKeyPath = connection.Ssh?.KeyPath ?? string.Empty,
             TlsMode = connection.Tls.Mode,
             CaFile = connection.Tls.CaFile ?? string.Empty,
+            ServerName = connection.Tls.ServerName ?? string.Empty,
             ClientCertificate = connection.Tls.ClientCertificate ?? string.Empty,
             ClientKey = connection.Tls.ClientKey ?? string.Empty,
             SafeMode = connection.SafeMode,
@@ -134,6 +148,7 @@ public sealed class ConnectionDraft
         ArgumentNullException.ThrowIfNull(engine);
         EngineId = url.EngineId;
         IsFileEngine = engine.DefaultPort is null;
+        SupportsClientIdentity = engine.SupportsClientIdentity;
         Host = url.Host;
         Port = (url.Port ?? engine.DefaultPort)?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
         UserName = url.UserName;
@@ -182,7 +197,7 @@ public sealed class ConnectionDraft
             }
         }
 
-        if (string.IsNullOrWhiteSpace(ClientCertificate) != string.IsNullOrWhiteSpace(ClientKey))
+        if (UsesClientIdentity && (string.IsNullOrWhiteSpace(ClientCertificate) != string.IsNullOrWhiteSpace(ClientKey)))
         {
             errors.Add(new FieldError(FormField.ClientKey, FieldProblem.Required));
         }
@@ -234,8 +249,14 @@ public sealed class ConnectionDraft
             ParsePort(Port) ?? 0,
             Database.Trim(),
             UserName.Trim(),
-            new TlsSettings(TlsMode, Blank(CaFile), Blank(ClientCertificate), Blank(ClientKey)),
+            new TlsSettings(
+                TlsMode,
+                VerifiesCertificate ? Blank(CaFile) : null,
+                UsesClientIdentity ? Blank(ClientCertificate) : null,
+                UsesClientIdentity ? Blank(ClientKey) : null,
+                VerifiesCertificate ? Blank(ServerName) : null),
             SafeMode,
+            IntegratedAuth: IntegratedAuth,
             Ssh: UseSsh
                 ? new SshSettings(
                     SshHost.Trim(),
@@ -263,7 +284,7 @@ public sealed class ConnectionDraft
             return ConnectionSecrets.None;
         }
 
-        var password = IsNew || Password.Length > 0 ? Password : null;
+        var password = !IntegratedAuth && (IsNew || Password.Length > 0) ? Password : null;
         var sshPassword = UseSsh && SshAuth == SshAuthMethod.Password && (IsNew || SshPassword.Length > 0)
             ? SshPassword
             : null;

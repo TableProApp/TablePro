@@ -5,8 +5,9 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# Integrated login: MIT Kerberos on Unix, behind this feature since it
-# links libgssapi, and SSPI on Windows, which every Windows has.
+# Integrated login: GSSAPI behind this feature, since it links a library,
+# MIT Kerberos on Linux and the system's GSS framework on macOS; SSPI on
+# Windows, which every Windows has.
 [features]
 default = []
 kerberos = ["tiberius/integrated-auth-gssapi"]
@@ -20,7 +21,8 @@ deadpool.workspace = true
 futures-util.workspace = true
 secrecy.workspace = true
 tiberius.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["io-util", "rt"] }
+tokio-rustls.workspace = true
 tokio-util = { workspace = true, features = ["compat"] }
 tracing.workspace = true
 uuid.workspace = true

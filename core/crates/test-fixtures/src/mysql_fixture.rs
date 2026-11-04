@@ -39,7 +39,16 @@ impl MysqlFixture {
     }
 
     pub async fn start_with(options: MysqlOptions, network: Option<&TestNetwork>) -> Result<Self, FixtureError> {
-        let pki = TestPki::generate()?;
+        Self::launch(TestPki::generate()?, options, network).await
+    }
+
+    /// A server whose certificate is self-signed, which a client accepts
+    /// only by trusting that certificate itself.
+    pub async fn start_self_signed(flavour: MysqlFlavour) -> Result<Self, FixtureError> {
+        Self::launch(TestPki::generate_self_signed()?, MysqlOptions::new(flavour), None).await
+    }
+
+    async fn launch(pki: TestPki, options: MysqlOptions, network: Option<&TestNetwork>) -> Result<Self, FixtureError> {
         let password = FixtureCredentials::generate_password();
         let root_password = FixtureCredentials::generate_password();
         let certificate_password = FixtureCredentials::generate_password();

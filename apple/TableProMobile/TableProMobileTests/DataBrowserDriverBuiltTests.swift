@@ -67,12 +67,15 @@ struct DataBrowserDriverBuiltTests {
         #expect(driver.countRequests.last?.searchText == "an")
     }
 
-    @Test("A cut-off value is read whole through the driver's own lookup by key")
+    @Test("A cut-off value is read whole through the driver's own lookup by key and the row's locator")
     func fullValueComesFromTheDriver() async throws {
         let driver = MockQueryBuildingDriver()
         driver.scriptedValues = [.success("{\"a\": 1}")]
         let viewModel = browser(driver)
-        let ref = CellRef(table: "users", column: "profile", primaryKey: [PrimaryKeyComponent(column: "_id", value: "5f1d7f")])
+        let ref = CellRef(
+            table: "users", column: "profile", primaryKey: [PrimaryKeyComponent(column: "_id", value: "5f1d7f")],
+            locator: #"{"$oid":"5f1d7f"}"#
+        )
 
         let value = try await viewModel.loadFullValue(driver: driver, ref: ref, databaseType: .mongodb, schema: nil)
 
@@ -80,6 +83,7 @@ struct DataBrowserDriverBuiltTests {
         let lookup = try #require(driver.lookups.first)
         #expect(lookup.column == "profile")
         #expect(lookup.key.map { $0.value } == ["5f1d7f"])
+        #expect(lookup.locator == #"{"$oid":"5f1d7f"}"#)
         #expect(driver.executedQueries.isEmpty)
     }
 }

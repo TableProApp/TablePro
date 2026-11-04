@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-# The transport that runs SSH in process (core ADR 0008), which the Windows
+# The transport that runs SSH in process (core ADR 0009), which the Windows
 # app turns on. Off by default, so the Linux app links no russh.
 in-process = ["dep:aws-lc-rs", "dep:russh", "dep:tablepro-net", "dep:tempfile", "dep:windows-sys"]
 

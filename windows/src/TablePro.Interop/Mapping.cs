@@ -22,7 +22,27 @@ internal static class Mapping
         info.Secret is { } secret ? Kind(secret) : null,
         info.HostKey is { } key
             ? new HostKeyFailure(key.Host, key.Algorithm, key.Fingerprint, key.KnownHosts, key.Line, key.TrustAllowed)
-            : null);
+            : null)
+    {
+        TlsFailure = info.TlsFailure is { } failure ? TlsFailureKind(failure) : null,
+    };
+
+    private static TlsFailure TlsFailureKind(Native.TlsFailureTag failure) => failure switch
+    {
+        Native.TlsFailureTag.UnknownIssuer => TlsFailure.UnknownIssuer,
+        Native.TlsFailureTag.NameMismatch => TlsFailure.NameMismatch,
+        Native.TlsFailureTag.Expired => TlsFailure.Expired,
+        Native.TlsFailureTag.NotYetValid => TlsFailure.NotYetValid,
+        Native.TlsFailureTag.Revoked => TlsFailure.Revoked,
+        Native.TlsFailureTag.ServerRefusedTls => TlsFailure.ServerRefusedTls,
+        Native.TlsFailureTag.ServerRequiresTls => TlsFailure.ServerRequiresTls,
+        Native.TlsFailureTag.ServerRefusedStrict => TlsFailure.ServerRefusedStrict,
+        Native.TlsFailureTag.ServerRequiresStrict => TlsFailure.ServerRequiresStrict,
+        Native.TlsFailureTag.HandshakeRejected => TlsFailure.HandshakeRejected,
+        Native.TlsFailureTag.CaFileInvalid => TlsFailure.CaFileInvalid,
+        Native.TlsFailureTag.ClientIdentityInvalid => TlsFailure.ClientIdentityInvalid,
+        _ => TlsFailure.Other,
+    };
 
     public static DatabaseEngine Engine(Native.DriverInfo driver) => new(
         driver.Id,
@@ -42,7 +62,12 @@ internal static class Mapping
             Native.EngineCategoryTag.Analytical => EngineCategory.Analytical,
             Native.EngineCategoryTag.WideColumn => EngineCategory.WideColumn,
             _ => EngineCategory.Relational,
-        });
+        })
+    {
+        SupportedTlsModes = driver.SupportedTlsModes.Select(Tls).ToArray(),
+        SupportsIntegratedAuth = driver.SupportsIntegratedAuth,
+        SupportsClientIdentity = driver.SupportsClientIdentity,
+    };
 
     public static SchemaEntry Schema(Native.SchemaEntry schema) =>
         new(schema.Name, schema.IsDefault, schema.IsSystem);
@@ -186,7 +211,25 @@ internal static class Mapping
         error.Secret is { } secret ? Kind(secret) : null,
         error.HostKey is { } key
             ? new Native.HostKeyFailure(key.Host, key.Algorithm, key.Fingerprint, key.KnownHosts, key.Line, key.TrustAllowed)
-            : null);
+            : null,
+        error.TlsFailure is { } failure ? TlsFailureKind(failure) : null);
+
+    private static Native.TlsFailureTag TlsFailureKind(TlsFailure failure) => failure switch
+    {
+        TlsFailure.UnknownIssuer => Native.TlsFailureTag.UnknownIssuer,
+        TlsFailure.NameMismatch => Native.TlsFailureTag.NameMismatch,
+        TlsFailure.Expired => Native.TlsFailureTag.Expired,
+        TlsFailure.NotYetValid => Native.TlsFailureTag.NotYetValid,
+        TlsFailure.Revoked => Native.TlsFailureTag.Revoked,
+        TlsFailure.ServerRefusedTls => Native.TlsFailureTag.ServerRefusedTls,
+        TlsFailure.ServerRequiresTls => Native.TlsFailureTag.ServerRequiresTls,
+        TlsFailure.ServerRefusedStrict => Native.TlsFailureTag.ServerRefusedStrict,
+        TlsFailure.ServerRequiresStrict => Native.TlsFailureTag.ServerRequiresStrict,
+        TlsFailure.HandshakeRejected => Native.TlsFailureTag.HandshakeRejected,
+        TlsFailure.CaFileInvalid => Native.TlsFailureTag.CaFileInvalid,
+        TlsFailure.ClientIdentityInvalid => Native.TlsFailureTag.ClientIdentityInvalid,
+        _ => Native.TlsFailureTag.Other,
+    };
 
     public static SecretItem Item(Native.SecretItemTag item) => item switch
     {
@@ -317,6 +360,7 @@ internal static class Mapping
     {
         TlsMode.Disable => Native.TlsModeTag.Disable,
         TlsMode.Require => Native.TlsModeTag.Require,
+        TlsMode.Strict => Native.TlsModeTag.Strict,
         _ => Native.TlsModeTag.VerifyFull,
     };
 
@@ -324,6 +368,7 @@ internal static class Mapping
     {
         Native.TlsModeTag.Disable => TlsMode.Disable,
         Native.TlsModeTag.Require => TlsMode.Require,
+        Native.TlsModeTag.Strict => TlsMode.Strict,
         _ => TlsMode.VerifyFull,
     };
 

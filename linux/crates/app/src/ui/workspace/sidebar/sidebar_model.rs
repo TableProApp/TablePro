@@ -10,8 +10,8 @@ use tablepro_core::meta::{ObjectKind, TableRef};
 use super::object_target::ObjectTarget;
 use super::sidebar_index::{SidebarIndex, search_key};
 use super::sidebar_list::{Entries, SidebarList};
-use super::store_sync;
 use super::tree_node::TreeNode;
+use crate::ui::store_sync;
 
 /// What the search asks of the session's list.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

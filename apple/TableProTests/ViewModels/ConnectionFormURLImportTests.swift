@@ -75,6 +75,19 @@ struct ConnectionFormURLImportTests {
         #expect(spelled.ssl.mode == .required)
     }
 
+    @Test("A bracketed IPv6 host reaches the form bare, as a driver dials it")
+    func ipv6HostReachesTheFormBare() throws {
+        let coordinator = try formImporting("postgres://alice@[2001:db8::5]:6000/sales")
+        #expect(coordinator.network.host == "2001:db8::5")
+        #expect(coordinator.network.port == "6000")
+    }
+
+    @Test("A libSQL URL with an IPv6 host rebuilds a database URL that keeps its brackets")
+    func libSQLIPv6KeepsBrackets() throws {
+        let coordinator = try formImporting("libsql://[::1]:8443")
+        #expect(coordinator.allAdditionalFieldValues["databaseUrl"] == "https://[::1]:8443")
+    }
+
     @Test("Host, credentials and database from the URL reach the form")
     func connectionFieldsReachTheForm() throws {
         let coordinator = try formImporting("postgres://alice:p%40ss@db.example.com:6000/sales")
