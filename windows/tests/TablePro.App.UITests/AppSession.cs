@@ -33,8 +33,7 @@ internal sealed class AppSession : IDisposable
         _application = Application.Launch(start);
         // A restored tab window can be the process's first visible ownerless window.
         Window = Retry.WhileNull(
-                () => _application.GetAllTopLevelWindows(_automation)
-                    .FirstOrDefault(window => window.Properties.Name.ValueOrDefault == "TablePro"),
+                () => TopLevelWindow("TablePro"),
                 Wait,
                 throwOnTimeout: false).Result
             ?? throw new InvalidOperationException("The main window did not open.");
@@ -81,27 +80,40 @@ internal sealed class AppSession : IDisposable
         Again(() => Drag(start(), end()), landed, "The drag", window);
 
     public void DragThrough(Window window, Func<System.Drawing.Point> start, Func<System.Drawing.Point> via,
-        Func<bool> reachedVia, Func<System.Drawing.Point> end, Func<bool> landed) =>
-        Again(() =>
+        Func<bool> reachedVia, Func<System.Drawing.Point> end, Func<bool> landed)
+    {
+        Front(window);
+        var first = start();
+        var middle = via();
+        var last = end();
+        var merged = false;
+        PointerInput.Move(first);
+        Thread.Sleep(100);
+        PointerInput.Button(down: true);
+        try
         {
-            var first = start();
-            var middle = via();
-            PointerInput.Move(first);
-            Thread.Sleep(100);
-            PointerInput.Button(down: true);
-            try
+            MovePointer(first, middle);
+            merged = Retry.WhileFalse(reachedVia, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success;
+            if (merged)
             {
-                MovePointer(first, middle);
-                if (Retry.WhileFalse(reachedVia, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
-                {
-                    MovePointer(middle, end());
-                }
+                MovePointer(middle, last);
             }
-            finally
-            {
-                PointerInput.Button(down: false);
-            }
-        }, landed, "The drag through another strip", window);
+        }
+        finally
+        {
+            PointerInput.Button(down: false);
+        }
+
+        if (!merged)
+        {
+            throw Failure("The dragged window did not merge into the target strip.", screen: true);
+        }
+
+        if (!Retry.WhileFalse(landed, TimeSpan.FromSeconds(5), throwOnTimeout: false).Success)
+        {
+            throw Failure("The merged tab did not tear out again before the drag ended.", screen: true);
+        }
+    }
 
     public void RightClick(AutomationElement element, Func<bool> landed) =>
         Again(() => element.RightClick(), landed, "The right-click");
@@ -416,9 +428,14 @@ internal sealed class AppSession : IDisposable
     }
 
     private Window? OpenWindow(string title) =>
-        _application.GetAllTopLevelWindows(_automation).FirstOrDefault(window => window.Title == title)
+        TopLevelWindow(title)
         ?? Window.FindFirstChild(condition => condition.ByControlType(ControlType.Window).And(condition.ByName(title)))
             ?.AsWindow();
+
+    // Query the name with the window, since a closing window can expire before a later property read.
+    private Window? TopLevelWindow(string title) =>
+        _automation.GetDesktop().FindFirstChild(condition => condition.ByControlType(ControlType.Window)
+            .And(condition.ByProcessId(_application.ProcessId)).And(condition.ByName(title)))?.AsWindow();
 
     private InvalidOperationException Failure(string message, bool screen = false)
     {

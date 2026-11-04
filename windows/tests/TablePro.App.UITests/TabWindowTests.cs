@@ -119,15 +119,18 @@ public sealed partial class ShellTests
         var child = app.WaitForWindow(SampleWindow);
         var tab = Tab(app.Find("Tabs", child), "Track")!;
         var strip = AddTabButton(app.Find("Tabs"));
-        var merged = false;
+        var handle = child.Properties.NativeWindowHandle.Value;
+        Assert.True(PointerInput.Exists(handle) && PointerInput.IsVisible(handle));
+        // WinUI hides the merged window inside a move loop that does not pump normal XAML messages.
         app.DragThrough(child, () => Center(tab.BoundingRectangle), () => Center(strip.BoundingRectangle),
-            () => merged = Tab(app.Find("Tabs"), "Track") is not null,
+            () => PointerInput.Exists(handle) && !PointerInput.IsVisible(handle),
             () =>
             {
                 var middle = Center(strip.BoundingRectangle);
                 return new Point(middle.X + 40, middle.Y + 300);
             },
-            () => merged && child.IsAvailable && Tab(app.Find("Tabs"), "Track") is null
+            () => PointerInput.Exists(handle) && PointerInput.IsVisible(handle)
+                && child.IsAvailable && Tab(app.Find("Tabs"), "Track") is null
                 && Tab(app.Find("Tabs", child), "Track") is not null);
         Assert.True(child.IsAvailable);
         app.Screenshot("35-tab-retorn", screen: true);
