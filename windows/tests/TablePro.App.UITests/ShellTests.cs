@@ -102,7 +102,7 @@ public sealed partial class ShellTests
             var editor = app.Find("SqlEditor");
             app.TypeInto(editor, "SELECT Name FROM Artist");
             app.Chord(
-                () => app.Find("QueryStatus").Name.StartsWith("Rows: 275", StringComparison.Ordinal),
+                () => app.Find("QueryStatus").Properties.Name.ValueOrDefault?.StartsWith("Rows: 275", StringComparison.Ordinal) == true,
                 VirtualKeyShort.CONTROL,
                 VirtualKeyShort.ENTER);
             var query = AppSession.WaitForText(app.Find("QueryStatus"), value => value.StartsWith("Rows: 275", StringComparison.Ordinal));

@@ -46,7 +46,7 @@ public sealed partial class ShellTests
         app.Chord(() => app.TryFind("SqlEditor") is not null, VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_T);
         app.TypeInto(app.Find("SqlEditor"), "SELECT answer FROM ssh_proof");
         app.Chord(
-            () => app.Find("QueryStatus").Name.StartsWith("Rows: 1", StringComparison.Ordinal),
+            () => app.Find("QueryStatus").Properties.Name.ValueOrDefault?.StartsWith("Rows: 1", StringComparison.Ordinal) == true,
             VirtualKeyShort.CONTROL,
             VirtualKeyShort.ENTER);
         var results = app.Find("ResultsGrid");
@@ -59,7 +59,7 @@ public sealed partial class ShellTests
             Assert.StartsWith("SHA256:", fingerprint, StringComparison.Ordinal);
             Assert.True(Retry.WhileFalse(
                 () => app.TryFind("HealthBar")?.FindAllDescendants().Any(element =>
-                    element.Name.StartsWith("The SSH server identity has changed.", StringComparison.Ordinal)) == true,
+                    element.Properties.Name.ValueOrDefault?.StartsWith("The SSH server identity has changed.", StringComparison.Ordinal) == true) == true,
                 TimeSpan.FromSeconds(60), throwOnTimeout: false).Success);
             var reconnect = app.Find("ReconnectButton");
             Assert.True(Retry.WhileFalse(() => !reconnect.IsOffscreen && reconnect.IsEnabled,
