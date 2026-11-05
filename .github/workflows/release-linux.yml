@@ -20,8 +20,10 @@ name: Release Linux
 # Launchpad account that may upload to the PPA.
 # LINUX_COPR_WEBHOOK: the custom webhook URL from the COPR project's
 # Integrations page, ending in the package name: .../<uuid>/tablepro/.
-# Repository secret LINUX_POSTHOG_KEY: the PostHog project key the packages
-# send usage data to, which make-sources.sh puts in the vendor tarball. Not
+# Repository secret POSTHOG_PROJECT_KEY: the PostHog project key the macOS
+# release (release.yml) builds with too, which make-sources.sh puts in the
+# vendor tarball. The packages send usage data to it once a user chooses
+# Share. Not
 # the environment's: the job that passes it calls linux-packages.yml, and
 # such a job takes no environment. A packaging fix reuses the release's
 # tarballs, and so its key.
@@ -62,10 +64,10 @@ jobs:
     steps:
       - name: The PostHog key is set
         env:
-          POSTHOG_KEY: ${{ secrets.LINUX_POSTHOG_KEY }}
+          POSTHOG_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
         run: |
           if [ -z "$POSTHOG_KEY" ]; then
-            echo "::error::Set the LINUX_POSTHOG_KEY repository secret, the PostHog project key the packages send usage data to"
+            echo "::error::Set the POSTHOG_PROJECT_KEY repository secret, the PostHog project key the packages send usage data to"
             exit 1
           fi
       - name: Install git and meson
@@ -106,7 +108,7 @@ jobs:
       deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
       rpm-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
     secrets:
-      posthog-key: ${{ secrets.LINUX_POSTHOG_KEY }}
+      posthog-key: ${{ secrets.POSTHOG_PROJECT_KEY }}
 
   # The release carries the template translators start from, made with
   # gettext 1.0 as build-linux.yml's Translations job makes it.
