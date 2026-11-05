@@ -120,6 +120,13 @@ impl SqlEditor {
         }
     }
 
+    // A value still in a result cell's editor is an unsaved change once the window asks about closing.
+    pub(crate) fn commit_result_edit(&self) {
+        if let Some(grid) = self.owner_grid() {
+            grid.commit_edit();
+        }
+    }
+
     fn row_tracker(&self) -> Option<TabTrackerHandle> {
         self.imp().editing.tracker.get().cloned()
     }
@@ -172,7 +179,8 @@ impl SqlEditor {
         let editor = self.downgrade();
         confirm_discard(self, pending.max(1), move || {
             if let Some(editor) = editor.upgrade() {
-                editor.discard_rows();
+                // The run about to start replaces these rows, so they are not read again first.
+                editor.drop_rows();
                 then(&editor);
             }
         });
@@ -472,6 +480,13 @@ impl SqlEditor {
         let unknown = self
             .row_tracker()
             .is_some_and(|tracker| matches!(tracker.pending_state(), PendingState::OutcomeUnknown(_)));
+        self.drop_rows();
+        if unknown {
+            self.reread_result();
+        }
+    }
+
+    fn drop_rows(&self) {
         match self.owner_grid() {
             Some(grid) => {
                 grid.discard();
@@ -484,9 +499,6 @@ impl SqlEditor {
             }
         }
         self.on_rows_pending_changed();
-        if unknown {
-            self.reread_result();
-        }
     }
 
     pub(crate) fn rows_save_started(&self) {

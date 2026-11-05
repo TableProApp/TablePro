@@ -14,6 +14,7 @@ use super::workspace_persistence::WorkspaceTabs;
 use super::{WorkspaceInput, WorkspaceModel, WorkspaceTab};
 use crate::runtime::DeliverInput;
 use crate::ui::browse_tab::BrowseTab;
+use crate::ui::editor::SqlEditor;
 use crate::workspace::CloseDecision;
 
 /// Every editor tab's connection, taken from its tab. Each tab's run is
@@ -68,6 +69,17 @@ impl WorkspaceModel {
     }
 
     /// The table tabs, or only `id` when it is one.
+    pub(super) fn editor_tabs(&self) -> Vec<SqlEditor> {
+        self.workspace_tabs
+            .borrow()
+            .values()
+            .filter_map(|tab| match tab {
+                WorkspaceTab::Editor(slot) => Some(slot.editor.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
     pub(super) fn browse_tabs(&self, id: Option<Uuid>) -> Vec<BrowseTab> {
         self.workspace_tabs
             .borrow()
@@ -89,6 +101,9 @@ impl WorkspaceModel {
     pub(super) fn close_workspace_tab_by_id(&mut self, id: Uuid) {
         for browse in self.browse_tabs(Some(id)) {
             browse.commit_cell_edit();
+        }
+        if let Some(editor) = self.editor_tab(id) {
+            editor.commit_result_edit();
         }
         let tab_view = self.tab_view.clone();
         if self.close_guards.may_close_tab(&self.workspace_handle, id) {

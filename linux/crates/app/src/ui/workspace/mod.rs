@@ -980,6 +980,9 @@ impl Workspace {
         for browse in self.read(|model| model.browse_tabs(None)).unwrap_or_default() {
             browse.commit_cell_edit();
         }
+        for editor in self.read(|model| model.editor_tabs()).unwrap_or_default() {
+            editor.commit_result_edit();
+        }
     }
 
     /// The exports running from this workspace.
