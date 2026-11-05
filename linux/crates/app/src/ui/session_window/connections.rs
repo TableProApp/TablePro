@@ -1273,19 +1273,30 @@ mod tests {
         });
         let alert = wait_for_alert(&test.window);
         let list = alert.extra_child().expect("the dialog's rows");
-        let mut rows: Vec<adw::ActionRow> = Vec::new();
+        // A list view's row is its item widget, which holds the title and subtitle labels.
+        let mut rows: Vec<(String, String)> = Vec::new();
         wait_until(WAIT, || {
             rows = crate::test_support::descendants(&list)
                 .into_iter()
-                .filter_map(|widget| widget.downcast::<adw::ActionRow>().ok())
-                .filter(|row| !row.title().is_empty())
+                .filter(|widget| widget.css_name() == "row")
+                .filter_map(|row| {
+                    let labels: Vec<String> = crate::test_support::descendants(&row)
+                        .into_iter()
+                        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+                        .map(|label| label.label().to_string())
+                        .collect();
+                    match labels.as_slice() {
+                        [title, subtitle] if !title.is_empty() => Some((title.clone(), subtitle.clone())),
+                        _ => None,
+                    }
+                })
                 .collect();
             !rows.is_empty()
         })
         .expect("the rows");
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].title(), format!("{} (imported)", test.saved.name));
-        let subtitle = rows[0].subtitle().unwrap_or_default();
+        assert_eq!(rows[0].0, format!("{} (imported)", test.saved.name));
+        let subtitle = &rows[0].1;
         assert!(subtitle.contains("app@db.elsewhere.example"), "{subtitle}");
         assert!(subtitle.contains("Connects without TLS"), "{subtitle}");
         assert!(!listed(&test, lookalike.id), "the preview wrote the list");
