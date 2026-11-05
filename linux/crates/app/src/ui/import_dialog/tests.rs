@@ -296,6 +296,8 @@ fn import_hands_over_the_mapping_and_options_and_closes() {
         }
     );
     assert!(Arc::ptr_eq(&import.bytes, &bytes), "the file was copied");
+    drop(import);
+    assert_eq!(Arc::strong_count(&bytes), 1, "the closed dialog kept the file");
 }
 
 #[gtk4::test]

@@ -1,5 +1,5 @@
 use std::cell::{OnceCell, RefCell};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use glib::subclass::Signal;
 use gtk4 as gtk;
@@ -32,6 +32,8 @@ pub struct ImportCsvDialog {
     pub summary: TemplateChild<gtk::Label>,
 
     pub(super) parts: OnceCell<DialogParts>,
+    // Until the import takes it or the dialog closes.
+    pub(super) bytes: RefCell<Option<Arc<[u8]>>>,
     pub(super) sheet: RefCell<CsvSheet>,
     pub(super) read_error: RefCell<Option<String>>,
     // One per table column, in column order. Position 0 is Skip, position n + 1 is field n.
@@ -77,6 +79,7 @@ impl AdwDialogImpl for ImportCsvDialog {
     // The dialog lives on through its close animation, which a read landing then must not fill.
     fn closed(&self) {
         self.sequencer.borrow_mut().cancel_all();
+        self.bytes.take();
         self.parent_closed();
     }
 }

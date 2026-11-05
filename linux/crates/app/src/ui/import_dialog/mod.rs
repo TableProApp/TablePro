@@ -62,7 +62,6 @@ pub(super) struct DialogParts {
     schema: Option<String>,
     table: String,
     columns: Vec<ImportColumn>,
-    bytes: Arc<[u8]>,
     tasks: Tasks,
 }
 
@@ -76,9 +75,9 @@ impl ImportCsvDialog {
             schema: init.schema,
             table: init.table,
             columns: init.columns,
-            bytes: init.bytes,
             tasks: init.tasks,
         });
+        imp.bytes.replace(Some(init.bytes));
         dialog.connect_inputs();
         dialog.read_preview();
         dialog
@@ -145,8 +144,10 @@ impl ImportCsvDialog {
         let Some(parts) = imp.parts.get() else {
             return;
         };
+        let Some(bytes) = imp.bytes.borrow().clone() else {
+            return;
+        };
         let RequestTicket { stamp, cancel } = imp.sequencer.borrow_mut().issue(CsvRequest::PreviewRead);
-        let bytes = parts.bytes.clone();
         let options = self.read_options();
         let reading = parts.tasks.spawn_blocking_task(move || {
             if cancel.is_cancelled() {
@@ -335,13 +336,17 @@ impl ImportCsvDialog {
         if self.reading() || self.blocker().is_some() {
             return;
         }
+        // The workspace keeps the closed dialog until the next import, so the file goes with the import.
+        let Some(bytes) = imp.bytes.take() else {
+            return;
+        };
         let import = CsvImport {
             schema: parts.schema.clone(),
             table: parts.table.clone(),
             columns: parts.columns.clone(),
             mapping: self.mapping(),
             options: self.read_options(),
-            bytes: parts.bytes.clone(),
+            bytes,
         };
         self.emit_by_name::<()>("import", &[&import]);
         self.close();
