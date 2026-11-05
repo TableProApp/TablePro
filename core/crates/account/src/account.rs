@@ -678,7 +678,6 @@ mod tests {
 
     use async_trait::async_trait;
     use chrono::TimeDelta;
-    use secrecy::ExposeSecret as _;
     use tablepro_core::credentials::SecretError;
     use url::Url;
 
