@@ -33,20 +33,22 @@ pub(crate) async fn respond(dialog: &adw::AlertDialog, parent: &gtk::Widget) -> 
         glib::idle_add_local_once(move || on_closed(fallback));
     });
     // A window destroyed with the alert open takes it down with neither `response` nor `closed`.
+    // `gtk_window_destroy` unrealizes it at once; its `destroy` waits for the last reference, which
+    // the caller awaiting this holds.
     let window = parent.root().map(|root| root.upcast::<gtk::Widget>());
-    let destroyed = Rc::new(Cell::new(false));
-    let on_destroy = window.as_ref().map(|window| {
-        let (reply, fallback, destroyed) = (reply.clone(), fallback.clone(), destroyed.clone());
-        window.connect_destroy(move |_| {
-            destroyed.set(true);
+    let gone = Rc::new(Cell::new(false));
+    let on_gone = window.as_ref().map(|window| {
+        let (reply, fallback, gone) = (reply.clone(), fallback.clone(), gone.clone());
+        window.connect_unrealize(move |_| {
+            gone.set(true);
             reply(fallback.clone());
         })
     });
     let window = window.map(|window| window.downgrade());
     dialog.present(Some(parent));
     let answered = receiver.await.unwrap_or(fallback);
-    if !destroyed.get()
-        && let (Some(window), Some(handler)) = (window.and_then(|window| window.upgrade()), on_destroy)
+    if !gone.get()
+        && let (Some(window), Some(handler)) = (window.and_then(|window| window.upgrade()), on_gone)
     {
         window.disconnect(handler);
     }
@@ -109,6 +111,7 @@ mod tests {
         wait_until(WAIT, || visible_alert(&window).is_none()).expect("the alert to close itself");
     }
 
+    // The waiting future holds the window, as every caller's does, so its `destroy` cannot come first.
     #[gtk4::test]
     fn an_alert_whose_window_is_destroyed_answers_with_its_close_response() {
         adw::init().expect("libadwaita initialises under the test backend");
