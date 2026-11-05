@@ -106,7 +106,7 @@ fn is_script_blocking(path: &Path, drivers: &DriverRegistry) -> bool {
         Err(DriverError::Busy(_)) => return false,
         Err(_) => Vec::new(),
     };
-    let (content_type, _) = gio::content_type_guess(Some(path), &header);
+    let (content_type, _) = gio::content_type_guess(Some(path), Some(header.as_slice()));
     // The suffix covers a system without shared-mime-info.
     let named_sql = gio::content_type_is_a(&content_type, SQL_CONTENT_TYPE)
         || path
