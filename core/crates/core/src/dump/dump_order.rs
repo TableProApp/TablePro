@@ -36,7 +36,64 @@ pub(super) fn order_tables(tables: &[DumpTable]) -> (Vec<usize>, Vec<TableRef>) 
 /// bare one matches any of that name, so a name that is also a column's
 /// can add an edge that is not there, and a cycle that makes keeps those
 /// objects in the order they came.
-pub(super) fn order_programs(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<usize> {
+#[cfg(test)]
+fn order_programs(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<usize> {
+    stable_topological(&mention_edges(objects, grammar)).0
+}
+
+/// What is made before the rows, and what after the keys and indexes.
+///
+/// `before` is every object of the pre-data section, the tables among
+/// them in the order their rows load. A view or routine a table's CREATE
+/// names, through a DEFAULT, a CHECK or a generated column, is made with
+/// them, and so is whatever that one names in turn. Each group is put in
+/// the order its objects name each other in, ties kept as they came.
+pub(super) fn creation_order<'a>(
+    before: &[&'a DumpObject],
+    programs: &[&'a DumpObject],
+    grammar: SqlGrammar,
+) -> (Vec<&'a DumpObject>, Vec<&'a DumpObject>) {
+    let all: Vec<&DumpObject> = before.iter().chain(programs).copied().collect();
+    let parents = mention_edges(&all, grammar);
+    let mut early: Vec<bool> = (0..all.len()).map(|position| position < before.len()).collect();
+    let mut pending: Vec<usize> = (0..before.len())
+        .filter(|&position| all[position].table.is_some())
+        .collect();
+    while let Some(node) = pending.pop() {
+        for &parent in &parents[node] {
+            if !early[parent] {
+                early[parent] = true;
+                pending.push(parent);
+            }
+        }
+    }
+    let group = |wanted: bool| {
+        let members: Vec<usize> = (0..all.len()).filter(|&position| early[position] == wanted).collect();
+        let local: HashMap<usize, usize> = members
+            .iter()
+            .enumerate()
+            .map(|(at, &position)| (position, at))
+            .collect();
+        let edges: Vec<Vec<usize>> = members
+            .iter()
+            .map(|&position| {
+                parents[position]
+                    .iter()
+                    .filter_map(|parent| local.get(parent).copied())
+                    .collect()
+            })
+            .collect();
+        stable_topological(&edges)
+            .0
+            .into_iter()
+            .map(|at| all[members[at]])
+            .collect::<Vec<_>>()
+    };
+    (group(true), group(false))
+}
+
+/// For each object, the others its text names.
+fn mention_edges(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<Vec<usize>> {
     let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
     for (position, object) in objects.iter().enumerate() {
         by_name.entry(object.name.to_lowercase()).or_default().push(position);
@@ -58,7 +115,7 @@ pub(super) fn order_programs(objects: &[&DumpObject], grammar: SqlGrammar) -> Ve
             parents.into_iter().collect()
         })
         .collect();
-    stable_topological(&edges).0
+    edges
 }
 
 /// The names the object's statements hold, each with the schema written
@@ -241,6 +298,32 @@ mod tests {
         let refs: Vec<&DumpObject> = objects.iter().collect();
 
         assert_eq!(order_programs(&refs, SqlGrammar::PostgreSql), [1, 0]);
+    }
+
+    #[test]
+    fn a_routine_a_table_calls_is_made_with_the_tables_after_what_it_reads() {
+        let routine = DumpObject::new(
+            DumpObjectKind::Function,
+            DumpSection::Programs,
+            None,
+            "total",
+            vec![DumpStatement::new("CREATE MACRO total() AS (SELECT sum(i) FROM base)")],
+        );
+        let base = DumpObject::table(
+            TableRef::unqualified("base"),
+            vec![DumpStatement::new("CREATE TABLE base (i int)")],
+        );
+        let uses = DumpObject::table(
+            TableRef::unqualified("uses"),
+            vec![DumpStatement::new("CREATE TABLE uses (n int DEFAULT total())")],
+        );
+        let other = view("other", "CREATE VIEW other AS SELECT * FROM base");
+
+        let (early, late) = creation_order(&[&uses, &base], &[&routine, &other], SqlGrammar::DuckDb);
+
+        let named = |objects: &[&DumpObject]| objects.iter().map(|object| object.name.clone()).collect::<Vec<_>>();
+        assert_eq!(named(&early), ["base", "total", "uses"]);
+        assert_eq!(named(&late), ["other"]);
     }
 
     #[test]

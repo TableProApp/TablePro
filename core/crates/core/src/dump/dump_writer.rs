@@ -18,7 +18,7 @@ use crate::result_sink::{ResultSink, SinkFlow};
 use crate::unsupported_feature::UnsupportedFeature;
 use crate::value::Value;
 
-use super::dump_order::{order_programs, order_tables};
+use super::dump_order::{creation_order, order_tables};
 use super::insert_batch::InsertBatch;
 use super::{DumpCatalog, DumpDialect, DumpObject, DumpScope, DumpSection, DumpSkip, DumpStatement, DumpTable};
 
@@ -164,16 +164,13 @@ impl Writer<'_> {
         self.output.write(head.into_bytes()).await?;
 
         let section = |wanted: DumpSection| catalog.objects.iter().filter(move |object| object.section == wanted);
-        let before: Vec<&DumpObject> = section(DumpSection::BeforeData)
+        let mut before: Vec<&DumpObject> = section(DumpSection::BeforeData)
             .filter(|object| object.table.is_none())
             .collect();
-        let before: Vec<&DumpObject> = order_programs(&before, self.dialect.grammar())
-            .into_iter()
-            .map(|position| before[position])
-            .collect();
-        self.objects(&before, &options).await?;
-        let created = tables_in_order(&catalog.objects, &tables);
-        self.objects(&created, &options).await?;
+        before.extend(tables_in_order(&catalog.objects, &tables));
+        let programs: Vec<&DumpObject> = section(DumpSection::Programs).collect();
+        let (early, late) = creation_order(&before, &programs, self.dialect.grammar());
+        self.objects(&early, &options).await?;
 
         if data {
             for table in tables.iter().filter(|table| table.rows) {
@@ -186,12 +183,7 @@ impl Writer<'_> {
 
         let after: Vec<&DumpObject> = section(DumpSection::AfterData).collect();
         self.objects(&after, &options).await?;
-        let programs: Vec<&DumpObject> = section(DumpSection::Programs).collect();
-        let ordered: Vec<&DumpObject> = order_programs(&programs, self.dialect.grammar())
-            .into_iter()
-            .map(|position| programs[position])
-            .collect();
-        self.objects(&ordered, &options).await?;
+        self.objects(&late, &options).await?;
         let triggers: Vec<&DumpObject> = section(DumpSection::Triggers).collect();
         self.objects(&triggers, &options).await?;
 

@@ -51,6 +51,14 @@ pub(crate) fn without_definer(create: &str) -> String {
 /// qualified by a table that shares the database's name keeps it.
 pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<String>) -> String {
     let tokens = significant(create);
+    // A text that also uses the database's name as an alias can mean that
+    // alias by `name.`, and nothing tells the two apart, so it is kept.
+    let aliased = tokens.windows(2).any(|pair| {
+        text(create, &pair[0]).eq_ignore_ascii_case("AS") && quoted_name(create, &pair[1]).as_deref() == Some(database)
+    });
+    if aliased {
+        return create.to_owned();
+    }
     let mut cuts = Vec::new();
     for (at, window) in tokens.windows(3).enumerate() {
         let [qualifier, dot, name] = window else {

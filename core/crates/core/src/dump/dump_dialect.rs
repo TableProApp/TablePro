@@ -50,12 +50,6 @@ pub trait DumpDialect: Send + Sync + std::fmt::Debug {
         "ROLLBACK"
     }
 
-    /// What runs right before `begin` in an import that is one
-    /// transaction, for a setting the engine takes only outside one.
-    fn before_begin(&self) -> &'static [&'static str] {
-        &[]
-    }
-
     /// What runs right after `begin` in an import that is one
     /// transaction.
     fn after_begin(&self) -> &'static [&'static str] {

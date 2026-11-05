@@ -31,14 +31,6 @@ impl DumpDialect for SqliteDialect {
     fn transactional_ddl(&self) -> bool {
         true
     }
-
-    /// The file's own `foreign_keys=OFF` does nothing inside the import's
-    /// transaction, and deferring the checks is not enough: a key whose
-    /// parent is unique only by an index made after the rows refuses
-    /// each row at once. The import's session closes after it.
-    fn before_begin(&self) -> &'static [&'static str] {
-        &["PRAGMA foreign_keys = OFF"]
-    }
 }
 
 /// `sqlite_schema` in the order the objects were made, each table with
@@ -288,6 +280,5 @@ mod tests {
 
         assert_eq!(dialect.header(), "PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\n");
         assert!(dialect.transactional_ddl());
-        assert_eq!(dialect.before_begin(), ["PRAGMA foreign_keys = OFF"]);
     }
 }

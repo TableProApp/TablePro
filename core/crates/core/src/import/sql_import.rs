@@ -170,12 +170,25 @@ pub async fn run_sql_import(
 
     let mut opened = true;
     let mut began = false;
+    let mut first = None;
     if let Some(dump) = transaction {
-        for statement in dump.before_begin() {
-            if let Err(fault) = run.execute(statement, cancel).await {
-                run.fail_on_setup(statement, fault);
-                opened = false;
-                break;
+        // SQLite takes `foreign_keys` only outside a transaction, so a file
+        // that opens with it off, as a dump does, has it run first.
+        if grammar == SqlGrammar::Sqlite {
+            first = units.recv().await;
+            if let Some(Ok(unit)) = &first
+                && foreign_keys_off(&unit.text)
+            {
+                match run.execute(&unit.text, cancel).await {
+                    Ok(()) => {
+                        run.report.statements += 1;
+                        first = None;
+                    }
+                    Err(fault) => {
+                        run.fail_on_setup(&unit.text, fault);
+                        opened = false;
+                    }
+                }
             }
         }
         if opened {
@@ -191,12 +204,15 @@ pub async fn run_sql_import(
     }
 
     while opened && matches!(run.report.end, SqlImportEnd::Completed) {
-        let next = tokio::select! {
-            () = cancel.cancelled() => {
-                run.report.end = SqlImportEnd::Cancelled;
-                break;
-            }
-            next = units.recv() => next,
+        let next = match first.take() {
+            Some(unit) => Some(unit),
+            None => tokio::select! {
+                () = cancel.cancelled() => {
+                    run.report.end = SqlImportEnd::Cancelled;
+                    break;
+                }
+                next = units.recv() => next,
+            },
         };
         let Some(next) = next else {
             break;
@@ -402,7 +418,12 @@ impl Run<'_> {
                 }
                 TransactionOutcome::Unknown(error)
             }
-            Err(Fault::Cancelled) => TransactionOutcome::Unknown(DriverError::Cancelled),
+            Err(Fault::Cancelled) => {
+                if matches!(self.report.end, SqlImportEnd::Completed) {
+                    self.report.end = SqlImportEnd::Stopped;
+                }
+                TransactionOutcome::Unknown(DriverError::Cancelled)
+            }
         }
     }
 
@@ -419,6 +440,19 @@ impl Run<'_> {
             Ok(TransactionState::Unknown) | Err(_) => None,
         }
     }
+}
+
+/// `PRAGMA foreign_keys = OFF`, however it is spelled.
+fn foreign_keys_off(text: &str) -> bool {
+    let compact: String = text
+        .chars()
+        .filter(|character| !character.is_whitespace() && *character != ';')
+        .collect::<String>()
+        .to_ascii_lowercase();
+    matches!(
+        compact.as_str(),
+        "pragmaforeign_keys=off" | "pragmaforeign_keys=0" | "pragmaforeign_keys=false" | "pragmaforeign_keys=no"
+    )
 }
 
 /// Whether a SQL Server batch runs a COMMIT or ROLLBACK. A batch that
@@ -459,6 +493,14 @@ impl ResultSink for Discard {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dump_turning_foreign_keys_off_is_told_from_other_pragmas() {
+        assert!(foreign_keys_off("PRAGMA foreign_keys=OFF"));
+        assert!(foreign_keys_off("pragma foreign_keys = 0;"));
+        assert!(!foreign_keys_off("PRAGMA foreign_keys=ON"));
+        assert!(!foreign_keys_off("PRAGMA defer_foreign_keys=OFF"));
+    }
 
     #[test]
     fn a_sql_server_batch_that_ends_a_transaction_is_found_before_it_runs() {
