@@ -328,7 +328,7 @@ impl ConnectForm {
     }
 
     fn checked_endpoint(&self, errors: &mut FormErrors) -> Option<NetworkEndpoint> {
-        let endpoint = match NetworkEndpoint::new(&self.host, self.port) {
+        match NetworkEndpoint::new(&self.host, self.port) {
             Ok(endpoint) => Some(endpoint),
             Err(error) => {
                 let (field, missing) = match error {
@@ -339,8 +339,7 @@ impl ConnectForm {
                 errors.push(field, config_message(&error), missing);
                 None
             }
-        };
-        endpoint
+        }
     }
 
     fn checked_tls(&self, caps: &DriverCapabilities, route: TransportClass, errors: &mut FormErrors) -> TlsConfig {
