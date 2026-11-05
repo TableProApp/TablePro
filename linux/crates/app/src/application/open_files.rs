@@ -5,7 +5,6 @@ use tablepro_session::SessionKey;
 use super::{TableProApplication, WindowLaunch};
 use crate::services::file_resolution::{FileTarget, ResolvedFile, resolve_file_blocking};
 use crate::ui::{SessionWindow, SessionWindowInput};
-use crate::workspace::saved_editor_files_blocking;
 
 impl TableProApplication {
     /// Open each file the file manager or the command line hands over.
