@@ -36,6 +36,13 @@ pub trait SqlDialect: Send + Sync + std::fmt::Debug {
         DatabaseLayout::Single
     }
 
+    /// Whether the catalog names the default schema's objects with no
+    /// schema, as SQLite names main's, so an action on that schema names
+    /// none either and lands on the same table the list shows.
+    fn unqualified_default_schema(&self) -> bool {
+        false
+    }
+
     /// Bind one value, giving back the SQL that names it.
     ///
     /// `ordinal` is the number of parameters the statement already

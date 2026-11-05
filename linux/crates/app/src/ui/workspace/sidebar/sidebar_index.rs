@@ -217,6 +217,16 @@ impl SidebarIndex {
         }
     }
 
+    /// Have the actions of `schema`'s section name no schema, where the
+    /// engine lists that schema's objects with none.
+    pub(crate) fn unqualify(&mut self, schema: &str) {
+        for section in &mut self.sections {
+            if section.schema.as_deref() == Some(schema) {
+                section.schema = None;
+            }
+        }
+    }
+
     /// Whether the list offers to drop the schema `name`.
     pub(crate) fn droppable(&self, name: &str) -> bool {
         self.sections
@@ -719,6 +729,15 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    #[test]
+    fn an_empty_main_names_no_schema_where_its_objects_name_none() {
+        let mut index = SidebarIndex::build(&[], &[schema("main", true, false)]);
+
+        index.unqualify("main");
+
+        assert_eq!(sections(&index), [("main".to_owned(), None, false, None)]);
     }
 
     #[test]

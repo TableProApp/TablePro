@@ -131,8 +131,16 @@ pub(super) async fn list_catalog(
     let database = session.database().map(str::to_owned);
     tasks
         .spawn_blocking_task(move || {
-            let mut index = SidebarIndex::build(&objects, schemas.as_deref().unwrap_or(&known));
+            let listed = schemas.as_deref().unwrap_or(&known);
+            let mut index = SidebarIndex::build(&objects, listed);
             index.withhold_drops(|name| kept(dialect.as_deref(), database.as_deref(), name));
+            if dialect
+                .as_deref()
+                .is_some_and(|dialect| dialect.unqualified_default_schema())
+                && let Some(default) = listed.iter().find(|schema| schema.is_default)
+            {
+                index.unqualify(&default.name);
+            }
             SidebarListing { index, schemas }
         })
         .await
