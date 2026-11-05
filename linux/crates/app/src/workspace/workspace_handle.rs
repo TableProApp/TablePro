@@ -302,7 +302,15 @@ impl WorkspaceHandle {
             ) {
                 return start;
             }
-            return match self.0.deps.directory.save_file(tab) {
+            // A file the text has not moved from stays as it is on disk, edits made elsewhere included.
+            let unsaved = self
+                .0
+                .deps
+                .directory
+                .tabs()
+                .iter()
+                .any(|entry| entry.id == tab && entry.unsaved_file);
+            return match self.0.deps.directory.save_file(tab).filter(|_| unsaved) {
                 Some(saving) => match saving.await {
                     Ok(()) => start,
                     Err(message) => SaveStart::Rejected(SaveRejection::FileNotSaved(message)),
