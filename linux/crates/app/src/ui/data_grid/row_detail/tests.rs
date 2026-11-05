@@ -1093,6 +1093,24 @@ fn a_picture_never_decodes_outside_a_sandbox() {
     ));
 }
 
+#[test]
+fn a_flatpak_builder_instance_has_no_flatpak_spawn_sandbox() {
+    use glycin::SandboxMechanism;
+
+    assert_eq!(
+        super::picture::usable(SandboxMechanism::FlatpakSpawn, true),
+        SandboxMechanism::NotSandboxed
+    );
+    assert_eq!(
+        super::picture::usable(SandboxMechanism::FlatpakSpawn, false),
+        SandboxMechanism::FlatpakSpawn
+    );
+    assert_eq!(
+        super::picture::usable(SandboxMechanism::Bwrap, true),
+        SandboxMechanism::Bwrap
+    );
+}
+
 /// Open the pane's clock until it shows, as `open_calendar` does.
 fn open_clock(pane: &RowDetailPane) {
     for _ in 0..5 {
