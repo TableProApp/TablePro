@@ -149,7 +149,7 @@ struct SettingsView: View {
         } header: {
             Text("Privacy")
         } footer: {
-            Text("One report a day: hashed device ID, versions, language, database types, first-use dates. Never hostnames, credentials, queries, or data.")
+            Text("Sent to PostHog with a random ID: app and iOS versions, device model, screen size, language, time zone, network type, database types, connection count, and first connection and query. PostHog derives an approximate location from your IP address. Never hostnames, credentials, queries, or rows.")
         }
     }
 
@@ -214,8 +214,8 @@ struct SettingsView: View {
 
     private var usageDataBinding: Binding<Bool> {
         Binding(
-            get: { appState.onboarding.isUsageDataEnabled },
-            set: { appState.setUsageDataEnabled($0) }
+            get: { appState.onboarding.sharesUsageData },
+            set: { appState.onboarding.setSharesUsageData($0) }
         )
     }
 

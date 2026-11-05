@@ -94,25 +94,25 @@ struct AppStateLibraryTests {
         #expect(metadata.dirtyIds(for: .connection).contains(connection.id.uuidString))
     }
 
-    @Test("Closing the first run without answering records every question as declined")
+    @Test("Closing the first run without answering declines iCloud and leaves usage data at its default")
     func dismissedFirstRunDeclines() {
         let state = makeState(syncEnabled: false)
 
-        state.finishFirstRun(pages: [.welcome, .iCloud, .usageData])
+        state.finishFirstRun(pages: [.welcome, .iCloud])
 
         #expect(state.onboarding.hasSeenWelcome)
         #expect(state.onboarding.syncChoice == false)
-        #expect(state.onboarding.usageDataChoice == false)
+        #expect(state.onboarding.sharesUsageData)
     }
 
     @Test("An answer given during the first run is kept when the sheet closes")
     func answeredChoiceKept() {
         let state = makeState(syncEnabled: false)
-        state.setUsageDataEnabled(true)
+        state.onboarding.setSyncChoice(true)
 
-        state.finishFirstRun(pages: [.welcome, .usageData])
+        state.finishFirstRun(pages: [.welcome, .iCloud])
 
-        #expect(state.onboarding.usageDataChoice == true)
+        #expect(state.onboarding.syncChoice == true)
     }
 
     // MARK: - Spotlight, tags and Handoff

@@ -9,7 +9,7 @@ final class OnboardingPreferences {
     @ObservationIgnored private let defaults: UserDefaults
 
     private(set) var syncChoice: Bool?
-    private(set) var usageDataChoice: Bool?
+    private(set) var sharesUsageData: Bool
     private(set) var hasSeenWelcome: Bool
     private(set) var lastSeenVersion: String?
 
@@ -17,7 +17,8 @@ final class OnboardingPreferences {
         self.defaults = defaults
         Self.migrateLegacyState(in: defaults)
         syncChoice = defaults.object(forKey: AppPreferences.cloudSyncEnabledKey) as? Bool
-        usageDataChoice = defaults.object(forKey: AppPreferences.usageDataKey) as? Bool
+        // On unless turned off: a stored false, from Settings or an older build's first-run question, stays off.
+        sharesUsageData = defaults.object(forKey: AppPreferences.usageDataKey) as? Bool ?? true
         hasSeenWelcome = defaults.bool(forKey: Self.hasSeenWelcomeKey)
         lastSeenVersion = defaults.string(forKey: Self.lastSeenVersionKey)
     }
@@ -26,17 +27,13 @@ final class OnboardingPreferences {
         syncChoice == true
     }
 
-    var isUsageDataEnabled: Bool {
-        usageDataChoice == true
-    }
-
     func setSyncChoice(_ enabled: Bool) {
         syncChoice = enabled
         defaults.set(enabled, forKey: AppPreferences.cloudSyncEnabledKey)
     }
 
-    func setUsageDataChoice(_ enabled: Bool) {
-        usageDataChoice = enabled
+    func setSharesUsageData(_ enabled: Bool) {
+        sharesUsageData = enabled
         defaults.set(enabled, forKey: AppPreferences.usageDataKey)
     }
 
