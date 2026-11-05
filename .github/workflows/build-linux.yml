@@ -281,7 +281,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: "1.98"
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
         with:
           tool: cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-shear@${{ env.CARGO_SHEAR_VERSION }},cargo-about@${{ env.CARGO_ABOUT_VERSION }},zizmor@${{ env.ZIZMOR_VERSION }}
       - name: Advisories, bans, licenses and sources
@@ -512,7 +512,7 @@ jobs:
         with:
           workspaces: .
           key: ${{ matrix.package }}
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       - name: Verify docker is available
@@ -588,7 +588,7 @@ jobs:
         with:
           workspaces: .
           key: tablepro-session
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       - name: Verify docker is available
@@ -663,7 +663,7 @@ jobs:
       # As in the fast job: the cache restores DuckDB's sources without files.
       - name: Drop the emptied DuckDB sources
         run: rm -rf ../target/duckdb-sources
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
         with:
           tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
       - name: Verify docker is available

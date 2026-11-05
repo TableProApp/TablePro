@@ -63,7 +63,7 @@ jobs:
       - name: Drop the emptied DuckDB sources
         run: rm -rf "target/${{ matrix.target }}/duckdb-sources" target/duckdb-sources
       # windows/global.json takes the newest 10.0 SDK.
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: 10.0.x
       - name: Start Windows' OpenSSH Server
@@ -191,7 +191,7 @@ jobs:
           fi
 
       # The Linux workflows' supply chain checks run in build-linux.yml; these are the Windows ones.
-      - uses: taiki-e/install-action@5488ac5a951645ce95062214902ac4b6bc1a1037 # v2.87.32
+      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
         if: matrix.workflows
         with:
           tool: zizmor@1.30.1
