@@ -83,7 +83,7 @@ Start from the template CI builds, so you do not need gettext 1.0:
 ## Keeping a catalogue complete
 
 A language in `LINGUAS` ships complete: every entry of the current
-template translated, none fuzzy. `po/check-complete.sh` checks it. From
+template translated, each plural form included, none fuzzy. `po/check-complete.sh` checks it. From
 `linux/`, after generating the template:
 
 ```sh

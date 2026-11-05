@@ -41,6 +41,14 @@ for lang in $langs; do
   translated=$(count "$stats" 'translated message')
   fuzzy=$(count "$stats" 'fuzzy translation')
   untranslated=$(count "$stats" 'untranslated message')
+  # msgfmt counts a plural entry whose first form is filled as translated, so an empty later form counts here.
+  partial=$(msgattrib --translated --no-fuzzy --no-obsolete --no-wrap "$merged" | awk '
+    /^msgstr\[[0-9]+\] ""$/ { pending = 1; next }
+    pending { if ($0 !~ /^"/) partial = 1; pending = 0 }
+    /^$/ { if (partial) n++; partial = 0 }
+    END { if (pending || partial) n++; print n + 0 }')
+  translated=$((translated - partial))
+  untranslated=$((untranslated + partial))
   printf '| `%s` | %s | %s | %s |\n' "$lang" "$translated" "$fuzzy" "$untranslated"
   if [ "$fuzzy" -ne 0 ] || [ "$untranslated" -ne 0 ]; then
     incomplete=1
@@ -48,6 +56,8 @@ for lang in $langs; do
       echo "== $lang: $untranslated untranslated, $fuzzy fuzzy"
       entries --untranslated
       entries --only-fuzzy
+      msgattrib --translated --no-fuzzy --no-obsolete --no-wrap "$merged" \
+        | awk 'BEGIN { RS = ""; ORS = "\n\n" } /msgstr\[[0-9]+\] ""(\n[^"]|$)/'
     } >&2
   fi
 done

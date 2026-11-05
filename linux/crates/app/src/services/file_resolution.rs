@@ -62,6 +62,13 @@ pub fn resolve_file_blocking(
     connections: &ConnectionStore,
     drivers: &DriverRegistry,
 ) -> ResolvedFile {
+    // A file GIO reaches without a local path, such as one over SFTP, is read as text by its name.
+    if path.is_none() && named_sql(Path::new(&uri)) {
+        return ResolvedFile {
+            uri,
+            target: Ok(FileTarget::Script),
+        };
+    }
     if let Some(script) = path.as_deref().filter(|path| is_script_blocking(path, drivers)) {
         // One file reached through a link and through its target opens one tab, as a database opens one session.
         let uri = std::fs::canonicalize(script)
@@ -107,17 +114,18 @@ fn is_script_blocking(path: &Path, drivers: &DriverRegistry) -> bool {
         Err(_) => Vec::new(),
     };
     let (content_type, _) = gio::content_type_guess(Some(path), Some(header.as_slice()));
-    // The suffix covers a system without shared-mime-info.
-    let named_sql = gio::content_type_is_a(&content_type, SQL_CONTENT_TYPE)
-        || path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case(SQL_SUFFIX));
-    named_sql
+    (gio::content_type_is_a(&content_type, SQL_CONTENT_TYPE) || named_sql(path))
         && !drivers
             .iter()
             .filter_map(|driver| driver.capabilities().file_format())
             .any(|format| format.signature.matches(&header))
+}
+
+// The suffix covers a system without shared-mime-info.
+fn named_sql(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case(SQL_SUFFIX))
 }
 
 const SQL_CONTENT_TYPE: &str = "application/sql";
@@ -449,6 +457,26 @@ mod tests {
         );
         let canonical = std::fs::canonicalize(&target).expect("canonical");
         assert_eq!(gio::File::for_uri(&resolved.uri).path(), Some(canonical));
+    }
+
+    #[test]
+    fn a_remote_sql_file_with_no_local_path_is_a_script() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let store = ConnectionStore::new(&tablepro_storage::StoragePaths::under(
+            root.path(),
+            "tablepro-test",
+            "app.tablepro.Test",
+        ));
+        let uri = "sftp://db.example/home/ada/report.SQL".to_owned();
+
+        let resolved = resolve_file_blocking(None, uri.clone(), &store, &drivers(&FakeDriver::FILE_CAPABILITIES));
+
+        assert!(
+            matches!(resolved.target, Ok(FileTarget::Script)),
+            "{:?}",
+            resolved.target
+        );
+        assert_eq!(resolved.uri, uri);
     }
 
     // The editor's read then says why it cannot be opened.

@@ -257,7 +257,8 @@ neither engine's locking can be trusted there.
 A SQL file opens in a new editor tab of the connection in front of the
 last window you used, and Save writes back to it. It never runs by
 itself. With no SQL connection in front, the window asks you to choose
-one first. A file already open in a tab brings that tab forward.
+one first. A file already open in a tab under the same path brings that
+tab forward.
 
 ## Vim keybindings
 
