@@ -1121,23 +1121,13 @@ impl SessionWindow {
         }
     }
 
-    // The sessions whose saved tabs are not back yet: still to connect, or connected and reading them.
-    pub(crate) fn restoring_keys(&self) -> Vec<SessionKey> {
-        let mut keys = self.imp().restoring.borrow().clone();
-        keys.extend(
-            self.workspaces()
-                .iter()
-                .filter(|workspace| workspace.tabs_loading())
-                .filter_map(Workspace::key),
-        );
-        keys
-    }
-
-    pub(crate) fn tell_script_is_being_restored(&self, file: &gio::File) {
-        self.show_toast(&crate::i18n::gettext_f(
-            "“{name}” is in a saved tab that is still coming back.",
-            &[("name", &file_display_name(&file.uri()))],
-        ));
+    // Sessions still to restore, connecting, or reading their saved tabs may hold a script in a tab
+    // that is not there yet.
+    pub(crate) fn settling(&self) -> bool {
+        let imp = self.imp();
+        !imp.restoring.try_borrow().is_ok_and(|restoring| restoring.is_empty())
+            || !imp.connects.try_borrow().is_ok_and(|connects| connects.is_empty())
+            || self.workspaces().iter().any(Workspace::tabs_loading)
     }
 
     pub(crate) fn script_tab(&self, file: &gio::File) -> Option<uuid::Uuid> {
@@ -1214,7 +1204,8 @@ impl SessionWindow {
         }
     }
 
-    // The session the user chose for them is open, or still connecting, in another window.
+    // Only to a session that has joined there: one still connecting could fail or be cancelled, and
+    // the scripts would no longer be asked for anywhere.
     fn hand_waiting_scripts_to(&self, window_id: u32, key: &SessionKey) {
         let Some(owner) = self
             .application()
@@ -1223,10 +1214,20 @@ impl SessionWindow {
         else {
             return;
         };
-        let scripts = self.imp().waiting_scripts.take();
-        if scripts.is_empty() {
+        if self.imp().waiting_scripts.borrow().is_empty() {
             return;
         }
+        if !owner
+            .workspaces()
+            .iter()
+            .any(|workspace| workspace.key().as_ref() == Some(key))
+        {
+            self.show_toast(&crate::i18n::gettext(
+                "That connection is still connecting in another window. Choose it again once it is open.",
+            ));
+            return;
+        }
+        let scripts = self.imp().waiting_scripts.take();
         owner.send(SessionWindowInput::ScriptsFor {
             key: key.clone(),
             scripts,
@@ -1234,8 +1235,7 @@ impl SessionWindow {
         self.show_waiting_scripts();
     }
 
-    // Still connecting, they wait as on this window's own picker: for the next SQL session to join, or
-    // behind its banner if the connect is cancelled or fails.
+    // The session left between the hand-over and now: they wait here instead, behind the picker's banner.
     fn on_scripts_for(&self, key: SessionKey, scripts: Vec<(gio::File, String)>) {
         match self
             .workspaces()

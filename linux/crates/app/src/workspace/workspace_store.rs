@@ -272,11 +272,6 @@ impl WorkspaceStore {
         }
     }
 
-    // Where the session's saved tabs are, for a read off the GTK thread.
-    pub(crate) fn saved_tabs_path(&self, key: &SessionKey) -> PathBuf {
-        self.inner.path(key)
-    }
-
     pub fn is_blocked(&self, key: &SessionKey) -> bool {
         self.inner.blocked.borrow().contains(key)
     }
@@ -499,21 +494,6 @@ fn read_record(path: &Path) -> WorkspaceLoad {
     match decode_document::<WorkspaceRecord>(path, &bytes) {
         Ok(record) => WorkspaceLoad::Restored(record.clamped()),
         Err(problem) => WorkspaceLoad::Blocked(problem.into()),
-    }
-}
-
-// The files the saved editor tabs at `path` are bound to, by URI; none when the record cannot be read.
-pub(crate) fn saved_editor_files_blocking(path: &Path) -> Vec<String> {
-    match read_record(path) {
-        WorkspaceLoad::Restored(record) => record
-            .tabs
-            .into_iter()
-            .filter_map(|tab| match tab {
-                super::TabRecord::Editor { file: Some(file), .. } => Some(file.uri),
-                _ => None,
-            })
-            .collect(),
-        WorkspaceLoad::Empty | WorkspaceLoad::Blocked(_) => Vec::new(),
     }
 }
 

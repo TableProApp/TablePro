@@ -124,6 +124,10 @@ fn open(test: &TestWindow, files: &[gio::File]) {
         .settings
         .set_restore_session(false)
         .expect("turn restoring off");
+    // A window still reading its saved tabs sends the script to a picker instead.
+    if test.window.page_name() == "workspace" {
+        wait_until(WAIT, || !test.window.settling()).expect("the saved tabs read");
+    }
     test.app.open(files, "");
 }
 
@@ -225,8 +229,9 @@ fn the_banner_cancel_drops_the_waiting_scripts() {
     );
 }
 
+// A session still connecting may bring the file back in a saved tab, so a picker of its own asks.
 #[gtk4::test]
-fn a_sql_file_while_connecting_opens_once_the_session_joins() {
+fn a_sql_file_while_a_window_connects_asks_in_a_picker_of_its_own() {
     let test = TestWindow::with_script(
         "ScriptConnecting",
         Script {
@@ -243,15 +248,25 @@ fn a_sql_file_while_connecting_opens_once_the_session_joins() {
     let file = script(&test, "report.sql", "SELECT 1;");
 
     open(&test, std::slice::from_ref(&file));
-    wait_until(WAIT, || !test.window.imp().waiting_scripts.borrow().is_empty())
-        .expect("the script to wait for the connect");
-    assert_eq!(test.window.page_name(), "connecting");
-    let editor = script_editor(&test.window, &file);
+    let asking = || {
+        test.app
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<SessionWindow>().ok())
+            .find(|window| window.script_banner().is_some_and(|banner| banner.is_revealed()))
+    };
+    wait_until(WAIT, || asking().is_some()).expect("a picker asking for a connection");
+    test.wait_for_page("workspace");
+    drain_main_context();
 
-    assert_eq!(test.window.page_name(), "workspace");
-    assert_eq!(text_of(&editor), "SELECT 1;");
-    assert!(test.window.imp().waiting_scripts.borrow().is_empty());
-    assert_eq!(test.connector.calls().len(), 1, "the script was opened as a database");
+    assert!(
+        asking().is_some_and(|window| window != test.window),
+        "the connecting window took the script"
+    );
+    assert!(
+        editors(&test.window).iter().all(|editor| !bound_to(editor, &file)),
+        "the script opened in the session that was connecting"
+    );
 }
 
 #[gtk4::test]
