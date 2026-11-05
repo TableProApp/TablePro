@@ -60,7 +60,10 @@ impl LexicalTracker {
 
 /// `sql_mode` from `@@session.sql_mode`, `SESSION sql_mode` and the like.
 fn setting_name(target: &str) -> &str {
-    let name = target.rsplit(['.', ' ']).next().unwrap_or(target);
+    let name = target
+        .rsplit(|character: char| character == '.' || character.is_whitespace())
+        .next()
+        .unwrap_or(target);
     name.trim_start_matches('@')
 }
 
@@ -73,18 +76,23 @@ fn unquoted(value: &str) -> &str {
 fn set_assignments(statement: &str) -> Option<Vec<(String, String)>> {
     let code = without_executable_markers(statement);
     let code = code.trim().trim_end_matches(';').trim();
-    let rest = code.get(..4).filter(|head| head.eq_ignore_ascii_case("SET "))?;
-    let body = code.get(rest.len()..)?;
+    let head = code.get(..3).filter(|head| head.eq_ignore_ascii_case("SET"))?;
+    let body = code.get(head.len()..)?;
+    if !body.starts_with(char::is_whitespace) {
+        return None;
+    }
     let mut pairs = Vec::new();
     for part in split_outside_quotes(body, ',') {
-        let (target, value) = match part.split_once(":=").or_else(|| part.split_once('=')) {
-            Some(pair) => pair,
-            None => match part.to_ascii_lowercase().find(" to ") {
-                Some(at) => (&part[..at], &part[at + 4..]),
-                None => continue,
-            },
-        };
-        pairs.push((target.trim().to_owned(), value.trim().to_owned()));
+        if let Some((target, value)) = part.split_once(":=").or_else(|| part.split_once('=')) {
+            pairs.push((target.trim().to_owned(), value.trim().to_owned()));
+            continue;
+        }
+        let words: Vec<&str> = part.split_whitespace().collect();
+        if let Some(at) = words.iter().position(|word| word.eq_ignore_ascii_case("TO"))
+            && at > 0
+        {
+            pairs.push((words[..at].join(" "), words[at + 1..].join(" ")));
+        }
     }
     Some(pairs)
 }
@@ -208,5 +216,28 @@ mod tests {
             Some(NO_ESCAPES)
         );
         assert_eq!(tracker.after("SELECT 1", pg, NO_ESCAPES), None);
+    }
+
+    #[test]
+    fn a_set_spread_over_lines_is_read() {
+        let mut tracker = LexicalTracker::default();
+
+        assert_eq!(
+            tracker.after(
+                "SET\n\tstandard_conforming_strings\nTO off",
+                SqlGrammar::PostgreSql,
+                NO_ESCAPES
+            ),
+            Some(ESCAPES)
+        );
+        assert_eq!(
+            tracker.after(
+                "SET\nSESSION\tsql_mode = 'NO_BACKSLASH_ESCAPES'",
+                SqlGrammar::MySql,
+                ESCAPES
+            ),
+            Some(NO_ESCAPES)
+        );
+        assert_eq!(tracker.after("SETTINGS = 1", SqlGrammar::MySql, ESCAPES), None);
     }
 }

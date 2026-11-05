@@ -712,7 +712,7 @@ fn place_module(catalog: &mut DumpCatalog, module: Module, section: DumpSection,
         });
         return;
     }
-    let mut statements = module_statements(&module.schema, &text, module.settings);
+    let mut statements = module_statements(&module.schema, &module.name, &text, module.settings);
     if let Some(table) = disabled_on {
         statements.push(DumpStatement::new(disable_trigger(
             &module.schema,
@@ -930,7 +930,7 @@ mod tests {
         assert_eq!(
             sql,
             [
-                "CREATE TRIGGER [app].tr ON [app].t AFTER INSERT AS SELECT 1",
+                "CREATE TRIGGER [app].[m] ON [app].t AFTER INSERT AS SELECT 1",
                 "DISABLE TRIGGER [app].[m] ON [app].[t]",
             ]
         );

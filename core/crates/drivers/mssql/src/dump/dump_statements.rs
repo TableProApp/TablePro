@@ -183,12 +183,11 @@ pub(super) struct ModuleSettings {
 /// the file's. The text starts at its first token: the server keeps
 /// whatever comment opened the batch, and a load would keep the dump's
 /// own comment line as part of the module.
-pub(super) fn module_statements(schema: &str, text: &str, settings: ModuleSettings) -> Vec<DumpStatement> {
+pub(super) fn module_statements(schema: &str, name: &str, text: &str, settings: ModuleSettings) -> Vec<DumpStatement> {
     let quoted = quote(schema);
-    let body = qualified_view(
-        &qualify_created_name(&as_create(from_first_token(text)), SqlGrammar::MsSql, &quoted),
-        &quoted,
-    );
+    let created = as_create(from_first_token(text));
+    let created = named_as(&created, schema, name).unwrap_or(created);
+    let body = qualified_view(&qualify_created_name(&created, SqlGrammar::MsSql, &quoted), &quoted);
     let mut set = Vec::new();
     if !settings.ansi_nulls {
         set.push("ANSI_NULLS");
@@ -275,6 +274,60 @@ fn as_create(text: &str) -> String {
         }
         _ => text.to_owned(),
     }
+}
+
+/// `text` with the name its CREATE states made the module's current one.
+/// The server keeps a module's text as it was written, and `sp_rename`
+/// or `ALTER SCHEMA ... TRANSFER` leaves the old name in it.
+fn named_as(text: &str, schema: &str, name: &str) -> Option<String> {
+    let grammar = SqlGrammar::MsSql;
+    let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
+    let tokens: Vec<ScriptToken> = plan
+        .tokens(0..text.len())
+        .filter(|token| !token.kind.is_trivia())
+        .collect();
+    let word = |at: usize, wanted: &[&str]| {
+        tokens.get(at).is_some_and(|token| {
+            token.kind == ScriptTokenKind::Word
+                && text
+                    .get(token.range.clone())
+                    .is_some_and(|word| wanted.iter().any(|candidate| word.eq_ignore_ascii_case(candidate)))
+        })
+    };
+    let is_name = |at: usize| {
+        tokens
+            .get(at)
+            .is_some_and(|token| matches!(token.kind, ScriptTokenKind::Word | ScriptTokenKind::QuotedIdentifier))
+    };
+    let is_dot = |at: usize| {
+        tokens
+            .get(at)
+            .is_some_and(|token| text.get(token.range.clone()) == Some("."))
+    };
+    let mut at = 1;
+    if !word(0, &["CREATE"]) {
+        return None;
+    }
+    if word(at, &["OR"]) && word(at + 1, &["ALTER"]) {
+        at += 2;
+    }
+    if !word(at, &["VIEW", "PROC", "PROCEDURE", "FUNCTION", "TRIGGER"]) || !is_name(at + 1) {
+        return None;
+    }
+    let first = at + 1;
+    let mut last = first;
+    while is_dot(last + 1) && is_name(last + 2) {
+        last += 2;
+    }
+    let start = tokens[first].range.start;
+    let end = tokens[last].range.end;
+    Some(format!(
+        "{}{}.{}{}",
+        text.get(..start)?,
+        quote(schema),
+        quote(name),
+        text.get(end..)?
+    ))
 }
 
 fn from_first_token(text: &str) -> &str {
@@ -485,20 +538,35 @@ mod tests {
         let text = "\n-- View: app.v\n/* note */ CREATE VIEW v AS SELECT 1 AS one; -- kept\n";
 
         assert_eq!(
-            module_statements("app", text, settings),
-            [DumpStatement::body("CREATE VIEW [app].v AS SELECT 1 AS one; -- kept\n")]
+            module_statements("app", "v", text, settings),
+            [DumpStatement::body(
+                "CREATE VIEW [app].[v] AS SELECT 1 AS one; -- kept\n"
+            )]
         );
         assert_eq!(
-            module_statements("app", "CREATE VIEW app.v AS SELECT 1", settings),
-            [DumpStatement::body("CREATE VIEW app.v AS SELECT 1")]
+            module_statements("app", "v", "CREATE VIEW app.v AS SELECT 1", settings),
+            [DumpStatement::body("CREATE VIEW [app].[v] AS SELECT 1")]
         );
         assert_eq!(
-            module_statements("app", "create or alter view [v w] (a) AS SELECT 1", settings),
+            module_statements("app", "v w", "create or alter view [v w] (a) AS SELECT 1", settings),
             [DumpStatement::body("create or alter view [app].[v w] (a) AS SELECT 1")]
         );
         assert_eq!(
-            module_statements("app", "CREATE PROCEDURE p AS SELECT 1", settings),
-            [DumpStatement::body("CREATE PROCEDURE [app].p AS SELECT 1")]
+            module_statements("app", "p", "CREATE PROCEDURE p AS SELECT 1", settings),
+            [DumpStatement::body("CREATE PROCEDURE [app].[p] AS SELECT 1")]
+        );
+    }
+
+    #[test]
+    fn a_renamed_or_moved_module_is_made_under_its_current_name() {
+        let settings = ModuleSettings {
+            ansi_nulls: true,
+            quoted_identifier: true,
+        };
+
+        assert_eq!(
+            module_statements("sales", "renamed", "ALTER PROCEDURE dbo.old_name AS SELECT 1", settings),
+            [DumpStatement::body("CREATE PROCEDURE [sales].[renamed] AS SELECT 1")]
         );
     }
 
@@ -509,7 +577,7 @@ mod tests {
             quoted_identifier: false,
         };
 
-        let statements = module_statements("dbo", "CREATE PROCEDURE p AS SELECT \"x\"", settings);
+        let statements = module_statements("dbo", "p", "CREATE PROCEDURE p AS SELECT \"x\"", settings);
 
         let sql: Vec<&str> = statements.iter().map(|statement| statement.sql.as_str()).collect();
         assert_eq!(
@@ -517,7 +585,7 @@ mod tests {
             [
                 "SET ANSI_NULLS OFF",
                 "SET QUOTED_IDENTIFIER OFF",
-                "CREATE PROCEDURE [dbo].p AS SELECT \"x\"",
+                "CREATE PROCEDURE [dbo].[p] AS SELECT \"x\"",
                 "SET QUOTED_IDENTIFIER ON",
                 "SET ANSI_NULLS ON",
             ]
