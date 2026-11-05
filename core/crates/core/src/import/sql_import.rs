@@ -143,6 +143,7 @@ pub async fn run_sql_import(
     let settings = session_settings(editor, grammar, cancel).await;
     let reader = SqlFileReader::new(file, grammar, dialect.insert_overriding_clause()).with_settings(settings);
     let consumed = reader.consumed();
+    let stop_reading = reader.stop();
     let (sender, mut units) = mpsc::channel(UNITS_AHEAD);
     let reading = tokio::task::spawn_blocking(move || {
         for unit in reader {
@@ -161,6 +162,7 @@ pub async fn run_sql_import(
         policy: options.on_error,
         wrapped: transaction.is_some(),
         ended_by_file: false,
+        uncertain: None,
         report: SqlImportReport {
             end: SqlImportEnd::Completed,
             statements: 0,
@@ -231,6 +233,7 @@ pub async fn run_sql_import(
             failed: run.report.failed,
         });
     }
+    stop_reading.store(true, Ordering::Relaxed);
     drop(units);
     let _ = reading.await;
     // Stop pressed as the last statement finished can lose the race with
@@ -255,7 +258,10 @@ pub async fn run_sql_import(
             // SQL Server's XACT_ABORT has already rolled back after an
             // error, and a ROLLBACK then would fail for want of one.
             _ => match run.open_state().await {
-                Some(false) => TransactionOutcome::RolledBack,
+                Some(false) => match run.uncertain.take() {
+                    Some(error) => TransactionOutcome::Unknown(error),
+                    None => TransactionOutcome::RolledBack,
+                },
                 Some(true) | None => run.finish(dump.rollback(), TransactionOutcome::RolledBack).await,
             },
         },
@@ -291,6 +297,9 @@ struct Run<'a> {
     /// The file's own code closed the import's transaction, so what ran
     /// before is kept.
     ended_by_file: bool,
+    /// A SQL Server batch that ran a procedure or a string failed: it may
+    /// have committed before the error rolled back what followed.
+    uncertain: Option<DriverError>,
     report: SqlImportReport,
 }
 
@@ -346,6 +355,9 @@ impl Run<'_> {
             match self.execute(&unit.text, cancel).await {
                 Ok(()) => self.report.statements += 1,
                 Err(Fault::Statement(error)) => {
+                    if self.wrapped && runs_other_code(&unit.text, self.grammar) {
+                        self.uncertain = Some(error.clone());
+                    }
                     self.failure(&unit, SqlImportFault::Statement(error));
                     return;
                 }

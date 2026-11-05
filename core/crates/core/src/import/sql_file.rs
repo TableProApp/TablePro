@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use flate2::bufread::MultiGzDecoder;
 
@@ -49,6 +49,9 @@ pub struct SqlFileReader {
     line: u64,
     first: bool,
     failed: bool,
+    /// Set by whoever stopped taking units, so a long run of lines that
+    /// make none, such as a refused COPY block, is not read to its end.
+    stop: Arc<AtomicBool>,
 }
 
 impl SqlFileReader {
@@ -76,6 +79,7 @@ impl SqlFileReader {
             line: 1,
             first: true,
             failed: false,
+            stop: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -85,6 +89,11 @@ impl SqlFileReader {
     pub fn with_settings(mut self, settings: LexicalSettings) -> Self {
         self.reader = self.reader.map(|reader| reader.with_settings(settings));
         self
+    }
+
+    /// The flag that ends the reading once set.
+    pub fn stop(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.stop)
     }
 
     pub fn consumed(&self) -> Arc<AtomicU64> {
@@ -150,7 +159,7 @@ impl Iterator for SqlFileReader {
             if let Some(unit) = self.units.pop_front() {
                 return Some(Ok(unit));
             }
-            if self.failed {
+            if self.failed || self.stop.load(Ordering::Relaxed) {
                 return None;
             }
             match self.fill() {

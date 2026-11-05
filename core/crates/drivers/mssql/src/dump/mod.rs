@@ -122,6 +122,12 @@ const MODULES_SQL: &str = "SELECT SCHEMA_NAME(o.schema_id), o.name, RTRIM(o.type
     WHERE o.type IN ('V', 'FN', 'IF', 'TF', 'FS', 'FT', 'P', 'PC') AND o.is_ms_shipped = 0 AND {scope} \
     ORDER BY 1, 2";
 
+/// The indexes of indexed views, which the dump does not make.
+const VIEW_INDEXES_SQL: &str = "SELECT SCHEMA_NAME(v.schema_id), i.name \
+    FROM sys.indexes i JOIN sys.views v ON v.object_id = i.object_id \
+    WHERE i.index_id > 0 AND v.is_ms_shipped = 0 AND {scope} \
+    ORDER BY 1, 2";
+
 /// DML triggers of tables and views; `parent_class` 1 leaves out the
 /// database's DDL triggers.
 const TRIGGERS_SQL: &str = "SELECT SCHEMA_NAME(p.schema_id), tr.name, p.name, RTRIM(tr.type), \
@@ -438,6 +444,15 @@ impl CatalogRead<'_> {
             };
             let section = module_section(&module.code, cells.flag(7), cells.flag(8));
             place_module(&mut self.catalog, module, section, None);
+        }
+        for row in self.rows(VIEW_INDEXES_SQL, "v.schema_id").await? {
+            let cells = Cells::new(&row, "sys.indexes");
+            self.catalog.skipped.push(DumpSkip {
+                kind: DumpObjectKind::Index,
+                schema: cells.text(0),
+                name: cells.required_text(1)?,
+                reason: DumpSkipReason::NotSupported,
+            });
         }
         for row in self.rows(TRIGGERS_SQL, "p.schema_id").await? {
             let cells = Cells::new(&row, "sys.triggers");
@@ -781,6 +796,7 @@ mod tests {
             CHECKS_SQL,
             FOREIGN_KEYS_SQL,
             MODULES_SQL,
+            VIEW_INDEXES_SQL,
             TRIGGERS_SQL,
             &sequences_sql(16),
             &sequences_sql(13),
