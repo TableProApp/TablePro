@@ -31,6 +31,7 @@ use crate::i18n::{gettext, gettext_f, ngettext_f};
 use crate::runtime::DeliverInput;
 use crate::ui::SessionWindowInput;
 use crate::ui::error_text;
+use crate::ui::structure_tab::StructureMode;
 use crate::ui::write_confirmation::asks_before_writes;
 use crate::workspace::{CatalogChange, PendingState, database_target, run_catalog_change};
 
@@ -358,6 +359,24 @@ impl WorkspaceModel {
             .collect()
     }
 
+    /// The table of every table or structure tab open.
+    fn open_tables(&self) -> Vec<TableRef> {
+        let mut open: Vec<TableRef> = Vec::new();
+        for tab in self.workspace_tabs.borrow().values() {
+            let table = match tab {
+                WorkspaceTab::Table(slot) => TableRef::new(slot.schema.clone(), slot.table.clone()),
+                WorkspaceTab::Structure(slot) if slot.mode == StructureMode::Edit => {
+                    TableRef::new(slot.schema.clone(), slot.table.clone())
+                }
+                _ => continue,
+            };
+            if !open.contains(&table) {
+                open.push(table);
+            }
+        }
+        open
+    }
+
     /// The tables of the table tabs that hold no unsaved edits, other
     /// than those in `known`.
     fn clean_table_tabs_besides(&self, known: &[TableRef]) -> Vec<TableRef> {
@@ -651,6 +670,14 @@ impl WorkspaceModel {
             CatalogLanded::SchemaCreated => self.catalog_shape_changed(),
             CatalogLanded::SchemaDropped(schema) => {
                 self.close_tabs_in(&schema);
+                // A cascade also drops what other schemas' tables held of
+                // it, such as a column of one of its types.
+                if let Some(session) = self.context.active.get() {
+                    session.invalidate_columns();
+                }
+                let open = self.open_tables();
+                self.input
+                    .deliver(WorkspaceInput::Catalog(CatalogInput::ReloadTables(open)));
                 self.catalog_shape_changed();
             }
             CatalogLanded::DatabaseCreated(database) => {
