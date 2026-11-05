@@ -27,6 +27,8 @@ const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const ACCESS_TOKEN_MARGIN: TimeDelta = TimeDelta::seconds(60);
 pub const REFRESH_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 pub const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 60);
+// How soon after a wake a refresh that came due during the sleep runs.
+const WALL_CLOCK_CHECK: Duration = Duration::from_secs(5 * 60);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const FIELD_CHARACTERS: usize = 100;
@@ -157,7 +159,7 @@ impl Account {
             {
                 tracing::warn!(%error, "the entitlement refresh failed");
             }
-            wait_until_due(&mut due).await;
+            wait_until_due(&mut due, Utc::now).await;
         }
     }
 
@@ -633,13 +635,28 @@ fn next_refresh(refreshed: &Result<(), AccountError>) -> Duration {
     }
 }
 
-// The time can move while it waits, earlier or later.
-async fn wait_until_due(due: &mut watch::Receiver<Instant>) {
+// The time can move while it waits, earlier or later. Instant stops while the machine sleeps and the wall clock does
+// not, so the wait also looks at the wall clock now and then.
+async fn wait_until_due(due: &mut watch::Receiver<Instant>, wall_clock: impl Fn() -> DateTime<Utc>) {
+    let deadline = |at: Instant| {
+        TimeDelta::from_std(at.saturating_duration_since(Instant::now()))
+            .ok()
+            .and_then(|left| wall_clock().checked_add_signed(left))
+            .unwrap_or(DateTime::<Utc>::MAX_UTC)
+    };
+    let mut at = *due.borrow_and_update();
+    let mut wall = deadline(at);
     loop {
-        let at = *due.borrow_and_update();
+        if wall_clock() >= wall {
+            return;
+        }
         tokio::select! {
             () = tokio::time::sleep_until(at) => return,
-            Ok(()) = due.changed() => {}
+            () = tokio::time::sleep(WALL_CLOCK_CHECK) => {}
+            Ok(()) = due.changed() => {
+                at = *due.borrow_and_update();
+                wall = deadline(at);
+            }
         }
     }
 }
@@ -1463,12 +1480,36 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn a_refresh_that_came_due_during_a_sleep_runs_soon_after_the_wake() {
+        let due = watch::Sender::new(Instant::now() + REFRESH_INTERVAL);
+        let mut receiver = due.subscribe();
+        let asleep = Arc::new(std::sync::Mutex::new(TimeDelta::zero()));
+        let wall_clock = {
+            let asleep = asleep.clone();
+            move || Utc::now() + *asleep.lock().expect("the sleep")
+        };
+        let started = Instant::now();
+        let waiting = tokio::spawn(async move {
+            wait_until_due(&mut receiver, wall_clock).await;
+            Instant::now()
+        });
+        tokio::time::sleep(Duration::from_secs(60)).await;
+
+        // Instant stood still for the night; only the wall clock moved.
+        *asleep.lock().expect("the sleep") = TimeDelta::days(1);
+        let woke = waiting.await.expect("woke");
+
+        assert!(woke - started <= Duration::from_secs(60) + WALL_CLOCK_CHECK);
+        drop(due);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn the_schedule_wakes_at_the_time_it_was_last_moved_to() {
         let due = watch::Sender::new(Instant::now() + RETRY_INTERVAL);
         let mut receiver = due.subscribe();
         let started = Instant::now();
         let waiting = tokio::spawn(async move {
-            wait_until_due(&mut receiver).await;
+            wait_until_due(&mut receiver, Utc::now).await;
             Instant::now()
         });
         tokio::time::sleep(RETRY_INTERVAL / 2).await;
