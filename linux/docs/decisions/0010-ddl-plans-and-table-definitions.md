@@ -1,6 +1,6 @@
 # 0010: DDL plans against table definitions
 
-- **Status**: Accepted
+- **Status**: Accepted; truncating and schema and database changes amended by core 0011 (`core/docs/decisions/0011-catalog-operations.md`)
 - **Date**: 2026-10-13
 
 ## Context

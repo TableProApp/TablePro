@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use deadpool::managed::{PoolError, TimeoutType};
 use sqlx::Executor as _;
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{CharacterSet, DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
@@ -156,10 +156,13 @@ impl MysqlConnection {
     }
 
     /// Whether the table's engine can roll back, read before the write
-    /// so the ledger knows what an interruption leaves behind.
+    /// so the ledger knows what an interruption leaves behind. DDL
+    /// commits each statement whatever the engine, and a database batch
+    /// names no table to look up.
     async fn atomicity(&self, batch: &WriteBatch, options: &CallOptions) -> Result<WriteAtomicity, DriverError> {
-        if batch.kind == WriteKind::SchemaChanges {
-            return Ok(WriteAtomicity::StatementByStatement);
+        match batch.kind {
+            WriteKind::SchemaChanges | WriteKind::DatabaseChanges => return Ok(WriteAtomicity::StatementByStatement),
+            WriteKind::RowChanges => {}
         }
         let table = batch.table.clone();
         // A call cancels its token when it returns, so the lookup gets a
@@ -276,12 +279,10 @@ impl Connection for MysqlConnection {
         .await
     }
 
+    /// The schemas this engine lists are the server's databases, which a
+    /// query tab can move between.
     async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
-        self.read(
-            options,
-            read_op(|connection, flavour| Box::pin(metadata::list_databases(connection, flavour))),
-        )
-        .await
+        self.list_schemas(options).await
     }
 
     async fn list_objects(&self, scope: &ObjectScope, options: CallOptions) -> Result<Vec<ObjectInfo>, DriverError> {
@@ -400,6 +401,16 @@ impl Connection for MysqlConnection {
             options,
             read_op(move |connection, flavour| {
                 Box::pin(async move { metadata::fetch_character_sets(connection, flavour).await })
+            }),
+        )
+        .await
+    }
+
+    async fn fetch_database_choices(&self, options: CallOptions) -> Result<DatabaseChoices, DriverError> {
+        self.read(
+            options,
+            read_op(move |connection, flavour| {
+                Box::pin(async move { metadata::fetch_database_choices(connection, flavour).await })
             }),
         )
         .await

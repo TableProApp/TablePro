@@ -1,6 +1,8 @@
+use super::catalog_plans::{catalog_name, check_database_draft, named, refuse_drop_options, refuse_options};
 use super::{
-    BuildDdlError, ColumnCapabilities, ColumnDefinition, DdlCapabilities, DdlOperation, DdlPlan, DropTableOptions,
-    Permission, ReferentialAction, TableChanges, TableDefinition, TableDraft,
+    BuildDdlError, CatalogCapabilities, CatalogOption, ColumnCapabilities, ColumnDefinition, DatabaseDraft,
+    DdlCapabilities, DdlOperation, DdlPlan, DropDatabaseOptions, DropSchemaOptions, DropTableOptions, Permission,
+    ReferentialAction, SchemaDraft, TableChanges, TableDefinition, TableDraft, TruncateTableOptions,
 };
 use crate::dialect::SqlDialect;
 use crate::meta::{IndexInfo, TableRef};
@@ -72,6 +74,92 @@ pub trait DdlDialect: Send + Sync + std::fmt::Debug {
         Ok(DdlPlan::from_sql([format!(
             "DROP TABLE {if_exists}{}{cascade}",
             self.sql_dialect().qualify(table)
+        )]))
+    }
+
+    /// What the engine does to whole tables, schemas and databases. The
+    /// plans below refuse what this leaves out.
+    fn catalog_capabilities(&self) -> CatalogCapabilities {
+        CatalogCapabilities::default()
+    }
+
+    /// Whether the engine keeps this database for itself, so it is never
+    /// offered for a drop: the server's own, and any it refuses to drop.
+    fn protects_database(&self, _name: &str) -> bool {
+        false
+    }
+
+    /// Whether the engine keeps this schema for itself, as SQL Server
+    /// keeps `dbo` and DuckDB `main`.
+    fn protects_schema(&self, _name: &str) -> bool {
+        false
+    }
+
+    /// Empty the table and keep its definition.
+    fn plan_truncate_table(&self, table: &TableRef, options: &TruncateTableOptions) -> Result<DdlPlan, BuildDdlError> {
+        refuse_options(&self.catalog_capabilities(), options)?;
+        let restart = if options.restart_identity { " RESTART IDENTITY" } else { "" };
+        let cascade = if options.cascade { " CASCADE" } else { "" };
+        Ok(DdlPlan::from_sql([format!(
+            "TRUNCATE TABLE {}{restart}{cascade}",
+            self.sql_dialect().qualify(table)
+        )]))
+    }
+
+    fn plan_create_schema(&self, draft: &SchemaDraft) -> Result<DdlPlan, BuildDdlError> {
+        let capabilities = self.catalog_capabilities();
+        if !capabilities.create_schema {
+            return Err(BuildDdlError::Unsupported(DdlOperation::CreateSchema));
+        }
+        if draft.owner.is_some() && !capabilities.schema_owner {
+            return Err(BuildDdlError::Unsupported(DdlOperation::CatalogOwner));
+        }
+        let dialect = self.sql_dialect();
+        let mut sql = format!(
+            "CREATE SCHEMA {}",
+            dialect.quote_identifier(named(&capabilities, CatalogOption::Name, &draft.name)?)
+        );
+        if let Some(owner) = &draft.owner {
+            sql.push_str(" AUTHORIZATION ");
+            sql.push_str(&dialect.quote_identifier(catalog_name(CatalogOption::Owner, owner)?));
+        }
+        Ok(DdlPlan::from_sql([sql]))
+    }
+
+    fn plan_drop_schema(&self, schema: &str, options: DropSchemaOptions) -> Result<DdlPlan, BuildDdlError> {
+        let capabilities = self.catalog_capabilities();
+        if !capabilities.drop_schema {
+            return Err(BuildDdlError::Unsupported(DdlOperation::DropSchema));
+        }
+        if options.cascade && !capabilities.drop_schema_cascade {
+            return Err(BuildDdlError::Unsupported(DdlOperation::DropSchemaCascade));
+        }
+        let cascade = if options.cascade { " CASCADE" } else { "" };
+        Ok(DdlPlan::from_sql([format!(
+            "DROP SCHEMA {}{cascade}",
+            self.sql_dialect()
+                .quote_identifier(catalog_name(CatalogOption::Name, schema)?)
+        )]))
+    }
+
+    /// A new database with only its name. An engine that offers options
+    /// writes them in its own override.
+    fn plan_create_database(&self, draft: &DatabaseDraft) -> Result<DdlPlan, BuildDdlError> {
+        let capabilities = self.catalog_capabilities();
+        check_database_draft(&capabilities, draft)?;
+        Ok(DdlPlan::for_databases([format!(
+            "CREATE DATABASE {}",
+            self.sql_dialect()
+                .quote_identifier(named(&capabilities, CatalogOption::Name, &draft.name)?)
+        )]))
+    }
+
+    fn plan_drop_database(&self, database: &str, options: &DropDatabaseOptions) -> Result<DdlPlan, BuildDdlError> {
+        refuse_drop_options(&self.catalog_capabilities(), options)?;
+        Ok(DdlPlan::for_databases([format!(
+            "DROP DATABASE {}",
+            self.sql_dialect()
+                .quote_identifier(catalog_name(CatalogOption::Name, database)?)
         )]))
     }
 

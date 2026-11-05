@@ -3,6 +3,8 @@
 //! turn them into DDL.
 
 mod build_ddl_error;
+mod catalog_capabilities;
+mod catalog_plans;
 mod change_review;
 mod changed_attributes;
 mod character_set;
@@ -15,6 +17,8 @@ mod column_key_roles;
 mod column_rename;
 mod column_storage;
 mod column_visibility;
+mod database_choices;
+mod database_draft;
 mod ddl_capabilities;
 mod ddl_dialect;
 mod ddl_operation;
@@ -39,6 +43,7 @@ mod primary_key_change;
 mod primary_key_constraint;
 mod referential_action;
 mod refusal_reason;
+mod schema_draft;
 mod schema_object_source;
 mod table_changes;
 mod table_definition;
@@ -47,12 +52,21 @@ mod table_options;
 mod table_options_change;
 mod table_rebuild;
 mod table_source;
+mod truncate_table_options;
 mod unmodeled_attribute;
 
+#[cfg(test)]
+mod catalog_tests;
 #[cfg(test)]
 mod tests;
 
 pub use build_ddl_error::BuildDdlError;
+pub use catalog_capabilities::{CatalogCapabilities, DatabaseFields, DatabaseNoun, NameLimit};
+pub use catalog_plans::{
+    bare_word, catalog_capabilities, catalog_name, check_database_draft, named, plan_create_database, plan_create_schema,
+    plan_drop_database, plan_drop_schema, plan_truncate_table, protects_database, protects_schema, refuse_drop_options,
+    refuse_options,
+};
 pub use change_review::ChangeReview;
 pub use changed_attributes::ChangedAttributes;
 pub use character_set::CharacterSet;
@@ -65,6 +79,8 @@ pub use column_key_roles::ColumnKeyRoles;
 pub use column_rename::ColumnRename;
 pub use column_storage::{ColumnCompression, ColumnStorage};
 pub use column_visibility::ColumnVisibility;
+pub use database_choices::{DatabaseChoices, DatabaseDefaults};
+pub use database_draft::{CatalogOption, DatabaseDraft, DropDatabaseOptions, KeyspaceReplication};
 pub use ddl_capabilities::DdlCapabilities;
 pub use ddl_dialect::DdlDialect;
 pub use ddl_operation::DdlOperation;
@@ -88,6 +104,7 @@ pub use primary_key_change::PrimaryKeyChange;
 pub use primary_key_constraint::PrimaryKeyConstraint;
 pub use referential_action::ReferentialAction;
 pub use refusal_reason::RefusalReason;
+pub use schema_draft::{DropSchemaOptions, SchemaDraft};
 pub use schema_object_source::{SchemaObjectKind, SchemaObjectSource};
 pub use table_changes::TableChanges;
 pub use table_definition::TableDefinition;
@@ -96,4 +113,5 @@ pub use table_options::TableOptions;
 pub use table_options_change::{CharacterSetChoice, TableOptionsChange};
 pub use table_rebuild::{RecreatedObject, TableRebuild};
 pub use table_source::TableSource;
+pub use truncate_table_options::TruncateTableOptions;
 pub use unmodeled_attribute::UnmodeledAttribute;

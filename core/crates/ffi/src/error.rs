@@ -207,6 +207,9 @@ fn server_message(error: &DriverError) -> Option<ServerMessage> {
         DriverError::Auth {
             diagnostics: Some(diagnostics),
         } => diagnostics,
+        // The variant keeps only the name, which an app shows after its
+        // own sentence for the code, as it does the server's words.
+        DriverError::DatabaseNotFound { database } => return Some(named_only(database)),
         _ => return None,
     };
     Some(ServerMessage {
@@ -217,6 +220,17 @@ fn server_message(error: &DriverError) -> Option<ServerMessage> {
         hint: diagnostics.hint.clone(),
         position: diagnostics.position,
     })
+}
+
+fn named_only(name: &str) -> ServerMessage {
+    ServerMessage {
+        message: name.to_owned(),
+        code: None,
+        sqlstate: None,
+        detail: None,
+        hint: None,
+        position: None,
+    }
 }
 
 fn file_path(error: &DriverError) -> Option<&Path> {
@@ -408,6 +422,22 @@ mod tests {
         assert_eq!(server.message, "no such table: nope");
         assert_eq!(server.code.as_deref(), Some("1"));
         assert_eq!(server.position, Some(15));
+    }
+
+    #[test]
+    fn a_missing_database_names_it_where_the_server_s_words_go() {
+        let error = ConnectError::Driver(DriverError::DatabaseNotFound {
+            database: "shopp".to_owned(),
+        });
+
+        let info = info(error.into());
+
+        assert_eq!(info.codes, ["connect.driver", "driver.database_not_found"]);
+        assert_eq!(info.code, "driver.database_not_found");
+        let server = info.server.expect("the database's name");
+        assert_eq!(server.message, "shopp");
+        assert_eq!((server.code, server.sqlstate, server.detail), (None, None, None));
+        assert!(info.path.is_none());
     }
 
     #[test]

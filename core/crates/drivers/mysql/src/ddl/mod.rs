@@ -3,15 +3,17 @@ mod mysql_column_definition;
 use tablepro_core::column::ColumnDefault;
 use tablepro_core::ddl::ddl_sql::{column_list, create_index_sql, foreign_key_sql, index_keys_sql};
 use tablepro_core::ddl::{
-    BuildDdlError, ChangedAttributes, ColumnAlteration, ColumnCapabilities, ColumnDefinition, DdlCapabilities,
-    DdlDialect, DdlOperation, DdlPlan, DraftTableOptions, Permission, ReferentialAction, RefusalReason, TableChanges,
-    TableDefinition, TableDraft, TableOptionsChange,
+    BuildDdlError, CatalogCapabilities, CatalogOption, ChangedAttributes, ColumnAlteration, ColumnCapabilities,
+    ColumnDefinition, DatabaseDraft, DatabaseFields, DdlCapabilities, DdlDialect, DdlOperation, DdlPlan,
+    DraftTableOptions, NameLimit, Permission, ReferentialAction, RefusalReason, TableChanges, TableDefinition,
+    TableDraft, TableOptionsChange, bare_word, check_database_draft, named,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::TableRef;
 
 use crate::catalog::printed_names;
 use crate::dialect::MySqlDialect;
+use crate::metadata::SYSTEM_DATABASES;
 use mysql_column_definition::{nullability_permission, render, restatement};
 
 const fn capabilities(expression_index_keys: bool) -> DdlCapabilities {
@@ -271,6 +273,50 @@ impl DdlDialect for MySqlDialect {
             .map(|source| DdlPlan::from_sql([source.create_statement.clone()]))
             .ok_or(BuildDdlError::NoTableSource)
     }
+
+    /// A schema is a database here. TRUNCATE always starts the
+    /// AUTO_INCREMENT counter again, so that is no choice to offer.
+    fn catalog_capabilities(&self) -> CatalogCapabilities {
+        CatalogCapabilities {
+            truncate_table: true,
+            // InnoDB refuses any table another table's foreign key names,
+            // even with no row pointing at it.
+            truncate_refused_when_referenced: true,
+            create_database: true,
+            drop_database: true,
+            database_fields: DatabaseFields {
+                character_set: true,
+                collation: true,
+                ..DatabaseFields::default()
+            },
+            name_limit: Some(NameLimit::Chars(64)),
+            ..CatalogCapabilities::default()
+        }
+    }
+
+    fn protects_database(&self, name: &str) -> bool {
+        SYSTEM_DATABASES.contains(&name)
+    }
+
+    /// Either option alone is enough: a collation names its character
+    /// set, and a character set brings its default collation.
+    fn plan_create_database(&self, draft: &DatabaseDraft) -> Result<DdlPlan, BuildDdlError> {
+        let capabilities = self.catalog_capabilities();
+        check_database_draft(&capabilities, draft)?;
+        let mut sql = format!(
+            "CREATE DATABASE {}",
+            self.quote_identifier(named(&capabilities, CatalogOption::Name, &draft.name)?)
+        );
+        if let Some(character_set) = &draft.character_set {
+            sql.push_str(" CHARACTER SET ");
+            sql.push_str(bare_word(CatalogOption::CharacterSet, character_set)?);
+        }
+        if let Some(collation) = &draft.collation {
+            sql.push_str(" COLLATE ");
+            sql.push_str(bare_word(CatalogOption::Collation, collation)?);
+        }
+        Ok(DdlPlan::for_databases([sql]))
+    }
 }
 
 /// Whether an alteration needs the column's definition restated. A
@@ -418,14 +464,15 @@ fn refuse_renamed_names(alteration: &ColumnAlteration, changes: &TableChanges) -
 
 #[cfg(test)]
 mod tests {
-    use tablepro_core::ForeignKeyInfo;
-    use tablepro_core::ServerInfo;
     use tablepro_core::column::{ColumnDefault, ColumnInfo, SqlExpression};
     use tablepro_core::ddl::{
-        CollationName, ColumnAttributes, ColumnVisibility, DdlOperation, DraftColumn, DraftType, DropTableOptions,
-        GeneratedColumn, GeneratedStorage, InboundForeignKey, PrimaryKeyConstraint, TableOptions, UnmodeledAttribute,
-        diff_table,
+        CollationName, ColumnAttributes, ColumnVisibility, DdlOperation, DraftColumn, DraftType, DropDatabaseOptions,
+        DropSchemaOptions, DropTableOptions, GeneratedColumn, GeneratedStorage, InboundForeignKey, PrimaryKeyConstraint,
+        SchemaDraft, TableOptions, TruncateTableOptions, UnmodeledAttribute, catalog_capabilities, diff_table,
+        plan_create_database, plan_create_schema, plan_drop_database, plan_drop_schema, plan_truncate_table,
+        protects_database,
     };
+    use tablepro_core::{ForeignKeyInfo, ServerInfo, WriteKind};
     use tablepro_core::meta::{IndexInfo, IndexKey};
     use tablepro_core::value::Value;
 
@@ -1367,5 +1414,228 @@ mod tests {
             assert!(dialect.parse_type(suggestion).is_ok(), "{suggestion}");
         }
         assert!(dialect.parse_type(dialect.default_column_type()).is_ok());
+    }
+
+    fn database(name: &str, character_set: Option<&str>, collation: Option<&str>) -> DatabaseDraft {
+        DatabaseDraft {
+            character_set: character_set.map(str::to_owned),
+            collation: collation.map(str::to_owned),
+            ..DatabaseDraft::named(name)
+        }
+    }
+
+    #[test]
+    fn a_table_is_truncated_by_its_qualified_name_with_no_option() {
+        let table = TableRef::new(Some("app".to_owned()), "or`ders");
+
+        let plan = dialect()
+            .plan_truncate_table(&table, &TruncateTableOptions::default())
+            .expect("a plan");
+
+        assert_eq!(plan.sql(), ["TRUNCATE TABLE `app`.`or``ders`"]);
+        assert_eq!(plan.kind, WriteKind::SchemaChanges);
+        let refused = [
+            (
+                TruncateTableOptions {
+                    cascade: true,
+                    ..TruncateTableOptions::default()
+                },
+                DdlOperation::TruncateTableCascade,
+            ),
+            (
+                TruncateTableOptions {
+                    restart_identity: true,
+                    ..TruncateTableOptions::default()
+                },
+                DdlOperation::TruncateRestartIdentity,
+            ),
+            (
+                TruncateTableOptions {
+                    cluster: Some("main".to_owned()),
+                    ..TruncateTableOptions::default()
+                },
+                DdlOperation::OnCluster,
+            ),
+        ];
+        for (options, operation) in refused {
+            assert_eq!(
+                dialect().plan_truncate_table(&table, &options),
+                Err(BuildDdlError::Unsupported(operation))
+            );
+        }
+    }
+
+    #[test]
+    fn a_database_is_created_with_the_character_set_and_collation_it_names() {
+        let cases = [
+            (
+                database("sh`op", Some("utf8mb4"), Some("utf8mb4_0900_ai_ci")),
+                "CREATE DATABASE `sh``op` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci",
+            ),
+            (
+                database("shop", Some("latin1"), None),
+                "CREATE DATABASE `shop` CHARACTER SET latin1",
+            ),
+            (
+                database("shop", None, Some("utf8mb4_bin")),
+                "CREATE DATABASE `shop` COLLATE utf8mb4_bin",
+            ),
+            (database("shop", None, None), "CREATE DATABASE `shop`"),
+        ];
+
+        for (draft, expected) in cases {
+            let plan = dialect().plan_create_database(&draft).expect("a plan");
+            assert_eq!(plan.sql(), [expected]);
+            assert_eq!(plan.kind, WriteKind::DatabaseChanges);
+        }
+    }
+
+    #[test]
+    fn a_database_is_dropped_by_its_quoted_name() {
+        let plan = dialect()
+            .plan_drop_database("sh`op", &DropDatabaseOptions::default())
+            .expect("a plan");
+
+        assert_eq!(plan.sql(), ["DROP DATABASE `sh``op`"]);
+        assert_eq!(plan.kind, WriteKind::DatabaseChanges);
+        let forced = DropDatabaseOptions {
+            force: true,
+            cluster: None,
+        };
+        assert_eq!(
+            dialect().plan_drop_database("shop", &forced),
+            Err(BuildDdlError::Unsupported(DdlOperation::DropDatabaseForce))
+        );
+    }
+
+    #[test]
+    fn a_character_set_or_collation_beyond_a_bare_word_is_refused() {
+        let cases = [
+            (
+                database("shop", Some("utf8mb4 COLLATE x; DROP DATABASE y"), None),
+                CatalogOption::CharacterSet,
+            ),
+            (database("shop", None, Some("utf8mb4_bin`")), CatalogOption::Collation),
+            (database("shop", Some(""), None), CatalogOption::CharacterSet),
+        ];
+
+        for (draft, refused) in cases {
+            assert!(
+                matches!(
+                    dialect().plan_create_database(&draft),
+                    Err(BuildDdlError::InvalidOption { option, .. }) if option == refused
+                ),
+                "{draft:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_database_option_mysql_has_no_place_for_is_refused() {
+        let owned = DatabaseDraft {
+            owner: Some("ann".to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+        let templated = DatabaseDraft {
+            template: Some("template0".to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+        let clustered = DatabaseDraft {
+            cluster: Some("main".to_owned()),
+            ..DatabaseDraft::named("shop")
+        };
+
+        assert_eq!(
+            dialect().plan_create_database(&owned),
+            Err(BuildDdlError::Unsupported(DdlOperation::CatalogOwner))
+        );
+        assert!(matches!(
+            dialect().plan_create_database(&templated),
+            Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::Template,
+                ..
+            })
+        ));
+        assert_eq!(
+            dialect().plan_create_database(&clustered),
+            Err(BuildDdlError::Unsupported(DdlOperation::OnCluster))
+        );
+    }
+
+    #[test]
+    fn a_database_name_is_kept_to_64_characters() {
+        let longest = "é".repeat(64);
+        let longer = "é".repeat(65);
+
+        assert!(dialect().plan_create_database(&DatabaseDraft::named(longest)).is_ok());
+        assert!(matches!(
+            dialect().plan_create_database(&DatabaseDraft::named(longer)),
+            Err(BuildDdlError::InvalidOption {
+                option: CatalogOption::Name,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn the_servers_own_databases_are_protected() {
+        for name in ["information_schema", "mysql", "performance_schema", "sys"] {
+            assert!(protects_database(&dialect(), name), "{name}");
+        }
+        assert!(!protects_database(&dialect(), "shop"));
+        assert!(!protects_database(&mariadb(), "Mysql"));
+    }
+
+    /// The sidebar offers what the capabilities say, so each one must
+    /// plan, and each one left out must not.
+    #[test]
+    fn every_catalog_operation_offered_plans_and_no_other_does() {
+        for dialect in [dialect(), mariadb()] {
+            let offered = catalog_capabilities(&dialect);
+            let fields = offered.database_fields;
+            let table = TableRef::new(Some("app".to_owned()), "users");
+            let schema = SchemaDraft {
+                name: "app".to_owned(),
+                owner: None,
+            };
+            let draft = database(
+                "shop",
+                fields.character_set.then_some("utf8mb4"),
+                fields.collation.then_some("utf8mb4_bin"),
+            );
+            let plans = [
+                (
+                    "truncate",
+                    offered.truncate_table,
+                    plan_truncate_table(&dialect, &table, &TruncateTableOptions::default()),
+                ),
+                (
+                    "create schema",
+                    offered.create_schema,
+                    plan_create_schema(&dialect, &schema),
+                ),
+                (
+                    "drop schema",
+                    offered.drop_schema,
+                    plan_drop_schema(&dialect, "app", DropSchemaOptions::default()),
+                ),
+                (
+                    "create database",
+                    offered.create_database,
+                    plan_create_database(&dialect, &draft),
+                ),
+                (
+                    "drop database",
+                    offered.drop_database,
+                    plan_drop_database(&dialect, "shop", &DropDatabaseOptions::default()),
+                ),
+            ];
+
+            for (operation, offered, plan) in plans {
+                assert_eq!(offered, plan.is_ok(), "{operation}: {plan:?}");
+            }
+            assert!(offered.truncate_table && offered.create_database && offered.drop_database);
+            assert!(offered.truncate_refused_when_referenced);
+        }
     }
 }

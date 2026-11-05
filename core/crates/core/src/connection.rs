@@ -6,7 +6,7 @@ use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
 use crate::call_options::CallOptions;
 use crate::column::ColumnInfo;
 use crate::commit::{CommitResolution, CommitToken};
-use crate::ddl::{CharacterSet, InboundForeignKey, OutboundForeignKey, TableDefinition};
+use crate::ddl::{CharacterSet, DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use crate::dialect::SqlDialect;
 use crate::editor_session::{EditorSession, EditorSessionOptions};
 use crate::error::DriverError;
@@ -115,6 +115,14 @@ pub trait Connection: Send + Sync {
     ) -> Result<Option<ObjectDefinition>, DriverError> {
         Err(DriverError::Unsupported {
             feature: UnsupportedFeature::ObjectDefinitions,
+        })
+    }
+
+    /// What the server offers for a new database's options, for the New
+    /// Database dialog's pickers.
+    async fn fetch_database_choices(&self, _options: CallOptions) -> Result<DatabaseChoices, DriverError> {
+        Err(DriverError::Unsupported {
+            feature: UnsupportedFeature::DatabaseOptions,
         })
     }
 

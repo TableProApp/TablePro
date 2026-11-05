@@ -470,6 +470,12 @@ impl SessionWindow {
             SessionWindowInput::Disconnect => self.on_disconnect_front(),
             SessionWindowInput::DisconnectSession(key) => self.on_disconnect(key),
             SessionWindowInput::ChooseDatabaseIn(key) => self.choose_database_in(key),
+            SessionWindowInput::NewDatabaseIn(key) => self.deliver_to(&key, WorkspaceInput::NewDatabasePrompt),
+            SessionWindowInput::DropDatabaseIn(key) => self.drop_database_in(key),
+            SessionWindowInput::ReleaseDatabase { target, options } => self.release_database(target, options),
+            SessionWindowInput::DatabaseDropFinished(target) => self.lift_reservation(&target),
+            SessionWindowInput::DatabasesChanged(key) => self.databases_changed(&key),
+            SessionWindowInput::OpenDatabaseIn { key, database } => self.open_database_in(&key, database),
             SessionWindowInput::MovedTab(asked) => self.on_moved_tab(asked),
             SessionWindowInput::SessionTeardownApproved(key) => self.on_session_teardown_approved(&key),
             SessionWindowInput::ShowSession(key) => self.show_session(&key),
@@ -484,16 +490,8 @@ impl SessionWindow {
             SessionWindowInput::SetSafeMode { key, level } => self.on_set_safe_mode(&key, level),
             SessionWindowInput::ReopenApproved(id) => self.on_reopen_approved(id),
             SessionWindowInput::CloseCurrent => self.on_close_current(),
-            SessionWindowInput::Reconnect => {
-                if let Some((_, session)) = self.front_session() {
-                    session.signal(MonitorSignal::RetryNow);
-                }
-            }
-            SessionWindowInput::ResetWorkspaceLayout => {
-                if let Some(input) = self.workspace().and_then(|workspace| workspace.sender()) {
-                    input.deliver(WorkspaceInput::ResetWorkspaceLayout);
-                }
-            }
+            SessionWindowInput::Reconnect => self.on_reconnect(),
+            SessionWindowInput::ResetWorkspaceLayout => self.on_reset_workspace_layout(),
             SessionWindowInput::CloseRequested(CloseReason::Quit(reply)) => {
                 if let Some(guards) = self.close_guards() {
                     guards.request_window_close(self, move |decision: CloseDecision| {
@@ -532,6 +530,19 @@ impl SessionWindow {
             SessionWindowInput::ImportPreviewed(preview) => self.on_import_previewed(*preview),
             SessionWindowInput::ImportFromApp => self.on_import_from_app(),
             SessionWindowInput::ShowToast(message) => self.show_toast(&message),
+        }
+    }
+
+    /// The health banner's Retry, for the session in front.
+    fn on_reconnect(&self) {
+        if let Some((_, session)) = self.front_session() {
+            session.signal(MonitorSignal::RetryNow);
+        }
+    }
+
+    fn on_reset_workspace_layout(&self) {
+        if let Some(input) = self.workspace().and_then(|workspace| workspace.sender()) {
+            input.deliver(WorkspaceInput::ResetWorkspaceLayout);
         }
     }
 

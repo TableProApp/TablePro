@@ -5,11 +5,15 @@ use tablepro_core::ddl::{ColumnVisibility, GeneratedStorage, IdentityStyle, Tabl
 use tablepro_core::dialect::{BindTarget, LikeForm, SqlDialect};
 use tablepro_core::meta::{EditorRefusal, ObjectInfo, ObjectKind, ObjectScope};
 use tablepro_core::statement::StatementBuilder;
-use tablepro_core::{Connection, DriverError, RowLimit, Value};
+use tablepro_core::{Connection, DatabaseDriver, DriverError, RowLimit, TlsConfig, Value, WorkspaceSettings};
+use tablepro_driver_mysql::MysqlDriver;
 use tablepro_test_fixtures::MysqlFlavour;
+use tablepro_test_support::conformance::test_liveness;
+use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    CALL, FLAVOURS, connect, connect_root, rows, run_ok, session, session_scalar, setup, start, table, within,
+    CALL, FLAVOURS, connect, connect_root, direct, options_over, password, rows, run_ok, session, session_scalar,
+    setup, start, table, within,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -386,9 +390,13 @@ async fn objects_and_estimates_are_listed() {
         assert_eq!(kind_of("listed_view"), Some(ObjectKind::View));
         assert_eq!(kind_of("listed_procedure"), Some(ObjectKind::Procedure));
         assert_eq!(kind_of("listed_function"), Some(ObjectKind::Function));
-        assert_eq!(schemas.len(), 1);
-        assert_eq!(schemas[0].name, "tablepro");
-        assert!(schemas[0].is_default);
+        let defaults: Vec<&str> = schemas
+            .iter()
+            .filter(|schema| schema.is_default)
+            .map(|schema| schema.name.as_str())
+            .collect();
+        assert_eq!(defaults, ["tablepro"], "{flavour:?}: {schemas:?}");
+        assert!(schemas.iter().any(|schema| schema.name == "information_schema" && schema.is_system));
         assert!(estimate.rows.value().is_some(), "{flavour:?}: {estimate:?}");
         connection.close().await.expect("a close");
     }
@@ -530,6 +538,69 @@ async fn the_servers_databases_are_listed_for_a_query_tab() {
         let system = find("information_schema").expect("information_schema");
         assert!(system.is_system, "{flavour:?}: {system:?}");
         connection.close().await.expect("a close");
+    }
+}
+
+/// The sidebar shows a database that holds nothing yet, and only the
+/// login's own is the default.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn an_empty_database_is_listed_beside_the_logins_own() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let root = connect_root(&fixture).await;
+        let grant = format!(
+            "GRANT ALL ON untouched.* TO '{}'@'%'",
+            fixture.password_credentials().username
+        );
+        setup(root.as_ref(), &["CREATE DATABASE untouched", grant.as_str()]).await;
+        root.close().await.expect("a close");
+        let connection = connect(&fixture, false).await;
+
+        let schemas = connection.list_schemas(within(CALL)).await.expect("the schemas");
+
+        let find = |name: &str| schemas.iter().find(|schema| schema.name == name);
+        let empty = find("untouched").expect("the empty database");
+        assert!(!empty.is_default && !empty.is_system, "{flavour:?}: {empty:?}");
+        let defaults: Vec<&str> = schemas
+            .iter()
+            .filter(|schema| schema.is_default)
+            .map(|schema| schema.name.as_str())
+            .collect();
+        assert_eq!(defaults, ["tablepro"], "{flavour:?}: {schemas:?}");
+        connection.close().await.expect("a close");
+    }
+}
+
+/// A login that names a database the server does not have stops at
+/// the connect with the name, rather than as a server error the health
+/// monitor would retry.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn a_login_to_a_missing_database_names_it() {
+    for flavour in FLAVOURS {
+        let fixture = start(flavour).await;
+        let liveness = test_liveness();
+        // root, since a login without a grant on the name is refused
+        // access (1044) before the server looks for the database.
+        let options = options_over(
+            direct(fixture.host(), fixture.port(), &liveness),
+            password(&fixture.root_credentials()),
+            "gone",
+            TlsConfig::disabled(),
+            WorkspaceSettings::workspace(false),
+            liveness,
+        );
+
+        let outcome = MysqlDriver.connect(options, CancellationToken::new()).await;
+
+        assert_eq!(
+            outcome.err(),
+            Some(DriverError::DatabaseNotFound {
+                database: "gone".to_owned()
+            }),
+            "{flavour:?}"
+        );
     }
 }
 

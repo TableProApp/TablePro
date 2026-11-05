@@ -4786,7 +4786,7 @@ msgid "New Query"
 msgstr "Truy vấn mới"
 
 #: crates/app/src/ui/workspace/sidebar/tree_menu.rs
-msgid "_New Query"
+msgid "New _Query"
 msgstr "_Truy vấn mới"
 
 #: crates/app/src/ui/workspace/shell.rs

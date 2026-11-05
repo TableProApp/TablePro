@@ -557,7 +557,7 @@ impl WorkspaceHandle {
 
     /// Captured before the work starts: the connection may be gone by
     /// the time the answer comes back.
-    fn history_entry(&self, session: &Session) -> HistoryEntry {
+    pub(crate) fn history_entry(&self, session: &Session) -> HistoryEntry {
         HistoryEntry {
             history: self.0.deps.history.clone(),
             connection: Some(session.metadata().clone()),
@@ -613,7 +613,8 @@ fn same_statements(left: &[Statement], right: &[Statement]) -> bool {
         })
 }
 
-struct HistoryEntry {
+/// Where a write the app ran on the user's behalf is recorded.
+pub(crate) struct HistoryEntry {
     history: Option<HistoryService>,
     connection: Option<tablepro_session::ConnectionMetadata>,
     dialect: Option<std::sync::Arc<dyn tablepro_core::dialect::SqlDialect>>,
@@ -622,7 +623,7 @@ struct HistoryEntry {
 /// A save changes the database as surely as a statement typed into the
 /// editor, so it goes in the same history. A history that cannot be
 /// written is worth a log line, never a lost save.
-async fn record(
+pub(super) async fn record(
     entry: HistoryEntry,
     statements: Vec<String>,
     written: &Result<WriteReport, OperationError>,
@@ -645,7 +646,7 @@ async fn record(
 
 /// Ask the server what became of a commit whose acknowledgement was
 /// lost, when the engine left a way to ask.
-async fn resolve_commit(
+pub(super) async fn resolve_commit(
     session: &Session,
     written: &Result<WriteReport, OperationError>,
 ) -> Option<Result<CommitResolution, OperationError>> {

@@ -225,6 +225,11 @@ impl Session {
         self.catalog.schemas().await
     }
 
+    /// Read the schemas again, after one was created or dropped.
+    pub async fn refresh_schemas(&self) -> Result<Arc<[SchemaInfo]>, Arc<OperationError>> {
+        self.catalog.refresh_schemas().await
+    }
+
     pub async fn objects(&self, scope: ObjectScope) -> Result<Arc<[ObjectInfo]>, Arc<OperationError>> {
         self.catalog.objects(scope).await
     }

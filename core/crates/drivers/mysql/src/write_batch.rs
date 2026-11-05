@@ -78,7 +78,7 @@ async fn in_server_zone(context: &mut WriteContext<'_>, plan: &WritePlan) -> Res
     match (plan.batch.kind, plan.atomicity) {
         (WriteKind::RowChanges, WriteAtomicity::Transactional) => transactional(context, plan).await,
         (WriteKind::RowChanges, WriteAtomicity::StatementByStatement) => stepwise(context, plan).await,
-        (WriteKind::SchemaChanges, _) => schema_changes(context, plan).await,
+        (WriteKind::SchemaChanges | WriteKind::DatabaseChanges, _) => schema_changes(context, plan).await,
     }
 }
 

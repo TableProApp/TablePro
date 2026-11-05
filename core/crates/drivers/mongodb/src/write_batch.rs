@@ -113,3 +113,71 @@ fn failure(ledger: &WriteLedger, index: usize, error: DriverError) -> DriverErro
         other => ledger.failed(index, other, SessionFate::RolledBack),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bson::doc;
+    use tablepro_core::ddl::{
+        DatabaseDraft, DdlPlan, DropDatabaseOptions, TruncateTableOptions, plan_create_database, plan_drop_database,
+        plan_truncate_table,
+    };
+    use tablepro_core::meta::TableRef;
+
+    use super::*;
+    use crate::dialect::MongoDialect;
+    use crate::shell_command::{Plan, Reply, WriteKind};
+
+    /// The one command a catalog plan sends from a session whose own
+    /// database is `shop`.
+    fn sent(plan: &DdlPlan) -> Plan {
+        let [statement] = plan.statements.as_slice() else {
+            panic!("not one statement: {:?}", plan.statements);
+        };
+        generated(statement, "shop").expect("a command").1
+    }
+
+    #[test]
+    fn a_truncate_deletes_every_document_in_the_collection_s_own_database() {
+        let table = TableRef::new(Some("archive".to_owned()), "orders");
+        let plan = plan_truncate_table(&MongoDialect, &table, &TruncateTableOptions::default()).expect("a plan");
+
+        assert_eq!(
+            sent(&plan),
+            Plan::Command {
+                database: "archive".to_owned(),
+                command: doc! { "delete": "orders", "deletes": [{ "q": {}, "limit": 0_i32 }] },
+                reply: Reply::Write(WriteKind::Delete),
+            }
+        );
+    }
+
+    #[test]
+    fn a_new_database_is_made_by_its_first_collection_there() {
+        let mut draft = DatabaseDraft::named("fresh");
+        draft.first_collection = Some("first".to_owned());
+        let plan = plan_create_database(&MongoDialect, &draft).expect("a plan");
+
+        assert_eq!(
+            sent(&plan),
+            Plan::Command {
+                database: "fresh".to_owned(),
+                command: doc! { "create": "first" },
+                reply: Reply::Whole,
+            }
+        );
+    }
+
+    #[test]
+    fn a_drop_goes_to_the_database_it_names() {
+        let plan = plan_drop_database(&MongoDialect, "old", &DropDatabaseOptions::default()).expect("a plan");
+
+        assert_eq!(
+            sent(&plan),
+            Plan::Command {
+                database: "old".to_owned(),
+                command: doc! { "dropDatabase": 1_i32 },
+                reply: Reply::Whole,
+            }
+        );
+    }
+}

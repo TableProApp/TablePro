@@ -6,6 +6,8 @@
 //! window shows the connection picker once it holds no session.
 
 mod assistant;
+mod catalog_dialogs;
+mod catalog_ops;
 mod close_flow;
 mod definitions;
 mod diagram;
@@ -60,6 +62,7 @@ use tablepro_core::{DataModel, EditorSession};
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
+pub(crate) use self::catalog_ops::DatabaseDrop;
 use self::session_watches::SessionWatches;
 use self::tab_title::ConnectionLabel;
 pub(crate) use self::workspace_shell::WorkspaceShell;
@@ -632,6 +635,28 @@ pub(crate) enum WorkspaceInput {
     },
     /// The table is gone, so its tabs close without asking.
     DropTableSucceeded(tablepro_core::TableRef),
+    /// Sidebar "Truncate Table…" or "Delete All Documents…".
+    TruncateTablePrompt(tablepro_core::TableRef),
+    /// Sidebar "New Schema…".
+    NewSchemaPrompt,
+    /// Sidebar "Drop Schema…".
+    DropSchemaPrompt(String),
+    /// "New Database…" or "New Keyspace…" on the connection's row.
+    NewDatabasePrompt,
+    /// "Drop Database…" or "Drop Keyspace…", from the sidebar or the
+    /// window.
+    DropDatabasePrompt(String),
+    /// The window let go of the database the user confirmed dropping,
+    /// so the DROP can run (0033).
+    DropDatabaseReleased {
+        target: DatabaseDrop,
+        options: tablepro_core::ddl::DropDatabaseOptions,
+    },
+    /// A database of the connection was created or dropped, here or in
+    /// another of its sessions.
+    DatabasesChanged,
+    /// A step of a catalog change after its prompt.
+    Catalog(catalog_ops::CatalogInput),
     /// A table tab's grid asked to open the rows a foreign key leads to.
     FollowReference {
         tab: uuid::Uuid,
@@ -1229,6 +1254,26 @@ impl WorkspaceModel {
         self.context.active.take();
     }
 
+    fn on_editor_transaction_changed(&self) {
+        self.refresh_unsaved();
+        self.refresh_transaction_banner();
+    }
+
+    fn on_editor_tab_run_finished(&mut self, id: Uuid, outcome: crate::workspace::WorkOutcome) {
+        self.report_work(id, crate::workspace::WorkKind::Query, outcome);
+        self.on_editor_run_finished(id);
+    }
+
+    fn on_export_ended(&self, tab: Uuid, outcome: crate::workspace::WorkOutcome) {
+        self.report_work(tab, crate::workspace::WorkKind::Export, outcome);
+    }
+
+    fn on_drafts_not_saved(&self) {
+        self.show_toast(&crate::i18n::gettext(
+            "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",
+        ));
+    }
+
     fn on_export_results(&self, tab: Uuid, offer: ExportOffer) {
         if let Some(window) = self.window() {
             let dialect = self.context.active.get().and_then(|session| session.current_dialect());
@@ -1270,10 +1315,7 @@ impl WorkspaceModel {
             WorkspaceInput::StopSaving(id) => self.stop_saving(id),
             WorkspaceInput::Workspace(event) => self.on_workspace_event(event),
             WorkspaceInput::SavesInFlightChanged(count) => self.on_saves_in_flight_changed(count),
-            WorkspaceInput::EditorTransactionChanged => {
-                self.refresh_unsaved();
-                self.refresh_transaction_banner();
-            }
+            WorkspaceInput::EditorTransactionChanged => self.on_editor_transaction_changed(),
             WorkspaceInput::ShowTransactionTab => self.show_transaction_tab(),
             WorkspaceInput::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id),
             WorkspaceInput::CloseWorkspaceTab(id) => self.close_workspace_tab(id),
@@ -1292,6 +1334,14 @@ impl WorkspaceModel {
             WorkspaceInput::DropTableChecked { table, referencing } => self.on_drop_table_checked(table, &referencing),
             WorkspaceInput::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table),
             WorkspaceInput::DropTableSucceeded(table) => self.on_drop_table_succeeded(table),
+            WorkspaceInput::TruncateTablePrompt(table) => self.on_truncate_table_prompt(table),
+            WorkspaceInput::NewSchemaPrompt => self.on_new_schema_prompt(),
+            WorkspaceInput::DropSchemaPrompt(schema) => self.on_drop_schema_prompt(schema),
+            WorkspaceInput::NewDatabasePrompt => self.on_new_database_prompt(),
+            WorkspaceInput::DropDatabasePrompt(database) => self.on_drop_database_prompt(database),
+            WorkspaceInput::DropDatabaseReleased { target, options } => self.on_database_released(target, options),
+            WorkspaceInput::DatabasesChanged => self.on_databases_changed(),
+            WorkspaceInput::Catalog(input) => self.on_catalog_input(input),
             WorkspaceInput::FollowReference { tab, reference } => self.on_follow_reference(tab, *reference),
             WorkspaceInput::ReferenceChecked { tab, reference, found } => {
                 self.on_reference_checked(tab, *reference, found);
@@ -1299,10 +1349,7 @@ impl WorkspaceModel {
             WorkspaceInput::SchemaChanged { schema, table } => self.on_schema_changed(schema, table),
             WorkspaceInput::NewEditorTab => self.open_editor_tab(None),
             WorkspaceInput::EditorTabRunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),
-            WorkspaceInput::EditorTabRunFinished(id, outcome) => {
-                self.report_work(id, crate::workspace::WorkKind::Query, outcome);
-                self.on_editor_run_finished(id);
-            }
+            WorkspaceInput::EditorTabRunFinished(id, outcome) => self.on_editor_tab_run_finished(id, outcome),
             WorkspaceInput::EditorTabContentChanged(id) => self.on_editor_tab_content_changed(id),
             WorkspaceInput::EditorTabFileChanged(id) => self.on_editor_tab_file_changed(id),
             WorkspaceInput::EditorTabDatabaseChanged(id) => self.on_editor_tab_database_changed(id),
@@ -1314,9 +1361,7 @@ impl WorkspaceModel {
             WorkspaceInput::SharesBar => self.on_shares_bar(),
             WorkspaceInput::SavedConnectionsChanged => self.on_saved_connections_changed(),
             WorkspaceInput::WorkspaceLayoutReset(outcome) => self.on_workspace_layout_reset(outcome),
-            WorkspaceInput::DraftsNotSaved => self.show_toast(&crate::i18n::gettext(
-                "Editor text could not be saved to disk, so it may not come back after TablePro restarts.",
-            )),
+            WorkspaceInput::DraftsNotSaved => self.on_drafts_not_saved(),
             WorkspaceInput::ShowHistory => self.on_show_history(),
             WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
@@ -1333,9 +1378,7 @@ impl WorkspaceModel {
             WorkspaceInput::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             WorkspaceInput::RefreshPage => self.on_refresh_active_tab(),
             WorkspaceInput::ExportResults { tab, offer } => self.on_export_results(tab, *offer),
-            WorkspaceInput::ExportEnded { tab, outcome } => {
-                self.report_work(tab, crate::workspace::WorkKind::Export, outcome);
-            }
+            WorkspaceInput::ExportEnded { tab, outcome } => self.on_export_ended(tab, outcome),
             WorkspaceInput::ReopenClosedTab(tab) => self.on_reopen_closed_tab(tab),
             WorkspaceInput::RefreshTab(id) => self.on_refresh_tab(id),
             WorkspaceInput::FocusTab(id) => self.focus_tab(id),

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use deadpool_postgres::{Pool, PoolError, TimeoutType, Timeouts};
 use tablepro_core::column::ColumnInfo;
-use tablepro_core::ddl::{InboundForeignKey, OutboundForeignKey, TableDefinition};
+use tablepro_core::ddl::{DatabaseChoices, InboundForeignKey, OutboundForeignKey, TableDefinition};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
     IndexInfo, ObjectDefinition, ObjectInfo, ObjectScope, RowIdentity, SchemaInfo, TableEstimate, TableRef,
@@ -14,7 +14,7 @@ use tablepro_core::{
     CallOptions, CommitResolution, CommitToken, Connection, DriverError, EditorSession, EditorSessionOptions,
     ErrorCategory, ForeignKeyInfo, LinkState, LinkWatch, LivenessPolicy, LossPhase, OwnedCalls, QueryResult,
     ReadStatement, ResultSink, RowLimit, ServerInfo, StreamSummary, TimeoutPhase, WorkspaceSettings, WriteAtomicity,
-    WriteBatch, WriteLedger, WriteReport,
+    WriteBatch, WriteKind, WriteLedger, WriteReport,
 };
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
@@ -244,6 +244,15 @@ fn suspects_link(error: &DriverError) -> bool {
     }
 }
 
+/// A database is created or dropped outside any transaction, so each
+/// statement that lands stays.
+fn atomicity(kind: WriteKind) -> WriteAtomicity {
+    match kind {
+        WriteKind::RowChanges | WriteKind::SchemaChanges => WriteAtomicity::Transactional,
+        WriteKind::DatabaseChanges => WriteAtomicity::StatementByStatement,
+    }
+}
+
 fn means_link_lost(error: &DriverError) -> bool {
     matches!(
         error.category(),
@@ -308,6 +317,11 @@ impl Connection for PgConnection {
 
     async fn list_databases(&self, options: CallOptions) -> Result<Vec<SchemaInfo>, DriverError> {
         self.catalog_read(options, read_op(|client| Box::pin(metadata::list_databases(client))))
+            .await
+    }
+
+    async fn fetch_database_choices(&self, options: CallOptions) -> Result<DatabaseChoices, DriverError> {
+        self.catalog_read(options, read_op(|client| Box::pin(metadata::database_choices(client))))
             .await
     }
 
@@ -473,7 +487,7 @@ impl Connection for PgConnection {
         self.ensure_open()?;
         precheck(batch, self.settings.read_only)?;
         let stop = Arc::new(PgStop::new(self.endpoint.clone()));
-        let ledger = Arc::new(WriteLedger::new(WriteAtomicity::Transactional));
+        let ledger = Arc::new(WriteLedger::new(atomicity(batch.kind)));
         let pool = self.pool.clone();
         let timeouts = workspace_timeouts(self.liveness());
         let plan = WritePlan {
@@ -535,5 +549,20 @@ impl Connection for PgConnection {
         self.tracker.close();
         let _ = tokio::time::timeout(self.liveness().close_timeout, self.tracker.wait()).await;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_database_change_lands_statement_by_statement() {
+        assert_eq!(
+            atomicity(WriteKind::DatabaseChanges),
+            WriteAtomicity::StatementByStatement
+        );
+        assert_eq!(atomicity(WriteKind::SchemaChanges), WriteAtomicity::Transactional);
+        assert_eq!(atomicity(WriteKind::RowChanges), WriteAtomicity::Transactional);
     }
 }

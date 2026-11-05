@@ -60,7 +60,6 @@ mod foreign_key_draft;
 mod foreign_key_handlers;
 mod foreign_key_object;
 mod foreign_keys_input;
-mod form_dialog;
 mod imp;
 mod index_dialog;
 mod index_draft;

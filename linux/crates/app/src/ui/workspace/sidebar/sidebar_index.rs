@@ -18,6 +18,8 @@ const SYSTEM_RANK: u32 = 2;
 pub(crate) struct SidebarIndex {
     entries: Vec<IndexEntry>,
     sections: Vec<Section>,
+    /// Each section's id, in list order.
+    order: Vec<u32>,
     /// Every entry's `search_key` of `schema.name`, then a trigger's of
     /// `schema.table` after a U+0001, in list order, each ended by a NUL.
     /// No name or typed search holds either, so no match spans two. A
@@ -52,6 +54,15 @@ pub(crate) struct IndexEntry {
 pub(crate) struct Section {
     pub(crate) title: String,
     pub(crate) rank: u32,
+    /// The schema its actions name: the one the session lists, or the
+    /// one its objects name when the session lists none of that name.
+    /// None where the engine lists the default schema's objects with no
+    /// schema, as SQLite does its main, so its actions name none too.
+    pub(crate) schema: Option<String>,
+    /// Whether the list offers to drop the schema: the session lists it
+    /// as one of the user's own, it is not the default, and nothing
+    /// withheld it.
+    pub(crate) droppable: bool,
 }
 
 impl SidebarIndex {
@@ -70,11 +81,27 @@ impl SidebarIndex {
     }
 
     /// `untitled` heads the objects with no schema when no schema is the
-    /// default one.
+    /// default one. Every schema of the user's own the session lists has
+    /// a section, empty or not, so its menu reaches it; the engine's own
+    /// have one only for what they hold.
     fn build_titled(objects: &[ObjectInfo], schemas: &[SchemaInfo], untitled: String) -> Self {
         let placement = Placement::new(schemas, untitled);
         let mut sections: Vec<Section> = Vec::new();
         let mut section_ids: HashMap<(u32, &str), u32> = HashMap::new();
+        for schema in schemas.iter().filter(|schema| !schema.is_system) {
+            let (title, rank) = placement.section_of(Some(schema.name.as_str()));
+            section_ids.entry((rank, title)).or_insert_with(|| {
+                add_section(
+                    &mut sections,
+                    Section {
+                        title: title.to_owned(),
+                        rank,
+                        schema: Some(schema.name.clone()),
+                        droppable: !schema.is_default,
+                    },
+                )
+            });
+        }
         let mut keyed: Vec<(u32, glib::CollationKey, String, IndexEntry)> = Vec::new();
         for object in objects
             .iter()
@@ -82,12 +109,21 @@ impl SidebarIndex {
         {
             let (title, rank) = placement.section_of(object.schema.as_deref());
             let section = *section_ids.entry((rank, title)).or_insert_with(|| {
-                sections.push(Section {
-                    title: title.to_owned(),
-                    rank,
-                });
-                u32::try_from(sections.len() - 1).unwrap_or(u32::MAX)
+                add_section(
+                    &mut sections,
+                    Section {
+                        title: title.to_owned(),
+                        rank,
+                        schema: object.schema.clone(),
+                        droppable: false,
+                    },
+                )
             });
+            if object.schema.is_none()
+                && let Some(placed) = sections.get_mut(section as usize)
+            {
+                placed.schema = None;
+            }
             let mut search = search_key(&qualified(object.schema.as_deref(), &object.name).to_lowercase());
             if let Some(table) = &object.parent_table {
                 search.push('\u{1}');
@@ -104,16 +140,21 @@ impl SidebarIndex {
             ));
         }
         let order = section_order(&sections);
+        let mut place = vec![0; sections.len()];
+        for (at, &id) in order.iter().enumerate() {
+            place[id as usize] = at;
+        }
         keyed.sort_by(
             |(left, left_name, _, left_entry), (right, right_name, _, right_entry)| {
-                order[*left as usize]
-                    .cmp(&order[*right as usize])
+                place[*left as usize]
+                    .cmp(&place[*right as usize])
                     .then_with(|| kind_rank(left_entry.object.kind).cmp(&kind_rank(right_entry.object.kind)))
                     .then_with(|| left_name.cmp(right_name))
             },
         );
         let mut index = Self {
             sections,
+            order,
             ..Self::default()
         };
         for (_, _, search, entry) in keyed {
@@ -139,6 +180,7 @@ impl SidebarIndex {
         self.entries.get(index as usize)
     }
 
+    #[cfg(test)]
     pub(crate) fn section(&self, section: u32) -> Option<&Section> {
         self.sections.get(section as usize)
     }
@@ -149,8 +191,37 @@ impl SidebarIndex {
     }
 
     /// Every section's entries, in list order.
+    #[cfg(test)]
     pub(crate) fn runs(&self) -> &[SectionRun] {
         &self.runs
+    }
+
+    /// Every section in list order, with its run and the run's place
+    /// among the runs when it holds anything. A search's picks are split
+    /// by run, so an empty section never takes another's.
+    pub(crate) fn listed_sections(&self) -> impl Iterator<Item = (&Section, Option<(usize, SectionRun)>)> {
+        let mut runs = self.runs.iter().copied().enumerate().peekable();
+        self.order.iter().filter_map(move |&id| {
+            let section = self.sections.get(id as usize)?;
+            Some((section, runs.next_if(|(_, run)| run.section == id)))
+        })
+    }
+
+    /// Stop offering to drop each schema `kept` names: the database the
+    /// session opened, or one the engine keeps for itself.
+    pub(crate) fn withhold_drops(&mut self, kept: impl Fn(&str) -> bool) {
+        for section in &mut self.sections {
+            if section.schema.as_deref().is_none_or(&kept) {
+                section.droppable = false;
+            }
+        }
+    }
+
+    /// Whether the list offers to drop the schema `name`.
+    pub(crate) fn droppable(&self, name: &str) -> bool {
+        self.sections
+            .iter()
+            .any(|section| section.droppable && section.schema.as_deref() == Some(name))
     }
 
     /// `entries`, in list order, split by the run each one is in: one
@@ -242,8 +313,13 @@ fn kind_rank(kind: ObjectKind) -> u8 {
     }
 }
 
-/// Each section's place in the list, by its id.
-fn section_order(sections: &[Section]) -> Vec<usize> {
+fn add_section(sections: &mut Vec<Section>, section: Section) -> u32 {
+    sections.push(section);
+    u32::try_from(sections.len() - 1).unwrap_or(u32::MAX)
+}
+
+/// Each section's id, in list order.
+fn section_order(sections: &[Section]) -> Vec<u32> {
     let keys: Vec<glib::CollationKey> = sections.iter().map(|section| sort_key(&section.title)).collect();
     let mut ids: Vec<usize> = (0..sections.len()).collect();
     ids.sort_by(|&left, &right| {
@@ -252,11 +328,9 @@ fn section_order(sections: &[Section]) -> Vec<usize> {
             .cmp(&sections[right].rank)
             .then_with(|| keys[left].cmp(&keys[right]))
     });
-    let mut order = vec![0; sections.len()];
-    for (place, id) in ids.into_iter().enumerate() {
-        order[id] = place;
-    }
-    order
+    ids.into_iter()
+        .map(|id| u32::try_from(id).unwrap_or(u32::MAX))
+        .collect()
 }
 
 /// The key GtkStringSorter sorts by when it ignores case.
@@ -626,5 +700,110 @@ mod tests {
                 ("tenant_000".to_owned(), "t00100".to_owned())
             ]
         );
+    }
+
+    /// Each section's title, the schema it names, whether it offers a
+    /// drop, and its run's place and span, in list order.
+    fn sections(index: &SidebarIndex) -> Vec<(String, Option<String>, bool, Option<(usize, u32, u32)>)> {
+        index
+            .listed_sections()
+            .map(|(section, run)| {
+                (
+                    section.title.clone(),
+                    section.schema.clone(),
+                    section.droppable,
+                    run.map(|(at, run)| (at, run.start, run.end)),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_listed_schema_of_the_users_own_has_a_section_even_empty() {
+        let schemas = [
+            schema("public", true, false),
+            schema("sales", false, false),
+            schema("archive", false, false),
+            schema("pg_catalog", false, true),
+            schema("information_schema", false, true),
+        ];
+
+        let index = SidebarIndex::build(
+            &[
+                table("sales", "orders"),
+                table("public", "users"),
+                table("information_schema", "tables"),
+            ],
+            &schemas,
+        );
+
+        let named = |name: &str| Some(name.to_owned());
+        assert_eq!(
+            sections(&index),
+            [
+                ("public".to_owned(), named("public"), false, Some((0, 0, 1))),
+                ("archive".to_owned(), named("archive"), true, None),
+                ("sales".to_owned(), named("sales"), true, Some((1, 1, 2))),
+                (
+                    "information_schema".to_owned(),
+                    named("information_schema"),
+                    false,
+                    Some((2, 2, 3))
+                ),
+            ],
+            "an engine's own schema shows only for what it holds"
+        );
+        assert_eq!(
+            sections(&SidebarIndex::build(&[], &[schema("public", true, false)])),
+            [("public".to_owned(), named("public"), false, None)]
+        );
+    }
+
+    #[test]
+    fn a_section_names_its_schema_as_the_engine_names_its_objects() {
+        let attached = [schema("main", true, false), schema("archive", false, false)];
+
+        let listed = SidebarIndex::build(
+            &[object(None, "notes", ObjectKind::Table), table("other", "old")],
+            &attached,
+        );
+        let empty = SidebarIndex::build(&[], &attached);
+
+        assert_eq!(
+            sections(&listed),
+            [
+                ("main".to_owned(), None, false, Some((0, 0, 1))),
+                ("archive".to_owned(), Some("archive".to_owned()), true, None),
+                ("other".to_owned(), Some("other".to_owned()), false, Some((1, 1, 2))),
+            ],
+            "a schema only an object names is not the session's to drop"
+        );
+        assert_eq!(
+            sections(&empty)
+                .into_iter()
+                .map(|(_, schema, ..)| schema)
+                .collect::<Vec<_>>(),
+            [Some("main".to_owned()), Some("archive".to_owned())]
+        );
+    }
+
+    #[test]
+    fn a_drop_is_offered_only_for_a_listed_schema_nothing_withheld() {
+        let mut index = SidebarIndex::build(
+            &[table("public", "users"), table("audit", "log")],
+            &[
+                schema("public", true, false),
+                schema("sales", false, false),
+                schema("archive", false, false),
+            ],
+        );
+
+        index.withhold_drops(|name| name == "sales");
+
+        assert!(index.droppable("archive"));
+        assert!(!index.droppable("sales"), "withheld");
+        assert!(!index.droppable("public"), "the default schema");
+        assert!(!index.droppable("audit"), "not listed by the session");
+        assert!(!index.droppable("gone"));
     }
 }

@@ -10,8 +10,8 @@ use sqlx::mysql::{MySqlConnection, MySqlDatabaseError};
 use sqlx::{AssertSqlSafe, Executor as _, Row as _};
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ColumnKind, SqlExpression, TemporalZone};
 use tablepro_core::ddl::{
-    CharacterSet, ColumnDefinition, InboundForeignKey, OutboundForeignKey, PrimaryKeyConstraint, ReferentialAction,
-    TableDefinition, TableOptions, TableSource, UnmodeledAttribute,
+    CharacterSet, ColumnDefinition, DatabaseChoices, DatabaseDefaults, InboundForeignKey, OutboundForeignKey,
+    PrimaryKeyConstraint, ReferentialAction, TableDefinition, TableOptions, TableSource, UnmodeledAttribute,
 };
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::meta::{
@@ -69,6 +69,11 @@ fn table_binds(table: &TableRef) -> [Option<&str>; 2] {
     [table.schema.as_deref(), Some(table.name.as_str())]
 }
 
+/// The databases MySQL and MariaDB keep for themselves.
+pub(crate) const SYSTEM_DATABASES: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
+
+/// Every database the login can see, the connection's own the default,
+/// so one that holds nothing yet is listed too.
 pub(crate) async fn list_schemas(
     connection: &mut MySqlConnection,
     flavour: MySqlFlavour,
@@ -78,29 +83,6 @@ pub(crate) async fn list_schemas(
         Some(row) => row.text(0)?,
         None => None,
     };
-    Ok(current
-        .into_iter()
-        .map(|name| SchemaInfo {
-            name,
-            is_default: true,
-            is_system: false,
-        })
-        .collect())
-}
-
-/// The databases MySQL and MariaDB keep for themselves.
-const SYSTEM_DATABASES: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
-
-/// Every database the login can see, the connection's own the default.
-pub(crate) async fn list_databases(
-    connection: &mut MySqlConnection,
-    flavour: MySqlFlavour,
-) -> Result<Vec<SchemaInfo>, DriverError> {
-    let current = list_schemas(connection, flavour)
-        .await?
-        .into_iter()
-        .next()
-        .map(|schema| schema.name);
     let rows = catalog_rows(
         connection,
         flavour,
@@ -719,6 +701,32 @@ pub(crate) async fn fetch_character_sets(
         false => catalog_rows(connection, flavour, COLLATIONS_SQL, "COLLATIONS", &[]).await?,
     };
     character_sets(&sets, &collations)
+}
+
+/// What CREATE DATABASE falls back to when it names neither option.
+const SERVER_DEFAULTS_SQL: &str = "SELECT @@character_set_server, @@collation_server";
+
+/// The character sets, each with its collations, and the pair a new
+/// database takes when it names neither.
+pub(crate) async fn fetch_database_choices(
+    connection: &mut MySqlConnection,
+    flavour: MySqlFlavour,
+) -> Result<DatabaseChoices, DriverError> {
+    let character_sets = fetch_character_sets(connection, flavour).await?;
+    let rows = catalog_rows(connection, flavour, SERVER_DEFAULTS_SQL, "SESSION", &[]).await?;
+    let (character_set, collation) = match rows.first() {
+        Some(row) => (row.text(0)?, row.text(1)?),
+        None => (None, None),
+    };
+    Ok(DatabaseChoices {
+        character_sets,
+        defaults: DatabaseDefaults {
+            character_set,
+            collation,
+            ..DatabaseDefaults::default()
+        },
+        ..DatabaseChoices::default()
+    })
 }
 
 /// A TIMESTAMP's constant default as wall time in the server's zone,

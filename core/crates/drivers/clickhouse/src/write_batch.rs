@@ -36,7 +36,9 @@ pub(crate) fn precheck(batch: &WriteBatch, read_only: bool) -> Result<(), Driver
 /// Everything one write needs once its task runs.
 pub(crate) struct WritePlan {
     pub(crate) batch: WriteBatch,
-    /// The batch's table, qualified, for the commit token.
+    /// The batch's table, qualified, for the commit token. A database
+    /// batch names none, which is harmless: only a lost ALTER's
+    /// resolution reads it.
     pub(crate) table: TableRef,
     pub(crate) ledger: Arc<WriteLedger>,
     /// Reads that may be stopped, for the probes.

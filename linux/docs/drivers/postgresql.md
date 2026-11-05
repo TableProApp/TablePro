@@ -82,6 +82,8 @@ A call that timed out or lost its connection is checked before the link is decla
 3. The transaction id, `pg_current_xact_id()` (or `txid_current()` before PostgreSQL 13), read before COMMIT.
 4. `COMMIT`.
 
+A database change (`WriteKind::DatabaseChanges`) runs outside any transaction, because CREATE and DROP DATABASE refuse one. It is `StatementByStatement`: each statement goes out alone as a simple query, with no parameters, row guards or `SET LOCAL` bounds, and the call's deadline and cancel still stop it.
+
 A COMMIT the server answers with an error (a deferred constraint, a serialization failure) rolled back. A COMMIT that gets no answer is `CommitOutcomeUnknown` with `CommitToken::PostgresXid`, and `resolve_commit` asks `pg_xact_status` (or `txid_status`):
 
 | Status | `CommitResolution` |
