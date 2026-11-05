@@ -265,14 +265,15 @@ def debian_text(text):
 
 
 def without_apache(lines):
-    terms = next((i for i, line in enumerate(lines) if APACHE_TERMS in line), None)
+    # Some crates ship the terms as Markdown, with headings in mixed case.
+    terms = next((i for i, line in enumerate(lines) if APACHE_TERMS in line.upper()), None)
     if terms is None:
         return lines
     titles = [i for i in range(terms) if APACHE_TITLE.match(lines[i])]
-    ends = [i for i in range(terms, len(lines)) if APACHE_END in lines[i]]
-    if not titles or not ends:
-        raise MetadataError("an Apache 2.0 text has no title or end line to cut at")
-    return lines[: titles[-1]] + APACHE_POINTER + lines[ends[0] + 1 :]
+    ends = [i for i in range(terms, len(lines)) if APACHE_END in lines[i].upper()]
+    if not ends:
+        raise MetadataError("an Apache 2.0 text has no end line to cut at")
+    return lines[: titles[-1] if titles else terms] + APACHE_POINTER + lines[ends[0] + 1 :]
 
 
 def without_gnu(lines, gnu):

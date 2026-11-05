@@ -368,6 +368,19 @@ class RenderCopyrightTests(unittest.TestCase):
         self.assertIn("APPENDIX: How to apply the Apache License to your work.", body)
         self.assertEqual(paragraph["Copyright"], ["2011 Google Inc."])
 
+    def test_apache_terms_written_as_markdown_point_at_common_licenses(self):
+        markdown = (
+            "## Apache2 With LLVM Exceptions\n\n### Terms and Conditions for use, reproduction, and distribution\n\n"
+            "#### 2. Grant of Copyright License\n\n_END OF TERMS AND CONDITIONS_\n\n### LLVM Exceptions to the Apache 2.0 License\n"
+        )
+        rendered = self.render([crate_unit("lexical-core", "1.0.6", "MIT OR Apache-2.0", "Copyright 2018 Alex Huszagh\n\n" + markdown)])
+        body = "\n".join(files_paragraph(rendered, "vendor/lexical-core-1.0.6/*")["License"][1:])
+
+        self.assertNotIn("Grant of Copyright License", rendered)
+        self.assertIn("## Apache2 With LLVM Exceptions", body)
+        self.assertIn("/usr/share/common-licenses/Apache-2.0", body)
+        self.assertIn("### LLVM Exceptions to the Apache 2.0 License", body)
+
     def test_an_apache_text_with_no_end_line_is_refused(self):
         broken = APACHE.replace("END OF TERMS AND CONDITIONS", "")
 
