@@ -233,6 +233,11 @@ pub async fn run_sql_import(
     }
     drop(units);
     let _ = reading.await;
+    // Stop pressed as the last statement finished can lose the race with
+    // the end of the file, and must not commit.
+    if cancel.is_cancelled() && matches!(run.report.end, SqlImportEnd::Completed) {
+        run.report.end = SqlImportEnd::Cancelled;
+    }
 
     run.report.transaction = match transaction {
         Some(_) if run.ended_by_file => TransactionOutcome::AsWritten,

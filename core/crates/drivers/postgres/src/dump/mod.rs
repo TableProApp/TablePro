@@ -296,6 +296,16 @@ fn assemble(facts: &CatalogFacts) -> DumpCatalog {
                 .push(skip(DumpObjectKind::Table, &table.schema, &table.name));
             continue;
         }
+        if let Some(partition) = &table.partition {
+            let parent = (partition.parent_schema.as_str(), partition.parent.as_str());
+            let own = listed(&lookup.columns, (table.schema.as_str(), table.name.as_str()));
+            if generation_differs(own, listed(&lookup.columns, parent)) {
+                catalog.skipped.push(DumpSkip {
+                    reason: DumpSkipReason::ExpressionNotCarried,
+                    ..skip(DumpObjectKind::Table, &table.schema, &table.name)
+                });
+            }
+        }
         before.push(create_table(table, &lookup));
         table_after_data(table, &lookup, &mut after);
         let mut dumped = dump_table(table);
@@ -551,6 +561,17 @@ fn partition_overrides(table: &Table, own: &[&Column], parent: &[&Column]) -> Ve
     sql
 }
 
+/// Whether a partition computes a generated column apart from its
+/// parent, which `PARTITION OF` cannot say.
+fn generation_differs(own: &[&Column], parent: &[&Column]) -> bool {
+    own.iter().filter(|column| !column.generated.is_empty()).any(|column| {
+        parent
+            .iter()
+            .find(|candidate| candidate.name == column.name)
+            .is_some_and(|inherited| inherited.generated != column.generated)
+    })
+}
+
 /// A partitioned table's rows are its partitions', which come after it.
 fn dump_table(table: &Table) -> DumpTable {
     DumpTable {
@@ -612,25 +633,36 @@ fn views(facts: &CatalogFacts, lookup: &Lookup<'_>) -> Vec<DumpObject> {
     let mut objects = Vec::new();
     for view in &facts.views {
         let key = (view.schema.as_str(), view.name.as_str());
-        let mut sql = vec![statements::create_view(view)];
         let (kind, target) = match view.materialized {
             true => (DumpObjectKind::MaterializedView, "MATERIALIZED VIEW"),
             false => (DumpObjectKind::View, "VIEW"),
         };
+        let mut rest = Vec::new();
         if view.materialized {
-            sql.extend(listed(&lookup.indexes, key).iter().map(|index| index.statement.clone()));
+            rest.extend(listed(&lookup.indexes, key).iter().map(|index| index.statement.clone()));
         }
         if let Some(comment) = &view.comment {
-            sql.push(statements::comment_on(target, &qualified(key.0, key.1), comment));
+            rest.push(statements::comment_on(target, &qualified(key.0, key.1), comment));
         }
-        sql.extend(column_comments(listed(&lookup.columns, key)));
-        objects.push(DumpObject::new(
+        rest.extend(column_comments(listed(&lookup.columns, key)));
+        let with_create = |create: String| plain(std::iter::once(create).chain(rest.iter().cloned()));
+        let mut object = DumpObject::new(
             kind,
             DumpSection::Programs,
             Some(view.schema.clone()),
             view.name.clone(),
-            plain(sql),
-        ));
+            with_create(statements::create_view(view)),
+        );
+        // A dump without rows leaves a materialized view to be refreshed,
+        // as pg_dump's --schema-only does.
+        if view.materialized && view.populated {
+            let unpopulated = View {
+                populated: false,
+                ..view.clone()
+            };
+            object.without_rows = Some(with_create(statements::create_view(&unpopulated)));
+        }
+        objects.push(object);
     }
     objects
 }
@@ -714,6 +746,21 @@ mod tests {
             not_null: true,
             comment: None,
         }
+    }
+
+    #[test]
+    fn a_partition_computing_a_column_apart_from_its_parent_is_found() {
+        let generated = |table: &str, expression: &str| Column {
+            generated: expression.to_owned(),
+            ..column(table, "doubled")
+        };
+        let parent = [generated("p", "(id * 2)")];
+        let same = [generated("c", "(id * 2)")];
+        let other = [generated("c", "(id * 3)")];
+        let refs = |columns: &[Column]| columns.iter().collect::<Vec<_>>();
+
+        assert!(!generation_differs(&refs(&same), &refs(&parent)));
+        assert!(generation_differs(&refs(&other), &refs(&parent)));
     }
 
     fn sequence(name: &str, owner: Option<(&str, &str, bool)>) -> Sequence {
@@ -994,6 +1041,22 @@ mod tests {
                 "COMMENT ON VIEW \"app\".\"v\" IS 'shown'",
                 "COMMENT ON COLUMN \"app\".\"v\".\"id\" IS 'the key'"
             ]
+        );
+        let without_rows: Vec<&str> = catalog
+            .objects
+            .iter()
+            .filter_map(|object| object.without_rows.as_ref())
+            .flatten()
+            .map(|statement| statement.sql.as_str())
+            .collect();
+        assert!(without_rows[0].ends_with("WITH NO DATA"), "{without_rows:?}");
+        assert_eq!(without_rows[1..], sql_of(&catalog, "m")[1..]);
+        assert!(
+            catalog
+                .objects
+                .iter()
+                .filter(|object| object.name == "v")
+                .all(|object| object.without_rows.is_none())
         );
         assert!(
             catalog

@@ -107,6 +107,9 @@ pub struct DumpObject {
     /// The table a CREATE TABLE makes, so it follows the order the rows
     /// load in.
     pub table: Option<TableRef>,
+    /// What to write instead in a dump without rows, such as a
+    /// materialized view made `WITH NO DATA`.
+    pub without_rows: Option<Vec<DumpStatement>>,
 }
 
 impl DumpObject {
@@ -124,6 +127,7 @@ impl DumpObject {
             name: name.into(),
             statements,
             table: None,
+            without_rows: None,
         }
     }
 
@@ -136,6 +140,7 @@ impl DumpObject {
             name: table.name.clone(),
             statements,
             table: Some(table),
+            without_rows: None,
         }
     }
 }
@@ -212,6 +217,10 @@ pub enum DumpSkipReason {
     RowsFiltered,
     /// The login may not read it, such as a sequence's position.
     NotReadable,
+    /// A partition whose generated column's expression differs from its
+    /// parent's, which `PARTITION OF` makes it take: the file's rows get
+    /// the parent's values.
+    ExpressionNotCarried,
     /// A SQL Server table with a system-time period, written as an
     /// ordinary table with its period columns' values. Its history table
     /// is an ordinary table too.

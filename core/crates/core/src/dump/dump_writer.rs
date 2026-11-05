@@ -132,6 +132,7 @@ pub async fn write_dump(
         },
         tables_done: 0,
         tables_read: catalog.tables.iter().filter(|table| table.rows).count(),
+        data: request.data,
     };
     writer.run(connection, &catalog, request.data, options).await?;
     Ok(writer.report)
@@ -144,6 +145,7 @@ struct Writer<'a> {
     tables_done: usize,
     /// The tables whose rows are read, which progress counts.
     tables_read: usize,
+    data: bool,
 }
 
 impl Writer<'_> {
@@ -213,7 +215,11 @@ impl Writer<'_> {
                 object.kind.label(),
                 comment_safe(&qualified(object.schema.as_deref(), &object.name))
             )));
-            for statement in &object.statements {
+            let statements = match (&object.without_rows, self.data) {
+                (Some(without_rows), false) => without_rows,
+                _ => &object.statements,
+            };
+            for statement in statements {
                 text.push_str(&self.dump().statement(&terminated_off(statement)));
             }
             self.report.objects += 1;

@@ -92,6 +92,10 @@ pub(crate) fn dump_warnings(report: &DumpReport) -> Option<String> {
                 "{name} is in the file without its rows: row-level security shows this login only some of them.",
                 &[("name", &skipped.name)],
             )),
+            DumpSkipReason::ExpressionNotCarried => Some(gettext_f(
+                "{name} loads with its parent's expression for a generated column whose own expression differs.",
+                &[("name", &skipped.name)],
+            )),
             DumpSkipReason::VersioningNotCarried => Some(gettext_f(
                 "{name} loads as an ordinary table with its rows' period times: the file has no system versioning.",
                 &[("name", &skipped.name)],
