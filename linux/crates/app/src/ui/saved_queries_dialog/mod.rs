@@ -25,7 +25,7 @@ use crate::runtime::spawn_and_deliver;
 use crate::ui::history_dialog::QueryDestination;
 use saved_query_listing::{Listing, matches};
 use saved_query_object::SavedQueryObject;
-use saved_query_row::SavedQueryRow;
+pub(super) use saved_query_row::SavedQueryRow;
 
 glib::wrapper! {
     pub struct SavedQueriesDialog(ObjectSubclass<imp::SavedQueriesDialog>)

@@ -661,10 +661,14 @@ fn a_tab_dropped_outside_every_window_stays_where_it_was() {
     home.transfer_page(&page, &drag, 0);
 
     let new_window = home.emit_by_name::<Option<adw::TabView>>("create-window", &[]);
+    let declined_to_home = new_window.as_ref() == Some(&home);
+    // The signal's marshaller takes the reference its handler returns, which g_signal_emitv then hands
+    // back: libadwaita's own caller keeps it, so this one must too, or the view is freed twice.
+    std::mem::forget(new_window);
     drag.transfer_page(&page, &home, 0);
     drain_main_context();
 
-    assert_eq!(new_window.as_ref(), Some(&home), "no window opens for the tab");
+    assert!(declined_to_home, "no window opens for the tab");
     assert_eq!(crate::ui::workspace::page_position(&home, &page), Some(left_at));
     assert_eq!(home.selected_page().as_ref(), Some(&page));
     assert_eq!(home.n_pages(), 3);
