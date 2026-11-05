@@ -564,11 +564,13 @@ fn partition_overrides(table: &Table, own: &[&Column], parent: &[&Column]) -> Ve
 /// Whether a partition computes a generated column apart from its
 /// parent, which `PARTITION OF` cannot say.
 fn generation_differs(own: &[&Column], parent: &[&Column]) -> bool {
+    // A generated column keeps its expression where another keeps its
+    // DEFAULT.
     own.iter().filter(|column| !column.generated.is_empty()).any(|column| {
         parent
             .iter()
             .find(|candidate| candidate.name == column.name)
-            .is_some_and(|inherited| inherited.generated != column.generated)
+            .is_some_and(|inherited| inherited.default != column.default)
     })
 }
 
@@ -644,6 +646,16 @@ fn views(facts: &CatalogFacts, lookup: &Lookup<'_>) -> Vec<DumpObject> {
         if let Some(comment) = &view.comment {
             rest.push(statements::comment_on(target, &qualified(key.0, key.1), comment));
         }
+        // pg_get_viewdef leaves out a default set on a view's column, which
+        // an INSERT through the view takes.
+        rest.extend(listed(&lookup.columns, key).iter().filter_map(|column| {
+            let default = column.default.as_ref().filter(|_| !view.materialized)?;
+            Some(format!(
+                "ALTER VIEW {} ALTER COLUMN {} SET DEFAULT {default}",
+                qualified(key.0, key.1),
+                statements::quote(&column.name)
+            ))
+        }));
         rest.extend(column_comments(listed(&lookup.columns, key)));
         let with_create = |create: String| plain(std::iter::once(create).chain(rest.iter().cloned()));
         let mut object = DumpObject::new(
@@ -751,7 +763,8 @@ mod tests {
     #[test]
     fn a_partition_computing_a_column_apart_from_its_parent_is_found() {
         let generated = |table: &str, expression: &str| Column {
-            generated: expression.to_owned(),
+            generated: "s".to_owned(),
+            default: Some(expression.to_owned()),
             ..column(table, "doubled")
         };
         let parent = [generated("p", "(id * 2)")];
@@ -1003,6 +1016,7 @@ mod tests {
     fn a_view_carries_its_comments_and_a_materialized_view_its_indexes() {
         let mut labelled = column("v", "id");
         labelled.comment = Some("the key".to_owned());
+        labelled.default = Some("42".to_owned());
         let view = |name: &str, materialized: bool| View {
             schema: "app".to_owned(),
             name: name.to_owned(),
@@ -1039,6 +1053,7 @@ mod tests {
             sql_of(&catalog, "v")[1..],
             [
                 "COMMENT ON VIEW \"app\".\"v\" IS 'shown'",
+                "ALTER VIEW \"app\".\"v\" ALTER COLUMN \"id\" SET DEFAULT 42",
                 "COMMENT ON COLUMN \"app\".\"v\".\"id\" IS 'the key'"
             ]
         );
