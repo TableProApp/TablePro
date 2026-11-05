@@ -14,6 +14,7 @@ mod find_state;
 mod format_plan;
 mod imp;
 mod inline_suggestion;
+mod result_editing;
 mod result_item;
 mod result_widgets;
 mod results_pane;
@@ -422,6 +423,10 @@ impl SqlEditor {
         if self.is_running() || imp.shut_down.get() || imp.confirming.get() {
             return;
         }
+        let retry = scoped.clone();
+        if !self.results_may_change(move |editor| editor.execute(retry.clone())) {
+            return;
+        }
         let Some(deps) = self.deps() else {
             return;
         };
@@ -520,6 +525,7 @@ impl SqlEditor {
             events,
         )));
 
+        self.forget_result_edits();
         imp.results.clear();
         imp.results.set_running(true);
         imp.results.set_summary(&crate::i18n::gettext("Running…"));
@@ -606,12 +612,22 @@ impl SqlEditor {
                 available,
             }),
         };
-        let page = result_widgets::entry_widget(usize::try_from(index).ok()?, entry, &grid_deps, actions);
+        let shown = match &entry.kind {
+            EntryKind::ResultSet(result) => self.result_grid(usize::try_from(index).ok()?, result),
+            _ => None,
+        };
+        let page = result_widgets::entry_widget(usize::try_from(index).ok()?, entry, &grid_deps, shown, actions);
         if let Some(grid) = &page.grid {
             let editor = self.downgrade();
             grid.connect_request(move |_, request| {
                 if let Some(editor) = editor.upgrade() {
                     editor.grid_request(index, request);
+                }
+            });
+            let editor = self.downgrade();
+            grid.connect_editing_changed(move |_| {
+                if let Some(editor) = editor.upgrade() {
+                    editor.refresh_result_actions();
                 }
             });
         }
@@ -642,10 +658,8 @@ impl SqlEditor {
         match request {
             GridRequest::Export(shown) => self.offer_export(index, shown),
             GridRequest::Toast(text) => self.emit_by_name::<()>("toast", &[&text]),
-            GridRequest::Sort(_)
-            | GridRequest::FollowReference(_)
-            | GridRequest::FilterByValue(_)
-            | GridRequest::PendingChanged => {}
+            GridRequest::PendingChanged => self.on_rows_pending_changed(),
+            GridRequest::Sort(_) | GridRequest::FollowReference(_) | GridRequest::FilterByValue(_) => {}
         }
     }
 
@@ -695,6 +709,7 @@ impl SqlEditor {
             self.emit_by_name::<()>("transaction-changed", &[&dirty]);
         }
         self.record_history(entry, dialect);
+        self.decide_result_edits();
         self.show_scope();
         if imp.changes_catalog.get() {
             self.list_databases();
@@ -856,6 +871,32 @@ impl SqlEditor {
         self.imp()
             .results
             .set_page_builder(move |index| weak.upgrade().and_then(|editor| editor.result_page(index)));
+        let weak = self.downgrade();
+        self.imp().results.set_page_shown(move |index| {
+            if let Some(editor) = weak.upgrade() {
+                editor.on_result_shown(index);
+            }
+        });
+    }
+
+    pub(crate) fn connect_save_rows<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure("save-rows", false, glib::closure_local!(move |editor: &Self| f(editor)))
+    }
+
+    pub(crate) fn connect_rows_dirty_changed<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "rows-dirty-changed",
+            false,
+            glib::closure_local!(move |editor: &Self| f(editor)),
+        )
+    }
+
+    pub(crate) fn connect_stop_saving_rows<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {
+        self.connect_closure(
+            "stop-saving-rows",
+            false,
+            glib::closure_local!(move |editor: &Self| f(editor)),
+        )
     }
 
     /// Ask the window to export the result on line `index`: the rows

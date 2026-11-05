@@ -6,6 +6,7 @@ use libadwaita as adw;
 use super::result_item::ResultItem;
 use super::run_log::{EntryKind, RunLogEntry};
 use super::sidebar_policy::{self, SidebarState};
+use crate::ui::browse_tab::PendingChangesBar;
 use crate::ui::data_grid::DataGrid;
 
 /// How many results keep their page once shown, so going back to one
@@ -13,6 +14,7 @@ use crate::ui::data_grid::DataGrid;
 const PAGES_KEPT: usize = 8;
 
 type PageBuilder = Box<dyn Fn(u32) -> Option<ResultPage>>;
+type PageShown = Box<dyn Fn(u32)>;
 
 /// What a line of the results list shows, and the grid on it when it
 /// shows rows.
@@ -66,10 +68,13 @@ mod imp {
         pub list_view: TemplateChild<gtk4::ListView>,
         #[template_child]
         pub stack: TemplateChild<gtk4::Stack>,
+        #[template_child]
+        pub pending_bar: TemplateChild<PendingChangesBar>,
         pub items: std::cell::OnceCell<gio::ListStore>,
         pub selection: std::cell::OnceCell<gtk4::SingleSelection>,
         pub sidebar: Cell<SidebarState>,
         pub page_builder: RefCell<Option<PageBuilder>>,
+        pub page_shown: RefCell<Option<PageShown>>,
         /// The lines whose page is built, most recently shown first.
         pub(super) built: RefCell<VecDeque<KeptPage>>,
     }
@@ -81,6 +86,7 @@ mod imp {
         type ParentType = adw::Bin;
 
         fn class_init(klass: &mut Self::Class) {
+            PendingChangesBar::ensure_type();
             klass.bind_template();
         }
 
@@ -180,6 +186,49 @@ impl ResultsPane {
         self.imp().page_builder.replace(Some(Box::new(builder)));
     }
 
+    // Runs before the page shows, so the host can match the page to who owns the tab's pending changes.
+    pub fn set_page_shown(&self, shown: impl Fn(u32) + 'static) {
+        self.imp().page_shown.replace(Some(Box::new(shown)));
+    }
+
+    pub(crate) fn pending_bar(&self) -> PendingChangesBar {
+        self.imp().pending_bar.get()
+    }
+
+    // Safe inside the page-shown hook: the page being shown is built again right after it.
+    pub fn forget_pages(&self, forget: impl Fn(u32) -> bool) {
+        let imp = self.imp();
+        let forgotten: std::collections::VecDeque<KeptPage> = {
+            let mut built = imp.built.borrow_mut();
+            let (forgotten, kept) = built.drain(..).partition(|page| forget(page.index));
+            *built = kept;
+            forgotten
+        };
+        for page in forgotten {
+            if let Some(widget) = imp.stack.child_by_name(&page_name(page.index)) {
+                imp.stack.remove(&widget);
+            }
+        }
+    }
+
+    // Never from the page-shown hook, which this runs again for the shown page.
+    pub fn rebuild_page(&self, index: u32) {
+        self.forget_pages(|page| page == index);
+        if self.selected() == Some(index) {
+            self.show_page(index);
+        }
+    }
+
+    pub fn shown_grid(&self) -> Option<DataGrid> {
+        let selected = self.selected()?;
+        self.imp()
+            .built
+            .borrow()
+            .iter()
+            .find(|page| page.index == selected)
+            .and_then(|page| page.grid.clone())
+    }
+
     pub fn set_running(&self, running: bool) {
         self.imp().spinner.set_visible(running);
     }
@@ -249,7 +298,13 @@ impl ResultsPane {
 
     fn show_page(&self, index: u32) {
         let imp = self.imp();
-        if index == gtk4::INVALID_LIST_POSITION || !self.keep_page(index) {
+        if index == gtk4::INVALID_LIST_POSITION {
+            return;
+        }
+        if let Some(shown) = imp.page_shown.borrow().as_ref() {
+            shown(index);
+        }
+        if !self.keep_page(index) {
             return;
         }
         imp.stack.set_visible_child_name(&page_name(index));
@@ -565,6 +620,27 @@ mod tests {
             pane.imp().stack.child_by_name("entry-0").is_none(),
             "the oldest page was kept"
         );
+    }
+
+    #[gtk4::test]
+    fn the_host_hears_of_a_page_before_it_shows_and_can_have_it_built_again() {
+        let pane = pane();
+        let heard = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let log = heard.clone();
+        pane.set_page_shown(move |index| log.borrow_mut().push(index));
+        pane.append(&[command(), command()]);
+        let first = pane.imp().stack.visible_child().expect("the first page");
+
+        pane.rebuild_page(0);
+
+        let rebuilt = pane.imp().stack.visible_child().expect("the first page again");
+        assert_ne!(rebuilt, first, "the page was not built again");
+        assert_eq!(built_pages(&pane), 1);
+        assert_eq!(*heard.borrow(), [0, 0]);
+        pane.select(1);
+        pane.forget_pages(|index| index == 0);
+        assert_eq!(built_pages(&pane), 1, "a forgotten page stayed");
+        assert_eq!(pane.imp().stack.visible_child_name().as_deref(), Some("entry-1"));
     }
 
     #[gtk4::test]

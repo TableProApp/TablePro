@@ -22,6 +22,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::errors::{execution_error, use_keyspace_error};
+use crate::result_origin::SpecTable;
 use crate::rows::{ColumnsRead, MAX_PAGE_ROWS, next_state, page_size};
 use crate::session::{CqlLink, LinkSlot};
 
@@ -275,9 +276,7 @@ impl Run {
         })
     }
 
-    /// One statement, page by page. A page is asked for only once the
-    /// sink took the last, and once the set passes the row limit no
-    /// further page is asked for, so the server never reads past it.
+    // A page is asked for once the sink took the last, and none past the row limit, so the server never reads past it.
     async fn statement(
         &self,
         text: &str,
@@ -317,7 +316,14 @@ impl Run {
                 .into_rows_result()
                 .map_err(|error| DriverError::Protocol(error.to_string()))?;
             if read.is_none() {
-                let columns = ColumnsRead::of(rows.column_specs());
+                let mut columns = ColumnsRead::of(rows.column_specs());
+                if let Some(spec) = SpecTable::of(text, rows.column_specs()) {
+                    tokio::select! {
+                        biased;
+                        interrupt = stop.triggered() => return Ok(StatementEnd::Stopped(interrupt.end())),
+                        traced = spec.columns(&self.link, columns.columns.clone()) => columns.columns = traced,
+                    }
+                }
                 emitter
                     .send(ResultEvent::ResultSetStarted {
                         columns: columns.columns.clone(),

@@ -2,17 +2,19 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use futures_util::StreamExt;
-use tablepro_core::sql_syntax::SqlGrammar;
 use tablepro_core::sql_syntax::script::{LexicalSettings, ScriptPlan, ScriptToken};
+use tablepro_core::sql_syntax::{SourceTable, SqlGrammar};
 use tablepro_core::{
     DriverError, ResultEvent, ResultSink, RowLimit, RunEnd, ServerCode, ServerNotice, SinkFlow, Truncation, Value,
 };
 use tokio_postgres::SimpleQueryMessage;
+use tracing::debug;
 
 use super::cursor_flight::{
     CLOSE, RELEASE_SAVEPOINT, ROLLBACK_TO_SAVEPOINT, SAVEPOINT, correct_position, declare, fetch, needs_plain_statement,
 };
 use super::editor_dispatch::{CursorOwner, Flight, Wrap, fallback, plan};
+use super::result_origin::{self, TracedTable, traceable};
 use super::session_core::{Lost, SessionCore};
 use super::statement_class::{StatementClass, classify};
 use super::stop_watch::{Interrupt, StopWatch};
@@ -37,13 +39,14 @@ enum Role {
     },
 }
 
-/// One run of user SQL on the session.
 pub(crate) struct Run<'a> {
     core: &'a mut SessionCore,
     sink: &'a mut dyn ResultSink,
     watch: StopWatch,
     limit: RowLimit,
     sink_gone: bool,
+    // Set only while a cursor's FETCH is read, for its RowDescription.
+    traced: Option<TracedTable>,
 }
 
 /// The result set an exchange is reading.
@@ -69,6 +72,7 @@ impl<'a> Run<'a> {
             watch,
             limit,
             sink_gone: false,
+            traced: None,
         }
     }
 
@@ -158,9 +162,8 @@ impl<'a> Run<'a> {
         }
     }
 
-    /// A row source read through a cursor, so a result larger than the
-    /// limit stops on the server. The DECLARE and the FETCH go as
-    /// separate messages.
+    // A row source goes through a cursor, so a result larger than the limit stops on the server. The DECLARE and the
+    // FETCH go as separate messages.
     async fn cursor(
         &mut self,
         text: &str,
@@ -184,9 +187,15 @@ impl<'a> Run<'a> {
             self.abandon_cursor(owner, false).await?;
             return Ok(Some(error));
         }
+        // With backslash escapes on, the statement the parser reads may not be the one the server ran.
+        self.traced = match traceable(text, owner) {
+            Some(statement) if self.core.standard_conforming_strings() => self.trace(statement).await?,
+            _ => None,
+        };
         let fetched = self
             .exchange(&fetch(self.limit), Role::User { class, cursor: true })
             .await?;
+        self.traced = None;
         if let Some(error) = fetched {
             self.abandon_cursor(owner, false).await?;
             return Ok(Some(error));
@@ -217,6 +226,49 @@ impl<'a> Run<'a> {
             (CursorOwner::Savepoint, false) => self.core.tracker.set(KnownState::Failed),
         }
         Ok(())
+    }
+
+    // The lookup goes in one round trip between a savepoint of the driver's own and its release, so one that fails
+    // is rolled back to the savepoint and leaves the cursor's transaction and the user's rows as they were.
+    async fn trace(&mut self, statement: SourceTable) -> Result<Option<TracedTable>, Lost> {
+        if self.stopped() || self.watch.due().is_some() {
+            return Ok(None);
+        }
+        self.watch.settle().await;
+        let (saved, found, released) = {
+            let client = &self.core.client;
+            let mut flight = std::pin::pin!(async move {
+                futures_util::join!(
+                    client.batch_execute(result_origin::SAVEPOINT),
+                    result_origin::lookup(client, statement),
+                    client.batch_execute(result_origin::RELEASE_SAVEPOINT),
+                )
+            });
+            loop {
+                tokio::select! {
+                    biased;
+                    answers = &mut flight => break answers,
+                    interrupt = self.watch.triggered(), if self.watch.fired().is_none() => {
+                        let running = Some((Arc::clone(&self.core.endpoint), self.core.cancel_token.clone()));
+                        self.watch.fire(interrupt, running);
+                    }
+                    () = self.watch.gave_up(), if self.watch.fired().is_some() => return Err(Lost),
+                }
+            }
+        };
+        self.core.discard_notices();
+        if saved.is_ok() && released.is_err() && !self.stopped() {
+            self.exchange(result_origin::ROLLBACK_TO_SAVEPOINT, Role::Control)
+                .await?;
+        }
+        match (found, released) {
+            (Ok(traced), Ok(())) => Ok(traced),
+            (Ok(_), Err(_)) => Ok(None),
+            (Err(error), _) => {
+                debug!(%error, "the origin lookup of a result failed");
+                Ok(None)
+            }
+        }
     }
 
     async fn track(&mut self, class: StatementClass, succeeded: bool) -> Result<(), Lost> {
@@ -304,7 +356,17 @@ impl<'a> Run<'a> {
         match message {
             SimpleQueryMessage::RowDescription(columns) => {
                 set.open = true;
-                let columns = columns.iter().map(|column| text_column(column.name())).collect();
+                let names: Vec<String> = columns.iter().map(|column| column.name().to_owned()).collect();
+                let mut origins = self
+                    .traced
+                    .take()
+                    .map(|traced| traced.origins(&names))
+                    .unwrap_or_default()
+                    .into_iter();
+                let columns = names
+                    .iter()
+                    .map(|name| text_column(name).with_origin(origins.next().flatten()))
+                    .collect();
                 self.send(ResultEvent::ResultSetStarted { columns }).await;
             }
             SimpleQueryMessage::Row(row) => {

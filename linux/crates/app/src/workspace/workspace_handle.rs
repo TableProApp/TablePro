@@ -270,14 +270,28 @@ impl WorkspaceHandle {
     }
 
     async fn save_tab(&self, parent: &gtk::Widget, tab: Uuid) -> SaveStart {
-        if let Some(tracker) = self.0.deps.rows.get(tab) {
-            let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
-                return SaveStart::Rejected(SaveRejection::InReview);
+        // An editor tab holds a row tracker beside its file; a clean one leaves the save to the file.
+        let rows =
+            self.0.deps.rows.get(tab).filter(|tracker| {
+                tracker.pending_state() != PendingState::Clean || !self.0.deps.directory.has_file(tab)
+            });
+        if let Some(tracker) = rows {
+            let start = {
+                let Some(_claim) = ReviewClaim::take(&self.0.reviewing, tab) else {
+                    return SaveStart::Rejected(SaveRejection::InReview);
+                };
+                if let Err(start) = self.confirm_rows(parent, &tracker).await {
+                    return start;
+                }
+                self.save_rows(tab, &tracker)
             };
-            if let Err(start) = self.confirm_rows(parent, &tracker).await {
-                return start;
-            }
-            return self.save_rows(tab, &tracker);
+            return match self.0.deps.directory.save_file(tab) {
+                Some(saving) => match saving.await {
+                    Ok(()) => start,
+                    Err(message) => SaveStart::Rejected(SaveRejection::FileNotSaved(message)),
+                },
+                None => start,
+            };
         }
         if let Some(tracker) = self.0.deps.structures.get(tab) {
             // A close that saves its tabs can ask again while the review is

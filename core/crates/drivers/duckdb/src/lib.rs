@@ -16,6 +16,7 @@ mod encode;
 mod errors;
 mod instance;
 mod pool;
+mod result_origin;
 mod result_stream;
 mod stop;
 mod transaction_state;

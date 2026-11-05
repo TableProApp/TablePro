@@ -15,6 +15,7 @@ use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::cancel::ControlLink;
+use crate::column_origins::{TracedSet, resolved_columns};
 use crate::decode::decode_row;
 use crate::dialect::quote;
 use crate::editor_run::{RunOutcome, run_script};
@@ -113,8 +114,7 @@ impl Shared {
         }
     }
 
-    /// One run on the connection `guard` holds, which it gives up when
-    /// the connection cannot take another.
+    // The connection `guard` holds is given up when it cannot take another run.
     async fn run_held(
         &self,
         mut guard: OwnedMutexGuard<Option<Held>>,
@@ -131,7 +131,8 @@ impl Shared {
         };
         let started = Instant::now();
         self.running.store(true, Ordering::SeqCst);
-        let supervised = self.supervise(held, &sql, &options, sink.as_mut()).await;
+        let mut traced = None;
+        let supervised = self.supervise(held, &sql, &options, sink.as_mut(), &mut traced).await;
         // A session in a database nothing knows would run the next script
         // in the wrong one, so it ends instead.
         let placed = match &supervised {
@@ -149,6 +150,10 @@ impl Shared {
             }
             _ => TransactionState::Unknown,
         };
+        if let (Ok((RunEnd::Completed, true)), true, Some(set)) = (&supervised, placed, traced) {
+            self.trace(&mut held.connection, set, transaction_state, &options, sink.as_mut())
+                .await;
+        }
         self.running.store(false, Ordering::SeqCst);
         let end = match supervised {
             Ok((end, true)) if placed => end,
@@ -185,16 +190,14 @@ impl Shared {
         true
     }
 
-    /// Run the script, stopping it on a cancel, at the deadline, when
-    /// the session closes or when the sink stops reading. A stop is KILL
-    /// QUERY on a connection of the session's own; the statement then
-    /// has the cancel grace to end, and nothing after it is sent.
+    // A stop is KILL QUERY on a connection of the session's own; the statement then has the cancel grace to end, and nothing after it is sent.
     async fn supervise(
         &self,
         held: &mut Held,
         sql: &UserSql,
         options: &RunOptions,
         sink: &mut dyn ResultSink,
+        traced: &mut Option<TracedSet>,
     ) -> Result<(RunEnd, bool), DriverError> {
         let limit = options.row_limit;
         let deadline = options.deadline.map(|limit| Instant::now() + limit);
@@ -216,7 +219,10 @@ impl Shared {
                         let stop = self.stop_due(options, deadline).unwrap_or(Stop::Cancelled);
                         Ok((stopped_end(stop, false), true))
                     }
-                    outcome => finished(outcome).map(|end| (end, true)),
+                    mut outcome => {
+                        *traced = outcome.as_mut().ok().and_then(|outcome| outcome.traced.take());
+                        finished(outcome).map(|end| (end, true))
+                    }
                 };
             }
             () = options.cancel.cancelled() => Stop::Cancelled,
@@ -242,6 +248,30 @@ impl Shared {
             // The statement would not stop, so the connection still has
             // its answer coming and cannot take another run.
             None => Ok((end, false)),
+        }
+    }
+
+    // Unknown still looks: SHOW CREATE TABLE neither commits nor fails a transaction, and a MySQL login that cannot read performance_schema never knows.
+    async fn trace(
+        &self,
+        connection: &mut MySqlConnection,
+        set: TracedSet,
+        state: TransactionState,
+        options: &RunOptions,
+        sink: &mut dyn ResultSink,
+    ) {
+        if matches!(state, TransactionState::InTransaction | TransactionState::Failed) {
+            return;
+        }
+        let resolving = tokio::time::timeout(self.liveness.cancel_grace, resolved_columns(connection, set));
+        let resolved = tokio::select! {
+            biased;
+            () = options.cancel.cancelled() => None,
+            () = self.closing.cancelled() => None,
+            resolved = resolving => resolved.ok().flatten(),
+        };
+        if let Some(event) = resolved {
+            sink.accept(event).await;
         }
     }
 

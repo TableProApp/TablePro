@@ -5,6 +5,7 @@ mod attach_guard;
 mod autocommit;
 mod capabilities;
 mod catalog;
+mod column_origins;
 mod connection;
 mod create_file;
 mod ddl;

@@ -68,6 +68,7 @@ pub(crate) use self::browse_request_kind::BrowseRequestKind;
 pub(crate) use self::browse_tab_input::BrowseTabInput;
 use self::browse_tab_widgets::BrowseTabWidgets;
 use self::column_recheck::ColumnRecheck;
+pub(super) use self::columns_fetch::{ColumnFreshness, load_columns};
 pub(crate) use self::data_input::DataInput;
 use self::grid_input::GridInput;
 pub(crate) use self::page_reply::PageReply;
@@ -75,8 +76,7 @@ use self::page_state::PageState;
 #[cfg(test)]
 pub(super) use self::pager_bar::PagerBar;
 pub(crate) use self::paging_input::PagingInput;
-#[cfg(test)]
-pub(super) use self::pending_changes_bar::PendingChangesBar;
+pub(super) use self::pending_changes_bar::{PendingChangesBar, PendingChangesRequest};
 pub(crate) use self::row_total::RowTotal;
 pub(crate) use self::save_input::SaveInput;
 pub(crate) use self::table_filter::TableFilter;

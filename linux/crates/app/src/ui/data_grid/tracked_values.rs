@@ -6,7 +6,7 @@ use tablepro_core::meta::RowIdentity;
 
 use super::GridRow;
 use crate::services::change_tracker::{CellState, RowKey, RowState};
-use crate::services::grid::{CellLock, GridColumn, GridRowId, RowSnapshot, cell_editability};
+use crate::services::grid::{CellLock, GridColumn, GridRowId, ResultRefusal, RowSnapshot, cell_editability};
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::icons;
 
@@ -92,6 +92,7 @@ pub struct TrackedValues {
     tracker: Option<TabTrackerHandle>,
     identity: RowIdentity,
     read_only: bool,
+    result_lock: Option<ResultRefusal>,
 }
 
 impl Default for TrackedValues {
@@ -106,6 +107,7 @@ impl TrackedValues {
             tracker: None,
             identity: RowIdentity::Unordered,
             read_only: true,
+            result_lock: None,
         }
     }
 
@@ -114,7 +116,13 @@ impl TrackedValues {
             tracker: Some(tracker),
             identity,
             read_only: false,
+            result_lock: None,
         }
+    }
+
+    pub fn locked_by(mut self, result_lock: Option<ResultRefusal>) -> Self {
+        self.result_lock = result_lock;
+        self
     }
 
     /// On a read-only connection every cell is locked, and says why.
@@ -147,6 +155,9 @@ impl TrackedValues {
 
     /// `lock` for a cell whose mark the caller already read.
     pub fn lock_marked(&self, column: &GridColumn, row: &GridRow, row_deleted: bool) -> Option<CellLock> {
+        if let (Some(refusal), GridRowId::Result) = (self.result_lock, row.id()) {
+            return Some(CellLock::Result(refusal));
+        }
         if let Err(lock) = cell_editability(column, &row.id(), &self.identity, self.read_only, row_deleted) {
             return Some(lock);
         }

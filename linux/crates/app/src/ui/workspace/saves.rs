@@ -46,6 +46,9 @@ impl WorkspaceModel {
             WorkspaceEvent::SaveStarted { tab } => {
                 self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveStarted);
                 self.send_to_structure_tab(tab, structure_tab::SaveInput::SaveStarted);
+                if let Some(editor) = self.editor_tab(tab) {
+                    editor.rows_save_started();
+                }
             }
             WorkspaceEvent::SaveSettled { settled, in_prompt } => self.on_save_settled(*settled, in_prompt),
             WorkspaceEvent::Discarded { tabs, reload } => {
@@ -60,6 +63,9 @@ impl WorkspaceModel {
                         false => structure_tab::SaveInput::Discard,
                     };
                     self.send_to_structure_tab(tab, structure);
+                    if let Some(editor) = self.editor_tab(tab) {
+                        editor.rows_discarded(reload);
+                    }
                 }
             }
         }
@@ -98,19 +104,34 @@ impl WorkspaceModel {
                     .timeout(4)
                     .build();
                 self.add_toast(toast);
-                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveCommitted(origins));
-            }
-            (WriteKind::RowChanges, SaveOutcome::RolledBack(cause)) => {
-                // The row behind the failing step is marked before the
-                // error shows, so the user sees which one it was.
-                if let Some(source) = failing {
-                    self.dispatch_to_tab(tab, browse_tab::SaveInput::MarkErrorRow(source));
+                match self.editor_tab(tab) {
+                    Some(editor) => editor.rows_saved(),
+                    None => self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveCommitted(origins)),
                 }
-                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveFailed(cause.message()));
             }
+            (WriteKind::RowChanges, SaveOutcome::RolledBack(cause)) => match self.editor_tab(tab) {
+                Some(editor) => {
+                    editor.rows_save_failed(failing);
+                    self.show_error_alert(&crate::i18n::gettext("Save Failed"), &cause.message());
+                }
+                None => {
+                    // The row behind the failing step is marked before the
+                    // error shows, so the user sees which one it was.
+                    if let Some(source) = failing {
+                        self.dispatch_to_tab(tab, browse_tab::SaveInput::MarkErrorRow(source));
+                    }
+                    self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveFailed(cause.message()));
+                }
+            },
             (WriteKind::RowChanges, SaveOutcome::Unknown(cause)) => {
                 let message = cause.sentence(&self.tab_name(tab));
-                self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveOutcomeUnknown(message));
+                match self.editor_tab(tab) {
+                    Some(editor) => {
+                        editor.rows_save_unknown();
+                        self.show_error_alert(&crate::i18n::gettext("Save Result Unknown"), &message);
+                    }
+                    None => self.dispatch_to_tab(tab, browse_tab::SaveInput::SaveOutcomeUnknown(message)),
+                }
             }
             (WriteKind::SchemaChanges, SaveOutcome::Committed { .. }) => {
                 self.on_structure_save_completed(tab, saved_table_name);

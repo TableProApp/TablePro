@@ -14,6 +14,7 @@ use tablepro_storage::{DraftId, DraftScope};
 use uuid::Uuid;
 
 use crate::ui::browse_tab::{BrowseTabInput, PagingInput, SaveInput, TableFilter};
+use crate::ui::editor::SqlEditor;
 use crate::ui::structure_tab::StructureMode;
 use crate::workspace::{
     EditorFileRecord, RestoredDrafts, TabRecord, WorkspaceFileName, WorkspaceLoad, WorkspaceRecord, WorkspaceSaveError,
@@ -244,6 +245,7 @@ impl WorkspaceModel {
         match &removed {
             WorkspaceTab::Editor(slot) => {
                 slot.editor.shutdown();
+                self.change_trackers.unregister(id);
                 // The record no longer names this draft, so the file has
                 // nothing left pointing at it.
                 self.drafts.discard(&self.draft_scope(), slot.draft);
@@ -476,9 +478,12 @@ impl WorkspaceModel {
     /// name rows of the connection going away, so they cannot be saved
     /// after it.
     pub(super) fn close_tabs(&mut self) {
-        for tab in self.workspace_tabs.borrow().values() {
+        for (id, tab) in self.workspace_tabs.borrow().iter() {
             match tab {
-                WorkspaceTab::Editor(slot) => slot.editor.shutdown(),
+                WorkspaceTab::Editor(slot) => {
+                    slot.editor.shutdown();
+                    self.change_trackers.unregister(*id);
+                }
                 WorkspaceTab::Structure(slot) => {
                     slot.structure.shutdown();
                     self.structure_trackers.unregister(slot.id);
@@ -493,6 +498,13 @@ impl WorkspaceModel {
         }
         self.index.clear();
         self.workspace_tabs.borrow_mut().clear();
+    }
+
+    pub(super) fn editor_tab(&self, tab_id: Uuid) -> Option<SqlEditor> {
+        match self.workspace_tabs.borrow().get(&tab_id) {
+            Some(WorkspaceTab::Editor(slot)) => Some(slot.editor.clone()),
+            _ => None,
+        }
     }
 
     /// Forward a per-tab Browse input to the right slot. Routes to the
