@@ -161,16 +161,14 @@ pub fn value_for_column(value: &Value, read: &ColumnType, column: &ColumnType) -
 }
 
 fn postgres_bytea(text: &str) -> Option<Vec<u8>> {
-    let hex = text.strip_prefix("\\x")?;
-    if hex.len() % 2 != 0 {
+    let (pairs, odd) = text.strip_prefix("\\x")?.as_bytes().as_chunks::<2>();
+    if !odd.is_empty() {
         return None;
     }
-    hex.as_bytes()
-        .chunks_exact(2)
-        .map(|pair| {
-            let digit = |byte: u8| char::from(byte).to_digit(16);
-            Some(u8::try_from(digit(pair[0])? * 16 + digit(pair[1])?).ok()?)
-        })
+    let digit = |byte: u8| char::from(byte).to_digit(16);
+    pairs
+        .iter()
+        .map(|[high, low]| u8::try_from(digit(*high)? * 16 + digit(*low)?).ok())
         .collect()
 }
 

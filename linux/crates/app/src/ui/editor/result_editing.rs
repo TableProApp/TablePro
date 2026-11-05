@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use gtk4::gio;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{gio, glib};
 use tablepro_core::browse::PageLayout;
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ResultColumn};
 use tablepro_core::edit::{ResultSource, result_source, result_target, value_for_column};
@@ -13,7 +13,7 @@ use tablepro_core::meta::{RowIdentity, TableRef};
 use tablepro_core::{TransactionState, Value};
 
 use super::SqlEditor;
-use super::run_log::{EntryKind, RunLog};
+use super::run_log::EntryKind;
 use super::run_scope::ScopedText;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::change_tracker::{RowKey, StatementSource, pk_identity};

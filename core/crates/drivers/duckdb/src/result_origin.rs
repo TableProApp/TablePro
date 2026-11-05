@@ -135,15 +135,12 @@ fn resolve(catalog: &str, written: &TableRef, found: &[Found]) -> Option<(TableR
     })?;
     // A temporary object comes first even for `main.t`, and with more than one search path entry a name can resolve
     // past the current schema or to another catalogue's schema.
-    if !database.eq_ignore_ascii_case(catalog)
-        || search_path.contains(',')
-        || found.iter().any(|found| *found == Found::Temporary)
-    {
+    if !database.eq_ignore_ascii_case(catalog) || search_path.contains(',') || found.contains(&Found::Temporary) {
         return None;
     }
     let schema = match &written.schema {
         // DuckDB reads `a.t` as catalogue `a` when there is one.
-        Some(_) if found.iter().any(|found| *found == Found::Catalog) => return None,
+        Some(_) if found.contains(&Found::Catalog) => return None,
         Some(schema) => schema,
         None => current_schema,
     };

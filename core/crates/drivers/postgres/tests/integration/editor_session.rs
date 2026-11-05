@@ -593,7 +593,7 @@ fn origins(events: &Events) -> Vec<Option<ColumnOrigin>> {
         .into_iter()
         .find_map(|event| match event {
             ResultEvent::ResultSetStarted { columns } => {
-                Some(columns.into_iter().map(|column| column.origin).collect())
+                Some(columns.iter().map(|column| column.origin.clone()).collect())
             }
             _ => None,
         })
