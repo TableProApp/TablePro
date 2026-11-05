@@ -1,9 +1,10 @@
 #!/bin/sh
 # Installs a Flatpak bundle, as root in a fresh, privileged Ubuntu container
-# with nothing set up but Flatpak, so the GNOME runtime has to come from the
-# Flathub repository the bundle names. Then checks that the app starts, that
-# its desktop entry and metainfo validate, and that the bundle carries the
-# catalogue of each language the LINGUAS file names.
+# with nothing set up but that release's own Flatpak, so the GNOME runtime has
+# to come from the Flathub repository the bundle names. Then checks that the
+# app starts and that the bundle carries the catalogue of each language the
+# LINGUAS file names. The build validated the desktop entry and the metainfo
+# with the SDK's tools.
 # Usage: smoke-test-flatpak.sh <tablepro .flatpak> [<po/LINGUAS>]
 set -eu
 
@@ -20,8 +21,9 @@ app=app.tablepro.TablePro
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates flatpak \
-    desktop-file-utils appstream xvfb xauth dbus-daemon
+# dbus, not dbus-daemon, which Ubuntu 22.04 does not split out.
+apt-get install -y --no-install-recommends ca-certificates flatpak xvfb xauth dbus
+flatpak --version
 export XDG_RUNTIME_DIR=/run/user/0
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
@@ -48,8 +50,6 @@ case "$help" in
 esac
 
 files="$(flatpak info --user --show-location "$app")/files"
-desktop-file-validate "$files/share/applications/$app.desktop"
-appstreamcli validate --no-net "$files/share/metainfo/$app.metainfo.xml"
 for lang in $languages; do
     if [ ! -f "$files/share/locale/$lang/LC_MESSAGES/tablepro.mo" ]; then
         echo "smoke-test-flatpak.sh: the bundle has no $lang catalogue" >&2
@@ -65,4 +65,4 @@ if [ "$status" -ne 124 ]; then
     echo "smoke-test-flatpak.sh: tablepro exited with status $status before the 15 second timeout" >&2
     exit 1
 fi
-echo "smoke-test-flatpak.sh: $(basename "$bundle") installs, starts and validates"
+echo "smoke-test-flatpak.sh: $(basename "$bundle") installs and starts"

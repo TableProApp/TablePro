@@ -9,7 +9,8 @@ name: Linux packages
 # another fresh container with only its runtime dependencies and started.
 # The Flatpak bundle a release carries is built offline from the same
 # tarballs with the release manifest, on the nightly and when asked for,
-# and installed in a fresh container that has only Flatpak.
+# and installed in fresh Ubuntu 22.04, 24.04 and 26.04 containers that have
+# only their own Flatpak.
 # release-linux.yml calls this workflow and uploads the source packages.
 # A run by hand can add arm64, which the nightly and pull requests leave out.
 # Given a release tag, it packages that release's tarballs instead, with
@@ -309,17 +310,20 @@ jobs:
         if: runner.arch == 'X64'
         run: flatpak-builder-lint manifest linux/build-aux/flatpak/app.tablepro.TablePro.json
 
+  # Also on the Ubuntu releases below the GNOME 50 floor, whose users have the
+  # bundle and not the packages, each with its own Flatpak.
   flatpak-install:
-    name: Install the Flatpak bundle (${{ matrix.runner }})
+    name: Install the Flatpak bundle (Ubuntu ${{ matrix.ubuntu }}, ${{ matrix.runner }})
     needs: flatpak
     strategy:
       fail-fast: false
       matrix:
         runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+        ubuntu: ["22.04", "24.04", "26.04"]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     container:
-      image: ubuntu:26.04
+      image: ubuntu:${{ matrix.ubuntu }}
       options: --privileged
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

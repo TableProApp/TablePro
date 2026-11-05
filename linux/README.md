@@ -32,6 +32,8 @@ TablePro supports the server releases their vendors still support. CI runs each 
 
 TablePro runs on amd64 and arm64. A release such as 0.1.0 goes to the stable repositories and a beta such as 0.1.0-beta.1 to the beta ones, and both go to [GitHub Releases](https://github.com/TableProApp/TablePro/releases), a beta as a pre-release. Until 0.1.0 is out, only betas have packages.
 
+The .deb and .rpm need the GNOME 50 libraries of Ubuntu 26.04 and Fedora 44 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor.md)). Ubuntu 22.04 and 24.04 and other distributions use the [Flatpak bundle](#from-github-releases).
+
 ### Ubuntu 26.04 and 26.10
 
 ```bash
