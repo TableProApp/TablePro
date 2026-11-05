@@ -24,7 +24,6 @@ use crate::result_reader::{CatalogRow, read_table};
 impl DumpDialect for ClickHouseDialect {}
 
 /// What the server shows in place of a password or a key.
-const HIDDEN: &str = "[HIDDEN]";
 
 /// The objects of `database`, by name. `qualified` names the tables with
 /// the database for reading their rows, where it is not the connection's.
@@ -81,7 +80,7 @@ fn add_object(catalog: &mut DumpCatalog, table: TableRef, engine: &str, create: 
         catalog.skipped.push(skip(DumpSkipReason::NoDefinition));
         return;
     };
-    if create.contains(HIDDEN) {
+    if create_text::hides_secret(&create) {
         catalog.skipped.push(skip(DumpSkipReason::HiddenSecret));
         return;
     }
@@ -155,7 +154,7 @@ fn holds_rows(engine: &str) -> bool {
     engine.ends_with("MergeTree")
         || matches!(
             engine,
-            "Log" | "TinyLog" | "StripeLog" | "Memory" | "EmbeddedRocksDB" | "KeeperMap"
+            "Log" | "TinyLog" | "StripeLog" | "Memory" | "EmbeddedRocksDB" | "KeeperMap" | "Join"
         )
 }
 

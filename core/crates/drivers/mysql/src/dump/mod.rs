@@ -21,7 +21,7 @@ use crate::dialect::MySqlDialect;
 use crate::errors::map_error;
 use crate::metadata::{catalog_rows, not_there, text_column};
 
-use create_text::{without_database, without_definer};
+use create_text::{remote_table, without_database, without_definer};
 use program_settings::ProgramSettings;
 
 /// SHOW CREATE prints by the session's mode: `ANSI_QUOTES` quotes names
@@ -394,16 +394,6 @@ fn set_value(sequence_sql: &str, next: &str) -> Result<DumpStatement, DriverErro
         detail: format!("{next:?} is not a number"),
     })?;
     Ok(DumpStatement::new(format!("DO SETVAL({sequence_sql}, {value}, 0)")))
-}
-
-/// A table whose rows are another server's, through FEDERATED or
-/// MariaDB's CONNECT: its CREATE would reach that server again on load,
-/// password and all, and its rows would be written there.
-fn remote_table(create: &str) -> bool {
-    let upper = create.to_ascii_uppercase();
-    ["ENGINE=FEDERATED", "ENGINE=CONNECT", "CONNECTION="]
-        .iter()
-        .any(|option| upper.contains(option))
 }
 
 #[cfg(test)]

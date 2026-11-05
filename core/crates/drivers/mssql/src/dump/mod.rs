@@ -6,10 +6,10 @@
 mod dump_statements;
 mod mssql_dump;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use tablepro_core::ddl::IdentitySeed;
 use tablepro_core::ddl::ddl_sql::index_keys_sql;
+use tablepro_core::ddl::{CollationName, IdentitySeed};
 use tablepro_core::dialect::SqlDialect;
 use tablepro_core::dump::{
     DumpCatalog, DumpObject, DumpObjectKind, DumpScope, DumpSection, DumpSkip, DumpSkipReason, DumpStatement, DumpTable,
@@ -56,6 +56,26 @@ const KEYS_SQL: &str = "SELECT SCHEMA_NAME(t.schema_id), t.name, kc.name, RTRIM(
     JOIN sys.indexes i ON i.object_id = kc.parent_object_id AND i.index_id = kc.unique_index_id \
     WHERE t.is_ms_shipped = 0 AND {scope} \
     ORDER BY 1, 2, 3";
+
+/// Every stored character column's collation. The structure model keeps
+/// one only where it differs from the database's default, and the
+/// database the file loads into can have another. A column of an alias
+/// type takes the database's.
+const COLLATIONS_SQL: &str = "SELECT SCHEMA_NAME(t.schema_id), t.name, c.name, c.collation_name \
+    FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id \
+    JOIN sys.types ty ON ty.user_type_id = c.user_type_id \
+    WHERE c.collation_name IS NOT NULL AND c.is_computed = 0 AND ty.is_user_defined = 0 \
+      AND t.is_ms_shipped = 0 AND {scope} \
+    ORDER BY 1, 2, 3";
+
+/// Tables an enabled security policy filters, whose rows a read sees
+/// only some of.
+const FILTERED_SQL: &str = "SELECT DISTINCT SCHEMA_NAME(t.schema_id), t.name \
+    FROM sys.security_predicates p \
+    JOIN sys.security_policies s ON s.object_id = p.object_id \
+    JOIN sys.tables t ON t.object_id = p.target_object_id \
+    WHERE s.is_enabled = 1 AND p.predicate_type = 0 AND t.is_ms_shipped = 0 AND {scope} \
+    ORDER BY 1, 2";
 
 /// The columns of a system-time period, which the server fills.
 const PERIODS_SQL: &str = "SELECT SCHEMA_NAME(t.schema_id), t.name, c.name \
@@ -248,6 +268,12 @@ impl CatalogRead<'_> {
         let keys = key_rows(&self.rows(KEYS_SQL, "t.schema_id").await?)?;
         let identities = identity_rows(&self.rows(IDENTITIES_SQL, "t.schema_id").await?)?;
         let periods = period_rows(&self.rows(PERIODS_SQL, "t.schema_id").await?)?;
+        let collations = collation_rows(&self.rows(COLLATIONS_SQL, "t.schema_id").await?)?;
+        let mut filtered = HashSet::new();
+        for row in self.rows(FILTERED_SQL, "t.schema_id").await? {
+            let cells = Cells::new(&row, "sys.security_predicates");
+            filtered.insert(TableRef::new(cells.text(0), cells.required_text(1)?));
+        }
         for row in self.rows(TABLES_SQL, "t.schema_id").await? {
             let cells = Cells::new(&row, "sys.tables");
             let table = TableRef::new(cells.text(0), cells.required_text(1)?);
@@ -255,6 +281,8 @@ impl CatalogRead<'_> {
                 keys: keys.get(&table).map(Vec::as_slice).unwrap_or_default(),
                 identity: identities.get(&table),
                 periods: periods.get(&table).map(Vec::as_slice).unwrap_or_default(),
+                collations: collations.get(&table),
+                filtered: filtered.contains(&table),
             };
             self.table(&table, &parts).await?;
         }
@@ -271,6 +299,15 @@ impl CatalogRead<'_> {
             metadata::fetch_table_definition(self.client, self.watch, table, &relation, dialect.major_version())
                 .await?;
         definition.foreign_keys.clear();
+        if let Some(collations) = parts.collations {
+            for column in &mut definition.columns {
+                if column.attributes.collation.is_none()
+                    && let Some(collation) = collations.get(&column.info.name)
+                {
+                    column.attributes.collation = Some(CollationName::new(None, collation));
+                }
+            }
+        }
         let unique = |index: &IndexInfo| parts.keys.iter().any(|key| !key.primary && key.name == index.name);
         let (uniques, indexes): (Vec<IndexInfo>, Vec<IndexInfo>) =
             std::mem::take(&mut definition.indexes).into_iter().partition(unique);
@@ -302,8 +339,19 @@ impl CatalogRead<'_> {
                 reason: DumpSkipReason::VersioningNotCarried,
             });
         }
+        // As pg_dump does under row-level security, no rows rather than
+        // the ones this login sees.
+        if parts.filtered {
+            self.catalog.skipped.push(DumpSkip {
+                kind: DumpObjectKind::Table,
+                schema: table.schema.clone(),
+                name: table.name.clone(),
+                reason: DumpSkipReason::RowsFiltered,
+            });
+        }
         self.catalog.tables.push(DumpTable {
             plain_columns: parts.periods.to_vec(),
+            rows: !parts.filtered,
             ..DumpTable::new(table.clone())
         });
         let schema = || table.schema.clone();
@@ -523,6 +571,22 @@ struct TableParts<'a> {
     keys: &'a [KeyRow],
     identity: Option<&'a IdentityRow>,
     periods: &'a [String],
+    /// Each character column's collation, by column name.
+    collations: Option<&'a HashMap<String, String>>,
+    filtered: bool,
+}
+
+fn collation_rows(rows: &[Vec<Value>]) -> Result<HashMap<TableRef, HashMap<String, String>>, DriverError> {
+    let mut collations: HashMap<TableRef, HashMap<String, String>> = HashMap::new();
+    for row in rows {
+        let cells = Cells::new(row, "sys.columns");
+        let table = TableRef::new(cells.text(0), cells.required_text(1)?);
+        collations
+            .entry(table)
+            .or_default()
+            .insert(cells.required_text(2)?, cells.required_text(3)?);
+    }
+    Ok(collations)
 }
 
 fn period_rows(rows: &[Vec<Value>]) -> Result<HashMap<TableRef, Vec<String>>, DriverError> {
@@ -712,6 +776,8 @@ mod tests {
             KEYS_SQL,
             IDENTITIES_SQL,
             PERIODS_SQL,
+            COLLATIONS_SQL,
+            FILTERED_SQL,
             CHECKS_SQL,
             FOREIGN_KEYS_SQL,
             MODULES_SQL,

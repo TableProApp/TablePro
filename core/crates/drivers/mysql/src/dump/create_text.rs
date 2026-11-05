@@ -84,6 +84,25 @@ pub(crate) fn without_database(create: &str, database: &str, names: &HashSet<Str
     cut(create, &cuts)
 }
 
+/// A table whose rows are another server's, through FEDERATED or
+/// MariaDB's CONNECT: its CREATE would reach that server again on load,
+/// password and all, and its rows would be written there. Read from the
+/// table options, not from a comment or a default that spells one.
+pub(crate) fn remote_table(create: &str) -> bool {
+    let tokens = significant(create);
+    tokens.windows(3).any(|window| {
+        let [option, equals, value] = window else {
+            return false;
+        };
+        if text(create, equals) != "=" {
+            return false;
+        }
+        is_word(create, option, "CONNECTION")
+            || (is_word(create, option, "ENGINE")
+                && (is_word(create, value, "FEDERATED") || is_word(create, value, "CONNECT")))
+    })
+}
+
 fn significant(sql: &str) -> Vec<ScriptToken> {
     let plan = ScriptPlan::build(sql, SqlGrammar::MySql, LexicalSettings::default_for(SqlGrammar::MySql));
     plan.tokens(0..sql.len())
@@ -207,6 +226,21 @@ mod tests {
                       from (`shop`.`items` `shop` join `shop`.`id` `j` on(`j`.`id` = `shop`.`id`))";
 
         assert_eq!(without_database(create, "shop", &ours), create);
+    }
+
+    #[test]
+    fn a_remote_table_is_read_from_its_options() {
+        assert!(remote_table(
+            "CREATE TABLE `r` (\n  `id` int\n) ENGINE=FEDERATED DEFAULT CHARSET=utf8mb4 \
+             CONNECTION='mysql://u:p@h/db/t'"
+        ));
+        assert!(remote_table(
+            "CREATE TABLE `r` (\n  `id` int\n) ENGINE=CONNECT TABLE_TYPE=MYSQL"
+        ));
+        assert!(!remote_table(
+            "CREATE TABLE `l` (\n  `note` varchar(40) DEFAULT 'CONNECTION=x'\n) ENGINE=InnoDB \
+             COMMENT='was ENGINE=CONNECT'"
+        ));
     }
 
     #[test]

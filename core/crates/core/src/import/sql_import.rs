@@ -325,8 +325,9 @@ impl Run<'_> {
         }
         // A SQL Server batch can hold a COMMIT or ROLLBACK among other
         // statements, or run one from a string; either would end the
-        // import's transaction and leave what came before it kept.
-        if self.wrapped && ends_transaction(&unit.text, self.grammar) {
+        // import's transaction and leave what came before it kept. A
+        // PostgreSQL PREPARE TRANSACTION hands it to two-phase commit.
+        if self.wrapped && (ends_transaction(&unit.text, self.grammar) || two_phase(&unit.text, self.grammar)) {
             self.failure(&unit, SqlImportFault::FileEndsTransaction);
             self.report.end = SqlImportEnd::Stopped;
             return;
@@ -547,6 +548,25 @@ fn ends_transaction(text: &str, grammar: SqlGrammar) -> bool {
     !module && words.iter().any(|word| word == "COMMIT" || word == "ROLLBACK")
 }
 
+/// PostgreSQL's PREPARE TRANSACTION, COMMIT PREPARED or ROLLBACK
+/// PREPARED, which take a transaction out of the session.
+fn two_phase(text: &str, grammar: SqlGrammar) -> bool {
+    if grammar != SqlGrammar::PostgreSql {
+        return false;
+    }
+    let plan = ScriptPlan::build(text, grammar, LexicalSettings::default_for(grammar));
+    let words: Vec<String> = plan
+        .tokens(0..text.len())
+        .filter(|token| !token.kind.is_trivia())
+        .take(2)
+        .filter_map(|token| text.get(token.range).map(str::to_ascii_uppercase))
+        .collect();
+    matches!(
+        words.iter().map(String::as_str).collect::<Vec<_>>().as_slice(),
+        ["PREPARE", "TRANSACTION"] | ["COMMIT" | "ROLLBACK", "PREPARED"]
+    )
+}
+
 /// The import keeps no rows: a dump's SELECTs, such as `setval`, are run
 /// for what they do.
 struct Discard;
@@ -568,6 +588,18 @@ mod tests {
         assert!(foreign_keys_off("pragma foreign_keys = 0;"));
         assert!(!foreign_keys_off("PRAGMA foreign_keys=ON"));
         assert!(!foreign_keys_off("PRAGMA defer_foreign_keys=OFF"));
+    }
+
+    #[test]
+    fn a_two_phase_command_is_told_from_a_prepared_statement() {
+        let pg = SqlGrammar::PostgreSql;
+
+        assert!(two_phase("PREPARE TRANSACTION 'load'", pg));
+        assert!(two_phase("commit prepared 'load'", pg));
+        assert!(two_phase("ROLLBACK PREPARED 'load'", pg));
+        assert!(!two_phase("PREPARE fetch_one AS SELECT 1", pg));
+        assert!(!two_phase("COMMIT", pg));
+        assert!(!two_phase("PREPARE TRANSACTION 'load'", SqlGrammar::MySql));
     }
 
     #[test]

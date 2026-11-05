@@ -80,6 +80,47 @@ pub(crate) fn keeps_own_rows(create: &str) -> bool {
     false
 }
 
+/// Whether the server wrote `'[HIDDEN]'` in place of a secret: in an
+/// engine's, a table function's or a dictionary source's arguments, or a
+/// setting. The same string as a column's default or a comment is text.
+pub(crate) fn hides_secret(create: &str) -> bool {
+    let tokens = tokens(create);
+    let mut depth = 0usize;
+    let mut seen_group = false;
+    let mut in_columns = false;
+    for (at, token) in tokens.iter().enumerate() {
+        match token.kind {
+            ScriptTokenKind::OpenParen => {
+                if depth == 0 && !seen_group {
+                    seen_group = true;
+                    let called = at
+                        .checked_sub(2)
+                        .and_then(|before| tokens.get(before))
+                        .is_some_and(|before| is_word(create, before, "AS") || token_text(create, before) == "=");
+                    in_columns = !called;
+                }
+                depth += 1;
+            }
+            ScriptTokenKind::CloseParen => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    in_columns = false;
+                }
+            }
+            ScriptTokenKind::StringLiteral if token_text(create, token) == "'[HIDDEN]'" => {
+                let comment = at
+                    .checked_sub(1)
+                    .is_some_and(|before| is_word(create, &tokens[before], "COMMENT"));
+                if !in_columns && !comment {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// Whether `create` makes a dictionary, rather than a table over one.
 pub(crate) fn is_dictionary(create: &str) -> bool {
     let tokens = tokens(create);
@@ -204,6 +245,23 @@ fn unquoted(text: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_secret_is_hidden_in_arguments_and_settings_only() {
+        assert!(hides_secret(
+            "CREATE TABLE app.r\n(\n    `id` UInt64\n)\nENGINE = MySQL('h:3306', 'db', 't', 'u', '[HIDDEN]')"
+        ));
+        assert!(hides_secret(
+            "CREATE DICTIONARY app.d (`id` UInt64) PRIMARY KEY id SOURCE(CLICKHOUSE(HOST 'h' PASSWORD '[HIDDEN]'))"
+        ));
+        assert!(hides_secret(
+            "CREATE TABLE app.s AS s3('https://h/b/f.csv', 'key', '[HIDDEN]')"
+        ));
+        assert!(!hides_secret(
+            "CREATE TABLE app.t\n(\n    `note` String DEFAULT '[HIDDEN]' COMMENT '[HIDDEN]'\n)\n\
+             ENGINE = MergeTree\nORDER BY tuple()\nCOMMENT '[HIDDEN]'"
+        ));
+    }
 
     #[test]
     fn the_database_qualifier_goes_from_every_name() {
