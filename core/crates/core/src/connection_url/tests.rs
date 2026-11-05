@@ -492,6 +492,11 @@ fn a_file_url_keeps_a_windows_drive_and_a_unix_path() {
     let duck = read("duckdb:///tmp/a%20b.duckdb?access_mode=read_only");
     assert_eq!(duck.driver_id, "duckdb");
     assert_eq!(duck.database, "/tmp/a b.duckdb");
+    assert!(duck.read_only, "the URL's read-only access was dropped");
+    let lite = read("sqlite:///home/ada/app.db?mode=ro&cache=shared");
+    assert!(lite.read_only);
+    assert_eq!(lite.unread, ["cache"]);
+    assert!(!read("sqlite:///home/ada/app.db?mode=rw").read_only);
 }
 
 #[test]

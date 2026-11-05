@@ -1069,7 +1069,7 @@
     <value>The URL asks for a protection TablePro can't enforce, such as requirepeer or require_auth.</value>
   </data>
   <data name="Error_url_settings_unsupported" xml:space="preserve">
-    <value>The URL needs a setting a connection here can't keep yet: a local socket, a DNS seed list, several hosts, an authentication database or required channel binding.</value>
+    <value>The URL needs a setting a connection here can't keep yet: a local socket, a DNS seed list, several hosts, an authentication database, required channel binding or read-only access.</value>
   </data>
   <data name="Error_library_name_required" xml:space="preserve">
     <value>Enter a name.</value>

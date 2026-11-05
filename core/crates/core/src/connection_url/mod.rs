@@ -26,6 +26,8 @@ pub struct ConnectionUrl {
     pub database: String,
     pub tls: UrlTls,
     pub options: NetworkOptions,
+    // A file opened read-only, which the connection holds to with Safe Mode's Read-Only.
+    pub read_only: bool,
     // Parameters the connection has no setting for, which the caller tells the user it did not use.
     pub unread: Vec<String>,
 }
@@ -133,7 +135,22 @@ fn split_scheme(body: &str) -> Result<(String, &str), ConnectionUrlError> {
 
 // `sqlite:///C:/data/app.db` keeps the drive letter, and `sqlite://app.db` is a relative name the form refuses.
 fn file_url(engine: Engine, rest: &str) -> Result<ConnectionUrl, ConnectionUrlError> {
-    let path = rest.split(['?', '#']).next().unwrap_or_default();
+    let (before_fragment, _) = rest.split_once('#').unwrap_or((rest, ""));
+    let (path, query) = before_fragment.split_once('?').unwrap_or((before_fragment, ""));
+    let mut read_only = false;
+    let mut unread = Vec::new();
+    for pair in parameters(query, false) {
+        let (key, value) = pair?;
+        let value = value.trim().to_ascii_lowercase();
+        // SQLite's `mode=ro` and DuckDB's `access_mode=read_only`.
+        match key.as_str() {
+            "mode" if value == "ro" => read_only = true,
+            "access_mode" if value == "read_only" => read_only = true,
+            "mode" | "access_mode" => {}
+            _ if !unread.contains(&key) => unread.push(key),
+            _ => {}
+        }
+    }
     let path = match path.strip_prefix("localhost") {
         Some(local) if local.starts_with('/') => local,
         _ => path,
@@ -152,7 +169,8 @@ fn file_url(engine: Engine, rest: &str) -> Result<ConnectionUrl, ConnectionUrlEr
         database: path,
         tls: UrlTls::default(),
         options: NetworkOptions::default(),
-        unread: Vec::new(),
+        read_only,
+        unread,
     })
 }
 
@@ -276,6 +294,7 @@ fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<Connectio
         database: draft.database,
         tls: draft.tls.resolve(),
         options: draft.options,
+        read_only: false,
         unread: draft.unread,
     })
 }

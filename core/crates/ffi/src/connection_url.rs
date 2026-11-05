@@ -70,6 +70,9 @@ fn unkept_setting(parsed: &ConnectionUrl) -> Option<&'static str> {
     if parsed.options.channel_binding {
         return Some("required channel binding");
     }
+    if parsed.read_only {
+        return Some("read-only access");
+    }
     // Without one the driver checks the login in the database, else in admin: the same database needs no field.
     let derived = Some(parsed.database.trim())
         .filter(|name| !name.is_empty())

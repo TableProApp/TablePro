@@ -400,6 +400,10 @@ impl ConnectForm {
         form.tags.clone_from(&current.tags);
         form.icon = current.icon;
         form.remember_password = current.remember_password;
+        // A file the URL opens read-only is held to it by Safe Mode, which the engine enforces for a file.
+        if url.read_only {
+            form.safe_mode = SafeModeLevel::ReadOnly;
+        }
         if caps.is_file_based() {
             form.file = Some(FileEndpoint::open_existing(PathBuf::from(&url.database))?);
             return Ok(form);
@@ -435,6 +439,17 @@ impl ConnectForm {
             if let Some(identity) = url.tls.client_identity {
                 form.tls.client_certificate = Some(identity.certificate);
                 form.tls.client_key = Some(identity.key);
+            }
+            // A name the engine cannot check on this route would be dropped, and the host checked instead.
+            if url.tls.server_name.is_some() {
+                let route = match (form.ssh.is_some(), is_local_socket_host(&form.host)) {
+                    (true, _) => TransportClass::SshForward,
+                    (false, true) => TransportClass::LocalSocket,
+                    (false, false) => TransportClass::DirectTcp,
+                };
+                if !shows_server_name(tls_caps, route) {
+                    return Err(ConfigError::ServerNameOverrideUnsupported { route });
+                }
             }
             form.tls.server_name = url.tls.server_name.unwrap_or_default();
         }
@@ -1493,6 +1508,32 @@ mod tests {
         assert_eq!(secrets.len(), 1);
         assert_eq!(secrets[0].kind, SecretKind::DatabasePassword);
         assert_eq!(secrets[0].secret.expose_secret(), "Url-Secret-42");
+    }
+
+    #[test]
+    fn a_read_only_file_url_opens_read_only_and_a_name_mysql_cannot_check_is_refused() {
+        let blank = ConnectForm::new("sqlite", sqlite());
+        let form = from_url("sqlite:///home/ada/app.db?mode=ro", sqlite(), &blank).expect("a form");
+        assert_eq!(form.safe_mode, SafeModeLevel::ReadOnly);
+
+        let refused = from_url(
+            "mysql://u:p@db.example.com/app?ssl-mode=VERIFY_IDENTITY&hostNameInCertificate=db.internal",
+            mysql(),
+            &ConnectForm::new("mysql", mysql()),
+        );
+        assert_eq!(
+            refused.err(),
+            Some(ConfigError::ServerNameOverrideUnsupported {
+                route: TransportClass::DirectTcp
+            })
+        );
+        let named = from_url(
+            "postgresql://u:p@db.example.com/app?sslmode=verify-full&hostNameInCertificate=db.internal",
+            postgres(),
+            &ConnectForm::new("postgres", postgres()),
+        )
+        .expect("PostgreSQL checks any name");
+        assert_eq!(named.tls.server_name, "db.internal");
     }
 
     #[test]
