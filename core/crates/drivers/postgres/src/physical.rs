@@ -101,7 +101,7 @@ impl PgEndpoint {
             Ok(Ok(connected)) => Ok(connected),
             Ok(Err(error)) => {
                 let started = handshake_started.load(Ordering::SeqCst);
-                let mapped = map_connect_error(&error, self.tls.requested(), started);
+                let mapped = map_connect_error(&error, self.tls.required(), started);
                 Err(self.explain(mapped).await)
             }
         }

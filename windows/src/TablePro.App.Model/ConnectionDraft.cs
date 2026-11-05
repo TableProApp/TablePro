@@ -38,6 +38,8 @@ public sealed class ConnectionDraft
 
     public bool SupportsClientIdentity { get; set; }
 
+    public ServerNameOverride ServerNameOverride { get; set; } = ServerNameOverride.Unsupported;
+
     public string Name { get; set; } = string.Empty;
 
     public string Host { get; set; } = string.Empty;
@@ -69,6 +71,9 @@ public sealed class ConnectionDraft
 
     public TlsMode TlsMode { get; set; } = TlsMode.Disable;
 
+    // A saved connection's mode was picked when it was saved; a new one follows the engine's default until the user picks.
+    public bool TlsModeChosen { get; set; }
+
     public string CaFile { get; set; } = string.Empty;
 
     public string ServerName { get; set; } = string.Empty;
@@ -93,6 +98,14 @@ public sealed class ConnectionDraft
 
     public bool UsesClientIdentity => SupportsClientIdentity && TlsMode != TlsMode.Disable;
 
+    // MySQL checks the host it dials, so another name works only where the dial goes through an SSH forward.
+    public bool ShowsServerName => VerifiesCertificate && ServerNameOverride switch
+    {
+        ServerNameOverride.AnyRoute => true,
+        ServerNameOverride.SshForwardOnly => UseSsh,
+        _ => false,
+    };
+
     public static ConnectionDraft New(DatabaseEngine engine)
     {
         ArgumentNullException.ThrowIfNull(engine);
@@ -101,8 +114,10 @@ public sealed class ConnectionDraft
             EngineId = engine.Id,
             IsFileEngine = engine.DefaultPort is null,
             SupportsClientIdentity = engine.SupportsClientIdentity,
+            ServerNameOverride = engine.ServerNameOverride,
             Host = engine.DefaultPort is null ? string.Empty : "localhost",
             Port = engine.DefaultPort?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+            TlsMode = engine.NewConnectionTls(engine.DefaultPort),
         };
     }
 
@@ -117,6 +132,7 @@ public sealed class ConnectionDraft
             EngineId = connection.EngineId,
             IsFileEngine = engine.DefaultPort is null,
             SupportsClientIdentity = engine.SupportsClientIdentity,
+            ServerNameOverride = engine.ServerNameOverride,
             Name = connection.Name,
             Host = connection.Host,
             Port = connection.Port > 0 ? connection.Port.ToString(CultureInfo.InvariantCulture) : string.Empty,
@@ -130,6 +146,7 @@ public sealed class ConnectionDraft
             SshAuth = connection.Ssh?.Auth ?? SshAuthMethod.Agent,
             SshKeyPath = connection.Ssh?.KeyPath ?? string.Empty,
             TlsMode = connection.Tls.Mode,
+            TlsModeChosen = true,
             CaFile = connection.Tls.CaFile ?? string.Empty,
             ServerName = connection.Tls.ServerName ?? string.Empty,
             ClientCertificate = connection.Tls.ClientCertificate ?? string.Empty,
@@ -149,14 +166,32 @@ public sealed class ConnectionDraft
         EngineId = url.EngineId;
         IsFileEngine = engine.DefaultPort is null;
         SupportsClientIdentity = engine.SupportsClientIdentity;
+        ServerNameOverride = engine.ServerNameOverride;
         Host = url.Host;
         Port = (url.Port ?? engine.DefaultPort)?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
         UserName = url.UserName;
         Password = url.Password ?? Password;
         Database = url.Database;
-        if (url.TlsMode is { } mode)
+        // A mode the engine lacks, such as sslmode=prefer on SQL Server, leaves the engine's default.
+        if (url.TlsMode is { } mode && engine.SupportedTlsModes.Contains(mode))
         {
             TlsMode = mode;
+            TlsModeChosen = true;
+        }
+        else
+        {
+            TlsModeChosen = false;
+            FollowTlsDefault(engine);
+        }
+    }
+
+    public void FollowTlsDefault(DatabaseEngine engine)
+    {
+        ArgumentNullException.ThrowIfNull(engine);
+        if (!TlsModeChosen || !engine.SupportedTlsModes.Contains(TlsMode))
+        {
+            TlsMode = engine.NewConnectionTls(ParsePort(Port));
+            TlsModeChosen = false;
         }
     }
 
@@ -254,7 +289,7 @@ public sealed class ConnectionDraft
                 VerifiesCertificate ? Blank(CaFile) : null,
                 UsesClientIdentity ? Blank(ClientCertificate) : null,
                 UsesClientIdentity ? Blank(ClientKey) : null,
-                VerifiesCertificate ? Blank(ServerName) : null),
+                ShowsServerName ? Blank(ServerName) : null),
             SafeMode,
             IntegratedAuth: IntegratedAuth,
             Ssh: UseSsh

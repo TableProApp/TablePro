@@ -143,6 +143,19 @@ fn fill_network(dialog: &ConnectDialog) {
     imp.password_row.set_text("s3cret");
 }
 
+/// Pick an encryption mode in the dialog, as the user does.
+fn select_mode(dialog: &ConnectDialog, mode: TlsMode) {
+    let section = dialog.imp().tls_section.get();
+    let index = section
+        .imp()
+        .modes
+        .borrow()
+        .iter()
+        .position(|offered| *offered == mode)
+        .unwrap_or_else(|| panic!("{mode:?} is not offered"));
+    section.imp().encryption_row.set_selected(index as u32);
+}
+
 fn caps_of(driver_id: &str) -> &'static DriverCapabilities {
     registry()
         .get(driver_id)
@@ -337,8 +350,33 @@ fn encryption_combo_lists_only_capability_modes() {
             tls.modes.len(),
             "{driver_id}"
         );
-        assert_eq!(harness.dialog.form().tls.mode, TlsMode::VerifyFull, "{driver_id}");
+        assert_eq!(harness.dialog.form().tls.mode, tls.default_mode, "{driver_id}");
     }
+}
+
+#[gtk4::test]
+fn the_encryption_row_follows_the_default_until_a_mode_is_picked() {
+    let harness = dialog();
+    let imp = harness.dialog.imp();
+    let mode = || harness.dialog.form().tls.mode;
+
+    select(&harness.dialog, "mongodb");
+    assert_eq!(mode(), TlsMode::Disable);
+    imp.seed_list_row.set_active(true);
+    assert_eq!(mode(), TlsMode::VerifyFull, "a seed list starts TLS on");
+    imp.seed_list_row.set_active(false);
+    assert_eq!(mode(), TlsMode::Disable);
+
+    select(&harness.dialog, "clickhouse");
+    imp.port_row.set_value(8443.0);
+    assert_eq!(mode(), TlsMode::VerifyFull, "the HTTPS port starts TLS on");
+
+    select_mode(&harness.dialog, TlsMode::Require);
+    imp.port_row.set_value(8123.0);
+    assert_eq!(mode(), TlsMode::Require, "a picked mode followed the port");
+
+    select(&harness.dialog, "postgres");
+    assert_eq!(mode(), TlsMode::Require, "a picked mode followed the driver");
 }
 
 /// Each encryption mode and SSH method beside the subtitle that
@@ -664,6 +702,7 @@ fn a_test_connect_runs_under_the_connection_query_timeout() {
 fn connect_insensitive_while_pem_check_pending() {
     let harness = dialog();
     fill_network(&harness.dialog);
+    select_mode(&harness.dialog, TlsMode::VerifyFull);
     let root = tempfile::tempdir().expect("tempdir");
     let ca = root.path().join("ca.pem");
     std::fs::write(&ca, b"-----BEGIN CERTIFICATE-----\nnot base64\n").expect("write");
@@ -689,6 +728,7 @@ fn invalid_ca_marks_row_error_and_disables_connect() {
     let ca = root.path().join("ca.pem");
     std::fs::write(&ca, b"this is not a certificate").expect("write");
     let imp = harness.dialog.imp();
+    select_mode(&harness.dialog, TlsMode::VerifyFull);
 
     imp.tls_section.set_file_path(FormField::CaFile, Some(ca));
     wait_until(WAIT, || matches!(imp.pem.state(), PemState::Invalid(_))).expect("the file check");
@@ -747,7 +787,7 @@ fn connect_emits_submission_without_establishing() {
     let RequestTarget::Network { tls, .. } = &submission.request.target else {
         panic!("expected a network target");
     };
-    assert_eq!(tls.mode, TlsMode::VerifyFull);
+    assert_eq!(tls.mode, TlsMode::Prefer);
 }
 
 #[gtk4::test]

@@ -3,6 +3,7 @@ namespace TablePro.Interop;
 public enum TlsMode
 {
     Disable,
+    Prefer,
     Require,
     VerifyFull,
     Strict,

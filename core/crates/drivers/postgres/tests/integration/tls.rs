@@ -163,6 +163,56 @@ async fn server_without_ssl_reports_server_refused_tls() {
     );
 }
 
+fn prefer() -> TlsConfig {
+    TlsConfig {
+        mode: TlsMode::Prefer,
+        ..TlsConfig::disabled()
+    }
+}
+
+/// Prefer goes on in plaintext after the server answers 'N', as libpq's
+/// `prefer` does: a new connection to a local server without TLS works.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn prefer_connects_to_a_server_without_ssl() {
+    let fixture = start().await;
+    let liveness = test_liveness();
+    let options = options_over(
+        direct(fixture.host(), fixture.port(), &liveness),
+        password(&fixture.password_credentials()),
+        fixture.database(),
+        prefer(),
+        WorkspaceSettings::workspace(false),
+        liveness,
+    );
+
+    let outcome = PgDriver.connect(options, CancellationToken::new()).await;
+
+    assert!(outcome.is_ok(), "got {:?}", outcome.err());
+}
+
+/// The server takes only TLS logins, and its certificate comes from a CA
+/// the system does not trust, so a login under Prefer proves it encrypted
+/// without checking the certificate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn prefer_encrypts_where_the_server_offers_tls_and_checks_no_certificate() {
+    let fixture = start_with_pki(PkiAlgorithm::RsaSha256).await;
+    let liveness = test_liveness();
+    let options = options_over(
+        direct(fixture.host(), fixture.port(), &liveness),
+        password(&fixture.password_credentials()),
+        fixture.database(),
+        prefer(),
+        WorkspaceSettings::workspace(false),
+        liveness,
+    );
+
+    let outcome = PgDriver.connect(options, CancellationToken::new()).await;
+
+    assert!(outcome.is_ok(), "got {:?}", outcome.err());
+}
+
 /// pg_hba.conf turns a plaintext login away with SQLSTATE 28000, a rule
 /// of the server's that no other password gets past.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

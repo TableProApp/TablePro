@@ -23,7 +23,7 @@ use tablepro_core::{
     APPLICATION_NAME, ConfigError, ConnectEnvironment, Credentials, DriverError, LivenessPolicy, LossPhase,
     NetworkTarget, ServerCode, ServerInfo, TimeoutPhase, TlsFailure, Transport,
 };
-use tablepro_net::tls::{TlsSetupError, build_client_config_checking, set_up_off_runtime};
+use tablepro_net::tls::{TlsSetupError, build_client_config_checking, serves_tls, set_up_off_runtime};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -52,6 +52,7 @@ pub(crate) struct CqlEndpoint {
     transport: Arc<dyn Transport>,
     login: Option<(String, SecretString)>,
     tls: Option<Arc<rustls::ClientConfig>>,
+    tls_server_name: String,
     keyspace: Option<String>,
     liveness: LivenessPolicy,
     client_version: String,
@@ -68,7 +69,8 @@ impl CqlEndpoint {
         };
         let login = (!username.is_empty()).then(|| (username.clone(), password.clone()));
         let tls_config = target.tls.clone();
-        let name = rustls_pki_types::ServerName::try_from(target.tls_server_name().to_owned())
+        let tls_server_name = target.tls_server_name().to_owned();
+        let name = rustls_pki_types::ServerName::try_from(tls_server_name.clone())
             .map_err(|_| DriverError::Config(ConfigError::InvalidServerName))?;
         let tls =
             set_up_off_runtime(move || build_client_config_checking(&tls_config, name).map_err(setup_error)).await?;
@@ -76,6 +78,7 @@ impl CqlEndpoint {
             transport: target.transport.clone(),
             login,
             tls,
+            tls_server_name,
             keyspace: target.database.clone().filter(|keyspace| !keyspace.is_empty()),
             liveness,
             client_version: environment.client_version.clone(),
@@ -144,7 +147,13 @@ impl CqlEndpoint {
                     )
                     .await);
             }
-            Ok(Err(error)) => return Err(self.explain(&relay, new_session_error(error)).await),
+            Ok(Err(error)) => {
+                let failed = self.explain(&relay, new_session_error(error)).await;
+                return Err(tokio::select! {
+                    () = cancel.cancelled() => DriverError::Cancelled,
+                    refused = self.refused_in_the_clear(failed, until) => refused,
+                });
+            }
             Ok(Ok(session)) => session,
         };
         let link = CqlLink {
@@ -167,6 +176,21 @@ impl CqlEndpoint {
                     },
                 )
                 .await),
+        }
+    }
+
+    // A node that takes only TLS drops a connect in the clear unanswered, which a handshake of its own tells apart.
+    async fn refused_in_the_clear(&self, failed: DriverError, until: Instant) -> DriverError {
+        if self.tls.is_some() || !matches!(failed, DriverError::ConnectionLost { .. }) {
+            return failed;
+        }
+        let within = until.saturating_duration_since(Instant::now());
+        if !serves_tls(self.transport.as_ref(), &self.tls_server_name, within).await {
+            return failed;
+        }
+        DriverError::Tls {
+            failure: TlsFailure::ServerRequiresTls,
+            detail: failed.to_string(),
         }
     }
 

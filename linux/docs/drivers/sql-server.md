@@ -24,6 +24,8 @@ An Azure SQL gateway or an availability group listener can answer a login with a
 
 ## TLS
 
+A new connection starts on `VerifyFull`, as ODBC Driver 18, Microsoft.Data.SqlClient and SSMS do with `Encrypt=Mandatory` and `TrustServerCertificate=false` ([core ADR 0011](../../../core/docs/decisions/0011-tls-mode-of-a-new-connection.md)). A server with a certificate it made itself then reports `UnknownIssuer`, which its CA file or `Require` settles. There is no `Prefer`.
+
 Up to `VerifyFull`, TLS is negotiated inside the TDS 7.4 pre-login exchange, after the server has said what encryption it supports. `Strict` is TDS 8.0: the TLS handshake comes first, with the ALPN protocol `tds/8.0`, and the pre-login and everything after it run inside it.
 
 | `TlsMode` | tiberius setting | Certificate check |

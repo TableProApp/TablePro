@@ -105,14 +105,14 @@ A driver maps the codes the app acts on to their own variants and passes everyth
 
 ## `TlsFailure` and its remedies
 
-Drivers classify a handshake failure with `tablepro_net::tls::classify`, which walks the error's sources to the rustls error. SQL Server reads rustls's message text instead, because tiberius keeps only the text. Where the driver can tell, a failure before the server agreed to TLS is `ServerRefusedTls`, never a certificate problem.
+Drivers classify a handshake failure with `tablepro_net::tls::classify`, which walks the error's sources to the rustls error. SQL Server reads rustls's message text instead, because tiberius keeps only the text. Where the driver can tell, a failure before the server agreed to TLS is `ServerRefusedTls`, never a certificate problem. Under Disable, an engine that decides TLS by the port checks a plain login the server dropped with a TLS handshake of its own, sent with no credential, and reports a server that completes it as `ServerRequiresTls`.
 
 | `TlsFailure` | Cause | What the app offers |
 |---|---|---|
 | `UnknownIssuer` | The certificate's issuer is not in the trust set. | **Choose CA Certificate…**, which opens the connect dialog at the CA file row. |
 | `NameMismatch` | The certificate is for another name. | **Set TLS Server Name**, which opens the connect dialog at the server name row, where the route shows that row; MySQL over a direct route checks the host it dials and offers only **Edit Connection…**. |
 | `Expired`, `NotYetValid`, `Revoked` | The certificate itself is bad. | Nothing: the server's certificate has to be replaced. |
-| `ServerRefusedTls` | The server does not speak TLS on this port. | The message; turn TLS off or use the TLS port. |
+| `ServerRefusedTls` | The server does not speak TLS on this port. | **Change Encryption**, which opens the connect dialog at the Encryption row: Prefer or Disable reaches a server without TLS. |
 | `ServerRequiresTls` | TLS was off and the server insists on it. | **Change Encryption**, which opens the connect dialog at the Encryption row. |
 | `ServerRefusedStrict` | SQL Server closed a strict (TDS 8.0) login before answering: it does not speak TDS 8.0 (before 2022 on Windows, before 2025 on Linux) or has no certificate for it. | **Change Encryption**; Verify full suits an older server. |
 | `ServerRequiresStrict` | SQL Server closed a TDS 7.4 login before answering, as a server that requires strict encryption does. | **Change Encryption**, to Strict. |

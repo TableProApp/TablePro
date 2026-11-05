@@ -39,9 +39,11 @@ Results stream as `JSONCompactEachRowWithNamesAndTypes`, and each cell is read b
 
 ## TLS
 
+- A new connection starts on `Disable`, as clickhouse-client does, and on `VerifyFull` while the port is 8443 or 443, which serve only HTTPS ([core ADR 0011](../../../core/docs/decisions/0011-tls-mode-of-a-new-connection.md)).
 - `VerifyFull` trusts the system store plus the connection's CA file ([Trust](../../../core/ARCHITECTURE.md#trust)) and checks the name from `NetworkTarget::tls_server_name()`. `Require` encrypts without checking the certificate.
 - With a client certificate set, the driver sends `X-ClickHouse-SSL-Certificate-Auth: on` and no password, and the server logs the user in by the certificate's common name (`ssl_certificates` in the user's configuration).
 - The crate's own TLS features stay off, so there is one TLS stack.
+- With TLS off, a login the server drops, as the HTTPS port drops plain HTTP, is checked with a TLS handshake of its own, which sends no credential, and is reported as `TlsFailure::ServerRequiresTls` when the server completes it.
 
 ## Read-only
 

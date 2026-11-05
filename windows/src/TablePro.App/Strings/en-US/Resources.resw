@@ -564,6 +564,9 @@
   <data name="TlsMode_Disable" xml:space="preserve">
     <value>Off</value>
   </data>
+  <data name="TlsMode_Prefer" xml:space="preserve">
+    <value>Preferred, any certificate</value>
+  </data>
   <data name="TlsMode_Require" xml:space="preserve">
     <value>Required, any certificate</value>
   </data>
@@ -1449,8 +1452,14 @@ New fingerprint: {2}</value>
   <data name="ServerNameBox.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Certificate host name</value>
   </data>
-  <data name="ChangeEncryptionButton.Content" xml:space="preserve">
+  <data name="TlsRemedy_ChangeEncryption" xml:space="preserve">
     <value>Change encryption</value>
+  </data>
+  <data name="TlsRemedy_ChooseCaCertificate" xml:space="preserve">
+    <value>Choose CA certificate</value>
+  </data>
+  <data name="TlsRemedy_SetServerName" xml:space="preserve">
+    <value>Set TLS server name</value>
   </data>
   <data name="TlsFailure_ServerRequiresStrict" xml:space="preserve">
     <value>This server requires Strict encryption. Choose Strict to connect.</value>
@@ -1477,7 +1486,7 @@ New fingerprint: {2}</value>
     <value>The server certificate has been revoked. Ask the server administrator to replace it.</value>
   </data>
   <data name="TlsFailure_ServerRefusedTls" xml:space="preserve">
-    <value>This server refused encryption. Check its TLS configuration.</value>
+    <value>This server does not accept encryption on this port. Choose another encryption mode, or its TLS port.</value>
   </data>
   <data name="TlsFailure_HandshakeRejected" xml:space="preserve">
     <value>The server rejected the TLS handshake. Check its TLS configuration and client certificate.</value>

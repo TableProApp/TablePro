@@ -7,6 +7,21 @@ public sealed class ConnectionDraftTests
     private static readonly DatabaseEngine Postgres = new("postgres", "PostgreSQL", DataModel.Relational, 5432, [])
     {
         SupportsClientIdentity = true,
+        SupportedTlsModes = [TlsMode.Disable, TlsMode.Prefer, TlsMode.Require, TlsMode.VerifyFull],
+        DefaultTlsMode = TlsMode.Prefer,
+        ServerNameOverride = ServerNameOverride.AnyRoute,
+    };
+    private static readonly DatabaseEngine MySql = new("mysql", "MySQL", DataModel.Relational, 3306, [])
+    {
+        SupportedTlsModes = [TlsMode.Disable, TlsMode.Prefer, TlsMode.Require, TlsMode.VerifyFull],
+        DefaultTlsMode = TlsMode.Prefer,
+        ServerNameOverride = ServerNameOverride.SshForwardOnly,
+    };
+    private static readonly DatabaseEngine ClickHouse = new("clickhouse", "ClickHouse", DataModel.Relational, 8123, [])
+    {
+        SupportedTlsModes = [TlsMode.Disable, TlsMode.Require, TlsMode.VerifyFull],
+        DefaultTlsMode = TlsMode.Disable,
+        TlsPorts = [443, 8443],
     };
     private static readonly DatabaseEngine Sqlite = new("sqlite", "SQLite", DataModel.Relational, null, ["sqlite", "db"]);
 
@@ -112,7 +127,10 @@ public sealed class ConnectionDraftTests
     [Fact]
     public void StrictAndIntegratedAuthenticationSurviveEditing()
     {
-        var engine = new DatabaseEngine("mssql", "SQL Server", DataModel.Relational, 1433, []);
+        var engine = new DatabaseEngine("mssql", "SQL Server", DataModel.Relational, 1433, [])
+        {
+            ServerNameOverride = ServerNameOverride.AnyRoute,
+        };
         var saved = new SavedConnection(
             Guid.NewGuid(), "prod", "mssql", "127.0.0.1", 1433, "shop", "saved-user",
             new TlsSettings(TlsMode.Strict, CaFile: @"C:\ca.pem", ServerName: "db.example.com"),
@@ -172,6 +190,7 @@ public sealed class ConnectionDraftTests
     public void AnInactiveClientIdentityDoesNotBlockValidation()
     {
         var draft = ConnectionDraft.New(Postgres);
+        draft.TlsMode = TlsMode.Disable;
         draft.ClientCertificate = AbsolutePath("client.pem");
         Assert.Empty(draft.Validate());
         Assert.Null(draft.ToConnection().Tls.ClientCertificate);
@@ -205,6 +224,85 @@ public sealed class ConnectionDraftTests
         Assert.Null(edited.Secrets().DatabasePassword);
         Assert.Equal("new", retyped.Secrets().DatabasePassword);
         Assert.Equal(ConnectionSecrets.None, ConnectionDraft.New(Sqlite).Secrets());
+    }
+
+    [Fact]
+    public void ANewConnectionStartsOnTheEnginesTlsDefault()
+    {
+        Assert.Equal(TlsMode.Prefer, ConnectionDraft.New(Postgres).TlsMode);
+        Assert.Equal(TlsMode.Disable, ConnectionDraft.New(ClickHouse).TlsMode);
+        Assert.False(ConnectionDraft.New(Postgres).TlsModeChosen);
+    }
+
+    [Fact]
+    public void TheModeFollowsATlsPortUntilTheUserPicksOne()
+    {
+        var draft = ConnectionDraft.New(ClickHouse);
+
+        draft.Port = "8443";
+        draft.FollowTlsDefault(ClickHouse);
+        Assert.Equal(TlsMode.VerifyFull, draft.TlsMode);
+
+        draft.Port = "8123";
+        draft.FollowTlsDefault(ClickHouse);
+        Assert.Equal(TlsMode.Disable, draft.TlsMode);
+
+        draft.TlsMode = TlsMode.Require;
+        draft.TlsModeChosen = true;
+        draft.Port = "8443";
+        draft.FollowTlsDefault(ClickHouse);
+        Assert.Equal(TlsMode.Require, draft.TlsMode);
+    }
+
+    [Fact]
+    public void ASavedModeStaysWhenThePortMoves()
+    {
+        var saved = new SavedConnection(
+            Guid.NewGuid(), "Cloud", "clickhouse", "abc.clickhouse.cloud", 8443, "", "default",
+            new TlsSettings(TlsMode.VerifyFull));
+        var draft = ConnectionDraft.From(saved, ClickHouse);
+
+        draft.Port = "8444";
+        draft.FollowTlsDefault(ClickHouse);
+
+        Assert.Equal(TlsMode.VerifyFull, draft.TlsMode);
+    }
+
+    [Fact]
+    public void AUrlThatNamesNoModeStartsOnTheDefaultForItsPort()
+    {
+        var draft = ConnectionDraft.New(ClickHouse);
+
+        draft.Apply(new ParsedConnectionUrl("clickhouse", "abc.clickhouse.cloud", 8443, "default", null, "", null), ClickHouse);
+
+        Assert.Equal(TlsMode.VerifyFull, draft.TlsMode);
+    }
+
+    [Fact]
+    public void AServerNameIsKeptOnlyWhereTheEngineCanCheckIt()
+    {
+        var draft = ConnectionDraft.New(MySql);
+        draft.TlsMode = TlsMode.VerifyFull;
+        draft.ServerName = "db.internal";
+
+        Assert.False(draft.ShowsServerName);
+        Assert.Null(draft.ToConnection().Tls.ServerName);
+
+        draft.UseSsh = true;
+        draft.SshHost = "bastion";
+        Assert.True(draft.ShowsServerName);
+        Assert.Equal("db.internal", draft.ToConnection().Tls.ServerName);
+    }
+
+    [Fact]
+    public void AUrlModeTheEngineLacksLeavesItsDefault()
+    {
+        var draft = ConnectionDraft.New(ClickHouse);
+
+        draft.Apply(new ParsedConnectionUrl("clickhouse", "db.example.com", 8123, "default", null, "", TlsMode.Prefer), ClickHouse);
+
+        Assert.Equal(TlsMode.Disable, draft.TlsMode);
+        Assert.False(draft.TlsModeChosen);
     }
 
     [Fact]

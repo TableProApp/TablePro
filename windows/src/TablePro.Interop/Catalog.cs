@@ -8,6 +8,14 @@ public enum DataModel
 }
 
 // The family the connect dialog lists an engine under, in the order it lists them.
+// Where the certificate can be checked against a name other than the host.
+public enum ServerNameOverride
+{
+    AnyRoute,
+    SshForwardOnly,
+    Unsupported,
+}
+
 public enum EngineCategory
 {
     Relational,
@@ -27,6 +35,23 @@ public sealed record DatabaseEngine(
     EngineCategory Category = EngineCategory.Relational)
 {
     public IReadOnlyList<TlsMode> SupportedTlsModes { get; init; } = [];
+
+    public TlsMode DefaultTlsMode { get; init; }
+
+    public IReadOnlyList<int> TlsPorts { get; init; } = [];
+
+    public ServerNameOverride ServerNameOverride { get; init; } = ServerNameOverride.Unsupported;
+
+    public bool ShowsServerName(bool overSsh) => ServerNameOverride switch
+    {
+        ServerNameOverride.AnyRoute => true,
+        ServerNameOverride.SshForwardOnly => overSsh,
+        _ => false,
+    };
+
+    // The core's rule (core/docs/decisions/0011-tls-mode-of-a-new-connection.md).
+    public TlsMode NewConnectionTls(int? port) =>
+        port is { } number && TlsPorts.Contains(number) ? TlsMode.VerifyFull : DefaultTlsMode;
 
     public bool SupportsIntegratedAuth { get; init; }
 

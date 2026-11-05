@@ -6,7 +6,6 @@ use tablepro_core::{AiPolicy, DriverCapabilities, DriverRegistry, ExternalAccess
 use tablepro_storage::{ImportChange, ImportEntry, ImportPreview, SavedSshConfig};
 
 use crate::services::saved_connection_object::subtitle_for;
-use crate::ui::connect_dialog::ConnectForm;
 
 pub(crate) const IMPORT: &str = "import";
 const CANCEL: &str = "cancel";
@@ -78,7 +77,7 @@ fn entry_text(entry: &ImportEntry, drivers: &DriverRegistry) -> EntryText {
                 lines.extend(saved.ssh.as_ref().map(ssh_hop));
             }
             if let Some(caps) = caps {
-                let new_connection = ConnectForm::new(&saved.driver_id, caps).tls.mode;
+                let new_connection = caps.new_connection_tls(saved.port, &saved.options);
                 lines.extend(looser_tls(saved.tls.mode, new_connection));
             }
             lines.extend(looser_settings(saved.external_access, saved.ai_policy));
@@ -150,6 +149,11 @@ fn looser_tls(mode: TlsMode, new_connection: TlsMode) -> Option<String> {
     if new_connection.encrypts() && !mode.encrypts() {
         return Some(crate::i18n::gettext("Connects without TLS"));
     }
+    if new_connection.requires_tls() && !mode.requires_tls() {
+        return Some(crate::i18n::gettext(
+            "Connects without TLS when the server does not offer it",
+        ));
+    }
     if new_connection.verifies_certificate() && !mode.verifies_certificate() {
         return Some(crate::i18n::gettext(
             "Connects over TLS without checking the certificate",
@@ -209,6 +213,24 @@ mod tests {
         assert_eq!(looser_tls(TlsMode::Require, TlsMode::Require), None);
         // A driver without TLS starts a new connection with none.
         assert_eq!(looser_tls(TlsMode::Disable, TlsMode::Disable), None);
+    }
+
+    #[test]
+    fn prefer_is_looser_than_a_mode_that_requires_tls_and_not_than_itself() {
+        assert_eq!(
+            looser_tls(TlsMode::Disable, TlsMode::Prefer).as_deref(),
+            Some("Connects without TLS")
+        );
+        assert_eq!(looser_tls(TlsMode::Prefer, TlsMode::Prefer), None);
+        assert_eq!(looser_tls(TlsMode::Require, TlsMode::Prefer), None);
+        assert_eq!(
+            looser_tls(TlsMode::Prefer, TlsMode::Require).as_deref(),
+            Some("Connects without TLS when the server does not offer it")
+        );
+        assert_eq!(
+            looser_tls(TlsMode::Prefer, TlsMode::VerifyFull).as_deref(),
+            Some("Connects without TLS when the server does not offer it")
+        );
     }
 
     #[test]

@@ -360,6 +360,52 @@ async fn disabled_against_require_secure_transport() {
     }
 }
 
+/// Prefer is sqlx's `Preferred`, as the mysql client's `PREFERRED`: a
+/// server without TLS is reached in plaintext, and one with TLS is
+/// encrypted with its certificate, which no system root vouches for,
+/// left unchecked.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires docker"]
+async fn prefer_encrypts_where_the_server_offers_tls_and_connects_where_it_does_not() {
+    let prefer = TlsConfig {
+        mode: TlsMode::Prefer,
+        ..TlsConfig::disabled()
+    };
+    for flavour in FLAVOURS {
+        let tls_off = match flavour {
+            MysqlFlavour::Mysql => "--tls-version=",
+            MysqlFlavour::Mariadb => "--skip-ssl",
+        };
+        let plain = start_with(
+            MysqlOptions::new(flavour)
+                .allowing_plaintext()
+                .with_server_argument(tls_off),
+        )
+        .await;
+        let with_tls = start_with(MysqlOptions::new(flavour).allowing_plaintext()).await;
+        for (fixture, encrypted) in [(&plain, false), (&with_tls, true)] {
+            let liveness = test_liveness();
+            let options = options_over(
+                direct(fixture.host(), fixture.port(), &liveness),
+                password(&fixture.root_credentials()),
+                fixture.database(),
+                prefer.clone(),
+                WorkspaceSettings::workspace(false),
+                liveness,
+            );
+
+            let connection = MysqlDriver
+                .connect(options, CancellationToken::new())
+                .await
+                .unwrap_or_else(|error| panic!("{flavour:?}, TLS {encrypted}: {error:?}"));
+
+            let version = ssl_version(connection.as_ref()).await;
+            assert_eq!(version.starts_with("TLS"), encrypted, "{flavour:?}: {version:?}");
+            connection.close().await.expect("a close");
+        }
+    }
+}
+
 /// A CA that did not issue the server's certificate is named as such.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires docker"]

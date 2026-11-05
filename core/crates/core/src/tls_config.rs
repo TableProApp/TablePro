@@ -129,12 +129,14 @@ fn validate_server_name(
 mod tests {
     use super::*;
 
-    const ALL_MODES: &[TlsMode] = &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull];
+    const ALL_MODES: &[TlsMode] = &[TlsMode::Disable, TlsMode::Prefer, TlsMode::Require, TlsMode::VerifyFull];
     const MSSQL_MODES: &[TlsMode] = &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull, TlsMode::Strict];
     const ROUTES: [TransportClass; 2] = [TransportClass::DirectTcp, TransportClass::SshForward];
 
     const POSTGRES: TlsCapabilities = TlsCapabilities {
         modes: ALL_MODES,
+        default_mode: TlsMode::Prefer,
+        tls_ports: &[],
         ca_file: true,
         client_identity: true,
         server_name_override: ServerNameOverride::AnyRoute,
@@ -145,11 +147,14 @@ mod tests {
     };
     const MSSQL: TlsCapabilities = TlsCapabilities {
         modes: MSSQL_MODES,
+        default_mode: TlsMode::VerifyFull,
         client_identity: false,
         ..POSTGRES
     };
     const VERIFY_ONLY: TlsCapabilities = TlsCapabilities {
         modes: &[TlsMode::VerifyFull],
+        default_mode: TlsMode::VerifyFull,
+        tls_ports: &[],
         ca_file: false,
         client_identity: false,
         server_name_override: ServerNameOverride::Unsupported,
@@ -334,6 +339,13 @@ mod tests {
                 MSSQL,
                 TransportClass::DirectTcp,
                 Err(ConfigError::RelativePath),
+            ),
+            (
+                "ca file with prefer, which checks no certificate",
+                with_ca_file(TlsMode::Prefer, "/etc/tls/ca.pem"),
+                POSTGRES,
+                TransportClass::DirectTcp,
+                Err(ConfigError::CaFileUnsupported),
             ),
             (
                 "ca file with require, which checks no certificate",

@@ -49,12 +49,12 @@ pub(crate) fn map_error(error: &tokio_postgres::Error) -> DriverError {
 /// handshake began means the server never agreed to TLS at all.
 pub(crate) fn map_connect_error(
     error: &tokio_postgres::Error,
-    tls_requested: bool,
+    tls_required: bool,
     handshake_started: bool,
 ) -> DriverError {
     let mapped = map_error(error);
     match mapped {
-        DriverError::Tls { detail, .. } if tls_requested && !handshake_started => DriverError::Tls {
+        DriverError::Tls { detail, .. } if tls_required && !handshake_started => DriverError::Tls {
             failure: TlsFailure::ServerRefusedTls,
             detail,
         },

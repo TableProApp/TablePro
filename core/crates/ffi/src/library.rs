@@ -18,9 +18,34 @@ use crate::runtime::on_runtime;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum TlsModeTag {
     Disable,
+    Prefer,
     Require,
     VerifyFull,
     Strict,
+}
+
+impl From<TlsMode> for TlsModeTag {
+    fn from(mode: TlsMode) -> Self {
+        match mode {
+            TlsMode::Disable => Self::Disable,
+            TlsMode::Prefer => Self::Prefer,
+            TlsMode::Require => Self::Require,
+            TlsMode::VerifyFull => Self::VerifyFull,
+            TlsMode::Strict => Self::Strict,
+        }
+    }
+}
+
+impl From<TlsModeTag> for TlsMode {
+    fn from(tag: TlsModeTag) -> Self {
+        match tag {
+            TlsModeTag::Disable => Self::Disable,
+            TlsModeTag::Prefer => Self::Prefer,
+            TlsModeTag::Require => Self::Require,
+            TlsModeTag::VerifyFull => Self::VerifyFull,
+            TlsModeTag::Strict => Self::Strict,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
@@ -535,16 +560,8 @@ fn path(text: Option<&String>) -> Option<PathBuf> {
 }
 
 fn tls_config(settings: &TlsSettings) -> TlsConfig {
-    let mut config = match settings.mode {
-        TlsModeTag::Disable => TlsConfig::disabled(),
-        TlsModeTag::Require | TlsModeTag::VerifyFull | TlsModeTag::Strict => TlsConfig::verify_full(),
-    };
-    config.mode = match settings.mode {
-        TlsModeTag::Disable => TlsMode::Disable,
-        TlsModeTag::Require => TlsMode::Require,
-        TlsModeTag::VerifyFull => TlsMode::VerifyFull,
-        TlsModeTag::Strict => TlsMode::Strict,
-    };
+    let mut config = TlsConfig::disabled();
+    config.mode = settings.mode.into();
     config.ca_file = path(settings.ca_file.as_ref());
     config.client_identity = match (
         path(settings.client_certificate.as_ref()),
@@ -607,12 +624,7 @@ impl From<&SavedConnection> for ConnectionRecord {
             username: saved.username.clone(),
             integrated_auth: saved.auth_mode == AuthMode::Kerberos,
             tls: TlsSettings {
-                mode: match saved.tls.mode {
-                    TlsMode::Disable => TlsModeTag::Disable,
-                    TlsMode::Require => TlsModeTag::Require,
-                    TlsMode::VerifyFull => TlsModeTag::VerifyFull,
-                    TlsMode::Strict => TlsModeTag::Strict,
-                },
+                mode: saved.tls.mode.into(),
                 ca_file: saved.tls.ca_file.as_deref().map(shown),
                 client_certificate: saved
                     .tls

@@ -17,6 +17,8 @@ pub(crate) static CAPABILITIES: DriverCapabilities = DriverCapabilities {
     username_required: false,
     tls: Some(TlsCapabilities {
         modes: &[TlsMode::Disable, TlsMode::Require, TlsMode::VerifyFull],
+        default_mode: TlsMode::Disable,
+        tls_ports: &[],
         ca_file: true,
         client_identity: true,
         // On a direct route the client checks each server it finds under

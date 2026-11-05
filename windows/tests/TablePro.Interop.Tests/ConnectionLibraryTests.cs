@@ -27,6 +27,12 @@ public sealed class ConnectionLibraryTests : IDisposable
         Assert.Contains(TlsMode.Strict, sqlServer.SupportedTlsModes);
         Assert.All(_core.Engines.Where(engine => engine.Id != "mssql"),
             engine => Assert.DoesNotContain(TlsMode.Strict, engine.SupportedTlsModes));
+        Assert.Equal(TlsMode.VerifyFull, sqlServer.DefaultTlsMode);
+        var postgres = Assert.Single(_core.Engines, engine => engine.Id == "postgres");
+        Assert.Equal(TlsMode.Prefer, postgres.DefaultTlsMode);
+        Assert.Contains(TlsMode.Prefer, postgres.SupportedTlsModes);
+        var clickHouse = Assert.Single(_core.Engines, engine => engine.Id == "clickhouse");
+        Assert.Equal(TlsMode.VerifyFull, clickHouse.NewConnectionTls(8443));
         if (OperatingSystem.IsWindows())
         {
             Assert.True(sqlServer.SupportsIntegratedAuth);

@@ -28,13 +28,13 @@ pub fn remedy(failure: TlsFailure) -> Option<TlsRemedy> {
     match failure {
         TlsFailure::UnknownIssuer => Some(TlsRemedy::ChooseCaCertificate),
         TlsFailure::NameMismatch => Some(TlsRemedy::SetServerName),
-        TlsFailure::ServerRequiresTls | TlsFailure::ServerRefusedStrict | TlsFailure::ServerRequiresStrict => {
-            Some(TlsRemedy::ChangeEncryption)
-        }
+        TlsFailure::ServerRefusedTls
+        | TlsFailure::ServerRequiresTls
+        | TlsFailure::ServerRefusedStrict
+        | TlsFailure::ServerRequiresStrict => Some(TlsRemedy::ChangeEncryption),
         TlsFailure::Expired
         | TlsFailure::NotYetValid
         | TlsFailure::Revoked
-        | TlsFailure::ServerRefusedTls
         | TlsFailure::HandshakeRejected
         | TlsFailure::CaFileInvalid
         | TlsFailure::ClientIdentityInvalid
@@ -63,6 +63,7 @@ mod tests {
         assert_eq!(remedy(TlsFailure::UnknownIssuer), Some(TlsRemedy::ChooseCaCertificate));
         assert_eq!(remedy(TlsFailure::NameMismatch), Some(TlsRemedy::SetServerName));
         for failure in [
+            TlsFailure::ServerRefusedTls,
             TlsFailure::ServerRequiresTls,
             TlsFailure::ServerRefusedStrict,
             TlsFailure::ServerRequiresStrict,
@@ -110,6 +111,16 @@ mod tests {
             connect_remedy(&unknown_issuer, false),
             Some(TlsRemedy::ChooseCaCertificate)
         );
+    }
+
+    #[test]
+    fn a_server_without_tls_offers_the_encryption_row() {
+        let error = ConnectError::Driver(DriverError::Tls {
+            failure: TlsFailure::ServerRefusedTls,
+            detail: "server does not support TLS".to_owned(),
+        });
+
+        assert_eq!(connect_remedy(&error, true), Some(TlsRemedy::ChangeEncryption));
     }
 
     #[test]

@@ -2,7 +2,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tablepro_core::{
-    ConnectEnvironment, DriverError, LivenessPolicy, NetworkTarget, ServerInfo, TimeoutPhase, TlsMode, Transport,
+    ConnectEnvironment, DriverError, LivenessPolicy, NetworkTarget, ServerInfo, TimeoutPhase, TlsFailure, TlsMode,
+    Transport,
 };
 use uuid::Uuid;
 
@@ -30,6 +31,7 @@ pub(crate) struct ClickHouseEndpoint {
     transport: Arc<dyn Transport>,
     liveness: LivenessPolicy,
     tls_requested: bool,
+    tls_server_name: String,
     session_timeout: Duration,
     read_only: bool,
     // The login's own `readonly` level, learned on connect.
@@ -50,6 +52,7 @@ impl ClickHouseEndpoint {
             transport: target.transport.clone(),
             liveness,
             tls_requested: target.tls.mode != TlsMode::Disable,
+            tls_server_name: target.tls_server_name().to_owned(),
             session_timeout: SESSION_TIMEOUT,
             read_only,
             login_readonly: 0,
@@ -145,7 +148,8 @@ impl ClickHouseEndpoint {
                 let context = ErrorContext::Login {
                     tls_requested: self.tls_requested,
                 };
-                return Err(self.explain(map_error_in(&error, context)).await);
+                let failed = self.explain(map_error_in(&error, context)).await;
+                return Err(self.refused_in_the_clear(failed).await);
             }
             Ok(Ok(body)) => body,
         };
@@ -153,6 +157,21 @@ impl ClickHouseEndpoint {
         self.hold(readonly);
         let (major, minor, patch) = version_numbers(&version);
         Ok((ServerInfo::new("ClickHouse", version, major, minor, patch), database))
+    }
+
+    // A server that takes only TLS drops a login in the clear unanswered, which a handshake of its own tells apart.
+    async fn refused_in_the_clear(&self, failed: DriverError) -> DriverError {
+        if self.tls_requested || !matches!(failed, DriverError::ConnectionLost { .. }) {
+            return failed;
+        }
+        let within = self.liveness.login_timeout;
+        if !tablepro_net::tls::serves_tls(self.transport.as_ref(), &self.tls_server_name, within).await {
+            return failed;
+        }
+        DriverError::Tls {
+            failure: TlsFailure::ServerRequiresTls,
+            detail: failed.to_string(),
+        }
     }
 
     /// A stream that closed may be the transport's doing, such as an SSH

@@ -23,6 +23,10 @@ use crate::ui::ssh_inputs::{SshFormState, SshInputError, SshSecretToStore};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TlsFormState {
     pub mode: TlsMode,
+    /// Set once the user picks a mode, and for a saved connection, whose
+    /// mode was picked when it was saved. Until then the mode follows the
+    /// driver's default.
+    pub mode_chosen: bool,
     pub ca_file: Option<PathBuf>,
     pub client_certificate: Option<PathBuf>,
     pub client_key: Option<PathBuf>,
@@ -30,9 +34,10 @@ pub struct TlsFormState {
 }
 
 impl TlsFormState {
-    pub fn new(caps: Option<&TlsCapabilities>) -> Self {
+    pub fn new(mode: TlsMode) -> Self {
         Self {
-            mode: default_tls_mode(caps),
+            mode,
+            mode_chosen: false,
             ca_file: None,
             client_certificate: None,
             client_key: None,
@@ -43,6 +48,7 @@ impl TlsFormState {
     pub fn from_config(config: &TlsConfig) -> Self {
         Self {
             mode: config.mode,
+            mode_chosen: true,
             ca_file: config.ca_file.clone(),
             client_certificate: config
                 .client_identity
@@ -76,17 +82,6 @@ impl TlsFormState {
             server_name: Some(self.server_name.trim().to_owned())
                 .filter(|name| !name.is_empty() && shows_server_name(caps, route)),
         }
-    }
-}
-
-/// Verify full proves who is on the other end and, unlike Strict, works
-/// with any server version, so a new connection starts there whenever
-/// the driver offers it.
-pub fn default_tls_mode(caps: Option<&TlsCapabilities>) -> TlsMode {
-    match caps {
-        Some(caps) if caps.modes.contains(&TlsMode::VerifyFull) => TlsMode::VerifyFull,
-        Some(caps) => caps.modes.last().copied().unwrap_or(TlsMode::Disable),
-        None => TlsMode::Disable,
     }
 }
 
@@ -153,18 +148,19 @@ pub struct ValidatedForm {
 
 impl ConnectForm {
     pub fn new(driver_id: &str, caps: &DriverCapabilities) -> Self {
+        let port = caps.default_port().unwrap_or(1);
         Self {
             name: String::new(),
             driver_id: driver_id.to_owned(),
             host: String::new(),
-            port: caps.default_port().unwrap_or(1),
+            port,
             port_edited: false,
             database: String::new(),
             auth: caps.auth_modes.first().copied().unwrap_or_default(),
             username: String::new(),
             password: SecretString::from(String::new()),
             remember_password: true,
-            tls: TlsFormState::new(caps.tls.as_ref()),
+            tls: TlsFormState::new(caps.new_connection_tls(port, &NetworkOptions::default())),
             safe_mode: SafeModeLevel::Off,
             external_access: ExternalAccess::default(),
             ai_policy: AiPolicy::default(),
@@ -222,10 +218,18 @@ impl ConnectForm {
         if !caps.auth_modes.is_empty() && !caps.supports(self.auth) {
             self.auth = caps.auth_modes.first().copied().unwrap_or_default();
         }
-        if let Some(tls) = caps.tls.as_ref()
-            && !tls.modes.contains(&self.tls.mode)
-        {
-            self.tls.mode = default_tls_mode(Some(tls));
+        self.follow_tls_default(caps);
+    }
+
+    /// Start the mode where a new connection with these options starts,
+    /// unless the user picked one this driver offers.
+    pub fn follow_tls_default(&mut self, caps: &DriverCapabilities) {
+        let Some(tls) = caps.tls.as_ref() else {
+            return;
+        };
+        if !self.tls.mode_chosen || !tls.modes.contains(&self.tls.mode) {
+            self.tls.mode = caps.new_connection_tls(self.port, &self.options);
+            self.tls.mode_chosen = false;
         }
     }
 
@@ -706,6 +710,10 @@ mod tests {
         caps(&tablepro_driver_mongodb::MongoDriver)
     }
 
+    fn clickhouse() -> &'static DriverCapabilities {
+        caps(&tablepro_driver_clickhouse::ClickhouseDriver)
+    }
+
     fn filled(driver_id: &str, caps: &DriverCapabilities) -> ConnectForm {
         ConnectForm {
             host: "db.example.com".to_owned(),
@@ -730,13 +738,96 @@ mod tests {
     }
 
     #[test]
-    fn verify_full_is_default() {
-        for caps in [postgres(), mysql(), mssql()] {
-            assert_eq!(ConnectForm::new("x", caps).tls.mode, TlsMode::VerifyFull);
+    fn a_new_connection_starts_on_the_mode_the_engines_own_client_starts_on() {
+        let cases = [
+            (postgres(), TlsMode::Prefer),
+            (mysql(), TlsMode::Prefer),
+            (mssql(), TlsMode::VerifyFull),
+            (redis(), TlsMode::Disable),
+            (mongodb(), TlsMode::Disable),
+        ];
+        for (caps, mode) in cases {
+            assert_eq!(ConnectForm::new("x", caps).tls.mode, mode);
         }
         let form = filled("postgres", postgres());
         let valid = form.validate(postgres()).expect("a valid form");
-        assert_eq!(network(&valid.target).3, &TlsConfig::verify_full());
+        assert_eq!(
+            network(&valid.target).3,
+            &TlsConfig {
+                mode: TlsMode::Prefer,
+                ..TlsConfig::disabled()
+            }
+        );
+    }
+
+    #[test]
+    fn the_mode_follows_the_driver_until_the_user_picks_one() {
+        let mut form = ConnectForm::new("redis", redis());
+        form.switch_driver("postgres", postgres());
+        assert_eq!(form.tls.mode, TlsMode::Prefer, "the default stayed on Redis's");
+
+        form.switch_driver("mssql", mssql());
+        assert_eq!(form.tls.mode, TlsMode::VerifyFull);
+
+        form.tls.mode = TlsMode::Disable;
+        form.tls.mode_chosen = true;
+        form.switch_driver("mysql", mysql());
+        assert_eq!(form.tls.mode, TlsMode::Disable, "a picked mode was replaced");
+
+        form.tls.mode = TlsMode::Prefer;
+        form.switch_driver("mssql", mssql());
+        assert_eq!(form.tls.mode, TlsMode::VerifyFull, "a mode SQL Server lacks was kept");
+        assert!(!form.tls.mode_chosen);
+    }
+
+    #[test]
+    fn a_seed_list_starts_tls_on_until_the_user_picks_a_mode() {
+        let mut form = ConnectForm::new("mongodb", mongodb());
+        form.options.dns_seed_list = true;
+        form.follow_tls_default(mongodb());
+        assert_eq!(form.tls.mode, TlsMode::VerifyFull);
+
+        form.options.dns_seed_list = false;
+        form.follow_tls_default(mongodb());
+        assert_eq!(form.tls.mode, TlsMode::Disable);
+
+        form.tls.mode = TlsMode::Require;
+        form.tls.mode_chosen = true;
+        form.options.dns_seed_list = true;
+        form.follow_tls_default(mongodb());
+        assert_eq!(form.tls.mode, TlsMode::Require);
+    }
+
+    #[test]
+    fn a_port_that_serves_only_tls_starts_tls_on() {
+        let mut form = ConnectForm::new("clickhouse", clickhouse());
+        assert_eq!(form.tls.mode, TlsMode::Disable);
+
+        form.port = 8443;
+        form.follow_tls_default(clickhouse());
+        assert_eq!(form.tls.mode, TlsMode::VerifyFull);
+
+        form.port = 8123;
+        form.follow_tls_default(clickhouse());
+        assert_eq!(form.tls.mode, TlsMode::Disable);
+    }
+
+    #[test]
+    fn a_saved_mode_stays_when_the_port_moves() {
+        let mut typed = ConnectForm {
+            port: 8443,
+            port_edited: true,
+            ..filled("clickhouse", clickhouse())
+        };
+        typed.follow_tls_default(clickhouse());
+        let saved = saved_from(&typed, clickhouse());
+        assert_eq!(saved.tls.mode, TlsMode::VerifyFull);
+
+        let mut reopened = ConnectForm::from_saved(&saved, clickhouse());
+        reopened.port = 8444;
+        reopened.follow_tls_default(clickhouse());
+
+        assert_eq!(reopened.tls.mode, TlsMode::VerifyFull, "a saved mode was weakened");
     }
 
     #[test]
@@ -1049,6 +1140,8 @@ mod tests {
         let mut form = filled("postgres", postgres());
         form.port = 6543;
         form.port_edited = true;
+        form.tls.mode = TlsMode::VerifyFull;
+        form.tls.mode_chosen = true;
         form.tls.ca_file = Some(PathBuf::from("/etc/tls/ca.pem"));
         form.ssh = Some(SshFormState {
             host: "bastion".to_owned(),

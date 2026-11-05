@@ -92,13 +92,17 @@ fn tls_mode(scheme: &str, parsed: &Url) -> Option<TlsModeTag> {
     if scheme == "rediss" {
         return Some(TlsModeTag::VerifyFull);
     }
-    let mut mode = None;
+    // A seed list turns TLS on unless the URL turns it off, as mongosh reads it.
+    let mut mode = (scheme == "mongodb+srv").then_some(TlsModeTag::VerifyFull);
+    let mut trusts_any_certificate = false;
     for (key, value) in parsed.query_pairs() {
         let value = value.to_ascii_lowercase();
         match key.to_ascii_lowercase().as_str() {
             "sslmode" | "ssl-mode" => {
                 mode = match value.as_str() {
-                    "disable" | "disabled" | "allow" | "prefer" | "preferred" => Some(TlsModeTag::Disable),
+                    "disable" | "disabled" => Some(TlsModeTag::Disable),
+                    // allow takes TLS only when the server demands it; Prefer is the nearest mode.
+                    "allow" | "prefer" | "preferred" => Some(TlsModeTag::Prefer),
                     "require" | "required" => Some(TlsModeTag::Require),
                     "verify-ca" | "verify-full" | "verify_ca" | "verify_identity" => Some(TlsModeTag::VerifyFull),
                     _ => mode,
@@ -108,15 +112,24 @@ fn tls_mode(scheme: &str, parsed: &Url) -> Option<TlsModeTag> {
                 mode = match value.as_str() {
                     // SQL Server's Encrypt=strict, TDS 8.0.
                     "strict" if key.eq_ignore_ascii_case("encrypt") => Some(TlsModeTag::Strict),
-                    "true" | "1" | "yes" | "strict" => Some(TlsModeTag::VerifyFull),
-                    "false" | "0" | "no" => Some(TlsModeTag::Disable),
+                    "true" | "1" | "yes" | "strict" | "mandatory" => Some(TlsModeTag::VerifyFull),
+                    "false" | "0" | "no" | "optional" => Some(TlsModeTag::Disable),
                     _ => mode,
                 };
+            }
+            "trustservercertificate" | "tlsallowinvalidcertificates" | "tlsinsecure" => {
+                trusts_any_certificate = matches!(value.as_str(), "true" | "1" | "yes");
             }
             _ => {}
         }
     }
-    mode
+    // Microsoft's drivers encrypt by default, and refuse to trust the certificate under strict.
+    let encrypts_by_default = matches!(scheme, "sqlserver" | "mssql");
+    match mode {
+        Some(TlsModeTag::VerifyFull) if trusts_any_certificate => Some(TlsModeTag::Require),
+        None if trusts_any_certificate && encrypts_by_default => Some(TlsModeTag::Require),
+        mode => mode,
+    }
 }
 
 #[cfg(test)]
@@ -163,6 +176,54 @@ mod tests {
         );
         assert_eq!(
             parse("sqlserver://db.example.com/sales?encrypt=true").tls_mode,
+            Some(TlsModeTag::VerifyFull)
+        );
+    }
+
+    #[test]
+    fn prefer_and_allow_are_prefer() {
+        for url in [
+            "postgres://db.example.com/app?sslmode=prefer",
+            "postgres://db.example.com/app?sslmode=allow",
+            "mysql://db.example.com/app?ssl-mode=PREFERRED",
+        ] {
+            assert_eq!(parse(url).tls_mode, Some(TlsModeTag::Prefer), "{url}");
+        }
+        assert_eq!(
+            parse("postgres://db.example.com/app?sslmode=disable").tls_mode,
+            Some(TlsModeTag::Disable)
+        );
+    }
+
+    #[test]
+    fn a_seed_list_url_means_tls_unless_it_says_otherwise() {
+        assert_eq!(
+            parse("mongodb+srv://cluster0.example.net/app").tls_mode,
+            Some(TlsModeTag::VerifyFull)
+        );
+        assert_eq!(
+            parse("mongodb+srv://cluster0.example.net/app?tls=false").tls_mode,
+            Some(TlsModeTag::Disable)
+        );
+        assert_eq!(parse("mongodb://localhost/app").tls_mode, None);
+    }
+
+    #[test]
+    fn a_url_that_trusts_any_certificate_does_not_check_it() {
+        for url in [
+            "sqlserver://db.example.com/sales?encrypt=true&trustServerCertificate=true",
+            "mongodb://db.example.com/app?tls=true&tlsAllowInvalidCertificates=true",
+            "mongodb+srv://cluster0.example.net/app?tlsInsecure=true",
+            "sqlserver://db.example.com/sales?trustServerCertificate=true",
+        ] {
+            assert_eq!(parse(url).tls_mode, Some(TlsModeTag::Require), "{url}");
+        }
+        assert_eq!(
+            parse("sqlserver://db.example.com/sales?encrypt=strict&trustServerCertificate=true").tls_mode,
+            Some(TlsModeTag::Strict)
+        );
+        assert_eq!(
+            parse("sqlserver://db.example.com/sales?encrypt=mandatory&trustServerCertificate=false").tls_mode,
             Some(TlsModeTag::VerifyFull)
         );
     }
