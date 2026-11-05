@@ -44,10 +44,13 @@ impl LexicalTracker {
                         escapes = !value.to_ascii_uppercase().contains("NO_BACKSLASH_ESCAPES");
                     }
                 }
-                SqlGrammar::MySql if target.starts_with('@') && !target.starts_with("@@") => {
-                    if setting_name(&value.to_ascii_lowercase()) == "sql_mode" && value.starts_with("@@") {
-                        self.saved.insert(target.trim_start_matches('@').to_owned(), escapes);
-                    }
+                SqlGrammar::MySql
+                    if target.starts_with('@')
+                        && !target.starts_with("@@")
+                        && value.starts_with("@@")
+                        && setting_name(&value.to_ascii_lowercase()) == "sql_mode" =>
+                {
+                    self.saved.insert(target.trim_start_matches('@').to_owned(), escapes);
                 }
                 _ => {}
             }

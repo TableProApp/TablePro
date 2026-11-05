@@ -66,127 +66,12 @@ impl SqlImportDialog {
             .transition_type(gtk::StackTransitionType::Crossfade)
             .vhomogeneous(false)
             .build();
-
-        let page = adw::PreferencesPage::new();
-        let target = adw::PreferencesGroup::new();
-        let file = adw::ActionRow::builder()
-            .title(&init.file_name)
-            .subtitle(glib::format_size(init.file_size).as_str())
-            .build();
-        target.add(&file);
-        let mut description = gettext_f(
-            "Every statement in the file runs on “{connection}”.",
-            &[("connection", &init.connection)],
-        );
-        if init.confirms_writes {
-            description.push(' ');
-            description.push_str(&crate::ui::write_confirmation::asks_before_writes(&init.connection));
-        }
-        target.set_description(Some(&description));
-        page.add(&target);
-
-        let options = adw::PreferencesGroup::builder().title(gettext("Options")).build();
-        let stop_on_error = adw::SwitchRow::builder()
-            .title(gettext("Stop at First Error"))
-            .subtitle(gettext("Off runs the rest and lists what failed"))
-            .active(true)
-            .build();
-        options.add(&stop_on_error);
-        let one_transaction = init.transactional.then(|| {
-            let row = adw::SwitchRow::builder()
-                .title(gettext("Run as One Transaction"))
-                .subtitle(gettext("A failure or Stop undoes everything the file did"))
-                .active(true)
-                .build();
-            stop_on_error
-                .bind_property("active", &row, "sensitive")
-                .sync_create()
-                .build();
-            options.add(&row);
-            row
-        });
-        if !init.transactional {
-            options.set_description(Some(&gettext(
-                "This database commits each statement as it runs, so a failure keeps what ran before it.",
-            )));
-        }
-        page.add(&options);
-
-        let import = gtk::Button::builder()
-            .label(gettext("_Import"))
-            .use_underline(true)
-            .halign(gtk::Align::End)
-            .build();
-        import.add_css_class("suggested-action");
-        let choosing = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-        choosing.append(&page);
-        choosing.append(&bar(&import));
-        stack.add_named(&choosing, Some("choosing"));
-
-        let progress = gtk::ProgressBar::builder().show_text(false).build();
-        let counts = gtk::Label::builder().xalign(0.0).wrap(true).build();
-        counts.add_css_class("dim-label");
-        let heading = gtk::Label::builder()
-            .label(gettext_f("Importing {name}", &[("name", &init.file_name)]))
-            .xalign(0.0)
-            .ellipsize(gtk::pango::EllipsizeMode::Middle)
-            .build();
-        heading.add_css_class("heading");
-        progress.update_relation(&[gtk::accessible::Relation::LabelledBy(&[heading.upcast_ref()])]);
-        let stop = gtk::Button::builder()
-            .label(gettext("_Stop"))
-            .use_underline(true)
-            .build();
-        let running = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(12)
-            .margin_top(24)
-            .margin_bottom(12)
-            .margin_start(24)
-            .margin_end(24)
-            .build();
-        running.append(&heading);
-        running.append(&progress);
-        running.append(&counts);
-        let running_page = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-        running_page.append(&running);
-        running_page.append(&bar(&stop));
-        stack.add_named(&running_page, Some("running"));
-
-        let result = adw::StatusPage::builder().build();
-        result.add_css_class("compact");
-        let failures = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
-        failures.add_css_class("boxed-list");
-        let failures_scroll = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .propagate_natural_height(true)
-            .max_content_height(280)
-            .child(&failures)
-            .build();
-        let copy = gtk::Button::builder()
-            .label(gettext("_Copy Details"))
-            .use_underline(true)
-            .halign(gtk::Align::Start)
-            .build();
-        let failures_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(12)
-            .margin_start(12)
-            .margin_end(12)
-            .visible(false)
-            .build();
-        failures_box.append(&failures_scroll);
-        failures_box.append(&copy);
-        let close = gtk::Button::builder()
-            .label(gettext("_Close"))
-            .use_underline(true)
-            .halign(gtk::Align::End)
-            .build();
-        let done = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
-        done.append(&result);
-        done.append(&failures_box);
-        done.append(&bar(&close));
-        stack.add_named(&done, Some("done"));
+        let choosing = ChoosingPage::new(init);
+        stack.add_named(&choosing.root, Some("choosing"));
+        let running = RunningPage::new(&init.file_name);
+        stack.add_named(&running.root, Some("running"));
+        let done = DonePage::new();
+        stack.add_named(&done.root, Some("done"));
 
         let toolbar = adw::ToolbarView::new();
         toolbar.add_top_bar(&adw::HeaderBar::new());
@@ -196,25 +81,36 @@ impl SqlImportDialog {
             .content_width(480)
             .child(&toolbar)
             .build();
-        dialog.set_default_widget(Some(&import));
+        dialog.set_default_widget(Some(&choosing.import));
 
         let this = Rc::new(Self {
             dialog,
             stack,
-            stop_on_error,
-            one_transaction,
-            progress,
-            counts,
-            stop,
-            result,
-            failures,
-            failures_box,
+            stop_on_error: choosing.stop_on_error,
+            one_transaction: choosing.one_transaction,
+            progress: running.progress,
+            counts: running.counts,
+            stop: running.stop,
+            result: done.result,
+            failures: done.failures,
+            failures_box: done.failures_box,
             file_size: init.file_size,
             stage: RefCell::new(Stage::Choosing),
             details: RefCell::default(),
         });
+        this.connect(&choosing.import, &done.copy, &done.close, on_import, on_stop);
+        this
+    }
 
-        let started = Rc::downgrade(&this);
+    fn connect(
+        self: &Rc<Self>,
+        import: &gtk::Button,
+        copy: &gtk::Button,
+        close: &gtk::Button,
+        on_import: impl Fn(SqlImportOptions) + 'static,
+        on_stop: impl Fn() + 'static,
+    ) {
+        let started = Rc::downgrade(self);
         import.connect_clicked(move |_| {
             let Some(this) = started.upgrade() else {
                 return;
@@ -226,21 +122,21 @@ impl SqlImportDialog {
             this.show_running();
             on_import(options);
         });
-        let stopping = Rc::downgrade(&this);
-        this.stop.connect_clicked(move |button| {
+        let stopping = Rc::downgrade(self);
+        self.stop.connect_clicked(move |button| {
             button.set_sensitive(false);
             if let Some(this) = stopping.upgrade() {
                 this.counts.set_label(&gettext("Stopping…"));
             }
             on_stop();
         });
-        let closing = this.dialog.downgrade();
+        let closing = self.dialog.downgrade();
         close.connect_clicked(move |_| {
             if let Some(dialog) = closing.upgrade() {
                 dialog.close();
             }
         });
-        let copying = Rc::downgrade(&this);
+        let copying = Rc::downgrade(self);
         copy.connect_clicked(move |button| {
             if let Some(this) = copying.upgrade() {
                 let details = this.details.borrow().clone();
@@ -250,7 +146,6 @@ impl SqlImportDialog {
                 });
             }
         });
-        this
     }
 
     pub(crate) fn present(&self, parent: &impl IsA<gtk::Widget>) {
@@ -350,6 +245,183 @@ impl SqlImportDialog {
 }
 
 /// A button at the end of the dialog's bottom bar.
+/// The file, the target and the options, with Import.
+struct ChoosingPage {
+    root: gtk::Box,
+    stop_on_error: adw::SwitchRow,
+    one_transaction: Option<adw::SwitchRow>,
+    import: gtk::Button,
+}
+
+impl ChoosingPage {
+    fn new(init: &SqlImportDialogInit) -> Self {
+        let page = adw::PreferencesPage::new();
+        let target = adw::PreferencesGroup::new();
+        let file = adw::ActionRow::builder()
+            .title(&init.file_name)
+            .subtitle(glib::format_size(init.file_size).as_str())
+            .build();
+        target.add(&file);
+        let mut description = gettext_f(
+            "Every statement in the file runs on “{connection}”.",
+            &[("connection", &init.connection)],
+        );
+        if init.confirms_writes {
+            description.push(' ');
+            description.push_str(&crate::ui::write_confirmation::asks_before_writes(&init.connection));
+        }
+        target.set_description(Some(&description));
+        page.add(&target);
+
+        let options = adw::PreferencesGroup::builder().title(gettext("Options")).build();
+        let stop_on_error = adw::SwitchRow::builder()
+            .title(gettext("Stop at First Error"))
+            .subtitle(gettext("Off runs the rest and lists what failed"))
+            .active(true)
+            .build();
+        options.add(&stop_on_error);
+        let one_transaction = init.transactional.then(|| {
+            let row = adw::SwitchRow::builder()
+                .title(gettext("Run as One Transaction"))
+                .subtitle(gettext("A failure or Stop undoes everything the file did"))
+                .active(true)
+                .build();
+            stop_on_error
+                .bind_property("active", &row, "sensitive")
+                .sync_create()
+                .build();
+            options.add(&row);
+            row
+        });
+        if !init.transactional {
+            options.set_description(Some(&gettext(
+                "This database commits each statement as it runs, so a failure keeps what ran before it.",
+            )));
+        }
+        page.add(&options);
+
+        let import = gtk::Button::builder()
+            .label(gettext("_Import"))
+            .use_underline(true)
+            .halign(gtk::Align::End)
+            .build();
+        import.add_css_class("suggested-action");
+        let root = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+        root.append(&page);
+        root.append(&bar(&import));
+        Self {
+            root,
+            stop_on_error,
+            one_transaction,
+            import,
+        }
+    }
+}
+
+/// The progress and the counts, with Stop.
+struct RunningPage {
+    root: gtk::Box,
+    progress: gtk::ProgressBar,
+    counts: gtk::Label,
+    stop: gtk::Button,
+}
+
+impl RunningPage {
+    fn new(file_name: &str) -> Self {
+        let progress = gtk::ProgressBar::builder().show_text(false).build();
+        let counts = gtk::Label::builder().xalign(0.0).wrap(true).build();
+        counts.add_css_class("dim-label");
+        let heading = gtk::Label::builder()
+            .label(gettext_f("Importing {name}", &[("name", file_name)]))
+            .xalign(0.0)
+            .ellipsize(gtk::pango::EllipsizeMode::Middle)
+            .build();
+        heading.add_css_class("heading");
+        progress.update_relation(&[gtk::accessible::Relation::LabelledBy(&[heading.upcast_ref()])]);
+        let stop = gtk::Button::builder()
+            .label(gettext("_Stop"))
+            .use_underline(true)
+            .build();
+        let running = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
+            .margin_top(24)
+            .margin_bottom(12)
+            .margin_start(24)
+            .margin_end(24)
+            .build();
+        running.append(&heading);
+        running.append(&progress);
+        running.append(&counts);
+        let root = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+        root.append(&running);
+        root.append(&bar(&stop));
+        Self {
+            root,
+            progress,
+            counts,
+            stop,
+        }
+    }
+}
+
+/// What the import did, the statements that failed, Copy Details and
+/// Close.
+struct DonePage {
+    root: gtk::Box,
+    result: adw::StatusPage,
+    failures: gtk::ListBox,
+    failures_box: gtk::Box,
+    copy: gtk::Button,
+    close: gtk::Button,
+}
+
+impl DonePage {
+    fn new() -> Self {
+        let result = adw::StatusPage::builder().build();
+        result.add_css_class("compact");
+        let failures = gtk::ListBox::builder().selection_mode(gtk::SelectionMode::None).build();
+        failures.add_css_class("boxed-list");
+        let failures_scroll = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .propagate_natural_height(true)
+            .max_content_height(280)
+            .child(&failures)
+            .build();
+        let copy = gtk::Button::builder()
+            .label(gettext("_Copy Details"))
+            .use_underline(true)
+            .halign(gtk::Align::Start)
+            .build();
+        let failures_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
+            .margin_start(12)
+            .margin_end(12)
+            .visible(false)
+            .build();
+        failures_box.append(&failures_scroll);
+        failures_box.append(&copy);
+        let close = gtk::Button::builder()
+            .label(gettext("_Close"))
+            .use_underline(true)
+            .halign(gtk::Align::End)
+            .build();
+        let root = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
+        root.append(&result);
+        root.append(&failures_box);
+        root.append(&bar(&close));
+        Self {
+            root,
+            result,
+            failures,
+            failures_box,
+            copy,
+            close,
+        }
+    }
+}
+
 fn bar(button: &gtk::Button) -> gtk::Box {
     let bar = gtk::Box::builder()
         .margin_top(6)

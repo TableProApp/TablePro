@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::call_options::CallOptions;
 use crate::dialect::SqlDialect;
+use crate::dump::DumpDialect;
 use crate::editor_session::EditorSession;
 use crate::error::DriverError;
 use crate::result_event::{ResultEvent, RunEnd};
@@ -142,151 +143,98 @@ pub async fn run_sql_import(
     let grammar = dialect.grammar();
     let settings = session_settings(editor, grammar, cancel).await;
     let reader = SqlFileReader::new(file, grammar, dialect.insert_overriding_clause()).with_settings(settings);
-    let consumed = reader.consumed();
-    let stop_reading = reader.stop();
-    let (sender, mut units) = mpsc::channel(UNITS_AHEAD);
-    let reading = tokio::task::spawn_blocking(move || {
-        for unit in reader {
-            if sender.blocking_send(unit).is_err() {
-                return;
-            }
-        }
-    });
-
+    let mut file = FileUnits::start(reader);
     let transaction = dialect.dump().filter(|dump| {
         options.one_transaction && dump.transactional_ddl() && options.on_error == SqlImportErrorPolicy::Stop
     });
-    let mut run = Run {
-        editor,
-        grammar,
-        policy: options.on_error,
-        wrapped: transaction.is_some(),
-        ended_by_file: false,
-        uncertain: None,
-        report: SqlImportReport {
-            end: SqlImportEnd::Completed,
-            statements: 0,
-            skipped: 0,
-            failures: Vec::new(),
-            failed: 0,
-            transaction: TransactionOutcome::AsWritten,
-            elapsed: Duration::ZERO,
+    let mut run = Run::new(editor, grammar, options.on_error, transaction.is_some());
+    let opening = match transaction {
+        Some(dump) => run.open(dump, &mut file.units, cancel).await,
+        None => Opening {
+            opened: true,
+            began: false,
+            first: None,
         },
     };
-
-    let mut opened = true;
-    let mut began = false;
-    let mut first = None;
-    if let Some(dump) = transaction {
-        // SQLite takes `foreign_keys` only outside a transaction, so a file
-        // that opens with it off, as a dump does, has it run first.
-        if grammar == SqlGrammar::Sqlite {
-            first = units.recv().await;
-            if let Some(Ok(unit)) = &first
-                && foreign_keys_off(&unit.text)
-            {
-                match run.execute(&unit.text, cancel).await {
-                    Ok(()) => {
-                        run.report.statements += 1;
-                        first = None;
-                    }
-                    Err(fault) => {
-                        run.fail_on_setup(&unit.text, fault);
-                        opened = false;
-                    }
-                }
-            }
-        }
-        if opened {
-            for statement in std::iter::once(dump.begin()).chain(dump.after_begin().iter().copied()) {
-                if let Err(fault) = run.execute(statement, cancel).await {
-                    run.fail_on_setup(statement, fault);
-                    opened = false;
-                    break;
-                }
-                began = true;
-            }
-        }
+    if opening.opened {
+        run.units(&mut file, opening.first, progress, cancel).await;
     }
-
-    while opened && matches!(run.report.end, SqlImportEnd::Completed) {
-        let next = match first.take() {
-            Some(unit) => Some(unit),
-            None => tokio::select! {
-                () = cancel.cancelled() => {
-                    run.report.end = SqlImportEnd::Cancelled;
-                    break;
-                }
-                next = units.recv() => next,
-            },
-        };
-        let Some(next) = next else {
-            break;
-        };
-        match next {
-            Ok(unit) => run.unit(unit, cancel).await,
-            Err(error) => run.report.end = SqlImportEnd::File(error),
-        }
-        progress(SqlImportProgress {
-            bytes_read: consumed.load(Ordering::Relaxed),
-            statements: run.report.statements,
-            failed: run.report.failed,
-        });
-    }
-    stop_reading.store(true, Ordering::Relaxed);
-    drop(units);
-    let _ = reading.await;
+    let bytes_read = file.finish().await;
     // Stop pressed as the last statement finished can lose the race with
     // the end of the file, and must not commit.
     if cancel.is_cancelled() && matches!(run.report.end, SqlImportEnd::Completed) {
         run.report.end = SqlImportEnd::Cancelled;
     }
-
-    run.report.transaction = match transaction {
-        Some(_) if run.ended_by_file => TransactionOutcome::AsWritten,
-        Some(dump) if began => match run.report.end {
-            SqlImportEnd::Completed => match run.finish(dump.commit(), TransactionOutcome::Committed).await {
-                // A SQL Server file that opened a transaction of its own and
-                // never committed it leaves one open past the import's
-                // COMMIT, which closing the session would roll back.
-                TransactionOutcome::Committed if run.open_state().await == Some(true) => {
-                    run.report.end = SqlImportEnd::Stopped;
-                    run.finish(dump.rollback(), TransactionOutcome::OpenRolledBack).await
-                }
-                outcome => outcome,
-            },
-            // SQL Server's XACT_ABORT has already rolled back after an
-            // error, and a ROLLBACK then would fail for want of one.
-            _ => match run.open_state().await {
-                Some(false) => match run.uncertain.take() {
-                    Some(error) => TransactionOutcome::Unknown(error),
-                    None => TransactionOutcome::RolledBack,
-                },
-                Some(true) | None => run.finish(dump.rollback(), TransactionOutcome::RolledBack).await,
-            },
-        },
-        Some(_) => TransactionOutcome::AsWritten,
-        None => match run.open_state().await == Some(true) {
-            true => {
-                let rollback = dialect.dump().map_or("ROLLBACK", |dump| dump.rollback());
-                match run.finish(rollback, TransactionOutcome::OpenRolledBack).await {
-                    TransactionOutcome::OpenRolledBack if matches!(run.report.end, SqlImportEnd::Completed) => {
-                        run.report.end = SqlImportEnd::Stopped;
-                        TransactionOutcome::OpenRolledBack
-                    }
-                    outcome => outcome,
-                }
-            }
-            false => TransactionOutcome::AsWritten,
-        },
-    };
+    run.report.transaction = run.close(transaction, opening.began, dialect).await;
     run.report.elapsed = started.elapsed();
     progress(SqlImportProgress {
-        bytes_read: consumed.load(Ordering::Relaxed),
+        bytes_read,
         statements: run.report.statements,
         failed: run.report.failed,
     });
     run.report
+}
+
+type FileUnit = Result<ScriptUnit, SqlFileError>;
+
+/// The file's units as a blocking thread reads them, a few ahead of the
+/// statement running.
+struct FileUnits {
+    units: mpsc::Receiver<FileUnit>,
+    consumed: Arc<AtomicU64>,
+    stop: Arc<AtomicBool>,
+    reading: tokio::task::JoinHandle<()>,
+}
+
+impl FileUnits {
+    fn start(reader: SqlFileReader) -> Self {
+        let consumed = reader.consumed();
+        let stop = reader.stop();
+        let (sender, units) = mpsc::channel(UNITS_AHEAD);
+        let reading = tokio::task::spawn_blocking(move || {
+            for unit in reader {
+                if sender.blocking_send(unit).is_err() {
+                    return;
+                }
+            }
+        });
+        Self {
+            units,
+            consumed,
+            stop,
+            reading,
+        }
+    }
+
+    fn progress(&self, report: &SqlImportReport) -> SqlImportProgress {
+        SqlImportProgress {
+            bytes_read: self.consumed.load(Ordering::Relaxed),
+            statements: report.statements,
+            failed: report.failed,
+        }
+    }
+
+    /// Stop the reading thread, wait for it, and give the bytes it read.
+    async fn finish(self) -> u64 {
+        let Self {
+            units,
+            consumed,
+            stop,
+            reading,
+        } = self;
+        stop.store(true, Ordering::Relaxed);
+        drop(units);
+        let _ = reading.await;
+        consumed.load(Ordering::Relaxed)
+    }
+}
+
+/// Whether the import's transaction opened, and a unit read to decide
+/// that, still to run.
+struct Opening {
+    opened: bool,
+    began: bool,
+    first: Option<FileUnit>,
 }
 
 struct Run<'a> {
@@ -309,7 +257,157 @@ enum Fault {
     Session(DriverError),
 }
 
-impl Run<'_> {
+impl<'a> Run<'a> {
+    fn new(editor: &'a dyn EditorSession, grammar: SqlGrammar, policy: SqlImportErrorPolicy, wrapped: bool) -> Self {
+        Self {
+            editor,
+            grammar,
+            policy,
+            wrapped,
+            ended_by_file: false,
+            uncertain: None,
+            report: SqlImportReport {
+                end: SqlImportEnd::Completed,
+                statements: 0,
+                skipped: 0,
+                failures: Vec::new(),
+                failed: 0,
+                transaction: TransactionOutcome::AsWritten,
+                elapsed: Duration::ZERO,
+            },
+        }
+    }
+
+    /// Open the import's transaction. SQLite takes `foreign_keys` only
+    /// outside a transaction, so a file that opens with it off, as a dump
+    /// does, has it run first; another first unit is handed back.
+    async fn open(
+        &mut self,
+        dump: &dyn DumpDialect,
+        units: &mut mpsc::Receiver<FileUnit>,
+        cancel: &CancellationToken,
+    ) -> Opening {
+        let mut first = None;
+        if self.grammar == SqlGrammar::Sqlite {
+            first = units.recv().await;
+            if let Some(Ok(unit)) = &first
+                && foreign_keys_off(&unit.text)
+            {
+                match self.execute(&unit.text, cancel).await {
+                    Ok(()) => {
+                        self.report.statements += 1;
+                        first = None;
+                    }
+                    Err(fault) => {
+                        self.fail_on_setup(&unit.text, fault);
+                        return Opening {
+                            opened: false,
+                            began: false,
+                            first: None,
+                        };
+                    }
+                }
+            }
+        }
+        let mut began = false;
+        for statement in std::iter::once(dump.begin()).chain(dump.after_begin().iter().copied()) {
+            if let Err(fault) = self.execute(statement, cancel).await {
+                self.fail_on_setup(statement, fault);
+                return Opening {
+                    opened: false,
+                    began,
+                    first,
+                };
+            }
+            began = true;
+        }
+        Opening {
+            opened: true,
+            began,
+            first,
+        }
+    }
+
+    /// Run the file's units until it ends, a unit stops the import or
+    /// Stop is pressed.
+    async fn units(
+        &mut self,
+        file: &mut FileUnits,
+        mut first: Option<FileUnit>,
+        progress: &mut (dyn FnMut(SqlImportProgress) + Send),
+        cancel: &CancellationToken,
+    ) {
+        while matches!(self.report.end, SqlImportEnd::Completed) {
+            let next = match first.take() {
+                Some(unit) => Some(unit),
+                None => tokio::select! {
+                    () = cancel.cancelled() => {
+                        self.report.end = SqlImportEnd::Cancelled;
+                        break;
+                    }
+                    next = file.units.recv() => next,
+                },
+            };
+            let Some(next) = next else {
+                break;
+            };
+            match next {
+                Ok(unit) => self.unit(unit, cancel).await,
+                Err(error) => self.report.end = SqlImportEnd::File(error),
+            }
+            progress(file.progress(&self.report));
+        }
+    }
+
+    /// Commit or roll back the import's transaction, as the run ended, or
+    /// roll back one the file left open.
+    async fn close(
+        &mut self,
+        transaction: Option<&dyn DumpDialect>,
+        began: bool,
+        dialect: &dyn SqlDialect,
+    ) -> TransactionOutcome {
+        match transaction {
+            Some(_) if self.ended_by_file => TransactionOutcome::AsWritten,
+            Some(dump) if began => match self.report.end {
+                SqlImportEnd::Completed => match self.finish(dump.commit(), TransactionOutcome::Committed).await {
+                    // A SQL Server file that opened a transaction of its own
+                    // and never committed it leaves one open past the
+                    // import's COMMIT, which closing the session would roll
+                    // back.
+                    TransactionOutcome::Committed if self.open_state().await == Some(true) => {
+                        self.report.end = SqlImportEnd::Stopped;
+                        self.finish(dump.rollback(), TransactionOutcome::OpenRolledBack).await
+                    }
+                    outcome => outcome,
+                },
+                // SQL Server's XACT_ABORT has already rolled back after an
+                // error, and a ROLLBACK then would fail for want of one.
+                _ => match self.open_state().await {
+                    Some(false) => match self.uncertain.take() {
+                        Some(error) => TransactionOutcome::Unknown(error),
+                        None => TransactionOutcome::RolledBack,
+                    },
+                    Some(true) | None => self.finish(dump.rollback(), TransactionOutcome::RolledBack).await,
+                },
+            },
+            Some(_) => TransactionOutcome::AsWritten,
+            None => match self.open_state().await == Some(true) {
+                true => {
+                    let rollback = dialect.dump().map_or("ROLLBACK", |dump| dump.rollback());
+                    match self.finish(rollback, TransactionOutcome::OpenRolledBack).await {
+                        TransactionOutcome::OpenRolledBack if matches!(self.report.end, SqlImportEnd::Completed) => {
+                            self.report.end = SqlImportEnd::Stopped;
+                            TransactionOutcome::OpenRolledBack
+                        }
+                        outcome => outcome,
+                    }
+                }
+                false => TransactionOutcome::AsWritten,
+            },
+        }
+    }
+
     async fn unit(&mut self, unit: ScriptUnit, cancel: &CancellationToken) {
         let refused = match &unit.kind {
             ScriptUnitKind::ClientOnly => {

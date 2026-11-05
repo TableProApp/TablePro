@@ -767,13 +767,14 @@ mod tests {
             default: Some(expression.to_owned()),
             ..column(table, "doubled")
         };
-        let parent = [generated("p", "(id * 2)")];
-        let same = [generated("c", "(id * 2)")];
-        let other = [generated("c", "(id * 3)")];
-        let refs = |columns: &[Column]| columns.iter().collect::<Vec<_>>();
+        let (parent, same, other) = (
+            generated("p", "(id * 2)"),
+            generated("c", "(id * 2)"),
+            generated("c", "(id * 3)"),
+        );
 
-        assert!(!generation_differs(&refs(&same), &refs(&parent)));
-        assert!(generation_differs(&refs(&other), &refs(&parent)));
+        assert!(!generation_differs(&[&same], &[&parent]));
+        assert!(generation_differs(&[&other], &[&parent]));
     }
 
     fn sequence(name: &str, owner: Option<(&str, &str, bool)>) -> Sequence {

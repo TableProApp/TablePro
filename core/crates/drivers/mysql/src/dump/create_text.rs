@@ -38,7 +38,7 @@ pub(crate) fn without_definer(create: &str) -> String {
             _ => {}
         }
         let end = tokens.get(last + 1).map_or(create.len(), |next| next.range.start);
-        return cut(create, &[definer.range.start..end]);
+        return cut(create, std::slice::from_ref(&(definer.range.start..end)));
     }
     create.to_owned()
 }

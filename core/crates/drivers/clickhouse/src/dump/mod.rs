@@ -23,8 +23,6 @@ use crate::result_reader::{CatalogRow, read_table};
 /// has no transaction a file could run in.
 impl DumpDialect for ClickHouseDialect {}
 
-/// What the server shows in place of a password or a key.
-
 /// The objects of `database`, by name. `qualified` names the tables with
 /// the database for reading their rows, where it is not the connection's.
 pub(crate) async fn read_dump_catalog(

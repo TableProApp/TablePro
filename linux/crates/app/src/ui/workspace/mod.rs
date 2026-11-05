@@ -61,6 +61,7 @@ use tablepro_core::{DataModel, EditorSession};
 use tablepro_session::{ObjectListSnapshot, Session, SessionHealth, SessionKey};
 use uuid::Uuid;
 
+pub(crate) use self::database_transfer::TransferInput;
 use self::session_watches::SessionWatches;
 use self::tab_title::ConnectionLabel;
 pub(crate) use self::workspace_actions::show_transfer_actions;
@@ -557,17 +558,8 @@ pub(crate) enum WorkspaceInput {
         bytes: Vec<u8>,
     },
     ImportCsvRun(Box<super::import_dialog::CsvImport>),
-    /// The main menu's Export Database.
-    ExportDatabase,
-    /// The main menu's Import SQL File.
-    ImportSqlFile,
-    /// The file Import SQL File chose, with its size and whether it is
-    /// a pipe or a device, as GIO read them.
-    ImportSqlFileChosen {
-        file: gtk4::gio::File,
-        size: u64,
-        special: bool,
-    },
+    /// The main menu's Export Database and Import SQL File.
+    Transfer(TransferInput),
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     TabCloseDecided {
@@ -1333,11 +1325,7 @@ impl WorkspaceModel {
             WorkspaceInput::ShowHistory => self.on_show_history(),
             WorkspaceInput::ShowSavedQueries => self.on_show_saved_queries(),
             WorkspaceInput::ImportCsvRequested { schema, table } => self.on_import_csv_requested(schema, table),
-            WorkspaceInput::ExportDatabase => self.on_export_database(),
-            WorkspaceInput::ImportSqlFile => self.on_import_sql_file(),
-            WorkspaceInput::ImportSqlFileChosen { file, size, special } => {
-                self.on_import_sql_file_chosen(file, size, special);
-            }
+            WorkspaceInput::Transfer(input) => self.on_transfer(input),
             WorkspaceInput::ImportCsvReady {
                 schema,
                 table,

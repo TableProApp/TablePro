@@ -35,9 +35,34 @@ pub(crate) fn imports_sql(session: &Session) -> bool {
     dumps(session) && !session.read_only() && session.safe_mode() != SafeModeLevel::ReadOnly
 }
 
+/// The main menu's database transfers, and the steps they come back
+/// with.
+#[derive(Debug)]
+pub(crate) enum TransferInput {
+    ExportDatabase,
+    ImportSqlFile,
+    /// The file Import SQL File chose, with its size and whether it is
+    /// a pipe or a device, as GIO read them.
+    ImportSqlFileChosen {
+        file: gio::File,
+        size: u64,
+        special: bool,
+    },
+}
+
 impl WorkspaceModel {
+    pub(super) fn on_transfer(&self, input: TransferInput) {
+        match input {
+            TransferInput::ExportDatabase => self.on_export_database(),
+            TransferInput::ImportSqlFile => self.on_import_sql_file(),
+            TransferInput::ImportSqlFileChosen { file, size, special } => {
+                self.on_import_sql_file_chosen(file, size, special);
+            }
+        }
+    }
+
     /// Export Database: the scope and options, then the file to write.
-    pub(super) fn on_export_database(&self) {
+    fn on_export_database(&self) {
         let Some(session) = self.context.active.get() else {
             self.show_toast(&crate::i18n::gettext("Connect to a database first."));
             return;
@@ -89,7 +114,7 @@ impl WorkspaceModel {
 
     /// Import SQL File: the file, then its options, its progress and
     /// what it did, in one dialog.
-    pub(super) fn on_import_sql_file(&self) {
+    fn on_import_sql_file(&self) {
         let Some(session) = self.context.active.get() else {
             self.show_toast(&crate::i18n::gettext("Connect to a database first."));
             return;
@@ -137,12 +162,16 @@ impl WorkspaceModel {
                     .filter(|info| info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE))
                     .and_then(|info| u64::try_from(info.size()).ok())
                     .unwrap_or(0);
-                input.deliver(WorkspaceInput::ImportSqlFileChosen { file, size, special });
+                input.deliver(WorkspaceInput::Transfer(TransferInput::ImportSqlFileChosen {
+                    file,
+                    size,
+                    special,
+                }));
             });
         });
     }
 
-    pub(super) fn on_import_sql_file_chosen(&self, file: gio::File, size: u64, special: bool) {
+    fn on_import_sql_file_chosen(&self, file: gio::File, size: u64, special: bool) {
         let Some(session) = self.context.active.get() else {
             return;
         };

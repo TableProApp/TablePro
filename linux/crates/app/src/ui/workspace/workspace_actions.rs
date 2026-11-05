@@ -10,7 +10,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 
-use super::{WorkspaceInput, WorkspaceShell};
+use super::{TransferInput, WorkspaceInput, WorkspaceShell};
 use crate::runtime::DeliverInput;
 use crate::services::history_availability::HistoryAvailability;
 
@@ -24,8 +24,12 @@ const HISTORY_ACTIONS: [&str; 2] = ["show-history", "show-saved-queries"];
 
 const ENTRIES: [(&str, ActionInput); 8] = [
     ("new-editor-tab", || WorkspaceInput::NewEditorTab),
-    (EXPORT_DATABASE, || WorkspaceInput::ExportDatabase),
-    (IMPORT_SQL_FILE, || WorkspaceInput::ImportSqlFile),
+    (EXPORT_DATABASE, || {
+        WorkspaceInput::Transfer(TransferInput::ExportDatabase)
+    }),
+    (IMPORT_SQL_FILE, || {
+        WorkspaceInput::Transfer(TransferInput::ImportSqlFile)
+    }),
     ("refresh-tables", || WorkspaceInput::RefreshCatalog),
     ("save-query", || WorkspaceInput::SaveActiveQuery),
     ("show-history", || WorkspaceInput::ShowHistory),
