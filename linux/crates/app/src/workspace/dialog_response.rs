@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use futures::channel::oneshot;
@@ -11,33 +11,46 @@ use libadwaita::prelude::*;
 /// with. A dialog closed without one, torn down with its window or
 /// forced shut, answers with its close response.
 ///
-/// `choose_future` is not used: its callback aborts the process when
-/// the dialog goes away without a response (docs/toolkit-workarounds.md,
-/// "AdwAlertDialog.choose_future").
+/// `choose_future` is not used: it never resolves when the window goes
+/// with the dialog open, and its callback aborts the process when the
+/// call is cancelled (docs/toolkit-workarounds.md, "AdwAlertDialog.choose").
 pub(crate) async fn respond(dialog: &adw::AlertDialog, parent: &gtk::Widget) -> String {
     let fallback = dialog.close_response().to_string();
     let (sender, receiver) = oneshot::channel();
     let sender = Rc::new(RefCell::new(Some(sender)));
-    let on_response = sender.clone();
-    dialog.connect_response(None, move |_, response| {
-        if let Some(sender) = on_response.borrow_mut().take() {
-            let _ = sender.send(response.to_owned());
+    let reply = move |response: String| {
+        if let Some(sender) = sender.borrow_mut().take() {
+            let _ = sender.send(response);
         }
-    });
-    let closed_fallback = fallback.clone();
+    };
+    let on_response = reply.clone();
+    dialog.connect_response(None, move |_, response| on_response(response.to_owned()));
+    let (on_closed, closed_fallback) = (reply.clone(), fallback.clone());
     dialog.connect_closed(move |_| {
         // AdwAlertDialog emits `closed` before the response a click
         // chose, so the close response waits until that has had its turn.
-        let sender = sender.clone();
-        let fallback = closed_fallback.clone();
-        glib::idle_add_local_once(move || {
-            if let Some(sender) = sender.borrow_mut().take() {
-                let _ = sender.send(fallback);
-            }
-        });
+        let (on_closed, fallback) = (on_closed.clone(), closed_fallback.clone());
+        glib::idle_add_local_once(move || on_closed(fallback));
     });
+    // A window destroyed with the alert open takes it down with neither `response` nor `closed`.
+    let window = parent.root().map(|root| root.upcast::<gtk::Widget>());
+    let destroyed = Rc::new(Cell::new(false));
+    let on_destroy = window.as_ref().map(|window| {
+        let (reply, fallback, destroyed) = (reply.clone(), fallback.clone(), destroyed.clone());
+        window.connect_destroy(move |_| {
+            destroyed.set(true);
+            reply(fallback.clone());
+        })
+    });
+    let window = window.map(|window| window.downgrade());
     dialog.present(Some(parent));
-    receiver.await.unwrap_or(fallback)
+    let answered = receiver.await.unwrap_or(fallback);
+    if !destroyed.get()
+        && let (Some(window), Some(handler)) = (window.and_then(|window| window.upgrade()), on_destroy)
+    {
+        window.disconnect(handler);
+    }
+    answered
 }
 
 /// Answer the alert `window` shows with `response` by clicking its
@@ -94,6 +107,19 @@ mod tests {
         wait_until(WAIT, || answered.borrow().is_some()).expect("an answer");
         assert_eq!(answered.borrow().as_deref(), Some("stop"));
         wait_until(WAIT, || visible_alert(&window).is_none()).expect("the alert to close itself");
+    }
+
+    #[gtk4::test]
+    fn an_alert_whose_window_is_destroyed_answers_with_its_close_response() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let window = adw::Window::new();
+        window.present();
+        let (_dialog, answer) = alert(&window);
+
+        window.destroy();
+
+        wait_until(WAIT, || answer.borrow().is_some()).expect("an answer");
+        assert_eq!(answer.borrow().as_deref(), Some("keep"));
     }
 
     #[gtk4::test]

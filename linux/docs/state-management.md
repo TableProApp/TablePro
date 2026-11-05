@@ -160,7 +160,7 @@ The tab emits `transaction-changed` when that flips, and the workspace reads `Wo
 
 - `AdwAlertDialog` closes itself before it emits `response`. A response handler that calls `close()` again finds the dialog gone, and libadwaita logs a critical when animations are off.
 - That close emits `closed` before the `response` the click chose. A `closed` handler that answers at once turns every click into the close response. `workspace::respond` defers its close response to an idle callback, so the click's response comes first.
-- To wait for an answer, use `workspace::respond`, which also answers when the dialog goes without a response. `choose_future` is not used: its callback aborts the process in that case ([toolkit-workarounds.md](toolkit-workarounds.md#adwalertdialogchoose_future)).
+- To wait for an answer, use `workspace::respond`, which also answers when the dialog goes without a response, its window destroyed under it included. `choose_future` is not used: it never resolves in that case, and its callback aborts the process when the call is cancelled ([toolkit-workarounds.md](toolkit-workarounds.md#adwalertdialogchoose)).
 
 ## Anti-patterns to flag in review
 

@@ -4,11 +4,11 @@ The places the app steps around a GTK, libadwaita, GtkSourceView, IBus or gtk-rs
 
 ## A tab dropped outside every window
 
-- **Defect.** libadwaita documents the return of `AdwTabView::create-window` as nullable, but `adw_tab_view_create_window` logs `g_critical ("AdwTabView::create-window handler must not return NULL")` for NULL (`src/adw-tab-view.c`). So a handler cannot decline a new window without a critical. libadwaita then attaches the page to whatever view the handler returns, at position 0 (`detach_into_new_window` in `src/adw-tab-box.c`). Tab groups, which would keep a tab in its window, are a TODO there (`is_view_in_the_same_group`). No upstream report yet.
+- **What libadwaita does.** A tab dropped outside every tab bar emits `AdwTabView::create-window`, whose handler "is expected to create a new window, position it as needed and return its `AdwTabView`" (`src/adw-tab-view.c`). The signal stops at the first handler that returns a view; a handler that returns NULL leaves it to the next one. When none returns a view, `adw_tab_view_create_window` logs a critical and the tab bar puts the tab back where it was (`detach_into_new_window` in `src/adw-tab-box.c` and `src/adw-tab-grid.c`). There is no way to decline the new window and no tab groups yet (`is_view_in_the_same_group` is a TODO). This is the documented contract, not a defect.
 - **Seen in.** libadwaita 1.9.0 and main on 2026-11-05.
-- **Workaround.** A tab belongs to its session's window ([state-management.md](state-management.md#tabs)), so `create-window` returns the tab's own view and the shell moves the page back to where the drag took it from (`crates/app/src/ui/workspace/workspace_shell.rs`, `SessionWindowInput::ReturnTab`).
+- **Workaround.** A tab belongs to its session's window ([state-management.md](state-management.md#tabs)), so the handler returns the tab's own view, which libadwaita attaches the tab to at position 0, and the shell moves it back to where the drag took it from (`crates/app/src/ui/workspace/workspace_shell.rs`, `SessionWindowInput::ReturnTab`).
 - **Test.** `a_tab_dropped_outside_every_window_stays_where_it_was` in `crates/app/src/ui/session_window/tests/sessions.rs`.
-- **Remove when** the floor's libadwaita takes NULL from `create-window` as a decline without a critical, or has tab groups: return `None`, or put each window's view in its own group, and drop the position restore for this case.
+- **Remove when** the floor's libadwaita offers a way to decline a detach, or tab groups: use it, and drop the position restore for this case.
 
 ## IBus keeps every text view
 
@@ -26,17 +26,19 @@ The places the app steps around a GTK, libadwaita, GtkSourceView, IBus or gtk-rs
 - **Test.** As above: the buffer is empty after each close path.
 - **Remove when** the floor reaches GtkSourceView 5.22, together with the IBus entry or after it.
 
-## AdwAlertDialog.choose_future
+## AdwAlertDialog.choose
 
-- **Defect.** `adw_alert_dialog_choose_finish` returns `g_quark_to_string (g_task_propagate_int (...))`. Once the call's cancellable fires, the task's error makes `g_task_propagate_int` return -1 and the result is NULL (`src/adw-alert-dialog.c`), though its documentation promises the close response. libadwaita-rs reads that result with `from_glib_none` into a `GString` inside an `extern "C"` callback (`src/alert_dialog.rs`), where the panic aborts the process. `choose_future` cancels when its future is dropped, such as when the window that awaits it closes. A dialog that goes without emitting `response` leaves `choose` waiting for good. No upstream report yet.
-- **Seen in.** libadwaita 1.9.0 (`choose` since 1.5) with libadwaita-rs 0.9.2.
-- **Workaround.** `crate::workspace::respond` (`crates/app/src/workspace/dialog_response.rs`) answers from `response`, and from `closed` with the close response once a click's `response` has had its turn ([state-management.md](state-management.md#alert-dialogs)).
-- **Test.** `a_clicked_response_answers_and_closes_the_alert` and `an_alert_forced_shut_answers_with_its_close_response` in `dialog_response.rs`.
-- **Remove when** libadwaita returns the close response on cancel and on a forced close, and libadwaita-rs maps a NULL result without panicking.
+- **Defect.** Two, both in libadwaita (`src/adw-alert-dialog.c`, `src/adw-dialog-host.c`). Upstream report pending, filed by the maintainer.
+  - A window destroyed with an alert open takes the alert down with neither `response` nor `closed`: `adw_dialog_host_dispose` unparents its dialogs after clearing their callbacks. `choose` then never finishes, and `choose_future` never resolves.
+  - A cancelled `choose` finishes with NULL, though `adw_alert_dialog_choose_finish` promises the close response: the task keeps GTask's check-cancellable, so `g_task_propagate_int` returns -1 and `g_quark_to_string` gives NULL. libadwaita-rs follows the non-nullable annotation and reads it with `from_glib_none` inside an `extern "C"` callback, where the panic aborts the process. `choose_future` cancels when its future is dropped.
+- **Seen in.** libadwaita 1.9.0, and 1.10.0, whose dialog code matches main 295aa0e8.
+- **Workaround.** `crate::workspace::respond` (`crates/app/src/workspace/dialog_response.rs`) answers from `response`, from `closed` with the close response once a click's `response` has had its turn ([state-management.md](state-management.md#alert-dialogs)), and from the window's `destroy` with the close response.
+- **Test.** `a_clicked_response_answers_and_closes_the_alert`, `an_alert_forced_shut_answers_with_its_close_response` and `an_alert_whose_window_is_destroyed_answers_with_its_close_response` in `dialog_response.rs`.
+- **Remove when** the floor's libadwaita finishes `choose` with the close response on cancel and when the window goes: use `choose_future` with a cancellable.
 
 ## ColumnViewCell.set_focusable in gtk-rs
 
-- **Defect.** gtk4-rs generates `ColumnViewCell::set_focusable` only under `cfg(not(feature = "v4_12"))` (`src/auto/column_view_cell.rs`). With v4_12 on, `cell.set_focusable` resolves to `ListItemExt::set_focusable`, which sets GtkListItem's own `focusable`, and GtkColumnViewCell reads its own property of that name. No upstream report yet.
+- **Defect.** gtk4-rs generates `ColumnViewCell::set_focusable` only under `cfg(not(feature = "v4_12"))` (`src/auto/column_view_cell.rs`). With v4_12 on, `cell.set_focusable` resolves to `ListItemExt::set_focusable`, which sets GtkListItem's own `focusable`, and GtkColumnViewCell reads its own property of that name. [gtk-rs/gtk4-rs#2393](https://github.com/gtk-rs/gtk4-rs/issues/2393), with the generator fix in [gtk-rs/gir#1759](https://github.com/gtk-rs/gir/pull/1759), both open.
 - **Seen in.** gtk4-rs 0.11.4 and main on 2026-11-05.
 - **Workaround.** `cell.set_property("focusable", true)` in `crates/app/src/ui/data_grid/columns.rs`, and `false` for the row number cells in `row_number_column.rs`.
 - **Test.** The grid's keyboard tests in `crates/app/src/ui/data_grid/tests/gutter.rs` read `is_focusable` on the cells.

@@ -248,8 +248,9 @@ impl WorkspaceShell {
                 shell.follow_selected_page();
             }
         });
-        // A tab never leaves its session's window (ADR 0028), and NULL logs a critical in libadwaita 1.9, so the
-        // dropped tab comes back to this view: docs/toolkit-workarounds.md, "A tab dropped outside every window".
+        // A tab never leaves its session's window (ADR 0028), and libadwaita has no way to decline the new window
+        // it asks for here, so the tab comes back to this view: docs/toolkit-workarounds.md, "A tab dropped outside
+        // every window".
         let shell = self.downgrade();
         view.connect_create_window(move |view| {
             if let Some(shell) = shell.upgrade() {
