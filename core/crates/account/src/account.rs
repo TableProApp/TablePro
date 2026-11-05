@@ -679,7 +679,7 @@ mod tests {
     use url::Url;
 
     use super::*;
-    use crate::account_settings::{AppClient, CallbackPage, Endpoints};
+    use crate::account_settings::{AppClient, CallbackPage, DeviceDescription, Endpoints};
     use crate::account_status::FeatureAccess;
     use crate::entitlement::test_tokens::{claims, keys, sign};
 
@@ -1439,9 +1439,9 @@ mod tests {
             entitlement(Utc::now())
         );
         let first = Arc::new(AtomicBool::new(true));
-        let asked = requests.clone();
+        let log = requests.clone();
         let endpoints = cloud(move |method, path| {
-            asked.lock().expect("the requests").push(format!("{method} {path}"));
+            log.lock().expect("the requests").push(format!("{method} {path}"));
             match (method, path) {
                 ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
                 ("POST", "/v2/devices/dev_01k8d6wpggfd68tbhz818p4ww4/entitlement")
@@ -1619,7 +1619,7 @@ mod tests {
         let settings = AccountSettings {
             client: AppClient::LINUX,
             endpoints,
-            device: crate::account_settings::DeviceDescription {
+            device: DeviceDescription {
                 name: "Ada's laptop".to_owned(),
                 app_version: "0.1.0".to_owned(),
                 os_version: "Fedora Linux 43 (Workstation Edition)".to_owned(),
