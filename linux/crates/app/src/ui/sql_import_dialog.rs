@@ -231,12 +231,8 @@ impl SqlImportDialog {
             self.failures.remove(&row);
         }
         for (line, message) in failures.iter().take(LISTED_FAILURES) {
-            let row = adw::ActionRow::builder()
-                .title(line)
-                .subtitle(message)
-                .subtitle_selectable(true)
-                .use_markup(false)
-                .build();
+            let row = plain_row(line, message);
+            row.set_subtitle_selectable(true);
             self.failures.append(&row);
         }
         self.failures_box.set_visible(!failures.is_empty());
@@ -257,10 +253,7 @@ impl ChoosingPage {
     fn new(init: &SqlImportDialogInit) -> Self {
         let page = adw::PreferencesPage::new();
         let target = adw::PreferencesGroup::new();
-        let file = adw::ActionRow::builder()
-            .title(&init.file_name)
-            .subtitle(glib::format_size(init.file_size).as_str())
-            .build();
+        let file = plain_row(&init.file_name, &glib::format_size(init.file_size));
         target.add(&file);
         let mut description = gettext_f(
             "Every statement in the file runs on “{connection}”.",
@@ -270,7 +263,7 @@ impl ChoosingPage {
             description.push(' ');
             description.push_str(&crate::ui::write_confirmation::asks_before_writes(&init.connection));
         }
-        target.set_description(Some(&description));
+        target.set_description(Some(&glib::markup_escape_text(&description)));
         page.add(&target);
 
         let options = adw::PreferencesGroup::builder().title(gettext("Options")).build();
@@ -420,6 +413,17 @@ impl DonePage {
             close,
         }
     }
+}
+
+/// A row whose title and subtitle show as written: a file name, a
+/// statement or an error can hold `&` or `<`. Markup goes off before the
+/// text goes in, or GTK parses the text as markup first.
+fn plain_row(title: &str, subtitle: &str) -> adw::ActionRow {
+    let row = adw::ActionRow::new();
+    row.set_use_markup(false);
+    row.set_title(title);
+    row.set_subtitle(subtitle);
+    row
 }
 
 fn bar(button: &gtk::Button) -> gtk::Box {
@@ -594,6 +598,39 @@ mod tests {
     }
 
     #[gtk4::test]
+    fn a_name_with_markup_characters_shows_as_written() {
+        adw::init().expect("libadwaita initialises under the test backend");
+        let dialog = SqlImportDialog::new(
+            &SqlImportDialogInit {
+                file_name: "R&D <dump>.sql".to_owned(),
+                file_size: 100,
+                connection: "AT&T <prod>".to_owned(),
+                transactional: true,
+                confirms_writes: false,
+            },
+            |_| {},
+            || {},
+        );
+        let row = plain_row("R&D <dump>.sql", "1 kB");
+
+        assert!(!row.uses_markup());
+        assert_eq!(row.title(), "R&D <dump>.sql");
+        dialog.finish_with(
+            "dialog-error-symbolic",
+            "Import Stopped",
+            "AT&T <prod>",
+            &[("Line 1".to_owned(), "near \"<\": syntax error & more".to_owned())],
+        );
+        let failed = dialog
+            .failures
+            .first_child()
+            .and_downcast::<adw::ActionRow>()
+            .expect("a failure row");
+        assert_eq!(failed.subtitle().as_deref(), Some("near \"<\": syntax error & more"));
+        assert!(!failed.uses_markup());
+    }
+
+    #[gtk4::test]
     fn import_hands_over_the_options_and_turns_to_progress_with_close_off() {
         adw::init().expect("libadwaita initialises under the test backend");
         let chosen = Rc::new(RefCell::new(None));
@@ -613,7 +650,13 @@ mod tests {
         );
         dialog.stop_on_error.set_active(false);
 
-        dialog.dialog.default_widget().expect("Import").activate();
+        // An unrealized button ignores activate, so the test clicks.
+        let import = dialog
+            .dialog
+            .default_widget()
+            .and_downcast::<gtk::Button>()
+            .expect("Import is the default button");
+        import.emit_clicked();
 
         assert_eq!(
             *chosen.borrow(),
