@@ -1132,12 +1132,17 @@ impl SessionWindow {
 
     // Every window: while a script waited, a tab bound to its file may have come back in another one.
     fn focus_bound_tab(&self, file: &gio::File) -> bool {
-        let found = self.application().and_then(|app| {
-            app.windows()
-                .into_iter()
-                .filter_map(|window| window.downcast::<SessionWindow>().ok())
-                .find_map(|window| window.script_tab(file).map(|tab| (window, tab)))
-        });
+        self.application()
+            .is_some_and(|app| Self::focus_tab_bound_to(&app, file))
+    }
+
+    // A workspace handling input answers no lookup, so the caller checks its own tabs itself.
+    pub(crate) fn focus_tab_bound_to(app: &impl IsA<gtk::Application>, file: &gio::File) -> bool {
+        let found = app
+            .windows()
+            .into_iter()
+            .filter_map(|window| window.downcast::<SessionWindow>().ok())
+            .find_map(|window| window.script_tab(file).map(|tab| (window, tab)));
         let Some((window, tab)) = found else {
             return false;
         };

@@ -80,12 +80,7 @@ impl TableProApplication {
             .into_iter()
             .filter_map(|window| window.downcast::<SessionWindow>().ok())
             .collect();
-        if let Some((window, tab)) = windows
-            .iter()
-            .find_map(|window| Some((window, window.script_tab(&file)?)))
-        {
-            window.send(SessionWindowInput::FocusTab(tab));
-            window.present();
+        if SessionWindow::focus_tab_bound_to(self, &file) {
             return;
         }
         // While any window settles, a tab bound to the file may still appear, so a picker asks rather

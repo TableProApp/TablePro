@@ -220,6 +220,15 @@ impl WorkspaceModel {
             self.focus_tab(id);
             return;
         }
+        // Released after the saved tabs came back, by which time another window may hold the file.
+        let elsewhere = self
+            .window
+            .upgrade()
+            .and_then(|window| window.application())
+            .is_some_and(|app| crate::ui::SessionWindow::focus_tab_bound_to(&app, file));
+        if elsewhere {
+            return;
+        }
         self.open_editor(TabSpec::Editor {
             initial_query: Some(text),
             draft: None,
