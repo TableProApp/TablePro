@@ -52,7 +52,15 @@ fn provider_urls_fill_the_login_and_their_tls() {
     );
     assert_eq!(neon.port, None);
     assert_eq!(neon.database, "dbname");
-    assert_eq!(neon.tls.mode, Some(TlsMode::Require));
+    assert_eq!(
+        neon.tls.mode,
+        Some(TlsMode::VerifyFull),
+        "channel_binding=require asks for no password to a server in the middle"
+    );
+    assert_eq!(
+        mode("postgresql://db/x?sslmode=require&channel_binding=prefer"),
+        Some(TlsMode::Require)
+    );
 
     let heroku =
         read("postgres://u1:pw@ec2-1-2-3-4.compute-1.amazonaws.com:5432/d9?sslmode=verify-full&sslrootcert=system");

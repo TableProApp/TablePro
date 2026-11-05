@@ -28,7 +28,7 @@ use secrecy::SecretString;
 use tablepro_core::credentials::CredentialInteraction;
 use tablepro_core::{
     AiPolicy, AuthMode, ConfigError, DatabaseDriver, DriverCapabilities, DriverRegistry, ExternalAccess, LocalSocket,
-    NetworkOption, NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TransportClass, WorkspaceSettings,
+    NetworkOption, NetworkOptions, QueryTimeout, SafeModeLevel, TlsConfig, TlsMode, TransportClass, WorkspaceSettings,
     is_local_socket_host,
 };
 use tablepro_session::runtime::{ProcessHold, Tasks};
@@ -425,13 +425,17 @@ impl ConnectDialog {
         let kept = imp.other_host.replace(current);
         let entry = self.current_entry();
         let tls = entry.as_ref().and_then(|entry| entry.capabilities().tls.as_ref());
-        // The Security rows hide for a socket: what they held over the network comes back with them.
-        let network_tls = match on {
+        // What the Security rows held over the network comes back with it. A socket starts with TLS off, which
+        // MySQL turns into TLS when the server offers it; a connection opened on one starts the network on the default.
+        let next_tls = match on {
             true => {
                 imp.network_tls.replace(Some(imp.tls_section.form_state()));
-                None
+                TlsFormState {
+                    mode: TlsMode::Disable,
+                    ..TlsFormState::new(tls)
+                }
             }
-            false => Some(imp.network_tls.take().unwrap_or_else(|| TlsFormState::new(tls))),
+            false => imp.network_tls.take().unwrap_or_else(|| TlsFormState::new(tls)),
         };
         // Only a path the dialog picked itself is replaced by one found listening.
         let picked = on && !is_local_socket_host(kept.trim());
@@ -450,10 +454,7 @@ impl ConnectDialog {
         if picked {
             self.look_up_default_socket();
         }
-        // A connection opened on a socket was saved with TLS off, so the network starts on the default.
-        if let Some(state) = network_tls {
-            imp.tls_section.apply(tls, TransportClass::DirectTcp, &state);
-        }
+        imp.tls_section.apply(tls, TransportClass::DirectTcp, &next_tls);
         self.show_socket_rows();
         self.recheck_files();
         self.refresh();
@@ -660,6 +661,10 @@ impl ConnectDialog {
     // The Host row holds a socket's path for an engine that reads one, as libpq takes a folder there.
     fn socket_host(&self) -> bool {
         self.current_socket().is_some() && is_local_socket_host(self.imp().host_row.text().trim())
+    }
+
+    fn socket_without_tls(&self) -> bool {
+        self.socket_host() && !self.current_socket().is_some_and(|socket| socket.takes_tls())
     }
 
     fn current_socket(&self) -> Option<LocalSocket> {
@@ -869,7 +874,7 @@ impl ConnectDialog {
             None => crate::i18n::gettext("Host"),
         });
         imp.ssh_section.set_visible(!caps.is_file_based() && !on);
-        if on {
+        if on && !socket.is_some_and(|socket| socket.takes_tls()) {
             imp.tls_section.set_visible(false);
         } else if !caps.is_file_based() && caps.tls.is_some() && !imp.tls_section.is_visible() {
             imp.tls_section
@@ -885,7 +890,7 @@ impl ConnectDialog {
             return TlsConfig::disabled();
         };
         match entry.capabilities().tls.as_ref() {
-            Some(caps) if !entry.capabilities().is_file_based() && !self.socket_host() => {
+            Some(caps) if !entry.capabilities().is_file_based() && !self.socket_without_tls() => {
                 self.imp().tls_section.form_state().config(caps, self.route())
             }
             _ => TlsConfig::disabled(),

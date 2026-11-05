@@ -40,10 +40,6 @@ impl TlsConfig {
             return Err(ConfigError::UnsupportedTlsMode);
         }
         let encrypted = self.mode.encrypts();
-        // libpq never negotiates TLS on a Unix socket, and the kernel carries the bytes.
-        if encrypted && route == TransportClass::LocalSocket {
-            return Err(ConfigError::TlsOverLocalSocket);
-        }
         if let Some(ca_file) = &self.ca_file {
             // Require checks no certificate, so a CA file there would be
             // taken and never read, where libpq and the mysql client
@@ -361,18 +357,6 @@ mod tests {
                 Ok(()),
             ),
         ]);
-    }
-
-    #[test]
-    fn a_local_socket_takes_no_tls() {
-        assert_eq!(
-            TlsConfig::verify_full().validate(&POSTGRES, TransportClass::LocalSocket),
-            Err(ConfigError::TlsOverLocalSocket)
-        );
-        assert_eq!(
-            TlsConfig::disabled().validate(&POSTGRES, TransportClass::LocalSocket),
-            Ok(())
-        );
     }
 
     #[test]

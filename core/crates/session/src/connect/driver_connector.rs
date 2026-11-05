@@ -221,7 +221,7 @@ fn validate(request: &ConnectRequest) -> Result<(), ConnectError> {
                 return refuse(ConfigError::AuthModeUnsupported.into());
             }
             capabilities
-                .check_socket_host(endpoint.host(), ssh.is_some())
+                .check_socket_host(endpoint.host(), ssh.is_some(), tls.mode)
                 .map_err(DriverError::from)?;
             match (&capabilities.tls, request.target.transport_class()) {
                 (Some(caps), Some(route)) => tls.validate(caps, route).map_err(DriverError::from)?,

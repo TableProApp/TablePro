@@ -21,6 +21,7 @@ pub(super) struct TlsHints {
     pub(super) by_scheme: Option<Wanted>,
     weakened: bool,
     verify_server: bool,
+    binding_required: bool,
     system_roots: bool,
     ca_file: Option<PathBuf>,
     certificate: Option<PathBuf>,
@@ -44,6 +45,7 @@ impl TlsHints {
                 }
             }
             "verifyservercertificate" => self.verify_server |= is_true(&lower),
+            "channel_binding" => self.binding_required |= lower == "require",
             "sslaccept" => {
                 self.switch = match lower.as_str() {
                     "strict" => Some(Wanted::VerifyFull),
@@ -96,7 +98,9 @@ impl TlsHints {
         if self.verify_server && wanted == Some(Wanted::Require) {
             wanted = Some(Wanted::VerifyFull);
         }
-        let verifies_with_roots = self.ca_file.is_some() || self.system_roots;
+        // The driver binds the channel only when it can, so a URL that requires binding to keep its password
+        // from a server in the middle gets the certificate checked instead.
+        let verifies_with_roots = self.ca_file.is_some() || self.system_roots || self.binding_required;
         if verifies_with_roots && matches!(wanted, None | Some(Wanted::Prefer | Wanted::Require)) {
             wanted = Some(Wanted::VerifyFull);
         }

@@ -1522,7 +1522,9 @@ fn the_socket_switch_trades_the_host_for_the_socket_and_back() {
     assert!(imp.host_row.text().starts_with('/'), "{}", imp.host_row.text());
     assert_eq!(imp.host_row.title(), "Socket File");
     assert!(!imp.port_row.is_visible(), "a socket file takes no port");
-    assert!(!imp.tls_section.is_visible() && !imp.ssh_section.is_visible());
+    assert!(!imp.ssh_section.is_visible());
+    assert!(imp.tls_section.is_visible(), "MySQL speaks TLS over its socket");
+    assert_eq!(imp.tls_section.form_state().mode, TlsMode::Disable);
     assert!(imp.connect_button.is_sensitive());
     let form = harness.dialog.form();
     let valid = form.validate(caps_of("mysql")).expect("a socket connection");
@@ -1533,6 +1535,11 @@ fn the_socket_switch_trades_the_host_for_the_socket_and_back() {
     assert_eq!(imp.host_row.text(), "db.example.com");
     assert_eq!(imp.host_row.title(), "Host");
     assert!(imp.port_row.is_visible() && imp.tls_section.is_visible() && imp.ssh_section.is_visible());
+    assert_eq!(
+        imp.tls_section.form_state().mode,
+        TlsMode::VerifyFull,
+        "the network's TLS came back"
+    );
 }
 
 #[gtk4::test]
@@ -1546,6 +1553,7 @@ fn a_path_typed_as_the_host_is_a_socket_folder() {
     assert!(imp.socket_row.is_active());
     assert_eq!(imp.host_row.title(), "Socket Folder");
     assert!(imp.port_row.is_visible(), "the port names the socket in the folder");
+    assert!(!imp.tls_section.is_visible(), "PostgreSQL takes no TLS on a socket");
 
     select(&harness.dialog, "mongodb");
 

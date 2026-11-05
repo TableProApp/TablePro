@@ -294,6 +294,9 @@ impl ConnectForm {
             (false, false) => TransportClass::DirectTcp,
         };
         let tls = self.checked_tls(caps, route, &mut errors);
+        if let Err(error) = caps.check_socket_host(&self.host, self.ssh.is_some(), tls.mode) {
+            errors.push(FormField::Host, config_message(&error), false);
+        }
 
         let options = self.offered_options(caps);
         if let Err(error) = options.validate(caps, route) {
@@ -324,8 +327,6 @@ impl ConnectForm {
         })
     }
 
-    /// Where the connect goes. A path names the server's own socket,
-    /// which only an engine that reads one takes, and never a tunnel.
     fn checked_endpoint(&self, caps: &DriverCapabilities, errors: &mut FormErrors) -> Option<NetworkEndpoint> {
         let endpoint = match NetworkEndpoint::new(&self.host, self.port) {
             Ok(endpoint) => Some(endpoint),
@@ -339,16 +340,18 @@ impl ConnectForm {
                 None
             }
         };
-        if let Err(error) = caps.check_socket_host(&self.host, self.ssh.is_some()) {
-            errors.push(FormField::Host, config_message(&error), false);
-        }
         endpoint
     }
 
     fn checked_tls(&self, caps: &DriverCapabilities, route: TransportClass, errors: &mut FormErrors) -> TlsConfig {
         match caps.tls.as_ref() {
-            // The Security rows are hidden for a socket, which takes no TLS.
-            Some(_) if route == TransportClass::LocalSocket => TlsConfig::disabled(),
+            // The Security rows are hidden for a socket that takes no TLS.
+            Some(_)
+                if route == TransportClass::LocalSocket
+                    && !caps.local_socket().is_some_and(|socket| socket.takes_tls()) =>
+            {
+                TlsConfig::disabled()
+            }
             Some(tls_caps) => {
                 let config = self.tls.config(tls_caps, route);
                 if let Err(error) = config.validate(tls_caps, route) {
@@ -418,6 +421,10 @@ impl ConnectForm {
         form.username = url.username;
         form.password = url.password.unwrap_or_else(|| SecretString::from(String::new()));
         if let Some(tls_caps) = caps.tls.as_ref() {
+            // A socket starts with TLS off, as a network connection starts on the default.
+            if is_local_socket_host(&form.host) {
+                form.tls.mode = TlsMode::Disable;
+            }
             if let Some(mode) = url.tls.mode.filter(|mode| tls_caps.modes.contains(mode)) {
                 form.tls.mode = mode;
             }

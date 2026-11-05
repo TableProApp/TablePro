@@ -66,9 +66,9 @@ impl MysqlEndpoint {
         let local_socket = target.transport.kind().class() == TransportClass::LocalSocket;
         // MySQL counts a socket as secure and expects caching_sha2_password's cleartext there,
         // which sqlx sends only inside TLS: without it the first login after a restart is refused.
-        let ssl = match local_socket {
-            true => MySqlSslMode::Preferred,
-            false => ssl_mode(target.tls.mode)?,
+        let ssl = match (local_socket, target.tls.mode) {
+            (true, TlsMode::Disable) => MySqlSslMode::Preferred,
+            (_, mode) => ssl_mode(mode)?,
         };
         let mut options = MySqlConnectOptions::new()
             .username(username)
@@ -523,6 +523,22 @@ mod tests {
             Some(std::path::Path::new("/run/mysqld/mysqld.sock"))
         );
         assert!(matches!(options.get_ssl_mode(), MySqlSslMode::Preferred));
+
+        let verified = mysql_endpoint_with(
+            Route {
+                service: endpoint("/run/mysqld/mysqld.sock"),
+                kind: TransportKind::LocalSocket {
+                    path: "/run/mysqld/mysqld.sock".into(),
+                },
+                route: TransportRoute::UnixSocket("/run/mysqld/mysqld.sock".into()),
+            },
+            TlsConfig::verify_full(),
+        );
+        let options = verified.options_for(SessionKind::Workspace).unwrap();
+        assert!(
+            matches!(options.get_ssl_mode(), MySqlSslMode::VerifyIdentity),
+            "an explicit check of the certificate was dropped on a socket"
+        );
     }
 
     #[test]

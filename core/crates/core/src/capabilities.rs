@@ -5,6 +5,7 @@ use crate::local_socket::{LocalSocket, is_local_socket_host};
 use crate::meta::ObjectKind;
 use crate::network_options::NetworkOption;
 use crate::tls_capabilities::TlsCapabilities;
+use crate::tls_mode::TlsMode;
 use crate::write_ledger::WriteAtomicity;
 
 /// Where a driver connects to.
@@ -156,16 +157,19 @@ impl DriverCapabilities {
         })
     }
 
-    // The socket is this machine's, so a tunnel never reaches it.
-    pub fn check_socket_host(&self, host: &str, tunnelled: bool) -> Result<(), ConfigError> {
+    // The socket is this machine's, so a tunnel never reaches it, and TLS there is the engine's to take.
+    pub fn check_socket_host(&self, host: &str, tunnelled: bool, tls: TlsMode) -> Result<(), ConfigError> {
         if !is_local_socket_host(host.trim()) {
             return Ok(());
         }
-        if self.local_socket().is_none() {
+        let Some(socket) = self.local_socket() else {
             return Err(ConfigError::LocalSocketUnsupported);
-        }
+        };
         if tunnelled {
             return Err(ConfigError::LocalSocketOverSsh);
+        }
+        if tls.encrypts() && !socket.takes_tls() {
+            return Err(ConfigError::TlsOverLocalSocket);
         }
         Ok(())
     }
@@ -237,17 +241,37 @@ mod tests {
             ..NETWORK
         };
 
+        const FILE: LocalSocket = LocalSocket::File {
+            defaults: &["/run/mysqld/mysqld.sock"],
+        };
+        let with_file = DriverCapabilities {
+            network_options: &[NetworkOption::LocalSocket(FILE)],
+            ..NETWORK
+        };
+        let plain = TlsMode::Disable;
+
         assert_eq!(with_socket.local_socket(), Some(SOCKET));
         assert_eq!(NETWORK.local_socket(), None);
-        assert_eq!(with_socket.check_socket_host("/run/postgresql", false), Ok(()));
-        assert_eq!(with_socket.check_socket_host("db.example.com", true), Ok(()));
+        assert_eq!(with_socket.check_socket_host("/run/postgresql", false, plain), Ok(()));
         assert_eq!(
-            with_socket.check_socket_host("/run/postgresql", true),
+            with_socket.check_socket_host("db.example.com", true, TlsMode::VerifyFull),
+            Ok(())
+        );
+        assert_eq!(
+            with_socket.check_socket_host("/run/postgresql", true, plain),
             Err(ConfigError::LocalSocketOverSsh)
         );
         assert_eq!(
-            NETWORK.check_socket_host(" /run/postgresql", false),
+            NETWORK.check_socket_host(" /run/postgresql", false, plain),
             Err(ConfigError::LocalSocketUnsupported)
+        );
+        assert_eq!(
+            with_socket.check_socket_host("/run/postgresql", false, TlsMode::Require),
+            Err(ConfigError::TlsOverLocalSocket)
+        );
+        assert_eq!(
+            with_file.check_socket_host("/run/mysqld/mysqld.sock", false, TlsMode::VerifyFull),
+            Ok(())
         );
     }
 }

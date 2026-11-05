@@ -30,6 +30,11 @@ impl LocalSocket {
         matches!(self, Self::Folder { .. })
     }
 
+    // libpq ignores sslmode on a socket and the server answers N; MySQL speaks TLS there as over TCP.
+    pub fn takes_tls(&self) -> bool {
+        matches!(self, Self::File { .. })
+    }
+
     pub fn defaults(&self) -> &'static [&'static str] {
         match self {
             Self::Folder { defaults, .. } | Self::File { defaults } => defaults,
@@ -85,6 +90,8 @@ mod tests {
         );
         assert!(POSTGRES.reads_port());
         assert!(!MYSQL.reads_port());
+        assert!(!POSTGRES.takes_tls());
+        assert!(MYSQL.takes_tls());
     }
 
     #[test]
