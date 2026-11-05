@@ -30,6 +30,7 @@ on:
       - "linux/po/meson.build"
       - "linux/po/LINGUAS"
       - ".github/workflows/linux-packages.yml"
+      - ".github/actions/linux-package-disk/**"
   # Nightly on main, so a failure only one distribution's build shows turns
   # up before tag time. Three hours after build-linux.yml's nightly, so the
   # two do not share the account's 20 concurrent jobs.
@@ -160,6 +161,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/linux-package-disk
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-source-package
@@ -209,24 +211,26 @@ jobs:
         fedora: ["44", "45"]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
-    # Mock mounts the chroot's filesystems and build-rpm.sh unshares the
-    # network for the build.
-    container:
-      image: fedora:${{ matrix.fedora }}
-      options: --privileged
+    # On the runner itself, so the build's container can go on the larger
+    # disk. It is privileged, since Mock mounts the chroot's filesystems and
+    # build-rpm.sh unshares the network for the build.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/linux-package-disk
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: linux-sources
           path: _packages/sources
       - name: Build, test and lint the package
+        env:
+          FEDORA: ${{ matrix.fedora }}
         run: |
           dist="$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')"
           vendor="$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')"
-          linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
+          docker run --rm --privileged -v "$PWD:$PWD" -w "$PWD" "fedora:$FEDORA" \
+            linux/build-aux/packaging/build-rpm.sh "$dist" "$vendor" _packages/rpm
       - name: Keep the RPM failure logs
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
