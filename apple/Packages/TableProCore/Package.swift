@@ -26,7 +26,6 @@ let package = Package(
         .library(name: "TableProQuery", targets: ["TableProQuery"]),
         .library(name: "TableProSyncTransport", targets: ["TableProSyncTransport"]),
         .library(name: "TableProSync", targets: ["TableProSync"]),
-        .library(name: "TableProAnalytics", targets: ["TableProAnalytics"]),
         .library(name: "TableProMSSQLCore", targets: ["TableProMSSQLCore"]),
         .library(name: "TableProKerberos", targets: ["TableProKerberos"]),
         .library(name: "TableProTeradataCore", targets: ["TableProTeradataCore"]),
@@ -149,11 +148,6 @@ let package = Package(
             name: "TableProSync",
             dependencies: ["TableProSyncTransport", "TableProModels", "TableProCoreTypes", "TableProConnectionLibrary"],
             path: "Sources/TableProSync"
-        ),
-        .target(
-            name: "TableProAnalytics",
-            dependencies: [],
-            path: "Sources/TableProAnalytics"
         ),
         .target(
             name: "TableProMSSQLCore",
@@ -534,11 +528,6 @@ let package = Package(
             dependencies: ["TableProAutocomplete", "TableProSQLGrammar"],
             path: "Tests/TableProAutocompleteTests",
             swiftSettings: pluginCoreSettings
-        ),
-        .testTarget(
-            name: "TableProAnalyticsTests",
-            dependencies: ["TableProAnalytics"],
-            path: "Tests/TableProAnalyticsTests"
         ),
         .testTarget(
             name: "TableProMSSQLCoreTests",
