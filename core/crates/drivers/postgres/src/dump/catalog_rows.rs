@@ -16,6 +16,20 @@ pub(super) struct Collation {
     pub(super) name: String,
 }
 
+/// A collation a user made, with each release's locale columns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct UserCollation {
+    pub(super) schema: String,
+    pub(super) name: String,
+    /// `c` for libc, `i` for ICU, `b` for builtin.
+    pub(super) provider: String,
+    pub(super) deterministic: bool,
+    pub(super) collate: Option<String>,
+    pub(super) ctype: Option<String>,
+    pub(super) locale: Option<String>,
+    pub(super) rules: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Domain {
     pub(super) base: String,
@@ -214,6 +228,20 @@ pub(super) fn user_type(row: &Row) -> Result<UserType, DriverError> {
         schema: row.try_get(0).map_err(&field)?,
         name: row.try_get(1).map_err(&field)?,
         shape,
+    })
+}
+
+pub(super) fn user_collation(row: &Row) -> Result<UserCollation, DriverError> {
+    let field = decode_error("pg_collation");
+    Ok(UserCollation {
+        schema: row.try_get(0).map_err(&field)?,
+        name: row.try_get(1).map_err(&field)?,
+        provider: row.try_get(2).map_err(&field)?,
+        deterministic: row.try_get(3).map_err(&field)?,
+        collate: row.try_get(4).map_err(&field)?,
+        ctype: row.try_get(5).map_err(&field)?,
+        locale: row.try_get(6).map_err(&field)?,
+        rules: row.try_get(7).map_err(&field)?,
     })
 }
 

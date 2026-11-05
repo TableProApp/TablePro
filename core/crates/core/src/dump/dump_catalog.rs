@@ -30,6 +30,7 @@ pub enum DumpSection {
 pub enum DumpObjectKind {
     Schema,
     Extension,
+    Collation,
     Type,
     Sequence,
     Function,
@@ -52,6 +53,7 @@ impl DumpObjectKind {
         match self {
             Self::Schema => "Schema",
             Self::Extension => "Extension",
+            Self::Collation => "Collation",
             Self::Type => "Type",
             Self::Sequence => "Sequence",
             Self::Function => "Function",

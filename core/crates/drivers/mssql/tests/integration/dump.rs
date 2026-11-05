@@ -1,6 +1,7 @@
 //! The SQL dump round trip on SQL Server.
 
 use async_trait::async_trait;
+use tablepro_core::dump::DumpSkipReason;
 use tablepro_core::{
     ConnectOptions, ConnectTarget, DatabaseDriver, EditorSession, EditorSessionOptions, RunEnd, RunOptions, UserSql,
     WorkspaceSettings,
@@ -62,6 +63,10 @@ impl DumpEngine for MssqlEngine {
     /// trigger comes after the first rows and before the last, so a row
     /// it touched is in the sample and a trigger firing during the load
     /// would touch the others.
+    fn expected_skips(&self) -> Vec<(String, DumpSkipReason)> {
+        vec![("price_log".to_owned(), DumpSkipReason::VersioningNotCarried)]
+    }
+
     fn dump_fixture(&self) -> Vec<String> {
         [
             "CREATE SCHEMA app",

@@ -240,6 +240,7 @@ impl DumpEngine for PgEngine {
     fn dump_fixture(&self) -> Vec<String> {
         [
             "CREATE SCHEMA app",
+            "CREATE COLLATION app.bytes (locale = 'C')",
             "CREATE TYPE app.mood AS ENUM ('sad', 'ok', 'happy')",
             "CREATE DOMAIN app.quantity AS integer CONSTRAINT quantity_positive CHECK (VALUE > 0)",
             "CREATE SEQUENCE app.invoice_no START WITH 1000",
@@ -257,6 +258,7 @@ impl DumpEngine for PgEngine {
              price numeric(10, 2) NOT NULL CHECK (price >= 0), \
              total numeric GENERATED ALWAYS AS (qty * price) STORED, \
              note text COLLATE \"C\", \
+             code text COLLATE app.bytes, \
              payload bytea)",
             "CREATE INDEX child_parent_idx ON app.child (parent_id)",
             "CREATE PROCEDURE app.clear_note(target integer) LANGUAGE plpgsql AS $$ \

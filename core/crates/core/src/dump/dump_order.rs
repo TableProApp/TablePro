@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::meta::TableRef;
 use crate::sql_syntax::SqlGrammar;
@@ -34,12 +34,60 @@ pub(super) fn order_tables(tables: &[DumpTable]) -> (Vec<usize>, Vec<TableRef>) 
 /// The objects' positions with each one after the others its text names.
 /// A name written with its schema matches only that schema's object; a
 /// bare one matches any of that name, so a name that is also a column's
-/// can add an edge that is not there, and a cycle that makes keeps those
-/// objects in the order they came.
+/// can add an edge that is not there. Within a cycle that makes, only
+/// the names read where a relation or a call stands hold.
 #[cfg(test)]
 fn order_programs(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<usize> {
-    stable_topological(&mention_edges(objects, grammar)).0
+    ordered(&mention_edges(objects, grammar))
 }
+
+/// [`stable_topological`] over mention edges. A cycle the edges make is
+/// tried again without the edges of names read anywhere else, such as a
+/// column a view selects that shares a view's name.
+fn ordered(edges: &[Vec<Mention>]) -> Vec<usize> {
+    let every: Vec<Vec<usize>> = edges
+        .iter()
+        .map(|list| list.iter().map(|mention| mention.parent).collect())
+        .collect();
+    let (order, stuck) = stable_topological(&every);
+    if stuck.is_empty() {
+        return order;
+    }
+    let stuck: BTreeSet<usize> = stuck.into_iter().collect();
+    let kept: Vec<Vec<usize>> = edges
+        .iter()
+        .enumerate()
+        .map(|(child, list)| {
+            list.iter()
+                .filter(|mention| mention.placed || !(stuck.contains(&child) && stuck.contains(&mention.parent)))
+                .map(|mention| mention.parent)
+                .collect()
+        })
+        .collect();
+    stable_topological(&kept).0
+}
+
+/// An object another one's text names, and whether the name stands where
+/// only a relation or a routine can: after FROM, JOIN, INTO and the like,
+/// or before a call's `(`.
+#[derive(Debug, Clone, Copy)]
+struct Mention {
+    parent: usize,
+    placed: bool,
+}
+
+/// The words after which a name is a relation or a routine.
+const RELATION_WORDS: [&str; 9] = [
+    "FROM",
+    "JOIN",
+    "INTO",
+    "UPDATE",
+    "TABLE",
+    "REFERENCES",
+    "EXEC",
+    "EXECUTE",
+    "CALL",
+];
 
 /// What is made before the rows, and what after the keys and indexes.
 ///
@@ -64,7 +112,7 @@ pub(super) fn creation_order<'a>(
     let mut early: Vec<bool> = (0..made).map(|position| position < before.len()).collect();
     let mut pending: Vec<usize> = (0..before.len()).chain(made..all.len()).collect();
     while let Some(node) = pending.pop() {
-        for &parent in &parents[node] {
+        for &Mention { parent, .. } in &parents[node] {
             let movable = parent < made && all[parent].kind != DumpObjectKind::MaterializedView;
             if movable && !early[parent] {
                 early[parent] = true;
@@ -79,17 +127,21 @@ pub(super) fn creation_order<'a>(
             .enumerate()
             .map(|(at, &position)| (position, at))
             .collect();
-        let edges: Vec<Vec<usize>> = members
+        let edges: Vec<Vec<Mention>> = members
             .iter()
             .map(|&position| {
                 parents[position]
                     .iter()
-                    .filter_map(|parent| local.get(parent).copied())
+                    .filter_map(|mention| {
+                        local.get(&mention.parent).map(|&parent| Mention {
+                            parent,
+                            placed: mention.placed,
+                        })
+                    })
                     .collect()
             })
             .collect();
-        stable_topological(&edges)
-            .0
+        ordered(&edges)
             .into_iter()
             .map(|at| all[members[at]])
             .collect::<Vec<_>>()
@@ -98,36 +150,39 @@ pub(super) fn creation_order<'a>(
 }
 
 /// For each object, the others its text names.
-fn mention_edges(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<Vec<usize>> {
+fn mention_edges(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<Vec<Mention>> {
     let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
     for (position, object) in objects.iter().enumerate() {
         by_name.entry(object.name.to_lowercase()).or_default().push(position);
     }
     let schema_of = |position: usize| objects[position].schema.as_deref().map(str::to_lowercase);
-    let edges: Vec<Vec<usize>> = objects
+    objects
         .iter()
         .enumerate()
         .map(|(position, object)| {
-            let mut parents = BTreeSet::new();
-            for (schema, name) in mentions(object, grammar) {
+            let mut parents: BTreeMap<usize, bool> = BTreeMap::new();
+            for (schema, name, placed) in mentions(object, grammar) {
                 for &other in by_name.get(&name).into_iter().flatten() {
                     let same_schema = schema.is_none() || schema == schema_of(other);
                     if other != position && same_schema {
-                        parents.insert(other);
+                        *parents.entry(other).or_default() |= placed;
                     }
                 }
             }
-            parents.into_iter().collect()
+            parents
+                .into_iter()
+                .map(|(parent, placed)| Mention { parent, placed })
+                .collect()
         })
-        .collect();
-    edges
+        .collect()
 }
 
 /// The names the object's statements hold, each with the schema written
 /// before it, unquoted and in lower case. Left out: the object's own name
 /// where its CREATE states it, a name an `AS` gives (a column or table
-/// alias), and a schema written before a dot.
-fn mentions(object: &DumpObject, grammar: SqlGrammar) -> Vec<(Option<String>, String)> {
+/// alias), and a schema written before a dot. Each says whether it
+/// stands where only a relation or a routine can.
+fn mentions(object: &DumpObject, grammar: SqlGrammar) -> Vec<(Option<String>, String, bool)> {
     let own = object.name.to_lowercase();
     let own_schema = object.schema.as_deref().map(str::to_lowercase);
     let mut found = Vec::new();
@@ -158,7 +213,15 @@ fn mentions(object: &DumpObject, grammar: SqlGrammar) -> Vec<(Option<String>, St
                 declared = true;
                 continue;
             }
-            found.push((schema, name));
+            let head = match schema {
+                Some(_) => at.checked_sub(3),
+                None => at.checked_sub(1),
+            };
+            let after_relation_word = head.and_then(|head| tokens.get(head)).is_some_and(|(kind, text)| {
+                *kind == ScriptTokenKind::Word && RELATION_WORDS.iter().any(|word| text.eq_ignore_ascii_case(word))
+            });
+            let called = matches!(tokens.get(at + 1), Some((ScriptTokenKind::OpenParen, _)));
+            found.push((schema, name, after_relation_word || called));
         }
     }
     found
@@ -329,6 +392,17 @@ mod tests {
         let named = |objects: &[&DumpObject]| objects.iter().map(|object| object.name.clone()).collect::<Vec<_>>();
         assert_eq!(named(&early), ["base", "total", "uses"]);
         assert_eq!(named(&late), ["other"]);
+    }
+
+    #[test]
+    fn a_column_named_like_a_view_does_not_hold_the_view_back() {
+        let objects = [
+            view("email", "CREATE VIEW email AS SELECT * FROM summary"),
+            view("summary", "CREATE VIEW summary AS SELECT email FROM users"),
+        ];
+        let refs: Vec<&DumpObject> = objects.iter().collect();
+
+        assert_eq!(order_programs(&refs, SqlGrammar::DuckDb), [1, 0]);
     }
 
     #[test]

@@ -4,7 +4,8 @@
 use postgres_protocol::escape::escape_identifier;
 
 use super::catalog_rows::{
-    Collation, Column, Constraint, Domain, DomainCheck, Extension, Sequence, SequenceOwner, Table, Trigger, View,
+    Collation, Column, Constraint, Domain, DomainCheck, Extension, Sequence, SequenceOwner, Table, Trigger,
+    UserCollation, View,
 };
 use crate::dialect::quoted as literal;
 
@@ -18,6 +19,43 @@ pub(super) fn qualified(schema: &str, name: &str) -> String {
 
 fn collate(collation: &Collation) -> String {
     format!(" COLLATE {}", qualified(&collation.schema, &collation.name))
+}
+
+/// As pg_dump writes one. `None` for a provider this does not know.
+pub(super) fn create_collation(collation: &UserCollation) -> Option<String> {
+    let provider = match collation.provider.as_str() {
+        "c" => "libc",
+        "i" => "icu",
+        "b" => "builtin",
+        _ => return None,
+    };
+    let mut options = vec![format!("provider = {provider}")];
+    if !collation.deterministic {
+        options.push("deterministic = false".to_owned());
+    }
+    match (provider, collation.collate.as_deref(), collation.ctype.as_deref()) {
+        ("libc", Some(collate), Some(ctype)) if collate == ctype => {
+            options.push(format!("locale = {}", literal(collate)))
+        }
+        ("libc", Some(collate), Some(ctype)) => {
+            options.push(format!("lc_collate = {}", literal(collate)));
+            options.push(format!("lc_ctype = {}", literal(ctype)));
+        }
+        ("libc", ..) => return None,
+        // Before 15 an ICU collation kept its locale in collcollate.
+        _ => {
+            let locale = collation.locale.as_deref().or(collation.collate.as_deref())?;
+            options.push(format!("locale = {}", literal(locale)));
+        }
+    }
+    if let Some(rules) = &collation.rules {
+        options.push(format!("rules = {}", literal(rules)));
+    }
+    Some(format!(
+        "CREATE COLLATION {} ({})",
+        qualified(&collation.schema, &collation.name),
+        options.join(", ")
+    ))
 }
 
 pub(super) fn create_schema(name: &str) -> String {
@@ -320,6 +358,43 @@ pub(super) fn trigger_state(trigger: &Trigger) -> Option<String> {
 mod tests {
     use super::*;
     use crate::dump::catalog_rows::Partition;
+
+    #[test]
+    fn a_collation_is_written_for_each_provider_and_release() {
+        let collation =
+            |provider: &str, collate: Option<&str>, ctype: Option<&str>, locale: Option<&str>| UserCollation {
+                schema: "app".to_owned(),
+                name: "sorted".to_owned(),
+                provider: provider.to_owned(),
+                deterministic: true,
+                collate: collate.map(str::to_owned),
+                ctype: ctype.map(str::to_owned),
+                locale: locale.map(str::to_owned),
+                rules: None,
+            };
+
+        assert_eq!(
+            create_collation(&collation("c", Some("C"), Some("C"), None)).as_deref(),
+            Some("CREATE COLLATION \"app\".\"sorted\" (provider = libc, locale = 'C')")
+        );
+        assert_eq!(
+            create_collation(&collation("c", Some("C"), Some("en_US.utf8"), None)).as_deref(),
+            Some("CREATE COLLATION \"app\".\"sorted\" (provider = libc, lc_collate = 'C', lc_ctype = 'en_US.utf8')")
+        );
+        let mut nocase = collation("i", None, None, Some("und-u-ks-level2"));
+        nocase.deterministic = false;
+        assert_eq!(
+            create_collation(&nocase).as_deref(),
+            Some(
+                "CREATE COLLATION \"app\".\"sorted\" (provider = icu, deterministic = false, locale = 'und-u-ks-level2')"
+            )
+        );
+        assert_eq!(
+            create_collation(&collation("i", Some("de-DE"), Some("de-DE"), None)).as_deref(),
+            Some("CREATE COLLATION \"app\".\"sorted\" (provider = icu, locale = 'de-DE')")
+        );
+        assert_eq!(create_collation(&collation("d", None, None, None)), None);
+    }
 
     fn sequence(name: &str) -> Sequence {
         Sequence {

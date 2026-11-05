@@ -100,6 +100,13 @@ impl ScriptReader {
         }
     }
 
+    /// How the session reads a string before the script sets anything,
+    /// where the server's configuration can differ from the default.
+    pub fn with_settings(mut self, settings: LexicalSettings) -> Self {
+        self.settings = settings;
+        self
+    }
+
     /// The clause `SqlDialect::insert_overriding_clause` gives, for the
     /// INSERTs COPY rows become.
     pub fn with_copy_overriding(mut self, clause: Option<&str>) -> Self {

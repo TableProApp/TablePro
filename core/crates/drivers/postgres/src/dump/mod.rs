@@ -21,11 +21,12 @@ use tokio_postgres::{Client, Row};
 use crate::errors::map_error;
 use crate::metadata::text_rows;
 use catalog_rows::{
-    Column, Constraint, DomainCheck, Extension, Index, Routine, Sequence, Table, Trigger, TypeShape, UserType, View,
+    Column, Constraint, DomainCheck, Extension, Index, Routine, Sequence, Table, Trigger, TypeShape, UserCollation,
+    UserType, View,
 };
 use catalog_sql::{
-    COLUMNS_SQL, CONSTRAINTS_SQL, DOMAIN_CHECKS_SQL, EXTENSIONS_SQL, FUNCTIONS_SQL, FUNCTIONS_SQL_BEFORE_14,
-    INDEXES_SQL, SCHEMAS_SQL, SEQUENCES_SQL, TABLES_SQL, TRIGGERS_SQL, TYPES_SQL, VIEWS_SQL,
+    COLLATIONS_SQL, COLUMNS_SQL, CONSTRAINTS_SQL, DOMAIN_CHECKS_SQL, EXTENSIONS_SQL, FUNCTIONS_SQL,
+    FUNCTIONS_SQL_BEFORE_14, INDEXES_SQL, SCHEMAS_SQL, SEQUENCES_SQL, TABLES_SQL, TRIGGERS_SQL, TYPES_SQL, VIEWS_SQL,
 };
 use statements::qualified;
 
@@ -86,6 +87,7 @@ pub(crate) async fn read_dump_catalog(
     let (
         schemas,
         extensions,
+        collations,
         types,
         domain_checks,
         routines,
@@ -99,6 +101,7 @@ pub(crate) async fn read_dump_catalog(
     ) = futures_util::try_join!(
         text_rows(client, SCHEMAS_SQL, &params),
         text_rows(client, EXTENSIONS_SQL, &params),
+        text_rows(client, COLLATIONS_SQL, &params),
         text_rows(client, TYPES_SQL, &params),
         text_rows(client, DOMAIN_CHECKS_SQL, &params),
         text_rows(client, functions_sql, &params),
@@ -113,6 +116,7 @@ pub(crate) async fn read_dump_catalog(
     let facts = CatalogFacts {
         schemas: decoded(&schemas, catalog_rows::schema_name)?,
         extensions: decoded(&extensions, catalog_rows::extension)?,
+        collations: decoded(&collations, catalog_rows::user_collation)?,
         types: decoded(&types, catalog_rows::user_type)?,
         domain_checks: decoded(&domain_checks, catalog_rows::domain_check)?,
         routines: decoded(&routines, catalog_rows::routine)?,
@@ -136,6 +140,7 @@ fn decoded<T>(rows: &[Row], decode: fn(&Row) -> Result<T, DriverError>) -> Resul
 struct CatalogFacts {
     schemas: Vec<String>,
     extensions: Vec<Extension>,
+    collations: Vec<UserCollation>,
     types: Vec<UserType>,
     domain_checks: Vec<DomainCheck>,
     routines: Vec<Routine>,
@@ -271,6 +276,7 @@ fn assemble(facts: &CatalogFacts) -> DumpCatalog {
     let lookup = Lookup::new(facts);
     let mut catalog = DumpCatalog::default();
     let mut before = namespaces(facts);
+    before.extend(collations(facts, &mut catalog.skipped));
     let (types, domain_checks) = types(facts, &lookup, &mut catalog.skipped);
     before.extend(types);
     let (routines_before, mut programs) = routines(facts, &mut catalog.skipped);
@@ -311,6 +317,23 @@ fn assemble(facts: &CatalogFacts) -> DumpCatalog {
         .chain(triggers)
         .collect();
     catalog
+}
+
+fn collations(facts: &CatalogFacts, skipped: &mut Vec<DumpSkip>) -> Vec<DumpObject> {
+    let mut objects = Vec::new();
+    for collation in &facts.collations {
+        match statements::create_collation(collation) {
+            Some(sql) => objects.push(DumpObject::new(
+                DumpObjectKind::Collation,
+                DumpSection::BeforeData,
+                Some(collation.schema.clone()),
+                collation.name.clone(),
+                plain([sql]),
+            )),
+            None => skipped.push(skip(DumpObjectKind::Collation, &collation.schema, &collation.name)),
+        }
+    }
+    objects
 }
 
 fn namespaces(facts: &CatalogFacts) -> Vec<DumpObject> {

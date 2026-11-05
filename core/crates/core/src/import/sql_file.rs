@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use flate2::bufread::MultiGzDecoder;
 
 use crate::sql_syntax::SqlGrammar;
-use crate::sql_syntax::script::{ScriptReadError, ScriptReader, ScriptUnit};
+use crate::sql_syntax::script::{LexicalSettings, ScriptReadError, ScriptReader, ScriptUnit};
 
 /// Bytes read from the file at a time.
 const READ_BYTES: usize = 256 * 1024;
@@ -81,6 +81,12 @@ impl SqlFileReader {
 
     /// The bytes of the file read so far, shared so another thread can
     /// show progress.
+    /// How the session reads a string as the file starts.
+    pub fn with_settings(mut self, settings: LexicalSettings) -> Self {
+        self.reader = self.reader.map(|reader| reader.with_settings(settings));
+        self
+    }
+
     pub fn consumed(&self) -> Arc<AtomicU64> {
         Arc::clone(&self.consumed)
     }

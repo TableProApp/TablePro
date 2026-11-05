@@ -50,6 +50,26 @@ WHERE ",
 ORDER BY e.extname"
 );
 
+/// Collations users made. The column that names an ICU or builtin
+/// locale moved between releases (`colliculocale` in 15 and 16,
+/// `colllocale` from 17), so the row is read as JSON.
+pub(crate) const COLLATIONS_SQL: &str = concat!(
+    "SELECT n.nspname::text, c.collname::text, c.collprovider::text,
+       COALESCE((pg_catalog.to_jsonb(c) ->> 'collisdeterministic')::boolean, true),
+       pg_catalog.to_jsonb(c) ->> 'collcollate', pg_catalog.to_jsonb(c) ->> 'collctype',
+       COALESCE(pg_catalog.to_jsonb(c) ->> 'colllocale', pg_catalog.to_jsonb(c) ->> 'colliculocale'),
+       pg_catalog.to_jsonb(c) ->> 'collicurules'
+FROM pg_catalog.pg_collation c
+JOIN pg_catalog.pg_namespace n ON n.oid = c.collnamespace
+WHERE ",
+    in_scope!(),
+    "
+  AND ",
+    not_extension_member!("pg_collation", "c.oid"),
+    "
+ORDER BY n.nspname, c.collname"
+);
+
 /// Enums, domains and composite types, then range and base types, which
 /// the dump lists as left out. An array type comes with its element type
 /// and a table's row type with its table.

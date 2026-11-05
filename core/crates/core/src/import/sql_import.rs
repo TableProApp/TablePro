@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -22,6 +23,7 @@ use crate::sql_syntax::script::{
 use crate::timeout_phase::TimeoutPhase;
 use crate::transaction_state::TransactionState;
 use crate::user_sql::UserSql;
+use crate::value::Value;
 
 use super::sql_file::{SqlFileError, SqlFileReader};
 
@@ -138,7 +140,8 @@ pub async fn run_sql_import(
 ) -> SqlImportReport {
     let started = Instant::now();
     let grammar = dialect.grammar();
-    let reader = SqlFileReader::new(file, grammar, dialect.insert_overriding_clause());
+    let settings = session_settings(editor, grammar, cancel).await;
+    let reader = SqlFileReader::new(file, grammar, dialect.insert_overriding_clause()).with_settings(settings);
     let consumed = reader.consumed();
     let (sender, mut units) = mpsc::channel(UNITS_AHEAD);
     let reading = tokio::task::spawn_blocking(move || {
@@ -439,6 +442,71 @@ impl Run<'_> {
             Ok(TransactionState::Idle) => Some(false),
             Ok(TransactionState::Unknown) | Err(_) => None,
         }
+    }
+}
+
+/// How the session reads a backslash in a string as the import starts.
+/// The server's configuration decides it, and a file need not set it:
+/// MySQL's `NO_BACKSLASH_ESCAPES` and PostgreSQL's
+/// `standard_conforming_strings`. The default when the read fails.
+async fn session_settings(
+    editor: &dyn EditorSession,
+    grammar: SqlGrammar,
+    cancel: &CancellationToken,
+) -> LexicalSettings {
+    let default = LexicalSettings::default_for(grammar);
+    let (query, escapes): (&str, fn(&str) -> bool) = match grammar {
+        SqlGrammar::MySql => ("SELECT @@SESSION.sql_mode", |mode| {
+            !mode.to_ascii_uppercase().contains("NO_BACKSLASH_ESCAPES")
+        }),
+        SqlGrammar::PostgreSql => ("SHOW standard_conforming_strings", |value| {
+            value.trim().eq_ignore_ascii_case("off")
+        }),
+        _ => return default,
+    };
+    let seen = Arc::new(Mutex::new(None));
+    let sink = FirstText {
+        seen: Arc::clone(&seen),
+    };
+    let options = RunOptions::new(cancel.child_token());
+    let ran = editor.run(UserSql::new(query), options, Box::new(sink)).await;
+    if !matches!(ran.map(|summary| summary.end), Ok(RunEnd::Completed)) {
+        return default;
+    }
+    let value = seen.lock().ok().and_then(|mut seen| seen.take());
+    match value {
+        Some(value) => LexicalSettings {
+            backslash_escapes: escapes(&value),
+        },
+        None => default,
+    }
+}
+
+/// The first value of the first row, as text.
+struct FirstText {
+    seen: Arc<Mutex<Option<String>>>,
+}
+
+#[async_trait]
+impl ResultSink for FirstText {
+    async fn accept(&mut self, event: ResultEvent) -> SinkFlow {
+        if let ResultEvent::Rows(rows) = event {
+            let text = rows
+                .into_iter()
+                .next()
+                .and_then(|row| row.into_iter().next())
+                .and_then(|value| match value {
+                    Value::Text(text) => Some(text),
+                    Value::Bytes(bytes) => String::from_utf8(bytes).ok(),
+                    _ => None,
+                });
+            if let (Some(text), Ok(mut seen)) = (text, self.seen.lock())
+                && seen.is_none()
+            {
+                *seen = Some(text);
+            }
+        }
+        SinkFlow::Continue
     }
 }
 

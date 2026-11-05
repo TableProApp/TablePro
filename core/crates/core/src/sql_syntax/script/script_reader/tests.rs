@@ -192,6 +192,23 @@ fn a_file_on_one_line_is_cut_where_its_statements_end() {
 }
 
 #[test]
+fn a_session_without_backslash_escapes_reads_a_file_that_sets_nothing() {
+    let mut reader = ScriptReader::new(SqlGrammar::MySql).with_settings(LexicalSettings {
+        backslash_escapes: false,
+    });
+
+    let mut units = reader
+        .push("INSERT INTO t VALUES ('a\\'); INSERT INTO t VALUES ('b;c');\n")
+        .expect("the file");
+    units.extend(reader.finish().expect("the end"));
+
+    assert_eq!(
+        texts(&units),
+        ["INSERT INTO t VALUES ('a\\')", "INSERT INTO t VALUES ('b;c')"]
+    );
+}
+
+#[test]
 fn a_long_line_after_a_comment_line_is_cut_where_its_statements_end() {
     let line: String = (0..20_000).map(|n| format!("INSERT INTO t VALUES ({n});")).collect();
     let mut reader = ScriptReader::new(SqlGrammar::Sqlite);

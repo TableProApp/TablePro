@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use tablepro_core::ConnectOptions;
-use tablepro_core::dump::DumpScope;
+use tablepro_core::dump::{DumpScope, DumpSkipReason};
 
 use crate::conformance::{ConformanceEngine, ConformanceFailure};
 
@@ -25,6 +25,13 @@ pub trait DumpEngine: ConformanceEngine {
     /// What the dump covers.
     fn dump_scope(&self) -> DumpScope {
         DumpScope::Database
+    }
+
+    /// What the sample's dump reports it writes differently or leaves
+    /// out, by name: what this engine's file cannot carry. A database the
+    /// file loaded into has none of it.
+    fn expected_skips(&self) -> Vec<(String, DumpSkipReason)> {
+        Vec::new()
     }
 
     /// A file the engine's own dump tool wrote, and reads that each give

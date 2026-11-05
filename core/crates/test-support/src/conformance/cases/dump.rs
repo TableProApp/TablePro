@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tablepro_core::dump::{DumpOutput, DumpOutputClosed, DumpRequest, write_dump};
+use tablepro_core::dump::{DumpOutput, DumpOutputClosed, DumpRequest, DumpSkipReason, write_dump};
 use tablepro_core::import::{SqlImportEnd, SqlImportErrorPolicy, SqlImportOptions, run_sql_import};
 use tablepro_core::{Connection, EditorSessionOptions};
 use tokio_util::sync::CancellationToken;
@@ -33,7 +33,7 @@ pub async fn dump_loads_back_into_an_empty_database<E: DumpEngine>(engine: E) ->
         scope: engine.dump_scope(),
         data: true,
     };
-    let first = dump(source.as_ref(), &request).await?;
+    let first = dump(source.as_ref(), &request, &engine.expected_skips()).await?;
 
     let target = open(&engine, "tp_dump_target").await?;
     let loader = target
@@ -63,7 +63,7 @@ pub async fn dump_loads_back_into_an_empty_database<E: DumpEngine>(engine: E) ->
         || format!("the dump did not load back: {:?}\n{first}", report),
     )?;
 
-    let second = dump(target.as_ref(), &request).await?;
+    let second = dump(target.as_ref(), &request, &[]).await?;
     expect(CASE, first == second, || first_difference(&first, &second))?;
     Ok(())
 }
@@ -124,7 +124,11 @@ async fn open<E: DumpEngine>(engine: &E, name: &str) -> Result<Arc<dyn Connectio
     Ok(dial(CASE, E::driver(), options).await??)
 }
 
-async fn dump(connection: &dyn Connection, request: &DumpRequest) -> Result<String, ConformanceFailure> {
+async fn dump(
+    connection: &dyn Connection,
+    request: &DumpRequest,
+    expected_skips: &[(String, DumpSkipReason)],
+) -> Result<String, ConformanceFailure> {
     let mut output = Collected::default();
     let report = tokio::time::timeout(
         STEP_LIMIT,
@@ -135,7 +139,12 @@ async fn dump(connection: &dyn Connection, request: &DumpRequest) -> Result<Stri
     .map_err(|error| unexpected(CASE, format!("the dump failed: {error}")))?;
     let text = String::from_utf8(lock(&output.bytes).clone())
         .map_err(|_| unexpected(CASE, "the dump is not UTF-8".to_owned()))?;
-    expect(CASE, report.omitted.is_empty() && report.skipped.is_empty(), || {
+    let skipped: Vec<(String, DumpSkipReason)> = report
+        .skipped
+        .iter()
+        .map(|skip| (skip.name.clone(), skip.reason))
+        .collect();
+    expect(CASE, report.omitted.is_empty() && skipped == expected_skips, || {
         format!(
             "the dump left values or objects out: {:?} {:?}\n{text}",
             report.omitted, report.skipped
