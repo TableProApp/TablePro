@@ -49,7 +49,7 @@ use libadwaita as adw;
 use libadwaita::prelude::AdwApplicationWindowExt;
 use tokio_util::sync::CancellationToken;
 
-use tablepro_core::{DatabaseDriver, DriverError, SafeModeLevel, TransportClass};
+use tablepro_core::{DataModel, DatabaseDriver, DriverError, SafeModeLevel, TransportClass};
 use tablepro_session::connect::StoreConnectionWrites;
 use tablepro_session::registry::FileIdentity;
 use tablepro_session::runtime::ProcessHold;
@@ -169,6 +169,10 @@ impl SessionWindow {
         picker
             .banner()
             .connect_button_clicked(move |_| reset_input.deliver(SessionWindowInput::ResetConnectionList));
+        let drop_input = input.clone();
+        picker
+            .script_banner()
+            .connect_button_clicked(move |_| drop_input.deliver(SessionWindowInput::DropWaitingScripts));
         let window = self.downgrade();
         imp.list_observer.set(Some(list.connect_state_changed(move |_| {
             if let Some(window) = window.upgrade() {
@@ -437,6 +441,12 @@ impl SessionWindow {
             SessionWindowInput::OpenSaved(saved) => self.on_open_saved(*saved),
             SessionWindowInput::OpenFile(file) => self.on_open_file(file),
             SessionWindowInput::FileResolved(resolved) => self.on_file_resolved(*resolved),
+            SessionWindowInput::OpenScript(file) => self.on_open_script(file),
+            SessionWindowInput::ScriptLoaded { file, text } => self.on_script_loaded(file, text),
+            SessionWindowInput::DropWaitingScripts => {
+                self.imp().waiting_scripts.borrow_mut().clear();
+                self.show_waiting_scripts();
+            }
             SessionWindowInput::Restore(key) => self.on_restore(key),
             SessionWindowInput::RestoreSaved { id, saved } => self.on_restore_saved(id, saved.map(|saved| *saved)),
             SessionWindowInput::RestoreUnread(key) => self.end_restore(&key),
@@ -823,6 +833,9 @@ impl SessionWindow {
         self.render();
         shell.add_session(&workspace);
         workspace.start();
+        if workspace.data_model() == Some(DataModel::Relational) {
+            self.open_waiting_scripts(&workspace);
+        }
         self.sync_actions();
         for warning in warnings {
             self.show_toast(&warning);
@@ -875,7 +888,11 @@ impl SessionWindow {
                 // A window that stayed to say the owner could not be
                 // shown is the user's picker from then on.
                 let opened_for_file = self.imp().opened_for_file.replace(false);
-                if self.present_owner(window_id, &key) && opened_for_file {
+                let presented = self.present_owner(window_id, &key);
+                if presented {
+                    self.hand_waiting_scripts_to(window_id);
+                }
+                if presented && opened_for_file {
                     self.close();
                 }
                 None
@@ -1077,6 +1094,10 @@ impl SessionWindow {
                 }
                 self.connect(ConnectSource::File(identity), CredentialDemand::default());
             }
+            Ok(FileTarget::Script) => {
+                self.forget_unclaimed(&arrived);
+                self.on_open_script(gio::File::for_uri(&uri));
+            }
             Err(error) => {
                 tracing::warn!(%error, %uri, "could not open the file");
                 self.forget_unclaimed(&arrived);
@@ -1096,6 +1117,142 @@ impl SessionWindow {
                 });
             }
         }
+    }
+
+    pub(crate) fn script_tab(&self, file: &gio::File) -> Option<uuid::Uuid> {
+        self.workspaces()
+            .iter()
+            .find_map(|workspace| workspace.editor_tab_for(file))
+    }
+
+    // Read the way Open SQL File reads, with the same limit and messages.
+    fn on_open_script(&self, file: gio::File) {
+        let Some(input) = self.input() else {
+            return;
+        };
+        glib::spawn_future_local(async move {
+            let text = crate::ui::editor::load_text(&file).await;
+            input.deliver(SessionWindowInput::ScriptLoaded { file, text });
+        });
+    }
+
+    // A script opens in the relational session in front and is never run.
+    fn on_script_loaded(&self, file: gio::File, text: Result<String, String>) {
+        let text = match text {
+            Ok(text) => text,
+            Err(reason) => {
+                let name = file.parse_name().to_string();
+                self.show_toast(&crate::i18n::gettext_f(
+                    "{file} could not be opened. {reason}",
+                    &[("file", &name), ("reason", &reason)],
+                ));
+                return;
+            }
+        };
+        if let Some(tab) = self.script_tab(&file) {
+            self.on_focus_tab(tab);
+            return;
+        }
+        let front = self
+            .workspace()
+            .filter(|workspace| workspace.data_model() == Some(DataModel::Relational))
+            .and_then(|workspace| workspace.sender());
+        match front {
+            Some(input) => input.deliver(WorkspaceInput::OpenScript { file, text }),
+            None if self.page() != SessionPage::Shell => self.wait_for_session(file, text),
+            None => self.open_script_elsewhere(file, text),
+        }
+    }
+
+    fn wait_for_session(&self, file: gio::File, text: String) {
+        {
+            let mut waiting = self.imp().waiting_scripts.borrow_mut();
+            waiting.retain(|(kept, _)| !kept.equal(&file));
+            waiting.push((file, text));
+        }
+        self.show_waiting_scripts();
+    }
+
+    // A session that holds keys or documents runs no SQL, so the script
+    // asks for a connection in a window of its own.
+    fn open_script_elsewhere(&self, file: gio::File, text: String) {
+        let window = self
+            .application()
+            .and_downcast::<crate::application::TableProApplication>()
+            .and_then(|app| app.open_window(WindowLaunch::Picker))
+            .and_downcast::<SessionWindow>();
+        match window {
+            Some(window) => window.send(SessionWindowInput::ScriptLoaded { file, text: Ok(text) }),
+            None => tracing::warn!("no window to open a SQL file in"),
+        }
+    }
+
+    // The connection the user picked for them is in front there now.
+    fn hand_waiting_scripts_to(&self, window_id: u32) {
+        let Some(owner) = self
+            .application()
+            .and_then(|app| app.window_by_id(window_id))
+            .and_downcast::<SessionWindow>()
+        else {
+            return;
+        };
+        let waiting = self.imp().waiting_scripts.take();
+        if waiting.is_empty() {
+            return;
+        }
+        for (file, text) in waiting {
+            owner.send(SessionWindowInput::ScriptLoaded { file, text: Ok(text) });
+        }
+        self.show_waiting_scripts();
+    }
+
+    fn open_waiting_scripts(&self, workspace: &Workspace) {
+        let Some(input) = workspace.sender() else {
+            return;
+        };
+        let waiting = self.imp().waiting_scripts.take();
+        if waiting.is_empty() {
+            return;
+        }
+        for (file, text) in waiting {
+            input.deliver(WorkspaceInput::OpenScript { file, text });
+        }
+        self.show_waiting_scripts();
+    }
+
+    fn show_waiting_scripts(&self) {
+        let Some(picker) = self.imp().picker.get() else {
+            return;
+        };
+        let banner = picker.script_banner();
+        let title = match self.imp().waiting_scripts.borrow().as_slice() {
+            [] => None,
+            [(file, _)] => Some(crate::i18n::gettext_f(
+                "Choose a connection to open “{name}”",
+                &[("name", &file_display_name(&file.uri()))],
+            )),
+            waiting => {
+                let count = waiting.len();
+                Some(crate::i18n::ngettext_f(
+                    "Choose a connection to open {n} SQL file",
+                    "Choose a connection to open {n} SQL files",
+                    u32::try_from(count).unwrap_or(u32::MAX),
+                    &[("n", &count.to_string())],
+                ))
+            }
+        };
+        match title {
+            Some(title) => {
+                banner.set_title(&title);
+                banner.set_revealed(true);
+            }
+            None => banner.set_revealed(false),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn script_banner(&self) -> Option<adw::Banner> {
+        self.imp().picker.get().map(PickerPage::script_banner)
     }
 
     /// The dialog may be editing a connection the window shows or already

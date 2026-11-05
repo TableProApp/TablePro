@@ -177,8 +177,9 @@ impl WorkspaceStore {
     }
 
     /// Delete everything kept for a session whose connection is gone:
-    /// its saved tabs, any copy of them Reset moved aside, and its
-    /// drafts. A record still queued for it is never written.
+    /// its saved tabs, any copy of them Reset moved aside or an upgrade
+    /// kept, and its drafts. A record still queued for it is never
+    /// written.
     ///
     /// It goes through the writer, so a write queued before it cannot
     /// land after it and bring the file back. It also waits for the
@@ -421,6 +422,7 @@ fn purge_blocking(path: &Path, drafts: &DraftStore, scope: &DraftScope) -> Resul
         _ => Ok(()),
     };
     let copies = tablepro_storage::fs::remove_moved_aside_blocking(path)
+        .and_then(|_| tablepro_storage::upgrade_copies::remove_all_blocking(path))
         .map(drop)
         .map_err(|error| error.to_string());
     let drafts = drafts.delete_scope_blocking(scope).map_err(|error| error.to_string());
@@ -428,8 +430,8 @@ fn purge_blocking(path: &Path, drafts: &DraftStore, scope: &DraftScope) -> Resul
 }
 
 /// Every session named with `prefix` in `dir` or in the drafts, whether
-/// it left a file, only a copy moved aside as `<name>.json.corrupt-…`,
-/// or only drafts. Each is purged as `purge_blocking` does; the first
+/// it left a file, only a copy moved aside as `<name>.json.corrupt-…` or
+/// kept before an upgrade as `<name>.json.v…`, or only drafts. Each is purged as `purge_blocking` does; the first
 /// failure is the one reported.
 fn purge_named_blocking(dir: &Path, drafts: &DraftStore, prefix: &str) -> Result<(), WorkspaceSaveError> {
     let mut stems = std::collections::BTreeSet::new();
@@ -470,6 +472,8 @@ async fn write_record<D: VersionedDocument + Send + 'static>(
     let outcome = tasks
         .spawn_blocking_task(move || {
             let bytes = encode_document(&record).map_err(|error| WorkspaceSaveError::Write(error.to_string()))?;
+            tablepro_storage::upgrade_copies::keep_before_write_blocking::<D>(&path)
+                .map_err(|error| WorkspaceSaveError::Write(error.to_string()))?;
             write(&path, &bytes).map_err(|error| WorkspaceSaveError::Write(error.to_string()))
         })
         .await
@@ -885,6 +889,51 @@ mod tests {
         assert!(!fixture.store.has_moved_aside_copy(&key));
         fixture.store.flush(&other).await.expect("written");
         assert_eq!(fixture.on_disk(&other), record(2));
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct Bumped {
+        tabs: Vec<String>,
+    }
+
+    fn same_shape(document: serde_json::Value) -> Result<serde_json::Value, String> {
+        Ok(document)
+    }
+
+    // A format bumped once, so the writer's copy is tested without any format the app shipped.
+    impl VersionedDocument for Bumped {
+        const KIND: &'static str = "bumped";
+        const VERSION: u32 = 2;
+        const UPGRADES: &'static [tablepro_storage::document::Upgrade] = &[same_shape];
+    }
+
+    #[tokio::test]
+    async fn an_older_file_is_copied_aside_before_its_first_write_and_purged_with_the_session() {
+        let fixture = Fixture::new();
+        let key = key();
+        let older = br#"{"version": 1, "tabs": ["orders"]}"#;
+        let path = fixture.seed(&key, older);
+        let write: Arc<WriteFile> = Arc::new(tablepro_storage::fs::write_private_blocking);
+        let copies = || tablepro_storage::upgrade_copies::copies_blocking(&path).expect("copies");
+
+        for tabs in [vec!["orders".to_owned()], vec!["orders".to_owned(), "items".to_owned()]] {
+            write_record(&paused_tasks(), &write, path.clone(), Bumped { tabs })
+                .await
+                .expect("written");
+        }
+
+        let kept = copies();
+        assert_eq!(kept.len(), 1, "{kept:?}");
+        assert_eq!(std::fs::read(&kept[0].path).expect("read"), older);
+        let written = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            written.contains("\"version\": 2") && written.contains("items"),
+            "{written}"
+        );
+
+        fixture.store.purge(&key).await.expect("purged");
+
+        assert!(copies().is_empty(), "a copy kept before an upgrade outlived the purge");
     }
 
     /// A deleted connection's other databases leave nothing behind,

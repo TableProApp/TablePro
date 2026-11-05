@@ -1,5 +1,6 @@
-//! A database file handed to TablePro, resolved to the session it
-//! opens. Resolving reads the disk, so it runs on the blocking pool.
+//! A file handed to TablePro, resolved to the session it opens or to
+//! the SQL script it is. Resolving reads the disk, so it runs on the
+//! blocking pool.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -31,6 +32,8 @@ pub enum FileTarget {
     /// opens, with its name, colour and saved tabs.
     Saved(Box<SavedConnection>),
     File(FileIdentity),
+    /// A SQL script, which opens in an editor tab rather than connecting.
+    Script,
 }
 
 /// A file the user opened and what it resolved to.
@@ -59,6 +62,17 @@ pub fn resolve_file_blocking(
     connections: &ConnectionStore,
     drivers: &DriverRegistry,
 ) -> ResolvedFile {
+    if let Some(script) = path.as_deref().filter(|path| is_script_blocking(path, drivers)) {
+        // One file reached through a link and through its target opens one tab, as a database opens one session.
+        let uri = std::fs::canonicalize(script)
+            .ok()
+            .and_then(|canonical| glib::filename_to_uri(&canonical, None).ok())
+            .map_or(uri, |canonical| canonical.to_string());
+        return ResolvedFile {
+            uri,
+            target: Ok(FileTarget::Script),
+        };
+    }
     let target = resolve_file_identity_blocking(path.as_deref(), &uri).map(|identity| {
         let saved = match connections.load_blocking() {
             Ok(saved) => saved.to_vec(),
@@ -82,6 +96,32 @@ pub fn resolve_file_blocking(
     });
     ResolvedFile { uri, target }
 }
+
+// The header decides over the name, as it does between engines. A file
+// that cannot be read stays a script, so the editor says why.
+fn is_script_blocking(path: &Path, drivers: &DriverRegistry) -> bool {
+    let header = match read_header_blocking(path, drivers.file_header_len()) {
+        Ok(header) => header,
+        // An engine here holds it, so it is a database, and reading it as text would drop that engine's locks.
+        Err(DriverError::Busy(_)) => return false,
+        Err(_) => Vec::new(),
+    };
+    let (content_type, _) = gio::content_type_guess(Some(path), &header);
+    // The suffix covers a system without shared-mime-info.
+    let named_sql = gio::content_type_is_a(&content_type, SQL_CONTENT_TYPE)
+        || path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case(SQL_SUFFIX));
+    named_sql
+        && !drivers
+            .iter()
+            .filter_map(|driver| driver.capabilities().file_format())
+            .any(|format| format.signature.matches(&header))
+}
+
+const SQL_CONTENT_TYPE: &str = "application/sql";
+const SQL_SUFFIX: &str = "sql";
 
 /// The first `len` bytes of the file, or as many as it has, which say
 /// which engine opens it.
@@ -283,6 +323,141 @@ mod tests {
 
         assert!(
             matches!(resolved.target, Ok(FileTarget::File(_))),
+            "{:?}",
+            resolved.target
+        );
+    }
+
+    fn resolve_named(name: &str, contents: Option<&[u8]>) -> ResolvedFile {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join(name);
+        if let Some(contents) = contents {
+            std::fs::write(&path, contents).expect("seed");
+        }
+        let store = ConnectionStore::new(&tablepro_storage::StoragePaths::under(
+            root.path(),
+            "tablepro-test",
+            "app.tablepro.Test",
+        ));
+        let uri = format!("file://{}", path.display());
+        resolve_file_blocking(Some(path), uri, &store, &drivers(&FakeDriver::FILE_CAPABILITIES))
+    }
+
+    #[test]
+    fn a_sql_file_is_a_script() {
+        let resolved = resolve_named("report.sql", Some(b"SELECT 1;\n"));
+
+        assert!(
+            matches!(resolved.target, Ok(FileTarget::Script)),
+            "{:?}",
+            resolved.target
+        );
+    }
+
+    #[test]
+    fn a_sql_suffix_in_any_case_is_a_script() {
+        let resolved = resolve_named("REPORT.SQL", Some(b"SELECT 1;\n"));
+
+        assert!(
+            matches!(resolved.target, Ok(FileTarget::Script)),
+            "{:?}",
+            resolved.target
+        );
+    }
+
+    // The engine that reads an empty file as a new database would take it.
+    #[test]
+    fn an_empty_sql_file_is_a_script_not_an_empty_database() {
+        let resolved = resolve_named("new.sql", Some(b""));
+
+        assert!(
+            matches!(resolved.target, Ok(FileTarget::Script)),
+            "{:?}",
+            resolved.target
+        );
+    }
+
+    #[test]
+    fn a_database_named_sql_opens_its_engine() {
+        let signature = FakeDriver::FILE_CAPABILITIES
+            .file_format()
+            .expect("a file engine")
+            .signature;
+        let mut header = vec![0u8; 64];
+        header[signature.offset..signature.header_len()].copy_from_slice(signature.bytes);
+
+        let resolved = resolve_named("backup.sql", Some(&header));
+
+        assert!(
+            matches!(resolved.target, Ok(FileTarget::File(_))),
+            "{:?}",
+            resolved.target
+        );
+    }
+
+    #[test]
+    fn a_file_named_sql_this_process_holds_is_not_read_as_a_script() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("backup.sql");
+        std::fs::write(&path, b"SELECT 1;").expect("seed");
+        let held = std::fs::File::open(&path).expect("hold the file");
+        let store = ConnectionStore::new(&tablepro_storage::StoragePaths::under(
+            root.path(),
+            "tablepro-test",
+            "app.tablepro.Test",
+        ));
+
+        let resolved = resolve_file_blocking(
+            Some(path.clone()),
+            format!("file://{}", path.display()),
+            &store,
+            &drivers(&FakeDriver::FILE_CAPABILITIES),
+        );
+
+        assert!(
+            matches!(resolved.target, Ok(FileTarget::File(_))),
+            "{:?}",
+            resolved.target
+        );
+        drop(held);
+    }
+
+    #[test]
+    fn a_script_through_a_link_resolves_to_its_target() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let target = root.path().join("report.sql");
+        std::fs::write(&target, b"SELECT 1;").expect("seed");
+        let link = root.path().join("link.sql");
+        std::os::unix::fs::symlink(&target, &link).expect("link");
+        let store = ConnectionStore::new(&tablepro_storage::StoragePaths::under(
+            root.path(),
+            "tablepro-test",
+            "app.tablepro.Test",
+        ));
+
+        let resolved = resolve_file_blocking(
+            Some(link.clone()),
+            format!("file://{}", link.display()),
+            &store,
+            &drivers(&FakeDriver::FILE_CAPABILITIES),
+        );
+
+        assert!(
+            matches!(resolved.target, Ok(FileTarget::Script)),
+            "{:?}",
+            resolved.target
+        );
+        let canonical = std::fs::canonicalize(&target).expect("canonical");
+        assert_eq!(gio::File::for_uri(&resolved.uri).path(), Some(canonical));
+    }
+
+    // The editor's read then says why it cannot be opened.
+    #[test]
+    fn a_missing_sql_file_is_still_a_script() {
+        let resolved = resolve_named("gone.sql", None);
+
+        assert!(
+            matches!(resolved.target, Ok(FileTarget::Script)),
             "{:?}",
             resolved.target
         );

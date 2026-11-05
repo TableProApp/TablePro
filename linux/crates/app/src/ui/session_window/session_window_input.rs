@@ -26,6 +26,14 @@ pub(crate) enum SessionWindowInput {
     OpenFile(gio::File),
     /// The file resolved, off the GTK thread, to the session it opens.
     FileResolved(Box<ResolvedFile>),
+    /// Open a SQL script in an editor tab, from Files or the command line.
+    OpenScript(gio::File),
+    ScriptLoaded {
+        file: gio::File,
+        text: Result<String, String>,
+    },
+    /// The waiting scripts banner's Cancel.
+    DropWaitingScripts,
     /// Open one of the sessions the window was opened to restore.
     Restore(SessionKey),
     /// The saved connections could not be read for this restored key,

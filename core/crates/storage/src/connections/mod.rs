@@ -867,8 +867,7 @@ impl ConnectionStore {
     fn commit(&self, state: &mut StoreState, mut document: ConnectionsDocument) -> Result<(), StorageError> {
         // A connection saved with a tag deleted meanwhile drops it here.
         document.tidy();
-        let bytes = crate::document::encode_document(&document)?;
-        crate::fs::write_private_blocking(&self.inner.path, &bytes)?;
+        crate::document::write_document_blocking(&self.inner.path, &document)?;
         *state = StoreState::Ready(document);
         self.publish(state);
         Ok(())

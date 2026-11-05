@@ -395,6 +395,30 @@ fn opening_a_file_held_behind_another_session_brings_that_session_forward() {
 }
 
 #[gtk4::test]
+fn a_sql_file_with_no_window_opens_a_picker_that_asks() {
+    let test = TestApp::started("OpenScriptNoWindow");
+    let path = test._backing.dir.path().join("report.sql");
+    std::fs::write(&path, "SELECT 1;").expect("write the script");
+
+    test.app.open(&[gio::File::for_path(&path)], "");
+
+    let picker = || {
+        test.app
+            .windows()
+            .into_iter()
+            .find_map(|window| window.downcast::<SessionWindow>().ok())
+    };
+    wait_until(WAIT, || {
+        picker()
+            .and_then(|window| window.script_banner())
+            .is_some_and(|banner| banner.is_revealed())
+    })
+    .expect("a picker asking for a connection");
+    assert_eq!(test.app.windows().len(), 1, "more than the one picker opened");
+    assert_eq!(picker().map(|window| window.page_name()), Some("picker"));
+}
+
+#[gtk4::test]
 fn activate_restores_nothing_when_restore_session_false() {
     let test = TestApp::started("NoRestore");
     let first = test.database("first.db");

@@ -1,5 +1,5 @@
-//! The desktop entry offers TablePro for SQLite files and hands them
-//! over the way the application expects.
+//! The desktop entry offers TablePro for SQLite files and SQL scripts
+//! and hands them over the way the application expects.
 
 use std::path::Path;
 
@@ -11,6 +11,12 @@ fn entry() -> Result<glib::KeyFile, glib::Error> {
     let entry = glib::KeyFile::new();
     entry.load_from_file(&path, glib::KeyFileFlags::NONE)?;
     Ok(entry)
+}
+
+fn metainfo() -> std::io::Result<String> {
+    std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/app.tablepro.TablePro.metainfo.xml.in.in"),
+    )
 }
 
 fn list(entry: &glib::KeyFile, group: &str, key: &str) -> Result<Vec<String>, glib::Error> {
@@ -31,6 +37,43 @@ fn sqlite_files_are_offered_to_tablepro() {
         types.contains(&"application/vnd.sqlite3".to_owned()),
         "the entry does not take SQLite files: {types:?}"
     );
+}
+
+#[test]
+fn sql_scripts_are_offered_to_tablepro() {
+    let entry = entry().expect("the desktop entry parses");
+
+    let types = list(&entry, MAIN, "MimeType").expect("a MimeType list");
+
+    assert!(
+        types.contains(&"application/sql".to_owned()),
+        "the entry does not take SQL scripts: {types:?}"
+    );
+}
+
+// Software centres read the media types from the metainfo, not the entry.
+#[test]
+fn the_metainfo_provides_every_type_the_entry_takes() {
+    let entry = entry().expect("the desktop entry parses");
+    let xml = metainfo().expect("the metainfo reads");
+
+    let mut taken = list(&entry, MAIN, "MimeType").expect("a MimeType list");
+    let provides = xml
+        .split_once("<provides>")
+        .and_then(|(_, rest)| rest.split_once("</provides>"))
+        .map(|(provides, _)| provides)
+        .expect("a provides element");
+    let mut provided: Vec<String> = provides
+        .split("<mediatype>")
+        .skip(1)
+        .filter_map(|rest| rest.split_once("</mediatype>"))
+        .map(|(media_type, _)| media_type.trim().to_owned())
+        .collect();
+    taken.retain(|media_type| !media_type.is_empty());
+    taken.sort();
+    provided.sort();
+
+    assert_eq!(provided, taken);
 }
 
 #[test]

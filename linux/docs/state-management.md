@@ -118,7 +118,7 @@ A finished run goes to `HistoryService::record` with the text that was run, `DEL
 
 ### The tab's file
 
-Open SQL File (Ctrl+O) and Save As (Ctrl+Shift+S) bind the tab to a `.sql` file, through the file chooser portal; Save (Ctrl+S) writes to it, or asks for one. The tab is named after the file, and the buffer's own modified flag says whether its text differs from the file's, so Undo back to the saved text clears it. The tab's record keeps the file's URI and that flag (`EditorFileRecord`), and its draft keeps the text, so a restore brings back both.
+Open SQL File (Ctrl+O) and Save As (Ctrl+Shift+S) bind the tab to a `.sql` file, through the file chooser portal; Save (Ctrl+S) writes to it, or asks for one. A `.sql` file handed over from Files or the command line opens in a new tab bound to it (`WorkspaceInput::OpenScript`). The tab is named after the file, and the buffer's own modified flag says whether its text differs from the file's, so Undo back to the saved text clears it. The tab's record keeps the file's URI and that flag (`EditorFileRecord`), and its draft keeps the text, so a restore brings back both.
 
 Closing the tab asks about unsaved file changes through the same Save Changes prompt as row and structure edits (`DirtyKind::UnsavedFile`), and its Save writes the file. Closing the window does not ask: the draft keeps the text for the next session.
 
