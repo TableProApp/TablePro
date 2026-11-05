@@ -234,8 +234,8 @@ replace the default `resolute`. The source tarball archives `HEAD`, so
 commit first.
 
 After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
-rewrites `debian/copyright` and the spec's `License` tag along with
-`data/licenses`.
+rewrites `debian/copyright` and the spec's `License` tag and `bundled()`
+Provides along with `data/licenses`.
 
 ## Opening database files
 

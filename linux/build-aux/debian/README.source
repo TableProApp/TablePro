@@ -32,5 +32,7 @@ maintainer, and a third dotted part, which lintian reads as a binary NMU.
 An upstream pre-release such as 0.2.0-rc.1 becomes 0.2.0~rc.1, which sorts
 below 0.2.0.
 
-debian/copyright is generated from linux/data/licenses/third-party.json by
-linux/build-aux/update-third-party-licenses.sh. Do not edit it by hand.
+debian/copyright covers both tarballs: a paragraph for each crate in
+vendor/, from its own license files, and for the code some crates carry
+from other projects. linux/build-aux/update-third-party-licenses.sh writes
+it; do not edit it by hand.
