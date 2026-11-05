@@ -167,6 +167,10 @@ impl Writer<'_> {
         let before: Vec<&DumpObject> = section(DumpSection::BeforeData)
             .filter(|object| object.table.is_none())
             .collect();
+        let before: Vec<&DumpObject> = order_programs(&before, self.dialect.grammar())
+            .into_iter()
+            .map(|position| before[position])
+            .collect();
         self.objects(&before, &options).await?;
         let created = tables_in_order(&catalog.objects, &tables);
         self.objects(&created, &options).await?;
@@ -470,16 +474,16 @@ impl ResultSink for RowsSink {
                     batch.finish(dump, &mut out);
                 }
                 let flow = self.send(out).await;
-                let omitted = self
-                    .batch
-                    .as_ref()
-                    .map(|batch| {
-                        batch
-                            .omitted(&self.columns)
-                            .map(|(column, count)| (column.to_owned(), count))
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let omitted = match &self.batch {
+                    Some(batch) => batch
+                        .omitted(&self.columns)
+                        .map(|(column, count)| (column.to_owned(), count))
+                        .collect(),
+                    // Rows with no column to name and no DEFAULT VALUES
+                    // spelling go in as nothing, which the report says.
+                    None if self.rows > 0 => vec![("*".to_owned(), self.rows)],
+                    None => Vec::new(),
+                };
                 let finished = RowsMessage::Finished {
                     rows: self.rows,
                     omitted,

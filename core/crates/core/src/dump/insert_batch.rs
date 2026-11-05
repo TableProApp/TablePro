@@ -15,6 +15,9 @@ pub(crate) const MAX_STATEMENT_BYTES: usize = 1_046_528;
 /// A table's rows as multi-row INSERTs with a column list, cut at a row
 /// count and a size.
 pub(super) struct InsertBatch {
+    /// For a table whose every column the server computes, the statement
+    /// that inserts one row of defaults, written once per row.
+    default_row: Option<String>,
     start: String,
     table_sql: String,
     /// For each result column, whether the INSERT names it. A column the
@@ -31,7 +34,8 @@ pub(super) struct InsertBatch {
 }
 
 impl InsertBatch {
-    /// `None` when no column can be written.
+    /// `None` when no column can be written and the engine has no INSERT
+    /// of defaults alone.
     pub(super) fn new(
         dialect: &dyn SqlDialect,
         table_sql: String,
@@ -51,7 +55,19 @@ impl InsertBatch {
             .map(|(column, _)| dialect.quote_identifier(&column.name))
             .collect();
         if names.is_empty() {
-            return None;
+            let default_row = dialect.insert_default_row(&table_sql)?;
+            return Some(Self {
+                default_row: Some(default_row),
+                start: String::new(),
+                table_sql,
+                omitted: vec![0; written.len()],
+                written,
+                writes_numbered: false,
+                max_rows: 1,
+                tuples: String::new(),
+                rows: 0,
+                identity_on: false,
+            });
         }
         let writes_numbered = columns
             .iter()
@@ -68,6 +84,7 @@ impl InsertBatch {
             false => dialect.insert_batch_limits().rows.clamp(1, MAX_ROWS),
         };
         Some(Self {
+            default_row: None,
             start,
             table_sql,
             omitted: vec![0; written.len()],
@@ -88,6 +105,10 @@ impl InsertBatch {
         row: &[Value],
         out: &mut Vec<DumpStatement>,
     ) {
+        if let Some(default_row) = &self.default_row {
+            out.push(DumpStatement::new(default_row.clone()));
+            return;
+        }
         let mut tuple = String::from("(");
         let mut first = true;
         for (index, column) in columns.iter().enumerate() {
@@ -252,6 +273,21 @@ mod tests {
         assert_eq!(statements.first().map(String::as_str), Some("IDENTITY t true"));
         assert_eq!(statements.last().map(String::as_str), Some("IDENTITY t false"));
         assert_eq!(statements.len(), 4, "one row a statement: {statements:?}");
+    }
+
+    #[test]
+    fn a_row_of_computed_columns_goes_in_as_defaults() {
+        let columns = [text("n")];
+        let info = [info("n", true, false)];
+        let mut batch =
+            InsertBatch::new(&TestDialect::default(), "t".to_owned(), &columns, &info, false).expect("a default row");
+
+        let statements = run(&mut batch, &columns, &[vec![Value::Int(42)], vec![Value::Int(42)]]);
+
+        assert_eq!(
+            statements,
+            ["INSERT INTO t DEFAULT VALUES", "INSERT INTO t DEFAULT VALUES"]
+        );
     }
 
     #[test]

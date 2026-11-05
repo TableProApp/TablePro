@@ -216,7 +216,16 @@ pub async fn run_sql_import(
 
     run.report.transaction = match transaction {
         Some(dump) if began => match run.report.end {
-            SqlImportEnd::Completed => run.finish(dump.commit(), TransactionOutcome::Committed).await,
+            SqlImportEnd::Completed => match run.finish(dump.commit(), TransactionOutcome::Committed).await {
+                // A SQL Server file that opened a transaction of its own and
+                // never committed it leaves one open past the import's
+                // COMMIT, which closing the session would roll back.
+                TransactionOutcome::Committed if run.open_state().await == Some(true) => {
+                    run.report.end = SqlImportEnd::Stopped;
+                    run.finish(dump.rollback(), TransactionOutcome::OpenRolledBack).await
+                }
+                outcome => outcome,
+            },
             // SQL Server's XACT_ABORT has already rolled back after an
             // error, and a ROLLBACK then would fail for want of one.
             _ => match run.open_state().await {

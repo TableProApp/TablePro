@@ -245,9 +245,9 @@ impl SqlImportDialog {
         copy.connect_clicked(move |button| {
             if let Some(this) = copying.upgrade() {
                 let details = this.details.borrow().clone();
-                let toast_target = this.dialog.clone();
+                let told = button.clone();
                 crate::ui::clipboard::copy_text(button, details, move |message| {
-                    toast_target.announce(message, gtk::AccessibleAnnouncementPriority::Medium);
+                    told.announce(message, gtk::AccessibleAnnouncementPriority::Medium);
                 });
             }
         });

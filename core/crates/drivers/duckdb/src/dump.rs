@@ -390,10 +390,17 @@ fn add_macros(reader: &Reader<'_>, dialect: &DuckDbDialect, dump: &mut DumpCatal
             continue;
         };
         let name = dialect.portable_name(&TableRef::new(Some(first.schema.clone()), first.name.clone()));
+        // A generated column or a default can call a scalar macro, and
+        // DuckDB keeps the call in the table's text; a table macro reads
+        // tables, which have to exist first.
+        let section = match first.table {
+            true => DumpSection::Programs,
+            false => DumpSection::BeforeData,
+        };
         match macro_sql(dialect, &name, group) {
             Some(create) => dump.objects.push(DumpObject::new(
                 DumpObjectKind::Function,
-                DumpSection::Programs,
+                section,
                 Some(first.schema.clone()),
                 first.name.clone(),
                 vec![DumpStatement::new(create)],
