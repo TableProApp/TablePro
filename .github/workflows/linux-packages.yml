@@ -4,10 +4,11 @@ name: Linux packages
 # The Debian source package is built once for each Ubuntu series the PPA
 # builds for, and its binaries are built from it the way Launchpad builds
 # them: offline, in a fresh container with only the declared build
-# dependencies, then checked with lintian. The .rpm is built in a fresh
-# container of each Fedora release COPR builds for, with only its
-# BuildRequires. Each package is then installed in another fresh container
-# of its release with only its runtime dependencies and started.
+# dependencies, then checked with lintian. The .rpm is built in Mock, as
+# COPR builds it, for each Fedora release COPR builds for: the BuildRequires
+# go into a fresh chroot, then the build runs there with no network, then
+# rpmlint. Each package is then installed in another fresh container of its
+# release with only its runtime dependencies and started.
 # release-linux.yml calls this workflow and uploads the source packages.
 # A run by hand can add arm64, which the nightly and pull requests leave out.
 # Given a release tag, it packages that release's tarballs instead, with
@@ -208,8 +209,11 @@ jobs:
         fedora: ["44", "45"]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
+    # Mock mounts the chroot's filesystems and build-rpm.sh unshares the
+    # network for the build.
     container:
       image: fedora:${{ matrix.fedora }}
+      options: --privileged
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -230,6 +234,7 @@ jobs:
           name: linux-rpm-testlog-${{ matrix.fedora }}-${{ runner.arch }}
           path: |
             _packages/rpm/testlog.txt
+            _packages/rpm/build.log
             _packages/rpm/disk-usage.tsv
             _packages/rpm/disk-usage.txt
           if-no-files-found: ignore

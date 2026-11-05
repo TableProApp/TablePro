@@ -21,10 +21,6 @@ cargo_built = cargo_target_dir / cargo_profile_dir
 app_env = cargo_env
 app_env.set('TABLEPRO_METAINFO', metainfo_file.full_path())
 
-cargo_build_command = ' '.join(
-  [cargo.full_path(), 'build', '-p', 'tablepro', '-p', 'tablepro-ssh'] + cargo_options,
-)
-
 custom_target(
   'cargo-build',
   build_always_stale: true,
@@ -34,12 +30,12 @@ custom_target(
   env: app_env,
   depends: metainfo_file,
   command: [
-    'sh',
-    '-c',
-    cargo_build_command
-    + ' && cp ' + cargo_built / 'tablepro' + ' @OUTPUT0@'
-    + ' && cp ' + cargo_built / 'tablepro-askpass' + ' @OUTPUT1@',
-  ],
+    find_program(meson.project_source_root() / 'build-aux' / 'cargo-build.sh'),
+    cargo_built / 'tablepro', '@OUTPUT0@',
+    cargo_built / 'tablepro-askpass', '@OUTPUT1@',
+    '--',
+    cargo, 'build', '-p', 'tablepro', '-p', 'tablepro-ssh',
+  ] + cargo_options,
   install: true,
   install_dir: [bindir, libexecdir],
 )

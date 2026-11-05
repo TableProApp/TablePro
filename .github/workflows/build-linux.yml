@@ -266,6 +266,49 @@ jobs:
           "cargo-$RUST_VERSION" check --workspace --all-targets --locked
           "cargo-$RUST_VERSION" check --workspace --all-targets --locked --no-default-features
 
+  # Every other job builds from paths without a space. Meson hands each path
+  # to the build as one argument (build-aux/cargo-build.sh), and this checks
+  # it with a source, build and install directory that each hold one.
+  spaced-paths:
+    name: Build from paths with spaces
+    # Only in this workflow's own nightly or manual run, to keep a CI run under GitHub Free's 20
+    # concurrent jobs. A called workflow sees the caller's github context, so from CI this is "CI".
+    if: ${{ github.workflow == 'Build Linux' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    container:
+      image: ubuntu:26.04
+      env:
+        DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        working-directory: source tree/linux
+    steps:
+      - name: Install git and the build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git curl build-essential pkgconf meson ninja-build gettext \
+            desktop-file-utils appstream libglib2.0-bin libxml2-utils \
+            libgtk-4-dev libadwaita-1-dev libgtksourceview-5-dev \
+            libsqlite3-dev libkrb5-dev liblcms2-dev libseccomp-dev clang libclang-dev
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/source tree"
+        working-directory: /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: source tree
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: "1.98"
+      - name: Build and install both executables
+        run: |
+          meson setup "build dir" -Dprofile=development
+          meson compile -C "build dir"
+          DESTDIR="$PWD/install root" meson install -C "build dir" --no-rebuild
+          test -x "install root/usr/local/bin/tablepro"
+          test -x "install root/usr/local/libexec/tablepro-askpass"
+
   supply-chain:
     name: Supply chain
     if: ${{ !inputs.docs-only }}

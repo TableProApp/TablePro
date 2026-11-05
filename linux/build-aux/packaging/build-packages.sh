@@ -43,10 +43,16 @@ trap '"$engine" volume rm -f "$volume" >/dev/null' EXIT
 # Paths stay the same inside the containers, so a worktree's .git file
 # still points at its repository. Not read-only: make-dist.sh's status
 # check refreshes the index.
+# run [--privileged] <image> <command>...
 run() {
+    privileged=""
+    if [ "$1" = --privileged ]; then
+        privileged=yes
+        shift
+    fi
     image="$1"
     shift
-    "$engine" run --rm -e TMPDIR=/build -v "$volume:/build" \
+    "$engine" run --rm ${privileged:+--privileged} -e TMPDIR=/build -v "$volume:/build" \
         -v "$repo:$repo" -v "$git_dir:$git_dir" -v "$out:$out" \
         -w "$root" "$image" "$@"
 }
@@ -64,7 +70,7 @@ if [ "$which" != rpm ]; then
     done
 fi
 if [ "$which" != deb ]; then
-    run "fedora:$fedora" "$here/build-rpm.sh" "$dist" "$vendor" "$out/rpm"
+    run --privileged "fedora:$fedora" "$here/build-rpm.sh" "$dist" "$vendor" "$out/rpm"
     run "fedora:$fedora" "$here/smoke-test.sh" "$(find "$out/rpm" -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" \
         "$root/po/LINGUAS"
 fi

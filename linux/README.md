@@ -227,11 +227,13 @@ build-aux/packaging/build-packages.sh all _packages
 
 It writes the source and vendor tarballs, the Debian source package and
 its .deb built offline as Launchpad builds it (checked by lintian), and
-the RPMs (checked by rpmlint) under `_packages`, then installs each
-package in a fresh container and starts it. `deb` or `rpm` in place of
-`all` builds one, and Ubuntu series names after the output directory
-replace the default `resolute`. The source tarball archives `HEAD`, so
-commit first.
+the RPMs built offline in Mock as COPR builds them (checked by rpmlint)
+under `_packages`, then installs each package in a fresh container and
+starts it. `deb` or `rpm` in place of `all` builds one, Ubuntu series
+names after the output directory replace the default `resolute`, and
+`FEDORA` picks the Fedora release, 44 by default. The RPM build runs in a
+privileged container, since Mock mounts filesystems. The source tarball
+archives `HEAD`, so commit first.
 
 After a change to `Cargo.lock`, `build-aux/update-third-party-licenses.sh`
 rewrites `debian/copyright` and the spec's `License` tag along with

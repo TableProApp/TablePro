@@ -1,8 +1,11 @@
 #!/bin/sh
-# Builds the source and binary RPMs from the two release tarballs, as root
-# in a fresh Fedora container, with only the BuildRequires the spec
-# declares, and checks them with rpmlint. COPR builds the same spec in mock
-# from the release (build-aux/rpm/copr-sources.sh).
+# Builds the source RPM from the two release tarballs in a fresh Fedora
+# container, then the binary RPMs from it in Mock, as COPR builds them:
+# Mock installs the BuildRequires into a fresh chroot of the container's
+# release and architecture, then runs rpmbuild there with no network.
+# rpmlint checks the spec and every package. COPR takes its sources from
+# the release (build-aux/rpm/copr-sources.sh). The container must be
+# privileged, since Mock mounts filesystems and unshares namespaces.
 # Usage: build-rpm.sh <tablepro-X.Y.Z.tar.xz> <tablepro-X.Y.Z-vendor.tar.xz> <output dir>
 set -eu
 
@@ -69,7 +72,7 @@ cp "$1" "$2" "$top/SOURCES/"
 
 # rpmlint reads the spec under en_US.UTF-8 and reports a missing locale as
 # an error.
-dnf install -y --setopt=install_weak_deps=False rpm-build rpmlint glibc-langpack-en tar xz
+dnf install -y --setopt=install_weak_deps=False mock rpm-build rpmlint glibc-langpack-en tar xz iproute util-linux
 
 # Outside SPECS, where rpmbuild --rebuild removes the spec it unpacks, so
 # rpmlint still has this one to read.
@@ -78,20 +81,33 @@ tar -xOf "$1" "$name/linux/build-aux/rpm/tablepro.spec" > "$spec"
 rpmbuild --define "_topdir $top" -bs "$spec"
 srpm="$(find "$top/SRPMS" -name '*.src.rpm')"
 
-dnf builddep -y --setopt=install_weak_deps=False "$srpm"
-# COPR builds with no network. Offline, Cargo fails here too unless it
-# reads the vendored crates from the config %cargo_prep writes.
-# Meson prints only the end of a failed suite's log, so the whole log is
-# kept beside the packages.
-if CARGO_NET_OFFLINE=true rpmbuild --define "_topdir $top" --rebuild "$srpm"; then
+# A container runs neither systemd-nspawn nor the podman that would pull
+# Mock's bootstrap image, so Mock isolates with chroot alone.
+chroot="fedora-$(rpm -E %fedora)-$(uname -m)"
+set -- -r "$chroot" --isolation=simple --no-bootstrap-image
+
+# The BuildRequires come from Fedora's repositories first.
+mock "$@" --init
+mock "$@" --installdeps "$srpm"
+
+# COPR builds in systemd-nspawn's private network, where Mock turns the
+# network off for rpmbuild. Without nspawn Mock leaves it on, so the build
+# runs in a network namespace of its own with only the loopback, and Mock
+# reads nothing but its cache. Meson prints only the end of a failed
+# suite's log, so the whole log is kept beside the packages, with Mock's,
+# and Mock keeps a failed build's chroot for it to be read from.
+if unshare --net sh -euc 'ip link set lo up; ip route add default via 127.0.0.1; exec "$@"' offline \
+    mock "$@" --no-clean --offline --config-opts=cleanup_on_failure=False \
+    --resultdir "$top/result" --rebuild "$srpm"; then
     :
 else
     build_status=$?
-    find "$top/BUILD" -path '*/meson-logs/testlog.txt' -exec cp {} "$out/" \; || true
+    cp "$top/result/build.log" "$out/" || true
+    find "$(mock "$@" --print-root-path)" -path '*/meson-logs/testlog.txt' -exec cp {} "$out/" \; || true
     exit "$build_status"
 fi
 
-cp "$srpm" "$top"/RPMS/*/*.rpm "$out/"
+cp "$top"/result/*.rpm "$top/result/build.log" "$out/"
 ls -l "$out"
 # After the copy, so a lint failure keeps the packages to look at.
-rpmlint --strict "$spec" "$srpm" "$top"/RPMS/*/*.rpm
+rpmlint --strict "$spec" "$top"/result/*.rpm
