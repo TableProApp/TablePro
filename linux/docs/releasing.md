@@ -9,9 +9,10 @@ A repository admin does these once. The workflow's header names the same secrets
 1. **Secrets** in the `linux-release` environment, which takes a required reviewer and deploys from `linux-v*` tags and the `main` branch only. The branch is for a [packaging fix](#a-packaging-fix).
    - `LINUX_PPA_SIGNING_KEY`: the ASCII-armored OpenPGP secret key, with no passphrase, that signs the uploads.
    - `LINUX_COPR_WEBHOOK`: the custom webhook URL from the COPR project's Integrations page, ending in `/tablepro/`.
-2. **Variables**: `LINUX_PPA`, the PPA as `owner/name`. `LINUX_BRANCH` stays unset unless a release comes from a [maintenance branch](#a-fix-release).
-3. **Launchpad**: a team that owns the PPA, and the PPA with a dependency on `~rust-toolchain/staging`, amd64 and arm64 turned on under its processors, and debug symbol publishing on (Launchpad's admins turn it on when the PPA's settings do not offer it). Register the signing key's public half on an account in the team. Launchpad mails a failed build to the owner of the key that signed the upload, so that account's mail has to reach someone.
-4. **COPR**: a project with the Fedora 44 x86_64 and aarch64 chroots, following Fedora branching, with AppStream metadata generation on, and a package named `tablepro` with the custom source method from `build-aux/rpm/copr-sources.sh` (the command is in its header). Turn on build failure emails for the project's admins.
+2. **Repository secret** `LINUX_POSTHOG_KEY`: the project API key (`phc_...`) from the PostHog project's settings, which the packages send usage data to once a user chooses to share it ([ADR 0035](decisions/0035-usage-data.md)). It goes with the repository's secrets, not the environment's; the workflow's header says why. A release fails without it.
+3. **Variables**: `LINUX_PPA`, the PPA as `owner/name`. `LINUX_BRANCH` stays unset unless a release comes from a [maintenance branch](#a-fix-release).
+4. **Launchpad**: a team that owns the PPA, and the PPA with a dependency on `~rust-toolchain/staging`, amd64 and arm64 turned on under its processors, and debug symbol publishing on (Launchpad's admins turn it on when the PPA's settings do not offer it). Register the signing key's public half on an account in the team. Launchpad mails a failed build to the owner of the key that signed the upload, so that account's mail has to reach someone.
+5. **COPR**: a project with the Fedora 44 x86_64 and aarch64 chroots, following Fedora branching, with AppStream metadata generation on, and a package named `tablepro` with the custom source method from `build-aux/rpm/copr-sources.sh` (the command is in its header). Turn on build failure emails for the project's admins.
 
 [README.md](../README.md#install) gives users `ppa:tablepro/tablepro` and `@tablepro/tablepro`; change it if the PPA or the COPR project gets another name.
 
@@ -41,7 +42,7 @@ A fix to `build-aux/debian` or `build-aux/rpm` that needs no new version, such a
 gh workflow run release-linux.yml --ref main -f tag=linux-v0.1.0 -f revision=2
 ```
 
-It downloads that release's two tarballs, checks them against its `SHA256SUMS`, builds the source package with the packaging from `main` as `0.1.0-0ppa2~YY.MM`, builds and tests the .deb on both architectures, and uploads it once a reviewer approves. Launchpad accepts the release's own orig tarballs again, and would refuse new ones whose bytes differ. Count the revision up for each further upload of the same version.
+It downloads that release's two tarballs, checks them against its `SHA256SUMS`, builds the source package with the packaging from `main` as `0.1.0-0ppa2~YY.MM`, builds and tests the .deb on both architectures, and uploads it once a reviewer approves. Launchpad accepts the release's own orig tarballs again, and would refuse new ones whose bytes differ. The vendor tarball brings the release's PostHog key with it. Count the revision up for each further upload of the same version.
 
 **COPR.** COPR builds the spec at the tag, so a fix to it goes in by hand. Raise `Release` in `build-aux/rpm/tablepro.spec` on `main` with a `%changelog` entry, then, on Fedora with `copr-cli` signed in, build the source RPM from that spec and submit it:
 

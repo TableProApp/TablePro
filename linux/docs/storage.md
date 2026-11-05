@@ -6,6 +6,9 @@ The app's data goes to the store its shape calls for. The core's `storage` crate
 |---|---|---|
 | Saved connections | JSON file | `ConnectionStore` |
 | Database passwords, SSH passwords and key passphrases | `oo7`: the host's Secret Service, or the Secret portal inside Flatpak | `SecretStore`, read at each connect by `KeyringCredentials` |
+| The TablePro account's refresh token | the same keyring, or memory alone when none answers | `SecretStore` through the app's `KeyringRefreshToken`, a `tablepro_account::RefreshTokenVault` |
+| The account's device ID and last entitlement, or an imported offline file | JSON file | `tablepro-account` ([core ADR 0011](../../core/docs/decisions/0011-tablepro-accounts.md), [ADR 0034](decisions/0034-account-page-and-license-ask.md)) |
+| The usage data's anonymous ID and what it sent once | JSON file | `Telemetry` in the app crate ([ADR 0035](decisions/0035-usage-data.md)) |
 | Preferences and window geometry | `gio::Settings` | `AppSettings` |
 | Query history and saved queries | SQLite, one database | `QueryHistory`, `SavedQueries` |
 | Editor tab text | one file per tab | `DraftStore` |
@@ -63,6 +66,7 @@ Notes:
 - Schema name: the application id plus `.Password`, so `app.tablepro.TablePro.Password` for an installed build and `app.tablepro.TablePro.Devel.Password` for a development one. Neither reads the other's secrets. Attributes: `xdg:schema`, `connection-id` and `kind` (`db_password`, `ssh_password`, `ssh_passphrase`).
 - The MCP server's access token is one item of its own, with `xdg:schema` and `kind` `mcp_token` and no `connection-id`, so deleting a connection never matches it. It is made on the server's first start and replaced from Preferences.
 - Each AI provider's API key is one item, with `xdg:schema`, `kind` `ai_api_key` and `provider` (`anthropic`, `openai` or `openai-compatible`) and no `connection-id`. Preferences > AI stores and removes it; the assistant reads it before each request.
+- The TablePro account's refresh token is one item, with `xdg:schema` and `kind` `account_refresh_token` and no `connection-id`. The server rotates it on every refresh, and each one replaces the item. Sign-out deletes it. When no keyring takes it, it lives in memory until the app quits and the next launch starts signed out; the item the keyring held before is deleted then, since the server refuses a rotated token.
 - Labels name the kind and the target, for example `TablePro database password for app@db.example.com:5432/shop`, so the item is identifiable in Seahorse on a host install. Under Flatpak the items sit in the app's own file keyring.
 - The store unlocks the keyring and the item before reading. A locked keyring otherwise looks exactly like a connection with no saved password.
 - Failures are typed (`SecretError`): a dismissed prompt, a locked keyring, a missing service, a missing portal and a bad encoding each get their own message and their own next step.
@@ -137,6 +141,8 @@ nothing reaches outside it.
 | `drafts_dir()` | `$XDG_DATA_HOME/<dir>/drafts` |
 | `snippets_dir()` | `$XDG_DATA_HOME/<dir>/snippets`: the user's SQL editor snippets, made when Preferences opens it ([README](../README.md#snippets)) |
 | `crashes_dir()` | `$XDG_STATE_HOME/<dir>/crashes`: crash reports ([error-handling.md](error-handling.md#crashes)) |
+| `telemetry_file()` | `$XDG_STATE_HOME/<dir>/telemetry.json`: the usage data's random `anonymous_id`, the account PostHog knows the install as (`identified`), the day `app_opened` last went out (`opened_on`) and the events sent once per install (`sent_once`). Written only by a build with a PostHog key, once the user shares usage data |
+| `account_file()` | `$XDG_STATE_HOME/<dir>/account.json`, version 1: the `device_id` this machine has on the TablePro account, the last `entitlement` token, which is signed and verified again on read, and the `account_id` it names, kept once the token expires so an offline file of another account is still refused. `offline_only` marks an offline file imported with no sign-in: the launch then never opens the keyring, and a file that no longer verifies is removed. A file of another version reads as empty, and the device is registered again. Sign-out removes it. Without it, a launch never opens the keyring for the account |
 
 `<dir>` is `tablepro` for an installed build and `tablepro-devel` for a
 development one, so `cargo run` never writes over an installed build's
@@ -300,6 +306,11 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
 | `last-seen-version` | `s` | empty | |
+| `share-usage-data` | `b` | `false` | |
+| `usage-data-asked` | `b` | `false` | |
+| `usage-days` | `u` | `0` | |
+| `last-usage-day` | `s` | empty | `YYYY-MM-DD` |
+| `license-ask-day` | `s` | empty | `YYYY-MM-DD` |
 | `mcp-server-enabled` | `b` | `false` | |
 | `mcp-server-port` | `u` | `23508` | 1024 to 65535 |
 | `ai-provider` | enum | `none` | `none`, `anthropic`, `openai`, `openai-compatible` |

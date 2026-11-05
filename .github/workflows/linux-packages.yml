@@ -11,6 +11,8 @@ name: Linux packages
 # A run by hand can add arm64, which the nightly and pull requests leave out.
 # Given a release tag, it packages that release's tarballs instead, with
 # the packaging from this checkout, for a PPA upload with a new revision.
+# Only release-linux.yml passes the PostHog key, so every other run builds
+# packages that send no usage data.
 
 on:
   pull_request:
@@ -57,6 +59,12 @@ on:
         description: The PPA upload number, the N in X.Y.Z-0ppaN.
         type: string
         default: "1"
+    # No repository secret can have this name, so a run of this workflow
+    # on its own never reads one.
+    secrets:
+      posthog-key:
+        description: The PostHog project key the vendor tarball carries for the .deb and .rpm.
+        required: false
 
 # A pull request keeps only its newest run; every other run, a release's call included, has its own group.
 concurrency:
@@ -85,7 +93,9 @@ jobs:
           persist-credentials: false
       - name: Make the source and vendor tarballs
         if: inputs.release-tag == ''
-        run: linux/build-aux/packaging/make-sources.sh --install-deps _packages/sources
+        env:
+          POSTHOG_KEY: ${{ secrets.posthog-key }}
+        run: linux/build-aux/packaging/make-sources.sh --install-deps --posthog-key "$POSTHOG_KEY" _packages/sources
       - name: Download the released source and vendor tarballs
         if: inputs.release-tag != ''
         env:

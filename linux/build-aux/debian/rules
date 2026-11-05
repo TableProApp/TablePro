@@ -57,10 +57,12 @@ override_dh_clean:
 
 # Meson runs cargo from the build directory under the top of this tree, and
 # Cargo reads .cargo/config.toml from the directories above where it runs.
+# A release's vendor tarball also carries the PostHog key; without it the
+# app never offers to share usage data.
 override_dh_auto_configure:
 	mkdir -p .cargo
 	cp vendor/cargo-config.toml .cargo/config.toml
-	dh_auto_configure -- -Dprofile=default -Dkerberos=true
+	dh_auto_configure -- -Dprofile=default -Dkerberos=true -Dposthog_key=$(shell cat vendor/posthog-key 2>/dev/null)
 
 # The gtk suite opens windows on a display and owns D-Bus names.
 override_dh_auto_test:

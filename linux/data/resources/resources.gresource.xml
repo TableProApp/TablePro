@@ -27,6 +27,7 @@
     <file compressed="true" preprocess="xml-stripblanks">ui/pager-bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/pending-changes-bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/picker-page.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">ui/preferences-account-page.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-data-browser-group.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-dialog.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">ui/preferences-editor-page.ui</file>

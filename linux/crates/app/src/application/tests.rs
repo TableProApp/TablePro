@@ -280,9 +280,24 @@ fn handle_local_options_without_new_window_does_not_register() {
 fn startup_installs_the_app_actions_and_their_accels() {
     let test = TestApp::started("Actions");
 
-    for action in ["new-window", "quit", "preferences", "about"] {
+    for action in [
+        "new-window",
+        "quit",
+        "preferences",
+        "about",
+        "usage-data",
+        "buy-license",
+    ] {
         assert!(test.app.lookup_action(action).is_some(), "app.{action} is missing");
     }
+}
+
+#[gtk4::test]
+fn startup_in_a_test_build_has_no_posthog_key() {
+    let test = TestApp::started("UsageData");
+
+    assert_eq!(crate::config::POSTHOG_KEY, "");
+    assert!(!test.services().telemetry().has_project_key());
 }
 
 #[gtk4::test]

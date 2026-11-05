@@ -181,6 +181,46 @@ impl AppSettings {
         self.set_string(keys::LAST_SEEN_VERSION, version)
     }
 
+    pub fn share_usage_data(&self) -> bool {
+        self.settings.boolean(keys::SHARE_USAGE_DATA)
+    }
+
+    // Either answer is a choice made, so neither asks again.
+    pub fn choose_usage_data(&self, share: bool) -> Result<(), SettingsError> {
+        self.set_boolean(keys::SHARE_USAGE_DATA, share)?;
+        self.set_boolean(keys::USAGE_DATA_ASKED, true)
+    }
+
+    pub fn usage_data_asked(&self) -> bool {
+        self.settings.boolean(keys::USAGE_DATA_ASKED)
+    }
+
+    pub fn usage_days(&self) -> u32 {
+        self.settings.uint(keys::USAGE_DAYS)
+    }
+
+    pub fn last_usage_day(&self) -> String {
+        self.settings.string(keys::LAST_USAGE_DAY).into()
+    }
+
+    // Counts `day` once, however often it is recorded.
+    pub fn record_usage_day(&self, day: &str) -> Result<(), SettingsError> {
+        if self.last_usage_day() == day {
+            return Ok(());
+        }
+        self.set_string(keys::LAST_USAGE_DAY, day)?;
+        self.set_uint(keys::USAGE_DAYS, self.usage_days().saturating_add(1))
+    }
+
+    pub fn license_ask_day(&self) -> String {
+        self.settings.string(keys::LICENSE_ASK_DAY).into()
+    }
+
+    // Recorded as it shows, so quitting while it shows still counts as an ask.
+    pub fn set_license_asked(&self, day: &str) -> Result<(), SettingsError> {
+        self.set_string(keys::LICENSE_ASK_DAY, day)
+    }
+
     /// Whether the MCP server runs. Off until the user turns it on.
     pub fn mcp_server_enabled(&self) -> bool {
         self.settings.boolean(keys::MCP_SERVER_ENABLED)

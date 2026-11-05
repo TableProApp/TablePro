@@ -222,3 +222,10 @@ license = "MIT"
 start = "Copyright (c) 2024-2025 Model Context Protocol"
 end = "SOFTWARE."
 checksum = "a403f7ef905cd68df03a304a8c169dc7b3c5c50e4dba17c0ce8c58421055bd43"
+
+# cargo-about does not identify the crate's LICENSE, the Apache-2.0 text.
+[sync_wrapper.clarify]
+license = "Apache-2.0"
+[[sync_wrapper.clarify.files]]
+path = "LICENSE"
+checksum = "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"

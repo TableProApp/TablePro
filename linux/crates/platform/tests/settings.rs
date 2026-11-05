@@ -55,6 +55,38 @@ fn defaults_match_schema() -> TestResult {
     assert!(!fixture.settings.vim_keybindings());
     assert!(!fixture.settings.mcp_server_enabled());
     assert_eq!(fixture.settings.mcp_server_port(), 23508);
+    assert_eq!(fixture.settings.usage_days(), 0);
+    assert!(!fixture.settings.share_usage_data());
+    assert!(!fixture.settings.usage_data_asked());
+    assert_eq!(fixture.settings.license_ask_day(), "");
+    Ok(())
+}
+
+#[test]
+fn declining_usage_data_is_a_choice_too() -> TestResult {
+    let fixture = Fixture::new()?;
+
+    fixture.settings.choose_usage_data(false)?;
+
+    assert!(!fixture.settings.share_usage_data());
+    assert!(fixture.settings.usage_data_asked());
+    fixture.settings.choose_usage_data(true)?;
+    assert!(fixture.settings.share_usage_data());
+    Ok(())
+}
+
+#[test]
+fn a_day_of_use_counts_once() -> TestResult {
+    let fixture = Fixture::new()?;
+
+    fixture.settings.record_usage_day("2026-11-05")?;
+    fixture.settings.record_usage_day("2026-11-05")?;
+    fixture.settings.record_usage_day("2026-11-06")?;
+    fixture.settings.set_license_asked("2026-11-06")?;
+
+    assert_eq!(fixture.settings.usage_days(), 2);
+    assert_eq!(fixture.settings.last_usage_day(), "2026-11-06");
+    assert_eq!(fixture.settings.license_ask_day(), "2026-11-06");
     Ok(())
 }
 

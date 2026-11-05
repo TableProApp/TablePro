@@ -19,3 +19,31 @@ option(
   value: false,
   description: 'Install the files a Flatpak build needs, such as the Kerberos configuration.',
 )
+
+option(
+  'dev_account_url',
+  type: 'string',
+  value: '',
+  description: 'Development profile only: the TablePro account service to sign in to, such as http://account.localhost:5284. Empty means production.',
+)
+
+option(
+  'dev_api_url',
+  type: 'string',
+  value: '',
+  description: 'Development profile only: its /v2 base, such as http://api.localhost:5284/v2.',
+)
+
+option(
+  'dev_entitlement_keys',
+  type: 'string',
+  value: '',
+  description: 'Development profile only: the base64url x of each Ed25519 key that service signs entitlements with, comma separated.',
+)
+
+option(
+  'posthog_key',
+  type: 'string',
+  value: '',
+  description: 'The PostHog project key usage data goes to, once the user chooses to share it. Empty, the app never asks and sends none.',
+)

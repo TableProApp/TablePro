@@ -8,6 +8,7 @@ use libadwaita as adw;
 use libadwaita::subclass::prelude::*;
 use tablepro_linux_platform::AppSettings;
 
+use super::account_page::AccountPage;
 use super::ai_page::AiPage;
 use super::editor_page::EditorPage;
 use super::general_page::GeneralPage;
@@ -24,6 +25,8 @@ pub struct PreferencesDialog {
     pub mcp_page: TemplateChild<McpPage>,
     #[template_child]
     pub ai_page: TemplateChild<AiPage>,
+    #[template_child]
+    pub account_page: TemplateChild<AccountPage>,
     pub settings: RefCell<Option<Rc<AppSettings>>>,
 }
 
@@ -38,6 +41,7 @@ impl ObjectSubclass for PreferencesDialog {
         EditorPage::ensure_type();
         McpPage::ensure_type();
         AiPage::ensure_type();
+        AccountPage::ensure_type();
         klass.bind_template();
     }
 

@@ -149,6 +149,15 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 | External Clients | A level per connection: Blocked hides it, Read Only (the default) lets clients read, Read & Write lets them write after the user approves each statement in Safe Mode's dialog. Safe Mode Read-Only refuses every client write |
 | Tools | List connections, open one in a window, list schemas and tables, describe a table and show its DDL, browse and count rows with filters, and run one statement; runs go into the query history |
 
+### TablePro account
+
+| Capability | Detail |
+|---|---|
+| Sign-in | Preferences > Account signs in to a TablePro account through the browser, as on macOS; the sign-in is kept in the keyring ([ADR 0034](docs/decisions/0034-account-page-and-license-ask.md)) |
+| Plan, devices and teams | The plan and its status, the ten paid features (all in TablePro for macOS for now, so nothing is gated), the account's devices with Remove, the device limit dialog, teams, and offline files for a computer with no internet |
+| License ask | From the 30th day of use without a license, a toast asks whether you would buy one, then at most every 90 days |
+| Usage data | Off until you choose to share it from the launch toast or Preferences > General > Privacy; then the clients.md events go to PostHog ([ADR 0035](docs/decisions/0035-usage-data.md)) |
+
 ### Packaging and platform
 
 | Capability | Detail |

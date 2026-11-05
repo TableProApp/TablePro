@@ -27,6 +27,10 @@ mod imp {
         pub data_browser_group: TemplateChild<DataBrowserGroup>,
         #[template_child]
         pub history_group: TemplateChild<HistoryGroup>,
+        #[template_child]
+        pub privacy_group: TemplateChild<adw::PreferencesGroup>,
+        #[template_child]
+        pub share_usage_data_row: TemplateChild<adw::SwitchRow>,
     }
 
     #[glib::object_subclass]
@@ -65,6 +69,7 @@ impl Default for GeneralPage {
 }
 
 impl GeneralPage {
+    // A build without the analytics secret sends nothing, so it shows no switch that would stop it.
     pub(super) fn bind(
         &self,
         settings: &Rc<AppSettings>,
@@ -72,12 +77,25 @@ impl GeneralPage {
         history: crate::services::history_service::HistoryService,
         tasks: &Tasks,
         revealer: Rc<dyn FileRevealer>,
+        can_share_usage_data: bool,
     ) {
         let imp = self.imp();
         settings
             .gio()
             .bind(keys::RESTORE_SESSION, &imp.restore_session_row.get(), "active")
             .build();
+        imp.privacy_group.set_visible(can_share_usage_data);
+        settings
+            .gio()
+            .bind(keys::SHARE_USAGE_DATA, &imp.share_usage_data_row.get(), "active")
+            .build();
+        // Turning it either way here is the choice the launch toast asks for.
+        let chosen = settings.clone();
+        imp.share_usage_data_row.connect_active_notify(move |row| {
+            if let Err(error) = chosen.choose_usage_data(row.is_active()) {
+                tracing::warn!(%error, "the usage data choice was not stored");
+            }
+        });
         imp.data_browser_group.bind(settings);
         imp.history_group.bind(settings, storage, history, tasks, revealer);
     }
@@ -102,6 +120,16 @@ mod tests {
         root: &tempfile::TempDir,
         tasks: &Tasks,
     ) -> GeneralPage {
+        page_with_usage_data(settings, storage, root, tasks, false)
+    }
+
+    fn page_with_usage_data(
+        settings: &MemorySettings,
+        storage: &crate::storage::SharedStorage,
+        root: &tempfile::TempDir,
+        tasks: &Tasks,
+        can_share_usage_data: bool,
+    ) -> GeneralPage {
         crate::register_test_resources();
         let page = GeneralPage::default();
         page.bind(
@@ -110,6 +138,7 @@ mod tests {
             super::super::test_history(root, tasks),
             tasks,
             Rc::new(RecordingRevealer::succeeding()),
+            can_share_usage_data,
         );
         page
     }
@@ -119,7 +148,43 @@ mod tests {
         crate::test_support::descendants(page)
             .into_iter()
             .filter_map(|widget| widget.downcast::<adw::PreferencesGroup>().ok())
+            .filter(WidgetExt::is_visible)
             .collect()
+    }
+
+    #[gtk4::test]
+    fn usage_data_is_off_until_chosen_and_the_switch_is_the_choice() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+        let page = page_with_usage_data(&settings, &storage, &root, &runtime.tasks(), true);
+        let row = page.imp().share_usage_data_row.get();
+        let titles: Vec<String> = groups(&page).iter().map(|group| group.title().to_string()).collect();
+
+        let before = (row.is_active(), settings.get().usage_data_asked());
+        row.set_active(true);
+        let shared = (settings.get().share_usage_data(), settings.get().usage_data_asked());
+        row.set_active(false);
+
+        assert_eq!(titles.last().map(String::as_str), Some("Privacy"));
+        assert_eq!(before, (false, false));
+        assert_eq!(shared, (true, true));
+        assert!(!settings.get().share_usage_data());
+        assert!(settings.get().usage_data_asked());
+    }
+
+    #[gtk4::test]
+    fn a_build_without_the_secret_shows_no_privacy_switch() {
+        let settings = MemorySettings::new();
+        let runtime = test_runtime();
+        let storage = test_storage(&runtime.tasks());
+        let root = tempfile::tempdir().expect("tempdir");
+
+        let page = bound_page(&settings, &storage, &root, &runtime.tasks());
+
+        let titles: Vec<String> = groups(&page).iter().map(|group| group.title().to_string()).collect();
+        assert_eq!(titles, ["Startup", "Data Browser", "Query History"]);
     }
 
     #[gtk4::test]
