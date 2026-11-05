@@ -2672,7 +2672,8 @@ fn a_schema_named_like_a_database_is_dropped_where_schemas_are_not_databases() {
 #[gtk4::test]
 fn a_new_schema_shows_once_the_schemas_are_read_again() {
     let test = TestWindow::connected_with("SidebarSchemaShape", |script| {
-        script.list_schemas.once(FakeReply::ok(vec![schema("public", true)]));
+        // The connect lists none of these: the first is what
+        // catalog_shape_changed reads, the second what Refresh reads.
         script
             .list_schemas
             .once(FakeReply::ok(vec![schema("public", true), schema("sales", false)]));

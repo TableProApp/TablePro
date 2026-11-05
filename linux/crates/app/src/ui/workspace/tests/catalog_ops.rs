@@ -388,7 +388,8 @@ fn a_new_database_waits_for_its_name_and_shows_only_its_engines_options() {
     let create = descendants(&form)
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-        .find(|button| button.has_css_class("suggested-action"))
+        // An entry row's own apply button is suggested-action too.
+        .find(|button| button.has_css_class("suggested-action") && button.label().as_deref() == Some("_Create"))
         .expect("the Create button");
     assert!(!create.is_sensitive(), "Create was on with no name");
 
