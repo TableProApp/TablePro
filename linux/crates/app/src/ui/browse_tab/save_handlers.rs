@@ -100,8 +100,8 @@ impl BrowseModel {
         self.refresh_banner_visibility();
     }
 
-    /// The footer and the tab's dirty flag, which App turns into the
-    /// title bullet. App hears only real transitions.
+    /// The footer and the tab's dirty flag, which the workspace turns
+    /// into the title bullet. It hears only real transitions.
     pub(super) fn sync_pending_chrome(&self, count: usize, fx: &mut Effects) {
         self.refresh_pending_bar(count);
         self.follow_tracker();

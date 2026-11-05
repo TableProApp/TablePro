@@ -75,9 +75,7 @@ impl ConnectingPage {
         let priority = gtk::AccessibleAnnouncementPriority::Medium;
         #[cfg(test)]
         imp.announced.borrow_mut().push((title.clone(), priority));
-        // libadwaita's own Accessible impls sit behind a feature left off,
-        // and every widget is one.
-        imp.status_page.upcast_ref::<gtk::Widget>().announce(&title, priority);
+        imp.status_page.announce(&title, priority);
     }
 
     pub fn toast_overlay(&self) -> adw::ToastOverlay {

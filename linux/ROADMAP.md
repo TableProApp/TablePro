@@ -123,7 +123,7 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 
 | Capability | Detail |
 |---|---|
-| Window per session | A window holds one connection; another connection opens in a window of its own, and one already open brings its window forward ([ADR 0012](docs/decisions/0012-window-per-session.md)) |
+| Sessions in a window | A window holds several connection sessions, their tabs side by side in one tab view, and a connection already open brings its window forward ([ADR 0028](docs/decisions/0028-sessions-share-a-window.md)) |
 | One instance | A second launch presents the running app; New Window (Ctrl+Shift+N) opens a picker |
 | Tabs | `AdwTabView` with the tab overview and split header bars, adapting down to 360×294 |
 | Session restore | The windows of saved connections and database files open at quit open again at launch (Restore Session, on by default), also after New Window or a quit during the restore |

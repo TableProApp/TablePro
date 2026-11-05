@@ -334,7 +334,7 @@ impl SavedConnectionEditor {
         }
     }
 
-    // The core would refuse a group its own name when a version 2 list left it a case-only sibling.
+    // The core would refuse a group its own name beside a case-only sibling, which an imported file can leave.
     pub async fn rename_group(&self, id: Uuid, name: ConnectionGroupName) -> Result<(), SavedConnectionError> {
         let store = self.store.clone();
         self.tasks

@@ -1,8 +1,6 @@
 //! The rules a connection's, a group's and a tag's name follow, shared so
 //! they cannot drift apart.
 
-use std::collections::HashSet;
-
 use unicode_normalization::UnicodeNormalization;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,32 +23,16 @@ pub(crate) fn checked(value: &str) -> Result<String, NameFault> {
     Ok(name)
 }
 
-// A file is never refused for what an earlier build let the user type.
+// A stored name is never refused for what macOS let the user type.
 pub(crate) fn cleaned(value: &str) -> String {
     let name = shown(value);
     if !name.is_empty() {
         return name;
     }
-    // Older builds accepted names made only of invisible characters.
-    // Keep the library readable and give those names something to show.
-    let old: String = value.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-    old.trim().chars().flat_map(char::escape_default).collect()
-}
-
-// Recovery must not take a visible name and make the library merge its owner.
-pub(crate) fn claim_recovered(value: &str, max: Option<usize>, held: &mut HashSet<String>) -> String {
-    let mut name = value.to_owned();
-    let mut suffix = 2_usize;
-    while !held.insert(name.to_lowercase()) {
-        let tail = format!(" ({suffix})");
-        let head: String = value
-            .chars()
-            .take(max.map_or(usize::MAX, |max| max.saturating_sub(tail.len())))
-            .collect();
-        name = format!("{head}{tail}");
-        suffix += 1;
-    }
-    name
+    // macOS accepts a group name made only of invisible characters.
+    // Give it something to show rather than drop the group.
+    let raw: String = value.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    raw.trim().chars().flat_map(char::escape_default).collect()
 }
 
 /// A name as the list shows it: characters that show as nothing dropped,
