@@ -115,6 +115,15 @@ impl DumpEngine for MssqlEngine {
             "DELETE FROM app.parent WHERE name = N'fourth'",
             "INSERT INTO app.child (parent_id, previous_id, label) VALUES (10, NULL, N'a')",
             "INSERT INTO app.child (parent_id, previous_id, label) VALUES (15, 1, N'b')",
+            "CREATE TABLE app.price_log (\
+                 id int NOT NULL CONSTRAINT pk_price_log PRIMARY KEY, \
+                 price decimal(10, 2) NOT NULL, \
+                 valid_from datetime2 GENERATED ALWAYS AS ROW START NOT NULL, \
+                 valid_to datetime2 GENERATED ALWAYS AS ROW END NOT NULL, \
+                 PERIOD FOR SYSTEM_TIME (valid_from, valid_to)\
+             ) WITH (SYSTEM_VERSIONING = ON (HISTORY_TABLE = app.price_log_history))",
+            "INSERT INTO app.price_log (id, price) VALUES (1, 5), (2, 7)",
+            "UPDATE app.price_log SET price = 6 WHERE id = 1",
         ]
         .into_iter()
         .map(str::to_owned)

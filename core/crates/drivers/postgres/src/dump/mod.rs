@@ -344,16 +344,25 @@ fn types(facts: &CatalogFacts, lookup: &Lookup<'_>, skipped: &mut Vec<DumpSkip>)
         let sql = match &user_type.shape {
             TypeShape::Enum(labels) => vec![statements::create_enum(key.0, key.1, labels)],
             TypeShape::Domain(domain) => {
-                let mut sql = statements::create_domain(key.0, key.1, domain, listed(&lookup.checks, key));
+                let listed_checks = listed(&lookup.checks, key);
+                let mut sql = statements::create_domain(key.0, key.1, domain, listed_checks);
                 let added = sql.split_off(1);
-                if !added.is_empty() {
-                    checks.push(DumpObject::new(
-                        DumpObjectKind::Constraint,
-                        DumpSection::BeforeData,
-                        Some(user_type.schema.clone()),
-                        user_type.name.clone(),
-                        plain(added),
-                    ));
+                // A check added NOT VALID holds for rows written after it
+                // and not for the ones already there, so it follows them.
+                let (held, pending): (Vec<_>, Vec<_>) = added
+                    .into_iter()
+                    .zip(listed_checks)
+                    .partition(|(_, check)| check.validated);
+                for (section, group) in [(DumpSection::BeforeData, held), (DumpSection::AfterData, pending)] {
+                    if !group.is_empty() {
+                        checks.push(DumpObject::new(
+                            DumpObjectKind::Constraint,
+                            section,
+                            Some(user_type.schema.clone()),
+                            user_type.name.clone(),
+                            plain(group.into_iter().map(|(statement, _)| statement)),
+                        ));
+                    }
                 }
                 sql
             }
@@ -991,13 +1000,22 @@ mod tests {
                     shape: TypeShape::Composite,
                 },
             ],
-            domain_checks: vec![DomainCheck {
-                schema: "app".to_owned(),
-                domain: "positive".to_owned(),
-                name: "positive_check".to_owned(),
-                definition: "CHECK ((VALUE > 0))".to_owned(),
-                validated: true,
-            }],
+            domain_checks: vec![
+                DomainCheck {
+                    schema: "app".to_owned(),
+                    domain: "positive".to_owned(),
+                    name: "positive_check".to_owned(),
+                    definition: "CHECK ((VALUE > 0))".to_owned(),
+                    validated: true,
+                },
+                DomainCheck {
+                    schema: "app".to_owned(),
+                    domain: "positive".to_owned(),
+                    name: "small".to_owned(),
+                    definition: "CHECK ((VALUE < 100)) NOT VALID".to_owned(),
+                    validated: false,
+                },
+            ],
             columns: vec![attribute],
             ..CatalogFacts::default()
         };
@@ -1008,8 +1026,17 @@ mod tests {
             sql_of(&catalog, "positive"),
             [
                 "CREATE DOMAIN \"app\".\"positive\" AS integer",
-                "ALTER DOMAIN \"app\".\"positive\" ADD CONSTRAINT \"positive_check\" CHECK ((VALUE > 0))"
+                "ALTER DOMAIN \"app\".\"positive\" ADD CONSTRAINT \"positive_check\" CHECK ((VALUE > 0))",
+                "ALTER DOMAIN \"app\".\"positive\" ADD CONSTRAINT \"small\" CHECK ((VALUE < 100)) NOT VALID"
             ]
+        );
+        assert_eq!(
+            sections(&catalog)
+                .into_iter()
+                .filter(|(_, kind, _)| *kind == DumpObjectKind::Constraint)
+                .map(|(section, ..)| section)
+                .collect::<Vec<_>>(),
+            [DumpSection::BeforeData, DumpSection::AfterData]
         );
         assert_eq!(
             sql_of(&catalog, "pair"),

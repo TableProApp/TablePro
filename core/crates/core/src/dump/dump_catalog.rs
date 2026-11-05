@@ -153,6 +153,10 @@ pub struct DumpTable {
     /// that as each statement ends, so each row goes in a statement of
     /// its own.
     pub one_row_per_insert: bool,
+    /// Columns the server fills on its own that the file's CREATE makes
+    /// ordinary, so their values are written: SQL Server's period
+    /// columns.
+    pub plain_columns: Vec<String>,
 }
 
 impl DumpTable {
@@ -162,6 +166,7 @@ impl DumpTable {
             references: Vec::new(),
             rows: true,
             one_row_per_insert: false,
+            plain_columns: Vec::new(),
         }
     }
 }
@@ -205,6 +210,10 @@ pub enum DumpSkipReason {
     RowsFiltered,
     /// The login may not read it, such as a sequence's position.
     NotReadable,
+    /// A SQL Server table with a system-time period, written as an
+    /// ordinary table with its period columns' values. Its history table
+    /// is an ordinary table too.
+    VersioningNotCarried,
 }
 
 /// What a dump of one scope writes, read from the catalog in one go.

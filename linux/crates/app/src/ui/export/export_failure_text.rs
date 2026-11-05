@@ -88,6 +88,10 @@ pub(crate) fn dump_warnings(report: &DumpReport) -> Option<String> {
                 "{name} is in the file without its rows: row-level security shows this login only some of them.",
                 &[("name", &skipped.name)],
             )),
+            DumpSkipReason::VersioningNotCarried => Some(gettext_f(
+                "{name} loads as an ordinary table with its rows' period times: the file has no system versioning.",
+                &[("name", &skipped.name)],
+            )),
             DumpSkipReason::NotReadable if skipped.kind == DumpObjectKind::SequenceValue => Some(gettext_f(
                 "The position of sequence {name} could not be read, so it starts over when the file loads.",
                 &[("name", &skipped.name)],

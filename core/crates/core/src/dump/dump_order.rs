@@ -45,10 +45,10 @@ fn order_programs(objects: &[&DumpObject], grammar: SqlGrammar) -> Vec<usize> {
 ///
 /// `before` is every object of the pre-data section, the tables among
 /// them in the order their rows load, and `after` the keys, checks and
-/// indexes the rows come before. A view or routine a table's CREATE or
-/// one of `after` names, through a DEFAULT, a CHECK, a generated column
-/// or an index expression, is made with the tables, and so is whatever
-/// that one names in turn. A materialized view never is: its rows come
+/// indexes the rows come before. A view or routine one of those names,
+/// through a DEFAULT, a CHECK, a generated column, a domain or an index
+/// expression, is made with the tables, and so is whatever that one
+/// names in turn. A materialized view never is: its rows come
 /// from the tables', and ClickHouse's would take each row loaded after
 /// it again. Each group is put in the order its objects name each other
 /// in, ties kept as they came.
@@ -62,10 +62,7 @@ pub(super) fn creation_order<'a>(
     let made = before.len() + programs.len();
     let parents = mention_edges(&all, grammar);
     let mut early: Vec<bool> = (0..made).map(|position| position < before.len()).collect();
-    let mut pending: Vec<usize> = (0..before.len())
-        .filter(|&position| all[position].table.is_some())
-        .chain(made..all.len())
-        .collect();
+    let mut pending: Vec<usize> = (0..before.len()).chain(made..all.len()).collect();
     while let Some(node) = pending.pop() {
         for &parent in &parents[node] {
             let movable = parent < made && all[parent].kind != DumpObjectKind::MaterializedView;
@@ -332,6 +329,24 @@ mod tests {
         let named = |objects: &[&DumpObject]| objects.iter().map(|object| object.name.clone()).collect::<Vec<_>>();
         assert_eq!(named(&early), ["base", "total", "uses"]);
         assert_eq!(named(&late), ["other"]);
+    }
+
+    #[test]
+    fn a_view_a_macro_before_the_rows_reads_is_made_before_it() {
+        let reads = DumpObject::new(
+            DumpObjectKind::Function,
+            DumpSection::BeforeData,
+            None,
+            "m",
+            vec![DumpStatement::new("CREATE MACRO m() AS (SELECT n FROM v)")],
+        );
+        let source = view("v", "CREATE VIEW v AS SELECT 1 AS n");
+
+        let (early, late) = creation_order(&[&reads], &[&source], &[], SqlGrammar::DuckDb);
+
+        let named = |objects: &[&DumpObject]| objects.iter().map(|object| object.name.clone()).collect::<Vec<_>>();
+        assert_eq!(named(&early), ["v", "m"]);
+        assert!(late.is_empty());
     }
 
     #[test]

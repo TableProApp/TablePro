@@ -230,7 +230,13 @@ impl Writer<'_> {
         table: &DumpTable,
         options: &CallOptions,
     ) -> Result<(), DumpError> {
-        let columns: Arc<[ColumnInfo]> = connection.fetch_columns(&table.table, options.clone()).await?.into();
+        let mut columns = connection.fetch_columns(&table.table, options.clone()).await?;
+        for column in &mut columns {
+            if table.plain_columns.contains(&column.name) {
+                column.is_generated = false;
+            }
+        }
+        let columns: Arc<[ColumnInfo]> = columns.into();
         let identity = connection.row_identity(&table.table, options.clone()).await?;
         let read = build_export(
             &*self.dialect,

@@ -57,6 +57,12 @@ const KEYS_SQL: &str = "SELECT SCHEMA_NAME(t.schema_id), t.name, kc.name, RTRIM(
     WHERE t.is_ms_shipped = 0 AND {scope} \
     ORDER BY 1, 2, 3";
 
+/// The columns of a system-time period, which the server fills.
+const PERIODS_SQL: &str = "SELECT SCHEMA_NAME(t.schema_id), t.name, c.name \
+    FROM sys.columns c JOIN sys.tables t ON t.object_id = c.object_id \
+    WHERE c.generated_always_type IN (1, 2) AND t.is_ms_shipped = 0 AND {scope} \
+    ORDER BY 1, 2, 3";
+
 /// `last_value` is NULL until a row takes a number.
 const IDENTITIES_SQL: &str = "SELECT SCHEMA_NAME(t.schema_id), t.name, CAST(ic.seed_value AS nvarchar(64)), \
         CAST(ic.increment_value AS nvarchar(64)), CAST(ic.last_value AS nvarchar(64)) \
@@ -241,12 +247,14 @@ impl CatalogRead<'_> {
     async fn tables(&mut self) -> Result<(), Interrupt> {
         let keys = key_rows(&self.rows(KEYS_SQL, "t.schema_id").await?)?;
         let identities = identity_rows(&self.rows(IDENTITIES_SQL, "t.schema_id").await?)?;
+        let periods = period_rows(&self.rows(PERIODS_SQL, "t.schema_id").await?)?;
         for row in self.rows(TABLES_SQL, "t.schema_id").await? {
             let cells = Cells::new(&row, "sys.tables");
             let table = TableRef::new(cells.text(0), cells.required_text(1)?);
             let parts = TableParts {
                 keys: keys.get(&table).map(Vec::as_slice).unwrap_or_default(),
                 identity: identities.get(&table),
+                periods: periods.get(&table).map(Vec::as_slice).unwrap_or_default(),
             };
             self.table(&table, &parts).await?;
         }
@@ -284,7 +292,20 @@ impl CatalogRead<'_> {
             table.clone(),
             vec![DumpStatement::new(script.create)],
         ));
-        self.catalog.tables.push(DumpTable::new(table.clone()));
+        // The structure model has no period or SYSTEM_VERSIONING, so the
+        // table loads as an ordinary one, with the times its rows hold.
+        if !parts.periods.is_empty() {
+            self.catalog.skipped.push(DumpSkip {
+                kind: DumpObjectKind::Table,
+                schema: table.schema.clone(),
+                name: table.name.clone(),
+                reason: DumpSkipReason::VersioningNotCarried,
+            });
+        }
+        self.catalog.tables.push(DumpTable {
+            plain_columns: parts.periods.to_vec(),
+            ..DumpTable::new(table.clone())
+        });
         let schema = || table.schema.clone();
         let indexes: Vec<String> = script.indexes.into_iter().chain(script.stated).collect();
         if !indexes.is_empty() {
@@ -501,6 +522,17 @@ fn identity_rows(rows: &[Vec<Value>]) -> Result<HashMap<TableRef, IdentityRow>, 
 struct TableParts<'a> {
     keys: &'a [KeyRow],
     identity: Option<&'a IdentityRow>,
+    periods: &'a [String],
+}
+
+fn period_rows(rows: &[Vec<Value>]) -> Result<HashMap<TableRef, Vec<String>>, DriverError> {
+    let mut periods: HashMap<TableRef, Vec<String>> = HashMap::new();
+    for row in rows {
+        let cells = Cells::new(row, "sys.columns");
+        let table = TableRef::new(cells.text(0), cells.required_text(1)?);
+        periods.entry(table).or_default().push(cells.required_text(2)?);
+    }
+    Ok(periods)
 }
 
 struct ForeignKeyRow {
@@ -679,6 +711,7 @@ mod tests {
             TABLES_SQL,
             KEYS_SQL,
             IDENTITIES_SQL,
+            PERIODS_SQL,
             CHECKS_SQL,
             FOREIGN_KEYS_SQL,
             MODULES_SQL,
