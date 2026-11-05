@@ -517,7 +517,7 @@ Left for a machine with a GPU and a HiDPI screen: the GL and Vulkan renderers on
 
 ## CI
 
-`.github/workflows/build-linux.yml` builds and tests the app, `.github/workflows/linux-packages.yml` builds, installs and starts the .deb, the .rpm and the Flatpak bundle, and `.github/workflows/release-linux.yml` publishes a `linux-v*` tag. Each workflow's `on:` and each job's `if:` say when it runs; its steps say what it runs. To run the same checks locally: the [fast-job commands](../CONTRIBUTING.md#fast-job-commands) and `build-aux/packaging/build-packages.sh`.
+`.github/workflows/build-linux.yml` builds and tests the app, `.github/workflows/linux-packages.yml` builds, installs and starts the .deb and the .rpm, and installs and updates the Flatpak from a test repository, and `.github/workflows/release-linux.yml` publishes a `linux-v*` tag. Each workflow's `on:` and each job's `if:` say when it runs; its steps say what it runs. To run the same checks locally: the [fast-job commands](../CONTRIBUTING.md#fast-job-commands) and `build-aux/packaging/build-packages.sh`.
 
 `.github/workflows/core.yml` builds the core crates for Windows x64 and Arm64 and macOS, runs the unit tests of `tablepro-core` and the SQL Server driver there, with the driver's `kerberos` feature on macOS, where it links the system's GSS framework, and runs the SSPI login tests above.
 

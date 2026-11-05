@@ -1,6 +1,6 @@
 # Releasing
 
-`.github/workflows/release-linux.yml` publishes a release or a beta. This page is what a maintainer does around it. [ADR 0018](decisions/0018-ppa-copr-and-flathub-later.md) says why the channels are a Launchpad PPA and a COPR project, and [ADR 0033](decisions/0033-beta-repositories-and-release-packages.md) why betas have their own and what every GitHub release carries.
+`.github/workflows/release-linux.yml` publishes a release or a beta. This page is what a maintainer does around it. [ADR 0018](decisions/0018-ppa-copr-and-flathub-later.md) says why the channels are a Launchpad PPA and a COPR project, and [ADR 0033](decisions/0033-beta-repositories-and-release-packages.md) why betas have their own, why every other distribution gets a Flatpak repository of ours, and what every GitHub release carries.
 
 ## Setup before the first release
 
@@ -38,19 +38,37 @@ A repository admin does these once. The workflow's header names the same secrets
       ```
 
    4. In each project's Settings, tell `tablepro-beta`'s users under Instructions to enable `@tablepro/tablepro` as well, and turn on build failure emails for the admins. Integrations shows the custom webhook URL; add the package name to it: `https://copr.fedorainfracloud.org/webhooks/custom/<id>/<uuid>/tablepro/`.
-4. **GitHub**: the `linux-release` environment takes a required reviewer and deploys from `linux-v*` tags and the `main` branch only. The branch is for a [packaging fix](#a-packaging-fix).
-   - Secrets in it: `LINUX_PPA_SIGNING_KEY`, the file the first step exported; `LINUX_COPR_WEBHOOK`, the URL of `@tablepro/tablepro`; `LINUX_COPR_WEBHOOK_BETA`, the URL of `@tablepro/tablepro-beta`. Then delete the exported file.
-   - Repository variables: `LINUX_PPA` set to `tablepro/tablepro`, `LINUX_PPA_BETA` set to `tablepro/tablepro-beta`. `LINUX_BRANCH` stays unset unless a release comes from a [maintenance branch](#a-fix-release).
+4. **The Flatpak repository**, in the Cloudflare account that holds the `tablepro.app` zone:
+   1. **R2**: under R2 Object Storage, create the bucket `tablepro-flatpak`. Leave its `r2.dev` public URL off.
+   2. **The domain**: in the bucket's Settings, under Custom Domains, connect `flatpak.tablepro.app`. Cloudflare adds the DNS record. The release job uploads `repo/` and `beta-repo/` there.
+   3. **The token**: under R2, Manage API tokens, create a token with Object Read & Write on `tablepro-flatpak` only. Keep its Access Key ID, its Secret Access Key and the S3 endpoint it shows, `https://<account id>.r2.cloudflarestorage.com`.
+   4. **The key**: a key of its own, not the PPA's. Every installed remote trusts it, and a new one makes every user add the repository again, so keep a copy offline:
+
+      ```sh
+      gpg --batch --passphrase '' --quick-generate-key 'TablePro Flatpak <hello@tablepro.app>' rsa4096 sign never
+      gpg --list-secret-keys --with-colons 'TablePro Flatpak' | awk -F: '$1 == "fpr" { print $10; exit }'
+      gpg --armor --export-secret-keys <fingerprint> > linux-flatpak-key.asc
+      ```
+
+5. **GitHub**: the `linux-release` environment takes a required reviewer and deploys from `linux-v*` tags and the `main` branch only. The branch is for a [packaging fix](#a-packaging-fix).
+   - Secrets in it: `LINUX_PPA_SIGNING_KEY`, the file the first step exported; `LINUX_COPR_WEBHOOK`, the URL of `@tablepro/tablepro`; `LINUX_COPR_WEBHOOK_BETA`, the URL of `@tablepro/tablepro-beta`; `LINUX_FLATPAK_GPG_KEY`, the Flatpak key's file; `LINUX_FLATPAK_R2_ACCESS_KEY_ID` and `LINUX_FLATPAK_R2_SECRET_ACCESS_KEY`, the R2 token's. Then delete the exported key files.
+   - Repository variables: `LINUX_PPA` set to `tablepro/tablepro`, `LINUX_PPA_BETA` set to `tablepro/tablepro-beta`, `LINUX_FLATPAK_R2_ENDPOINT` set to the S3 endpoint. `LINUX_BRANCH` stays unset unless a release comes from a [maintenance branch](#a-fix-release).
 
    ```sh
    gh secret set LINUX_PPA_SIGNING_KEY --env linux-release --repo TableProApp/TablePro < linux-ppa-signing-key.asc
    gh secret set LINUX_COPR_WEBHOOK --env linux-release --repo TableProApp/TablePro
    gh secret set LINUX_COPR_WEBHOOK_BETA --env linux-release --repo TableProApp/TablePro
+   gh secret set LINUX_FLATPAK_GPG_KEY --env linux-release --repo TableProApp/TablePro < linux-flatpak-key.asc
+   gh secret set LINUX_FLATPAK_R2_ACCESS_KEY_ID --env linux-release --repo TableProApp/TablePro
+   gh secret set LINUX_FLATPAK_R2_SECRET_ACCESS_KEY --env linux-release --repo TableProApp/TablePro
    gh variable set LINUX_PPA --body tablepro/tablepro --repo TableProApp/TablePro
    gh variable set LINUX_PPA_BETA --body tablepro/tablepro-beta --repo TableProApp/TablePro
+   gh variable set LINUX_FLATPAK_R2_ENDPOINT --body 'https://<account id>.r2.cloudflarestorage.com' --repo TableProApp/TablePro
    ```
 
-[README.md](../README.md#install) gives users these PPAs and COPR projects; change it if one gets another name.
+Until these exist, a tag still builds and checks everything, and each publishing step that lacks its secret or variable fails and publishes nothing.
+
+[README.md](../README.md#install) gives users these PPAs, COPR projects and Flatpak repositories; change it if one gets another name.
 
 ## A dry run
 
@@ -60,7 +78,7 @@ Before a tag, run the workflow by hand on the branch it will be on:
 gh workflow run release-linux.yml --ref main -f dry-run=true
 ```
 
-It checks the version's metadata as the `release-metadata` test does, builds, tests and installs both packages, builds and installs the Flatpak bundle, on amd64 and arm64, and keeps every file a tag would publish, `SHA256SUMS` among them, as the run's `linux-release` artifact. It publishes nothing and needs no reviewer.
+It checks the version's metadata as the `release-metadata` test does, builds, tests and installs both packages on amd64 and arm64, and builds the Flatpak for both. It signs the Flatpak with a throwaway key into a repository it serves on `127.0.0.1`, installs it from there and from a bundle on Ubuntu 22.04, 24.04 and 26.04, and updates both. It keeps every file a tag would publish, `SHA256SUMS` among them, as the run's `linux-release` artifact. It publishes nothing and needs no reviewer.
 
 ## A release or a beta
 
@@ -75,8 +93,8 @@ It checks the version's metadata as the `release-metadata` test does, builds, te
 
    The pull request changes only these files and `changelog.d/`. The `release-metadata` Meson test checks that they agree from the commit that sets a beta's version, or adds a release's changelog heading, so the pull request fails before the tag does.
 2. **The tag**: `linux-vX.Y.Z` or `linux-vX.Y.Z-beta.N` on the merged commit, pushed the same UTC day. The workflow compares the metainfo date with the commit date.
-3. **The workflow** checks the tag, builds and tests both packages, builds the Flatpak bundle, installs all three on amd64 and arm64, and publishes them on GitHub with the tarballs, the translation template `tablepro.pot`, `SHA256SUMS`, and the version's changelog section as notes; a beta as a pre-release. Then it uploads the signed source package to the PPA and posts the tag to the COPR project: the stable ones for a release, the beta ones for a beta. A reviewer approves each step that uses the environment.
-4. **Afterwards**: watch the Launchpad build page of each series and the COPR build the workflow prints. A failed build there does not fail the workflow.
+3. **The workflow** checks the tag, builds, tests and installs the packages and the Flatpak as the [dry run](#a-dry-run) does, pulls the published Flatpak repository from R2, signs the new commits into it and bundles them. It publishes the packages and bundles on GitHub with the tarballs, the translation template `tablepro.pot`, `SHA256SUMS`, and the version's changelog section as notes; a beta as a pre-release. Then it uploads the Flatpak repository to R2, the signed source package to the PPA, and posts the tag to the COPR project: the stable ones for a release, the beta ones for a beta. A reviewer approves each step that uses the environment.
+4. **Afterwards**: watch the Launchpad build page of each series and the COPR build the workflow prints. A failed build there does not fail the workflow. `flatpak remote-info` on the TablePro remote shows the new Flatpak commit.
 
 ## The first release
 
@@ -91,7 +109,7 @@ It checks the version's metadata as the `release-metadata` test does, builds, te
 
 ## A packaging fix
 
-A fix to `build-aux/debian` or `build-aux/rpm` that needs no new version, such as a missing dependency. It goes to the stable repositories only; a beta's fix is the next beta.
+A fix to `build-aux/debian` or `build-aux/rpm` that needs no new version, such as a missing dependency. It goes to the stable repositories only; a beta's fix is the next beta. The Flatpak's packaging is its manifest, and a fix to it waits for the next release.
 
 **PPA.** Merge the fix to `main`, then run the workflow by hand on `main`:
 

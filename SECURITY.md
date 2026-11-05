@@ -17,7 +17,7 @@ Write in English or Vietnamese.
 
 - The Mac app.
 - The iPhone and iPad app.
-- The Linux app, releases and betas (`linux-vX.Y.Z-beta.N`) alike: from the Launchpad PPAs, the COPR projects, the .deb, .rpm or Flatpak bundle on a GitHub release, or a source build of a `linux-v*` tag.
+- The Linux app, releases and betas (`linux-vX.Y.Z-beta.N`) alike: from the Launchpad PPAs, the COPR projects, the Flatpak repositories at `flatpak.tablepro.app`, the .deb, .rpm or Flatpak bundle on a GitHub release, or a source build of a `linux-v*` tag.
 - The plugins, bundled with the app or installed from the [plugin registry](https://docs.tablepro.app/features/plugins).
 - The website, [tablepro.app](https://tablepro.app).
 
