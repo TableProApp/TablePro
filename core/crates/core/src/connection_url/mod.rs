@@ -285,6 +285,9 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
         }
         (Engine::Mongo { .. }, "replicaset") => draft.options.replica_set = Some(value).filter(|name| !name.is_empty()),
         (Engine::Mongo { .. }, "authmechanism") => check_mechanism(&value)?,
+        (Engine::Mongo { .. }, "tlscrlfile") if !value.trim().is_empty() => {
+            return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
+        }
         (Engine::Mongo { .. }, "directconnection") => draft.direct = Some(value.trim().eq_ignore_ascii_case("true")),
         (Engine::Mongo { .. }, _) => {}
         // libpq's `host` names one host and no port; a list is its failover, which is not read.
@@ -305,10 +308,7 @@ fn read_parameter(engine: Engine, draft: &mut Draft, key: &str, value: String) -
         (Engine::Postgres, "gssencmode" | "sslcertmode") if value.trim().eq_ignore_ascii_case("require") => {
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
-        (Engine::Mysql { .. }, "ssl-crl" | "ssl_crl" | "ssl-crlpath" | "ssl_crlpath")
-        | (Engine::Mongo { .. }, "tlscrlfile")
-            if !value.trim().is_empty() =>
-        {
+        (Engine::Mysql { .. }, "ssl-crl" | "ssl_crl" | "ssl-crlpath" | "ssl_crlpath") if !value.trim().is_empty() => {
             return Err(ConnectionUrlError::UnsupportedParameter { name: key.to_owned() });
         }
         (Engine::Postgres, "dbname") | (Engine::Mssql, "database" | "databasename") if draft.database.is_empty() => {

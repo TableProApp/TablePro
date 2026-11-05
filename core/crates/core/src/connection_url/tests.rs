@@ -250,6 +250,10 @@ fn mysql_tls_spellings_and_the_x_protocol_port() {
         refused("mysql://h/db?ssl-crl=/etc/crl.pem").code(),
         "url.unsupported_parameter"
     );
+    assert_eq!(
+        refused("mongodb://h/db?tls=true&tlsCRLFile=/etc/crl.pem").code(),
+        "url.unsupported_parameter"
+    );
     assert_eq!(read("mysqlx://u:p@h:33060/db").port, None);
     assert_eq!(read("mysqlx://u:p@h:13040/db").port, Some(13040));
 }
