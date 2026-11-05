@@ -959,6 +959,14 @@ mod tests {
 
         place_module(&mut catalog, split, DumpSection::Programs, None);
 
-        assert!(catalog.objects.is_empty() && catalog.skipped.is_empty());
+        assert!(catalog.objects.is_empty());
+        assert_eq!(
+            catalog
+                .skipped
+                .iter()
+                .map(|skip| (skip.kind, skip.reason))
+                .collect::<Vec<_>>(),
+            [(DumpObjectKind::Procedure, DumpSkipReason::SplitsApart)]
+        );
     }
 }

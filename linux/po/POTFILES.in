@@ -98,6 +98,7 @@ crates/app/src/services/grid/test_columns.rs
 crates/app/src/services/history_availability.rs
 crates/app/src/services/history_preferences.rs
 crates/app/src/services/history_service.rs
+crates/app/src/services/import_file.rs
 crates/app/src/services/library_outline.rs
 crates/app/src/services/mcp_service.rs
 crates/app/src/services/mcp_status.rs

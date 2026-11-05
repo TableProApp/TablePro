@@ -211,9 +211,15 @@ mod tests {
         }
     }
 
+    /// `count` rows whose first value is `width` characters long. A format
+    /// width past `u16::MAX` panics, so the padding is built by hand.
     fn rows(count: usize, width: usize) -> Vec<Vec<Value>> {
         (0..count)
-            .map(|row| vec![Value::Text(format!("{row:0width$}")), Value::Text("x".to_owned())])
+            .map(|row| {
+                let digits = row.to_string();
+                let padded = format!("{}{digits}", "0".repeat(width.saturating_sub(digits.len())));
+                vec![Value::Text(padded), Value::Text("x".to_owned())]
+            })
             .collect()
     }
 

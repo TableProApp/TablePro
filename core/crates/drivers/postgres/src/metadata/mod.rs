@@ -132,9 +132,9 @@ mod tests {
     use crate::dump::catalog_sql as dump;
 
     /// Words that take a parenthesis without calling a function by name.
-    const SYNTAX: [&str; 15] = [
+    const SYNTAX: [&str; 16] = [
         "AS", "ARRAY", "COALESCE", "EXISTS", "FROM", "IN", "ANY", "NULLIF", "GREATEST", "ON", "AND", "OR", "NOT",
-        "OPERATOR", "LATERAL",
+        "OPERATOR", "LATERAL", "SELECT",
     ];
 
     /// Names called without `pg_catalog.` in front, which the session's
