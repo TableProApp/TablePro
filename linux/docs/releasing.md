@@ -6,11 +6,12 @@
 
 A repository admin does these once. The workflow's header names the same secrets and variables.
 
-1. **The signing key**, on a machine you trust, kept for uploads only:
+1. **The signing key**, on a machine you trust, kept for uploads only. Launchpad confirms a key by mail encrypted to it, so it needs an encryption subkey too:
 
    ```sh
    gpg --batch --passphrase '' --quick-generate-key 'TablePro Releases <hello@tablepro.app>' rsa4096 sign never
    gpg --list-secret-keys --with-colons 'TablePro Releases' | awk -F: '$1 == "fpr" { print $10; exit }'
+   gpg --batch --passphrase '' --quick-add-key <fingerprint> rsa4096 encr never
    gpg --keyserver hkps://keyserver.ubuntu.com --send-keys <fingerprint>
    gpg --armor --export-secret-keys <fingerprint> > linux-ppa-signing-key.asc
    ```
