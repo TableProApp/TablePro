@@ -306,8 +306,7 @@ The schema id is the application id and the path follows it: `app.tablepro.Table
 | `confirm-bulk-delete` | `b` | `true` | |
 | `restore-session` | `b` | `true` | |
 | `last-seen-version` | `s` | empty | |
-| `share-usage-data` | `b` | `false` | |
-| `usage-data-asked` | `b` | `false` | |
+| `share-usage-data` | `b` | `true` | |
 | `usage-days` | `u` | `0` | |
 | `last-usage-day` | `s` | empty | `YYYY-MM-DD` |
 | `license-ask-day` | `s` | empty | `YYYY-MM-DD` |

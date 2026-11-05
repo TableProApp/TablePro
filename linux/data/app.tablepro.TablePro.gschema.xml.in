@@ -128,15 +128,9 @@
     </key>
 
     <key name="share-usage-data" type="b">
-      <default>false</default>
+      <default>true</default>
       <summary>Share usage data</summary>
-      <description>Whether TablePro sends usage events, such as an app launch, a connection attempt or a sign-in, to PostHog. Off until you choose to share them; a build made without a PostHog key sends none.</description>
-    </key>
-
-    <key name="usage-data-asked" type="b">
-      <default>false</default>
-      <summary>Usage data choice made</summary>
-      <description>Whether you have chosen to share usage data or not, so TablePro stops asking at launch.</description>
+      <description>Whether TablePro sends usage events, such as an app launch, a connection attempt or a sign-in, to PostHog. On unless you turn it off; a build made without a PostHog key sends none.</description>
     </key>
 
 

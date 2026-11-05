@@ -56,21 +56,20 @@ fn defaults_match_schema() -> TestResult {
     assert!(!fixture.settings.mcp_server_enabled());
     assert_eq!(fixture.settings.mcp_server_port(), 23508);
     assert_eq!(fixture.settings.usage_days(), 0);
-    assert!(!fixture.settings.share_usage_data());
-    assert!(!fixture.settings.usage_data_asked());
+    assert!(fixture.settings.share_usage_data());
     assert_eq!(fixture.settings.license_ask_day(), "");
     Ok(())
 }
 
 #[test]
-fn declining_usage_data_is_a_choice_too() -> TestResult {
+fn usage_data_turns_off_and_on_again() -> TestResult {
     let fixture = Fixture::new()?;
 
-    fixture.settings.choose_usage_data(false)?;
+    fixture.settings.set_share_usage_data(false)?;
+    let off = fixture.settings.share_usage_data();
+    fixture.settings.set_share_usage_data(true)?;
 
-    assert!(!fixture.settings.share_usage_data());
-    assert!(fixture.settings.usage_data_asked());
-    fixture.settings.choose_usage_data(true)?;
+    assert!(!off);
     assert!(fixture.settings.share_usage_data());
     Ok(())
 }

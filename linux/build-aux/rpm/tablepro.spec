@@ -143,7 +143,7 @@ export CARGO_BUILD_JOBS=%{_smp_build_ncpus}
 # test rebuilds the binary first.
 export CARGO_PROFILE_RELEASE_LTO=thin
 # A release's vendor tarball carries the PostHog key; without it the app
-# never offers to share usage data.
+# sends no usage data.
 %meson -Dprofile=default -Dkerberos=true -Dposthog_key="$(cat vendor/posthog-key 2>/dev/null)"
 %meson_build
 # These cover the whole workspace, test-only crates included: cargo2rpm

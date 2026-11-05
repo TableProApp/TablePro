@@ -45,5 +45,5 @@ option(
   'posthog_key',
   type: 'string',
   value: '',
-  description: 'The PostHog project key usage data goes to, once the user chooses to share it. Empty, the app never asks and sends none.',
+  description: 'The PostHog project key usage data goes to unless the user turns it off. Empty, the app sends none.',
 )

@@ -23,7 +23,6 @@ crates/app/src/application/shortcut_owner.rs
 crates/app/src/application/shortcut_section.rs
 crates/app/src/application/tests.rs
 crates/app/src/application/third_party_licenses.rs
-crates/app/src/application/usage_data.rs
 crates/app/src/application/window_host.rs
 crates/app/src/application/window_launch.rs
 crates/app/src/application/window_registry.rs

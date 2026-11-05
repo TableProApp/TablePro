@@ -41,7 +41,7 @@ Preferences > Account signs in to a TablePro account, which lists your plan, dev
 
 ## Usage data
 
-TablePro sends no usage data until you choose Share, from the toast a PPA or COPR package shows at launch or in **Preferences > General > Privacy**, which a build from source does not have. What it sends, and when: [README](../README.md#privacy). To stop it, turn **Share Usage Data** off; events still waiting are dropped. `gsettings get app.tablepro.TablePro share-usage-data` shows the choice. The anonymous ID PostHog knows this computer by is in `~/.local/state/tablepro/telemetry.json`; removing that file gives a new one.
+The PPA and COPR packages share usage data by default, as TablePro for macOS does; a build from source sends none. What it sends, to whom and when: [README](../README.md#privacy). To stop it, turn off **Preferences > General > Privacy > Share Usage Data**, or run `gsettings set app.tablepro.TablePro share-usage-data false`; events still waiting are dropped. The anonymous ID PostHog knows this computer by is in `~/.local/state/tablepro/telemetry.json`; removing that file gives a new one.
 
 ## SSH tunnels
 

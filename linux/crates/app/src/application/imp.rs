@@ -98,7 +98,6 @@ impl ApplicationImpl for TableProApplication {
             app.start_mcp();
             app.look_for_crash_report();
             app.note_launch_version();
-            app.ask_about_usage_data();
             self.session_signals
                 .replace(Some(SessionSignals::start(&services.sessions)));
         }

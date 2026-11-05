@@ -104,5 +104,5 @@ summary({
   'Kerberos': get_option('kerberos'),
   'Flatpak': get_option('flatpak'),
   'Account service': get_option('dev_account_url') == '' ? 'production' : get_option('dev_account_url'),
-  'Usage data': get_option('posthog_key') == '' ? 'off' : 'PostHog, once the user agrees',
+  'Usage data': get_option('posthog_key') == '' ? 'off' : 'PostHog, on by default',
 })

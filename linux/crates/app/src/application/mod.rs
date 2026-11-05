@@ -25,7 +25,6 @@ mod shortcut_listing;
 mod shortcut_owner;
 mod shortcut_section;
 mod third_party_licenses;
-mod usage_data;
 mod window_host;
 mod window_launch;
 mod window_registry;

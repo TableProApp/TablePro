@@ -216,7 +216,7 @@ The license ask (`application/license_ask_prompt.rs`) counts each local day of u
 
 ## Usage data
 
-`Telemetry` (`crates/app/src/services/telemetry.rs`) sends the usage events to PostHog through posthog-rs's blocking client, only in a build made with `-Dposthog_key` and only once the user chose Share ([ADR 0035](docs/decisions/0035-usage-data.md)). Until the user chooses, each launch shows `LaunchNotice::UsageData`, whose Choose… opens an `AdwAlertDialog` with Don't Share and Share, no default and a Learn More link to the privacy policy (`application/usage_data.rs`); the Preferences > General > Privacy switch opens the same dialog until it is answered, and changes the choice after. `AppServices::start` starts it and checks `app_opened` against the open sessions, `TelemetryConnector` counts the first connect around the app's `Connector`, the query history service counts the first editor run that worked, and the account's status, or `/v2/me` on Preferences > Account, identifies or resets it. The application's shutdown flushes it.
+`Telemetry` (`crates/app/src/services/telemetry.rs`) sends the usage events to PostHog through posthog-rs's blocking client, only in a build made with `-Dposthog_key`, and while Share Usage Data is on, which it is by default ([ADR 0035](docs/decisions/0035-usage-data.md)); Preferences > General > Privacy turns it off. `AppServices::start` starts it and checks `app_opened` against the open sessions, `TelemetryConnector` counts the first connect around the app's `Connector`, the query history service counts the first editor run that worked, and the account's status, or `/v2/me` on Preferences > Account, identifies or resets it. The application's shutdown flushes it.
 
 ## Build & CI
 

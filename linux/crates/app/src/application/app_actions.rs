@@ -22,21 +22,17 @@ pub fn install_app_actions(app: &TableProApplication) {
     let about = gio::ActionEntry::builder("about")
         .activate(|app: &TableProApplication, _, _| present_about(app))
         .build();
-    // A notification's default action, with the window and the tab it
-    // is about.
-    // The usage data toast's Choose….
-    let usage_data = gio::ActionEntry::builder("usage-data")
-        .activate(|app: &TableProApplication, _, _| app.present_usage_data_choice())
-        .build();
     // The license ask's Buy a License.
     let buy_license = gio::ActionEntry::builder("buy-license")
         .activate(|app: &TableProApplication, _, _| open_pricing(app))
         .build();
+    // A notification's default action, with the window and the tab it
+    // is about.
     let focus_tab = gio::ActionEntry::builder("focus-tab")
         .parameter_type(Some(&<(u32, String)>::static_variant_type()))
         .activate(|app: &TableProApplication, _, target| focus_tab(app, target))
         .build();
-    app.add_action_entries([new_window, quit, preferences, about, usage_data, buy_license, focus_tab]);
+    app.add_action_entries([new_window, quit, preferences, about, buy_license, focus_tab]);
 }
 
 /// Bring the tab forward in its window. A notification can outlive both,

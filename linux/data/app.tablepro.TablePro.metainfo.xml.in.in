@@ -71,11 +71,11 @@
       <name>Usage data</name>
       <description>
         <p>
-          Nothing is sent to PostHog until you choose Share, and Preferences > General > Privacy turns it off
-          again. Shared, a daily launch with the kinds and number of open connections, the first connection and
-          query, sign-in and sign-out, and upgrade clicks go to eu.i.posthog.com, with a random installation ID,
-          or the account's ID with the TablePro and system versions, processor type and language once signed
-          in. Never a host name, a password, a query or a row.
+          Unless you turn it off in Preferences > General > Privacy, a daily launch with the kinds and number
+          of open connections, the first connection and query, sign-in and sign-out, and upgrade clicks go to
+          PostHog at eu.i.posthog.com, with a random installation ID, or the account's ID with the TablePro and
+          system versions, processor type and language once signed in. Never a host name, a password, a query
+          or a row.
         </p>
       </description>
     </agreement_section>

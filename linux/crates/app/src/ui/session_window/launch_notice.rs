@@ -13,8 +13,6 @@ use crate::ui::file_reveal::reveal_failure_toast;
 pub(crate) enum LaunchNotice {
     Crash(PathBuf),
     Update(String),
-    // Until the user chooses whether to share usage data.
-    UsageData,
     // The days of use, from the 30th day without a license.
     LicenseAsk(u32),
 }
@@ -97,12 +95,6 @@ impl SessionWindow {
                 .title(gettext_f("TablePro was updated to {version}", &[("version", version)]))
                 .button_label(gettext("What’s New"))
                 .action_name("app.about")
-                .use_markup(false)
-                .build(),
-            LaunchNotice::UsageData => adw::Toast::builder()
-                .title(gettext("Share usage data with TablePro?"))
-                .button_label(gettext("Choose…"))
-                .action_name("app.usage-data")
                 .use_markup(false)
                 .build(),
             LaunchNotice::LicenseAsk(days) => adw::Toast::builder()

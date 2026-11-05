@@ -12,8 +12,8 @@ use tablepro_session::runtime::Tasks;
 // A request PostHog does not answer holds a flush, and so the exit, this long at most.
 const REQUEST_TIMEOUT_SECONDS: u64 = 5;
 const SHUTDOWN_TIMEOUT_MS: u64 = 2_000;
-// Each event carries the opt-in it was captured under until before_send takes it off.
-const CONSENT: &str = "tablepro_consent";
+// Each event carries the turn of Share Usage Data it was captured in until before_send takes it off.
+const TURN: &str = "tablepro_turn";
 
 // The keys macOS sets, so one PostHog person reads the same from either app.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -50,16 +50,17 @@ struct Inner {
     written: Arc<Mutex<u64>>,
     person: PersonProperties,
     tasks: Tasks,
-    // The opt-in posthog-rs's worker checks each event against as it goes out, 0 while Share Usage Data is off.
-    consent: Arc<AtomicU64>,
+    // The turn posthog-rs's worker checks each event against as it goes out, 0 while Share Usage Data is off.
+    turn: Arc<AtomicU64>,
 }
 
 struct Kept {
     state: State,
     generation: u64,
     sharing: bool,
-    // Moved at each opt-in, so an event queued before an opt-out stays unsent after the next opt-in.
-    consent: u64,
+    // Moved each time Share Usage Data turns on, so an event queued before it went off stays unsent once it is on
+    // again.
+    turn: u64,
     connecting: bool,
     // Captured while the client was still being made, off the GTK thread.
     pending: Vec<Event>,
@@ -116,7 +117,7 @@ impl Telemetry {
                 state: state.clone().unwrap_or_else(State::fresh),
                 generation: 0,
                 sharing: false,
-                consent: 0,
+                turn: 0,
                 connecting: false,
                 pending: Vec::new(),
                 account: Account::Unknown,
@@ -127,7 +128,7 @@ impl Telemetry {
             written: Arc::new(Mutex::new(0)),
             person: settings.person,
             tasks: tasks.clone(),
-            consent: Arc::new(AtomicU64::new(0)),
+            turn: Arc::new(AtomicU64::new(0)),
         });
         if self.inner.set(inner.clone()).is_err() {
             return;
@@ -298,14 +299,13 @@ impl Inner {
     fn set_sharing(self: &Arc<Self>, sharing: bool) {
         let mut kept = self.kept();
         if sharing && !kept.sharing {
-            kept.consent += 1;
+            kept.turn += 1;
         }
         kept.sharing = sharing;
-        self.consent
-            .store(if sharing { kept.consent } else { 0 }, Ordering::SeqCst);
+        self.turn.store(if sharing { kept.turn } else { 0 }, Ordering::SeqCst);
         if !sharing {
             kept.pending.clear();
-            // An $identify still queued is dropped with the rest, so the next opt-in sends it again.
+            // An $identify still queued is dropped with the rest, so turning it on again sends it again.
             kept.identified_this_run = None;
             return;
         }
@@ -320,7 +320,7 @@ impl Inner {
     }
 
     fn connect(&self) {
-        let consent = self.consent.clone();
+        let turn = self.turn.clone();
         let options = ClientOptionsBuilder::default()
             .api_key(self.key.clone())
             .host(self.host.clone())
@@ -330,11 +330,11 @@ impl Inner {
             // Sent as captured and never tried again, so a failed one is lost rather than kept.
             .flush_at(1_usize)
             .max_capture_attempts(1_u32)
-            // The worker sends one request at a time, so what was captured behind a slow one is dropped at an opt-out,
-            // and stays dropped after an opt-in again.
+            // The worker sends one request at a time, so what was captured behind a slow one is dropped when sharing
+            // goes off, and stays dropped once it is on again.
             .before_send(move |mut event| {
-                let given = event.remove_prop(CONSENT).and_then(|consent| consent.as_u64());
-                let current = consent.load(Ordering::SeqCst);
+                let given = event.remove_prop(TURN).and_then(|turn| turn.as_u64());
+                let current = turn.load(Ordering::SeqCst);
                 (current != 0 && given == Some(current)).then_some(event)
             })
             .build();
@@ -417,7 +417,7 @@ impl Inner {
     }
 
     fn send(&self, kept: &mut Kept, mut event: Event) {
-        if let Err(error) = event.insert_prop(CONSENT, kept.consent) {
+        if let Err(error) = event.insert_prop(TURN, kept.turn) {
             tracing::debug!(%error, "a usage event was not tagged");
             return;
         }
@@ -601,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    fn launched_with_usage_data_off_no_client_is_made_and_the_identify_waits_for_the_opt_in() {
+    fn launched_with_usage_data_off_no_client_is_made_and_the_identify_waits_until_it_is_on() {
         let runtime = test_runtime();
         let collector = Collector::start();
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -752,7 +752,7 @@ mod tests {
     }
 
     #[test]
-    fn turned_off_nothing_is_captured_identified_or_reset_and_a_sign_out_meanwhile_resets_at_the_opt_in() {
+    fn turned_off_nothing_is_captured_identified_or_reset_and_a_sign_out_meanwhile_resets_once_on_again() {
         let runtime = test_runtime();
         let collector = Collector::start();
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -888,7 +888,7 @@ mod tests {
     }
 
     #[test]
-    fn an_event_waiting_behind_a_slow_request_is_dropped_at_the_opt_out() {
+    fn an_event_waiting_behind_a_slow_request_is_dropped_when_turned_off() {
         let runtime = test_runtime();
         let collector = Collector::start();
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -907,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn an_event_queued_before_an_opt_out_stays_unsent_after_an_opt_in_again() {
+    fn an_event_queued_before_turning_off_stays_unsent_once_on_again() {
         let runtime = test_runtime();
         let collector = Collector::start();
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -928,7 +928,7 @@ mod tests {
     }
 
     #[test]
-    fn an_identify_dropped_at_an_opt_out_goes_out_at_the_next_opt_in() {
+    fn an_identify_dropped_when_turned_off_goes_out_once_on_again() {
         let runtime = test_runtime();
         let collector = Collector::start();
         let dir = tempfile::tempdir().expect("a temporary directory");
