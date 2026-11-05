@@ -161,11 +161,17 @@ fn a_root_certificate_makes_require_verify_and_must_be_absolute() {
         "postgresql://db/x?sslmode=verify-full&sslcert={certificate}&sslkey={key}"
     ))
     .tls
-    .client_identity;
-    assert_eq!(identity.map(|identity| identity.key), Some(PathBuf::from(&key)));
+    .client_key;
+    assert_eq!(identity, Some(PathBuf::from(&key)));
     let unstated = read(&format!("postgresql://db/x?sslcert={certificate}&sslkey={key}")).tls;
     assert_eq!(unstated.mode, None);
-    assert!(unstated.client_identity.is_some(), "the certificate files were dropped");
+    assert!(
+        unstated.client_certificate.is_some(),
+        "the certificate files were dropped"
+    );
+    let half = read(&format!("postgresql://db/x?sslmode=require&sslcert={certificate}")).tls;
+    assert_eq!(half.client_certificate, Some(PathBuf::from(&certificate)));
+    assert_eq!(half.client_key, None);
 }
 
 #[test]
@@ -242,6 +248,10 @@ fn mysql_tls_spellings_and_the_x_protocol_port() {
     );
     assert_eq!(mode("mysql://h/db?useSSL=true"), Some(TlsMode::Require));
     assert_eq!(mode("jdbc:mariadb://u:p@db/app?useSsl=true"), Some(TlsMode::VerifyFull));
+    assert_eq!(
+        mode("mysql://app:secret@localhost/db?socket=/tmp/mysql.sock&verifyServerCertificate=true"),
+        Some(TlsMode::VerifyFull)
+    );
     for url in [
         "mysql://u:p@db/app?ssl-mode=DISABLED&server-public-key-path=/etc/mysql/server.pem",
         "mysql://u:p@db/app?allowPublicKeyRetrieval=false",
@@ -506,6 +516,7 @@ fn a_file_url_keeps_a_windows_drive_and_a_unix_path() {
     assert!(lite.read_only);
     assert_eq!(lite.unread, ["cache"]);
     assert!(!read("sqlite:///home/ada/app.db?mode=rw").read_only);
+    assert!(read("sqlite:///data/evidence.db?immutable=1").read_only);
 }
 
 #[test]

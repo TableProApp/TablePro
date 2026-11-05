@@ -11,7 +11,7 @@ use percent_encoding::percent_decode_str;
 use secrecy::SecretString;
 use tls_hints::{TlsHints, Wanted};
 
-use crate::{ClientIdentity, NetworkOptions, TlsMode};
+use crate::{NetworkOptions, TlsMode};
 
 #[derive(Debug, Clone)]
 pub struct ConnectionUrl {
@@ -37,7 +37,9 @@ pub struct ConnectionUrl {
 pub struct UrlTls {
     pub mode: Option<TlsMode>,
     pub ca_file: Option<PathBuf>,
-    pub client_identity: Option<ClientIdentity>,
+    // Each as the URL names it, so a half-given certificate is reported, never dropped.
+    pub client_certificate: Option<PathBuf>,
+    pub client_key: Option<PathBuf>,
     pub server_name: Option<String>,
 }
 
@@ -145,6 +147,9 @@ fn file_url(engine: Engine, rest: &str) -> Result<ConnectionUrl, ConnectionUrlEr
         // SQLite's `mode=ro` and DuckDB's `access_mode=read_only`.
         match key.as_str() {
             "mode" if value == "ro" => read_only = true,
+            // An immutable file is one SQLite opens read-only.
+            "immutable" if matches!(value.as_str(), "1" | "true" | "yes" | "on") => read_only = true,
+            "immutable" => {}
             "access_mode" if value == "read_only" => read_only = true,
             "mode" | "access_mode" => {}
             _ if !unread.contains(&key) => unread.push(key),

@@ -1571,6 +1571,14 @@ fn a_path_typed_as_the_host_is_a_socket_folder() {
     assert!(imp.port_row.is_visible(), "the port names the socket in the folder");
     assert!(!imp.tls_section.is_visible(), "PostgreSQL takes no TLS on a socket");
 
+    imp.host_row.set_text("db.example.com");
+    assert_eq!(
+        imp.tls_section.form_state().mode,
+        TlsMode::VerifyFull,
+        "a host typed over the socket kept the socket's TLS off"
+    );
+    imp.host_row.set_text("/var/run/postgresql");
+
     select(&harness.dialog, "mongodb");
 
     assert!(!imp.socket_row.is_visible());

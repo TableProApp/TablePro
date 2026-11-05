@@ -34,7 +34,6 @@ pub fn parse_connection_url(url: String) -> Result<ParsedConnectionUrl, CoreErro
     }
     let tls = &parsed.tls;
     let path = |path: Option<&Path>| path.map(|path| path.display().to_string());
-    let identity = tls.client_identity.as_ref();
     Ok(ParsedConnectionUrl {
         driver_id: parsed.driver_id.to_owned(),
         tls_mode: tls.mode.map(|mode| match mode {
@@ -44,8 +43,8 @@ pub fn parse_connection_url(url: String) -> Result<ParsedConnectionUrl, CoreErro
             TlsMode::Strict => TlsModeTag::Strict,
         }),
         ca_file: path(tls.ca_file.as_deref()),
-        client_certificate: path(identity.map(|identity| identity.certificate.as_path())),
-        client_key: path(identity.map(|identity| identity.key.as_path())),
+        client_certificate: path(tls.client_certificate.as_deref()),
+        client_key: path(tls.client_key.as_deref()),
         server_name: tls.server_name.clone(),
         host: parsed.host,
         port: parsed.port,

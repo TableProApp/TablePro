@@ -436,10 +436,8 @@ impl ConnectForm {
                 form.tls.mode = mode;
             }
             form.tls.ca_file = url.tls.ca_file;
-            if let Some(identity) = url.tls.client_identity {
-                form.tls.client_certificate = Some(identity.certificate);
-                form.tls.client_key = Some(identity.key);
-            }
+            form.tls.client_certificate = url.tls.client_certificate;
+            form.tls.client_key = url.tls.client_key;
             // A name the engine cannot check on this route would be dropped, and the host checked instead.
             if url.tls.server_name.is_some() {
                 let route = match (form.ssh.is_some(), is_local_socket_host(&form.host)) {

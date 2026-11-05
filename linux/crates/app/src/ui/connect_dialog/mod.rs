@@ -349,6 +349,11 @@ impl ConnectDialog {
             if let Some(dialog) = weak.upgrade()
                 && !dialog.imp().updating.get()
             {
+                // Typing a path in, or a host over one, changes the transport as the switch does.
+                let socket = dialog.socket_host();
+                if dialog.imp().shown_socket.get().is_some() != socket {
+                    dialog.swap_tls(socket);
+                }
                 dialog.show_socket_rows();
                 // A socket takes no certificate files, so their check no longer stands.
                 dialog.recheck_files();
@@ -430,20 +435,6 @@ impl ConnectDialog {
         };
         let current = imp.host_row.text().to_string();
         let kept = imp.other_host.replace(current);
-        let entry = self.current_entry();
-        let tls = entry.as_ref().and_then(|entry| entry.capabilities().tls.as_ref());
-        // What the Security rows held over the network comes back with it. A socket starts with TLS off, which
-        // MySQL turns into TLS when the server offers it; a connection opened on one starts the network on the default.
-        let next_tls = match on {
-            true => {
-                imp.network_tls.replace(Some(imp.tls_section.form_state()));
-                TlsFormState {
-                    mode: TlsMode::Disable,
-                    ..TlsFormState::new(tls)
-                }
-            }
-            false => imp.network_tls.take().unwrap_or_else(|| TlsFormState::new(tls)),
-        };
         // Only a path the dialog picked itself is replaced by one found listening.
         let picked = on && !is_local_socket_host(kept.trim());
         let next = match (on, is_local_socket_host(kept.trim())) {
@@ -461,10 +452,31 @@ impl ConnectDialog {
         if picked {
             self.look_up_default_socket();
         }
-        imp.tls_section.apply(tls, TransportClass::DirectTcp, &next_tls);
+        self.swap_tls(on);
         self.show_socket_rows();
         self.recheck_files();
         self.refresh();
+    }
+
+    /// What the Security rows held over the network comes back with it. A
+    /// socket starts with TLS off, which MySQL turns into TLS when the
+    /// server offers it; a connection opened on one starts the network on
+    /// the default.
+    fn swap_tls(&self, socket: bool) {
+        let imp = self.imp();
+        let entry = self.current_entry();
+        let tls = entry.as_ref().and_then(|entry| entry.capabilities().tls.as_ref());
+        let next = match socket {
+            true => {
+                imp.network_tls.replace(Some(imp.tls_section.form_state()));
+                TlsFormState {
+                    mode: TlsMode::Disable,
+                    ..TlsFormState::new(tls)
+                }
+            }
+            false => imp.network_tls.take().unwrap_or_else(|| TlsFormState::new(tls)),
+        };
+        imp.tls_section.apply(tls, TransportClass::DirectTcp, &next);
     }
 
     /// Put the first place a server listens in the Host row, unless the

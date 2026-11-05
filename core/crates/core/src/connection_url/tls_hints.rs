@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::{ConnectionUrlError, UrlTls};
-use crate::{ClientIdentity, TlsMode};
+use crate::TlsMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Wanted {
@@ -129,7 +129,7 @@ impl TlsHints {
     // No mode leaves it to the form: the URL said nothing, or asked for prefer, which the core does not have.
     pub(super) fn resolve(self) -> UrlTls {
         let mut wanted = self.mode.or(self.switch).or(self.by_scheme);
-        if self.verify_server && wanted == Some(Wanted::Require) {
+        if self.verify_server && matches!(wanted, None | Some(Wanted::Prefer | Wanted::Require)) {
             wanted = Some(Wanted::VerifyFull);
         }
         let verifies_with_roots = self.ca_file.is_some() || self.system_roots;
@@ -152,14 +152,11 @@ impl TlsHints {
                 ..UrlTls::default()
             };
         }
-        let client_identity = match (self.certificate, self.key) {
-            (Some(certificate), Some(key)) => Some(ClientIdentity { certificate, key }),
-            _ => None,
-        };
         UrlTls {
             mode,
             ca_file: self.ca_file.filter(|_| mode.is_none_or(TlsMode::verifies_certificate)),
-            client_identity,
+            client_certificate: self.certificate,
+            client_key: self.key,
             server_name: self.server_name,
         }
     }
