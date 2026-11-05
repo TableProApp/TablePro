@@ -430,10 +430,11 @@ mod tests {
     async fn a_socket_host_dials_the_socket_the_engine_names() {
         let driver = Arc::new(FakeDriver::connecting(&SOCKET_CAPABILITIES, cataloguing()));
 
-        establish(request(driver.clone(), socket_target()), CancellationToken::new())
+        let pending = establish(request(driver.clone(), socket_target()), CancellationToken::new())
             .await
             .unwrap();
 
+        assert!(pending.established().ssh_session.is_none());
         let ConnectTarget::Network(sent) = &driver.requests()[0].target else {
             panic!("a network request reached the driver as a file");
         };
