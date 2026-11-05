@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use chrono::{Local, NaiveDate};
@@ -12,6 +12,8 @@ use tablepro_session::runtime::Tasks;
 // A request PostHog does not answer holds a flush, and so the exit, this long at most.
 const REQUEST_TIMEOUT_SECONDS: u64 = 5;
 const SHUTDOWN_TIMEOUT_MS: u64 = 2_000;
+// Each event carries the opt-in it was captured under until before_send takes it off.
+const CONSENT: &str = "tablepro_consent";
 
 // The keys macOS sets, so one PostHog person reads the same from either app.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -48,14 +50,16 @@ struct Inner {
     written: Arc<Mutex<u64>>,
     person: PersonProperties,
     tasks: Tasks,
-    // Share Usage Data as posthog-rs's worker reads it, at the moment each event goes out.
-    sending: Arc<AtomicBool>,
+    // The opt-in posthog-rs's worker checks each event against as it goes out, 0 while Share Usage Data is off.
+    consent: Arc<AtomicU64>,
 }
 
 struct Kept {
     state: State,
     generation: u64,
     sharing: bool,
+    // Moved at each opt-in, so an event queued before an opt-out stays unsent after the next opt-in.
+    consent: u64,
     connecting: bool,
     // Captured while the client was still being made, off the GTK thread.
     pending: Vec<Event>,
@@ -112,6 +116,7 @@ impl Telemetry {
                 state: state.clone().unwrap_or_else(State::fresh),
                 generation: 0,
                 sharing: false,
+                consent: 0,
                 connecting: false,
                 pending: Vec::new(),
                 account: Account::Unknown,
@@ -122,7 +127,7 @@ impl Telemetry {
             written: Arc::new(Mutex::new(0)),
             person: settings.person,
             tasks: tasks.clone(),
-            sending: Arc::new(AtomicBool::new(false)),
+            consent: Arc::new(AtomicU64::new(0)),
         });
         if self.inner.set(inner.clone()).is_err() {
             return;
@@ -292,8 +297,12 @@ impl Inner {
 
     fn set_sharing(self: &Arc<Self>, sharing: bool) {
         let mut kept = self.kept();
+        if sharing && !kept.sharing {
+            kept.consent += 1;
+        }
         kept.sharing = sharing;
-        self.sending.store(sharing, Ordering::SeqCst);
+        self.consent
+            .store(if sharing { kept.consent } else { 0 }, Ordering::SeqCst);
         if !sharing {
             kept.pending.clear();
             return;
@@ -309,7 +318,7 @@ impl Inner {
     }
 
     fn connect(&self) {
-        let sending = self.sending.clone();
+        let consent = self.consent.clone();
         let options = ClientOptionsBuilder::default()
             .api_key(self.key.clone())
             .host(self.host.clone())
@@ -319,8 +328,13 @@ impl Inner {
             // Sent as captured and never tried again, so a failed one is lost rather than kept.
             .flush_at(1_usize)
             .max_capture_attempts(1_u32)
-            // The worker sends one request at a time, so what was captured behind a slow one is dropped at an opt-out.
-            .before_send(move |event| sending.load(Ordering::SeqCst).then_some(event))
+            // The worker sends one request at a time, so what was captured behind a slow one is dropped at an opt-out,
+            // and stays dropped after an opt-in again.
+            .before_send(move |mut event| {
+                let given = event.remove_prop(CONSENT).and_then(|consent| consent.as_u64());
+                let current = consent.load(Ordering::SeqCst);
+                (current != 0 && given == Some(current)).then_some(event)
+            })
             .build();
         let options = match options {
             Ok(options) => options,
@@ -400,7 +414,11 @@ impl Inner {
         self.send(kept, event);
     }
 
-    fn send(&self, kept: &mut Kept, event: Event) {
+    fn send(&self, kept: &mut Kept, mut event: Event) {
+        if let Err(error) = event.insert_prop(CONSENT, kept.consent) {
+            tracing::debug!(%error, "a usage event was not tagged");
+            return;
+        }
         match self.client.get() {
             Some(client) => client.capture(event),
             None => kept.pending.push(event),
@@ -884,6 +902,27 @@ mod tests {
         telemetry.flush();
 
         assert_eq!(names(&collector), ["upgrade_clicked"]);
+    }
+
+    #[test]
+    fn an_event_queued_before_an_opt_out_stays_unsent_after_an_opt_in_again() {
+        let runtime = test_runtime();
+        let collector = Collector::start();
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let telemetry = start("phc_test", true, &collector, &dir, &runtime.tasks());
+        until(|| telemetry.is_sending());
+        collector.hold();
+
+        telemetry.upgrade_clicked("app-settings");
+        until(|| !collector.named("upgrade_clicked").is_empty());
+        telemetry.connection_attempted("sqlite");
+        telemetry.set_sharing(false);
+        telemetry.set_sharing(true);
+        telemetry.query_executed("sqlite");
+        collector.release();
+        telemetry.flush();
+
+        assert_eq!(names(&collector), ["upgrade_clicked", "first_query_executed"]);
     }
 
     #[test]

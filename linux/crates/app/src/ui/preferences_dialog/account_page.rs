@@ -56,6 +56,8 @@ mod imp {
         pub(super) profile: RefCell<Fetch<Profile>>,
         pub(super) devices: RefCell<Fetch<Vec<Device>>>,
         pub(super) signing_in: RefCell<Option<CancellationToken>>,
+        // Moved by each sign-in, so one that a later one replaced ends without touching the page.
+        pub(super) sign_in_attempt: Cell<u64>,
         pub(super) failure: RefCell<Option<String>>,
         pub(super) busy: Cell<bool>,
         pub(super) shown_mode: Cell<Option<Mode>>,
@@ -205,6 +207,8 @@ impl AccountPage {
         if let Some(earlier) = imp.signing_in.replace(Some(cancel.clone())) {
             earlier.cancel();
         }
+        let attempt = imp.sign_in_attempt.get() + 1;
+        imp.sign_in_attempt.set(attempt);
         imp.failure.replace(None);
         self.render();
         // Cancel ends the wait for the browser only, so tokens already on their way are still stored.
@@ -217,6 +221,9 @@ impl AccountPage {
             let Some(page) = page.upgrade() else {
                 return;
             };
+            if page.imp().sign_in_attempt.get() != attempt {
+                return;
+            }
             page.imp().signing_in.replace(None);
             match result {
                 Ok(Err(AccountError::SignInCanceled)) => page.render(),
@@ -1794,6 +1801,31 @@ mod tests {
                 .any(|button| button.label().is_some_and(|label| label == "Sign In…"))
         })
         .expect("Sign In again after Cancel");
+    }
+
+    #[gtk4::test]
+    fn a_sign_in_started_after_a_cancel_keeps_its_cancel_when_the_first_one_ends() {
+        let harness = Harness::new(None);
+        harness.ready();
+        let opened = || harness.browser.opened.lock().expect("the URLs").len();
+
+        harness.button(&harness.page, "Sign In…").emit_clicked();
+        wait_until(WAIT, || opened() == 1).expect("the browser opened");
+        harness.button(&harness.page, "Cancel").emit_clicked();
+        harness.button(&harness.page, "Sign In…").emit_clicked();
+        wait_until(WAIT, || opened() == 2).expect("the browser opened again");
+        let _ = wait_until(Duration::from_millis(500), || {
+            harness.settle();
+            false
+        });
+
+        assert!(
+            harness
+                .row("Sign In to TablePro")
+                .subtitle()
+                .is_some_and(|text| text.contains("web browser"))
+        );
+        harness.button(&harness.page, "Cancel").emit_clicked();
     }
 
     #[gtk4::test]

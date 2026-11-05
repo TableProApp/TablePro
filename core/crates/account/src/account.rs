@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use chrono::Utc;
+use chrono::{DateTime, TimeDelta, Utc};
 use secrecy::{ExposeSecret as _, SecretString};
 use tokio::sync::{Mutex, watch};
 use tokio::time::Instant;
@@ -24,7 +24,7 @@ use crate::token_vault::RefreshTokenVault;
 
 // The server forgets an unanswered sign-in after 10 minutes.
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-const ACCESS_TOKEN_MARGIN: Duration = Duration::from_secs(60);
+const ACCESS_TOKEN_MARGIN: TimeDelta = TimeDelta::seconds(60);
 pub const REFRESH_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
 pub const RETRY_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -57,7 +57,8 @@ struct Inner {
 #[derive(Default)]
 struct Session {
     refresh: Option<SecretString>,
-    access: Option<(SecretString, Instant)>,
+    // On the wall clock: Instant stops while the machine sleeps, so a token would outlive its expiry.
+    access: Option<(SecretString, DateTime<Utc>)>,
     device_id: Option<String>,
     // The account the sign-in is of: its last entitlement's, or what /v2/me answered.
     account_id: Option<String>,
@@ -89,11 +90,15 @@ impl Session {
     }
 
     fn answered<T>(&mut self, call: Call, answer: Result<T, AccountError>) -> Result<T, AccountError> {
-        if let Err(AccountError::RateLimited {
-            retry_after: Some(retry_after),
-        }) = &answer
-        {
-            self.held.insert(call, Instant::now() + *retry_after);
+        match &answer {
+            Err(AccountError::RateLimited {
+                retry_after: Some(retry_after),
+            }) => {
+                self.held.insert(call, Instant::now() + *retry_after);
+            }
+            // The API no longer takes the access token, whatever its expiry says, so the next call refreshes it.
+            Err(AccountError::Refused { status: 401, .. }) => self.access = None,
+            _ => {}
         }
         answer
     }
@@ -506,7 +511,7 @@ impl Account {
     async fn bearer(&self, session: &mut Session, renew: bool) -> Result<Bearer, AccountError> {
         if !renew
             && let Some((access, until)) = &session.access
-            && *until > Instant::now() + ACCESS_TOKEN_MARGIN
+            && *until > Utc::now() + ACCESS_TOKEN_MARGIN
         {
             return Ok(Bearer(access.clone()));
         }
@@ -520,7 +525,8 @@ impl Account {
     }
 
     async fn adopt(&self, session: &mut Session, tokens: Tokens) {
-        session.access = Some((tokens.access, Instant::now() + tokens.lifetime));
+        let lifetime = TimeDelta::from_std(tokens.lifetime).unwrap_or_default();
+        session.access = Some((tokens.access, Utc::now() + lifetime));
         let Some(refresh) = tokens.refresh else {
             return;
         };
@@ -599,9 +605,9 @@ impl Account {
 
     // Still checked, at the moment before it expired: what it names says who has paid, as a lapse while the app
     // runs keeps it too. Only its features stop.
-    fn lapsed(&self, token: &str, expired_at: chrono::DateTime<Utc>) -> Option<Entitlement> {
+    fn lapsed(&self, token: &str, expired_at: DateTime<Utc>) -> Option<Entitlement> {
         let settings = &self.inner.settings;
-        let before = expired_at - chrono::TimeDelta::seconds(1);
+        let before = expired_at - TimeDelta::seconds(1);
         Entitlement::verify(token, &settings.keys, settings.machine_id.as_str(), before).ok()
     }
 
@@ -1404,6 +1410,56 @@ mod tests {
         );
         assert_eq!(sent(&requests, "/oauth/token"), 1);
         assert!(matches!(*account.status().borrow(), AccountStatus::SignedIn(_)));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_access_token_the_api_refused_is_refreshed_before_the_next_call() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        keep(dir.path(), None).await;
+        let requests = Asked::default();
+        let answer = format!(
+            r#"{{"token":"{}","expires_at":"2026-11-12T00:00:00Z","refresh_after":"2026-10-30T00:00:00Z"}}"#,
+            entitlement(Utc::now())
+        );
+        let first = Arc::new(AtomicBool::new(true));
+        let asked = requests.clone();
+        let endpoints = cloud(move |method, path| {
+            asked.lock().expect("the requests").push(format!("{method} {path}"));
+            match (method, path) {
+                ("POST", "/oauth/token") => (200, TOKENS.to_owned()),
+                ("POST", "/v2/devices/dev_01k8d6wpggfd68tbhz818p4ww4/entitlement")
+                    if first.swap(false, Ordering::SeqCst) =>
+                {
+                    (
+                        401,
+                        r#"{"type":"about:blank","title":"Unauthorized","status":401,"code":"unauthorized"}"#
+                            .to_owned(),
+                    )
+                }
+                ("POST", "/v2/devices/dev_01k8d6wpggfd68tbhz818p4ww4/entitlement") => (200, answer.clone()),
+                _ => (404, String::new()),
+            }
+        });
+        let account = account_at(dir.path(), Keyring::holding(Some("refresh")), endpoints);
+        account.restore().await;
+
+        let refused = account.refresh_entitlement().await;
+        let tried_again = account.refresh_entitlement().await;
+
+        assert!(
+            matches!(refused, Err(AccountError::Refused { status: 401, .. })),
+            "{refused:?}"
+        );
+        assert!(tried_again.is_ok(), "{tried_again:?}");
+        assert_eq!(
+            asked(&requests),
+            [
+                "POST /oauth/token",
+                "POST /v2/devices/dev_01k8d6wpggfd68tbhz818p4ww4/entitlement",
+                "POST /oauth/token",
+                "POST /v2/devices/dev_01k8d6wpggfd68tbhz818p4ww4/entitlement",
+            ]
+        );
     }
 
     #[tokio::test(start_paused = true)]
