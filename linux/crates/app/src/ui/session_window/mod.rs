@@ -834,15 +834,6 @@ impl SessionWindow {
         self.render();
         shell.add_session(&workspace);
         workspace.start();
-        let handed: Vec<(gio::File, String)> = {
-            let mut scripts_for = self.imp().scripts_for.borrow_mut();
-            let (handed, others) = std::mem::take(&mut *scripts_for)
-                .into_iter()
-                .partition(|(owner, ..)| *owner == key);
-            *scripts_for = others;
-            handed.into_iter().map(|(_, file, text)| (file, text)).collect()
-        };
-        self.open_scripts_in(&workspace, handed);
         // The picker that asked is gone from view, so a session that runs no SQL hands the question on.
         let waiting = self.imp().waiting_scripts.take();
         self.show_waiting_scripts();
@@ -1224,6 +1215,8 @@ impl SessionWindow {
         self.show_waiting_scripts();
     }
 
+    // Still connecting, they wait as on this window's own picker: for the next SQL session to join, or
+    // behind its banner if the connect is cancelled or fails.
     fn on_scripts_for(&self, key: SessionKey, scripts: Vec<(gio::File, String)>) {
         match self
             .workspaces()
@@ -1231,11 +1224,11 @@ impl SessionWindow {
             .find(|workspace| workspace.key().as_ref() == Some(&key))
         {
             Some(workspace) => self.open_scripts_in(&workspace, scripts),
-            None => self
-                .imp()
-                .scripts_for
-                .borrow_mut()
-                .extend(scripts.into_iter().map(|(file, text)| (key.clone(), file, text))),
+            None => {
+                for (file, text) in scripts {
+                    self.wait_for_session(file, text);
+                }
+            }
         }
     }
 
