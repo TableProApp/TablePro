@@ -762,6 +762,9 @@ mod tests {
         cloud_with_bodies(move |method, path, _| answer(method, path))
     }
 
+    // The status, header lines and body the stub answers a method, path and request body with.
+    type Answer = dyn Fn(&str, &str, &str) -> (u16, &'static str, String) + Send;
+
     // As cloud_with_headers, also given the request's body.
     fn cloud_with_bodies(
         answer: impl Fn(&str, &str, &str) -> (u16, &'static str, String) + Send + 'static,
@@ -776,7 +779,7 @@ mod tests {
         Endpoints::new(&base, &format!("{base}/v2")).expect("the endpoints")
     }
 
-    fn serve(stream: std::net::TcpStream, answer: &dyn Fn(&str, &str, &str) -> (u16, &'static str, String)) {
+    fn serve(stream: std::net::TcpStream, answer: &Answer) {
         use std::io::{BufRead as _, Read as _, Write as _};
         let mut reader = std::io::BufReader::new(stream.try_clone().expect("a second handle"));
         let mut line = String::new();

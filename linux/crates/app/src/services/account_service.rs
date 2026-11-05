@@ -44,11 +44,6 @@ pub struct AccountHandle {
 }
 
 impl AccountHandle {
-    // The same ID the account registers this computer with, once the account has started.
-    pub fn machine_id(&self) -> Option<MachineId> {
-        self.account().map(|account| account.machine_id().clone())
-    }
-
     // Whether the person has paid, which losing the network cannot undo: a lapsed entitlement still names its
     // licenses, and only an account with a license meets the device limit (api.md, Devices).
     pub fn has_license(&self) -> bool {

@@ -16,6 +16,9 @@ use crate::ui::error_text::account_error_message;
 const CANCEL: &str = "cancel";
 const REMOVE: &str = "remove";
 
+// The device's name, and why the plan is not verified yet when the check after the removal failed.
+type Removed = dyn Fn(&str, Option<&AccountError>);
+
 // The license's holders, from device_limit_reached; one is removed in place to move the license here.
 pub(crate) struct DeviceLimitDialog {
     pub(crate) dialog: adw::Dialog,
@@ -26,8 +29,7 @@ pub(crate) struct DeviceLimitDialog {
     removing: RefCell<Option<String>>,
     handle: AccountHandle,
     tasks: Tasks,
-    // The device's name, and why the plan is not verified yet when the check after the removal failed.
-    removed: Box<dyn Fn(&str, Option<&AccountError>)>,
+    removed: Box<Removed>,
     following: RefCell<Option<glib::JoinHandle<()>>>,
     closed: Cell<bool>,
 }

@@ -96,6 +96,7 @@ pub struct Opened {
 }
 
 impl Telemetry {
+    #[cfg(test)]
     pub fn start(settings: TelemetrySettings, sharing: bool, tasks: &Tasks) -> Self {
         let telemetry = Self::default();
         telemetry.begin(settings, sharing, tasks);
@@ -143,6 +144,7 @@ impl Telemetry {
         self.inner.get().is_some()
     }
 
+    #[cfg(test)]
     pub fn is_sending(&self) -> bool {
         self.inner
             .get()
