@@ -262,10 +262,7 @@ fn network_url(engine: Engine, rest: &str, properties: bool) -> Result<Connectio
         username,
         password,
         database: decode(parts.path.trim_start_matches('/'))?,
-        tls: TlsHints {
-            use_ssl_verifies: matches!(engine, Engine::Mysql { mariadb: true, .. }),
-            ..TlsHints::default()
-        },
+        tls: TlsHints::new(matches!(engine, Engine::Mysql { mariadb: true, .. })),
         options: NetworkOptions::default(),
         socket: None,
         instance: false,

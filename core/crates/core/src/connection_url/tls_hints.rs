@@ -23,7 +23,7 @@ pub(super) struct TlsHints {
     weakened: Option<bool>,
     verify_server: bool,
     // MariaDB's Connector/J checks the certificate under useSsl; MySQL's checks it only with verifyServerCertificate.
-    pub(super) use_ssl_verifies: bool,
+    use_ssl_verifies: bool,
     system_roots: bool,
     ca_file: Option<PathBuf>,
     certificate: Option<PathBuf>,
@@ -33,6 +33,13 @@ pub(super) struct TlsHints {
 }
 
 impl TlsHints {
+    pub(super) fn new(use_ssl_verifies: bool) -> Self {
+        Self {
+            use_ssl_verifies,
+            ..Self::default()
+        }
+    }
+
     // Returns whether the key is one TLS reads.
     pub(super) fn read(&mut self, key: &str, value: &str) -> Result<bool, ConnectionUrlError> {
         let lower = value.trim().to_ascii_lowercase();
