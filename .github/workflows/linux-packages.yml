@@ -273,8 +273,9 @@ jobs:
             "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" linux/po/LINGUAS
 
   # The release manifest names the two tarballs at fixed paths beside it, and
-  # builds from them offline, as the packages do. The bundle names Flathub as
-  # the repository its GNOME runtime comes from.
+  # builds from them offline, as the packages do, with every Meson suite in
+  # the sandbox. The bundle names Flathub as the repository its GNOME runtime
+  # comes from.
   flatpak:
     name: Flatpak bundle (${{ matrix.runner }})
     needs: sources
@@ -284,7 +285,7 @@ jobs:
       matrix:
         runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 240
+    timeout-minutes: 300
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
       options: --privileged
@@ -309,6 +310,7 @@ jobs:
           manifest-path: linux/build-aux/flatpak/app.tablepro.TablePro.json
           arch: ${{ steps.arch.outputs.arch }}
           branch: stable
+          run-tests: true
           bundle: tablepro-${{ steps.arch.outputs.arch }}.flatpak
           repository-url: https://dl.flathub.org/repo/flathub.flatpakrepo
           cache: false

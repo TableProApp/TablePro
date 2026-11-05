@@ -55,8 +55,8 @@ version.
 
 The bundle comes from `build-aux/flatpak/app.tablepro.TablePro.json`: the
 release profile under the real app id, GNOME 51, built offline from the
-same tarballs, translations kept in the app, and the Flathub repository
-named for the runtime. The `.Devel` manifest stays for development builds,
+same tarballs with every Meson suite run in the sandbox, translations kept
+in the app, and the Flathub repository named for the runtime. The `.Devel` manifest stays for development builds,
 as GNOME apps keep a `.Devel` id. This manifest serves our bundles only; a
 Flathub submission stays one a maintainer writes by hand under Flathub's
 policy.
