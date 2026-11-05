@@ -191,6 +191,7 @@ impl SqlEditor {
         if let Some(running) = self.imp().running.borrow().as_ref() {
             running.cancel.cancel();
         }
+        self.stop_reread();
     }
 
     /// Put a query from history or a saved query in the buffer, as one

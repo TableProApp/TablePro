@@ -10,7 +10,6 @@ use tablepro_core::browse::PageLayout;
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ResultColumn};
 use tablepro_core::edit::{ResultSource, result_source, result_target, value_for_column};
 use tablepro_core::meta::{RowIdentity, TableRef};
-use tablepro_core::value::{UndecodableReason, UndecodedValue};
 use tablepro_core::{RowLimit, TransactionState, Value};
 use tokio_util::sync::CancellationToken;
 
@@ -65,6 +64,7 @@ pub struct ResultEditing {
     // Bumped by every run, so a catalog read for an older one is dropped.
     run: Cell<u64>,
     rereading: Cell<bool>,
+    reread_cancel: RefCell<Option<CancellationToken>>,
     dirty: Cell<bool>,
     // A result read after a USE in the same run came from a database the tab may have left again.
     moves_database: Cell<bool>,
@@ -150,7 +150,11 @@ impl SqlEditor {
         if let Some(grid) = self.imp().results.shown_grid() {
             grid.commit_edit();
         }
-        if self.imp().editing.rereading.get() || tracker.pending_state() == PendingState::Saving {
+        // A run replaces the rows a slow read after a save would bring back, so it stops that read rather than wait.
+        if self.imp().editing.rereading.get() {
+            self.stop_reread();
+        }
+        if tracker.pending_state() == PendingState::Saving {
             self.emit_by_name::<()>(
                 "toast",
                 &[&crate::i18n::gettext("Wait for the changes to finish saving")],
@@ -614,12 +618,14 @@ impl SqlEditor {
             run_row_limit: RUN_ROW_LIMIT,
         };
         let (events, mut received) = tokio::sync::mpsc::channel(8);
+        let cancel = CancellationToken::new();
+        imp.editing.reread_cancel.replace(Some(cancel.clone()));
         drop(deps.tasks.spawn_task(run_in_tab(
             session,
             imp.slot.clone(),
             run,
             deps.close_timeout,
-            CancellationToken::new(),
+            cancel,
             events,
         )));
         let editor = self.downgrade();
@@ -639,9 +645,16 @@ impl SqlEditor {
         });
     }
 
+    pub(super) fn stop_reread(&self) {
+        if let Some(cancel) = self.imp().editing.reread_cancel.borrow().as_ref() {
+            cancel.cancel();
+        }
+    }
+
     fn on_reread(&self, run: u64, index: usize, result: Option<ResultSetView>) {
         let imp = self.imp();
         imp.editing.rereading.set(false);
+        imp.editing.reread_cancel.replace(None);
         imp.results.set_running(self.is_running());
         if imp.editing.run.get() != run {
             return;
@@ -674,16 +687,21 @@ impl SqlEditor {
             }
         };
         let Some(read) = read else {
-            if let (Some(target), Some(grid)) = (target, self.owner_grid()) {
-                let rows = imp
-                    .log
-                    .borrow()
-                    .as_ref()
-                    .and_then(|log| log.result(index))
-                    .map(|view| editable_rows(&target, view));
-                if let Some(rows) = rows {
-                    grid.replace_rows(rows, 0);
+            // Another result can have taken the clean tracker while this one was read again.
+            let shown = imp.results.selected().and_then(|page| usize::try_from(page).ok());
+            match (target, self.owner_grid()) {
+                (Some(target), Some(grid)) if shown == Some(index) && imp.editing.owner.get() == Some(index) => {
+                    let rows = imp
+                        .log
+                        .borrow()
+                        .as_ref()
+                        .and_then(|log| log.result(index))
+                        .map(|view| editable_rows(&target, view));
+                    if let Some(rows) = rows {
+                        grid.replace_rows(rows, 0);
+                    }
                 }
+                _ => self.refresh_result_page(index),
             }
             return;
         };
@@ -766,20 +784,16 @@ fn typed_rows(target: &EditTarget, read: &[ResultColumn], rows: Vec<Arc<[Value]>
                 .zip(read.iter().zip(target.save_columns.iter().zip(&target.traced)))
                 .map(|(value, (read, (column, traced)))| match traced {
                     false => value.clone(),
-                    true => match value_for_column(value, &read.column_type, &column.column_type) {
-                        Some(typed) => typed,
-                        None if column.primary_key => Value::Undecodable(Box::new(UndecodedValue {
-                            type_name: column.column_type.name.clone(),
-                            reason: UndecodableReason::InvalidEncoding,
-                        })),
-                        None => value.clone(),
-                    },
+                    true => {
+                        value_for_column(value, &read.column_type, &column.column_type).unwrap_or_else(|| value.clone())
+                    }
                 })
                 .collect()
         })
         .collect()
 }
 
+// A key value the column's type cannot take, such as a wall-clock TIMESTAMP, shows as read but names no row.
 fn editable_rows(target: &EditTarget, view: &ResultSetView) -> Vec<RowData> {
     let width = target.save_columns.len();
     let layout = PageLayout {
@@ -787,10 +801,22 @@ fn editable_rows(target: &EditTarget, view: &ResultSetView) -> Vec<RowData> {
         identity: width..width,
     };
     let keys = RowKeyBuilder::for_page(&target.identity, &target.save_columns, &layout);
+    let key_columns: Vec<usize> = (0..width)
+        .filter(|index| target.traced[*index] && target.save_columns[*index].primary_key)
+        .collect();
     view.rows
         .iter()
         .map(|cells| {
-            let key = keys.as_ref().and_then(|keys| keys.key_for(cells, &[]));
+            let bindable = key_columns.iter().all(|index| {
+                let (Some(value), Some(read)) = (cells.get(*index), view.columns.get(*index)) else {
+                    return false;
+                };
+                value_for_column(value, &read.column_type, &target.save_columns[*index].column_type).is_some()
+            });
+            let key = keys
+                .as_ref()
+                .filter(|_| bindable)
+                .and_then(|keys| keys.key_for(cells, &[]));
             RowData::persisted(key, cells.clone())
         })
         .collect()

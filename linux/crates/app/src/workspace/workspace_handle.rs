@@ -238,7 +238,9 @@ impl WorkspaceHandle {
                     PendingState::Clean if entry.open_transaction => Some(DirtyKind::OpenTransaction),
                     PendingState::Clean => None,
                 };
-                let file = entry.unsaved_file.then_some(DirtyKind::UnsavedFile);
+                // A query tab's changed rows and its file are saved and discarded together, so they are one choice.
+                let rows = matches!(pending, Some(DirtyKind::Unsaved | DirtyKind::OutcomeUnknown(_)));
+                let file = (entry.unsaved_file && !rows).then_some(DirtyKind::UnsavedFile);
                 [pending, file].into_iter().flatten().map(move |kind| DirtyTab {
                     id: entry.id,
                     title: entry.title.clone(),
@@ -765,6 +767,21 @@ mod tests {
             }));
         script.resolve_commit.always(FakeReply::Ready(resolution));
         script
+    }
+
+    #[gtk4::test]
+    fn changed_rows_and_an_unsaved_file_of_one_tab_are_one_choice() {
+        let workspace = Workspace::open(ConnectionScript::default());
+        workspace.tabs.0.borrow_mut()[0].unsaved_file = true;
+
+        let dirty = workspace.handle.dirty_tabs();
+
+        assert_eq!(dirty.len(), 1, "{dirty:?}");
+        assert_eq!(dirty[0].kind, DirtyKind::Unsaved);
+        let _ = workspace.tracker.discard();
+        let dirty = workspace.handle.dirty_tabs();
+        assert_eq!(dirty.len(), 1);
+        assert_eq!(dirty[0].kind, DirtyKind::UnsavedFile);
     }
 
     #[gtk4::test]
