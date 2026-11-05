@@ -49,6 +49,7 @@ pub fn keep_before_write_blocking<D: VersionedDocument>(path: &Path) -> Result<O
 }
 
 fn keep_bytes_blocking(path: &Path, version: u64, bytes: &[u8], now: SystemTime) -> Result<PathBuf, StorageError> {
+    remove_leftovers_blocking(path)?;
     if let Some(newest) = copies_blocking(path)?.pop()
         && std::fs::read(&newest.path).is_ok_and(|kept| kept == bytes)
     {
@@ -91,7 +92,7 @@ pub(crate) async fn pending_upgrade(pool: &SqlitePool, migrator: &Migrator) -> R
 // Through the connection, since a copy of the file alone leaves out what the WAL still holds.
 pub(crate) async fn keep_database(pool: &SqlitePool, path: &Path, version: u64) -> Result<PathBuf, StorageError> {
     // One a crash left behind holds the history too, and nothing else would ever delete it.
-    remove_partials_blocking(path)?;
+    remove_leftovers_blocking(path)?;
     let copy = vacant_name(path, version, SystemTime::now())?;
     let partial = partial_name(&copy);
     // VACUUM INTO refuses a file that is not empty, and creates a missing
@@ -141,6 +142,7 @@ pub fn trim_connection_copies_blocking(
     path: &Path,
     kept: &std::collections::HashSet<String>,
 ) -> Result<(), StorageError> {
+    remove_leftovers_blocking(path)?;
     for copy in copies_blocking(path)? {
         let bytes = match std::fs::read(&copy.path) {
             Ok(bytes) => bytes,
@@ -207,7 +209,7 @@ pub fn copies_blocking(path: &Path) -> Result<Vec<UpgradeCopy>, StorageError> {
 }
 
 pub fn remove_all_blocking(path: &Path) -> Result<usize, StorageError> {
-    remove_partials_blocking(path)?;
+    remove_leftovers_blocking(path)?;
     let copies = copies_blocking(path)?;
     for copy in &copies {
         remove_with_sidecars(&copy.path)?;
@@ -216,8 +218,9 @@ pub fn remove_all_blocking(path: &Path) -> Result<usize, StorageError> {
 }
 
 // The copy just made stays even when a clock set back dates it before the others.
-// Copies of a database that never finished, as `.<name>.v<version>-<seconds>.partial`.
-pub fn remove_partials_blocking(path: &Path) -> Result<(), StorageError> {
+// What a crash leaves of a copy: its staging (`.<name>.v…`, an unfinished database, a temporary file
+// and their journals) and the journals of a copy that is gone. They hold what the copy held.
+pub fn remove_leftovers_blocking(path: &Path) -> Result<(), StorageError> {
     let Some(name) = path.file_name().map(|name| name.to_string_lossy().into_owned()) else {
         return Ok(());
     };
@@ -232,18 +235,27 @@ pub fn remove_partials_blocking(path: &Path) -> Result<(), StorageError> {
             });
         }
     };
-    let prefix = format!(".{name}.v");
+    let (staging, copy) = (format!(".{name}.v"), format!("{name}.v"));
     for entry in entries {
         let entry = entry.map_err(|source| StorageError::Io {
             path: parent.to_owned(),
             source,
         })?;
         let found = entry.file_name().to_string_lossy().into_owned();
-        let unfinished = found.ends_with(".partial")
-            || SIDECARS
+        let orphan_journal = found.starts_with(&copy)
+            && SIDECARS
                 .iter()
-                .any(|sidecar| found.ends_with(&format!(".partial{sidecar}")));
-        if found.starts_with(&prefix) && unfinished {
+                .find_map(|sidecar| found.strip_suffix(sidecar))
+                .is_some_and(|base| !parent.join(base).exists());
+        // `<version>-<seconds>` after the dot, which a temporary file of the file itself never has.
+        let staged = found.strip_prefix(&staging).is_some_and(|rest| {
+            let stamp: Vec<&str> = rest.split('.').next().unwrap_or_default().split('-').collect();
+            stamp.len() >= 2
+                && stamp
+                    .iter()
+                    .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+        });
+        if staged || orphan_journal {
             remove_if_present(&entry.path())?;
         }
     }
@@ -257,7 +269,7 @@ fn prune_blocking(path: &Path, made: &Path) -> Result<(), StorageError> {
         .collect();
     let surplus = older.len().saturating_sub(KEPT_PER_FILE - 1);
     for copy in older.iter().take(surplus) {
-        remove_if_present(&copy.path)?;
+        remove_with_sidecars(&copy.path)?;
     }
     Ok(())
 }
@@ -325,14 +337,14 @@ fn parent_of(path: &Path) -> &Path {
     }
 }
 
+// Journals first, so one stopped halfway leaves the database, which the next cleanup still finds.
 fn remove_with_sidecars(path: &Path) -> Result<(), StorageError> {
-    remove_if_present(path)?;
     for sidecar in SIDECARS {
         let mut name = path.as_os_str().to_owned();
         name.push(sidecar);
         remove_if_present(Path::new(&name))?;
     }
-    Ok(())
+    remove_if_present(path)
 }
 
 fn remove_if_present(path: &Path) -> Result<(), StorageError> {
@@ -724,6 +736,30 @@ mod tests {
             !text.contains("deleted.example"),
             "the deleted connection stayed in the copy"
         );
+    }
+
+    #[test]
+    fn a_trim_removes_what_a_crash_left_of_a_copy() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let file = root.path().join("connections.json");
+        let staged = root.path().join(".connections.json.v1-100.a1b2c3.tmp");
+        let own_write = root.path().join(".connections.json.vQ3x9k.tmp");
+        std::fs::write(&own_write, b"the list being written").expect("seed");
+        std::fs::write(&staged, br#"{"connections": [{"id": "gone"}]}"#).expect("seed");
+        let orphan = root.path().join("connections.json.v1-50-journal");
+        std::fs::write(&orphan, b"pages").expect("seed");
+        let kept = keep_bytes_blocking(&file, 1, br#"{"connections": []}"#, at(100)).expect("keep");
+        let mut journal = kept.as_os_str().to_owned();
+        journal.push("-journal");
+        std::fs::write(&journal, b"a live copy's journal").expect("seed");
+        std::fs::write(&staged, b"again").expect("seed");
+
+        trim_connection_copies_blocking(&file, &std::collections::HashSet::new()).expect("trim");
+
+        assert!(!staged.exists(), "a staged copy stayed");
+        assert!(own_write.exists(), "the list's own temporary file went");
+        assert!(!orphan.exists(), "the journal of a copy that is gone stayed");
+        assert!(Path::new(&journal).exists(), "a journal beside its copy went");
     }
 
     #[test]

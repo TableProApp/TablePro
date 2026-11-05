@@ -439,7 +439,7 @@ impl QueryHistory {
 // what the user deleted, or the retention window dropped, is gone from it too. One transaction with
 // secure_delete, so the words leave the full-text blocks and freed pages at once, even after a crash.
 pub(crate) async fn trim_upgrade_copies(path: &Path) -> Result<(), StorageError> {
-    crate::upgrade_copies::remove_partials_blocking(path)?;
+    crate::upgrade_copies::remove_leftovers_blocking(path)?;
     let copies = crate::upgrade_copies::copies_blocking(path)?;
     if copies.is_empty() {
         return Ok(());
