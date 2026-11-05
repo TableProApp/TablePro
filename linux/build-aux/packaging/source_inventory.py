@@ -24,6 +24,7 @@ LICENSE_NAME = re.compile(
 )
 # A few crates keep their license texts in a folder at the root.
 LICENSE_FOLDER = "licenses"
+SYMLINK = re.compile(r"^[^\s]*/[^\s]*$")
 TAR = re.compile(r"\.(?:tar|tgz|tbz2?|txz|tar\.(?:gz|bz2|xz|zst))$", re.IGNORECASE)
 ARCHIVE = re.compile(r"\.(?:tar|tgz|tbz2?|txz|zip|gz|xz|bz2|zst|7z|jar|whl)$", re.IGNORECASE)
 
@@ -157,17 +158,23 @@ def check_described(described, locked, what):
         )
 
 
-def crate_unit(package, files, clarified):
+# fetched holds the texts cargo-about took from a crate's repository for a
+# crate that packages none, or only a symlink to one: the published files
+# would give no text, or a path.
+def crate_unit(package, files, clarified, fetched):
     name, version = package["name"], package["version"]
     expression = clarified.get(name) or package.get("license")
     if not expression:
         raise InventoryError(f"{name} {version} declares no license expression; add a clarify entry to about.toml")
     directory = Path(package["manifest_path"]).parent
     authors = [author.strip() for author in package.get("authors") or [] if author.strip()]
+    shipped = [read_text(directory / path) for path in root_license_files(files)]
+    # cargo package stores a symlink as a file holding its target's path.
+    texts = fetched.get((name, version)) or [text for text in shipped if not SYMLINK.match(text.strip())]
     return {
         "files": [f"{vendor_directory(name, version)}/*"],
         "expression": expression,
-        "texts": [read_text(directory / path) for path in root_license_files(files)],
+        "texts": texts,
         "authors": authors or [f"the {name} authors"],
     }
 
@@ -261,7 +268,7 @@ def dist_units(entries, source_root):
 # The units in the order DEP-5 needs, where the last paragraph matching a
 # file wins: the dist tarball's own exceptions, one per vendored crate, then
 # the code inside crates that the crate's own paragraph does not cover.
-def inventory(metadata, clarified, source_path, bundled_root, source_root):
+def inventory(metadata, clarified, fetched, source_path, bundled_root, source_root):
     packages = sorted(
         (package for package in metadata["packages"] if package.get("source")),
         key=lambda package: (package["name"], package["version"]),
@@ -276,7 +283,7 @@ def inventory(metadata, clarified, source_path, bundled_root, source_root):
     for package in packages:
         key = (package["name"], package["version"])
         files = crate_files(Path(package["manifest_path"]).parent)
-        crates.append(crate_unit(package, files, clarified))
+        crates.append(crate_unit(package, files, clarified, fetched))
         units, found = nested_units(package, files, entries.get(key), bundles.get(key))
         nested += units
         unclaimed += found

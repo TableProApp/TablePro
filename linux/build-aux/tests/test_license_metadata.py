@@ -589,6 +589,27 @@ class RpmLicenseTests(unittest.TestCase):
                 license_metadata.apply_spec_license(spec, ["MIT"])
 
 
+class ClarificationTests(unittest.TestCase):
+    def test_only_a_git_clarification_takes_the_fetched_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            about = Path(directory) / "about.toml"
+            about.write_text(
+                '[scylla.clarify]\nlicense = "MIT OR Apache-2.0"\n[[scylla.clarify.git]]\npath = "LICENSE-MIT"\n'
+                '[ryu.clarify]\nlicense = "Apache-2.0 OR BSL-1.0"\n[[ryu.clarify.files]]\npath = "LICENSE-APACHE"\n',
+                encoding="utf-8",
+            )
+            licenses = [
+                {"id": "MIT", "text": "Copyright 2020 ScyllaDB\n", "used_by": [{"crate": {"name": "scylla", "version": "1.9.0"}}]},
+                {"id": "Apache-2.0", "text": "Apache\n", "used_by": [{"crate": {"name": "ryu", "version": "1.0.0"}}]},
+                {"id": "MIT", "text": "DuckDB\n", "component": "DuckDB", "used_by": [{"crate": {"name": "scylla", "version": "1.9.0"}}]},
+            ]
+
+            expressions, fetched = license_metadata.clarifications(about, licenses)
+
+        self.assertEqual(expressions, {"scylla": "MIT OR Apache-2.0", "ryu": "Apache-2.0 OR BSL-1.0"})
+        self.assertEqual(fetched, {("scylla", "1.9.0"): ["Copyright 2020 ScyllaDB\n"]})
+
+
 class CommandTests(unittest.TestCase):
     LOCK = """version = 4
 

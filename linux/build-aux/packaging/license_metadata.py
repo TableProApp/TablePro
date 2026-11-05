@@ -514,14 +514,23 @@ def apply_spec_provides(spec, provides):
     return SPEC_PROVIDES.sub(lambda match: block, spec)
 
 
-def clarified_expressions(about_path):
+# A clarify entry's license corrects the expression the crate declares; a
+# git entry means the crate's own files carry no usable text, so the one
+# cargo-about fetched into third-party.json stands in for them.
+def clarifications(about_path, licenses):
     with open(about_path, "rb") as handle:
         about = tomllib.load(handle)
-    return {
-        name: table["clarify"]["license"]
-        for name, table in about.items()
-        if isinstance(table, dict) and "license" in table.get("clarify", {})
-    }
+    entries = {name: table["clarify"] for name, table in about.items() if isinstance(table, dict) and "clarify" in table}
+    expressions = {name: entry["license"] for name, entry in entries.items() if "license" in entry}
+    fetched = {}
+    for license in licenses:
+        if "component" in license:
+            continue
+        for used_by in license["used_by"]:
+            key = (used_by["crate"]["name"], used_by["crate"]["version"])
+            if "git" in entries.get(key[0], {}) and license["text"] not in fetched.setdefault(key, []):
+                fetched[key].append(license["text"])
+    return expressions, fetched
 
 
 def spec_outputs(args, metadata_license):
@@ -558,9 +567,11 @@ def main(argv=None):
         outputs = {Path(args.spec): spec_outputs(args, metadata_license)}
         if args.command == "write":
             metadata = json.loads(Path(args.metadata).read_text(encoding="utf-8"))
+            expressions, fetched = clarifications(args.about, load(args.licenses)[0])
             dist, crates, nested = source_inventory.inventory(
                 metadata,
-                clarified_expressions(args.about),
+                expressions,
+                fetched,
                 args.source,
                 args.bundled,
                 source_root,

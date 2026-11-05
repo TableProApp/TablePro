@@ -42,11 +42,12 @@ class InventoryTests(unittest.TestCase):
         )
         return directory
 
-    def inventory(self, clarified=None):
+    def inventory(self, clarified=None, fetched=None):
         (self.dir / "source.json").write_text(json.dumps(self.source), encoding="utf-8")
         return source_inventory.inventory(
             {"packages": self.packages},
             clarified or {},
+            fetched or {},
             self.dir / "source.json",
             self.dir / "bundled",
             self.dir / "root",
@@ -92,6 +93,21 @@ class InventoryTests(unittest.TestCase):
         unit = self.inventory({"ring": "Apache-2.0 AND ISC AND MIT"})[1][0]
 
         self.assertEqual(unit["expression"], "Apache-2.0 AND ISC AND MIT")
+
+    def test_a_text_fetched_from_the_repository_replaces_a_symlinked_file(self):
+        self.add_crate("sqlx-core", "0.9.0", "MIT OR Apache-2.0", files={"LICENSE-MIT": "../LICENSE-MIT"})
+
+        unit = self.inventory(fetched={("sqlx-core", "0.9.0"): ["Copyright (c) 2020 LaunchBadge, LLC\n"]})[1][0]
+
+        self.assertEqual(unit["texts"], ["Copyright (c) 2020 LaunchBadge, LLC\n"])
+
+    def test_a_symlinked_license_file_is_not_a_text(self):
+        self.add_crate("sqlx-postgres", "0.9.0", "MIT OR Apache-2.0", ["Ryan Leckey <leckey.ryan@gmail.com>"], {"LICENSE-MIT": "../LICENSE-MIT"})
+
+        unit = self.inventory()[1][0]
+
+        self.assertEqual(unit["texts"], [])
+        self.assertEqual(unit["authors"], ["Ryan Leckey <leckey.ryan@gmail.com>"])
 
     def test_a_crate_with_no_expression_is_refused(self):
         self.add_crate("odd", "1.0.0", None)
