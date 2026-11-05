@@ -106,9 +106,10 @@ impl MysqlEndpoint {
             }
         }
         // sqlx makes a TLS name of `host` even unchecked, and a socket's path is none.
-        let tls_server_name = match local_socket {
-            true => "localhost".to_owned(),
-            false => target.tls_server_name().to_owned(),
+        let tls_server_name = match (local_socket, &target.tls.server_name) {
+            (true, Some(name)) => name.clone(),
+            (true, None) => "localhost".to_owned(),
+            (false, _) => target.tls_server_name().to_owned(),
         };
         Ok(Self {
             transport: target.transport.clone(),

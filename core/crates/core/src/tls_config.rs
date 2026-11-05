@@ -118,7 +118,9 @@ fn validate_server_name(
         return Err(ConfigError::InvalidServerName);
     }
     match (coverage, route) {
-        (ServerNameOverride::AnyRoute, _) | (ServerNameOverride::SshForwardOnly, TransportClass::SshForward) => Ok(()),
+        // A driver that names the host it dials can name another only where it dials a socket path.
+        (ServerNameOverride::AnyRoute, _)
+        | (ServerNameOverride::SshForwardOnly, TransportClass::SshForward | TransportClass::LocalSocket) => Ok(()),
         (ServerNameOverride::SshForwardOnly | ServerNameOverride::Unsupported, _) => {
             Err(ConfigError::ServerNameOverrideUnsupported { route })
         }
@@ -246,6 +248,13 @@ mod tests {
                 with_server_name("db.internal"),
                 MYSQL,
                 TransportClass::SshForward,
+                Ok(()),
+            ),
+            (
+                "mysql server name over its local socket",
+                with_server_name("db.internal"),
+                MYSQL,
+                TransportClass::LocalSocket,
                 Ok(()),
             ),
             (

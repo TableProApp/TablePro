@@ -97,7 +97,7 @@ pub fn default_tls_mode(caps: Option<&TlsCapabilities>) -> TlsMode {
 pub fn shows_server_name(caps: &TlsCapabilities, route: TransportClass) -> bool {
     match caps.server_name_override {
         ServerNameOverride::AnyRoute => true,
-        ServerNameOverride::SshForwardOnly => route == TransportClass::SshForward,
+        ServerNameOverride::SshForwardOnly => matches!(route, TransportClass::SshForward | TransportClass::LocalSocket),
         ServerNameOverride::Unsupported => false,
     }
 }
@@ -1082,6 +1082,7 @@ mod tests {
     fn the_server_name_row_shows_where_the_driver_can_check_another_name() {
         assert!(!driver_shows_server_name(Some(mysql()), TransportClass::DirectTcp));
         assert!(driver_shows_server_name(Some(mysql()), TransportClass::SshForward));
+        assert!(driver_shows_server_name(Some(mysql()), TransportClass::LocalSocket));
         assert!(driver_shows_server_name(Some(postgres()), TransportClass::DirectTcp));
         assert!(!driver_shows_server_name(Some(sqlite()), TransportClass::DirectTcp));
         assert!(!driver_shows_server_name(None, TransportClass::SshForward));

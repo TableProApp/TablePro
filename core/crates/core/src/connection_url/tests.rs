@@ -340,6 +340,8 @@ fn sql_server_reads_urls_and_jdbc_properties() {
     assert_eq!(trusting.tls.mode, Some(TlsMode::Require));
     assert_eq!(mode("jdbc:sqlserver://db;encrypt=false"), Some(TlsMode::Disable));
     assert_eq!(mode("sqlserver://db/s"), Some(TlsMode::VerifyFull));
+    assert_eq!(mode("sqlserver://db/app?encrypt=0"), Some(TlsMode::Disable));
+    assert_eq!(mode("sqlserver://db/app?encrypt=1"), Some(TlsMode::VerifyFull));
     assert_eq!(
         mode("sqlserver://localhost/s?trustServerCertificate=true"),
         Some(TlsMode::Require)

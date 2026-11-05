@@ -58,8 +58,8 @@ impl TlsHints {
             "encrypt" => {
                 self.switch = match lower.as_str() {
                     "strict" => Some(Wanted::Strict),
-                    "true" | "yes" | "mandatory" => Some(Wanted::VerifyFull),
-                    "false" | "no" | "optional" => Some(Wanted::Disable),
+                    "true" | "1" | "yes" | "mandatory" => Some(Wanted::VerifyFull),
+                    "false" | "0" | "no" | "optional" => Some(Wanted::Disable),
                     _ => self.switch,
                 }
             }
