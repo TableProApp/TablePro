@@ -44,17 +44,19 @@ pub struct AccountHandle {
 }
 
 impl AccountHandle {
-    // Whether the person has paid, which losing the network cannot undo: a lapsed entitlement still names its licenses.
     // The same ID the account registers this computer with, once the account has started.
     pub fn machine_id(&self) -> Option<MachineId> {
         self.account().map(|account| account.machine_id().clone())
     }
 
+    // Whether the person has paid, which losing the network cannot undo: a lapsed entitlement still names its
+    // licenses, and only an account with a license meets the device limit (api.md, Devices).
     pub fn has_license(&self) -> bool {
-        self.status
-            .borrow()
-            .entitlement()
-            .is_some_and(|entitlement| !entitlement.claims().licenses.is_empty())
+        let status = self.status.borrow();
+        status.past_device_limit()
+            || status
+                .entitlement()
+                .is_some_and(|entitlement| !entitlement.claims().licenses.is_empty())
     }
 
     pub fn account(&self) -> Option<Account> {
@@ -284,10 +286,32 @@ impl BrowserLauncher for DesktopBrowser {
 
 #[cfg(test)]
 mod tests {
+    use tablepro_account::{EntitlementProblem, SignedIn};
+
     use super::*;
 
     const FEDORA: &str =
         "NAME=\"Fedora Linux\"\nVERSION_ID=43\nPRETTY_NAME=\"Fedora Linux 43 (Workstation Edition)\"\n";
+
+    #[test]
+    fn an_account_over_the_device_limit_has_a_license() {
+        let (status, receiver) = watch::channel(AccountStatus::SignedOut);
+        let handle = AccountHandle {
+            status: receiver,
+            start: watch::channel(AccountStart::Starting).1,
+            portal: PRODUCTION_PORTAL.to_owned(),
+        };
+        let signed_out = handle.has_license();
+
+        status.send_replace(AccountStatus::SignedIn(Box::new(SignedIn {
+            entitlement: None,
+            problem: Some(EntitlementProblem::DeviceLimitReached(Vec::new())),
+            remembered: true,
+        })));
+
+        assert!(!signed_out);
+        assert!(handle.has_license());
+    }
 
     #[test]
     fn the_pretty_name_is_read_quoted_or_bare() {
