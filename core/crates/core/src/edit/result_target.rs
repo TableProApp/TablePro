@@ -355,10 +355,10 @@ mod tests {
         let result = [traced("id", "id"), traced("a", "a"), traced("b", "b")];
         let source = result_source("SELECT * FROM t", SqlGrammar::PostgreSql, &result).expect("traced");
 
-        let reordered = vec![info("a", false), info("id", true), info("b", false)];
+        let renamed = vec![info("id", true), info("renamed", false), info("b", false)];
 
         assert_eq!(
-            result_target(&source, &result, &reordered),
+            result_target(&source, &result, &renamed),
             Err(ResultLock::ColumnsChanged)
         );
     }

@@ -1,5 +1,5 @@
 use std::cell::{Cell, OnceCell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -10,19 +10,18 @@ use tablepro_core::browse::PageLayout;
 use tablepro_core::column::{ColumnDefault, ColumnInfo, ResultColumn};
 use tablepro_core::edit::{ResultSource, result_source, result_target, value_for_column};
 use tablepro_core::meta::{RowIdentity, TableRef};
-use tablepro_core::{RowLimit, TransactionState, Value};
-use tokio_util::sync::CancellationToken;
+use tablepro_core::{TransactionState, Value};
 
 use super::SqlEditor;
-use super::run_log::{EntryKind, RunEvent, RunLog};
-use super::script_runner::{RUN_ROW_LIMIT, RunBatch, ScriptRun, run_in_tab};
+use super::run_log::{EntryKind, RunLog};
+use super::run_scope::ScopedText;
 use crate::application::{ShortcutOwner, local_shortcut_controller};
 use crate::services::change_tracker::{RowKey, StatementSource, pk_identity};
 use crate::services::grid::{GridColumn, ResultRefusal, RowKeyBuilder, edit_policy};
 use crate::services::save_batch::SaveTarget;
 use crate::services::tab_tracker_handle::TabTrackerHandle;
 use crate::ui::browse_tab::{ColumnFreshness, PendingChangesRequest, load_columns};
-use crate::ui::data_grid::{EditRules, RowData};
+use crate::ui::data_grid::{DataGrid, EditRules, RowData};
 use crate::ui::discard_alert::confirm_discard;
 use crate::ui::result_pane::{ResultGrid, ResultSetView};
 use crate::workspace::PendingState;
@@ -52,24 +51,21 @@ struct ResultActions {
     redo: gio::SimpleAction,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ResultEditing {
     tracker: OnceCell<TabTrackerHandle>,
     actions: OnceCell<ResultActions>,
     states: RefCell<HashMap<usize, ResultEdit>>,
-    // The result whose target the tracker holds, and that target.
+    // The one result of the run, once its table's columns proved it editable; the tracker holds its target.
     owner: Cell<Option<usize>>,
-    bound: RefCell<Option<Rc<EditTarget>>>,
-    built_editable: RefCell<HashSet<usize>>,
     // Bumped by every run, so a catalog read for an older one is dropped.
     run: Cell<u64>,
-    rereading: Cell<bool>,
-    reread_cancel: RefCell<Option<CancellationToken>>,
-    // A run asked for while a read after a save was stopping, sent once that read lets go of the connection.
-    after_reread: RefCell<Option<Box<dyn Fn(&SqlEditor)>>>,
     dirty: Cell<bool>,
     // A result read after a USE in the same run came from a database the tab may have left again.
     moves_database: Cell<bool>,
+    // The run that reads a result again after its save; history keeps what the user ran, not this.
+    rereading: Cell<bool>,
+    quiet_run: Cell<bool>,
 }
 
 impl SqlEditor {
@@ -130,14 +126,22 @@ impl SqlEditor {
         self.imp().editing.moves_database.set(moves);
     }
 
+    // Called as a run starts: whether it is the read after a save, which history leaves out.
+    pub(super) fn starts_quiet_run(&self) {
+        let editing = &self.imp().editing;
+        editing.quiet_run.set(editing.rereading.get());
+    }
+
+    pub(super) fn ends_quiet_run(&self) -> bool {
+        self.imp().editing.quiet_run.replace(false)
+    }
+
     // The rows of the last run are about to be replaced, which the caller made sure loses no change.
     pub(super) fn forget_result_edits(&self) {
         let editing = &self.imp().editing;
         editing.run.set(editing.run.get().wrapping_add(1));
         editing.states.borrow_mut().clear();
-        editing.built_editable.borrow_mut().clear();
         editing.owner.set(None);
-        editing.bound.replace(None);
         if let Some(tracker) = self.row_tracker() {
             let _ = tracker.discard();
         }
@@ -149,15 +153,8 @@ impl SqlEditor {
         let Some(tracker) = self.row_tracker() else {
             return true;
         };
-        if let Some(grid) = self.imp().results.shown_grid() {
+        if let Some(grid) = self.owner_grid() {
             grid.commit_edit();
-        }
-        // A run replaces the rows a slow read after a save would bring back, so it stops that read, then goes once the
-        // connection is free.
-        if self.imp().editing.rereading.get() {
-            self.stop_reread();
-            self.imp().editing.after_reread.replace(Some(Box::new(then)));
-            return false;
         }
         if tracker.pending_state() == PendingState::Saving {
             self.emit_by_name::<()>(
@@ -191,8 +188,31 @@ impl SqlEditor {
         let Some(session) = deps.session.get() else {
             return;
         };
+        let grammar = self.grammar();
+        // A shell's documents or a key store's replies are not a table's rows; the row details say so already.
+        if !grammar.is_sql() {
+            return;
+        }
+        let (results, transaction) = {
+            let log = imp.log.borrow();
+            let Some(log) = log.as_ref() else {
+                return;
+            };
+            let results: Vec<(usize, Option<ResultSource>)> = log
+                .entries()
+                .iter()
+                .enumerate()
+                .filter_map(|(index, entry)| match &entry.kind {
+                    EntryKind::ResultSet(result) => Some((
+                        index,
+                        result_source(result.statement.as_str(), grammar, &result.columns).ok(),
+                    )),
+                    _ => None,
+                })
+                .collect();
+            (results, log.transaction())
+        };
         // The save runs on the window's connection, so rows read inside the tab's own transaction would be written outside it.
-        let transaction = imp.log.borrow().as_ref().and_then(RunLog::transaction);
         let common = if session.read_only() {
             Some(ResultRefusal::ReadOnlySession)
         } else if matches!(
@@ -205,43 +225,34 @@ impl SqlEditor {
             Some(ResultRefusal::TransactionUnknown)
         } else if self.tab_database().is_some() || imp.editing.moves_database.get() {
             Some(ResultRefusal::OtherDatabase)
+        } else if results.len() > 1 {
+            Some(ResultRefusal::SeveralResults)
         } else {
             None
         };
-        let grammar = self.grammar();
-        // A shell's documents or a key store's replies are not a table's rows; the row details say so already.
-        if !grammar.is_sql() {
-            return;
-        }
-        let mut checks = Vec::new();
-        {
-            let log = imp.log.borrow();
-            let Some(log) = log.as_ref() else {
-                return;
-            };
-            let mut states = imp.editing.states.borrow_mut();
-            for (index, entry) in log.entries().iter().enumerate() {
-                let EntryKind::ResultSet(result) = &entry.kind else {
-                    continue;
-                };
-                let state = match common {
-                    Some(refusal) => ResultEdit::Locked(refusal),
-                    None => match result_source(result.statement.as_str(), grammar, &result.columns) {
-                        Ok(source) => {
-                            checks.push((index, source));
-                            ResultEdit::Checking
-                        }
-                        Err(lock) => ResultEdit::Locked(lock.into()),
-                    },
-                };
-                states.insert(index, state);
-            }
-        }
         let run = imp.editing.run.get();
-        for (index, source) in checks {
-            self.read_target_columns(run, index, source);
+        for (index, source) in results {
+            let state = match (common, source) {
+                (Some(refusal), _) => ResultEdit::Locked(refusal),
+                (None, Some(source)) => {
+                    self.read_target_columns(run, index, source);
+                    ResultEdit::Checking
+                }
+                (None, None) => {
+                    let log = imp.log.borrow();
+                    let lock = log
+                        .as_ref()
+                        .and_then(|log| log.result(index))
+                        .map(|result| result_source(result.statement.as_str(), grammar, &result.columns));
+                    match lock {
+                        Some(Err(lock)) => ResultEdit::Locked(lock.into()),
+                        _ => ResultEdit::Locked(ResultRefusal::Untraced),
+                    }
+                }
+            };
+            imp.editing.states.borrow_mut().insert(index, state);
+            self.refresh_result_page(index);
         }
-        self.sync_shown_page();
     }
 
     fn read_target_columns(&self, run: u64, index: usize, source: ResultSource) {
@@ -266,6 +277,7 @@ impl SqlEditor {
         );
     }
 
+    // The run's one result takes the tracker the moment it proves editable; nothing else can hold it before the next run.
     fn on_target_columns(&self, run: u64, index: usize, source: &ResultSource, catalog: Option<&[ColumnInfo]>) {
         let imp = self.imp();
         if imp.editing.run.get() != run {
@@ -288,59 +300,27 @@ impl SqlEditor {
                 },
             }
         };
-        let state = self.keep_tracker_on(index, state);
+        if let (ResultEdit::Editable(target), Some(tracker)) = (&state, self.row_tracker()) {
+            let _ = tracker.discard();
+            let _ = tracker.set_target(SaveTarget {
+                table: target.table.clone(),
+                columns: target.save_columns.clone(),
+            });
+            imp.editing.owner.set(Some(index));
+        }
         imp.editing.states.borrow_mut().insert(index, state);
         self.refresh_result_page(index);
-    }
-
-    // The result read again after a save can name another table or other columns; the tracker follows only while it
-    // holds nothing, since its changes were made on the rows read before.
-    fn keep_tracker_on(&self, index: usize, state: ResultEdit) -> ResultEdit {
-        let editing = &self.imp().editing;
-        let (ResultEdit::Editable(target), Some(tracker)) = (&state, self.row_tracker()) else {
-            return state;
-        };
-        if editing.owner.get() != Some(index) {
-            return state;
-        }
-        let same = editing
-            .bound
-            .borrow()
-            .as_ref()
-            .is_some_and(|bound| bound.table == target.table && bound.save_columns == target.save_columns);
-        if same {
-            return state;
-        }
-        if tracker.pending_count() == 0 && tracker.pending_state() == PendingState::Clean {
-            self.bind_tracker(&tracker, target);
-            return state;
-        }
-        ResultEdit::Locked(ResultRefusal::ColumnsChanged)
-    }
-
-    fn bind_tracker(&self, tracker: &TabTrackerHandle, target: &Rc<EditTarget>) {
-        let _ = tracker.discard();
-        let _ = tracker.set_target(SaveTarget {
-            table: target.table.clone(),
-            columns: target.save_columns.clone(),
-        });
-        self.imp().editing.bound.replace(Some(target.clone()));
     }
 
     pub(super) fn result_grid(&self, index: usize, view: &ResultSetView) -> Option<ResultGrid> {
         let editing = &self.imp().editing;
         let tracker = self.row_tracker()?;
         let state = editing.states.borrow().get(&index).cloned();
-        editing.built_editable.borrow_mut().remove(&index);
         let target = match state? {
             ResultEdit::Locked(refusal) => return Some(ResultGrid::read_only(view, Some(refusal))),
             ResultEdit::Checking => return Some(ResultGrid::read_only(view, Some(ResultRefusal::Checking))),
             ResultEdit::Editable(target) => target,
         };
-        if editing.owner.get() != Some(index) {
-            return Some(ResultGrid::read_only(view, Some(ResultRefusal::OtherResult)));
-        }
-        editing.built_editable.borrow_mut().insert(index);
         Some(ResultGrid {
             columns: target.grid_columns.clone(),
             rows: editable_rows(&target, view),
@@ -352,39 +332,6 @@ impl SqlEditor {
             table: Some(target.table.clone()),
             result_lock: None,
         })
-    }
-
-    // Before a result's page shows: an editable result takes the tracker when no other result holds changes.
-    pub(super) fn on_result_shown(&self, index: u32) {
-        let Ok(index) = usize::try_from(index) else {
-            return;
-        };
-        let Some(tracker) = self.row_tracker() else {
-            return;
-        };
-        let editing = &self.imp().editing;
-        let target = match editing.states.borrow().get(&index) {
-            Some(ResultEdit::Editable(target)) => target.clone(),
-            _ => return,
-        };
-        let clean = tracker.pending_state() == PendingState::Clean && tracker.pending_count() == 0;
-        let owner = editing.owner.get();
-        if owner == Some(index) || !clean {
-            // A page built for another owner, or before this one owned the tracker, is stale.
-            let stale = (owner == Some(index)) != editing.built_editable.borrow().contains(&index);
-            if stale {
-                self.imp().results.forget_pages(|page| page as usize == index);
-            }
-            return;
-        }
-        self.bind_tracker(&tracker, &target);
-        editing.owner.set(Some(index));
-        let built: Vec<usize> = editing.built_editable.borrow().iter().copied().collect();
-        self.imp().results.forget_pages(|page| {
-            let page = page as usize;
-            page == index || built.contains(&page)
-        });
-        editing.built_editable.borrow_mut().clear();
     }
 
     fn refresh_result_page(&self, index: usize) {
@@ -399,29 +346,8 @@ impl SqlEditor {
         }
     }
 
-    // Who owns the tracker can change only while it is clean, which a save, a discard or an undo brings back.
-    pub(super) fn sync_shown_page(&self) {
-        let results = &self.imp().results;
-        if let Some(page) = results.selected() {
-            results.rebuild_page(page);
-        }
-        self.refresh_pending_bar();
-    }
-
     pub(super) fn on_rows_pending_changed(&self) {
         self.refresh_pending_bar();
-        let Some(tracker) = self.row_tracker() else {
-            return;
-        };
-        let clean = tracker.pending_count() == 0 && tracker.pending_state() == PendingState::Clean;
-        let shown = self
-            .imp()
-            .results
-            .selected()
-            .and_then(|page| usize::try_from(page).ok());
-        if clean && shown.is_some() && shown != self.imp().editing.owner.get() {
-            self.sync_shown_page();
-        }
     }
 
     pub(super) fn refresh_result_actions(&self) {
@@ -433,7 +359,7 @@ impl SqlEditor {
         let unsaved = tracker
             .as_ref()
             .is_some_and(|tracker| tracker.pending_state() == PendingState::Unsaved);
-        let editing = grid.as_ref().is_some_and(crate::ui::data_grid::DataGrid::is_editing);
+        let editing = grid.as_ref().is_some_and(DataGrid::is_editing);
         actions.save.set_enabled(unsaved || editing);
         let idle = grid.is_some()
             && tracker
@@ -455,7 +381,7 @@ impl SqlEditor {
             self.emit_by_name::<()>("rows-dirty-changed", &[]);
         }
         if count == 0
-            && let Some(grid) = self.imp().results.shown_grid()
+            && let Some(grid) = self.owner_grid()
         {
             crate::ui::a11y::pass_focus(&bar, &grid.column_view());
         }
@@ -471,7 +397,7 @@ impl SqlEditor {
     }
 
     pub(super) fn save_rows(&self) {
-        if let Some(grid) = self.imp().results.shown_grid() {
+        if let Some(grid) = self.owner_grid() {
             grid.commit_edit();
         }
         if self.row_tracker().is_some_and(|tracker| tracker.pending_count() > 0) {
@@ -483,7 +409,7 @@ impl SqlEditor {
         let Some(tracker) = self.row_tracker() else {
             return;
         };
-        if let Some(grid) = self.imp().results.shown_grid() {
+        if let Some(grid) = self.owner_grid() {
             grid.commit_edit();
         }
         let pending = tracker.pending_count();
@@ -498,14 +424,10 @@ impl SqlEditor {
         });
     }
 
-    // The grid on screen when it is the one the tracker's changes belong to.
-    fn owner_grid(&self) -> Option<crate::ui::data_grid::DataGrid> {
-        let editing = &self.imp().editing;
-        let owner = editing.owner.get()?;
-        let shown = usize::try_from(self.imp().results.selected()?).ok()?;
-        (shown == owner && editing.built_editable.borrow().contains(&owner))
-            .then(|| self.imp().results.shown_grid())
-            .flatten()
+    // The owner's grid, built or not; the tracker's changes are drawn by no other.
+    fn owner_grid(&self) -> Option<DataGrid> {
+        let owner = u32::try_from(self.imp().editing.owner.get()?).ok()?;
+        self.imp().results.kept_grid(owner)
     }
 
     fn discard_rows(&self) {
@@ -518,23 +440,9 @@ impl SqlEditor {
                 if let Some(tracker) = self.row_tracker() {
                     let _ = tracker.discard();
                 }
-                self.forget_owner_page();
             }
         }
         self.on_rows_pending_changed();
-    }
-
-    // A kept page of the owner off screen still draws the tracker as it was; it is built again when shown.
-    fn forget_owner_page(&self) {
-        if let Some(owner) = self
-            .imp()
-            .editing
-            .owner
-            .get()
-            .and_then(|owner| u32::try_from(owner).ok())
-        {
-            self.imp().results.forget_pages(|page| page == owner);
-        }
     }
 
     pub(crate) fn rows_save_started(&self) {
@@ -542,18 +450,22 @@ impl SqlEditor {
         if let Some(grid) = self.owner_grid() {
             grid.redraw();
         }
+        self.refresh_result_actions();
     }
 
     fn rows_save_ended(&self) {
         self.imp().results.pending_bar().show_saving(false);
+        self.refresh_pending_bar();
     }
 
-    // The tracker let go of what the save wrote; the statement behind the result is read again for what the server stored.
+    // The tracker let go of what the save wrote; the statement behind the result runs again for what the server
+    // stored. Changes made while the save ran stay, and so do the rows they were made on, until they are saved too.
     pub(crate) fn rows_saved(&self) {
         self.rows_save_ended();
-        self.refresh_pending_bar();
-        if let Some(index) = self.imp().editing.owner.get() {
-            self.reread_result(index);
+        if self.row_tracker().is_some_and(|tracker| tracker.pending_count() == 0) {
+            self.reread_result();
+        } else if let Some(grid) = self.owner_grid() {
+            grid.redraw();
         }
     }
 
@@ -571,187 +483,49 @@ impl SqlEditor {
                 grid.reveal_row(&key);
             }
         }
-        match grid {
-            Some(grid) => grid.redraw(),
-            None => self.forget_owner_page(),
+        if let Some(grid) = grid {
+            grid.redraw();
         }
     }
 
     pub(crate) fn rows_save_unknown(&self) {
         self.rows_save_ended();
-        match self.owner_grid() {
-            Some(grid) => grid.redraw(),
-            None => self.forget_owner_page(),
+        if let Some(grid) = self.owner_grid() {
+            grid.redraw();
         }
     }
 
     pub(crate) fn rows_discarded(&self, reload: bool) {
-        match self.owner_grid() {
-            Some(grid) => grid.resync(),
-            None => self.forget_owner_page(),
+        if let Some(grid) = self.owner_grid() {
+            grid.resync();
         }
         self.on_rows_pending_changed();
-        if let (true, Some(index)) = (reload, self.imp().editing.owner.get()) {
-            self.reread_result(index);
+        if reload {
+            self.reread_result();
         }
     }
 
-    fn reread_result(&self, index: usize) {
+    // An ordinary run of the result's statement, with its Stop, its Safe Mode and its result checked again from the start.
+    fn reread_result(&self) {
         let imp = self.imp();
-        // The tab's connection now reads another database than the one these rows and the save are in.
-        if self.tab_database().is_some() {
-            imp.editing
-                .states
-                .borrow_mut()
-                .insert(index, ResultEdit::Locked(ResultRefusal::OtherDatabase));
-            self.refresh_result_page(index);
-            return;
-        }
-        let Some(deps) = self.deps() else {
-            return;
-        };
-        let Some(session) = deps.session.get() else {
+        let Some(owner) = imp.editing.owner.get() else {
             return;
         };
         let Some(statement) = imp
             .log
             .borrow()
             .as_ref()
-            .and_then(|log| log.result(index))
-            .map(|result| result.statement.clone())
+            .and_then(|log| log.result(owner))
+            .map(|result| result.statement.as_str().to_owned())
         else {
             return;
         };
         imp.editing.rereading.set(true);
-        imp.results.set_running(true);
-        let run = ScriptRun {
-            batches: vec![RunBatch {
-                text: statement.as_str().to_owned(),
-                repeat: 1,
-                error_base: 0,
-                refused: false,
-            }],
-            policy: tablepro_core::sql_syntax::script::BatchErrorPolicy::StopScript,
-            statement_timeout: session
-                .workspace_settings()
-                .editor_timeout
-                .resolve(deps.settings.query_timeout()),
-            row_limit: RowLimit::EDITOR_DEFAULT,
-            run_row_limit: RUN_ROW_LIMIT,
-        };
-        let (events, mut received) = tokio::sync::mpsc::channel(8);
-        let cancel = CancellationToken::new();
-        imp.editing.reread_cancel.replace(Some(cancel.clone()));
-        drop(deps.tasks.spawn_task(run_in_tab(
-            session,
-            imp.slot.clone(),
-            run,
-            deps.close_timeout,
-            cancel,
-            events,
-        )));
-        let editor = self.downgrade();
-        let reread_run = imp.editing.run.get();
-        glib::spawn_future_local(async move {
-            let mut log = RunLog::new(vec![statement], Vec::new());
-            while let Some(event) = received.recv().await {
-                let finished = matches!(event, RunEvent::Finished);
-                log.apply(event);
-                if finished {
-                    break;
-                }
-            }
-            if let Some(editor) = editor.upgrade() {
-                editor.on_reread(reread_run, index, log.first_result());
-            }
+        self.execute(ScopedText {
+            text: statement,
+            base_char: 0,
         });
-    }
-
-    pub(super) fn stop_reread(&self) {
-        if let Some(cancel) = self.imp().editing.reread_cancel.borrow().as_ref() {
-            cancel.cancel();
-        }
-    }
-
-    fn on_reread(&self, run: u64, index: usize, result: Option<ResultSetView>) {
-        let imp = self.imp();
         imp.editing.rereading.set(false);
-        imp.editing.reread_cancel.replace(None);
-        imp.results.set_running(self.is_running());
-        if let Some(then) = imp.editing.after_reread.take() {
-            then(self);
-            return;
-        }
-        if imp.editing.run.get() != run {
-            return;
-        }
-        let target = match imp.editing.states.borrow().get(&index) {
-            Some(ResultEdit::Editable(target)) => Some(target.clone()),
-            _ => None,
-        };
-        let mut retitle = None;
-        let read = {
-            let mut log = imp.log.borrow_mut();
-            let shown = log.as_mut().and_then(|log| log.result_mut(index));
-            match (shown, result) {
-                // The same columns from the same table: the rows change in place, and the grid keeps its place.
-                (Some(shown), Some(result)) if target.is_some() && shown.columns == result.columns => {
-                    let counted = shown.summary == result.summary;
-                    if let Some(target) = &target {
-                        shown.rows = typed_rows(target, &result.columns, result.rows);
-                        shown.summary = result.summary;
-                    }
-                    // The footer, the limit banner and the list's count were built from the old summary.
-                    if !counted {
-                        retitle = Some(shown.summary.tab_label(index));
-                    }
-                    None
-                }
-                (Some(shown), Some(result)) => {
-                    let columns: Arc<[ResultColumn]> = result.columns.clone();
-                    let source = result_source(shown.statement.as_str(), self.grammar(), &columns);
-                    shown.columns = result.columns;
-                    shown.rows = result.rows;
-                    shown.summary = result.summary;
-                    Some(Some(source))
-                }
-                _ => Some(None),
-            }
-        };
-        if let (Some(title), Ok(page)) = (&retitle, u32::try_from(index)) {
-            imp.results.retitle(page, title);
-        }
-        let Some(read) = read else {
-            // Another result can have taken the clean tracker while this one was read again.
-            let shown = imp.results.selected().and_then(|page| usize::try_from(page).ok());
-            match (target, self.owner_grid()) {
-                (Some(target), Some(grid))
-                    if retitle.is_none() && shown == Some(index) && imp.editing.owner.get() == Some(index) =>
-                {
-                    let rows = imp
-                        .log
-                        .borrow()
-                        .as_ref()
-                        .and_then(|log| log.result(index))
-                        .map(|view| editable_rows(&target, view));
-                    if let Some(rows) = rows {
-                        grid.replace_rows(rows, 0);
-                    }
-                }
-                _ => self.refresh_result_page(index),
-            }
-            return;
-        };
-        let state = match read {
-            Some(Ok(source)) => {
-                self.read_target_columns(run, index, source);
-                ResultEdit::Checking
-            }
-            Some(Err(lock)) => ResultEdit::Locked(lock.into()),
-            None => ResultEdit::Locked(ResultRefusal::ColumnsChanged),
-        };
-        imp.editing.states.borrow_mut().insert(index, state);
-        self.refresh_result_page(index);
     }
 }
 

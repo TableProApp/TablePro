@@ -191,7 +191,6 @@ impl SqlEditor {
         if let Some(running) = self.imp().running.borrow().as_ref() {
             running.cancel.cancel();
         }
-        self.stop_reread();
     }
 
     /// Put a query from history or a saved query in the buffer, as one
@@ -532,6 +531,7 @@ impl SqlEditor {
         )));
 
         self.forget_result_edits();
+        self.starts_quiet_run();
         imp.results.clear();
         imp.results.set_running(true);
         imp.results.set_summary(&crate::i18n::gettext("Running…"));
@@ -714,7 +714,9 @@ impl SqlEditor {
         if dirty_changed || open_changed {
             self.emit_by_name::<()>("transaction-changed", &[&dirty]);
         }
-        self.record_history(entry, dialect);
+        if !self.ends_quiet_run() {
+            self.record_history(entry, dialect);
+        }
         self.decide_result_edits();
         self.show_scope();
         if imp.changes_catalog.get() {
@@ -877,12 +879,6 @@ impl SqlEditor {
         self.imp()
             .results
             .set_page_builder(move |index| weak.upgrade().and_then(|editor| editor.result_page(index)));
-        let weak = self.downgrade();
-        self.imp().results.set_page_shown(move |index| {
-            if let Some(editor) = weak.upgrade() {
-                editor.on_result_shown(index);
-            }
-        });
     }
 
     pub(crate) fn connect_save_rows<F: Fn(&Self) + 'static>(&self, f: F) -> glib::SignalHandlerId {

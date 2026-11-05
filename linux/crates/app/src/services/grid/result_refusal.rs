@@ -15,7 +15,7 @@ pub enum ResultRefusal {
     OpenTransaction,
     TransactionUnknown,
     OtherDatabase,
-    OtherResult,
+    SeveralResults,
     Checking,
     ColumnsUnread,
 }
@@ -52,7 +52,7 @@ impl ResultRefusal {
                 gettext("The server doesn't say whether a transaction is open, so these rows can't be edited here")
             }
             Self::OtherDatabase => gettext("Rows from another database than the connection's can't be edited here"),
-            Self::OtherResult => gettext("Save or discard the changes to another result first"),
+            Self::SeveralResults => gettext("Rows can be edited when the run returns one result"),
             Self::Checking => gettext("Checking whether these rows can be edited…"),
             Self::ColumnsUnread => gettext("The table's columns couldn't be read, so its rows can't be edited"),
         }
@@ -79,7 +79,7 @@ mod tests {
             ResultRefusal::OpenTransaction,
             ResultRefusal::TransactionUnknown,
             ResultRefusal::OtherDatabase,
-            ResultRefusal::OtherResult,
+            ResultRefusal::SeveralResults,
             ResultRefusal::Checking,
             ResultRefusal::ColumnsUnread,
         ];

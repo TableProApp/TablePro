@@ -1,4 +1,4 @@
-# 0033: A query tab edits one result at a time, through the table tab's save
+# 0033: A query tab edits the one result of its run, through the table tab's save
 
 - **Status**: Accepted
 - **Date**: 2026-11-05
@@ -10,23 +10,24 @@
 ## Decision
 
 - A query tab holds one change tracker, registered under its tab id as a table tab's is, so Save, Confirm Writes, history, the ledger and the close prompts treat it as they treat a table tab.
-- The result on screen takes the tracker when no other result holds changes; another result then shows read-only and says to save or discard first.
-- After a run, each result that `result_source` accepts reads its table's columns on the window's connection and becomes editable once `result_target` maps them. A Read-Only connection, a run that leaves a transaction open or does not say whether one is, a run that may change database, and a tab in another database than the connection's keep every result read-only.
+- After a run that returns one result, a result that `result_source` accepts reads its table's columns on the window's connection, becomes editable once `result_target` maps them, and takes the tracker. A run of several results, a Read-Only connection, a run that leaves a transaction open or does not say whether one is, a run that may change database, and a tab in another database than the connection's keep every result read-only.
 - The pending changes bar of a table tab sits under the results. Its Save, and Ctrl+S while the results have the focus, save the rows and never the SQL file; Ctrl+S elsewhere saves the file. The close prompt lists a tab's changed rows and its file as one choice, which saves or discards both. Ctrl+Z and Ctrl+Shift+Z undo and redo the rows in the results.
-- After a save the statement behind the result runs again on the tab's connection, and its rows replace the result's. When it now reads another table or other columns, the tracker follows while it holds nothing, and the result turns read-only while it holds changes made on the rows read before.
-- A run, Commit or Roll Back with changes pending asks to discard them first, waits while a save runs, and stops the read that follows a save.
+- After a save the statement behind the result runs again as a run of the tab, with its Stop, and its result is checked from the start; history leaves that run out. Changes made while the save ran keep the rows they were made on until they are saved too.
+- A run, Commit or Roll Back with changes pending asks to discard them first, and waits while a save runs.
 - Why a result or a column is read-only shows where an edit would open, in the row details, as for a table tab's locked cell.
 
 ## Rationale
 
-- One tracker per tab keeps the window's save, close and history paths as they are; changes in two results would need two saves under one tab id.
+- One tracker per tab keeps the window's save, close and history paths as they are; changes in two results would need two saves under one tab id, and handing one tracker between results drew a new race in each review round.
+- Reading the result again as an ordinary run reuses its Stop, its busy state and its checks, rather than a second path that has to keep them in step.
 - The window's connection is where the table tab's guards, Safe Mode and outcome handling already live. Saving on the tab's connection would commit or roll back the user's own transaction.
 - The row details already explain a locked cell; a banner over every read-only result, most of them joins and aggregates, would be noise (HIG, Banners).
 
 ## Consequences
 
 - A result read in a transaction is read-only until it is committed or rolled back and run again.
-- Switching between two editable results with nothing pending builds each page again, which resets its scroll position.
+- A script that returns several results is read-only; running its one statement makes that result editable.
+- The read after a save starts the result over, scrolled to the top.
 - MongoDB and Redis results stay read-only; a collection's documents edit in its table tab ([0026](0026-documents-in-the-table-tab.md)).
 
 ## Alternatives considered

@@ -35,7 +35,6 @@ pub use parse_expression::{MAX_EXPRESSION_LEN, ValidatedExpression, parse_expres
 pub use parse_type::{MAX_TYPE_LEN, TypeShape, ValidatedType, parse_type};
 pub use sort_reference::{SortReference, sort_reference};
 pub use source_table::{
-    SourceItem, SourceName, SourceRefusal, SourceTable, same_name, source_columns, source_columns_for_result,
-    source_table,
+    SourceItem, SourceName, SourceRefusal, SourceTable, same_name, source_columns_for_result, source_table,
 };
 pub use statement_access::{StatementAccess, sqlite_pragma_reports, statement_access};

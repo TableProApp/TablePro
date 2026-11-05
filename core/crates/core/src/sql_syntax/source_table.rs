@@ -351,38 +351,41 @@ fn plain_wildcard(options: &WildcardAdditionalOptions) -> bool {
         && options.opt_alias.is_none()
 }
 
-// A changed width means the catalog can no longer prove which result column came from where.
-pub fn source_columns(source: &SourceTable, columns: &[ColumnInfo], width: usize) -> Option<Vec<Option<usize>>> {
-    let mut mapped = Vec::with_capacity(width);
-    for item in &source.items {
-        match item {
-            SourceItem::Wildcard => mapped.extend((0..columns.len()).map(Some)),
-            SourceItem::Expression => mapped.push(None),
-            // A name the table lacks may be a word the engine reads as a function; the driver's origin says which.
-            SourceItem::Column(name) => mapped.push(column_position(columns, name, source.grammar)),
-        }
-    }
-    (mapped.len() == width).then_some(mapped)
-}
-
-// A same-width schema change can move wildcard cells onto different columns after the query ran.
+// A wildcard reads the columns a `*` shows, which leaves out MySQL's INVISIBLE and ClickHouse's MATERIALIZED and ALIAS
+// ones, so it maps by the exact names it read; a name the catalog no longer has means the table changed since.
 pub fn source_columns_for_result(
     source: &SourceTable,
     columns: &[ColumnInfo],
     result_names: &[String],
 ) -> Option<Vec<Option<usize>>> {
-    let mapped = source_columns(source, columns, result_names.len())?;
-    let mut offset = 0usize;
+    let wildcards = source
+        .items
+        .iter()
+        .filter(|item| matches!(item, SourceItem::Wildcard))
+        .count();
+    let spread = result_names.len().checked_sub(source.items.len() - wildcards)?;
+    let per_wildcard = match wildcards {
+        0 if spread == 0 => 0,
+        0 => return None,
+        _ if spread % wildcards == 0 => spread / wildcards,
+        _ => return None,
+    };
+    let mut mapped = Vec::with_capacity(result_names.len());
     for item in &source.items {
-        if matches!(item, SourceItem::Wildcard) {
-            let end = offset.checked_add(columns.len())?;
-            let names = result_names.get(offset..end)?;
-            if !names.iter().zip(columns).all(|(name, column)| *name == column.name) {
-                return None;
+        match item {
+            SourceItem::Wildcard => {
+                let names = result_names.get(mapped.len()..mapped.len() + per_wildcard)?;
+                for name in names {
+                    let mut named = columns.iter().enumerate().filter(|(_, column)| column.name == *name);
+                    match (named.next(), named.next()) {
+                        (Some((position, _)), None) => mapped.push(Some(position)),
+                        _ => return None,
+                    }
+                }
             }
-            offset = end;
-        } else {
-            offset = offset.checked_add(1)?;
+            SourceItem::Expression => mapped.push(None),
+            // A name the table lacks may be a word the engine reads as a function; the driver's origin says which.
+            SourceItem::Column(name) => mapped.push(column_position(columns, name, source.grammar)),
         }
     }
     Some(mapped)
@@ -419,6 +422,11 @@ mod tests {
             name: name.to_owned(),
             quoted: false,
         })
+    }
+
+    fn source_columns(source: &SourceTable, columns: &[ColumnInfo], width: usize) -> Option<Vec<Option<usize>>> {
+        let names: Vec<String> = (0..width).map(|index| format!("column {index}")).collect();
+        source_columns_for_result(source, columns, &names)
     }
 
     fn info(name: &str) -> ColumnInfo {
@@ -577,16 +585,23 @@ mod tests {
     }
 
     #[test]
-    fn a_wildcard_spans_the_table_and_the_width_must_agree() {
-        let columns = [info("id"), info("name"), info("note")];
+    fn a_wildcard_maps_the_columns_it_read_by_name() {
+        let columns = [info("id"), info("name"), info("hidden"), info("note")];
         let star = source("SELECT *, 1 + 1 FROM people").expect("one table");
         let picked = source("SELECT NAME, \"id\" FROM people").expect("one table");
+        let read = ["id", "name", "note", "?column?"].map(str::to_owned);
 
         assert_eq!(
-            source_columns(&star, &columns, 4),
-            Some(vec![Some(0), Some(1), Some(2), None])
+            source_columns_for_result(&star, &columns, &read),
+            Some(vec![Some(0), Some(1), Some(3), None]),
+            "a column a star leaves out is skipped"
         );
-        assert_eq!(source_columns(&star, &columns, 3), None, "the table changed since");
+        let renamed = ["id", "label", "note", "?column?"].map(str::to_owned);
+        assert_eq!(
+            source_columns_for_result(&star, &columns, &renamed),
+            None,
+            "the table changed since"
+        );
         assert_eq!(source_columns(&picked, &columns, 2), Some(vec![Some(1), Some(0)]));
     }
 
@@ -726,8 +741,8 @@ mod tests {
         );
         assert_eq!(
             source_columns_for_result(&found, &[info("name"), info("id"), info("note")], &read),
-            None,
-            "a reordered primary key must not take another cell's value",
+            Some(vec![Some(1), Some(0), Some(2)]),
+            "a reordered table maps each cell to the column it was read from",
         );
         assert_eq!(
             source_columns_for_result(&found, &[info("id"), info("label"), info("note")], &read),
@@ -763,7 +778,11 @@ mod tests {
         read[4] = "computed alias".to_owned();
         assert!(source_columns_for_result(&found, &columns, &read).is_some());
         read.swap(5, 6);
-        assert_eq!(source_columns_for_result(&found, &columns, &read), None);
+        assert_eq!(
+            source_columns_for_result(&found, &columns, &read).map(|mapped| mapped[5..7].to_vec()),
+            Some(vec![Some(1), Some(0)]),
+            "each cell maps to the column its header names"
+        );
     }
 
     #[test]
