@@ -65,8 +65,8 @@ struct Session {
     // The account the sign-in is of: its last entitlement's, or what /v2/me answered.
     account_id: Option<String>,
     remembered: bool,
-    // Until when each call a 429 answered waits, by its Retry-After.
-    held: HashMap<Call, Instant>,
+    // Until when each call a 429 answered waits, by its Retry-After, on the wall clock as the access token's expiry is.
+    held: HashMap<Call, DateTime<Utc>>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -82,10 +82,10 @@ enum Call {
 impl Session {
     // Until a 429's Retry-After passes, the call answers the 429 again without a request.
     fn waited(&self, call: Call) -> Result<(), AccountError> {
-        let now = Instant::now();
+        let now = Utc::now();
         match self.held.get(&call) {
             Some(until) if *until > now => Err(AccountError::RateLimited {
-                retry_after: Some(*until - now),
+                retry_after: Some((*until - now).to_std().unwrap_or_default()),
             }),
             _ => Ok(()),
         }
@@ -96,7 +96,11 @@ impl Session {
             Err(AccountError::RateLimited {
                 retry_after: Some(retry_after),
             }) => {
-                self.held.insert(call, Instant::now() + *retry_after);
+                let until = TimeDelta::from_std(*retry_after)
+                    .ok()
+                    .and_then(|wait| Utc::now().checked_add_signed(wait))
+                    .unwrap_or(DateTime::<Utc>::MAX_UTC);
+                self.held.insert(call, until);
             }
             // The API no longer takes the access token, whatever its expiry says, so the next call refreshes it.
             Err(AccountError::Refused { status: 401, .. }) => self.access = None,
