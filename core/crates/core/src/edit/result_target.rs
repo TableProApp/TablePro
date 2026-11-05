@@ -153,10 +153,15 @@ pub fn value_for_column(value: &Value, read: &ColumnType, column: &ColumnType) -
     if !matches!(read.kind, ColumnKind::Other) || read.read_form != ReadForm::ServerText {
         return Some(value.clone());
     }
+    // The session's extra_float_digits, DateStyle, IntervalStyle and lc_monetary shape how floats, times and money read,
+    // so their text may not name the stored value; only kinds whose text is exact are read back.
     match &column.kind {
-        ColumnKind::Text { .. } => Some(value.clone()),
+        ColumnKind::Text { .. } | ColumnKind::Enum { .. } | ColumnKind::Other => Some(value.clone()),
         ColumnKind::Bytes { .. } => postgres_bytea(text).map(Value::Bytes),
-        _ => parse_literal_text(text, column).ok(),
+        ColumnKind::Integer(_) | ColumnKind::Decimal { .. } | ColumnKind::Bool(_) | ColumnKind::Uuid => {
+            parse_literal_text(text, column).ok()
+        }
+        _ => None,
     }
 }
 
@@ -412,6 +417,19 @@ mod tests {
             Some(Value::Bytes(vec![1, 255]))
         );
         assert_eq!(value_for_column(&Value::Int(7), &read, &int()), Some(Value::Int(7)));
+    }
+
+    #[test]
+    fn text_a_session_setting_can_round_is_not_read_back() {
+        let read = ColumnType::untyped_text("text");
+        let float = typed("double precision", ColumnKind::Float(crate::column::FloatWidth::F64));
+        let date = typed("date", ColumnKind::Date);
+
+        assert_eq!(value_for_column(&Value::Text("1".to_owned()), &read, &float), None);
+        assert_eq!(
+            value_for_column(&Value::Text("05/11/2026".to_owned()), &read, &date),
+            None
+        );
     }
 
     #[test]

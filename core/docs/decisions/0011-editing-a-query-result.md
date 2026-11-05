@@ -26,7 +26,7 @@ The statement decides whether a result is one table's rows; the driver proves wh
   - MongoDB and Redis: none.
 - `edit::result_source` requires every origin to name one table, the one the statement names. `edit::result_target` maps each result column to the table's catalog column, refuses a table without a primary key and a result that leaves out part of it, locks expressions and a second copy of a column, and refuses a result whose wildcard no longer matches the catalog.
 - A driver looks nothing up inside the user's transaction, and a lookup that fails leaves every origin empty and the run unchanged.
-- PostgreSQL's editor reads text; `edit::value_for_column` turns a value of a column the driver left as server text into the catalog's type, and a key it cannot read leaves the row read-only. A value any other driver read stays as it was stored, so SQLite's ` 2024-01-01 ` is not the key `2024-01-01`.
+- PostgreSQL's editor reads text; `edit::value_for_column` turns a value of a column the driver left as server text into the catalog's type where that text is exact: integers, decimals, booleans, UUIDs, text, enums and hex bytea. Session settings shape how floats, dates, times, intervals and money read, so a key of those kinds leaves its row read-only. A value any other driver read stays as it was stored, so SQLite's ` 2024-01-01 ` is not the key `2024-01-01`.
 
 ## Rationale
 
