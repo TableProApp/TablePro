@@ -4,3 +4,4 @@ _packages/
 _flatpak/
 .flatpak-builder/
 /po/tablepro.pot
+/build-aux/flatpak/*.tar.xz

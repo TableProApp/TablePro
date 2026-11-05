@@ -153,8 +153,8 @@ The app runs on GNOME 50 ([ADR 0015](docs/decisions/0015-gnome-50-platform-floor
 
 | Capability | Detail |
 |---|---|
-| Flatpak | The Devel manifest builds on GNOME 51 for x86_64 and aarch64 with every Meson suite in the sandbox, and is linted, in the nightly Linux run |
-| .deb and .rpm | Ubuntu 26.04 and 26.10 and Fedora 44, built offline in CI the way Launchpad and COPR build them, linted, then installed and started in fresh containers; a `linux-v*` tag uploads to the PPA and starts the COPR build ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md)) |
+| Flatpak | The Devel manifest builds on GNOME 51 for x86_64 and aarch64 with every Meson suite in the sandbox, and is linted, in the nightly Linux run; the release manifest builds the bundle every GitHub release carries, offline from the release tarballs, and CI installs it in a fresh container ([ADR 0033](docs/decisions/0033-beta-repositories-and-release-packages.md)) |
+| .deb and .rpm | Ubuntu 26.04 and 26.10 and Fedora 44, built offline in CI the way Launchpad and COPR build them, linted, then installed and started in fresh containers; a `linux-v*` tag publishes them on GitHub Releases, uploads to the PPA and starts the COPR build, a beta tag to the beta ones ([ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md), [ADR 0033](docs/decisions/0033-beta-repositories-and-release-packages.md)) |
 | Desktop integration | Desktop file with Open With for SQLite files, D-Bus activation, a man page, metainfo with screenshots, and SVG icons |
 | Translations | Vietnamese ships. The app's own strings go through gettext, and CI fails when `POTFILES.in` is stale or a translation loses a placeholder. CI builds the template with gettext 1.0 and publishes it from main and with each release; translators send pull requests against `po/*.po` ([po/README.md](po/README.md#where-translators-work)) |
 | Logs | stderr, which the session journals, with JSON lines on request. A panic also writes a crash report under `$XDG_STATE_HOME`, offered with Show Report on the next launch |
@@ -176,7 +176,7 @@ Not built yet, in no order.
 
 ### Release and project
 
-- Before the first tag, the release setup [ADR 0018](docs/decisions/0018-ppa-copr-and-flathub-later.md#consequences) lists: the PPA, the COPR project, and the secrets and variable `release-linux.yml` names in its header.
+- Before the first tag, the release setup in [docs/releasing.md](docs/releasing.md#setup-before-the-first-release): the Launchpad team and both PPAs, the COPR group and both projects, and the secrets and variables `release-linux.yml` names in its header.
 - Write the Flathub manifest and the exception request by hand, and submit them.
 - An AUR PKGBUILD, kept by the community.
 - More languages: French, Korean, Turkish, and Simplified and Traditional Chinese, which the macOS app ships.

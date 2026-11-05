@@ -1,6 +1,6 @@
 # Troubleshooting
 
-What to check when TablePro for Linux does not behave, and what to send with a bug report. Paths are for the PPA and COPR packages.
+What to check when TablePro for Linux does not behave, and what to send with a bug report. Paths are for the .deb and .rpm packages; the Flatpak bundle's are in [Where TablePro keeps its files](#where-tablepro-keeps-its-files).
 
 ## Passwords
 
@@ -78,7 +78,7 @@ TablePro writes a report of each crash to `~/.local/state/tablepro/crashes/`. At
 Open an issue at https://github.com/TableProApp/TablePro/issues with:
 
 - The text from About TablePro > Troubleshooting > Debugging Information. Copy Text puts it on the clipboard. It holds the versions and no connection details.
-- Where TablePro came from (the PPA, COPR or a source build), the distribution and version, and the desktop and session (`echo $XDG_CURRENT_DESKTOP $XDG_SESSION_TYPE`).
+- Where TablePro came from (the PPA, COPR, a .deb, .rpm or Flatpak bundle from GitHub Releases, or a source build), the distribution and version, and the desktop and session (`echo $XDG_CURRENT_DESKTOP $XDG_SESSION_TYPE`).
 - The log and crash report above, when there is one.
 
 ## After a downgrade
@@ -103,3 +103,5 @@ Installing the newer version again brings all of it back, unless it was reset. C
 | `~/.local/state/tablepro/crashes/` | Crash reports |
 
 Preferences are in GSettings: `gsettings list-recursively app.tablepro.TablePro` lists them. `man tablepro` has the same list.
+
+The Flatpak bundle keeps the same files under `~/.var/app/app.tablepro.TablePro/`: `config/tablepro/`, `.local/state/tablepro/` and `data/tablepro/` in place of `~/.config/tablepro/`, `~/.local/state/tablepro/` and `~/.local/share/tablepro/`. Its preferences are listed by `flatpak run --command=gsettings app.tablepro.TablePro list-recursively app.tablepro.TablePro`, and a detailed log comes from `flatpak run --env=RUST_LOG=debug app.tablepro.TablePro 2> tablepro.log`.

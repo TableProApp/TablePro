@@ -7,6 +7,9 @@ name: Linux packages
 # dependencies, then checked with lintian. The .rpm is built in a fresh
 # fedora:44 with only its BuildRequires. Each package is then installed in
 # another fresh container with only its runtime dependencies and started.
+# The Flatpak bundle a release carries is built offline from the same
+# tarballs with the release manifest, on the nightly and when asked for,
+# and installed in a fresh container that has only Flatpak.
 # release-linux.yml calls this workflow and uploads the source packages.
 # A run by hand can add arm64, which the nightly and pull requests leave out.
 # Given a release tag, it packages that release's tarballs instead, with
@@ -39,6 +42,10 @@ on:
         description: Also build, test and install the arm64 .deb and .rpm
         type: boolean
         default: false
+      flatpak:
+        description: Also build the Flatpak bundle and install it
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       deb-runners:
@@ -57,6 +64,10 @@ on:
         description: The PPA upload number, the N in X.Y.Z-0ppaN.
         type: string
         default: "1"
+      flatpak:
+        description: Also build the Flatpak bundle, once per rpm-runners architecture, and install it.
+        type: boolean
+        default: false
 
 # A pull request keeps only its newest run; every other run, a release's call included, has its own group.
 concurrency:
@@ -260,3 +271,78 @@ jobs:
         run: |
           linux/build-aux/packaging/smoke-test.sh \
             "$(find _packages/rpm -name 'tablepro-[0-9]*.rpm' ! -name '*.src.rpm')" linux/po/LINGUAS
+
+  # The release manifest names the two tarballs at fixed paths beside it, and
+  # builds from them offline, as the packages do. The bundle names Flathub as
+  # the repository its GNOME runtime comes from.
+  flatpak:
+    name: Flatpak bundle (${{ matrix.runner }})
+    needs: sources
+    if: inputs.flatpak || github.event_name == 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-sources
+          path: _packages/sources
+      - name: Put the tarballs where the manifest names them
+        id: arch
+        run: |
+          cp "$(find _packages/sources -name 'tablepro-*.tar.xz' ! -name '*-vendor.tar.xz')" \
+            linux/build-aux/flatpak/tablepro.tar.xz
+          cp "$(find _packages/sources -name 'tablepro-*-vendor.tar.xz')" \
+            linux/build-aux/flatpak/tablepro-vendor.tar.xz
+          echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
+        with:
+          manifest-path: linux/build-aux/flatpak/app.tablepro.TablePro.json
+          arch: ${{ steps.arch.outputs.arch }}
+          branch: stable
+          bundle: tablepro-${{ steps.arch.outputs.arch }}.flatpak
+          repository-url: https://dl.flathub.org/repo/flathub.flatpakrepo
+          cache: false
+          upload-artifact: false
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-flatpak-${{ runner.arch }}
+          path: tablepro-${{ steps.arch.outputs.arch }}.flatpak
+          if-no-files-found: error
+      - name: Lint the manifest
+        if: steps.arch.outputs.arch == 'x86_64'
+        run: flatpak-builder-lint manifest linux/build-aux/flatpak/app.tablepro.TablePro.json
+
+  flatpak-install:
+    name: Install the Flatpak bundle (${{ matrix.runner }})
+    needs: flatpak
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.rpm-runners || (inputs.arm64 && '["ubuntu-24.04", "ubuntu-24.04-arm"]') || '["ubuntu-24.04"]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    container:
+      image: ubuntu:26.04
+      options: --privileged
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-flatpak-${{ runner.arch }}
+          path: _packages/flatpak
+      - name: Install, start and validate
+        run: |
+          linux/build-aux/packaging/smoke-test-flatpak.sh \
+            "$(find _packages/flatpak -name 'tablepro-*.flatpak')" linux/po/LINGUAS

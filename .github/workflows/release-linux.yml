@@ -1,26 +1,36 @@
 name: Release Linux
 
-# A linux-vX.Y.Z tag publishes the Linux release: the source and vendor
-# tarballs and the translation template on GitHub Releases, the signed Debian source package for each
-# Ubuntu series to the Launchpad PPA, which builds and publishes the .deb,
-# and the tag to the COPR project's custom webhook, which builds the
-# Fedora packages from the release (linux/build-aux/rpm/copr-sources.sh).
-# A pre-release tag such as linux-v0.2.0-rc.1 publishes a GitHub
-# pre-release and skips the PPA and COPR.
+# A linux-vX.Y.Z tag publishes a release and a linux-vX.Y.Z-beta.N tag a beta
+# (linux/docs/decisions/0033-beta-repositories-and-release-packages.md). Both
+# publish on GitHub Releases, a beta as a pre-release: the source and vendor
+# tarballs, the translation template, the .deb for each Ubuntu series and the
+# .rpm for Fedora, each built offline, tested and installed in a fresh
+# container, a Flatpak bundle, all for amd64 and arm64, and SHA256SUMS.
+# Then a release uploads the signed Debian source package for each Ubuntu
+# series to the stable PPA, which builds and publishes the .deb, and posts the
+# tag to the stable COPR project's custom webhook, which builds the Fedora
+# packages from the release (linux/build-aux/rpm/copr-sources.sh). A beta goes
+# to the beta PPA and the beta COPR project instead.
 #
-# Run by hand on a branch, it uploads a published release to the PPA again
-# as X.Y.Z-0ppaN, from that release's tarballs with the branch's .deb
-# packaging: a packaging fix that needs no new version. linux/docs/releasing.md
-# has the steps.
+# Run by hand with dry-run, it builds, tests and gathers everything a tag of
+# the branch's version would publish, as the linux-release artifact, and
+# publishes nothing.
+#
+# Run by hand on a branch with a tag and a revision, it uploads a published
+# release to the stable PPA again as X.Y.Z-0ppaN, from that release's
+# tarballs with the branch's .deb packaging: a packaging fix that needs no
+# new version. linux/docs/releasing.md has the steps.
 #
 # Environment linux-release, limited to linux-v* tags and the branch a
-# packaging fix runs on, with a required reviewer, holds two secrets.
+# packaging fix runs on, with a required reviewer, holds three secrets.
 # LINUX_PPA_SIGNING_KEY: the ASCII-armored OpenPGP secret key, with no
 # passphrase, that signs the uploads. Its public key is registered on a
-# Launchpad account that may upload to the PPA.
-# LINUX_COPR_WEBHOOK: the custom webhook URL from the COPR project's
-# Integrations page, ending in the package name: .../<uuid>/tablepro/.
-# Variable LINUX_PPA: the PPA, as owner/name.
+# Launchpad account that may upload to both PPAs.
+# LINUX_COPR_WEBHOOK and LINUX_COPR_WEBHOOK_BETA: the custom webhook URL
+# from the Integrations page of the stable and of the beta COPR project,
+# ending in the package name: .../<uuid>/tablepro/.
+# Variables LINUX_PPA and LINUX_PPA_BETA: the stable and the beta PPA, as
+# owner/name.
 # Variable LINUX_BRANCH: the branch a release tag must be on, main when unset.
 
 on:
@@ -28,14 +38,18 @@ on:
     tags: ["linux-v*"]
   workflow_dispatch:
     inputs:
+      dry-run:
+        description: Build, test and gather what a tag of this branch would publish, and publish nothing
+        type: boolean
+        default: false
       tag:
-        description: The published release to upload again, such as linux-v0.1.0
-        required: true
+        description: The published release to upload to the PPA again, such as linux-v0.1.0
         type: string
+        default: ""
       revision:
         description: The PPA upload number, 2 or more (X.Y.Z-0ppaN)
-        required: true
         type: string
+        default: ""
 
 permissions:
   contents: read
@@ -47,13 +61,14 @@ concurrency:
 jobs:
   verify:
     name: Tag, version and release notes
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.dry-run
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     container:
       image: ubuntu:26.04
     outputs:
       prerelease: ${{ steps.check.outputs.prerelease }}
+      version: ${{ steps.check.outputs.version }}
     steps:
       - name: Install git and meson
         run: |
@@ -67,23 +82,33 @@ jobs:
         id: check
         working-directory: linux
         env:
+          EVENT: ${{ github.event_name }}
           TAG: ${{ github.ref_name }}
           LINUX_BRANCH: ${{ vars.LINUX_BRANCH || 'main' }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          if ! git merge-base --is-ancestor HEAD "origin/$LINUX_BRANCH"; then
-            echo "::error::$GITHUB_SHA is not on $LINUX_BRANCH"
-            exit 1
-          fi
           version="$(meson introspect --projectinfo meson.build \
             | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
-          tag_date="$(TZ=UTC git log -1 --date=format-local:%Y-%m-%d --format=%cd)"
-          python3 build-aux/packaging/check_packaging.py --source-root . \
-            --version "$version" --tag "$TAG" --tag-date "$tag_date"
+          if [ "$EVENT" = push ]; then
+            if ! git merge-base --is-ancestor HEAD "origin/$LINUX_BRANCH"; then
+              echo "::error::$GITHUB_SHA is not on $LINUX_BRANCH"
+              exit 1
+            fi
+            tag_date="$(TZ=UTC git log -1 --date=format-local:%Y-%m-%d --format=%cd)"
+            python3 build-aux/packaging/check_packaging.py --source-root . \
+              --version "$version" --tag "$TAG" --tag-date "$tag_date"
+          else
+            # A dry run has no tag; it checks the branch as the release-metadata test does.
+            python3 build-aux/packaging/check_packaging.py --source-root . --version "$version"
+          fi
           case "$version" in
-            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+            *-*) prerelease=true ;;
+            *) prerelease=false ;;
           esac
+          {
+            echo "prerelease=$prerelease"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
 
   packages:
     name: Packages
@@ -92,6 +117,7 @@ jobs:
     with:
       deb-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
       rpm-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
+      flatpak: true
 
   # The release carries the template translators start from, made with
   # gettext 1.0 as build-linux.yml's Translations job makes it.
@@ -130,9 +156,51 @@ jobs:
           path: linux/po/tablepro.pot
           if-no-files-found: error
 
+  # GitHub turns the '~' of a package version into '.' in an asset name, so
+  # release_assets.py names each package after the tag's version.
+  assets:
+    name: Release assets
+    needs: [verify, packages, template]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-sources
+          path: _artifacts/linux-sources
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-pot
+          path: _artifacts/linux-pot
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: linux-deb-*
+          path: _artifacts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: linux-rpm-*
+          path: _artifacts
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: linux-flatpak-*
+          path: _artifacts
+      - name: Gather the assets and SHA256SUMS
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: python3 linux/build-aux/packaging/release_assets.py --version "$VERSION" _artifacts release
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-release
+          path: release
+          if-no-files-found: error
+
   github-release:
     name: GitHub release
-    needs: [verify, packages, template]
+    needs: [verify, assets]
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 15
@@ -144,13 +212,9 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: linux-sources
+          name: linux-release
           path: release
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: linux-pot
-          path: release
-      # A pre-release has no CHANGELOG.md section; its notes are a draft of the fragments at the tag.
+      # A beta has no CHANGELOG.md section; its notes are a draft of the fragments at the tag.
       - name: Install towncrier
         if: needs.verify.outputs.prerelease == 'true'
         run: |
@@ -161,27 +225,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.verify.outputs.version }}
           PRERELEASE: ${{ needs.verify.outputs.prerelease }}
         run: |
-          version="${TAG#linux-v}"
-          (cd release && sha256sum -- * > SHA256SUMS)
           if [ "$PRERELEASE" = true ]; then
-            python3 linux/build-aux/packaging/check_packaging.py --source-root linux \
-              --version "$version" --tag "$TAG"
-            "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version "$version" > draft.md
+            "$RUNNER_TEMP/release-venv/bin/towncrier" build --draft --dir linux --version "$VERSION" > draft.md
             sed 1d draft.md > notes.md
             set -- --prerelease
           else
             python3 linux/build-aux/packaging/check_packaging.py --source-root linux \
-              --version "$version" --tag "$TAG" --notes notes.md
+              --version "$VERSION" --tag "$TAG" --notes notes.md
           fi
           # The repository's latest release stays the macOS one.
           gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false \
-            --title "TablePro for Linux $version" --notes-file notes.md "$@"
+            --title "TablePro for Linux $VERSION" --notes-file notes.md "$@"
 
   revision:
     name: Release and revision to upload again
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.dry-run
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -194,7 +255,7 @@ jobs:
           version="${TAG#linux-v}"
           case "$version" in
             "$TAG" | "" | *[!0-9.]*)
-              echo "::error::$TAG is not the tag of a Linux release; a pre-release is not on the PPA"
+              echo "::error::$TAG is not the tag of a Linux release; a beta's fix is the next beta"
               exit 1
               ;;
           esac
@@ -219,13 +280,12 @@ jobs:
       release-tag: ${{ inputs.tag }}
       revision: ${{ inputs.revision }}
 
+  # After the GitHub release, so a failed publish uploads nothing anywhere.
   ppa:
     name: Upload to the Launchpad PPA
-    needs: [verify, packages, revision-packages]
+    needs: [verify, github-release, revision-packages]
     if: >-
-      !cancelled() && (
-        (needs.packages.result == 'success' && needs.verify.outputs.prerelease == 'false') ||
-        needs.revision-packages.result == 'success')
+      !cancelled() && (needs.github-release.result == 'success' || needs.revision-packages.result == 'success')
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 30
@@ -241,10 +301,20 @@ jobs:
       - name: Sign the source packages and upload them
         env:
           SIGNING_KEY: ${{ secrets.LINUX_PPA_SIGNING_KEY }}
-          PPA: ${{ vars.LINUX_PPA }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          STABLE_PPA: ${{ vars.LINUX_PPA }}
+          BETA_PPA: ${{ vars.LINUX_PPA_BETA }}
         run: |
-          if [ -z "$SIGNING_KEY" ] || [ -z "$PPA" ]; then
-            echo "::error::Set the LINUX_PPA_SIGNING_KEY secret and the LINUX_PPA variable to upload to the PPA"
+          # A packaging fix uploads a release again, so only a tag is ever a beta.
+          if [ "$PRERELEASE" = true ]; then
+            ppa="$BETA_PPA"
+            variable=LINUX_PPA_BETA
+          else
+            ppa="$STABLE_PPA"
+            variable=LINUX_PPA
+          fi
+          if [ -z "$SIGNING_KEY" ] || [ -z "$ppa" ]; then
+            echo "::error::Set the LINUX_PPA_SIGNING_KEY secret and the $variable variable to upload to the PPA"
             exit 1
           fi
           apt-get update
@@ -259,13 +329,12 @@ jobs:
           echo "$key:6:" | gpg --batch --import-ownertrust
           for changes in source/*_source.changes; do
             debsign -k"$key" "$changes"
-            dput "ppa:$PPA" "$changes"
+            dput "ppa:$ppa" "$changes"
           done
 
   copr:
     name: Start the COPR build
     needs: [verify, github-release]
-    if: needs.verify.outputs.prerelease == 'false'
     runs-on: ubuntu-24.04
     environment: linux-release
     timeout-minutes: 5
@@ -274,13 +343,22 @@ jobs:
       # project's secret, which lasts until a maintainer regenerates it.
       - name: Post the tag to the COPR webhook
         env:
-          WEBHOOK: ${{ secrets.LINUX_COPR_WEBHOOK }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          STABLE_WEBHOOK: ${{ secrets.LINUX_COPR_WEBHOOK }}
+          BETA_WEBHOOK: ${{ secrets.LINUX_COPR_WEBHOOK_BETA }}
           TAG: ${{ github.ref_name }}
         run: |
-          if [ -z "$WEBHOOK" ]; then
-            echo "::error::Set the LINUX_COPR_WEBHOOK secret to build the Fedora packages"
+          if [ "$PRERELEASE" = true ]; then
+            webhook="$BETA_WEBHOOK"
+            secret=LINUX_COPR_WEBHOOK_BETA
+          else
+            webhook="$STABLE_WEBHOOK"
+            secret=LINUX_COPR_WEBHOOK
+          fi
+          if [ -z "$webhook" ]; then
+            echo "::error::Set the $secret secret to build the Fedora packages"
             exit 1
           fi
           build="$(curl --fail-with-body --silent --show-error --proto '=https' --request POST \
-            --header 'Content-Type: text/plain' --data-raw "$TAG" "$WEBHOOK")"
+            --header 'Content-Type: text/plain' --data-raw "$TAG" "$webhook")"
           echo "COPR build $build: https://copr.fedorainfracloud.org/coprs/build/$build/"
