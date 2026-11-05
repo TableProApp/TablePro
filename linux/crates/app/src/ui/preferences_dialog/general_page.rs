@@ -85,13 +85,24 @@ impl GeneralPage {
             .bind(keys::RESTORE_SESSION, &imp.restore_session_row.get(), "active")
             .build();
         imp.privacy_group.set_visible(can_share_usage_data);
+        // Read only: the switch writes the setting through choose_usage_data, so an unanswered switch never shares.
         settings
             .gio()
             .bind(keys::SHARE_USAGE_DATA, &imp.share_usage_data_row.get(), "active")
+            .get()
             .build();
-        // Turning it either way here is the choice the launch toast asks for.
         let chosen = settings.clone();
         imp.share_usage_data_row.connect_active_notify(move |row| {
+            // Before the launch toast's question is answered, the switch asks it, and the answer moves the switch.
+            if !chosen.usage_data_asked() {
+                if row.is_active() {
+                    row.set_active(false);
+                    if let Err(error) = row.activate_action("app.usage-data", None) {
+                        tracing::warn!(%error, "the usage data question did not open");
+                    }
+                }
+                return;
+            }
             if let Err(error) = chosen.choose_usage_data(row.is_active()) {
                 tracing::warn!(%error, "the usage data choice was not stored");
             }
@@ -107,6 +118,8 @@ impl GeneralPage {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use libadwaita::prelude::*;
 
     use super::super::test_storage;
@@ -153,25 +166,42 @@ mod tests {
     }
 
     #[gtk4::test]
-    fn usage_data_is_off_until_chosen_and_the_switch_is_the_choice() {
+    fn the_switch_asks_the_question_first_and_after_an_answer_is_the_choice() {
         let settings = MemorySettings::new();
         let runtime = test_runtime();
         let storage = test_storage(&runtime.tasks());
         let root = tempfile::tempdir().expect("tempdir");
         let page = page_with_usage_data(&settings, &storage, &root, &runtime.tasks(), true);
+        let asked = Rc::new(Cell::new(0));
+        let question = gtk4::gio::SimpleAction::new("usage-data", None);
+        let counted = asked.clone();
+        question.connect_activate(move |_, _| counted.set(counted.get() + 1));
+        let app = gtk4::gio::SimpleActionGroup::new();
+        app.add_action(&question);
+        page.insert_action_group("app", Some(&app));
         let row = page.imp().share_usage_data_row.get();
         let titles: Vec<String> = groups(&page).iter().map(|group| group.title().to_string()).collect();
 
-        let before = (row.is_active(), settings.get().usage_data_asked());
         row.set_active(true);
-        let shared = (settings.get().share_usage_data(), settings.get().usage_data_asked());
+        let unanswered = (
+            row.is_active(),
+            settings.get().share_usage_data(),
+            settings.get().usage_data_asked(),
+        );
+        settings.get().choose_usage_data(true).expect("the dialog's Share");
+        let answered = row.is_active();
         row.set_active(false);
 
         assert_eq!(titles.last().map(String::as_str), Some("Privacy"));
-        assert_eq!(before, (false, false));
-        assert_eq!(shared, (true, true));
+        assert_eq!(unanswered, (false, false, false));
+        assert_eq!(asked.get(), 1);
+        assert!(answered);
         assert!(!settings.get().share_usage_data());
         assert!(settings.get().usage_data_asked());
+        assert_eq!(
+            row.subtitle().as_deref(),
+            Some("Help improve TablePro with app activity and system information")
+        );
     }
 
     #[gtk4::test]

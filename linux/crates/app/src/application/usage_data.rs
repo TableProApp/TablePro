@@ -8,6 +8,8 @@ use super::TableProApplication;
 use crate::i18n::gettext;
 use crate::ui::LaunchNotice;
 
+// The site's privacy policy says what is sent and to whom, as the README does.
+const LEARN_MORE: &str = "https://tablepro.app/privacy#linux-usage-data";
 const SHARE: &str = "share";
 const DONT_SHARE: &str = "dont-share";
 // Escape and closing the window choose nothing, so the next launch asks again.
@@ -25,7 +27,8 @@ impl TableProApplication {
         }
     }
 
-    // The toast's Choose…, so the dialog opens only because the user asked for it.
+    // The toast's Choose…, or the Preferences switch turned on before an answer, so the dialog opens only because
+    // the user asked for it.
     pub(super) fn present_usage_data_choice(&self) {
         let Some(services) = self.imp().services.get() else {
             return;
@@ -51,15 +54,16 @@ impl TableProApplication {
 
 // Neither answer is the default: the choice is the user's, and Escape makes none.
 pub(super) fn usage_data_dialog() -> adw::AlertDialog {
+    // Learn More is a link, not a response: following it answers nothing.
     let body = format!(
-        "{}\n\n{}\n\n{}",
-        gettext(
-            "If you share it, TablePro sends PostHog (eu.i.posthog.com), the analytics service it uses: a daily launch with the kinds and number of open connections, the first connection and the first query, sign-in and sign-out, and clicks on Upgrade and Buy a License. Each carries a random ID for this installation and the system’s name and version; once you sign in, your account’s ID, with the TablePro and system versions, the processor type and the interface language. PostHog also sees the network address they come from."
-        ),
-        gettext("Never a host name, a password, a query or a row."),
-        gettext("You can change this at any time in Preferences > General > Privacy."),
+        "{} <a href=\"{LEARN_MORE}\">{}</a>",
+        glib::markup_escape_text(&gettext(
+            "Help improve TablePro by sharing app activity and system information with the TablePro team. Data is linked to your account when signed in; stop sharing anytime in Preferences."
+        )),
+        glib::markup_escape_text(&gettext("Learn More")),
     );
     let alert = adw::AlertDialog::new(Some(&gettext("Share Usage Data?")), Some(&body));
+    alert.set_body_use_markup(true);
     alert.add_response(DONT_SHARE, &gettext("_Don’t Share"));
     alert.add_response(SHARE, &gettext("_Share"));
     alert.set_close_response(UNDECIDED);
@@ -80,5 +84,18 @@ mod tests {
         assert_eq!(alert.close_response(), UNDECIDED);
         assert!(!alert.has_response(UNDECIDED));
         assert_eq!(alert.response_appearance(SHARE), adw::ResponseAppearance::Default);
+    }
+
+    #[gtk4::test]
+    fn the_body_links_to_the_privacy_policy_instead_of_listing_every_event() {
+        let alert = usage_data_dialog();
+
+        assert!(alert.is_body_use_markup());
+        assert!(
+            alert
+                .body()
+                .ends_with(&format!("<a href=\"{LEARN_MORE}\">Learn More</a>"))
+        );
+        assert!(!alert.has_response("learn-more"));
     }
 }

@@ -9,7 +9,7 @@ tablepro-cloud's `docs/design/clients.md` has the apps send usage events to Post
 
 ## Decision
 
-`crates/app/src/services/telemetry.rs` sends the events through posthog-rs 0.27.0's blocking client, to the project key Meson passes as `-Dposthog_key`. Without a key, or until Share Usage Data is on, no client is made, so nothing is sent. The GSettings key `share-usage-data` is off until the user turns it on. Until the user has chosen (`usage-data-asked`), each launch of a build with a key shows a toast, "Share usage data with TablePro?", whose Choose… opens an `AdwAlertDialog` that says what is sent, with Don't Share and Share and no default; Escape chooses nothing. The dialog opens only from that button, since the GNOME HIG never lets a dialog open unprompted. Preferences > General > Privacy, shown only in a build with a key, has the Share Usage Data switch, and turning it either way is a choice made.
+`crates/app/src/services/telemetry.rs` sends the events through posthog-rs 0.27.0's blocking client, to the project key Meson passes as `-Dposthog_key`. Without a key, or until Share Usage Data is on, no client is made, so nothing is sent. The GSettings key `share-usage-data` is off until the user turns it on. Until the user has chosen (`usage-data-asked`), each launch of a build with a key shows a toast, "Share usage data with TablePro?", whose Choose… opens an `AdwAlertDialog`: two sentences on what is shared, with whom and how to stop, and a Learn More link to `https://tablepro.app/privacy#linux-usage-data`, which lists the events as the README does. It has Don't Share and Share and no default; Escape chooses nothing, and Learn More is a link, not an answer. The dialog opens only from that button, since the GNOME HIG never lets a dialog open unprompted. Preferences > General > Privacy, shown only in a build with a key, has the Share Usage Data switch. Turned on before the question is answered, it opens the same dialog, and the answer moves it; after that, turning it either way is a choice made.
 
 ## How it works
 
@@ -33,3 +33,4 @@ tablepro-cloud's `docs/design/clients.md` has the apps send usage events to Post
 - **The hashed machine ID as the anonymous ID.** A reset has to give a new ID, and the machine ID never changes.
 - **On by default, as macOS has it** (tablepro-cloud's `docs/design/clients.md`, Linux, 2026-10-29). The maintainer chose opt-in for Linux on 2026-11-05.
 - **The choice as a first-launch dialog.** The HIG: "Never pop up a dialog window unexpectedly."
+- **Every event in the dialog.** The maintainer found it far too long to read at the moment of choosing; the privacy policy and the README keep the list, a click away.
